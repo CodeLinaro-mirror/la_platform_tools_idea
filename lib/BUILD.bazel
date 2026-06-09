@@ -2154,272 +2154,272 @@ jvm_import(
 )
 
 copy_file(
-  name = "io.ktor/ktor-client-cio-jvm-3.3.2.jar_copy",
-  src = "@io_ktor-ktor-client-cio-jvm-3_3_2_http//file",
-  out = "io.ktor/ktor-client-cio-jvm-3.3.2.jar",
+  name = "io.ktor/ktor-client-cio-jvm-3.4.1.jar_copy",
+  src = "@io_ktor-ktor-client-cio-jvm-3_4_1_http//file",
+  out = "io.ktor/ktor-client-cio-jvm-3.4.1.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "fleet-io-ktor-client-cio",
-  jar = "@io_ktor-ktor-client-cio-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-client-cio-jvm-3_3_2-sources_http//file",
+  jar = "@io_ktor-ktor-client-cio-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-client-cio-jvm-3_4_1-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "io.ktor/ktor-client-core-jvm-3.3.2.jar_copy",
-  src = "@io_ktor-ktor-client-core-jvm-3_3_2_http//file",
-  out = "io.ktor/ktor-client-core-jvm-3.3.2.jar",
+  name = "io.ktor/ktor-client-core-jvm-3.4.1.jar_copy",
+  src = "@io_ktor-ktor-client-core-jvm-3_4_1_http//file",
+  out = "io.ktor/ktor-client-core-jvm-3.4.1.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "fleet-io-ktor-client-core",
-  jar = "@io_ktor-ktor-client-core-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-client-core-jvm-3_3_2-sources_http//file",
+  jar = "@io_ktor-ktor-client-core-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-client-core-jvm-3_4_1-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "io.ktor/ktor-client-logging-jvm-3.3.2.jar_copy",
-  src = "@io_ktor-ktor-client-logging-jvm-3_3_2_http//file",
-  out = "io.ktor/ktor-client-logging-jvm-3.3.2.jar",
+  name = "io.ktor/ktor-client-logging-jvm-3.4.1.jar_copy",
+  src = "@io_ktor-ktor-client-logging-jvm-3_4_1_http//file",
+  out = "io.ktor/ktor-client-logging-jvm-3.4.1.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "fleet-io-ktor-client-logging",
-  jar = "@io_ktor-ktor-client-logging-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-client-logging-jvm-3_3_2-sources_http//file",
+  jar = "@io_ktor-ktor-client-logging-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-client-logging-jvm-3_4_1-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "io.ktor/ktor-client-mock-jvm-3.3.2.jar_copy",
-  src = "@io_ktor-ktor-client-mock-jvm-3_3_2_http//file",
-  out = "io.ktor/ktor-client-mock-jvm-3.3.2.jar",
+  name = "io.ktor/ktor-client-mock-jvm-3.4.1.jar_copy",
+  src = "@io_ktor-ktor-client-mock-jvm-3_4_1_http//file",
+  out = "io.ktor/ktor-client-mock-jvm-3.4.1.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "fleet-io-ktor-client-mock",
-  jar = "@io_ktor-ktor-client-mock-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-client-mock-jvm-3_3_2-sources_http//file",
+  jar = "@io_ktor-ktor-client-mock-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-client-mock-jvm-3_4_1-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "io.ktor/ktor-events-jvm-3.3.2.jar_copy",
-  src = "@io_ktor-ktor-events-jvm-3_3_2_http//file",
-  out = "io.ktor/ktor-events-jvm-3.3.2.jar",
+  name = "io.ktor/ktor-events-jvm-3.4.1.jar_copy",
+  src = "@io_ktor-ktor-events-jvm-3_4_1_http//file",
+  out = "io.ktor/ktor-events-jvm-3.4.1.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "fleet-io-ktor-events",
-  jar = "@io_ktor-ktor-events-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-events-jvm-3_3_2-sources_http//file",
+  jar = "@io_ktor-ktor-events-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-events-jvm-3_4_1-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "io.ktor/ktor-http-jvm-3.3.2.jar_copy",
-  src = "@io_ktor-ktor-http-jvm-3_3_2_http//file",
-  out = "io.ktor/ktor-http-jvm-3.3.2.jar",
+  name = "io.ktor/ktor-http-jvm-3.4.1.jar_copy",
+  src = "@io_ktor-ktor-http-jvm-3_4_1_http//file",
+  out = "io.ktor/ktor-http-jvm-3.4.1.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "fleet-io-ktor-http",
-  jar = "@io_ktor-ktor-http-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-http-jvm-3_3_2-sources_http//file",
+  jar = "@io_ktor-ktor-http-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-http-jvm-3_4_1-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "io.ktor/ktor-http-cio-jvm-3.3.2.jar_copy",
-  src = "@io_ktor-ktor-http-cio-jvm-3_3_2_http//file",
-  out = "io.ktor/ktor-http-cio-jvm-3.3.2.jar",
+  name = "io.ktor/ktor-http-cio-jvm-3.4.1.jar_copy",
+  src = "@io_ktor-ktor-http-cio-jvm-3_4_1_http//file",
+  out = "io.ktor/ktor-http-cio-jvm-3.4.1.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "fleet-io-ktor-http-cio",
-  jar = "@io_ktor-ktor-http-cio-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-http-cio-jvm-3_3_2-sources_http//file",
+  jar = "@io_ktor-ktor-http-cio-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-http-cio-jvm-3_4_1-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "io.ktor/ktor-io-jvm-3.3.2.jar_copy",
-  src = "@io_ktor-ktor-io-jvm-3_3_2_http//file",
-  out = "io.ktor/ktor-io-jvm-3.3.2.jar",
+  name = "io.ktor/ktor-io-jvm-3.4.1.jar_copy",
+  src = "@io_ktor-ktor-io-jvm-3_4_1_http//file",
+  out = "io.ktor/ktor-io-jvm-3.4.1.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "fleet-io-ktor-io",
-  jar = "@io_ktor-ktor-io-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-io-jvm-3_3_2-sources_http//file",
+  jar = "@io_ktor-ktor-io-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-io-jvm-3_4_1-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "io.ktor/ktor-network-jvm-3.3.2.jar_copy",
-  src = "@io_ktor-ktor-network-jvm-3_3_2_http//file",
-  out = "io.ktor/ktor-network-jvm-3.3.2.jar",
+  name = "io.ktor/ktor-network-jvm-3.4.1.jar_copy",
+  src = "@io_ktor-ktor-network-jvm-3_4_1_http//file",
+  out = "io.ktor/ktor-network-jvm-3.4.1.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "fleet-io-ktor-network",
-  jar = "@io_ktor-ktor-network-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-network-jvm-3_3_2-sources_http//file",
+  jar = "@io_ktor-ktor-network-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-network-jvm-3_4_1-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "io.ktor/ktor-network-tls-jvm-3.3.2.jar_copy",
-  src = "@io_ktor-ktor-network-tls-jvm-3_3_2_http//file",
-  out = "io.ktor/ktor-network-tls-jvm-3.3.2.jar",
+  name = "io.ktor/ktor-network-tls-jvm-3.4.1.jar_copy",
+  src = "@io_ktor-ktor-network-tls-jvm-3_4_1_http//file",
+  out = "io.ktor/ktor-network-tls-jvm-3.4.1.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "fleet-io-ktor-network-tls",
-  jar = "@io_ktor-ktor-network-tls-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-network-tls-jvm-3_3_2-sources_http//file",
+  jar = "@io_ktor-ktor-network-tls-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-network-tls-jvm-3_4_1-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "io.ktor/ktor-serialization-jvm-3.3.2.jar_copy",
-  src = "@io_ktor-ktor-serialization-jvm-3_3_2_http//file",
-  out = "io.ktor/ktor-serialization-jvm-3.3.2.jar",
+  name = "io.ktor/ktor-serialization-jvm-3.4.1.jar_copy",
+  src = "@io_ktor-ktor-serialization-jvm-3_4_1_http//file",
+  out = "io.ktor/ktor-serialization-jvm-3.4.1.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "fleet-io-ktor-serialization",
-  jar = "@io_ktor-ktor-serialization-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-serialization-jvm-3_3_2-sources_http//file",
+  jar = "@io_ktor-ktor-serialization-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-serialization-jvm-3_4_1-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "io.ktor/ktor-server-cio-jvm-3.3.2.jar_copy",
-  src = "@io_ktor-ktor-server-cio-jvm-3_3_2_http//file",
-  out = "io.ktor/ktor-server-cio-jvm-3.3.2.jar",
+  name = "io.ktor/ktor-server-cio-jvm-3.4.1.jar_copy",
+  src = "@io_ktor-ktor-server-cio-jvm-3_4_1_http//file",
+  out = "io.ktor/ktor-server-cio-jvm-3.4.1.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "fleet-io-ktor-server-cio",
-  jar = "@io_ktor-ktor-server-cio-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-server-cio-jvm-3_3_2-sources_http//file",
+  jar = "@io_ktor-ktor-server-cio-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-server-cio-jvm-3_4_1-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "io.ktor/ktor-server-core-jvm-3.3.2.jar_copy",
-  src = "@io_ktor-ktor-server-core-jvm-3_3_2_http//file",
-  out = "io.ktor/ktor-server-core-jvm-3.3.2.jar",
+  name = "io.ktor/ktor-server-core-jvm-3.4.1.jar_copy",
+  src = "@io_ktor-ktor-server-core-jvm-3_4_1_http//file",
+  out = "io.ktor/ktor-server-core-jvm-3.4.1.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "fleet-io-ktor-server-core",
-  jar = "@io_ktor-ktor-server-core-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-server-core-jvm-3_3_2-sources_http//file",
+  jar = "@io_ktor-ktor-server-core-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-server-core-jvm-3_4_1-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "io.ktor/ktor-server-host-common-jvm-3.3.2.jar_copy",
-  src = "@io_ktor-ktor-server-host-common-jvm-3_3_2_http//file",
-  out = "io.ktor/ktor-server-host-common-jvm-3.3.2.jar",
+  name = "io.ktor/ktor-server-host-common-jvm-3.4.1.jar_copy",
+  src = "@io_ktor-ktor-server-host-common-jvm-3_4_1_http//file",
+  out = "io.ktor/ktor-server-host-common-jvm-3.4.1.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "fleet-io-ktor-server-host-common",
-  jar = "@io_ktor-ktor-server-host-common-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-server-host-common-jvm-3_3_2-sources_http//file",
+  jar = "@io_ktor-ktor-server-host-common-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-server-host-common-jvm-3_4_1-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "io.ktor/ktor-sse-jvm-3.3.2.jar_copy",
-  src = "@io_ktor-ktor-sse-jvm-3_3_2_http//file",
-  out = "io.ktor/ktor-sse-jvm-3.3.2.jar",
+  name = "io.ktor/ktor-sse-jvm-3.4.1.jar_copy",
+  src = "@io_ktor-ktor-sse-jvm-3_4_1_http//file",
+  out = "io.ktor/ktor-sse-jvm-3.4.1.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "fleet-io-ktor-sse",
-  jar = "@io_ktor-ktor-sse-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-sse-jvm-3_3_2-sources_http//file",
+  jar = "@io_ktor-ktor-sse-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-sse-jvm-3_4_1-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "io.ktor/ktor-utils-jvm-3.3.2.jar_copy",
-  src = "@io_ktor-ktor-utils-jvm-3_3_2_http//file",
-  out = "io.ktor/ktor-utils-jvm-3.3.2.jar",
+  name = "io.ktor/ktor-utils-jvm-3.4.1.jar_copy",
+  src = "@io_ktor-ktor-utils-jvm-3_4_1_http//file",
+  out = "io.ktor/ktor-utils-jvm-3.4.1.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "fleet-io-ktor-utils",
-  jar = "@io_ktor-ktor-utils-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-utils-jvm-3_3_2-sources_http//file",
+  jar = "@io_ktor-ktor-utils-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-utils-jvm-3_4_1-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "io.ktor/ktor-websocket-serialization-jvm-3.3.2.jar_copy",
-  src = "@io_ktor-ktor-websocket-serialization-jvm-3_3_2_http//file",
-  out = "io.ktor/ktor-websocket-serialization-jvm-3.3.2.jar",
+  name = "io.ktor/ktor-websocket-serialization-jvm-3.4.1.jar_copy",
+  src = "@io_ktor-ktor-websocket-serialization-jvm-3_4_1_http//file",
+  out = "io.ktor/ktor-websocket-serialization-jvm-3.4.1.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "fleet-io-ktor-websocket-serialization",
-  jar = "@io_ktor-ktor-websocket-serialization-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-websocket-serialization-jvm-3_3_2-sources_http//file",
+  jar = "@io_ktor-ktor-websocket-serialization-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-websocket-serialization-jvm-3_4_1-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "io.ktor/ktor-websockets-jvm-3.3.2.jar_copy",
-  src = "@io_ktor-ktor-websockets-jvm-3_3_2_http//file",
-  out = "io.ktor/ktor-websockets-jvm-3.3.2.jar",
+  name = "io.ktor/ktor-websockets-jvm-3.4.1.jar_copy",
+  src = "@io_ktor-ktor-websockets-jvm-3_4_1_http//file",
+  out = "io.ktor/ktor-websockets-jvm-3.4.1.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "fleet-io-ktor-websockets",
-  jar = "@io_ktor-ktor-websockets-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-websockets-jvm-3_3_2-sources_http//file",
+  jar = "@io_ktor-ktor-websockets-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-websockets-jvm-3_4_1-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
@@ -6792,17 +6792,17 @@ jvm_import(
 )
 
 copy_file(
-  name = "org.jetbrains.jediterm/jediterm-core-3.64.jar_copy",
-  src = "@org_jetbrains_jediterm-jediterm-core-3_64_http//file",
-  out = "org.jetbrains.jediterm/jediterm-core-3.64.jar",
+  name = "org.jetbrains.jediterm/jediterm-core-3.68.jar_copy",
+  src = "@org_jetbrains_jediterm-jediterm-core-3_68_http//file",
+  out = "org.jetbrains.jediterm/jediterm-core-3.68.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "jediterm-core",
-  jar = "@org_jetbrains_jediterm-jediterm-core-3_64_http//file",
-  source_jar = "@org_jetbrains_jediterm-jediterm-core-3_64-sources_http//file",
+  jar = "@org_jetbrains_jediterm-jediterm-core-3_68_http//file",
+  source_jar = "@org_jetbrains_jediterm-jediterm-core-3_68-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
@@ -8335,32 +8335,32 @@ jvm_import(
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/allopen-compiler-plugin-for-ide-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-allopen-compiler-plugin-for-ide-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/allopen-compiler-plugin-for-ide-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/allopen-compiler-plugin-for-ide-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-allopen-compiler-plugin-for-ide-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/allopen-compiler-plugin-for-ide-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-allopen-compiler-plugin",
-  jar = "@org_jetbrains_kotlin-allopen-compiler-plugin-for-ide-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-allopen-compiler-plugin-for-ide-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-allopen-compiler-plugin-for-ide-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-allopen-compiler-plugin-for-ide-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/analysis-api-for-ide-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-analysis-api-for-ide-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/analysis-api-for-ide-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/analysis-api-for-ide-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-analysis-api-for-ide-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/analysis-api-for-ide-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-analysis-api",
-  jar = "@org_jetbrains_kotlin-analysis-api-for-ide-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-analysis-api-for-ide-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-analysis-api-for-ide-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-analysis-api-for-ide-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
@@ -8372,62 +8372,62 @@ java_library(
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/analysis-api-fe10-for-ide-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-analysis-api-fe10-for-ide-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/analysis-api-fe10-for-ide-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/analysis-api-fe10-for-ide-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-analysis-api-fe10-for-ide-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/analysis-api-fe10-for-ide-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-analysis-api-fe10",
-  jar = "@org_jetbrains_kotlin-analysis-api-fe10-for-ide-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-analysis-api-fe10-for-ide-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-analysis-api-fe10-for-ide-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-analysis-api-fe10-for-ide-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/analysis-api-impl-base-for-ide-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-analysis-api-impl-base-for-ide-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/analysis-api-impl-base-for-ide-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/analysis-api-impl-base-for-ide-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-analysis-api-impl-base-for-ide-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/analysis-api-impl-base-for-ide-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-analysis-api-impl-base",
-  jar = "@org_jetbrains_kotlin-analysis-api-impl-base-for-ide-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-analysis-api-impl-base-for-ide-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-analysis-api-impl-base-for-ide-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-analysis-api-impl-base-for-ide-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/analysis-api-impl-base-tests-for-ide-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-analysis-api-impl-base-tests-for-ide-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/analysis-api-impl-base-tests-for-ide-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/analysis-api-impl-base-tests-for-ide-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-analysis-api-impl-base-tests-for-ide-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/analysis-api-impl-base-tests-for-ide-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-analysis-api-impl-base-tests",
-  jar = "@org_jetbrains_kotlin-analysis-api-impl-base-tests-for-ide-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-analysis-api-impl-base-tests-for-ide-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-analysis-api-impl-base-tests-for-ide-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-analysis-api-impl-base-tests-for-ide-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/analysis-api-k2-for-ide-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-analysis-api-k2-for-ide-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/analysis-api-k2-for-ide-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/analysis-api-k2-for-ide-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-analysis-api-k2-for-ide-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/analysis-api-k2-for-ide-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-analysis-api-k2",
-  jar = "@org_jetbrains_kotlin-analysis-api-k2-for-ide-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-analysis-api-k2-for-ide-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-analysis-api-k2-for-ide-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-analysis-api-k2-for-ide-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
@@ -8439,32 +8439,32 @@ java_library(
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/analysis-api-k2-tests-for-ide-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-analysis-api-k2-tests-for-ide-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/analysis-api-k2-tests-for-ide-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/analysis-api-k2-tests-for-ide-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-analysis-api-k2-tests-for-ide-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/analysis-api-k2-tests-for-ide-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-analysis-api-k2-tests",
-  jar = "@org_jetbrains_kotlin-analysis-api-k2-tests-for-ide-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-analysis-api-k2-tests-for-ide-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-analysis-api-k2-tests-for-ide-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-analysis-api-k2-tests-for-ide-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/analysis-api-platform-interface-for-ide-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-analysis-api-platform-interface-for-ide-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/analysis-api-platform-interface-for-ide-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/analysis-api-platform-interface-for-ide-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-analysis-api-platform-interface-for-ide-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/analysis-api-platform-interface-for-ide-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-analysis-api-platform-interface",
-  jar = "@org_jetbrains_kotlin-analysis-api-platform-interface-for-ide-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-analysis-api-platform-interface-for-ide-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-analysis-api-platform-interface-for-ide-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-analysis-api-platform-interface-for-ide-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
@@ -8476,32 +8476,32 @@ java_library(
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/assignment-compiler-plugin-for-ide-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-assignment-compiler-plugin-for-ide-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/assignment-compiler-plugin-for-ide-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/assignment-compiler-plugin-for-ide-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-assignment-compiler-plugin-for-ide-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/assignment-compiler-plugin-for-ide-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-assignment-compiler-plugin",
-  jar = "@org_jetbrains_kotlin-assignment-compiler-plugin-for-ide-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-assignment-compiler-plugin-for-ide-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-assignment-compiler-plugin-for-ide-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-assignment-compiler-plugin-for-ide-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/compose-compiler-plugin-for-ide-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-compose-compiler-plugin-for-ide-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/compose-compiler-plugin-for-ide-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/compose-compiler-plugin-for-ide-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-compose-compiler-plugin-for-ide-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/compose-compiler-plugin-for-ide-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-compose-compiler-plugin",
-  jar = "@org_jetbrains_kotlin-compose-compiler-plugin-for-ide-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-compose-compiler-plugin-for-ide-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-compose-compiler-plugin-for-ide-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-compose-compiler-plugin-for-ide-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
@@ -8513,77 +8513,77 @@ java_library(
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/incremental-compilation-impl-tests-for-ide-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-incremental-compilation-impl-tests-for-ide-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/incremental-compilation-impl-tests-for-ide-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/incremental-compilation-impl-tests-for-ide-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-incremental-compilation-impl-tests-for-ide-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/incremental-compilation-impl-tests-for-ide-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-incremental-compilation-impl-tests",
-  jar = "@org_jetbrains_kotlin-incremental-compilation-impl-tests-for-ide-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-incremental-compilation-impl-tests-for-ide-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-incremental-compilation-impl-tests-for-ide-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-incremental-compilation-impl-tests-for-ide-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/js-plain-objects-compiler-plugin-for-ide-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-js-plain-objects-compiler-plugin-for-ide-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/js-plain-objects-compiler-plugin-for-ide-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/js-plain-objects-compiler-plugin-for-ide-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-js-plain-objects-compiler-plugin-for-ide-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/js-plain-objects-compiler-plugin-for-ide-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-js-plain-objects-compiler-plugin",
-  jar = "@org_jetbrains_kotlin-js-plain-objects-compiler-plugin-for-ide-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-js-plain-objects-compiler-plugin-for-ide-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-js-plain-objects-compiler-plugin-for-ide-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-js-plain-objects-compiler-plugin-for-ide-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/kotlin-build-common-tests-for-ide-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-kotlin-build-common-tests-for-ide-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/kotlin-build-common-tests-for-ide-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/kotlin-build-common-tests-for-ide-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-kotlin-build-common-tests-for-ide-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/kotlin-build-common-tests-for-ide-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-kotlin-build-common-tests",
-  jar = "@org_jetbrains_kotlin-kotlin-build-common-tests-for-ide-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-kotlin-build-common-tests-for-ide-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-kotlin-build-common-tests-for-ide-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-kotlin-build-common-tests-for-ide-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/kotlin-compiler-cli-for-ide-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-kotlin-compiler-cli-for-ide-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/kotlin-compiler-cli-for-ide-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/kotlin-compiler-cli-for-ide-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-kotlin-compiler-cli-for-ide-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/kotlin-compiler-cli-for-ide-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-kotlin-compiler-cli",
-  jar = "@org_jetbrains_kotlin-kotlin-compiler-cli-for-ide-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-kotlin-compiler-cli-for-ide-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-kotlin-compiler-cli-for-ide-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-kotlin-compiler-cli-for-ide-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/kotlin-compiler-common-for-ide-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-kotlin-compiler-common-for-ide-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/kotlin-compiler-common-for-ide-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/kotlin-compiler-common-for-ide-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-kotlin-compiler-common-for-ide-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/kotlin-compiler-common-for-ide-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-kotlin-compiler-common",
-  jar = "@org_jetbrains_kotlin-kotlin-compiler-common-for-ide-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-kotlin-compiler-common-for-ide-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-kotlin-compiler-common-for-ide-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-kotlin-compiler-common-for-ide-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
@@ -8595,17 +8595,17 @@ java_library(
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/kotlin-compiler-fe10-for-ide-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-kotlin-compiler-fe10-for-ide-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/kotlin-compiler-fe10-for-ide-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/kotlin-compiler-fe10-for-ide-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-kotlin-compiler-fe10-for-ide-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/kotlin-compiler-fe10-for-ide-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-kotlin-compiler-fe10",
-  jar = "@org_jetbrains_kotlin-kotlin-compiler-fe10-for-ide-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-kotlin-compiler-fe10-for-ide-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-kotlin-compiler-fe10-for-ide-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-kotlin-compiler-fe10-for-ide-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
@@ -8617,17 +8617,17 @@ java_library(
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/kotlin-compiler-fir-for-ide-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-kotlin-compiler-fir-for-ide-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/kotlin-compiler-fir-for-ide-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/kotlin-compiler-fir-for-ide-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-kotlin-compiler-fir-for-ide-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/kotlin-compiler-fir-for-ide-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-kotlin-compiler-fir",
-  jar = "@org_jetbrains_kotlin-kotlin-compiler-fir-for-ide-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-kotlin-compiler-fir-for-ide-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-kotlin-compiler-fir-for-ide-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-kotlin-compiler-fir-for-ide-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
@@ -8639,47 +8639,47 @@ java_library(
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/kotlin-compiler-ir-for-ide-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-kotlin-compiler-ir-for-ide-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/kotlin-compiler-ir-for-ide-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/kotlin-compiler-ir-for-ide-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-kotlin-compiler-ir-for-ide-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/kotlin-compiler-ir-for-ide-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-kotlin-compiler-ir",
-  jar = "@org_jetbrains_kotlin-kotlin-compiler-ir-for-ide-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-kotlin-compiler-ir-for-ide-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-kotlin-compiler-ir-for-ide-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-kotlin-compiler-ir-for-ide-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/kotlin-compiler-tests-for-ide-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-kotlin-compiler-tests-for-ide-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/kotlin-compiler-tests-for-ide-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/kotlin-compiler-tests-for-ide-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-kotlin-compiler-tests-for-ide-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/kotlin-compiler-tests-for-ide-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-kotlin-compiler-tests",
-  jar = "@org_jetbrains_kotlin-kotlin-compiler-tests-for-ide-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-kotlin-compiler-tests-for-ide-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-kotlin-compiler-tests-for-ide-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-kotlin-compiler-tests-for-ide-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/kotlin-dataframe-compiler-plugin-for-ide-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-kotlin-dataframe-compiler-plugin-for-ide-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/kotlin-dataframe-compiler-plugin-for-ide-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/kotlin-dataframe-compiler-plugin-for-ide-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-kotlin-dataframe-compiler-plugin-for-ide-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/kotlin-dataframe-compiler-plugin-for-ide-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-kotlin-dataframe-compiler-plugin",
-  jar = "@org_jetbrains_kotlin-kotlin-dataframe-compiler-plugin-for-ide-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-kotlin-dataframe-compiler-plugin-for-ide-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-kotlin-dataframe-compiler-plugin-for-ide-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-kotlin-dataframe-compiler-plugin-for-ide-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
@@ -8699,32 +8699,32 @@ jvm_import(
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/kotlin-gradle-statistics-for-ide-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-kotlin-gradle-statistics-for-ide-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/kotlin-gradle-statistics-for-ide-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/kotlin-gradle-statistics-for-ide-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-kotlin-gradle-statistics-for-ide-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/kotlin-gradle-statistics-for-ide-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-kotlin-gradle-statistics",
-  jar = "@org_jetbrains_kotlin-kotlin-gradle-statistics-for-ide-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-kotlin-gradle-statistics-for-ide-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-kotlin-gradle-statistics-for-ide-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-kotlin-gradle-statistics-for-ide-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/kotlin-jps-common-for-ide-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-kotlin-jps-common-for-ide-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/kotlin-jps-common-for-ide-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/kotlin-jps-common-for-ide-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-kotlin-jps-common-for-ide-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/kotlin-jps-common-for-ide-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-kotlin-jps-common",
-  jar = "@org_jetbrains_kotlin-kotlin-jps-common-for-ide-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-kotlin-jps-common-for-ide-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-kotlin-jps-common-for-ide-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-kotlin-jps-common-for-ide-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
@@ -8751,17 +8751,17 @@ jvm_import(
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/kotlin-jps-plugin-classpath-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-kotlin-jps-plugin-classpath-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/kotlin-jps-plugin-classpath-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/kotlin-jps-plugin-classpath-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-kotlin-jps-plugin-classpath-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/kotlin-jps-plugin-classpath-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-kotlin-jps-plugin-classpath-bootstrap-for-tests",
-  jar = "@org_jetbrains_kotlin-kotlin-jps-plugin-classpath-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-kotlin-jps-plugin-classpath-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-kotlin-jps-plugin-classpath-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-kotlin-jps-plugin-classpath-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
@@ -8781,92 +8781,92 @@ jvm_import(
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/kotlin-script-runtime-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-kotlin-script-runtime-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/kotlin-script-runtime-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/kotlin-script-runtime-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-kotlin-script-runtime-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/kotlin-script-runtime-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-kotlin-script-runtime",
-  jar = "@org_jetbrains_kotlin-kotlin-script-runtime-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-kotlin-script-runtime-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-kotlin-script-runtime-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-kotlin-script-runtime-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/kotlin-scripting-common-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-kotlin-scripting-common-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/kotlin-scripting-common-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/kotlin-scripting-common-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-kotlin-scripting-common-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/kotlin-scripting-common-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-kotlin-scripting-common",
-  jar = "@org_jetbrains_kotlin-kotlin-scripting-common-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-kotlin-scripting-common-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-kotlin-scripting-common-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-kotlin-scripting-common-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/kotlin-scripting-compiler-impl-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-kotlin-scripting-compiler-impl-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/kotlin-scripting-compiler-impl-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/kotlin-scripting-compiler-impl-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-kotlin-scripting-compiler-impl-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/kotlin-scripting-compiler-impl-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-kotlin-scripting-compiler-impl",
-  jar = "@org_jetbrains_kotlin-kotlin-scripting-compiler-impl-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-kotlin-scripting-compiler-impl-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-kotlin-scripting-compiler-impl-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-kotlin-scripting-compiler-impl-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/kotlin-scripting-dependencies-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-kotlin-scripting-dependencies-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/kotlin-scripting-dependencies-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/kotlin-scripting-dependencies-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-kotlin-scripting-dependencies-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/kotlin-scripting-dependencies-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-kotlin-scripting-dependencies",
-  jar = "@org_jetbrains_kotlin-kotlin-scripting-dependencies-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-kotlin-scripting-dependencies-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-kotlin-scripting-dependencies-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-kotlin-scripting-dependencies-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/kotlin-scripting-jvm-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-kotlin-scripting-jvm-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/kotlin-scripting-jvm-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/kotlin-scripting-jvm-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-kotlin-scripting-jvm-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/kotlin-scripting-jvm-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-kotlin-scripting-jvm",
-  jar = "@org_jetbrains_kotlin-kotlin-scripting-jvm-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-kotlin-scripting-jvm-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-kotlin-scripting-jvm-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-kotlin-scripting-jvm-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/kotlinx-serialization-compiler-plugin-for-ide-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-kotlinx-serialization-compiler-plugin-for-ide-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/kotlinx-serialization-compiler-plugin-for-ide-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/kotlinx-serialization-compiler-plugin-for-ide-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-kotlinx-serialization-compiler-plugin-for-ide-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/kotlinx-serialization-compiler-plugin-for-ide-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-kotlinx-serialization-compiler-plugin",
-  jar = "@org_jetbrains_kotlin-kotlinx-serialization-compiler-plugin-for-ide-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-kotlinx-serialization-compiler-plugin-for-ide-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-kotlinx-serialization-compiler-plugin-for-ide-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-kotlinx-serialization-compiler-plugin-for-ide-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
@@ -8878,107 +8878,107 @@ java_library(
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/lombok-compiler-plugin-for-ide-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-lombok-compiler-plugin-for-ide-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/lombok-compiler-plugin-for-ide-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/lombok-compiler-plugin-for-ide-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-lombok-compiler-plugin-for-ide-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/lombok-compiler-plugin-for-ide-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-lombok-compiler-plugin",
-  jar = "@org_jetbrains_kotlin-lombok-compiler-plugin-for-ide-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-lombok-compiler-plugin-for-ide-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-lombok-compiler-plugin-for-ide-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-lombok-compiler-plugin-for-ide-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/low-level-api-fir-for-ide-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-low-level-api-fir-for-ide-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/low-level-api-fir-for-ide-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/low-level-api-fir-for-ide-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-low-level-api-fir-for-ide-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/low-level-api-fir-for-ide-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-low-level-api-fir",
-  jar = "@org_jetbrains_kotlin-low-level-api-fir-for-ide-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-low-level-api-fir-for-ide-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-low-level-api-fir-for-ide-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-low-level-api-fir-for-ide-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/noarg-compiler-plugin-for-ide-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-noarg-compiler-plugin-for-ide-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/noarg-compiler-plugin-for-ide-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/noarg-compiler-plugin-for-ide-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-noarg-compiler-plugin-for-ide-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/noarg-compiler-plugin-for-ide-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-noarg-compiler-plugin",
-  jar = "@org_jetbrains_kotlin-noarg-compiler-plugin-for-ide-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-noarg-compiler-plugin-for-ide-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-noarg-compiler-plugin-for-ide-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-noarg-compiler-plugin-for-ide-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/parcelize-compiler-plugin-for-ide-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-parcelize-compiler-plugin-for-ide-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/parcelize-compiler-plugin-for-ide-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/parcelize-compiler-plugin-for-ide-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-parcelize-compiler-plugin-for-ide-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/parcelize-compiler-plugin-for-ide-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-parcelize-compiler-plugin",
-  jar = "@org_jetbrains_kotlin-parcelize-compiler-plugin-for-ide-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-parcelize-compiler-plugin-for-ide-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-parcelize-compiler-plugin-for-ide-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-parcelize-compiler-plugin-for-ide-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/sam-with-receiver-compiler-plugin-for-ide-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-sam-with-receiver-compiler-plugin-for-ide-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/sam-with-receiver-compiler-plugin-for-ide-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/sam-with-receiver-compiler-plugin-for-ide-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-sam-with-receiver-compiler-plugin-for-ide-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/sam-with-receiver-compiler-plugin-for-ide-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-sam-with-receiver-compiler-plugin",
-  jar = "@org_jetbrains_kotlin-sam-with-receiver-compiler-plugin-for-ide-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-sam-with-receiver-compiler-plugin-for-ide-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-sam-with-receiver-compiler-plugin-for-ide-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-sam-with-receiver-compiler-plugin-for-ide-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/scripting-compiler-plugin-for-ide-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-scripting-compiler-plugin-for-ide-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/scripting-compiler-plugin-for-ide-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/scripting-compiler-plugin-for-ide-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-scripting-compiler-plugin-for-ide-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/scripting-compiler-plugin-for-ide-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-scripting-compiler-plugin",
-  jar = "@org_jetbrains_kotlin-scripting-compiler-plugin-for-ide-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-scripting-compiler-plugin-for-ide-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-scripting-compiler-plugin-for-ide-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-scripting-compiler-plugin-for-ide-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "org.jetbrains.kotlin/symbol-light-classes-for-ide-2.4.0-ij261-50.jar_copy",
-  src = "@org_jetbrains_kotlin-symbol-light-classes-for-ide-2_4_0-ij261-50_http//file",
-  out = "org.jetbrains.kotlin/symbol-light-classes-for-ide-2.4.0-ij261-50.jar",
+  name = "org.jetbrains.kotlin/symbol-light-classes-for-ide-2.4.0-ij261-64.jar_copy",
+  src = "@org_jetbrains_kotlin-symbol-light-classes-for-ide-2_4_0-ij261-64_http//file",
+  out = "org.jetbrains.kotlin/symbol-light-classes-for-ide-2.4.0-ij261-64.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "kotlinc-symbol-light-classes",
-  jar = "@org_jetbrains_kotlin-symbol-light-classes-for-ide-2_4_0-ij261-50_http//file",
-  source_jar = "@org_jetbrains_kotlin-symbol-light-classes-for-ide-2_4_0-ij261-50-sources_http//file",
+  jar = "@org_jetbrains_kotlin-symbol-light-classes-for-ide-2_4_0-ij261-64_http//file",
+  source_jar = "@org_jetbrains_kotlin-symbol-light-classes-for-ide-2_4_0-ij261-64-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
@@ -9210,151 +9210,151 @@ jvm_import(
 java_library(
   name = "ktor-client-core",
   exports = [
-    ":io_ktor-ktor-client-core-jvm-3_3_2_http_import",
-    ":io_ktor-ktor-http-jvm-3_3_2_http_import",
-    ":io_ktor-ktor-http-cio-jvm-3_3_2_http_import",
-    ":io_ktor-ktor-events-jvm-3_3_2_http_import",
-    ":io_ktor-ktor-websocket-serialization-jvm-3_3_2_http_import",
-    ":io_ktor-ktor-serialization-jvm-3_3_2_http_import",
-    ":io_ktor-ktor-websockets-jvm-3_3_2_http_import",
-    ":io_ktor-ktor-sse-jvm-3_3_2_http_import",
+    ":io_ktor-ktor-client-core-jvm-3_4_1_http_import",
+    ":io_ktor-ktor-http-jvm-3_4_1_http_import",
+    ":io_ktor-ktor-http-cio-jvm-3_4_1_http_import",
+    ":io_ktor-ktor-events-jvm-3_4_1_http_import",
+    ":io_ktor-ktor-websocket-serialization-jvm-3_4_1_http_import",
+    ":io_ktor-ktor-serialization-jvm-3_4_1_http_import",
+    ":io_ktor-ktor-websockets-jvm-3_4_1_http_import",
+    ":io_ktor-ktor-sse-jvm-3_4_1_http_import",
   ],
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
-  name = "io_ktor-ktor-client-core-jvm-3_3_2_http_import",
-  jar = "@io_ktor-ktor-client-core-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-client-core-jvm-3_3_2-sources_http//file"
+  name = "io_ktor-ktor-client-core-jvm-3_4_1_http_import",
+  jar = "@io_ktor-ktor-client-core-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-client-core-jvm-3_4_1-sources_http//file"
 )
 
 jvm_import(
-  name = "io_ktor-ktor-http-jvm-3_3_2_http_import",
-  jar = "@io_ktor-ktor-http-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-http-jvm-3_3_2-sources_http//file"
+  name = "io_ktor-ktor-http-jvm-3_4_1_http_import",
+  jar = "@io_ktor-ktor-http-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-http-jvm-3_4_1-sources_http//file"
 )
 
 jvm_import(
-  name = "io_ktor-ktor-http-cio-jvm-3_3_2_http_import",
-  jar = "@io_ktor-ktor-http-cio-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-http-cio-jvm-3_3_2-sources_http//file"
+  name = "io_ktor-ktor-http-cio-jvm-3_4_1_http_import",
+  jar = "@io_ktor-ktor-http-cio-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-http-cio-jvm-3_4_1-sources_http//file"
 )
 
 jvm_import(
-  name = "io_ktor-ktor-events-jvm-3_3_2_http_import",
-  jar = "@io_ktor-ktor-events-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-events-jvm-3_3_2-sources_http//file"
+  name = "io_ktor-ktor-events-jvm-3_4_1_http_import",
+  jar = "@io_ktor-ktor-events-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-events-jvm-3_4_1-sources_http//file"
 )
 
 jvm_import(
-  name = "io_ktor-ktor-websocket-serialization-jvm-3_3_2_http_import",
-  jar = "@io_ktor-ktor-websocket-serialization-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-websocket-serialization-jvm-3_3_2-sources_http//file"
+  name = "io_ktor-ktor-websocket-serialization-jvm-3_4_1_http_import",
+  jar = "@io_ktor-ktor-websocket-serialization-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-websocket-serialization-jvm-3_4_1-sources_http//file"
 )
 
 jvm_import(
-  name = "io_ktor-ktor-serialization-jvm-3_3_2_http_import",
-  jar = "@io_ktor-ktor-serialization-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-serialization-jvm-3_3_2-sources_http//file"
+  name = "io_ktor-ktor-serialization-jvm-3_4_1_http_import",
+  jar = "@io_ktor-ktor-serialization-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-serialization-jvm-3_4_1-sources_http//file"
 )
 
 jvm_import(
-  name = "io_ktor-ktor-websockets-jvm-3_3_2_http_import",
-  jar = "@io_ktor-ktor-websockets-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-websockets-jvm-3_3_2-sources_http//file"
+  name = "io_ktor-ktor-websockets-jvm-3_4_1_http_import",
+  jar = "@io_ktor-ktor-websockets-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-websockets-jvm-3_4_1-sources_http//file"
 )
 
 jvm_import(
-  name = "io_ktor-ktor-sse-jvm-3_3_2_http_import",
-  jar = "@io_ktor-ktor-sse-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-sse-jvm-3_3_2-sources_http//file"
+  name = "io_ktor-ktor-sse-jvm-3_4_1_http_import",
+  jar = "@io_ktor-ktor-sse-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-sse-jvm-3_4_1-sources_http//file"
 )
 
 copy_file(
-  name = "io.ktor/ktor-client-java-jvm-3.3.2.jar_copy",
-  src = "@io_ktor-ktor-client-java-jvm-3_3_2_http//file",
-  out = "io.ktor/ktor-client-java-jvm-3.3.2.jar",
+  name = "io.ktor/ktor-client-java-jvm-3.4.1.jar_copy",
+  src = "@io_ktor-ktor-client-java-jvm-3_4_1_http//file",
+  out = "io.ktor/ktor-client-java-jvm-3.4.1.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "ktor-client-java",
-  jar = "@io_ktor-ktor-client-java-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-client-java-jvm-3_3_2-sources_http//file",
+  jar = "@io_ktor-ktor-client-java-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-client-java-jvm-3_4_1-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 java_library(
   name = "ktor-client-mock",
   exports = [
-    ":io_ktor-ktor-client-mock-jvm-3_3_2_http_import",
-    ":io_ktor-ktor-http-jvm-3_3_2_http_import",
-    ":io_ktor-ktor-utils-jvm-3_3_2_http_import",
-    ":io_ktor-ktor-io-jvm-3_3_2_http_import",
-    ":io_ktor-ktor-client-core-jvm-3_3_2_http_import",
-    ":io_ktor-ktor-http-cio-jvm-3_3_2_http_import",
-    ":io_ktor-ktor-network-jvm-3_3_2_http_import",
-    ":io_ktor-ktor-events-jvm-3_3_2_http_import",
-    ":io_ktor-ktor-websocket-serialization-jvm-3_3_2_http_import",
-    ":io_ktor-ktor-serialization-jvm-3_3_2_http_import",
-    ":io_ktor-ktor-websockets-jvm-3_3_2_http_import",
-    ":io_ktor-ktor-sse-jvm-3_3_2_http_import",
+    ":io_ktor-ktor-client-mock-jvm-3_4_1_http_import",
+    ":io_ktor-ktor-http-jvm-3_4_1_http_import",
+    ":io_ktor-ktor-utils-jvm-3_4_1_http_import",
+    ":io_ktor-ktor-io-jvm-3_4_1_http_import",
+    ":io_ktor-ktor-client-core-jvm-3_4_1_http_import",
+    ":io_ktor-ktor-http-cio-jvm-3_4_1_http_import",
+    ":io_ktor-ktor-network-jvm-3_4_1_http_import",
+    ":io_ktor-ktor-events-jvm-3_4_1_http_import",
+    ":io_ktor-ktor-websocket-serialization-jvm-3_4_1_http_import",
+    ":io_ktor-ktor-serialization-jvm-3_4_1_http_import",
+    ":io_ktor-ktor-websockets-jvm-3_4_1_http_import",
+    ":io_ktor-ktor-sse-jvm-3_4_1_http_import",
   ],
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
-  name = "io_ktor-ktor-client-mock-jvm-3_3_2_http_import",
-  jar = "@io_ktor-ktor-client-mock-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-client-mock-jvm-3_3_2-sources_http//file"
+  name = "io_ktor-ktor-client-mock-jvm-3_4_1_http_import",
+  jar = "@io_ktor-ktor-client-mock-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-client-mock-jvm-3_4_1-sources_http//file"
 )
 
 jvm_import(
-  name = "io_ktor-ktor-utils-jvm-3_3_2_http_import",
-  jar = "@io_ktor-ktor-utils-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-utils-jvm-3_3_2-sources_http//file"
+  name = "io_ktor-ktor-utils-jvm-3_4_1_http_import",
+  jar = "@io_ktor-ktor-utils-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-utils-jvm-3_4_1-sources_http//file"
 )
 
 jvm_import(
-  name = "io_ktor-ktor-io-jvm-3_3_2_http_import",
-  jar = "@io_ktor-ktor-io-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-io-jvm-3_3_2-sources_http//file"
+  name = "io_ktor-ktor-io-jvm-3_4_1_http_import",
+  jar = "@io_ktor-ktor-io-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-io-jvm-3_4_1-sources_http//file"
 )
 
 jvm_import(
-  name = "io_ktor-ktor-network-jvm-3_3_2_http_import",
-  jar = "@io_ktor-ktor-network-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-network-jvm-3_3_2-sources_http//file"
+  name = "io_ktor-ktor-network-jvm-3_4_1_http_import",
+  jar = "@io_ktor-ktor-network-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-network-jvm-3_4_1-sources_http//file"
 )
 
 java_library(
   name = "ktor-network-tls",
   exports = [
-    ":io_ktor-ktor-network-tls-jvm-3_3_2_http_import",
-    ":io_ktor-ktor-network-jvm-3_3_2_http_import",
+    ":io_ktor-ktor-network-tls-jvm-3_4_1_http_import",
+    ":io_ktor-ktor-network-jvm-3_4_1_http_import",
   ],
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
-  name = "io_ktor-ktor-network-tls-jvm-3_3_2_http_import",
-  jar = "@io_ktor-ktor-network-tls-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-network-tls-jvm-3_3_2-sources_http//file"
+  name = "io_ktor-ktor-network-tls-jvm-3_4_1_http_import",
+  jar = "@io_ktor-ktor-network-tls-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-network-tls-jvm-3_4_1-sources_http//file"
 )
 
 copy_file(
-  name = "io.ktor/ktor-serialization-kotlinx-json-jvm-3.3.2.jar_copy",
-  src = "@io_ktor-ktor-serialization-kotlinx-json-jvm-3_3_2_http//file",
-  out = "io.ktor/ktor-serialization-kotlinx-json-jvm-3.3.2.jar",
+  name = "io.ktor/ktor-serialization-kotlinx-json-jvm-3.4.1.jar_copy",
+  src = "@io_ktor-ktor-serialization-kotlinx-json-jvm-3_4_1_http//file",
+  out = "io.ktor/ktor-serialization-kotlinx-json-jvm-3.4.1.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "io.ktor/ktor-serialization-kotlinx-jvm-3.3.2.jar_copy",
-  src = "@io_ktor-ktor-serialization-kotlinx-jvm-3_3_2_http//file",
-  out = "io.ktor/ktor-serialization-kotlinx-jvm-3.3.2.jar",
+  name = "io.ktor/ktor-serialization-kotlinx-jvm-3.4.1.jar_copy",
+  src = "@io_ktor-ktor-serialization-kotlinx-jvm-3_4_1_http//file",
+  out = "io.ktor/ktor-serialization-kotlinx-jvm-3.4.1.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
@@ -9362,22 +9362,22 @@ copy_file(
 java_library(
   name = "ktor-serialization-kotlinx-json",
   exports = [
-    ":io_ktor-ktor-serialization-kotlinx-json-jvm-3_3_2_http_import",
-    ":io_ktor-ktor-serialization-kotlinx-jvm-3_3_2_http_import",
+    ":io_ktor-ktor-serialization-kotlinx-json-jvm-3_4_1_http_import",
+    ":io_ktor-ktor-serialization-kotlinx-jvm-3_4_1_http_import",
   ],
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
-  name = "io_ktor-ktor-serialization-kotlinx-json-jvm-3_3_2_http_import",
-  jar = "@io_ktor-ktor-serialization-kotlinx-json-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-serialization-kotlinx-json-jvm-3_3_2-sources_http//file"
+  name = "io_ktor-ktor-serialization-kotlinx-json-jvm-3_4_1_http_import",
+  jar = "@io_ktor-ktor-serialization-kotlinx-json-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-serialization-kotlinx-json-jvm-3_4_1-sources_http//file"
 )
 
 jvm_import(
-  name = "io_ktor-ktor-serialization-kotlinx-jvm-3_3_2_http_import",
-  jar = "@io_ktor-ktor-serialization-kotlinx-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-serialization-kotlinx-jvm-3_3_2-sources_http//file"
+  name = "io_ktor-ktor-serialization-kotlinx-jvm-3_4_1_http_import",
+  jar = "@io_ktor-ktor-serialization-kotlinx-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-serialization-kotlinx-jvm-3_4_1-sources_http//file"
 )
 
 copy_file(
@@ -9391,31 +9391,31 @@ copy_file(
 java_library(
   name = "ktor-server-cio",
   exports = [
-    ":io_ktor-ktor-server-cio-jvm-3_3_2_http_import",
-    ":io_ktor-ktor-server-core-jvm-3_3_2_http_import",
+    ":io_ktor-ktor-server-cio-jvm-3_4_1_http_import",
+    ":io_ktor-ktor-server-core-jvm-3_4_1_http_import",
     ":com_typesafe-config-1_4_5_http_import",
-    ":io_ktor-ktor-utils-jvm-3_3_2_http_import",
-    ":io_ktor-ktor-http-jvm-3_3_2_http_import",
-    ":io_ktor-ktor-serialization-jvm-3_3_2_http_import",
-    ":io_ktor-ktor-events-jvm-3_3_2_http_import",
-    ":io_ktor-ktor-http-cio-jvm-3_3_2_http_import",
-    ":io_ktor-ktor-io-jvm-3_3_2_http_import",
-    ":io_ktor-ktor-websockets-jvm-3_3_2_http_import",
-    ":io_ktor-ktor-network-jvm-3_3_2_http_import",
+    ":io_ktor-ktor-utils-jvm-3_4_1_http_import",
+    ":io_ktor-ktor-http-jvm-3_4_1_http_import",
+    ":io_ktor-ktor-serialization-jvm-3_4_1_http_import",
+    ":io_ktor-ktor-events-jvm-3_4_1_http_import",
+    ":io_ktor-ktor-http-cio-jvm-3_4_1_http_import",
+    ":io_ktor-ktor-io-jvm-3_4_1_http_import",
+    ":io_ktor-ktor-websockets-jvm-3_4_1_http_import",
+    ":io_ktor-ktor-network-jvm-3_4_1_http_import",
   ],
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
-  name = "io_ktor-ktor-server-cio-jvm-3_3_2_http_import",
-  jar = "@io_ktor-ktor-server-cio-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-server-cio-jvm-3_3_2-sources_http//file"
+  name = "io_ktor-ktor-server-cio-jvm-3_4_1_http_import",
+  jar = "@io_ktor-ktor-server-cio-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-server-cio-jvm-3_4_1-sources_http//file"
 )
 
 jvm_import(
-  name = "io_ktor-ktor-server-core-jvm-3_3_2_http_import",
-  jar = "@io_ktor-ktor-server-core-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-server-core-jvm-3_3_2-sources_http//file"
+  name = "io_ktor-ktor-server-core-jvm-3_4_1_http_import",
+  jar = "@io_ktor-ktor-server-core-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-server-core-jvm-3_4_1-sources_http//file"
 )
 
 jvm_import(
@@ -9425,17 +9425,17 @@ jvm_import(
 )
 
 copy_file(
-  name = "io.ktor/ktor-server-sse-jvm-3.3.2.jar_copy",
-  src = "@io_ktor-ktor-server-sse-jvm-3_3_2_http//file",
-  out = "io.ktor/ktor-server-sse-jvm-3.3.2.jar",
+  name = "io.ktor/ktor-server-sse-jvm-3.4.1.jar_copy",
+  src = "@io_ktor-ktor-server-sse-jvm-3_4_1_http//file",
+  out = "io.ktor/ktor-server-sse-jvm-3.4.1.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "ktor-server-sse-jvm",
-  jar = "@io_ktor-ktor-server-sse-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-server-sse-jvm-3_3_2-sources_http//file",
+  jar = "@io_ktor-ktor-server-sse-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-server-sse-jvm-3_4_1-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
@@ -11072,17 +11072,17 @@ jvm_import(
 )
 
 copy_file(
-  name = "org.jetbrains.jediterm/jediterm-ui-3.64.jar_copy",
-  src = "@org_jetbrains_jediterm-jediterm-ui-3_64_http//file",
-  out = "org.jetbrains.jediterm/jediterm-ui-3.64.jar",
+  name = "org.jetbrains.jediterm/jediterm-ui-3.68.jar_copy",
+  src = "@org_jetbrains_jediterm-jediterm-ui-3_68_http//file",
+  out = "org.jetbrains.jediterm/jediterm-ui-3.68.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "libraries-jediterm-ui-jediterm-ui",
-  jar = "@org_jetbrains_jediterm-jediterm-ui-3_64_http//file",
-  source_jar = "@org_jetbrains_jediterm-jediterm-ui-3_64-sources_http//file",
+  jar = "@org_jetbrains_jediterm-jediterm-ui-3_68_http//file",
+  source_jar = "@org_jetbrains_jediterm-jediterm-ui-3_68-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
@@ -11259,75 +11259,75 @@ jvm_import(
 
 jvm_import(
   name = "libraries-ktor-client-cio-ktor-client-cio-internal",
-  jar = "@io_ktor-ktor-client-cio-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-client-cio-jvm-3_3_2-sources_http//file",
+  jar = "@io_ktor-ktor-client-cio-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-client-cio-jvm-3_4_1-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "io.ktor/ktor-client-auth-jvm-3.3.2.jar_copy",
-  src = "@io_ktor-ktor-client-auth-jvm-3_3_2_http//file",
-  out = "io.ktor/ktor-client-auth-jvm-3.3.2.jar",
+  name = "io.ktor/ktor-client-auth-jvm-3.4.1.jar_copy",
+  src = "@io_ktor-ktor-client-auth-jvm-3_4_1_http//file",
+  out = "io.ktor/ktor-client-auth-jvm-3.4.1.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "libraries-ktor-client-ktor-client-auth",
-  jar = "@io_ktor-ktor-client-auth-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-client-auth-jvm-3_3_2-sources_http//file",
+  jar = "@io_ktor-ktor-client-auth-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-client-auth-jvm-3_4_1-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "io.ktor/ktor-client-content-negotiation-jvm-3.3.2.jar_copy",
-  src = "@io_ktor-ktor-client-content-negotiation-jvm-3_3_2_http//file",
-  out = "io.ktor/ktor-client-content-negotiation-jvm-3.3.2.jar",
+  name = "io.ktor/ktor-client-content-negotiation-jvm-3.4.1.jar_copy",
+  src = "@io_ktor-ktor-client-content-negotiation-jvm-3_4_1_http//file",
+  out = "io.ktor/ktor-client-content-negotiation-jvm-3.4.1.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "libraries-ktor-client-ktor-client-content-negotiation",
-  jar = "@io_ktor-ktor-client-content-negotiation-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-client-content-negotiation-jvm-3_3_2-sources_http//file",
+  jar = "@io_ktor-ktor-client-content-negotiation-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-client-content-negotiation-jvm-3_4_1-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 copy_file(
-  name = "io.ktor/ktor-client-encoding-jvm-3.3.2.jar_copy",
-  src = "@io_ktor-ktor-client-encoding-jvm-3_3_2_http//file",
-  out = "io.ktor/ktor-client-encoding-jvm-3.3.2.jar",
+  name = "io.ktor/ktor-client-encoding-jvm-3.4.1.jar_copy",
+  src = "@io_ktor-ktor-client-encoding-jvm-3_4_1_http//file",
+  out = "io.ktor/ktor-client-encoding-jvm-3.4.1.jar",
   allow_symlink = True,
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "libraries-ktor-client-ktor-client-encoding",
-  jar = "@io_ktor-ktor-client-encoding-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-client-encoding-jvm-3_3_2-sources_http//file",
+  jar = "@io_ktor-ktor-client-encoding-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-client-encoding-jvm-3_4_1-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "libraries-ktor-client-ktor-client-logging",
-  jar = "@io_ktor-ktor-client-logging-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-client-logging-jvm-3_3_2-sources_http//file",
+  jar = "@io_ktor-ktor-client-logging-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-client-logging-jvm-3_4_1-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 jvm_import(
   name = "libraries-ktor-io-ktor-io",
-  jar = "@io_ktor-ktor-io-jvm-3_3_2_http//file",
-  source_jar = "@io_ktor-ktor-io-jvm-3_3_2-sources_http//file",
+  jar = "@io_ktor-ktor-io-jvm-3_4_1_http//file",
+  source_jar = "@io_ktor-ktor-io-jvm-3_4_1-sources_http//file",
   visibility = ["//visibility:public"]
 )
 
 java_library(
   name = "libraries-ktor-server-cio-ktor-server-cio-internal",
   exports = [
-    ":io_ktor-ktor-server-cio-jvm-3_3_2_http_import",
-    ":io_ktor-ktor-server-core-jvm-3_3_2_http_import",
+    ":io_ktor-ktor-server-cio-jvm-3_4_1_http_import",
+    ":io_ktor-ktor-server-core-jvm-3_4_1_http_import",
     ":com_typesafe-config-1_4_5_http_import",
   ],
   visibility = ["//visibility:public"]
@@ -11336,7 +11336,7 @@ java_library(
 java_library(
   name = "libraries-ktor-utils-ktor-utils",
   exports = [
-    ":io_ktor-ktor-utils-jvm-3_3_2_http_import",
+    ":io_ktor-ktor-utils-jvm-3_4_1_http_import",
     ":org_jetbrains_kotlinx-kotlinx-serialization-core-jvm-1_9_0_http_import",
   ],
   visibility = ["//visibility:public"]

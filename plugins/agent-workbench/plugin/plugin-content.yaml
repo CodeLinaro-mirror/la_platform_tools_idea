@@ -7,6 +7,9 @@
 - name: lib/modules/intellij.agent.workbench.ai.review.jar
   contentModules:
   - name: intellij.agent.workbench.ai.review
+- name: lib/modules/intellij.agent.workbench.ai.review.llm.plugin.integration.jar
+  contentModules:
+  - name: intellij.agent.workbench.ai.review.llm.plugin.integration
 - name: lib/modules/intellij.agent.workbench.ai.review.space.jar
   contentModules:
   - name: intellij.agent.workbench.ai.review.space
@@ -53,6 +56,12 @@
 - name: lib/modules/intellij.agent.workbench.json.jar
   contentModules:
   - name: intellij.agent.workbench.json
+- name: lib/modules/intellij.agent.workbench.junie.common.jar
+  contentModules:
+  - name: intellij.agent.workbench.junie.common
+- name: lib/modules/intellij.agent.workbench.junie.sessions.jar
+  contentModules:
+  - name: intellij.agent.workbench.junie.sessions
 - name: lib/modules/intellij.agent.workbench.prompt.core.jar
   contentModules:
   - name: intellij.agent.workbench.prompt.core
