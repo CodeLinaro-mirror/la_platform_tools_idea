@@ -1117,10 +1117,6 @@ open class ActionManagerImpl protected constructor(private val coroutineScope: C
   fun getParentGroupIds(actionId: String): Collection<String> = actionPostInitRegistrar.state.getParentGroupIds(actionId)
 
   override fun fireBeforeActionPerformed(action: AnAction, event: AnActionEvent) {
-    // Android Studio: approximate measure of user activity
-    if (action.javaClass != com.intellij.openapi.editor.actions.BackspaceAction::class.java) {
-      com.intellij.ide.AndroidStudioSystemHealthMonitorAdapter.countActionInvocation(action, action.templatePresentation, event)
-    }
     prevPreformedActionId = lastPreformedActionId
     lastPreformedActionId = getId(action)
     if (lastPreformedActionId == null && action is ActionIdProvider) {
