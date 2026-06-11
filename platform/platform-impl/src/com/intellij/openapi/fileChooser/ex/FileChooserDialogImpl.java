@@ -280,7 +280,6 @@ public class FileChooserDialogImpl extends DialogWrapper implements FileChooserD
         updateTreeFromPath(newValue);
       }
     };
-    myPathTextField.getField().setName("FileChooserDialogImpl.myPathTextField");  // Android Studio: for FileChooserDialogFixture
 
     myNorthPanel = new JPanel(new BorderLayout());
     myNorthPanel.add(toolbarPanel, BorderLayout.NORTH);
