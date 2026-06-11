@@ -1192,7 +1192,7 @@ git4idea.commands.Git
 - a:ignoredFilePaths(com.intellij.openapi.project.Project,com.intellij.openapi.vfs.VirtualFile,java.util.Collection):java.util.Set
 - a:ignoredFilePathsNoChunk(com.intellij.openapi.project.Project,com.intellij.openapi.vfs.VirtualFile,java.util.List):java.util.Set
 - a:init(com.intellij.openapi.project.Project,com.intellij.openapi.vfs.VirtualFile,git4idea.commands.GitLineHandlerListener[]):git4idea.commands.GitCommandResult
-- a:listWorktrees(git4idea.repo.GitRepository,git4idea.commands.GitLineHandlerListener[]):git4idea.commands.GitCommandResult
+- a:listWorktrees(git4idea.repo.GitRepository):java.util.List
 - a:lsRemote(com.intellij.openapi.project.Project,com.intellij.openapi.vfs.VirtualFile,git4idea.repo.GitRemote,java.lang.String[]):git4idea.commands.GitCommandResult
 - lsRemote(com.intellij.openapi.project.Project,java.io.File,java.lang.String):git4idea.commands.GitCommandResult
 - a:lsRemote(com.intellij.openapi.project.Project,java.nio.file.Path,java.lang.String):git4idea.commands.GitCommandResult
@@ -1435,7 +1435,7 @@ c:git4idea.commands.GitImpl
 - ignoredFilePaths(com.intellij.openapi.project.Project,com.intellij.openapi.vfs.VirtualFile,java.util.Collection):java.util.Set
 - ignoredFilePathsNoChunk(com.intellij.openapi.project.Project,com.intellij.openapi.vfs.VirtualFile,java.util.List):java.util.Set
 - init(com.intellij.openapi.project.Project,com.intellij.openapi.vfs.VirtualFile,git4idea.commands.GitLineHandlerListener[]):git4idea.commands.GitCommandResult
-- listWorktrees(git4idea.repo.GitRepository,git4idea.commands.GitLineHandlerListener[]):git4idea.commands.GitCommandResult
+- listWorktrees(git4idea.repo.GitRepository):java.util.List
 - lsRemote(com.intellij.openapi.project.Project,com.intellij.openapi.vfs.VirtualFile,git4idea.repo.GitRemote,java.lang.String[]):git4idea.commands.GitCommandResult
 - lsRemote(com.intellij.openapi.project.Project,java.nio.file.Path,java.lang.String):git4idea.commands.GitCommandResult
 - lsRemoteRefs(com.intellij.openapi.project.Project,com.intellij.openapi.vfs.VirtualFile,git4idea.repo.GitRemote,java.util.List,java.lang.String[]):git4idea.commands.GitCommandResult
@@ -2008,7 +2008,6 @@ e:git4idea.config.GitVersionSpecialty
 - sf:KNOWS_SET_UPSTREAM_TO:git4idea.config.GitVersionSpecialty
 - sf:LF_SEPARATORS_IN_STDIN:git4idea.config.GitVersionSpecialty
 - sf:LOG_AUTHOR_FILTER_SUPPORTS_VERTICAL_BAR:git4idea.config.GitVersionSpecialty
-- sf:MERGE_TREE_MERGE_BASE_OPTION_SUPPORTED:git4idea.config.GitVersionSpecialty
 - sf:NO_VERIFY_SUPPORTED:git4idea.config.GitVersionSpecialty
 - sf:NO_WALK_UNSORTED:git4idea.config.GitVersionSpecialty
 - sf:OLD_STYLE_OF_UNTRACKED_AND_LOCAL_CHANGES_WOULD_BE_OVERWRITTEN:git4idea.config.GitVersionSpecialty
@@ -2024,11 +2023,6 @@ e:git4idea.config.GitVersionSpecialty
 - sf:SUPPORTS_FETCH_PRUNE:git4idea.config.GitVersionSpecialty
 - sf:SUPPORTS_FOLLOW_TAGS:git4idea.config.GitVersionSpecialty
 - sf:SUPPORTS_FORCE_PUSH_WITH_LEASE:git4idea.config.GitVersionSpecialty
-- existsIn(com.intellij.openapi.project.Project):Z
-- existsIn(com.intellij.openapi.project.Project,git4idea.config.GitExecutable):Z
-- existsIn(com.intellij.openapi.vcs.AbstractVcs):Z
-- a:existsIn(git4idea.config.GitVersion):Z
-- existsIn(git4idea.repo.GitRepository):Z
 - s:valueOf(java.lang.String):git4idea.config.GitVersionSpecialty
 - s:values():git4idea.config.GitVersionSpecialty[]
 f:git4idea.config.HasGitRootsPredicate

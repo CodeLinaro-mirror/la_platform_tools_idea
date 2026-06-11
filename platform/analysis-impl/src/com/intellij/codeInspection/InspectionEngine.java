@@ -69,11 +69,11 @@ public final class InspectionEngine {
                                                          @NotNull ProblemsHolder holder,
                                                          boolean isOnTheFly,
                                                          @NotNull LocalInspectionToolSession session) {
-    if (!tool.isAvailableForFile(holder.getFile())) {
-      return PsiElementVisitor.EMPTY_VISITOR;
-    }
     PsiElementVisitor visitor;
     try {
+      if (!tool.isAvailableForFile(holder.getFile())) {
+        return PsiElementVisitor.EMPTY_VISITOR;
+      }
       visitor = tool.buildVisitor(holder, isOnTheFly, session);
     }
     catch (Throwable e) {
@@ -377,6 +377,7 @@ public final class InspectionEngine {
           for (ProblemDescriptor descriptor : holder.getResults()) {
             PsiElement element = descriptor.getPsiElement();
             LocalInspectionToolWrapper wrapper = getRedirectedToolWrapper(toolWrapper, descriptor, toolWrappers);
+            if (wrapper == null) continue;
             if (element == null || !ignoreSuppressedElements || !SuppressionUtil.inspectionResultSuppressed(element, wrapper.getTool())) {
               resultDescriptors.computeIfAbsent(wrapper, x -> new ArrayList<>()).add(descriptor);
             }
@@ -391,7 +392,7 @@ public final class InspectionEngine {
     return resultDescriptors;
   }
 
-  private static LocalInspectionToolWrapper getRedirectedToolWrapper(
+  private static @Nullable LocalInspectionToolWrapper getRedirectedToolWrapper(
     LocalInspectionToolWrapper tool,
     ProblemDescriptor descriptor,
     List<? extends LocalInspectionToolWrapper> tools
@@ -404,6 +405,7 @@ public final class InspectionEngine {
           return child;
         }
       }
+      return null;
     }
     return tool;
   }

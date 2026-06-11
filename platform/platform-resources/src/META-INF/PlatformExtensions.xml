@@ -23,6 +23,9 @@
 <!-- Android Studio: b/282808067
     <errorHandler implementation="com.intellij.diagnostic.ITNReporter"/>
 Android Studio: b/282808067 -->
+    <applicationService serviceInterface="com.intellij.openapi.diagnostic.UnhandledReportSinkService"
+                        serviceImplementation="com.intellij.diagnostic.UnhandledReportSinkServiceImpl"/>
+
     <appStarter id="save" implementation="com.intellij.openapi.application.SaveStarter"/>
     <appStarter id="exit" implementation="com.intellij.openapi.application.ExitStarter"/>
     <appStarter id="dumpLaunchParameters" implementation="com.intellij.openapi.application.DumpLaunchParametersStarter"/>
@@ -1638,7 +1641,7 @@ Android Studio: b/285867050 -->
                        notificationIds="advertiser.plugins;advertiser.no.plugins;kotlin.native.debug;kotlin.js;tasks.youtrack;resource.bundle.editor"/>
     <notificationGroup id="File Watcher Messages" displayType="STICKY_BALLOON" bundle="messages.IdeCoreBundle"
                        key="notification.group.file.watcher"/>
-    <notificationGroup id="Low Memory" displayType="BALLOON" bundle="messages.IdeBundle" key="notification.group.low.memory"/>
+    <notificationGroup id="Low Memory" displayType="STICKY_BALLOON" bundle="messages.IdeBundle" key="notification.group.low.memory"/>
     <notificationGroup id="Plugin Error" displayType="BALLOON" bundle="messages.IdeBundle" key="notification.group.plugin.error"/>
     <notificationGroup id="Failed to remove BOM" displayType="BALLOON" bundle="messages.IdeBundle"
                        key="notification.group.failed.to.remove.bom"/>

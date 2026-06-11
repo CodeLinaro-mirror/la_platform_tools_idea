@@ -611,7 +611,7 @@ class XDebugSessionImpl @JvmOverloads constructor(
       val tabInfo = XDebuggerSessionTabInfo(myIcon?.rpcId(), forceNewDebuggerUi, withFramesCustomization, defaultFramesViewKey,
                                             executionEnvironmentId, executionEnvironment?.toDto(localTabScope),
                                             additionalTabComponentManager.id, tabClosedChannel,
-                                            runContentDescriptorId, myShowTabDeferred, tabLayouterDto)
+                                            runContentDescriptorId, myShowTabDeferred, tabLayouterDto, contentToReuse)
       if (myTabInitDataFlow.compareAndSet(null, tabInfo)) {
         // This is a mock tab used in backend only
         // Using a RunTab as a mock component let us reuse context reusing,
@@ -1177,7 +1177,8 @@ class XDebugSessionImpl @JvmOverloads constructor(
   }
 
   private fun positionReachedInternal(suspendContext: XSuspendContext, attract: Boolean) {
-    if (handlePositionReaching(suspendContext, attract)) {
+    val effectiveAttract = attract && sessionData.getUserData(XDebugSessionData.SUPPRESS_BREAKPOINT_ATTRACTION) != true
+    if (handlePositionReaching(suspendContext, effectiveAttract)) {
       return
     }
 
@@ -1188,18 +1189,18 @@ class XDebugSessionImpl @JvmOverloads constructor(
     logPositionReached(topFramePosition)
 
     val needsInitialization = myTabInitDataFlow.value == null
-    if (needsInitialization || attract) {
+    if (needsInitialization || effectiveAttract) {
       invokeLaterIfProjectAlive(myProject, Runnable {
         if (needsInitialization && !DapMode.isDap()) {
-          initSessionTab(null, true)
+          initSessionTab(null, effectiveAttract)
         }
         val topFrameIsAbsent = topFramePosition == null
         if (SplitDebuggerMode.isSplitDebugger()) {
-          myPausedEvents.tryEmit(XDebugSessionPausedInfo(attract, topFrameIsAbsent))
+          myPausedEvents.tryEmit(XDebugSessionPausedInfo(effectiveAttract, topFrameIsAbsent))
         }
         else {
           // We have to keep this code because Code with Me expects BE to work with tab similar to monolith
-          sessionTab?.onPause(attract, topFrameIsAbsent)
+          sessionTab?.onPause(effectiveAttract, topFrameIsAbsent)
         }
       })
     }
