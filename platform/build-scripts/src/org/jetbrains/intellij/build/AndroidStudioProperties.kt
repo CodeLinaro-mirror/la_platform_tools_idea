@@ -102,30 +102,27 @@ class AndroidStudioProperties : ProductProperties() {
       layout.withModule(IJENT_BOOT_CLASSPATH_MODULE, PLATFORM_CORE_NIO_FS)
 
       layout.withModule("intellij.android.adt.branding", "resources.jar")
-      layout.withModule("intellij.cidr.common.testFramework.core", TEST_FRAMEWORK_JAR)
-      layout.withModule("intellij.cidr.common.testFramework.core.nolang", TEST_FRAMEWORK_JAR)
 
-      // TODO(b/490459621): IntelliJ 2026.1 removed testFramework.jar from the distro, so we need
-      //  to find another way to expose these modules in tests. In the meantime, we'll continue
-      //  packaging them in Android Studio.
-      for (moduleName in listOf(
-        "intellij.platform.testFramework",
-        "intellij.platform.testFramework.common",
-        "intellij.java.testFramework",
-        "intellij.java.testFramework.shared",
-        "intellij.platform.testFramework.core",
-        "intellij.platform.testFramework.teamCity",
-      )) {
-        layout.withModule(moduleName, "testFramework.jar")
-      }
-
-      // used for compose and jewel related testing in the Android plugin
+      // IntelliJ no longer ships testFramework.jar (since 2026.1) but we still need it in Studio
+      // for running tests on the Android plugin side. Ideally we should move this out of the distro
+      // and find some other way to use it in tests only (b/523391585).
+      layout.withModule("intellij.platform.testFramework", TEST_FRAMEWORK_JAR)
+      layout.withModule("intellij.platform.testFramework.common", TEST_FRAMEWORK_JAR)
+      layout.withModule("intellij.java.testFramework", TEST_FRAMEWORK_JAR)
+      layout.withModule("intellij.java.testFramework.shared", TEST_FRAMEWORK_JAR)
+      layout.withModule("intellij.platform.testFramework.core", TEST_FRAMEWORK_JAR)
+      layout.withModule("intellij.platform.testFramework.teamCity", TEST_FRAMEWORK_JAR)
+      // The following are needed for Jewel/Compose tests.
       layout.withModule("intellij.platform.jewel.intUi.standalone", TEST_FRAMEWORK_JAR)
       layout.withModule("intellij.platform.jewel.markdown.intUiStandaloneStyling", TEST_FRAMEWORK_JAR)
       layout.withModuleLibrary("org.jetbrains.compose.ui.ui.test.junit4.desktop", "intellij.libraries.compose.foundation.desktop.junit", TEST_FRAMEWORK_JAR)
-
-      layout.withProjectLibrary("assertJ", TEST_FRAMEWORK_JAR) // Used by the CIDR test framework (b/295336541).
-      layout.withProjectLibrary("hamcrest", TEST_FRAMEWORK_JAR) // Used by the CIDR test framework (b/295336541).
+      // The following are needed for CIDR tests.
+      layout.withModule("intellij.cidr.common.testFramework.core", TEST_FRAMEWORK_JAR)
+      layout.withModule("intellij.cidr.common.testFramework.core.nolang", TEST_FRAMEWORK_JAR)
+      // The following are needed by the CIDR test framework (b/295336541).
+      layout.withProjectLibrary("assertJ", TEST_FRAMEWORK_JAR)
+      layout.withProjectLibrary("hamcrest", TEST_FRAMEWORK_JAR)
+      layout.withoutProjectLibrary("mockito") // Referenced by CIDR, but we do not want it bundled.
 
       // Move kotlinx-coroutines-guava to core, making it accessible to the Android plugin.
       // Note: we could bundle kotlinx-coroutines-guava in the Android plugin separately, but that's risky because (1) the library
