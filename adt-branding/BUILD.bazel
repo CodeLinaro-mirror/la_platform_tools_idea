@@ -16,16 +16,3 @@ jvm_library(
   deps = ["//platform/bootstrap"]
 )
 ### auto-generated section `build intellij.android.adt.branding` end
-
-### auto-generated section `build intellij.android.extra-libs-to-download` start
-jvm_library(
-  name = "android-extra-libs-to-download",
-  visibility = ["//visibility:public"],
-  srcs = glob([], allow_empty = True),
-  runtime_deps = [
-    "@lib//:eclipse-lsp4j-debug",
-    "@lib//:eclipse-lsp4j-jsonrpc-debug",
-    "@lib//:jetbrains-kotlin-compose-compiler-plugin",
-  ]
-)
-### auto-generated section `build intellij.android.extra-libs-to-download` end
