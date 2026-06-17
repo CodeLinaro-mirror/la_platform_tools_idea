@@ -15,34 +15,25 @@ import org.jetbrains.kotlin.K1Deprecation
 
 @K1Deprecation
 open class QuickFixWithDelegateFactory(
-    private val delegateFactory: () -> IntentionAction?
+    delegateFactory: () -> IntentionAction?
 ) : IntentionAction, ReportingClassSubstitutor {
+    private val delegate: IntentionAction? = delegateFactory()
 
     @Nls
-    private val familyName: String
+    private val familyName: String = delegate?.familyName ?: ""
 
     @Nls
-    private val text: String
-    private val startInWriteAction: Boolean
-    private val substitutedClass: Class<*>
+    private val text: String = delegate?.text ?: ""
+    private val startInWriteAction: Boolean = delegate != null && delegate.startInWriteAction()
 
-    init {
-        val delegate = delegateFactory()
-        familyName = delegate?.familyName ?: ""
-        text = delegate?.text ?: ""
-        startInWriteAction = delegate != null && delegate.startInWriteAction()
-        substitutedClass = delegate?.javaClass ?: javaClass
-    }
-
-    override fun getSubstitutedClass(): Class<*> = substitutedClass
+    override fun getSubstitutedClass(): Class<*> = delegate?.javaClass ?: javaClass
 
     override fun getFamilyName() = familyName
 
     override fun getText() = text
 
     override fun isAvailable(project: Project, editor: Editor?, file: PsiFile): Boolean {
-        val action = delegateFactory() ?: return false
-        return action.isAvailable(project, editor, file)
+        return delegate?.isAvailable(project, editor, file) ?: false
     }
 
     override fun startInWriteAction() = startInWriteAction
@@ -52,7 +43,7 @@ open class QuickFixWithDelegateFactory(
             return
         }
 
-        val action = delegateFactory() ?: return
+        val action = delegate ?: return
 
         assert(action.detectPriority() == this.detectPriority()) {
             "Incorrect priority of QuickFixWithDelegateFactory wrapper for ${action::class.java.name}"
