@@ -265,7 +265,6 @@ jvm_library(
         "//plugins/markdown/plugin:plugin-main",
         "//plugins/webp",
         "//plugins/emojipicker",
-        "//plugins/gradle/gradle-dependency-updater:dependencyUpdater",
         "//platform/settings-sync-core:settingsSync-core",
         "//plugins/settings-sync/jba:settingsSync",
         "//java/java-features-trainer:featuresTrainer",
@@ -288,7 +287,6 @@ jvm_library(
         "//platform/polySymbols",
         "//plugins/performanceTesting/core:performanceTesting",
         "//platform/smart-update",
-        "//plugins/gradle/intellij.gradle.analysis:analysis",
         "//plugins/htmltools:html-tools",
         "//platform/new-ui-onboarding",
         "//platform/new-users-onboarding",
@@ -452,7 +450,6 @@ jvm_library(
         "//plugins/markdown/plugin:plugin-main_test_lib",
         "//plugins/webp:webp_test_lib",
         "//plugins/emojipicker:emojipicker_test_lib",
-        "//plugins/gradle/gradle-dependency-updater:dependencyUpdater_test_lib",
         "//platform/settings-sync-core:settingsSync-core_test_lib",
         "//plugins/settings-sync/jba:settingsSync_test_lib",
         "//java/java-features-trainer:featuresTrainer_test_lib",
@@ -475,7 +472,6 @@ jvm_library(
         "//platform/polySymbols:polySymbols_test_lib",
         "//plugins/performanceTesting/core:performanceTesting_test_lib",
         "//platform/smart-update:smart-update_test_lib",
-        "//plugins/gradle/intellij.gradle.analysis:analysis_test_lib",
         "//plugins/htmltools:html-tools_test_lib",
         "//platform/new-ui-onboarding:new-ui-onboarding_test_lib",
         "//platform/new-users-onboarding:new-users-onboarding_test_lib",
@@ -538,15 +534,8 @@ jvm_library(
     visibility = ["//visibility:public"],
     runtime_deps = [
         # do not sort,
-        "//android/android:core",
         "//:main",
-        "//android/android-plugin:plugin",
-        "//android/layoutlib",
         "//plugins/kotlin:kotlin-plugin-community-main",
-        "//android/compose-designer",
-        "//android/compose-ide-plugin",
-        "//android/design-plugin",
-        "//android/android-navigator:navigator",
     ],
 )
 
@@ -562,15 +551,8 @@ jvm_library(
     runtime_deps = [
         # do not sort,
         ":main-android",
-        "//android/android:core_test_lib",
         "//:main_test_lib",
-        "//android/android-plugin:plugin_test_lib",
-        "//android/layoutlib:layoutlib_test_lib",
         "//plugins/kotlin:kotlin-plugin-community-main_test_lib",
-        "//android/compose-designer:compose-designer_test_lib",
-        "//android/compose-ide-plugin:compose-ide-plugin_test_lib",
-        "//android/design-plugin:design-plugin_test_lib",
-        "//android/android-navigator:navigator_test_lib",
     ],
 )
 ### auto-generated section `build intellij.idea.community.main.android` end
