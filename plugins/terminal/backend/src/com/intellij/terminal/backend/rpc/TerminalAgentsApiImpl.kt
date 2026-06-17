@@ -1,7 +1,6 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.terminal.backend.rpc
 
-import com.intellij.openapi.application.ex.ApplicationInfoEx
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.platform.eel.EelApi
@@ -42,7 +41,7 @@ private object TerminalAgentResolver {
     return TerminalAgent.getAllTerminalAgents().mapNotNull { agent ->
       when {
         findBinaryPath(agent, context) != null -> TerminalAvailableAgentDto(agent.agentKey, TerminalAgentMode.RUN)
-        ApplicationInfoEx.getInstanceEx().isVendorJetBrains && agent.getInstallCommand(context.osFamily) != null -> TerminalAvailableAgentDto(agent.agentKey, TerminalAgentMode.INSTALL_AND_RUN)
+        agent.getInstallCommand(context.osFamily) != null -> TerminalAvailableAgentDto(agent.agentKey, TerminalAgentMode.INSTALL_AND_RUN)
         else -> null
       }
     }
