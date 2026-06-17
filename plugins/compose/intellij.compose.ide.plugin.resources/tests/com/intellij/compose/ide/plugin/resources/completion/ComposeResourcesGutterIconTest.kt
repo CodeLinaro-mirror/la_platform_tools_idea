@@ -4,7 +4,6 @@ package com.intellij.compose.ide.plugin.resources.completion
 import com.android.ide.common.util.GeneratorTester
 import com.android.ide.common.vectordrawable.VdPreview
 import com.android.ide.common.vectordrawable.VdPreview.TargetSize
-import com.android.tools.idea.rendering.GutterIconFactory
 import com.android.utils.XmlUtils
 import com.intellij.compose.ide.plugin.resources.vectorDrawable.preview.BaseVectorDrawablePreviewRenderer.RenderResult
 import com.intellij.compose.ide.plugin.resources.vectorDrawable.preview.ComposeResourcesDrawablePreviewRenderer
@@ -194,6 +193,8 @@ class ComposeResourcesGutterIconTest : BasePlatformTestCase() {
 
   /** Part of [GutterIconFactory.createIcon] for bitmap files via `createBitmapIcon(VirtualFile, int, int)` */
   private fun callGutterIconFactoryCreateBitmapIcon(file: VirtualFile, maxWidth: Int, maxHeight: Int): Icon? {
+    error("Android Studio: this method calls an API from the Android plugin, which is not available in our fork of IntelliJ")
+    /*
     val method = GutterIconFactory::class.java.getDeclaredMethod(
       "createBitmapIcon",
       VirtualFile::class.java,
@@ -202,6 +203,7 @@ class ComposeResourcesGutterIconTest : BasePlatformTestCase() {
     )
     method.isAccessible = true
     return method.invoke(null, file, maxWidth, maxHeight) as Icon?
+    */
   }
 
   /** Part of [GutterIconFactory.createIcon] for XML vector-drawables, not used dirrectly, since it requires AndroidFacet */
