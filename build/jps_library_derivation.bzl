@@ -152,6 +152,11 @@ def _path_to_label(repo, rel_path):
     Returns:
         Bazel label like "@lib//ant/lib:ant.jar"
     """
+    # Android Studio (b/490117560): handle build targets from our custom Kotlin compiler build,
+    # which look a bit different from what this code path originally expected. This patch should
+    # stay consistent with the similar patch inside toBazelLabel() in JpsModuleToBazel.
+    if rel_path.startswith("kotlin-snapshot/"):
+        return repo + "//:" + rel_path
     last_slash = rel_path.rfind("/")
     if last_slash == -1:
         return repo + "//:" + rel_path

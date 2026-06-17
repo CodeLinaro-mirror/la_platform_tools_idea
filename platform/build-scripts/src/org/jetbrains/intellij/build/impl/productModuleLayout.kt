@@ -114,7 +114,7 @@ internal suspend fun processAndGetProductPluginContentModules(
     filterAndProcessContentModules(rootElement = gameToolsPluginXml, pluginMainModuleName = null, context = context) { moduleElement, moduleName, loadingRule ->
       processProductModule(
         moduleElement = moduleElement,
-        frontendModuleFilter = frontendModuleFilter,
+        layout = layout,
         result = gameToolsModuleItems,
         moduleToSetChainOverride = moduleToSetChainMapping,
         moduleToIncludeDependenciesOverride = moduleToIncludeDependenciesMapping,

@@ -19,9 +19,14 @@
       <module fileurl="file://$PROJECT_DIR$/CIDR/cidr-debugger/backend-api/intellij.cidr.debugger.backend.iml" filepath="$PROJECT_DIR$/CIDR/cidr-debugger/backend-api/intellij.cidr.debugger.backend.iml" />
       <module fileurl="file://$PROJECT_DIR$/CIDR/cidr-debugger/core/intellij.cidr.debugger.core.iml" filepath="$PROJECT_DIR$/CIDR/cidr-debugger/core/intellij.cidr.debugger.core.iml" />
       <module fileurl="file://$PROJECT_DIR$/CIDR/cidr-debugger/dap/intellij.cidr.debugger.dap.iml" filepath="$PROJECT_DIR$/CIDR/cidr-debugger/dap/intellij.cidr.debugger.dap.iml" />
+      <module fileurl="file://$PROJECT_DIR$/CIDR/cidr-debugger/frontend/intellij.cidr.debugger.frontend.iml" filepath="$PROJECT_DIR$/CIDR/cidr-debugger/frontend/intellij.cidr.debugger.frontend.iml" />
       <module fileurl="file://$PROJECT_DIR$/CIDR/cidr-debugger/intellij.cidr.debugger.iml" filepath="$PROJECT_DIR$/CIDR/cidr-debugger/intellij.cidr.debugger.iml" />
+      <module fileurl="file://$PROJECT_DIR$/CIDR/cidr-debugger/plugin/intellij.cidr.debugger.plugin.iml" filepath="$PROJECT_DIR$/CIDR/cidr-debugger/plugin/intellij.cidr.debugger.plugin.iml" />
+      <module fileurl="file://$PROJECT_DIR$/CIDR/cidr-debugger/profiles/intellij.cidr.debugger.profiles.iml" filepath="$PROJECT_DIR$/CIDR/cidr-debugger/profiles/intellij.cidr.debugger.profiles.iml" />
       <module fileurl="file://$PROJECT_DIR$/CIDR/cidr-execution/intellij.cidr.execution.iml" filepath="$PROJECT_DIR$/CIDR/cidr-execution/intellij.cidr.execution.iml" />
+      <module fileurl="file://$PROJECT_DIR$/CIDR/cidr-lang-base/icons/intellij.cidr.lang.base.icons.iml" filepath="$PROJECT_DIR$/CIDR/cidr-lang-base/icons/intellij.cidr.lang.base.icons.iml" />
       <module fileurl="file://$PROJECT_DIR$/CIDR/cidr-lang-base/intellij.cidr.lang.base.iml" filepath="$PROJECT_DIR$/CIDR/cidr-lang-base/intellij.cidr.lang.base.iml" />
+      <module fileurl="file://$PROJECT_DIR$/CIDR/cidr-lang/core-base/intellij.c.core.base.iml" filepath="$PROJECT_DIR$/CIDR/cidr-lang/core-base/intellij.c.core.base.iml" />
       <module fileurl="file://$PROJECT_DIR$/CIDR/cidr-lang/core/intellij.c.core.iml" filepath="$PROJECT_DIR$/CIDR/cidr-lang/core/intellij.c.core.iml" />
       <module fileurl="file://$PROJECT_DIR$/CIDR/cidr-lang/debugger/intellij.c.debugger.iml" filepath="$PROJECT_DIR$/CIDR/cidr-lang/debugger/intellij.c.debugger.iml" />
       <module fileurl="file://$PROJECT_DIR$/CIDR/cidr-lang/intellij.c.iml" filepath="$PROJECT_DIR$/CIDR/cidr-lang/intellij.c.iml" />
