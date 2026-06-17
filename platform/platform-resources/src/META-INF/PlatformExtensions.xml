@@ -591,9 +591,7 @@ Android Studio: don't register IntelliJ fork -->
     <applicationService serviceInterface="com.intellij.util.io.IoService"
                         serviceImplementation="com.intellij.util.io.IoServiceImpl"/>
 
-<!-- Android Studio: don't register IntelliJ fork
     <applicationService serviceImplementation="com.intellij.diagnostic.HeapDumpAnalysisSupport"/>
-Android Studio: don't register IntelliJ fork -->
 
     <applicationService serviceInterface="com.intellij.diagnostic.EventWatcher"
                         serviceImplementation="com.intellij.diagnostic.EventWatcherService" headlessImplementation=""
