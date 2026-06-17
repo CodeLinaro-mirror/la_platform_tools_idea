@@ -31,8 +31,6 @@ jvm_library(
     "@lib//:kotlin-stdlib",
     "//libraries/kotlinx/serialization/core",
     "//libraries/kotlinx/serialization/json",
-    "//platform/workspace/storage",
-    "//platform/workspace/jps",
   ]
 )
 ### auto-generated section `build intellij.platform.indexing` end
