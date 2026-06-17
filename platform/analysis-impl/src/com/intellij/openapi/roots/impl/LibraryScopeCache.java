@@ -30,13 +30,13 @@ import com.intellij.platform.workspace.jps.entities.SdkId;
 import com.intellij.platform.workspace.jps.entities.SdkRoot;
 import com.intellij.platform.workspace.jps.entities.SdkRootTypeId;
 import com.intellij.platform.workspace.storage.ImmutableEntityStorage;
-import com.intellij.projectModel.ModuleDependenciesGraph;
-import com.intellij.projectModel.ModuleDependenciesGraphService;
 import com.intellij.psi.search.DelegatingGlobalSearchScope;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.util.ConcurrencyUtil;
 import com.intellij.util.containers.ConcurrentFactoryMap;
 import com.intellij.util.containers.ContainerUtil;
+import com.intellij.util.graph.Graph;
+import com.intellij.workspaceModel.ide.impl.legacyBridge.module.ModuleExportedDependenciesGraph;
 import com.intellij.workspaceModel.ide.legacyBridge.ModuleBridges;
 import kotlin.sequences.SequencesKt;
 import org.jetbrains.annotations.ApiStatus;
@@ -158,7 +158,7 @@ public final class LibraryScopeCache {
       var libraries = index.findContainingLibraries(virtualFile);
       var currentSnapshot = WorkspaceModel.getInstance(myProject).getCurrentSnapshot();
       List<Module> modulesLibraryUsedIn = new ArrayList<>();
-      var exportedDependentsGraph = ModuleDependenciesGraphService.getInstance(myProject).getModuleDependenciesGraph();
+      var exportedDependentsGraph = ModuleExportedDependenciesGraph.getInstance(myProject).exportedDependentsGraph();
       for (var library: libraries) {
         modulesLibraryUsedIn.addAll(findModulesWithLibraryId(library.getSymbolicId(), currentSnapshot, exportedDependentsGraph));
       }
@@ -268,7 +268,7 @@ public final class LibraryScopeCache {
       }
 
       Set<Module> modulesWithLibrary = new HashSet<>();
-      var exportedDependentsGraph = ModuleDependenciesGraphService.getInstance(myProject).getModuleDependenciesGraph();
+      var exportedDependentsGraph = ModuleExportedDependenciesGraph.getInstance(myProject).exportedDependentsGraph();
       for (var library : libraries) {
         modulesWithLibrary.addAll(findModulesWithLibraryId(library.getSymbolicId(), currentSnapshot, exportedDependentsGraph));
       }
@@ -349,14 +349,14 @@ public final class LibraryScopeCache {
     }
   }
 
-  private static Set<Module> findModulesWithLibraryId(LibraryId libraryId, ImmutableEntityStorage currentSnapshot, ModuleDependenciesGraph exportedDependentsGraph) {
+  private static Set<Module> findModulesWithLibraryId(LibraryId libraryId, ImmutableEntityStorage currentSnapshot, Graph<ModuleEntity> exportedDependentsGraph) {
     Set<ModuleEntity> modulesWithLibrary = new HashSet<>();
     var ownerModules = SequencesKt.toList(currentSnapshot.referrers(libraryId, ModuleEntity.class));
 
     for (var module : ownerModules) {
       modulesWithLibrary.add(module);
       if (exportsLibrary(module, libraryId)) {
-        modulesWithLibrary.addAll(exportedDependentsGraph.getModuleDependants(module));
+        exportedDependentsGraph.getIn(module).forEachRemaining(modulesWithLibrary::add);
       }
     }
     return ContainerUtil.map2Set(modulesWithLibrary, (moduleEntity) -> ModuleBridges.findModule(moduleEntity, currentSnapshot));

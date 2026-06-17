@@ -3,31 +3,56 @@ package com.intellij.workspaceModel.ide.legacyBridge
 
 import com.intellij.openapi.roots.DependencyScope
 import com.intellij.openapi.roots.ModuleRootModificationUtil
-import com.intellij.projectModel.ModuleDependenciesGraphService
 import com.intellij.testFramework.junit5.TestApplication
 import com.intellij.testFramework.rules.ProjectModelExtension
+import com.intellij.workspaceModel.ide.impl.legacyBridge.module.ModuleExportedDependenciesGraph
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.RegisterExtension
 
 @TestApplication
-class ModuleDependenciesGraphServiceImplTest {
+class ModuleExportedDependenciesGraphTest {
   @JvmField
   @RegisterExtension
   val projectModel: ProjectModelExtension = ProjectModelExtension()
 
-  private val graph: ModuleDependenciesGraphService
-    get() = ModuleDependenciesGraphService.getInstance(projectModel.project)
+  private val graph: ModuleExportedDependenciesGraph
+    get() = ModuleExportedDependenciesGraph.getInstance(projectModel.project)
+
+  @Test
+  fun `empty graph has no nodes`() {
+    val exportedGraph = graph.exportedDependentsGraph()
+
+    assertThat(exportedGraph.nodes)
+      .describedAs("Empty graph should have no nodes")
+      .isEmpty()
+  }
 
   @Test
   fun `single module with no dependencies`() {
-    val moduleA = projectModel.createModule("module-a").findModuleEntity()!!
+    val moduleA = projectModel.createModule("module-a").findModuleEntity()
 
-    val exportedGraph = graph.getModuleDependenciesGraph()
+    val exportedGraph = graph.exportedDependentsGraph()
 
-    assertThat(exportedGraph.getModuleDependants(moduleA).toList())
+    assertThat(exportedGraph.nodes)
+      .describedAs("Graph should contain single module")
+      .hasSize(1)
+    assertThat(exportedGraph.getIn(moduleA).asSequence().toList())
       .describedAs("Module with no dependencies should have no incoming edges")
       .isEmpty()
+  }
+
+  @Test
+  fun `graph nodes include all modules`() {
+    projectModel.createModule("module-a")
+    projectModel.createModule("module-b")
+    projectModel.createModule("module-c")
+
+    val exportedGraph = graph.exportedDependentsGraph()
+
+    assertThat(exportedGraph.nodes.map { it.name })
+      .describedAs("Graph should contain all created modules")
+      .containsExactlyInAnyOrder("module-a", "module-b", "module-c")
   }
 
   @Test
@@ -40,15 +65,15 @@ class ModuleDependenciesGraphServiceImplTest {
     ModuleRootModificationUtil.addDependency(moduleB, moduleA, DependencyScope.COMPILE, true)
     ModuleRootModificationUtil.addDependency(moduleC, moduleB, DependencyScope.COMPILE, true)
 
-    val exportedGraph = graph.getModuleDependenciesGraph()
-    val moduleAEntity = moduleA.findModuleEntity()!!
-    val moduleBEntity = moduleB.findModuleEntity()!!
+    val exportedGraph = graph.exportedDependentsGraph()
+    val moduleAEntity = moduleA.findModuleEntity()
+    val moduleBEntity = moduleB.findModuleEntity()
 
-    assertThat(exportedGraph.getModuleDependants(moduleAEntity).map { it.name }.toList())
+    assertThat(exportedGraph.getIn(moduleAEntity).asSequence().map { it.name }.toList())
       .describedAs("Module A should have B and C as transitive dependents (both exported)")
       .containsExactlyInAnyOrder("module-b", "module-c")
 
-    assertThat(exportedGraph.getModuleDependants(moduleBEntity).map { it.name }.toList())
+    assertThat(exportedGraph.getIn(moduleBEntity).asSequence().map { it.name }.toList())
       .describedAs("Module B should have C as dependent")
       .containsExactlyInAnyOrder("module-c")
   }
@@ -63,15 +88,15 @@ class ModuleDependenciesGraphServiceImplTest {
     ModuleRootModificationUtil.addDependency(moduleB, moduleA, DependencyScope.COMPILE, false)
     ModuleRootModificationUtil.addDependency(moduleC, moduleB, DependencyScope.COMPILE, true)
 
-    val exportedGraph = graph.getModuleDependenciesGraph()
-    val moduleAEntity = moduleA.findModuleEntity()!!
-    val moduleBEntity = moduleB.findModuleEntity()!!
+    val exportedGraph = graph.exportedDependentsGraph()
+    val moduleAEntity = moduleA.findModuleEntity()
+    val moduleBEntity = moduleB.findModuleEntity()
 
-    assertThat(exportedGraph.getModuleDependants(moduleAEntity).map { it.name }.toList())
+    assertThat(exportedGraph.getIn(moduleAEntity).asSequence().map { it.name }.toList())
       .describedAs("Module A should only have B (C can't reach A transitively because B doesn't export A)")
       .containsExactlyInAnyOrder("module-b")
 
-    assertThat(exportedGraph.getModuleDependants(moduleBEntity).map { it.name }.toList())
+    assertThat(exportedGraph.getIn(moduleBEntity).asSequence().map { it.name }.toList())
       .describedAs("Module B should have C as dependent")
       .containsExactlyInAnyOrder("module-c")
   }
@@ -90,10 +115,10 @@ class ModuleDependenciesGraphServiceImplTest {
     ModuleRootModificationUtil.addDependency(moduleD, moduleB, DependencyScope.COMPILE, true)
     ModuleRootModificationUtil.addDependency(moduleD, moduleC, DependencyScope.COMPILE, true)
 
-    val exportedGraph = graph.getModuleDependenciesGraph()
-    val moduleAEntity = moduleA.findModuleEntity()!!
+    val exportedGraph = graph.exportedDependentsGraph()
+    val moduleAEntity = moduleA.findModuleEntity()
 
-    assertThat(exportedGraph.getModuleDependants(moduleAEntity).map { it.name }.toList())
+    assertThat(exportedGraph.getIn(moduleAEntity).asSequence().map { it.name }.toList())
       .describedAs("Module A should have B, C, and D as dependents (all paths exported)")
       .containsExactlyInAnyOrder("module-b", "module-c", "module-d")
   }
@@ -112,15 +137,15 @@ class ModuleDependenciesGraphServiceImplTest {
     ModuleRootModificationUtil.addDependency(moduleD, moduleB, DependencyScope.COMPILE, true)
     ModuleRootModificationUtil.addDependency(moduleD, moduleC, DependencyScope.COMPILE, true)
 
-    val exportedGraph = graph.getModuleDependenciesGraph()
-    val moduleAEntity = moduleA.findModuleEntity()!!
-    val moduleCEntity = moduleC.findModuleEntity()!!
+    val exportedGraph = graph.exportedDependentsGraph()
+    val moduleAEntity = moduleA.findModuleEntity()
+    val moduleCEntity = moduleC.findModuleEntity()
 
-    assertThat(exportedGraph.getModuleDependants(moduleAEntity).map { it.name }.toList())
+    assertThat(exportedGraph.getIn(moduleAEntity).asSequence().map { it.name }.toList())
       .describedAs("Module A should have B, C, and D (D reaches A via B's exported path)")
       .containsExactlyInAnyOrder("module-b", "module-c", "module-d")
 
-    assertThat(exportedGraph.getModuleDependants(moduleCEntity).map { it.name }.toList())
+    assertThat(exportedGraph.getIn(moduleCEntity).asSequence().map { it.name }.toList())
       .describedAs("Module C should only have D (no transitive propagation because C doesn't export A)")
       .containsExactlyInAnyOrder("module-d")
   }
@@ -137,15 +162,15 @@ class ModuleDependenciesGraphServiceImplTest {
     ModuleRootModificationUtil.addDependency(moduleB, moduleA, DependencyScope.COMPILE, true)
     ModuleRootModificationUtil.addDependency(moduleD, moduleC, DependencyScope.COMPILE, true)
 
-    val exportedGraph = graph.getModuleDependenciesGraph()
-    val moduleAEntity = moduleA.findModuleEntity()!!
-    val moduleCEntity = moduleC.findModuleEntity()!!
+    val exportedGraph = graph.exportedDependentsGraph()
+    val moduleAEntity = moduleA.findModuleEntity()
+    val moduleCEntity = moduleC.findModuleEntity()
 
-    assertThat(exportedGraph.getModuleDependants(moduleAEntity).map { it.name }.toList())
+    assertThat(exportedGraph.getIn(moduleAEntity).asSequence().map { it.name }.toList())
       .describedAs("Module A should only have B from its chain")
       .containsExactlyInAnyOrder("module-b")
 
-    assertThat(exportedGraph.getModuleDependants(moduleCEntity).map { it.name }.toList())
+    assertThat(exportedGraph.getIn(moduleCEntity).asSequence().map { it.name }.toList())
       .describedAs("Module C should only have D from its chain")
       .containsExactlyInAnyOrder("module-d")
   }
@@ -169,10 +194,10 @@ class ModuleDependenciesGraphServiceImplTest {
     ModuleRootModificationUtil.addDependency(moduleE, moduleB, DependencyScope.COMPILE, true)
     ModuleRootModificationUtil.addDependency(moduleE, moduleC, DependencyScope.COMPILE, true)
 
-    val exportedGraph = graph.getModuleDependenciesGraph()
-    val moduleAEntity = moduleA.findModuleEntity()!!
+    val exportedGraph = graph.exportedDependentsGraph()
+    val moduleAEntity = moduleA.findModuleEntity()
 
-    assertThat(exportedGraph.getModuleDependants(moduleAEntity).map { it.name }.toList())
+    assertThat(exportedGraph.getIn(moduleAEntity).asSequence().map { it.name }.toList())
       .describedAs("Module A should have B, C, D, and E (E reaches A via both B and C)")
       .containsExactlyInAnyOrder("module-b", "module-c", "module-d", "module-e")
   }
@@ -187,10 +212,10 @@ class ModuleDependenciesGraphServiceImplTest {
     ModuleRootModificationUtil.addDependency(moduleB, moduleA, DependencyScope.TEST, true)
     ModuleRootModificationUtil.addDependency(moduleC, moduleB, DependencyScope.RUNTIME, true)
 
-    val exportedGraph = graph.getModuleDependenciesGraph()
-    val moduleAEntity = moduleA.findModuleEntity()!!
+    val exportedGraph = graph.exportedDependentsGraph()
+    val moduleAEntity = moduleA.findModuleEntity()
 
-    assertThat(exportedGraph.getModuleDependants(moduleAEntity).map { it.name }.toList())
+    assertThat(exportedGraph.getIn(moduleAEntity).asSequence().map { it.name }.toList())
       .describedAs("Exported flag should work regardless of dependency scope")
       .containsExactlyInAnyOrder("module-b", "module-c")
   }
@@ -206,21 +231,21 @@ class ModuleDependenciesGraphServiceImplTest {
     ModuleRootModificationUtil.addDependency(moduleC, moduleB, DependencyScope.COMPILE, true)
     ModuleRootModificationUtil.addDependency(moduleA, moduleC, DependencyScope.COMPILE, true)
 
-    val exportedGraph = graph.getModuleDependenciesGraph()
-    val moduleAEntity = moduleA.findModuleEntity()!!
-    val moduleBEntity = moduleB.findModuleEntity()!!
-    val moduleCEntity = moduleC.findModuleEntity()!!
+    val exportedGraph = graph.exportedDependentsGraph()
+    val moduleAEntity = moduleA.findModuleEntity()
+    val moduleBEntity = moduleB.findModuleEntity()
+    val moduleCEntity = moduleC.findModuleEntity()
 
     // In a circular dependency with all exported, each module sees all modules in the cycle (including itself)
-    assertThat(exportedGraph.getModuleDependants(moduleAEntity).map { it.name }.toList())
+    assertThat(exportedGraph.getIn(moduleAEntity).asSequence().map { it.name }.toList())
       .describedAs("Module A should have B, C, and itself as dependents in circular chain")
       .containsExactlyInAnyOrder("module-a", "module-b", "module-c")
 
-    assertThat(exportedGraph.getModuleDependants(moduleBEntity).map { it.name }.toList())
+    assertThat(exportedGraph.getIn(moduleBEntity).asSequence().map { it.name }.toList())
       .describedAs("Module B should have C, A, and itself as dependents in circular chain")
       .containsExactlyInAnyOrder("module-a", "module-b", "module-c")
 
-    assertThat(exportedGraph.getModuleDependants(moduleCEntity).map { it.name }.toList())
+    assertThat(exportedGraph.getIn(moduleCEntity).asSequence().map { it.name }.toList())
       .describedAs("Module C should have A, B, and itself as dependents in circular chain")
       .containsExactlyInAnyOrder("module-a", "module-b", "module-c")
   }
@@ -236,10 +261,10 @@ class ModuleDependenciesGraphServiceImplTest {
     ModuleRootModificationUtil.addDependency(moduleC, moduleB, DependencyScope.COMPILE, false)
     ModuleRootModificationUtil.addDependency(moduleA, moduleC, DependencyScope.COMPILE, true)
 
-    val exportedGraph = graph.getModuleDependenciesGraph()
-    val moduleBEntity = moduleB.findModuleEntity()!!
+    val exportedGraph = graph.exportedDependentsGraph()
+    val moduleBEntity = moduleB.findModuleEntity()
 
-    assertThat(exportedGraph.getModuleDependants(moduleBEntity).map { it.name }.toList())
+    assertThat(exportedGraph.getIn(moduleBEntity).asSequence().map { it.name }.toList())
       .describedAs("Non-exported dependency breaks circular chain; C shouldn't propagate to A")
       .containsExactlyInAnyOrder("module-c")
   }
@@ -258,23 +283,23 @@ class ModuleDependenciesGraphServiceImplTest {
     ModuleRootModificationUtil.addDependency(moduleC, moduleB, DependencyScope.COMPILE, true)
     ModuleRootModificationUtil.addDependency(moduleD, moduleC, DependencyScope.COMPILE, false)
 
-    val exportedGraph = graph.getModuleDependenciesGraph()
-    val moduleAEntity = moduleA.findModuleEntity()!!
-    val moduleCEntity = moduleC.findModuleEntity()!!
-    val moduleBEntity = moduleB.findModuleEntity()!!
+    val exportedGraph = graph.exportedDependentsGraph()
+    val moduleAEntity = moduleA.findModuleEntity()
+    val moduleCEntity = moduleC.findModuleEntity()
+    val moduleBEntity = moduleB.findModuleEntity()
 
     // A's dependents: B (direct, exported), C (transitive via B), D (transitive via C, but D doesn't export C)
-    assertThat(exportedGraph.getModuleDependants(moduleAEntity).map { it.name }.toList())
+    assertThat(exportedGraph.getIn(moduleAEntity).asSequence().map { it.name }.toList())
       .describedAs("Module A should have B, C, and D as dependents (D is included because C is in the queue)")
       .containsExactlyInAnyOrder("module-b", "module-c", "module-d")
 
     // B's dependents: C (direct, exported), D (transitive via C)
-    assertThat(exportedGraph.getModuleDependants(moduleBEntity).map { it.name }.toList())
+    assertThat(exportedGraph.getIn(moduleBEntity).asSequence().map { it.name }.toList())
       .describedAs("Module B should have C and D as dependents")
       .containsExactlyInAnyOrder("module-c", "module-d")
 
     // C's dependents: only D (direct, not exported)
-    assertThat(exportedGraph.getModuleDependants(moduleCEntity).map { it.name }.toList())
+    assertThat(exportedGraph.getIn(moduleCEntity).asSequence().map { it.name }.toList())
       .describedAs("Module C should only have D (no transitive propagation because D doesn't export C)")
       .containsExactlyInAnyOrder("module-d")
   }
@@ -290,11 +315,30 @@ class ModuleDependenciesGraphServiceImplTest {
     ModuleRootModificationUtil.addDependency(moduleB, moduleA, DependencyScope.COMPILE, false)
     ModuleRootModificationUtil.addDependency(moduleC, moduleA, DependencyScope.COMPILE, false)
 
-    val exportedGraph = graph.getModuleDependenciesGraph()
-    val moduleAEntity = moduleA.findModuleEntity()!!
+    val exportedGraph = graph.exportedDependentsGraph()
+    val moduleAEntity = moduleA.findModuleEntity()
 
-    assertThat(exportedGraph.getModuleDependants(moduleAEntity).map { it.name }.toList())
+    assertThat(exportedGraph.getIn(moduleAEntity).asSequence().map { it.name }.toList())
       .describedAs("getIn() should return direct dependents even when not exported")
       .containsExactlyInAnyOrder("module-b", "module-c")
+  }
+
+  @Test
+  fun `getOut returns module dependencies`() {
+    // A ← B (exported)
+    // C ← B (NOT exported)
+    val moduleA = projectModel.createModule("module-a")
+    val moduleB = projectModel.createModule("module-b")
+    val moduleC = projectModel.createModule("module-c")
+
+    ModuleRootModificationUtil.addDependency(moduleB, moduleA, DependencyScope.COMPILE, true)
+    ModuleRootModificationUtil.addDependency(moduleB, moduleC, DependencyScope.COMPILE, false)
+
+    val exportedGraph = graph.exportedDependentsGraph()
+    val moduleBEntity = moduleB.findModuleEntity()
+
+    assertThat(exportedGraph.getOut(moduleBEntity).asSequence().map { it.name }.toList())
+      .describedAs("getOut() should return all dependencies")
+      .containsExactlyInAnyOrder("module-a", "module-c")
   }
 }
