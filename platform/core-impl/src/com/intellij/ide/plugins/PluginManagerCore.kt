@@ -749,7 +749,7 @@ object PluginManagerCore {
       }
     }
     // Android Studio: essential plugins are allowed to be absent in unit test mode.
-    if (missing != null && PlatformUtils.isAndroidStudio() && (isUnitTestMode || GraphicsEnvironment.isHeadless())) {
+    if (missing != null && PlatformUtils.isAndroidStudio() && (isUnitTestMode || java.awt.GraphicsEnvironment.isHeadless())) {
       missing = null
     }
     // Android Studio (b/365493089, b/202048599): it is too easy to break Android Studio by disabling a dependency of the Android plugin.
