@@ -257,6 +257,7 @@ class AndroidStudioProperties : ProductProperties() {
   override fun createWindowsCustomizer(projectHome: Path): WindowsDistributionCustomizer {
     return object : WindowsDistributionCustomizer() {
       init {
+        includeConsoleLauncher = false // Not yet shipping the Windows console launcher in Studio (b/536093713).
         icoPath = projectHome.resolve("adt-branding/resources/artwork/androidstudio.ico")
         icoPathForEAP = projectHome.resolve("adt-branding/resources/artwork/preview/androidstudio.ico")
         buildZipArchiveWithBundledJre = false

@@ -44,7 +44,7 @@ object NativeBinaryDownloader {
     return Triple(
       findFileForAndroidStudio("launcher", context, os, arch),
       findFileForAndroidStudio("launcher_licenses.html", context, os, arch),
-      null,
+      null, // Not yet shipping the Windows console launcher in Studio (b/536093713).
     )
     /* Android Studio (b/342419219): we build platform binaries from source instead of downloading them from JetBrains.
     if (context.options.isInDevelopmentMode && context.options.useLocalLauncher) {
