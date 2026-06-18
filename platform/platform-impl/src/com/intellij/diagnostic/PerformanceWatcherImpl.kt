@@ -8,11 +8,20 @@ import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.internal.DebugAttachDetector
 import com.intellij.internal.statistic.utils.PluginInfo
 import com.intellij.internal.statistic.utils.getPluginInfoByDescriptor
-import com.intellij.openapi.application.*
+import com.intellij.openapi.application.AccessToken
+import com.intellij.openapi.application.ApplicationInfo
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.application.ex.ApplicationManagerEx
 import com.intellij.openapi.application.impl.ApplicationInfoImpl
+import com.intellij.openapi.application.impl.LaterInvocator
+import com.intellij.openapi.application.impl.ModalityStateEx
 import com.intellij.openapi.components.serviceAsync
-import com.intellij.openapi.diagnostic.*
+import com.intellij.openapi.diagnostic.Attachment
+import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.diagnostic.debug
+import com.intellij.openapi.diagnostic.getOrLogException
+import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.util.SystemInfoRt
@@ -32,10 +41,21 @@ import com.intellij.util.containers.ContainerUtil
 import com.intellij.util.io.basicAttributesIfExists
 import com.intellij.util.io.blockingDispatcher
 import com.intellij.util.io.sanitizeFileName
-import kotlinx.coroutines.*
+import com.intellij.util.ui.RawSwingDispatcher
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -55,7 +75,12 @@ import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.coroutineContext
-import kotlin.io.path.*
+import kotlin.io.path.fileSize
+import kotlin.io.path.getLastModifiedTime
+import kotlin.io.path.isRegularFile
+import kotlin.io.path.name
+import kotlin.io.path.useDirectoryEntries
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.DurationUnit
 import kotlin.time.toDuration
 
@@ -95,7 +120,7 @@ internal class PerformanceWatcherImpl(private val coroutineScope: CoroutineScope
 
 
   private val isActive: Boolean = !ApplicationManager.getApplication().isHeadlessEnvironment
-  private var smokeAndMirrorsCounter: Int = 0
+  private var smokeAndMirrorsModalities: MutableList<ModalityStateEx> = mutableListOf()
 
   private val taskFlow = MutableSharedFlow<FreezeCheckerTask?>(replay = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
@@ -110,7 +135,7 @@ internal class PerformanceWatcherImpl(private val coroutineScope: CoroutineScope
             return@collectLatest
           }
 
-          delay(unresponsiveInterval.toLong())
+          delay(unresponsiveInterval.toLong().milliseconds)
           task.edtFrozen()
         }
       }
@@ -148,7 +173,7 @@ internal class PerformanceWatcherImpl(private val coroutineScope: CoroutineScope
         }
 
         while (true) {
-          delay(samplingIntervalMs)
+          delay(samplingIntervalMs.milliseconds)
           samplePerformance(samplingIntervalMs)
         }
       }
@@ -233,7 +258,7 @@ internal class PerformanceWatcherImpl(private val coroutineScope: CoroutineScope
     }
     jitWatcher.checkJitState()
     LOG.trace("Scheduling EDT sample")
-    val latencyMs = withContext(Dispatchers.ui(CoroutineSupport.UiDispatcherKind.STRICT) + ModalityState.any().asContextElement()) {
+    val latencyMs = withContext(RawSwingDispatcher) {
       LOG.trace("Processing EDT sample")
       TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - current)
     }
@@ -272,29 +297,49 @@ internal class PerformanceWatcherImpl(private val coroutineScope: CoroutineScope
     }
 
   override fun smokeAndMirrors(name: @NonNls String): AccessToken {
+    if (!Registry.`is`("performance.watcher.enable.smoke.and.mirrors.compensation", true)) {
+      return AccessToken.EMPTY_ACCESS_TOKEN
+    }
+
     LOG.trace("Entered smokeAndMirrors phase: $name")
     ThreadingAssertions.assertEventDispatchThread()
-    smokeAndMirrorsCounter++
+
+    val smokedModalityState = LaterInvocator.getCurrentModalityState()
+    smokeAndMirrorsModalities += smokedModalityState
 
     return AccessToken.create {
       LOG.trace("Exited smokeAndMirrors phase: $name")
       ThreadingAssertions.assertEventDispatchThread()
-      smokeAndMirrorsCounter--
+
+      val removed = smokeAndMirrorsModalities.removeLast()
+      LOG.assertTrue(removed === smokedModalityState, "Modality state mismatch: $removed != $smokedModalityState")
     }
   }
 
   @ApiStatus.Internal
   override fun edtEventStarted() {
     if (!isActive) return
-    if (smokeAndMirrorsCounter > 0) return
+    if (shouldSkipCurrentEdtEvent()) {
+      return
+    }
     stopCurrentTaskAndReEmit(FreezeCheckerTask(System.nanoTime()))
   }
 
   @ApiStatus.Internal
   override fun edtEventFinished() {
     if (!isActive) return
-    if (smokeAndMirrorsCounter > 0) return
+    if (shouldSkipCurrentEdtEvent()) {
+      return
+    }
     stopCurrentTaskAndReEmit(null)
+  }
+
+  private fun shouldSkipCurrentEdtEvent(): Boolean {
+    if (smokeAndMirrorsModalities.isEmpty()) return false
+
+    // we do not want to report DialogWrapper opened inside 'smokeAndMirrors' frame as a UI freeze
+    val currentModality = LaterInvocator.getCurrentModalityState()
+    return currentModality.accepts(smokeAndMirrorsModalities.last())
   }
 
   private fun stopCurrentTaskAndReEmit(task: FreezeCheckerTask?) {
@@ -517,6 +562,7 @@ private class CoroutineDispatcherWatcher(
 ) {
   @Volatile
   private var lastSampleNs = System.nanoTime()
+  private var reportedDumpsCount = 0
 
   fun watchDispatcher() {
     startPooledThreadSampling()
@@ -528,7 +574,7 @@ private class CoroutineDispatcherWatcher(
     coroutineScope.launch(CoroutineName("$dispatcher sampling") + dispatcher) {
       try {
         while (true) {
-          delay(pooledSamplingInterval)
+          delay(pooledSamplingInterval.milliseconds)
           lastSampleNs = System.nanoTime()
         }
       }
@@ -546,17 +592,32 @@ private class CoroutineDispatcherWatcher(
         var lastReportedNs = System.nanoTime()
 
         while (true) {
-          delay(pooledSamplingInterval)
+          delay(pooledSamplingInterval.milliseconds)
 
-          val unresponsiveIntervalMs = getUnresponsiveIntervalMs()
+          val useProgressiveInterval = Registry.`is`("performance.watcher.pooled.progressive.interval", true)
+          val baseUnresponsiveIntervalMs = getUnresponsiveIntervalMs()
+          val unresponsiveIntervalMs = when {
+            !useProgressiveInterval -> baseUnresponsiveIntervalMs
+            reportedDumpsCount < 3 -> baseUnresponsiveIntervalMs
+            else -> baseUnresponsiveIntervalMs * reportedDumpsCount.coerceAtMost(40)
+          }
+
           if (TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - lastSampleNs) <= unresponsiveIntervalMs ||
               TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - lastReportedNs) <= unresponsiveIntervalMs) {
             continue
           }
 
-          val file = PerformanceWatcher.getInstance().dumpThreads("$dispatcher", true, true)
-          LOG.info("Thread pool exhaustion: ${dispatcher} is not responding for $unresponsiveIntervalMs ms." + if (file == null) "" else "; thread dump is saved to '$file'")
+          val maxDumps = Registry.intValue("performance.watcher.pooled.maximum.dumps", 10)
+          if (reportedDumpsCount < maxDumps || maxDumps == -1) {
+            val file = PerformanceWatcher.getInstance().dumpThreads("$dispatcher", true, true)
+            LOG.info("Thread pool exhaustion: ${dispatcher} is not responding for $unresponsiveIntervalMs ms." + if (file == null) "" else "; thread dump is saved to '$file'")
+          }
+          else {
+            LOG.info("Thread pool exhaustion: ${dispatcher} is not responding for $unresponsiveIntervalMs ms.")
+          }
+
           lastReportedNs = System.nanoTime()
+          reportedDumpsCount++
         }
       }
       finally {

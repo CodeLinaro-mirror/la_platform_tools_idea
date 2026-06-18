@@ -1,6 +1,7 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.roots.ui.configuration.projectRoot;
 
+import com.intellij.execution.target.TargetBasedSdkAdditionalData;
 import com.intellij.execution.wsl.WslPath;
 import com.intellij.ide.DataManager;
 import com.intellij.openapi.Disposable;
@@ -14,7 +15,14 @@ import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectBundle;
-import com.intellij.openapi.projectRoots.*;
+import com.intellij.openapi.projectRoots.ProjectJdkTable;
+import com.intellij.openapi.projectRoots.Sdk;
+import com.intellij.openapi.projectRoots.SdkAdditionalData;
+import com.intellij.openapi.projectRoots.SdkModel;
+import com.intellij.openapi.projectRoots.SdkModificator;
+import com.intellij.openapi.projectRoots.SdkType;
+import com.intellij.openapi.projectRoots.SdkTypeId;
+import com.intellij.openapi.projectRoots.ValidatableSdkAdditionalData;
 import com.intellij.openapi.projectRoots.impl.SdkConfigurationUtil;
 import com.intellij.openapi.projectRoots.impl.SdkUtils;
 import com.intellij.openapi.roots.ProjectRootManager;
@@ -25,8 +33,9 @@ import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.NlsContexts.ListItem;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.registry.Registry;
-import com.intellij.platform.eel.EelDescriptor;
-import com.intellij.platform.eel.provider.LocalEelDescriptor;
+import com.intellij.platform.eel.EelMachine;
+import com.intellij.platform.eel.provider.EelProviderUtil;
+import com.intellij.platform.eel.provider.LocalEelMachine;
 import com.intellij.util.ArrayUtilRt;
 import com.intellij.util.Consumer;
 import com.intellij.util.EventDispatcher;
@@ -36,16 +45,21 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import javax.swing.*;
+import javax.swing.Icon;
+import javax.swing.JComponent;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 
 import static com.intellij.openapi.util.NlsActions.ActionText;
-import static com.intellij.platform.eel.provider.EelProviderUtil.getEelDescriptor;
 
 /**
  * @author anna
@@ -91,19 +105,19 @@ public class ProjectSdksModel implements SdkModel {
   }
 
   public void syncSdks() {
-    syncSdks(LocalEelDescriptor.INSTANCE);
+    syncSdks(LocalEelMachine.INSTANCE);
   }
 
   /**
    * @param eel can be null only if the corresponding feature flag is disabled.
    */
   @ApiStatus.Internal
-  public void syncSdks(@Nullable EelDescriptor eelDescriptor) {
+  public void syncSdks(@Nullable EelMachine eelMachine) {
     final Sdk[] projectSdks = ProjectJdkTable.getInstance().getAllJdks();
     for (Sdk sdk : projectSdks) {
       if (myProjectSdks.containsKey(sdk) || myProjectSdks.containsValue(sdk)) continue;
 
-      if (eelDescriptor != null && !sdkMatchesEel(eelDescriptor, sdk)) continue;
+      if (eelMachine != null && !sdkMatchesEel(eelMachine, sdk)) continue;
 
       Sdk editableCopy;
       try {
@@ -121,37 +135,41 @@ public class ProjectSdksModel implements SdkModel {
   }
 
   @ApiStatus.Internal
-  public static boolean sdkMatchesEel(@NotNull EelDescriptor eelDescriptor, Sdk sdk) {
+  public static boolean sdkMatchesEel(@NotNull EelMachine eelMachine, Sdk sdk) {
+    if (sdk.getSdkAdditionalData() instanceof TargetBasedSdkAdditionalData) {
+      return true;
+    }
     String sdkHomePath = sdk.getHomePath();
-    return sdkMatchesEel(eelDescriptor, sdkHomePath);
+    return sdkMatchesEel(eelMachine, sdkHomePath);
   }
 
   @ApiStatus.Internal
-  public static boolean sdkMatchesEel(@NotNull EelDescriptor eelDescriptor, String sdkHomePath) {
+  public static boolean sdkMatchesEel(@NotNull EelMachine eelMachine, String sdkHomePath) {
     if (sdkHomePath != null) {
       try {
         Path path = Path.of(sdkHomePath);
-        if (getEelDescriptor(path).getMachine().equals(eelDescriptor.getMachine())) {
+        if (eelMachine.ownsPath(path)) {
           return true;
         }
       }
       catch (InvalidPathException ignored) {
         // Ignored.
+        return eelMachine == LocalEelMachine.INSTANCE;
       }
     }
     return false;
   }
 
   public void reset(@Nullable Project project) {
-    EelDescriptor eelDescriptor;
+    EelMachine eelMachine;
     if (!Registry.is("java.home.finder.use.eel")) {
-      eelDescriptor = null;
+      eelMachine = null;
     }
     else if (project != null && !project.isDefault()) {
-      eelDescriptor = getEelDescriptor(project);
+      eelMachine = EelProviderUtil.getEelMachine(project);
     }
     else {
-      eelDescriptor = LocalEelDescriptor.INSTANCE;
+      eelMachine = LocalEelMachine.INSTANCE;
     }
 
     myProjectSdks.clear();
@@ -159,7 +177,7 @@ public class ProjectSdksModel implements SdkModel {
     jdkTable.preconfigure();
     final Sdk[] projectSdks = jdkTable.getAllJdks();
     for (Sdk sdk : projectSdks) {
-      if (eelDescriptor != null && !sdkMatchesEel(eelDescriptor, sdk)) continue;
+      if (eelMachine != null && !sdkMatchesEel(eelMachine, sdk)) continue;
 
       try {
         Sdk editable = sdk.clone();
@@ -523,7 +541,7 @@ public class ProjectSdksModel implements SdkModel {
   private static @NotNull Sdk createSdkInternal(@NotNull SdkType type,
                                                 @NotNull String newSdkName,
                                                 @NotNull String home) {
-    final Sdk newJdk = SdkUtils.createSdkForEnvironment(ProjectJdkTable.getInstance(), newSdkName, type, home);
+    final Sdk newJdk = SdkUtils.createSdkForEnvironment(ProjectJdkTable.getInstance(), null, newSdkName, type, home);
     SdkModificator sdkModificator = newJdk.getSdkModificator();
     sdkModificator.setHomePath(home);
     sdkModificator.setVersionString(type.getVersionString(home));

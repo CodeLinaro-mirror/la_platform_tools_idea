@@ -14,9 +14,6 @@ import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.ex.WelcomeScreenProjectProvider
-import com.intellij.platform.ide.progress.ModalTaskOwner
-import com.intellij.platform.ide.progress.TaskCancellation
-import com.intellij.platform.ide.progress.runWithModalProgressBlocking
 import com.intellij.platform.ide.progress.withBackgroundProgress
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
@@ -32,8 +29,15 @@ import com.jetbrains.python.errorProcessing.PyResult
 import com.jetbrains.python.errorProcessing.getOr
 import com.jetbrains.python.mapResult
 import com.jetbrains.python.projectCreation.createVenvAndSdk
+import com.jetbrains.python.sdk.ModuleOrProject
 import com.jetbrains.python.sdk.pythonSdk
-import kotlinx.coroutines.*
+import com.jetbrains.python.sdk.runWithSdkConfigurationLock
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.jetbrains.annotations.ApiStatus
 import java.io.IOException
 import java.nio.file.FileAlreadyExistsException
@@ -68,10 +72,11 @@ suspend fun createMiscProject(
   systemPythonService: SystemPythonService = SystemPythonService(),
   currentProject: Project? = null,
 ): PyResult<Job> {
-  return createOrOpenProjectAndSdk(projectPath,
-                                   confirmInstallation = confirmInstallation,
-                                   systemPythonService = systemPythonService,
-                                   currentProject = currentProject,
+  return createOrOpenProjectAndSdk(
+    projectPath,
+    confirmInstallation = confirmInstallation,
+    systemPythonService = systemPythonService,
+    currentProject = currentProject,
   ).mapResult { (project, sdk) ->
     Result.Success(scopeProvider(project).launch {
       withBackgroundProgress(project, PyCharmCommunityCustomizationBundle.message("misc.project.filling.file")) {
@@ -149,7 +154,8 @@ private suspend fun createOrOpenProjectAndSdk(
   val isAlreadyMiscOrWelcomeScreenProject = currentProject != null && WelcomeScreenProjectProvider.isWelcomeScreenProject(currentProject)
   val project = if (isAlreadyMiscOrWelcomeScreenProject) {
     currentProject
-  } else {
+  }
+  else {
     openProject(projectPath)
   }
 
@@ -161,12 +167,8 @@ private suspend fun createOrOpenProjectAndSdk(
   val vfsProjectPath = createProjectDir(projectPath).getOr { return it }
   // Even if the misc project might be already opened, it might not have sdk (if it was opened as a welcome project)
   val sdkResult = withContext(Dispatchers.EDT) {
-    runWithModalProgressBlocking(
-      owner = ModalTaskOwner.guess(),
-      title = PyCharmCommunityCustomizationBundle.message("misc.project.generating.env"),
-      cancellation = TaskCancellation.cancellable()
-    ) {
-      createVenvAndSdk(project, confirmInstallation, systemPythonService, vfsProjectPath)
+    runWithSdkConfigurationLock(project) {
+      createVenvAndSdk(ModuleOrProject.ProjectOnly(project), confirmInstallation, systemPythonService, vfsProjectPath)
     }
   }
   val sdk = sdkResult.getOr(PyBundle.message("project.error.cant.venv")) { return it }

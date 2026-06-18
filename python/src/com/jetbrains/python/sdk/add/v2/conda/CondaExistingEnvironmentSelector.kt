@@ -11,19 +11,33 @@ import com.intellij.openapi.ui.ValidationInfo
 import com.intellij.openapi.ui.validation.DialogValidationRequestor
 import com.intellij.openapi.ui.validation.WHEN_PROPERTY_CHANGED
 import com.intellij.openapi.ui.validation.and
+import com.intellij.platform.util.progress.withProgressText
 import com.intellij.ui.components.ActionLink
 import com.intellij.ui.dsl.builder.Align
 import com.intellij.ui.dsl.builder.AlignX
 import com.intellij.ui.dsl.builder.Panel
 import com.intellij.ui.dsl.builder.bindItem
-import com.intellij.util.ui.JBUI
 import com.jetbrains.python.PyBundle.message
 import com.jetbrains.python.Result
 import com.jetbrains.python.conda.saveLocalPythonCondaPath
 import com.jetbrains.python.errorProcessing.PyResult
 import com.jetbrains.python.newProject.collector.InterpreterStatisticsInfo
 import com.jetbrains.python.sdk.ModuleOrProject
-import com.jetbrains.python.sdk.add.v2.*
+import com.jetbrains.python.sdk.add.v2.CondaEnvComboBoxListCellRenderer
+import com.jetbrains.python.sdk.add.v2.PathHolder
+import com.jetbrains.python.sdk.add.v2.PythonAddInterpreterModel
+import com.jetbrains.python.sdk.add.v2.PythonExistingEnvironmentConfigurator
+import com.jetbrains.python.sdk.add.v2.PythonInterpreterCreationTargets
+import com.jetbrains.python.sdk.add.v2.ValidatedPath
+import com.jetbrains.python.sdk.add.v2.ValidatedPathField
+import com.jetbrains.python.sdk.add.v2.Version
+import com.jetbrains.python.sdk.add.v2.withAdjustedWidth
+import com.jetbrains.python.sdk.add.v2.createInstallCondaFix
+import com.jetbrains.python.sdk.add.v2.displayLoaderWhen
+import com.jetbrains.python.sdk.add.v2.savePathForEelOnly
+import com.jetbrains.python.sdk.add.v2.toStatisticsField
+import com.jetbrains.python.sdk.add.v2.validatablePathField
+import com.jetbrains.python.sdk.add.v2.withExtendableTextFieldEditor
 import com.jetbrains.python.sdk.flavors.conda.PyCondaEnv
 import com.jetbrains.python.sdk.flavors.conda.PyCondaEnvIdentity
 import com.jetbrains.python.statistics.InterpreterCreationMode
@@ -93,7 +107,7 @@ internal class CondaExistingEnvironmentSelector<P : PathHolder>(model: PythonAdd
             }
             .align(Align.FILL)
             .applyToComponent {
-              preferredSize = JBUI.size(preferredSize)
+              preferredSize = preferredSize.withAdjustedWidth
             }
             .component
         }
@@ -122,7 +136,7 @@ internal class CondaExistingEnvironmentSelector<P : PathHolder>(model: PythonAdd
 
     reloadLink.action = object : AbstractAction(message("sdk.create.custom.conda.refresh.envs")) {
       override fun actionPerformed(e: ActionEvent?) {
-        model.condaViewModel.detectCondaEnvironments()
+        model.condaViewModel.detectCondaEnvironments(forceRefresh = true)
       }
     }
 
@@ -139,7 +153,9 @@ internal class CondaExistingEnvironmentSelector<P : PathHolder>(model: PythonAdd
   }
 
   override suspend fun getOrCreateSdk(moduleOrProject: ModuleOrProject): PyResult<Sdk> {
-    return model.selectCondaEnvironment(moduleOrProject, base = false)
+    return withProgressText(message("python.sdk.progress.conda.configuring")) {
+      model.selectCondaEnvironment(moduleOrProject, base = false)
+    }
   }
 
   override fun createStatisticsInfo(target: PythonInterpreterCreationTargets): InterpreterStatisticsInfo {

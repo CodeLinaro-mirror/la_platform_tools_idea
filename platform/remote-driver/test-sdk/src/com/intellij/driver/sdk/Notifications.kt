@@ -11,7 +11,14 @@ interface Notification {
   fun getContent(): String
   fun getGroupId(): String
   fun getActions(): List<AnAction>
+  fun getType(): NotificationType
+  fun hideBalloon()
 }
+
+@Remote("com.intellij.notification.NotificationType")
+interface NotificationType {
+}
+
 
 @Remote("com.intellij.notification.ActionCenter")
 interface ActionCenter {

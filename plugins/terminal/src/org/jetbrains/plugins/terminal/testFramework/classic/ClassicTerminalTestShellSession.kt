@@ -6,9 +6,9 @@ import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.SystemInfo
+import com.intellij.openapi.util.io.NioFiles
 import com.intellij.terminal.JBTerminalWidget
 import com.intellij.terminal.pty.PtyProcessTtyConnector
-import com.intellij.util.io.delete
 import com.jediterm.core.util.TermSize
 import com.pty4j.windows.conpty.WinConPtyProcess
 import org.jetbrains.annotations.ApiStatus
@@ -60,15 +60,14 @@ class ClassicTerminalTestShellSession(shellCommand: List<String>?, val widget: S
   companion object {
     private fun start(shellCommand: List<String>?, terminalWidget: JBTerminalWidget) {
       val runner = LocalTerminalDirectRunner.createTerminalRunner(terminalWidget.project)
-      val baseOptions = shellStartupOptions(terminalWidget.project.basePath) {
-        it.shellCommand = shellCommand
-      }
       val initialTermSize = TermSize(80, 50)
       val workingDirectory = Files.createTempDirectory("intellij-terminal-working-dir")
-      val configuredOptions = runner.configureStartupOptions(baseOptions).builder().modify {
+      val baseOptions = shellStartupOptions(terminalWidget.project.basePath) {
+        it.shellCommand = shellCommand
         it.initialTermSize = initialTermSize
         it.workingDirectory = workingDirectory.toString()
-      }.build()
+      }
+      val configuredOptions = runner.configureStartupOptions(baseOptions)
       val connector = runner.createTtyConnector(configuredOptions)
       val process = (connector as PtyProcessTtyConnector).process
       terminalWidget.asNewWidget().connectToTty(connector, initialTermSize)
@@ -80,7 +79,7 @@ class ClassicTerminalTestShellSession(shellCommand: List<String>?, val widget: S
         catch (t: Throwable) {
           logger<ClassicTerminalTestShellSession>().error("Error closing TtyConnector", t)
         }
-        workingDirectory.delete()
+        NioFiles.deleteRecursively(workingDirectory)
       }
 
       if (SystemInfo.isWindows) {

@@ -13,7 +13,7 @@ from ssl import (
     SSLZeroReturnError as SSLZeroReturnError,
 )
 from typing import Any, ClassVar, Final, Literal, TypedDict, final, overload, type_check_only
-from typing_extensions import NotRequired, Self, TypeAlias, deprecated
+from typing_extensions import NotRequired, Self, TypeAlias, deprecated, disjoint_base
 
 _PasswordType: TypeAlias = Callable[[], str | bytes | bytearray] | str | bytes | bytearray
 _PCTRTT: TypeAlias = tuple[tuple[str, str], ...]
@@ -55,6 +55,7 @@ if sys.version_info < (3, 12):
     def RAND_pseudo_bytes(n: int, /) -> tuple[bytes, bool]: ...
 
 if sys.version_info < (3, 10):
+    @deprecated("Unsupported by OpenSSL since 1.1.1; removed in Python 3.10.")
     def RAND_egd(path: str) -> None: ...
 
 def RAND_status() -> bool: ...
@@ -67,7 +68,7 @@ if sys.platform == "win32":
 
 def txt2obj(txt: str, name: bool = False) -> tuple[int, str, str, str]: ...
 def nid2obj(nid: int, /) -> tuple[int, str, str, str]: ...
-
+@disjoint_base
 class _SSLContext:
     check_hostname: bool
     keylog_filename: str | None
@@ -182,8 +183,8 @@ CERT_REQUIRED: Final = 2
 
 # verify flags
 VERIFY_DEFAULT: Final = 0
-VERIFY_CRL_CHECK_LEAF: Final = 0x4
-VERIFY_CRL_CHECK_CHAIN: Final = 0x8
+VERIFY_CRL_CHECK_LEAF: Final = 0x04
+VERIFY_CRL_CHECK_CHAIN: Final = 0x0C
 VERIFY_X509_STRICT: Final = 0x20
 VERIFY_X509_TRUSTED_FIRST: Final = 0x8000
 if sys.version_info >= (3, 10):
@@ -229,7 +230,7 @@ PROTOCOL_TLSv1_1: Final = 4
 PROTOCOL_TLSv1_2: Final = 5
 
 # protocol options
-OP_ALL: Final = 0x80000050
+OP_ALL: Final[int]
 OP_NO_SSLv2: Final = 0x0
 OP_NO_SSLv3: Final = 0x2000000
 OP_NO_TLSv1: Final = 0x4000000

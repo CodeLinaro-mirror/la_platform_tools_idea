@@ -1,25 +1,56 @@
 package com.intellij.terminal.backend
 
+import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.editor.impl.DocumentImpl
 import com.intellij.openapi.project.Project
+import com.intellij.platform.eel.EelDescriptor
 import com.intellij.platform.util.coroutines.childScope
 import com.intellij.platform.util.coroutines.flow.IncrementalUpdateFlowProducer
 import com.intellij.platform.util.coroutines.flow.MutableStateWithIncrementalUpdates
 import com.intellij.terminal.backend.hyperlinks.BackendTerminalHyperlinkFacade
+import com.intellij.terminal.backend.hyperlinks.TerminalHyperlinkFilterContextImpl
 import com.intellij.util.asDisposable
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.buffer
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import org.jetbrains.plugins.terminal.block.reworked.TerminalSessionModel
 import org.jetbrains.plugins.terminal.block.reworked.TerminalSessionModelImpl
 import org.jetbrains.plugins.terminal.block.ui.TerminalUiUtils
-import org.jetbrains.plugins.terminal.fus.*
+import org.jetbrains.plugins.terminal.fus.BatchLatencyReporter
+import org.jetbrains.plugins.terminal.fus.DurationAndTextLength
+import org.jetbrains.plugins.terminal.fus.ReworkedTerminalUsageCollector
+import org.jetbrains.plugins.terminal.fus.percentile
+import org.jetbrains.plugins.terminal.fus.percentileOf
+import org.jetbrains.plugins.terminal.fus.thirdLargest
+import org.jetbrains.plugins.terminal.fus.thirdLargestOf
+import org.jetbrains.plugins.terminal.fus.totalDuration
+import org.jetbrains.plugins.terminal.fus.totalDurationOf
 import org.jetbrains.plugins.terminal.session.TerminalStartupOptions
-import org.jetbrains.plugins.terminal.session.impl.*
+import org.jetbrains.plugins.terminal.session.impl.TerminalCommandFinishedEvent
+import org.jetbrains.plugins.terminal.session.impl.TerminalCommandStartedEvent
+import org.jetbrains.plugins.terminal.session.impl.TerminalContentUpdatedEvent
+import org.jetbrains.plugins.terminal.session.impl.TerminalCursorPositionChangedEvent
+import org.jetbrains.plugins.terminal.session.impl.TerminalHyperlinkClickedEvent
+import org.jetbrains.plugins.terminal.session.impl.TerminalHyperlinksHeartbeatEvent
+import org.jetbrains.plugins.terminal.session.impl.TerminalInitialStateEvent
+import org.jetbrains.plugins.terminal.session.impl.TerminalInputEvent
+import org.jetbrains.plugins.terminal.session.impl.TerminalOutputEvent
+import org.jetbrains.plugins.terminal.session.impl.TerminalPromptFinishedEvent
+import org.jetbrains.plugins.terminal.session.impl.TerminalPromptStartedEvent
+import org.jetbrains.plugins.terminal.session.impl.TerminalSessionTerminatedEvent
+import org.jetbrains.plugins.terminal.session.impl.TerminalStateChangedEvent
 import org.jetbrains.plugins.terminal.session.impl.dto.toDto
 import org.jetbrains.plugins.terminal.session.impl.dto.toTerminalState
 import org.jetbrains.plugins.terminal.view.impl.MutableTerminalOutputModel
@@ -27,6 +58,7 @@ import org.jetbrains.plugins.terminal.view.impl.MutableTerminalOutputModelImpl
 import org.jetbrains.plugins.terminal.view.impl.updateContent
 import org.jetbrains.plugins.terminal.view.shellIntegration.impl.TerminalBlocksModelImpl
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
 /**
@@ -43,6 +75,7 @@ import kotlin.time.TimeSource
 internal class StateAwareTerminalSession(
   project: Project,
   private val delegate: BackendTerminalSession,
+  eelDescriptor: EelDescriptor?,
   private val startupOptions: TerminalStartupOptions,
   override val coroutineScope: CoroutineScope,
 ) : BackendTerminalSession {
@@ -80,11 +113,14 @@ internal class StateAwareTerminalSession(
     // It is OK here to handle synchronization manually, because this document will be used only in our services.
     val outputDocument = DocumentImpl("", true)
     outputModel = MutableTerminalOutputModelImpl(outputDocument, TerminalUiUtils.getDefaultMaxOutputLength())
-    outputHyperlinkFacade = BackendTerminalHyperlinkFacade(project, hyperlinkScope, outputModel, isInAlternateBuffer = false)
+    val filterContext = eelDescriptor?.let {
+      TerminalHyperlinkFilterContextImpl(sessionModel, eelDescriptor, coroutineScope)
+    }
+    outputHyperlinkFacade = BackendTerminalHyperlinkFacade(project, hyperlinkScope, outputModel, isInAlternateBuffer = false, filterContext)
 
     val alternateBufferDocument = DocumentImpl("", true)
     alternateBufferModel = MutableTerminalOutputModelImpl(alternateBufferDocument, maxOutputLength = 0)
-    alternateBufferHyperlinkFacade = BackendTerminalHyperlinkFacade(project, hyperlinkScope, alternateBufferModel, isInAlternateBuffer = true)
+    alternateBufferHyperlinkFacade = BackendTerminalHyperlinkFacade(project, hyperlinkScope, alternateBufferModel, isInAlternateBuffer = true, filterContext)
 
     blocksModel = TerminalBlocksModelImpl(outputModel, sessionModel, coroutineScope.asDisposable())
 
@@ -142,12 +178,31 @@ internal class StateAwareTerminalSession(
   fun getHyperlinkFacade(isInAlternateBuffer: Boolean): BackendTerminalHyperlinkFacade? =
     if (isInAlternateBuffer) alternateBufferHyperlinkFacade else outputHyperlinkFacade
 
-  override suspend fun getOutputFlow(): Flow<List<TerminalOutputEvent>> = outputFlowProducer.getIncrementalUpdateFlow()
+  override suspend fun getOutputFlow(): Flow<List<TerminalOutputEvent>> {
+    return channelFlow {
+      try {
+        outputFlowProducer.getIncrementalUpdateFlow().collect { events ->
+          withTimeout(3.seconds) {
+            send(events)
+          }
+        }
+      }
+      catch (_: TimeoutCancellationException) {
+        // Downstream consumer is too slow, ending the flow to unblock the original session output flow processing.
+        // The collector should request a new flow and receive a state snapshot
+        LOG.info("Failed to emit output to the collector in 3 seconds, is there a connection problem? Terminating the output flow.")
+      }
+    }.buffer(Channel.RENDEZVOUS)
+  }
 
   override val isClosed: Boolean
     get() = delegate.isClosed
 
   override suspend fun hasRunningCommands(): Boolean = delegate.hasRunningCommands()
+
+  companion object {
+    private val LOG = logger<StateAwareTerminalSession>()
+  }
 
   private inner class State : MutableStateWithIncrementalUpdates<List<TerminalOutputEvent>> {
     override suspend fun applyUpdate(update: List<TerminalOutputEvent>): List<TerminalOutputEvent> {

@@ -22,7 +22,7 @@ def main():
     assert workspace.joinpath('WORKSPACE').exists(), 'failed to find workspace root'
 
     # Set properties not currently exposed as flags.
-    args.kotlinc_version = '2.3.255-dev-255'  # Must match BOOTSTRAP_VERSION in project-model-updater.
+    args.kotlinc_version = '2.4.255-dev-255'  # Must match BOOTSTRAP_VERSION in project-model-updater.
     args.intellij_dir = workspace.joinpath('tools/idea')
     args.kotlinc_dir = workspace.joinpath('external/jetbrains/kotlin')
     args.gradlew = args.kotlinc_dir.joinpath('gradlew')
@@ -31,10 +31,10 @@ def main():
     args.gradle_jdk_args = [
         # Unfortunately, the Kotlin compiler build requires several different JDKs.
         # We provide the JDKs from prebuilts to avoid network issues in CI (e.g. b/482057769).
-        '-Porg.gradle.java.installations.auto-download=false',
-        '-Porg.gradle.java.installations.auto-detect=false',
-        '-Porg.gradle.java.home=' + str(compute_java_home(workspace, 'jbrjdk-next')),
-        '-Porg.gradle.java.installations.paths=' + ','.join([
+        '-Dorg.gradle.java.installations.auto-download=false',
+        '-Dorg.gradle.java.installations.auto-detect=false',
+        '-Dorg.gradle.java.home=' + str(compute_java_home(workspace, 'jbrjdk-next')),
+        '-Dorg.gradle.java.installations.paths=' + ','.join([
             str(compute_java_home(workspace, 'jbrjdk-next')),
             str(compute_java_home(workspace, 'jdk17')),
             str(compute_java_home(workspace, 'jdk11')),
@@ -64,6 +64,7 @@ def build_kotlin_compiler(args):
         f'-PdeployVersion={args.kotlinc_version}',
         f'-Pbuild.number={args.kotlinc_version}',
         '-Pteamcity=true',  # Makes this a release build rather than a dev build.
+        '-Pkotlin.build.cache.local.enabled=true',  # Enables disk cache (shared across incremental CI builds).
     ]
     run_subprocess(cmd, args.cmd_env, 'Building the Kotlin compiler')
 

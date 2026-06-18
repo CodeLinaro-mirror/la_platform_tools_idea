@@ -11,7 +11,8 @@ import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
-import com.intellij.openapi.application.runInEdt
+import com.intellij.openapi.actionSystem.ActionUpdateThread
+import com.intellij.openapi.actionSystem.PlatformCoreDataKeys
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.fileEditor.FileDocumentManager
@@ -21,10 +22,17 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.openapi.ui.DialogWrapper.OK_EXIT_CODE
-import com.intellij.openapi.util.*
+import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.util.Key
+import com.intellij.openapi.util.NlsActions
+import com.intellij.openapi.util.SimpleModificationTracker
+import com.intellij.openapi.util.getOrCreateUserDataUnsafe
 import com.intellij.psi.util.CachedValueProvider
 import com.intellij.psi.util.CachedValuesManager
 import com.intellij.psi.util.ParameterizedCachedValue
+import com.intellij.python.pyproject.model.api.ModuleCreateInfo
+import com.intellij.python.pyproject.model.api.getModuleInfo
+import com.jetbrains.python.NON_INTERACTIVE_ROOT_TRACE_CONTEXT
 import com.jetbrains.python.PyBundle
 import com.jetbrains.python.run.PythonInterpreterTargetEnvironmentFactory
 import com.jetbrains.python.run.allowCreationTargetOfThisType
@@ -34,13 +42,15 @@ import com.jetbrains.python.sdk.add.collector.PythonNewInterpreterAddedCollector
 import com.jetbrains.python.sdk.add.v2.PythonAddLocalInterpreterDialog
 import com.jetbrains.python.sdk.add.v2.PythonAddLocalInterpreterPresenter
 import com.jetbrains.python.sdk.configuration.CreateSdkInfoWithTool
-import com.jetbrains.python.sdk.configuration.PyProjectSdkConfigurationExtension
 import com.jetbrains.python.target.PythonLanguageRuntimeType
 import com.jetbrains.python.util.ShowingMessageErrorSync
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.Nls
 import java.util.function.Consumer
@@ -54,6 +64,22 @@ abstract class DialogAction(
   val target: @Nls String,
 ) : AnAction(dynamicText, icon) {
   abstract fun createDialog(): DialogWrapper?
+
+  override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+
+  override fun update(e: AnActionEvent) {
+    val project = e.project ?: return
+    if (e.getData(PlatformCoreDataKeys.IS_MODAL_CONTEXT) == true) {
+      e.presentation.isEnabled = !project.isSdkConfigurationInProgress.value
+    }
+  }
+
+  final override fun actionPerformed(e: AnActionEvent) {
+    val project = e.project ?: return
+    if (e.getData(PlatformCoreDataKeys.IS_MODAL_CONTEXT) == true && project.isSdkConfigurationInProgress.value) return
+    FileDocumentManager.getInstance().saveAllDocuments()
+    createDialog()?.show()
+  }
 }
 
 @ApiStatus.Internal
@@ -93,13 +119,6 @@ internal class AddLocalInterpreterAction(
   icon = AllIcons.Nodes.HomeFolder,
   target = PyBundle.message("sdk.create.targets.local"),
 ), DumbAware {
-  override fun actionPerformed(e: AnActionEvent) {
-    runInEdt {
-      FileDocumentManager.getInstance().saveAllDocuments()
-    }
-    createDialog().show()
-  }
-
   override fun createDialog(): PythonAddLocalInterpreterDialog {
     val dialogPresenter = PythonAddLocalInterpreterPresenter(
       moduleOrProject, errorSink = ShowingMessageErrorSync, bestGuessCreateSdkInfo = bestGuessCreateSdkInfo
@@ -115,7 +134,7 @@ internal class AddLocalInterpreterAction(
 fun addLocalInterpreter(moduleOrProject: ModuleOrProject, onSdkCreated: (Sdk) -> Unit): Unit =
   createAddLocalInterpreterAction(moduleOrProject, onSdkCreated).createDialog().show()
 
-private class AddInterpreterOnTargetAction(
+internal class AddInterpreterOnTargetAction(
   private val project: Project,
   private val targetType: TargetEnvironmentType<*>,
   private val onSdkCreated: (Sdk) -> Unit,
@@ -124,12 +143,8 @@ private class AddInterpreterOnTargetAction(
   icon = targetType.icon,
   target = targetType.displayName,
 ), DumbAware {
-  override fun actionPerformed(e: AnActionEvent) {
-    createDialog()?.show()
-  }
-
   override fun createDialog(): TargetEnvironmentWizard? {
-    val wizard = TargetEnvironmentWizard.createWizard(project, targetType, PythonLanguageRuntimeType.getInstance())
+    val wizard = TargetEnvironmentWizard.createWizard(project, targetType, PythonLanguageRuntimeType.Helper.getInstance())
 
     wizard?.let {
       Disposer.register(it.disposable, Disposable {
@@ -144,27 +159,15 @@ private class AddInterpreterOnTargetAction(
     if (dialogWrapper.exitCode != OK_EXIT_CODE) return
     val sdk = (dialogWrapper.currentStepObject as? TargetCustomToolWizardStep)?.customTool as? Sdk ?: return
 
-    PythonNewInterpreterAddedCollector.logPythonNewInterpreterAdded(sdk, isPreviouslyConfigured = true)
+    service<LogCollectorService>().coroutineScope.launch(Dispatchers.Default) {
+      PythonNewInterpreterAddedCollector.logPythonNewInterpreterAdded(sdk, isPreviouslyConfigured = true)
+    }
     onSdkCreated(sdk)
   }
 }
 
-@ApiStatus.Internal
-
-fun switchToSdk(module: Module, sdk: Sdk, currentSdk: Sdk?) {
-  val project = module.project
-  (sdk.sdkType as PythonSdkType).setupSdkPaths(sdk)
-
-  removeTransferredRootsFromModulesWithInheritedSdk(project, currentSdk)
-  project.pythonSdk = sdk
-  transferRootsToModulesWithInheritedSdk(project, sdk)
-
-  removeTransferredRoots(module, currentSdk)
-  module.pythonSdk = sdk
-  transferRoots(module, sdk)
-
-  module.excludeInnerVirtualEnv(sdk)
-}
+@Service
+private class LogCollectorService(val coroutineScope: CoroutineScope)
 
 @Service(Service.Level.PROJECT)
 @ApiStatus.Internal
@@ -181,8 +184,19 @@ private class ToolDetectionService(project: Project, val coroutineScope: Corouti
     module
   )
 
+  private suspend fun detectBestToolForModule(module: Module): CreateSdkInfoWithTool? =
+    when (val i = module.getModuleInfo()) {
+      is ModuleCreateInfo.CreateSdkInfoWrapper -> CreateSdkInfoWithTool(i.createSdkInfo, i.toolId)
+      is ModuleCreateInfo.SameAs -> detectBestToolForModule(i.parentModule)
+      null -> null
+    }
+
   private fun detectBestToolAsync(module: Module): CachedValueProvider.Result<Deferred<CreateSdkInfoWithTool?>> {
-    val result = coroutineScope.async { PyProjectSdkConfigurationExtension.findAllSortedForModule(module).firstOrNull() }
+    val result = coroutineScope.async {
+      withContext(NON_INTERACTIVE_ROOT_TRACE_CONTEXT) {
+        detectBestToolForModule(module)
+      }
+    }
     result.invokeOnCompletion { getOrCreateModificationTracker(module).incModificationCount() }
     return CachedValueProvider.Result.create(result, getOrCreateModificationTracker(module))
   }

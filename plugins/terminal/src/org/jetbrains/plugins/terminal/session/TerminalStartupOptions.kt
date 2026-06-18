@@ -3,6 +3,7 @@ package org.jetbrains.plugins.terminal.session
 
 import com.intellij.util.PathUtil
 import org.jetbrains.annotations.ApiStatus
+import org.jetbrains.plugins.terminal.startup.TerminalProcessType
 
 /**
  * Options used to start the shell process.
@@ -26,6 +27,16 @@ interface TerminalStartupOptions {
    * Map of initial environment variables used to start the shell process.
    */
   val envVariables: Map<String, String>
+
+  val processType: TerminalProcessType
+
+  /**
+   * ID of the started process.
+   *
+   * Can be null if the terminal process is started remotely,
+   * for example, inside WSL or Dev Container.
+   */
+  val pid: Long?
 }
 
 /**
@@ -35,5 +46,7 @@ interface TerminalStartupOptions {
 fun TerminalStartupOptions.guessShellName(): ShellName {
   val executablePath = shellCommand.first() // it should be guaranteed that it is not empty
   val executableName = PathUtil.getFileName(executablePath)
-  return ShellName.of(executableName)
+  val extension = PathUtil.getFileExtension(executableName)
+  val shellName = if (extension != null) executableName.removeSuffix(".$extension") else executableName
+  return ShellName.of(shellName)
 }

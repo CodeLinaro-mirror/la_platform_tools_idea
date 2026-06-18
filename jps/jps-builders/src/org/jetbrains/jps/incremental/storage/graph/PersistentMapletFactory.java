@@ -14,14 +14,25 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.jps.api.GlobalOptions;
 import org.jetbrains.jps.builders.storage.BuildDataCorruptedException;
-import org.jetbrains.jps.dependency.*;
+import org.jetbrains.jps.dependency.BaseMaplet;
+import org.jetbrains.jps.dependency.ComparableTypeExternalizer;
+import org.jetbrains.jps.dependency.Enumerator;
+import org.jetbrains.jps.dependency.Externalizer;
+import org.jetbrains.jps.dependency.Maplet;
+import org.jetbrains.jps.dependency.MapletFactory;
+import org.jetbrains.jps.dependency.MultiMaplet;
+import org.jetbrains.jps.dependency.Usage;
 import org.jetbrains.jps.dependency.impl.CachingMaplet;
 import org.jetbrains.jps.dependency.impl.CachingMultiMaplet;
 import org.jetbrains.jps.dependency.impl.GraphDataInputImpl;
 import org.jetbrains.jps.dependency.impl.GraphDataOutputImpl;
 import org.jetbrains.jps.util.Iterators;
 
-import java.io.*;
+import java.io.Closeable;
+import java.io.DataInput;
+import java.io.DataOutput;
+import java.io.File;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -30,7 +41,20 @@ import java.util.Set;
 import java.util.function.Function;
 
 public final class PersistentMapletFactory implements MapletFactory, Closeable {
-  private static final int BASE_CACHE_SIZE = 512 * (SystemProperties.getBooleanProperty(GlobalOptions.COMPILE_PARALLEL_OPTION, false)? 2 : 1);
+  /**
+   * Option to override base cache size for all factory-created containers.
+   * Defines the minimal number of cached map entries for every map created by this factory. The effective cache size value can be greater depending on current heap size.
+   * Larger graphs may require this adjustment to let the working set of nodes fit in memory.
+   * Expected any integer value greater than zero.
+   */
+  public static final String DEPENDENCY_GRAPH_BASE_CACHE_SIZE = "jps.dependency.graph.base.cache.size";
+
+  private static final int BASE_CACHE_SIZE;
+  static {
+    int cacheSizeOverride = SystemProperties.getIntProperty(DEPENDENCY_GRAPH_BASE_CACHE_SIZE, 0);
+    BASE_CACHE_SIZE = cacheSizeOverride > 0? cacheSizeOverride : 512 * (SystemProperties.getBooleanProperty(GlobalOptions.COMPILE_PARALLEL_OPTION, false)? 2 : 1);
+  }
+  
   private final String myRootDirPath;
   private final PersistentStringEnumerator myStringTable;
   private final List<BaseMaplet<?>> myMaps = new ArrayList<>();
@@ -75,7 +99,7 @@ public final class PersistentMapletFactory implements MapletFactory, Closeable {
   }
 
   @Override
-  public <K, V> MultiMaplet<K, V> createSetMultiMaplet(String storageName, Externalizer<K> keyExternalizer, Externalizer<V> valueExternalizer) {
+  public <K, V> MultiMaplet<K, V> createSetMultiMaplet(String storageName, ComparableTypeExternalizer<K> keyExternalizer, ComparableTypeExternalizer<V> valueExternalizer) {
     PersistentMultiMaplet<K, V, Set<V>> maplet = new PersistentMultiMaplet<>(
       getMapFile(storageName), new GraphKeyDescriptor<>(keyExternalizer, myEnumerator, null), new GraphDataExternalizer<>(valueExternalizer, myEnumerator, myDataInterner), HashSet::new
     );
@@ -85,7 +109,7 @@ public final class PersistentMapletFactory implements MapletFactory, Closeable {
   }
 
   @Override
-  public <K, V> Maplet<K, V> createMaplet(String storageName, Externalizer<K> keyExternalizer, Externalizer<V> valueExternalizer) {
+  public <K, V> Maplet<K, V> createMaplet(String storageName, ComparableTypeExternalizer<K> keyExternalizer, ComparableTypeExternalizer<V> valueExternalizer) {
     Maplet<K, V> container = new CachingMaplet<>(
       new PersistentMaplet<>(getMapFile(storageName), new GraphKeyDescriptor<>(keyExternalizer, myEnumerator, null), new GraphDataExternalizer<>(valueExternalizer, myEnumerator, myDataInterner)),
       myCacheSize

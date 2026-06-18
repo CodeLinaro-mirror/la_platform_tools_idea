@@ -25,7 +25,7 @@ public final class PyCallableParameterListTypeImpl implements PyCallableParamete
     return String.format("[%s]",
                          StringUtil.join(myParameters, param -> {
                                            PyType type = param.getType(context);
-                                           return type != null ? type.getName() : PyNames.UNKNOWN_TYPE;
+                                           return type != null ? type.getName() : PyNames.ANY_TYPE;
                                          },
                                          ", "));
   }
@@ -41,6 +41,11 @@ public final class PyCallableParameterListTypeImpl implements PyCallableParamete
   @Override
   public int hashCode() {
     return Objects.hash(myParameters);
+  }
+
+  @Override
+  public String toString() {
+    return "PyCallableParameterListType: " + getName();
   }
 
   @Override

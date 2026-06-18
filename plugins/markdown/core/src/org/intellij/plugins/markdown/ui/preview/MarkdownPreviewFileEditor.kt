@@ -1,10 +1,7 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.intellij.plugins.markdown.ui.preview
 
 import com.intellij.ide.DataManager
-import com.intellij.notification.Notification
-import com.intellij.notification.NotificationType
-import com.intellij.notification.Notifications
 import com.intellij.openapi.actionSystem.DataKey
 import com.intellij.openapi.actionSystem.ex.ActionUtil
 import com.intellij.openapi.actionSystem.impl.SimpleDataContext
@@ -33,8 +30,11 @@ import com.intellij.util.concurrency.annotations.RequiresEdt
 import com.intellij.util.ui.StartupUiUtil
 import com.intellij.util.ui.UIUtil
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import org.intellij.plugins.markdown.MarkdownBundle
@@ -51,6 +51,7 @@ import java.awt.event.ComponentEvent
 import java.awt.event.MouseEvent
 import java.beans.PropertyChangeListener
 import java.lang.ref.WeakReference
+import java.util.concurrent.atomic.AtomicReference
 import javax.swing.JComponent
 import javax.swing.JPanel
 
@@ -74,10 +75,21 @@ class MarkdownPreviewFileEditor(
 
   private val coroutineScope = MarkdownPluginScope.createChildScope(project)
 
+  /**
+   * [updateHtml] performs heavy calculations,
+   * this field is responsible for debouncing: only one calculation is allowed simultaneously
+   */
+  private val updateHtmlInProgress = AtomicReference<Job>()
+
   init {
     document.addDocumentListener(ReparseContentDocumentListener(), this)
 
-    coroutineScope.launch(Dispatchers.EDT) { attachHtmlPanel() }
+    coroutineScope.launch {
+      mainEditor.filterNotNull().first()
+      coroutineScope.launch(Dispatchers.EDT) {
+        attachHtmlPanel()
+      }
+    }
 
     val messageBusConnection = project.messageBus.connect(this)
     val settingsChangedListener = UpdatePanelOnSettingsChangedListener()
@@ -135,6 +147,7 @@ class MarkdownPreviewFileEditor(
   fun setMainEditor(editor: Editor) {
     check(mainEditor.value == null)
     mainEditor.value = editor
+    logger.info("MarkdownPreviewFileEditor: the main editor has been set")
     if (Registry.`is`("markdown.experimental.boundary.precise.scroll.enable")) {
       coroutineScope.launch { setupScrollHelper() }
     }
@@ -180,6 +193,7 @@ class MarkdownPreviewFileEditor(
     if (panel != null) {
       detachHtmlPanel()
     }
+    cancelHtmlUpdate()
     isDisposed = true
     coroutineScope.cancel()
   }
@@ -204,7 +218,12 @@ class MarkdownPreviewFileEditor(
   }
 
   @RequiresEdt
-  private suspend fun updateHtml() {
+  private fun updateHtml() {
+    cancelHtmlUpdate()
+    startHtmlUpdate()
+  }
+
+  private suspend fun doUpdateHtml() {
     logger.info("MarkdownPreviewFileEditor: updateHtml")
     val panel = this.panel ?: run {
       logger.warn("MarkdownPreviewFileEditor: panel is null, cannot update preview")
@@ -224,14 +243,22 @@ class MarkdownPreviewFileEditor(
     val settings = MarkdownSettings.getInstance(project)
     val textPreprocessor = retrievePanelProvider(settings).sourceTextPreprocessor
     lastRenderedHtml = readAction {
-      textPreprocessor.preprocessText(project, document, file)
+      val text = textPreprocessor.preprocessText(project, document, file)
+      logger.info("MarkdownPreviewFileEditor: readAction finished")
+      text
     }
 
-    val editor = mainEditor.firstOrNull() ?: return
+    val editor = mainEditor.firstOrNull() ?: run {
+      logger.warn("MarkdownPreviewFileEditor: editor is null, cannot update preview")
+      return
+    }
+
     writeIntentReadAction {
       val offset = editor.caretModel.offset
       val line = editor.document.getLineNumber(offset)
+      logger.info("MarkdownPreviewFileEditor: setHtml length: ${lastRenderedHtml.length}, offset: $offset, line: $line")
       panel.setHtml(lastRenderedHtml, offset, line, file)
+      logger.info("MarkdownPreviewFileEditor: setHtml finished")
     }
   }
 
@@ -247,7 +274,7 @@ class MarkdownPreviewFileEditor(
   }
 
   @RequiresEdt
-  private suspend fun attachHtmlPanel() {
+  private fun attachHtmlPanel() {
     logger.info("MarkdownPreviewFileEditor: attachHtmlPanel")
     val settings = MarkdownSettings.getInstance(project)
     val panelProvider = retrievePanelProvider(settings)
@@ -263,8 +290,22 @@ class MarkdownPreviewFileEditor(
 
   private inner class ReparseContentDocumentListener : DocumentListener {
     override fun documentChanged(event: DocumentEvent) {
-      coroutineScope.launch(Dispatchers.EDT) { updateHtml() }
+      updateHtml()
     }
+  }
+
+  private fun startHtmlUpdate() {
+    val job = coroutineScope.launch(Dispatchers.EDT) {
+      doUpdateHtml()
+    }
+    val set = updateHtmlInProgress.compareAndSet(null, job)
+    if (!set) {
+      job.cancel()
+    }
+  }
+
+  private fun cancelHtmlUpdate() {
+    updateHtmlInProgress.getAndSet(null)?.cancel()
   }
 
   private inner class AttachPanelOnVisibilityChangeListener : ComponentAdapter() {

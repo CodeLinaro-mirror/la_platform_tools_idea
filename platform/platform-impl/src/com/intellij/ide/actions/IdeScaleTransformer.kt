@@ -1,9 +1,15 @@
 // Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.ide.actions
 
+import com.intellij.ide.AppLifecycleListener
 import com.intellij.ide.IdeBundle
 import com.intellij.ide.actions.ui.ideScaleIndicator.IdeScaleIndicatorManager
-import com.intellij.ide.ui.*
+import com.intellij.ide.ui.LafManager
+import com.intellij.ide.ui.UISettings
+import com.intellij.ide.ui.UISettingsListener
+import com.intellij.ide.ui.UISettingsUtils
+import com.intellij.ide.ui.percentStringValue
+import com.intellij.ide.ui.percentValue
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.components.serviceIfCreated
@@ -177,9 +183,14 @@ internal class IdeScaleTransformer {
   }
 }
 
-private class IdeScalePostStartupActivity : ProjectActivity {
-  override suspend fun execute(project: Project) {
+internal class IdeScaleAppLifecycleListener : AppLifecycleListener {
+  override fun appFrameCreated(commandLineArgs: List<String?>) {
     IdeScaleTransformer.getInstance().setupLastSetScale()
+  }
+}
+
+internal class IdeScalePostStartupActivity : ProjectActivity {
+  override suspend fun execute(project: Project) {
     IdeScaleIndicatorManager.getInstance(project)
   }
 }

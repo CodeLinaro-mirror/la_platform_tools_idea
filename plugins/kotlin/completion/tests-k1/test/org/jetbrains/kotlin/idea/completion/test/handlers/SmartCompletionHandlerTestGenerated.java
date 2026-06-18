@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package org.jetbrains.kotlin.idea.completion.test.handlers;
 
@@ -119,6 +119,35 @@ public abstract class SmartCompletionHandlerTestGenerated extends AbstractSmartC
         @TestMetadata("Simple.kt")
         public void testSimple() throws Exception {
             runTest("../testData/handlers/smart/suspendLambdaSignature/Simple.kt");
+        }
+    }
+
+    @RunWith(JUnit3RunnerWithInners.class)
+    @TestMetadata("../testData/handlers/smart/throwables")
+    public static class Throwables extends AbstractSmartCompletionHandlerTest {
+        @java.lang.Override
+        @org.jetbrains.annotations.NotNull
+        public final KotlinPluginMode getPluginMode() {
+            return KotlinPluginMode.K1;
+        }
+
+        private void runTest(String testDataFilePath) throws Exception {
+            KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
+        }
+
+        @TestMetadata("ThrowableFromJava.kt")
+        public void testThrowableFromJava() throws Exception {
+            runTest("../testData/handlers/smart/throwables/ThrowableFromJava.kt");
+        }
+
+        @TestMetadata("ThrowableFromStdlib.kt")
+        public void testThrowableFromStdlib() throws Exception {
+            runTest("../testData/handlers/smart/throwables/ThrowableFromStdlib.kt");
+        }
+
+        @TestMetadata("ThrowableWithoutArguments.kt")
+        public void testThrowableWithoutArguments() throws Exception {
+            runTest("../testData/handlers/smart/throwables/ThrowableWithoutArguments.kt");
         }
     }
 
@@ -600,6 +629,11 @@ public abstract class SmartCompletionHandlerTestGenerated extends AbstractSmartC
             runTest("../testData/handlers/smart/MultipleArgsIntoBrackets.kt");
         }
 
+        @TestMetadata("MultipleArgsIntoBracketsWithComma.kt")
+        public void testMultipleArgsIntoBracketsWithComma() throws Exception {
+            runTest("../testData/handlers/smart/MultipleArgsIntoBracketsWithComma.kt");
+        }
+
         @TestMetadata("MultipleArgsItem.kt")
         public void testMultipleArgsItem() throws Exception {
             runTest("../testData/handlers/smart/MultipleArgsItem.kt");
@@ -608,6 +642,26 @@ public abstract class SmartCompletionHandlerTestGenerated extends AbstractSmartC
         @TestMetadata("MultipleArgsItemByTab.kt")
         public void testMultipleArgsItemByTab() throws Exception {
             runTest("../testData/handlers/smart/MultipleArgsItemByTab.kt");
+        }
+
+        @TestMetadata("MultipleArgsWithComma.kt")
+        public void testMultipleArgsWithComma() throws Exception {
+            runTest("../testData/handlers/smart/MultipleArgsWithComma.kt");
+        }
+
+        @TestMetadata("MultipleArgsWithExistingBracket.kt")
+        public void testMultipleArgsWithExistingBracket() throws Exception {
+            runTest("../testData/handlers/smart/MultipleArgsWithExistingBracket.kt");
+        }
+
+        @TestMetadata("MultipleArgsWithExistingParen.kt")
+        public void testMultipleArgsWithExistingParen() throws Exception {
+            runTest("../testData/handlers/smart/MultipleArgsWithExistingParen.kt");
+        }
+
+        @TestMetadata("MultipleArgsWithTwoMatching.kt")
+        public void testMultipleArgsWithTwoMatching() throws Exception {
+            runTest("../testData/handlers/smart/MultipleArgsWithTwoMatching.kt");
         }
 
         @TestMetadata("NamedArgument1.kt")

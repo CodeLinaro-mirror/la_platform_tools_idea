@@ -30,7 +30,8 @@ import com.jetbrains.python.packaging.management.ui.PythonPackageManagerUI
 import com.jetbrains.python.packaging.management.ui.installPyRequirementsBackground
 import com.jetbrains.python.packaging.pip.PipPythonPackageManager
 import com.jetbrains.python.sdk.PythonSdkType
-import com.jetbrains.python.sdk.configuration.PyProjectSdkConfiguration
+import com.jetbrains.python.sdk.configurePythonSdk
+import com.jetbrains.python.venvReader.VirtualEnvReader
 import java.io.IOException
 import java.nio.file.Path
 import kotlin.io.path.exists
@@ -76,7 +77,7 @@ private class SetupPythonInterpreterStep(
   }
 
   private fun configureSdk(): Sdk? {
-    val projectLocalVenvDir = Path.of(project.basePath ?: error("Project path is not found")).resolve(".venv")
+    val projectLocalVenvDir = Path.of(project.basePath ?: error("Project path is not found")).resolve(VirtualEnvReader.DEFAULT_VIRTUALENV_DIRNAME)
     val existingSdkPath = providedSdkPath() ?: projectLocalVenvSdkPath(projectLocalVenvDir)
 
     val sdkPath =
@@ -131,7 +132,7 @@ private class SetupPythonInterpreterStep(
         for (module in ModuleManager.getInstance(project).modules) {
           @Suppress("HardCodedStringLiteral")
           runWithModalProgressBlocking(project, "Set Sdk") {
-            PyProjectSdkConfiguration.setReadyToUseSdk(project, module, sdk)
+            configurePythonSdk(project, module, sdk)
           }
         }
 

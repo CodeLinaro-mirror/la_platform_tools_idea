@@ -3,17 +3,24 @@
 
 package com.intellij.java.workspace.entities
 
-import com.intellij.platform.workspace.storage.*
+import com.intellij.platform.workspace.storage.EntitySource
+import com.intellij.platform.workspace.storage.EntityType
+import com.intellij.platform.workspace.storage.GeneratedCodeApiVersion
+import com.intellij.platform.workspace.storage.MutableEntityStorage
+import com.intellij.platform.workspace.storage.WorkspaceEntity
+import com.intellij.platform.workspace.storage.WorkspaceEntityBuilder
 import com.intellij.platform.workspace.storage.annotations.Parent
 
 @GeneratedCodeApiVersion(3)
-interface ArtifactOutputPackagingElementEntityBuilder : WorkspaceEntityBuilder<ArtifactOutputPackagingElementEntity>, PackagingElementEntity.Builder<ArtifactOutputPackagingElementEntity> {
+interface ArtifactOutputPackagingElementEntityBuilder : WorkspaceEntityBuilder<ArtifactOutputPackagingElementEntity>,
+                                                        PackagingElementEntity.Builder<ArtifactOutputPackagingElementEntity> {
   override var entitySource: EntitySource
   override var parentEntity: CompositePackagingElementEntityBuilder<out CompositePackagingElementEntity>?
   var artifact: ArtifactId?
 }
 
-internal object ArtifactOutputPackagingElementEntityType : EntityType<ArtifactOutputPackagingElementEntity, ArtifactOutputPackagingElementEntityBuilder>() {
+internal object ArtifactOutputPackagingElementEntityType :
+  EntityType<ArtifactOutputPackagingElementEntity, ArtifactOutputPackagingElementEntityBuilder>() {
   override val entityClass: Class<ArtifactOutputPackagingElementEntity> get() = ArtifactOutputPackagingElementEntity::class.java
   operator fun invoke(
     entitySource: EntitySource,

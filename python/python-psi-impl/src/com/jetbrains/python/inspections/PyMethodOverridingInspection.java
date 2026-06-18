@@ -23,7 +23,10 @@ public final class PyMethodOverridingInspection extends PyInspection {
   public @NotNull PsiElementVisitor buildVisitor(@NotNull ProblemsHolder holder,
                                                  boolean isOnTheFly,
                                                  @NotNull LocalInspectionToolSession session) {
-    return new Visitor(holder, PyInspectionVisitor.getContext(session));
+    TypeEvalContext context = PyInspectionVisitor.getContext(session);
+    Visitor visitor = new Visitor(holder, context);
+    visitor.downgradeHighlightForTypeEngine = context.getUsesExternalTypeEngine();
+    return visitor;
   }
 
   public static class Visitor extends PyInspectionVisitor {
@@ -47,9 +50,10 @@ public final class PyMethodOverridingInspection extends PyInspection {
           if (!PyUtil.isSignatureCompatibleTo(function, baseMethod, myTypeEvalContext)) {
             final PyClass baseClass = baseMethod.getContainingClass();
             final String msg = PyPsiBundle.message("INSP.signature.mismatch",
-                                                cls.getName() + "." + function.getName() + "()",
-                                                baseClass != null ? baseClass.getName() : "");
-            registerProblem(function.getParameterList(), msg, PythonUiService.getInstance().createPyChangeSignatureQuickFixForMismatchingMethods(function, baseMethod));
+                                                   cls.getName() + "." + function.getName() + "()",
+                                                   baseClass != null ? baseClass.getName() : "");
+            registerProblem(function.getParameterList(), msg,
+                            PythonUiService.getInstance().createPyChangeSignatureQuickFixForMismatchingMethods(function, baseMethod));
           }
         }
       }

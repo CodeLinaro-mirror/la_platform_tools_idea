@@ -1,3 +1,9 @@
+### auto-generated section `iml intellij.kotlin.maven` start
+exports_files([
+  "intellij.kotlin.maven.iml",
+], visibility = ["//visibility:public"])
+### auto-generated section `iml intellij.kotlin.maven` end
+
 ### auto-generated section `build intellij.kotlin.maven` start
 load("@rules_jvm//:jvm.bzl", "jvm_library", "resourcegroup")
 
@@ -37,6 +43,7 @@ jvm_library(
     "//plugins/kotlin/base/analysis",
     "//plugins/kotlin/base/code-insight",
     "//plugins/kotlin/base/statistics",
+    "//xml/xml-analysis-api:analysis",
     "//plugins/kotlin/code-insight/descriptions",
     "//plugins/kotlin/project-configuration",
     "//plugins/kotlin/formatter",
@@ -53,6 +60,8 @@ jvm_library(
     "//platform/backend/observation",
     "//platform/util/progress",
     "//platform/vcs-api/vcs-api-core:vcs-core",
+    "//platform/statistics",
+    "@lib//:kotlinc-allopen-compiler-plugin",
   ]
 )
 ### auto-generated section `build intellij.kotlin.maven` end

@@ -1,8 +1,11 @@
 package com.intellij.grazie.text;
 
+import ai.grazie.gec.model.problem.ActionSuggestion;
 import ai.grazie.gec.model.problem.Problem;
 import ai.grazie.gec.model.problem.ProblemFix;
+import ai.grazie.gec.model.problem.SuppressableKind;
 import ai.grazie.nlp.langs.Language;
+import ai.grazie.nlp.langs.LanguageISO;
 import ai.grazie.rules.Example;
 import ai.grazie.rules.MatchingResult;
 import ai.grazie.rules.NodeRuleMatch;
@@ -14,8 +17,6 @@ import ai.grazie.rules.settings.RuleSetting;
 import ai.grazie.rules.settings.Setting;
 import ai.grazie.rules.settings.TextStyle;
 import ai.grazie.rules.toolkit.LanguageToolkit;
-import ai.grazie.rules.tree.ActionSuggestion;
-import ai.grazie.rules.tree.NodeMatch.SuppressableKind;
 import ai.grazie.rules.tree.Parameter;
 import ai.grazie.rules.tree.Tree;
 import ai.grazie.rules.tree.Tree.ParameterValues;
@@ -26,6 +27,7 @@ import com.intellij.grazie.GrazieConfig;
 import com.intellij.grazie.ide.inspection.ai.RephraseAction;
 import com.intellij.grazie.ide.inspection.auto.AutoFix;
 import com.intellij.grazie.ide.ui.configurable.StyleConfigurable;
+import com.intellij.grazie.jlanguage.Lang;
 import com.intellij.grazie.rule.ParsedSentence;
 import com.intellij.grazie.rule.RuleIdeClient;
 import com.intellij.grazie.rule.SentenceBatcher;
@@ -38,7 +40,9 @@ import com.intellij.grazie.utils.Text;
 import com.intellij.grazie.utils.TextStyleDomain;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Attachment;
+import com.intellij.openapi.diagnostic.AttachmentFactory;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.diagnostic.RuntimeExceptionWithAttachments;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.util.TextRange;
@@ -55,11 +59,18 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.net.URL;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import static com.intellij.grazie.text.GrazieProblem.getQuickFixText;
 import static com.intellij.grazie.text.GrazieProblem.visualizeSpace;
@@ -236,7 +247,7 @@ public final class TreeRuleChecker {
       List<MatchingResult> mrs = new ArrayList<>(rules.size());
       for (var rule : rules) {
         ProgressManager.checkCanceled();
-        mrs.add(rule.match(List.of(tree)));
+        mrs.add(rule.match(tree));
       }
       return MatchingResult.concat(mrs);
     });
@@ -244,20 +255,13 @@ public final class TreeRuleChecker {
 
   private static ParameterValues calcParameters(List<ParsedSentence> sentences) {
     var parameters = new HashMap<String, String>();
-    var ltLanguage = sentences.getFirst().tree.language();
     Language language = sentences.getFirst().tree.treeSupport().getGrazieLanguage();
     TextContent content = sentences.getFirst().extractedText;
     LanguageToolkit toolkit = LanguageToolkit.forLanguage(language);
     toolkit.allParameters(RuleIdeClient.INSTANCE).forEach(p -> parameters.put(p.id(), getParamValue(p, language, content)));
-    if (language == Language.ENGLISH || language == Language.GERMAN) {
-      String[] countries = ltLanguage.getCountries();
-      if (countries.length > 0) {
-        String variant = countries[0];
-        if (language == Language.ENGLISH && variant.equals("GB") && GrazieConfig.Companion.get().getUseOxfordSpelling()) {
-          variant = ChangeLanguageVariant.BRITISH_OXFORD_ID;
-        }
-        parameters.put(Parameter.LANGUAGE_VARIANT, variant);
-      }
+    String variant = getLanguageVariant(language);
+    if (variant != null) {
+      parameters.put(Parameter.LANGUAGE_VARIANT, variant);
     }
     return new ParameterValues(parameters);
   }
@@ -273,6 +277,28 @@ public final class TreeRuleChecker {
       return param.defaultValue(textStyle, RuleIdeClient.INSTANCE).id();
     }
     return value;
+  }
+
+  private static @Nullable String getLanguageVariant(Language language) {
+    Lang lang = HighlightingUtil.findInstalledLang(language);
+    if (lang == null) return null;
+    return getLanguageVariant(lang);
+  }
+
+  public static @Nullable String getLanguageVariant(Lang lang) {
+    var ltLanguage = lang.getJLanguage();
+    if (ltLanguage == null) return null;
+    if (lang.getIso() == LanguageISO.EN || lang.getIso() == LanguageISO.DE) {
+      String[] countries = ltLanguage.getCountries();
+      if (countries.length > 0) {
+        String variant = countries[0];
+        if (lang.getIso() == LanguageISO.EN && variant.equals("GB") && GrazieConfig.Companion.get().getUseOxfordSpelling()) {
+          variant = ChangeLanguageVariant.BRITISH_OXFORD_ID;
+        }
+        return variant;
+      }
+    }
+    return null;
   }
 
   public static List<TreeProblem> checkTextLevelProblems(PsiFile file) {
@@ -497,9 +523,23 @@ public final class TreeRuleChecker {
         // later these rules should be disabled by default in the corresponding writing style profiles
         return null;
       }
-      return match.asciiContextFixes(fullText);
+      try {
+        return match.asciiContextFixes(fullText);
+      } catch (StringIndexOutOfBoundsException e) {
+        throw new RuntimeExceptionWithAttachments(e, toAttachment(content, fullText));
+      }
     }
     return match.problemFixes();
+  }
+
+  private static Attachment toAttachment(TextContent content, String fullText) {
+    PsiFile file = content.getContainingFile();
+    return AttachmentFactory.createContext(
+      "File type: " + file.getViewProvider().getVirtualFile().getFileType() + "\n" +
+      "File language: " + file.getLanguage() + "\n" +
+      "File name: " + file.getName() + "\n" +
+      "Content: " + fullText
+    );
   }
 
   private static boolean isAsciiContext(TextContent text) {
@@ -554,14 +594,19 @@ public final class TreeRuleChecker {
 
     @Override
     public @NotNull List<LocalQuickFix> getCustomFixes() {
-      return ContainerUtil.concat(customFixes, ContainerUtil.mapNotNull(match.actions(), sug -> {
-        if (sug instanceof ActionSuggestion.ChangeParameter(Parameter parameter, String suggestedValue, String quickFixText)) {
-          if (parameter.id().equals(Parameter.LANGUAGE_VARIANT)) {
-            return ChangeLanguageVariant.create(match.rule().language(), Objects.requireNonNull(suggestedValue), quickFixText);
+      if (getSource().getActionSuggestions() == null) return customFixes;
+      return ContainerUtil.concat(customFixes, ContainerUtil.mapNotNull(getSource().getActionSuggestions(), sug -> {
+        if (sug instanceof ActionSuggestion.ChangeParameter parameter) {
+          if (parameter.getParameterId().endsWith(Parameter.LANGUAGE_VARIANT)) {
+            return ChangeLanguageVariant.create(
+              match.rule().language(),
+              Objects.requireNonNull(parameter.getSuggestedValue()).getId(),
+              parameter.getQuickFixText()
+            );
           }
-          return new ConfigureSuggestedParameter(parameter, domain, match.rule().language(), quickFixText);
+          return new ConfigureSuggestedParameter(parameter, domain, match.rule().language(), parameter.getQuickFixText());
         }
-        if (sug == ActionSuggestion.REPHRASE) {
+        if (sug == ActionSuggestion.RephraseAround.INSTANCE) {
           return new RephraseAction();
         }
         return null;
@@ -575,7 +620,7 @@ public final class TreeRuleChecker {
     @Override
     public boolean fitsGroup(@NotNull RuleGroup group) {
       Set<String> rules = group.getRules();
-      SuppressableKind kind = match.suppressableKind();
+      SuppressableKind kind = getSource().getSuppressableKind();
       if (rules.contains(RuleGroup.INCOMPLETE_SENTENCE) && kind == SuppressableKind.INCOMPLETE_SENTENCE) {
         return true;
       }
@@ -604,30 +649,21 @@ public final class TreeRuleChecker {
     public boolean shouldSuppressInCodeLikeFragments() {
       return match.rule().shouldSuppressInCodeLikeFragments();
     }
-  }
-
-  public static class DocProblemFilter extends ProblemFilter {
-    private static final Pattern PY_DOC_PARAM = Pattern.compile("[a-z0-9_]+\\s*:\\s+\\p{L}+( or \\p{L}+)*");
 
     @Override
-    public boolean shouldIgnore(@NotNull TextProblem problem) {
-      TextContent text = problem.getText();
-      if (text.getDomain() == TextDomain.DOCUMENTATION) {
-        List<TextRange> ranges = problem.getHighlightRanges();
-        String psiClass = text.getCommonParent().getClass().getName();
+    public @NotNull TreeProblem copyWithProblemFixes(@NotNull List<ProblemFix> fixes) {
+      return new TreeProblem(copyWithFixes(getSource(), fixes), getRule(), getText(), match, customFixes);
+    }
 
-        //todo remove after https://youtrack.jetbrains.com/issue/PY-59061 is fixed
-        if (psiClass.equals("com.jetbrains.python.psi.impl.PyStringLiteralExpressionImpl")) {
-          Matcher matcher = PY_DOC_PARAM.matcher(text);
-          while (matcher.find()) {
-            if (ContainerUtil.exists(ranges, r -> r.intersects(matcher.start(), matcher.end()))) {
-              return true;
-            }
-          }
-        }
-      }
+    @Override
+    public @NotNull GrazieProblem copyWithHighlighting(ai.grazie.text.@NotNull TextRange @NotNull [] always,
+                                                       ai.grazie.text.@NotNull TextRange @NotNull [] onHover) {
+      return new TreeProblem(copyWithHighlighting(getSource(), always, onHover), getRule(), getText(), match, customFixes);
+    }
 
-      return false;
+    @Override
+    public @NotNull GrazieProblem copyWithInfoAndMessage(Problem.@NotNull KindInfo info, @NotNull String message) {
+      return new TreeProblem(copyWithInfoAndMessage(getSource(), info, message), getRule(), getText(), match, customFixes);
     }
   }
 }

@@ -4,7 +4,7 @@ from collections.abc import Callable, Generator, Iterable, Sequence
 from re import Pattern
 from token import *
 from typing import Any, Final, NamedTuple, TextIO, type_check_only
-from typing_extensions import TypeAlias
+from typing_extensions import TypeAlias, disjoint_base
 
 if sys.version_info < (3, 12):
     # Avoid double assignment to Final name by imports, which pyright objects to.
@@ -115,9 +115,16 @@ class _TokenInfo(NamedTuple):
     end: _Position
     line: str
 
-class TokenInfo(_TokenInfo):
-    @property
-    def exact_type(self) -> int: ...
+if sys.version_info >= (3, 12):
+    class TokenInfo(_TokenInfo):
+        @property
+        def exact_type(self) -> int: ...
+
+else:
+    @disjoint_base
+    class TokenInfo(_TokenInfo):
+        @property
+        def exact_type(self) -> int: ...
 
 # Backwards compatible tokens can be sequences of a shorter length too
 _Token: TypeAlias = TokenInfo | Sequence[int | str | _Position]
@@ -144,8 +151,8 @@ class Untokenizer:
 # Returns str, unless the ENCODING token is present, in which case it returns bytes.
 def untokenize(iterable: Iterable[_Token]) -> str | Any: ...
 def detect_encoding(readline: Callable[[], bytes | bytearray]) -> tuple[str, Sequence[bytes]]: ...
-def tokenize(readline: Callable[[], bytes | bytearray]) -> Generator[TokenInfo, None, None]: ...
-def generate_tokens(readline: Callable[[], str]) -> Generator[TokenInfo, None, None]: ...
+def tokenize(readline: Callable[[], bytes | bytearray]) -> Generator[TokenInfo]: ...
+def generate_tokens(readline: Callable[[], str]) -> Generator[TokenInfo]: ...
 def open(filename: FileDescriptorOrPath) -> TextIO: ...
 def group(*choices: str) -> str: ...  # undocumented
 def any(*choices: str) -> str: ...  # undocumented

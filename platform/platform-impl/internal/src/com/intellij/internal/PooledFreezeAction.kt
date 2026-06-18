@@ -11,7 +11,11 @@ import com.intellij.ui.dsl.builder.bind
 import com.intellij.ui.dsl.builder.bindIntText
 import com.intellij.ui.dsl.builder.panel
 import com.intellij.util.io.blockingDispatcher
-import kotlinx.coroutines.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.seconds
 
 internal class PooledFreezeAction : DumbAwareAction("Freeze pooled threads") {
@@ -23,7 +27,7 @@ internal class PooledFreezeAction : DumbAwareAction("Freeze pooled threads") {
     var ioDispatcher = false
     val ui = panel {
       row("Duration in seconds:") {
-        intTextField(IntRange(1, 300))
+        intTextField(IntRange(1, 100000))
           .bindIntText({ seconds }, { seconds = it })
       }
       buttonsGroup("Dispatcher:") {
@@ -35,13 +39,14 @@ internal class PooledFreezeAction : DumbAwareAction("Freeze pooled threads") {
     }
 
     if (dialog("Set Freeze Duration", ui).showAndGet()) {
-      val freezeScope = GlobalScope.childScope("FreezeScope")
+      val freezeScope = e.coroutineScope.childScope("FreezeScope")
 
-      logger<UIFreezeAction>().info("Freeze pooled thread")
       val dispatcher = when {
         ioDispatcher -> Dispatchers.IO
         else -> Dispatchers.Default
       }
+      logger<UIFreezeAction>().info("Freeze pooled thread for $seconds seconds on $dispatcher")
+
       repeat(10000) { // arbitrary big number bigger than any thread pool
         freezeScope.launch(dispatcher) {
           repeat(seconds * 10) {

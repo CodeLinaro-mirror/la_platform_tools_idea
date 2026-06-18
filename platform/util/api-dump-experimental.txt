@@ -47,6 +47,10 @@ f:com.intellij.openapi.util.io.NioFiles
 - *s:deleteQuietly(java.nio.file.Path):V
 - *s:deleteQuietly(java.nio.file.Path,java.util.function.Consumer):V
 c:com.intellij.openapi.util.registry.RegistryValue
+- *f:asBooleanFlow():kotlinx.coroutines.flow.Flow
+- *f:asDoubleFlow():kotlinx.coroutines.flow.Flow
+- *f:asIntegerFlow():kotlinx.coroutines.flow.Flow
+- *f:asStringFlow():kotlinx.coroutines.flow.Flow
 - *f:getSource():com.intellij.openapi.util.registry.RegistryValueSource
 - *f:setSelectedOption(java.lang.String,com.intellij.openapi.util.registry.RegistryValueSource):V
 - *:setValue(java.lang.String,com.intellij.openapi.util.registry.RegistryValueSource):V
@@ -69,9 +73,11 @@ f:com.intellij.openapi.util.text.HtmlChunkUtilKt
 - s:builder():com.intellij.openapi.util.text.MarkupText$MarkupTextBuilder
 - concat(com.intellij.openapi.util.text.MarkupText):com.intellij.openapi.util.text.MarkupText
 - concat(java.lang.String,com.intellij.openapi.util.text.MarkupText$Kind):com.intellij.openapi.util.text.MarkupText
+- s:empty():com.intellij.openapi.util.text.MarkupText
 - equals(java.lang.Object):Z
 - fragments():java.util.List
 - hashCode():I
+- highlightAll(com.intellij.openapi.util.text.MarkupText$Kind):com.intellij.openapi.util.text.MarkupText
 - highlightRange(I,I,com.intellij.openapi.util.text.MarkupText$Kind):com.intellij.openapi.util.text.MarkupText
 - isEmpty():Z
 - length():I
@@ -104,6 +110,8 @@ f:com.intellij.openapi.util.text.HtmlChunkUtilKt
 - build():com.intellij.openapi.util.text.MarkupText
 com.intellij.ui.IconManager
 - *:colorizedIcon(javax.swing.Icon,kotlin.jvm.functions.Function0):javax.swing.Icon
+f:com.intellij.util.CoroutineScopeKt
+- *sf:cancelOnDispose(kotlinx.coroutines.Job,com.intellij.openapi.Disposable):V
 *f:com.intellij.util.JavaCoroutines
 - sf:suspendJava(java.util.function.Consumer,kotlin.coroutines.Continuation):java.lang.Object
 f:com.intellij.util.TimeoutUtil
@@ -176,3 +184,6 @@ com.intellij.util.io.PersistentMap
 - withVersion(I):com.intellij.util.io.PersistentMapBuilder
 - withWal(Z):com.intellij.util.io.PersistentMapBuilder
 - withWalExecutor(java.util.concurrent.ExecutorService):com.intellij.util.io.PersistentMapBuilder
+f:com.intellij.util.io.ProcessKt
+- *sf:computeDetached(kotlin.coroutines.CoroutineContext,kotlin.jvm.functions.Function2,kotlin.coroutines.Continuation):java.lang.Object
+- *bs:computeDetached$default(kotlin.coroutines.CoroutineContext,kotlin.jvm.functions.Function2,kotlin.coroutines.Continuation,I,java.lang.Object):java.lang.Object

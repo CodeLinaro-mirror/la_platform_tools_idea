@@ -1,7 +1,14 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.util.indexing.testEntities.impl
 
-import com.intellij.platform.workspace.storage.*
+import com.intellij.platform.workspace.storage.ConnectionId
+import com.intellij.platform.workspace.storage.EntitySource
+import com.intellij.platform.workspace.storage.GeneratedCodeApiVersion
+import com.intellij.platform.workspace.storage.GeneratedCodeImplVersion
+import com.intellij.platform.workspace.storage.MutableEntityStorage
+import com.intellij.platform.workspace.storage.WorkspaceEntity
+import com.intellij.platform.workspace.storage.WorkspaceEntityBuilder
+import com.intellij.platform.workspace.storage.WorkspaceEntityInternalApi
 import com.intellij.platform.workspace.storage.impl.ModifiableWorkspaceEntityBase
 import com.intellij.platform.workspace.storage.impl.WorkspaceEntityBase
 import com.intellij.platform.workspace.storage.impl.WorkspaceEntityData
@@ -15,14 +22,12 @@ import com.intellij.util.indexing.testEntities.NonRecursiveTestEntityBuilder
 @GeneratedCodeApiVersion(3)
 @GeneratedCodeImplVersion(7)
 @OptIn(WorkspaceEntityInternalApi::class)
-internal class NonRecursiveTestEntityImpl(private val dataSource: NonRecursiveTestEntityData) : NonRecursiveTestEntity, WorkspaceEntityBase(
-  dataSource) {
+internal class NonRecursiveTestEntityImpl(private val dataSource: NonRecursiveTestEntityData) : NonRecursiveTestEntity,
+                                                                                                WorkspaceEntityBase(dataSource) {
 
   private companion object {
 
-
-    private val connections = listOf<ConnectionId>(
-    )
+    private val connections = listOf<ConnectionId>()
 
   }
 
@@ -43,8 +48,8 @@ internal class NonRecursiveTestEntityImpl(private val dataSource: NonRecursiveTe
   }
 
 
-  internal class Builder(result: NonRecursiveTestEntityData?) : ModifiableWorkspaceEntityBase<NonRecursiveTestEntity, NonRecursiveTestEntityData>(
-    result), NonRecursiveTestEntityBuilder {
+  internal class Builder(result: NonRecursiveTestEntityData?) :
+    ModifiableWorkspaceEntityBase<NonRecursiveTestEntity, NonRecursiveTestEntityData>(result), NonRecursiveTestEntityBuilder {
     internal constructor() : this(NonRecursiveTestEntityData())
 
     override fun applyToBuilder(builder: MutableEntityStorage) {
@@ -57,16 +62,14 @@ internal class NonRecursiveTestEntityImpl(private val dataSource: NonRecursiveTe
           error("Entity NonRecursiveTestEntity is already created in a different builder")
         }
       }
-
       this.diff = builder
       addToBuilder()
       this.id = getEntityData().createEntityId()
-      // After adding entity data to the builder, we need to unbind it and move the control over entity data to builder
-      // Builder may switch to snapshot at any moment and lock entity data to modification
+// After adding entity data to the builder, we need to unbind it and move the control over entity data to builder
+// Builder may switch to snapshot at any moment and lock entity data to modification
       this.currentEntityData = null
-
       index(this, "root", this.root)
-      // Process linked entities that are connected without a builder
+// Process linked entities that are connected without a builder
       processLinkedEntities(builder)
       checkInitialization() // TODO uncomment and check failed tests
     }
@@ -102,7 +105,6 @@ internal class NonRecursiveTestEntityImpl(private val dataSource: NonRecursiveTe
         changedProperty.add("entitySource")
 
       }
-
     override var root: VirtualFileUrl
       get() = getEntityData().root
       set(value) {
@@ -115,6 +117,7 @@ internal class NonRecursiveTestEntityImpl(private val dataSource: NonRecursiveTe
 
     override fun getEntityClass(): Class<NonRecursiveTestEntity> = NonRecursiveTestEntity::class.java
   }
+
 }
 
 @OptIn(WorkspaceEntityInternalApi::class)
@@ -150,8 +153,7 @@ internal class NonRecursiveTestEntityData : WorkspaceEntityData<NonRecursiveTest
   }
 
   override fun createDetachedEntity(parents: List<WorkspaceEntityBuilder<*>>): WorkspaceEntityBuilder<*> {
-    return NonRecursiveTestEntity(root, entitySource) {
-    }
+    return NonRecursiveTestEntity(root, entitySource)
   }
 
   override fun getRequiredParents(): List<Class<out WorkspaceEntity>> {
@@ -162,9 +164,7 @@ internal class NonRecursiveTestEntityData : WorkspaceEntityData<NonRecursiveTest
   override fun equals(other: Any?): Boolean {
     if (other == null) return false
     if (this.javaClass != other.javaClass) return false
-
     other as NonRecursiveTestEntityData
-
     if (this.entitySource != other.entitySource) return false
     if (this.root != other.root) return false
     return true
@@ -173,9 +173,7 @@ internal class NonRecursiveTestEntityData : WorkspaceEntityData<NonRecursiveTest
   override fun equalsIgnoringEntitySource(other: Any?): Boolean {
     if (other == null) return false
     if (this.javaClass != other.javaClass) return false
-
     other as NonRecursiveTestEntityData
-
     if (this.root != other.root) return false
     return true
   }

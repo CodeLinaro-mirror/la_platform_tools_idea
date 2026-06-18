@@ -18,7 +18,16 @@ import com.intellij.openapi.extensions.ExtensionNotApplicableException
 import com.intellij.openapi.extensions.ExtensionPointListener
 import com.intellij.openapi.extensions.InternalIgnoreDependencyViolation
 import com.intellij.openapi.extensions.PluginDescriptor
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.jetbrains.annotations.ApiStatus
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration.Companion.milliseconds
@@ -26,7 +35,7 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 @InternalIgnoreDependencyViolation
-private class StatisticsJobsScheduler : ApplicationActivity {
+internal class StatisticsJobsScheduler : ApplicationActivity {
   private val sendJobs = ConcurrentHashMap<String, Job>()
 
   init {
@@ -36,9 +45,9 @@ private class StatisticsJobsScheduler : ApplicationActivity {
   }
 
   override suspend fun execute() {
-    coroutineScope {
+    withContext(Dispatchers.IO) {
       if (ApplicationManager.getApplication().extensionArea.hasExtensionPoint(StatisticsEventLoggerProvider.EP_NAME)) {
-        StatisticsEventLoggerProvider.EP_NAME.addExtensionPointListener(object : ExtensionPointListener<StatisticsEventLoggerProvider> {
+        StatisticsEventLoggerProvider.EP_NAME.addExtensionPointListener(this@withContext, object : ExtensionPointListener<StatisticsEventLoggerProvider> {
           override fun extensionAdded(extension: StatisticsEventLoggerProvider, pluginDescriptor: PluginDescriptor) {
             launch {
               launchStatisticsSendJob(extension, this)
@@ -55,8 +64,10 @@ private class StatisticsJobsScheduler : ApplicationActivity {
         })
       }
 
+      delay(5.seconds)
+
       launch {
-        delay(10.seconds)
+        delay(5.seconds)
 
         serviceAsync<StatisticsNotificationManager>().showNotificationIfNeeded()
       }
@@ -139,5 +150,5 @@ private suspend fun checkPreviousExternalUploadResult() {
 @ApiStatus.Internal
 @Service(Service.Level.APP)
 class StatisticsValidationUpdatedService {
-  val updatedDeferred = CompletableDeferred<Unit>()
+  val updatedDeferred: CompletableDeferred<Unit> = CompletableDeferred()
 }

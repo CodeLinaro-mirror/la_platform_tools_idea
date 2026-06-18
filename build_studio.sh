@@ -6,8 +6,7 @@ set -e
 PROG_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 function die() {
-  echo "$*" > /dev/stderr
-  echo "Usage: $0 [--incremental]" > /dev/stderr
+  echo "ERROR: $*" > /dev/stderr
   exit 1
 }
 
@@ -17,15 +16,13 @@ DIST="${DIST_DIR:-"${OUT}/dist"}"
 mkdir -p "$OUT"
 mkdir -p "$DIST"
 
-INCREMENTAL=false
-while [[ $# -gt 0 ]]; do
+if [[ $# -gt 0 ]]; then
   if [[ $1 = "--incremental" ]]; then
-    INCREMENTAL=true
+    die "Passing --incremental is redundant because the platform is now built with Bazel"
   else
-    die "[$0] Unknown parameter: $1"
+    die "Unknown parameter: $1"
   fi
-  shift
-done
+fi
 
 # Build the Kotlin compiler, which is a dependency of the Kotlin IDE plugin.
 "${PROG_DIR}/build_kotlinc.py"
@@ -37,12 +34,9 @@ declare -ar BUILD_PROPERTIES=(
   "-Dbuild.number=${AS_BUILD_NUMBER}"
   "-Dkotlin.plugin.kind=AS"
   "-Dintellij.build.dev.mode=false"
-  "-Dcompile.parallel=true"
   "-Dintellij.build.dmg.with.bundled.jre=false"
   "-Dintellij.build.dmg.without.bundled.jre=true"
   "-Dintellij.build.skip.build.steps=repair_utility_bundle_step,mac_dmg,mac_sign,mac_sit,windows_exe_installer,linux aarch64,windows aarch64"
-  "-Dintellij.build.incremental.compilation=${INCREMENTAL}"
-  "-Dintellij.build.incremental.compilation.fallback.rebuild=false"
   "-Dintellij.build.store.git.revision=false"
   # Set the "major-version release date" to nil. This field is unused in
   # Android Studio, but the platform build scripts complain if it is missing.
@@ -50,12 +44,23 @@ declare -ar BUILD_PROPERTIES=(
   "-Dintellij.build.override.application.version.majorReleaseDate=20000101"
 )
 
-"${PROG_DIR}/platform/jps-bootstrap/jps-bootstrap.sh" "${BUILD_PROPERTIES[@]}" "${PROG_DIR}" intellij.idea.community.build AndroidStudioBuildTarget
+BAZEL_STARTUP_FLAGS=()
+if [[ -n "$BUILD_NUMBER" ]]; then
+  # In CI we want Bazel outputs to go under $PWD/out so they can be reused across builds. For details see:
+  # https://g3doc.corp.google.com/wireless/android/build_tools/g3doc/public/buildbot.md#local-directory-structure-and-files
+  BAZEL_STARTUP_FLAGS+=(--output_user_root="$PWD/out/bazel_user_root")
+fi
+
+pushd "$PROG_DIR"
+./bazel.cmd fetch --force --repo=@jps_dynamic_deps_community # Rerun the jps-to-bazel converter to ensure BUILD files are up-to-date.
+./bazel.cmd "${BAZEL_STARTUP_FLAGS[@]}" run --config=ci //build:i_build_target_studio -- "${BUILD_PROPERTIES[@]/#/--jvm_flag=}"
+popd
 
 mkdir -p "$DIST"
 cp -Rfv "$OUT"/artifacts/android-studio* "$DIST"
 
 # Build the updater-full.jar
+# Eventually this should be built in Bazel, but the Bazel target is not ready yet as of IntelliJ 2026.1.
 (
     # Set JAVA_HOME to the one in prebuilts, which is needed to invoke the updater jar.
   JDK_DIR=$PROG_DIR/../../prebuilts/studio/jdk/jdk17

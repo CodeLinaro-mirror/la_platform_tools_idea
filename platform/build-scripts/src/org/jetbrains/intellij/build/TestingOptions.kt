@@ -46,6 +46,13 @@ open class TestingOptions {
   var testPatterns: String? = System.getProperty("intellij.build.test.patterns").nullize(nullizeSpaces = true) ?: OLD_TEST_PATTERNS
 
   /**
+   * Semicolon-separated JUnit 5 tag expressions to include; only tests tagged with at least one of these are executed.
+   * Supports JUnit Platform tag expressions (e.g. `"slow"`, `"slow;integration"`).
+   * If not specified, no tag filtering is applied.
+   */
+  var testTags: String? = System.getProperty("intellij.build.test.tags").nullize(nullizeSpaces = true)
+
+  /**
    * Semicolon-separated names of JUnit run configurations in the project which need to be executed. If this option is specified,
    * [testGroups], [testPatterns] and [mainModule] will be ignored.
    */
@@ -115,6 +122,16 @@ open class TestingOptions {
   var coveredClassesPatterns: String? = System.getProperty("intellij.build.test.coverage.include.class.patterns")
 
   /**
+   * Specifies a list of semicolon separated modules names which are used together with their transitive dependencies
+   * to determine source and output paths for a Coverage report.
+   *
+   * If it isn't specified, then either [testConfigurations] or [mainModule] are used.
+   *
+   * Required if [enableCoverage] is set to `true`.
+   */
+  var coveredModuleNames: String? = System.getProperty("intellij.build.test.coverage.report.modules")
+
+  /**
    * Enables capturing traces with IntelliJ test discovery agent.
    * This agent captures lightweight coverage during your testing session
    * and allows to rerun only corresponding tests for a desired method or class in your project.
@@ -139,22 +156,9 @@ open class TestingOptions {
   var testDiscoveryExcludePatterns: String? = System.getProperty("intellij.build.test.discovery.exclude.class.patterns")
 
   /**
-   * Specifies a list of semicolon separated project artifacts that need to be built before running the tests.
-   */
-  var beforeRunProjectArtifacts: String? = System.getProperty("intellij.build.test.beforeRun.projectArtifacts")
-
-  /**
    * If `true` causal profiler agent will be attached to the testing process.
    */
   var isEnableCausalProfiling: Boolean = getBooleanProperty("intellij.build.test.enable.causal.profiling", false)
-
-  /**
-   * Pattern to match tests in [mainModule] or default main module tests compilation outputs.
-   * Tests from each matched class will be executed in a forked Runtime.
-   *
-   * E.g. "com/intellij/util/ui/standalone/ **Test.class"
-   */
-  var batchTestIncludes: String? = System.getProperty("intellij.build.test.batchTest.includes")
 
   /**
    * Run only whole classes/packages in forked Runtime

@@ -1,20 +1,21 @@
 package org.jetbrains.jewel.bridge
 
-import androidx.compose.foundation.ComposeFoundationFlags
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.ui.awt.ComposePanel
+import com.intellij.diagnostic.PluginException
+import com.intellij.ide.plugins.PluginUtil
 import com.intellij.openapi.actionSystem.DataSink
 import com.intellij.openapi.actionSystem.UiDataProvider
-import com.intellij.openapi.application.PathManager
+import com.intellij.openapi.diagnostic.Logger
+import com.intellij.platform.ide.productMode.IdeProductMode
 import com.intellij.util.ui.components.BorderLayoutPanel
 import java.awt.AWTEvent
 import java.awt.Component
 import java.awt.Toolkit
 import java.awt.event.AWTEventListener
 import java.awt.event.MouseEvent
-import java.io.File
 import javax.swing.JComponent
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.jewel.bridge.actionSystem.ComponentDataProviderBridge
@@ -23,7 +24,6 @@ import org.jetbrains.jewel.bridge.theme.SwingBridgeTheme
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.InternalJewelApi
 import org.jetbrains.jewel.foundation.LocalComponent as LocalComponentFoundation
-import org.jetbrains.jewel.foundation.util.JewelLogger
 import org.jetbrains.jewel.ui.component.LocalPopupRenderer
 import org.jetbrains.jewel.ui.util.LocalMessageResourceResolverProvider
 
@@ -197,16 +197,16 @@ private fun createJewelComposePanel(
     focusOnClickInside: Boolean,
     config: ComposePanel.(JewelComposePanelWrapper) -> Unit,
 ): JewelComposePanelWrapper {
-    if (System.getProperty("skiko.library.path") == null) {
-        val bundledSkikoFolder = File(PathManager.getLibPath(), "/skiko-awt-runtime-all")
-        if (bundledSkikoFolder.isDirectory && bundledSkikoFolder.canRead()) {
-            System.setProperty("skiko.library.path", PathManager.getLibPath() + "/skiko-awt-runtime-all")
-        } else {
-            JewelLogger.getInstance("SkikoLoader").warn("Bundled Skiko not found/not readable, falling back to default")
-        }
+    if (IdeProductMode.isBackend) {
+        val causePluginId = PluginUtil.getInstance().findPluginId(Throwable("Detecting Guilty Plugin"))
+        Logger.getInstance(JewelComposePanelWrapper::class.java)
+            .error(
+                "Backend IDE mode does not support Compose UI and Jewel Components. " +
+                    "Split the plugin to .frontend and .backend modules. " +
+                    "See https://plugins.jetbrains.com/docs/intellij/split-mode-and-remote-development.html",
+                PluginException("Plugin uses Compose UI on backend", causePluginId),
+            )
     }
-
-    ComposeFoundationFlags.isNewContextMenuEnabled = false
 
     val jewelPanel = JewelComposePanelWrapper(focusOnClickInside)
     jewelPanel.composePanel.config(jewelPanel)

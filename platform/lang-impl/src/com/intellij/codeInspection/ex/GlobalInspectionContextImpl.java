@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInspection.ex;
 
 import com.intellij.analysis.AnalysisScope;
@@ -10,13 +10,34 @@ import com.intellij.codeInsight.actions.AbstractLayoutCodeProcessor;
 import com.intellij.codeInsight.daemon.ProblemHighlightFilter;
 import com.intellij.codeInsight.daemon.impl.DaemonProgressIndicator;
 import com.intellij.codeInsight.daemon.impl.HighlightingSessionImpl;
-import com.intellij.codeInsight.daemon.impl.ProblemDescriptorWithReporterName;
 import com.intellij.codeInsight.multiverse.CodeInsightContextUtil;
 import com.intellij.codeInsight.util.GlobalInspectionScopeKt;
-import com.intellij.codeInspection.*;
+import com.intellij.codeInspection.CommonProblemDescriptor;
+import com.intellij.codeInspection.GlobalInspectionContext;
+import com.intellij.codeInspection.GlobalInspectionTool;
+import com.intellij.codeInspection.GlobalSimpleInspectionTool;
+import com.intellij.codeInspection.InspectionEP;
+import com.intellij.codeInspection.InspectionEngine;
+import com.intellij.codeInspection.InspectionManager;
+import com.intellij.codeInspection.InspectionProfile;
+import com.intellij.codeInspection.InspectionProfileEntry;
+import com.intellij.codeInspection.InspectionToolResultExporter;
+import com.intellij.codeInspection.InspectionsBundle;
+import com.intellij.codeInspection.LocalInspectionTool;
+import com.intellij.codeInspection.LocalInspectionToolSessionKtKt;
+import com.intellij.codeInspection.ProblemDescriptionsProcessor;
+import com.intellij.codeInspection.ProblemDescriptor;
+import com.intellij.codeInspection.ProblemDescriptorBase;
+import com.intellij.codeInspection.ProblemsHolder;
+import com.intellij.codeInspection.SuppressionUtil;
 import com.intellij.codeInspection.actions.CleanupInspectionUtil;
 import com.intellij.codeInspection.lang.GlobalInspectionContextExtension;
-import com.intellij.codeInspection.reference.*;
+import com.intellij.codeInspection.reference.RefElement;
+import com.intellij.codeInspection.reference.RefEntity;
+import com.intellij.codeInspection.reference.RefGraphAnnotator;
+import com.intellij.codeInspection.reference.RefManager;
+import com.intellij.codeInspection.reference.RefManagerImpl;
+import com.intellij.codeInspection.reference.RefVisitor;
 import com.intellij.codeInspection.ui.DefaultInspectionToolPresentation;
 import com.intellij.codeInspection.ui.DelegatedInspectionToolPresentation;
 import com.intellij.codeInspection.ui.InspectionResultsView;
@@ -49,14 +70,32 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.extensions.ExtensionPointListener;
 import com.intellij.openapi.extensions.PluginDescriptor;
-import com.intellij.openapi.progress.*;
+import com.intellij.openapi.progress.PerformInBackgroundOption;
+import com.intellij.openapi.progress.ProcessCanceledException;
+import com.intellij.openapi.progress.ProgressIndicator;
+import com.intellij.openapi.progress.ProgressIndicatorProvider;
+import com.intellij.openapi.progress.ProgressManager;
+import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.progress.impl.CoreProgressManager;
 import com.intellij.openapi.progress.util.ProgressIndicatorUtils;
 import com.intellij.openapi.progress.util.ProgressIndicatorWithDelayedPresentation;
-import com.intellij.openapi.project.*;
+import com.intellij.openapi.project.DumbModeBlockedFunctionality;
+import com.intellij.openapi.project.DumbService;
+import com.intellij.openapi.project.IndexNotReadyException;
+import com.intellij.openapi.project.Project;
+import com.intellij.openapi.project.ProjectUtil;
+import com.intellij.openapi.project.ProjectUtilCore;
 import com.intellij.openapi.roots.FileIndex;
 import com.intellij.openapi.roots.ProjectRootManager;
-import com.intellij.openapi.util.*;
+import com.intellij.openapi.util.ActionCallback;
+import com.intellij.openapi.util.Computable;
+import com.intellij.openapi.util.Disposer;
+import com.intellij.openapi.util.EmptyRunnable;
+import com.intellij.openapi.util.NlsContexts;
+import com.intellij.openapi.util.NotNullLazyValue;
+import com.intellij.openapi.util.ProperTextRange;
+import com.intellij.openapi.util.TextRange;
+import com.intellij.openapi.util.UserDataHolderBase;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -65,7 +104,14 @@ import com.intellij.openapi.wm.ToolWindowManager;
 import com.intellij.platform.diagnostic.telemetry.IJTracer;
 import com.intellij.platform.diagnostic.telemetry.TelemetryManager;
 import com.intellij.platform.diagnostic.telemetry.helpers.TraceKt;
-import com.intellij.psi.*;
+import com.intellij.psi.PsiBinaryFile;
+import com.intellij.psi.PsiDocumentManager;
+import com.intellij.psi.PsiElement;
+import com.intellij.psi.PsiElementVisitor;
+import com.intellij.psi.PsiFile;
+import com.intellij.psi.PsiManager;
+import com.intellij.psi.PsiNamedElement;
+import com.intellij.psi.SingleRootFileViewProvider;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.search.GlobalSearchScopesCore;
 import com.intellij.psi.search.LocalSearchScope;
@@ -76,18 +122,45 @@ import com.intellij.testFramework.LightVirtualFile;
 import com.intellij.ui.content.Content;
 import com.intellij.ui.content.ContentFactory;
 import com.intellij.ui.content.ContentManager;
-import com.intellij.util.*;
+import com.intellij.util.IncorrectOperationException;
+import com.intellij.util.PairProcessor;
+import com.intellij.util.Processor;
+import com.intellij.util.ThrowableRunnable;
+import com.intellij.util.TripleFunction;
 import com.intellij.util.concurrency.AppExecutorUtil;
 import com.intellij.util.concurrency.ThreadingAssertions;
 import com.intellij.util.concurrency.annotations.RequiresBackgroundThread;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.MultiMap;
 import io.opentelemetry.api.trace.Span;
-import org.jetbrains.annotations.*;
+import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.Nls;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.TestOnly;
+import org.jetbrains.annotations.Unmodifiable;
 
 import java.lang.reflect.Constructor;
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Queue;
+import java.util.Set;
+import java.util.StringJoiner;
+import java.util.TreeSet;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 
@@ -282,21 +355,6 @@ public class GlobalInspectionContextImpl extends GlobalInspectionContextEx {
     if (newView != null) {
       Disposer.dispose(newView);
     }
-  }
-
-  // Android Studio: Is the given file a file we should ignore during batch inspections?
-  private static final String EXPLODED_AAR = "exploded-aar";
-  private static boolean isIgnoredFile(@NotNull PsiFile psiFile) {
-    VirtualFile file = psiFile.getVirtualFile();
-    while (file != null) {
-      if (EXPLODED_AAR.equals(file.getName())) {
-        return true;
-      } else {
-        file = file.getParent();
-      }
-    }
-
-    return false;
   }
 
   @Override
@@ -551,32 +609,6 @@ public class GlobalInspectionContextImpl extends GlobalInspectionContextEx {
                            @NotNull List<? extends GlobalInspectionToolWrapper> globalSimpleTools,
                            @NotNull List<? extends LocalInspectionToolWrapper> localTools,
                            boolean inspectInjectedPsi) {
-    // Android Studio tweak:
-    // Most "outputs" (such as build/intermediates/) are marked as generated
-    // source roots, which means IntelliJ won't scan those folders for
-    // warnings.
-    //
-    // However, AAR libraries are extracted into special build folders
-    // (currently build/intermediates/exploded-aar) which are *not* marked as
-    // generated; that's necessary such that those folders are scanned (for
-    // indexing purposes), handled as potential go-to-declaration targets
-    // (since resource files there can contain for example themes extended in
-    // the user's application). Therefore, by default, IntelliJ will analyze
-    // all the files in the exploded AAR folders. When you have large
-    // libraries like appcompat or play services, this not only takes a lot
-    // of extra time to analyze. You also end up with a lot of errors in
-    // files you can't edit. For example, with appcompat, you end up with
-    // over 700 spelling mistake warnings, and with play services, you end up
-    // with over a hundred unused namespace warnings, and over a hundred tag
-    // has no children warnings!
-    //
-    // Therefore, in the below  this CL tweaks the batch analysis runner which iterates
-    // over PSI files to skip files that are found to be within an AAR
-    // folder. This removes all the false positives and speeds up code
-    // analysis quite significantly!
-    if (isIgnoredFile(psiFile)) {
-        return;
-    }
     Document document = PsiDocumentManager.getInstance(getProject()).getDocument(psiFile);
     if (document == null) return;
     DaemonProgressIndicator progressIndicator = assertUnderDaemonProgress();
@@ -587,13 +619,8 @@ public class GlobalInspectionContextImpl extends GlobalInspectionContextEx {
             runInspectionEngine(localTools, psiFile, restrictRange, restrictRange, inspectInjectedPsi,
                                        progressIndicator, PairProcessor.alwaysTrue());
           for (Map.Entry<LocalInspectionToolWrapper, List<ProblemDescriptor>> entry : map.entrySet()) {
+            LocalInspectionToolWrapper toolWrapper = entry.getKey();
             List<ProblemDescriptor> descriptors = entry.getValue();
-            if (descriptors.isEmpty()) continue;
-            final ProblemDescriptor firstDescriptor = descriptors.get(0);
-            LocalInspectionToolWrapper toolWrapper =
-              firstDescriptor instanceof ProblemDescriptorWithReporterName descriptor
-              ? (LocalInspectionToolWrapper)getTools().get(descriptor.getReportingToolShortName()).getTool()
-              : entry.getKey();
             InspectionToolPresentation toolPresentation = getPresentation(toolWrapper);
             BatchModeDescriptorsUtil.addProblemDescriptors(descriptors, toolPresentation, true, this, toolWrapper.getTool());
           }
@@ -1052,11 +1079,11 @@ public class GlobalInspectionContextImpl extends GlobalInspectionContextEx {
     }
     Runnable retryRunnable = () -> codeCleanup(scope, profile, commandName, postRunnable, modal, shouldApplyFix);
 
-    class TaskDelegate {
-      CleanupProblems problems;
-      @NlsContexts.NotificationContent String noProblemsMessage;
-
-      void run(@NotNull ProgressIndicator indicator) {
+    Task.Backgroundable task = new Task.Backgroundable(getProject(), title, true) {
+      private CleanupProblems problems;
+      private @NlsContexts.NotificationContent String noProblemsMessage;
+      @Override
+      public void run(@NotNull ProgressIndicator indicator) {
         problems = findProblems(scope, profile, indicator, shouldApplyFix);
         if (problems.files().isEmpty()) {
           noProblemsMessage =
@@ -1065,7 +1092,8 @@ public class GlobalInspectionContextImpl extends GlobalInspectionContextEx {
         }
       }
 
-      void onSuccess() {
+      @Override
+      public void onSuccess() {
         boolean isFinished;
         if (problems.files().isEmpty()) {
           isFinished = reportNoProblemsFound(scope, noProblemsMessage, retryRunnable);
@@ -1076,53 +1104,6 @@ public class GlobalInspectionContextImpl extends GlobalInspectionContextEx {
         if (isFinished && postRunnable != null) {
           postRunnable.run();
         }
-      }
-    }
-
-    TaskDelegate delegate = new TaskDelegate();
-    Task task = modal ? new Task.Modal(getProject(), title, true) {
-
-      @Override
-      public void run(@NotNull ProgressIndicator indicator) {
-        delegate.run(indicator);
-      }
-
-      @Override
-      public void onSuccess() {
-        delegate.onSuccess();
-      }
-
-      @Override
-      public void onThrowable(@NotNull Throwable error) {
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("Code cleanup: an exception during findProblems");
-        }
-        super.onThrowable(error);
-      }
-
-      @Override
-      public void onCancel() {
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("Code cleanup: cancelled");
-        }
-      }
-
-      @Override
-      public void onFinished() {
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("Code cleanup: finished searching for problems");
-        }
-      }
-    } : new Task.Backgroundable(getProject(), title, true) {
-
-      @Override
-      public void run(@NotNull ProgressIndicator indicator) {
-        delegate.run(indicator);
-      }
-
-      @Override
-      public void onSuccess() {
-        delegate.onSuccess();
       }
 
       @Override
@@ -1147,7 +1128,7 @@ public class GlobalInspectionContextImpl extends GlobalInspectionContextEx {
         }
       }
     };
-    ProgressManager.getInstance().run(task);
+    ProgressManager.getInstance().run(task.toModalIfNeeded(modal));
   }
 
   public @NotNull CleanupProblems findProblems(@NotNull AnalysisScope scope,

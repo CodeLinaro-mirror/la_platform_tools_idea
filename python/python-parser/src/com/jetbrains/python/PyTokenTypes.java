@@ -4,7 +4,11 @@ package com.jetbrains.python;
 import com.intellij.psi.TokenType;
 import com.intellij.psi.tree.IElementType;
 import com.intellij.psi.tree.TokenSet;
-import com.jetbrains.python.psi.*;
+import com.jetbrains.python.psi.PyElementType;
+import com.jetbrains.python.psi.PyReparseableEndOfLineCommentType;
+import com.jetbrains.python.psi.PyReparseableIdentifier;
+import com.jetbrains.python.psi.PyReparseableSingleQuotedStringTokenType;
+import com.jetbrains.python.psi.PyReparseableTripleQuotedStringTokenType;
 
 public final class PyTokenTypes {
   private PyTokenTypes() {
@@ -199,4 +203,6 @@ public final class PyTokenTypes {
                                                                 FSTRING_FRAGMENT_TYPE_CONVERSION);
 
   public static final TokenSet FSTRING_TEXT_TOKENS = TokenSet.create(FSTRING_TEXT, FSTRING_RAW_TEXT);
+
+  public static final TokenSet FSTRING_LITERAL_TOKENS = TokenSet.orSet(FSTRING_TEXT_TOKENS, TokenSet.create(FSTRING_START, FSTRING_END));
 }

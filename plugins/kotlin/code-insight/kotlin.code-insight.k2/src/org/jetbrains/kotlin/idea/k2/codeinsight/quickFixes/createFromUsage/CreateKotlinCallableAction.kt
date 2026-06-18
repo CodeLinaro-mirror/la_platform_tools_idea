@@ -8,10 +8,19 @@ import com.intellij.codeInspection.util.IntentionName
 import com.intellij.lang.java.request.CreateExecutableFromJavaUsageRequest
 import com.intellij.lang.jvm.JvmClass
 import com.intellij.lang.jvm.JvmModifier
-import com.intellij.lang.jvm.actions.*
+import com.intellij.lang.jvm.actions.CreateAbstractMethodActionGroup
+import com.intellij.lang.jvm.actions.CreateMethodActionGroup
+import com.intellij.lang.jvm.actions.CreateMethodRequest
+import com.intellij.lang.jvm.actions.JvmActionGroup
+import com.intellij.lang.jvm.actions.JvmGroupIntentionAction
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
-import com.intellij.psi.*
+import com.intellij.psi.PsiElement
+import com.intellij.psi.PsiFile
+import com.intellij.psi.PsiMethodCallExpression
+import com.intellij.psi.PsiNameHelper
+import com.intellij.psi.SmartPsiElementPointer
+import com.intellij.psi.createSmartPointer
 import org.jetbrains.kotlin.analysis.api.analyze
 import org.jetbrains.kotlin.analysis.api.symbols.KaCallableSymbol
 import org.jetbrains.kotlin.analysis.api.types.KaTypeParameterType
@@ -25,7 +34,12 @@ import org.jetbrains.kotlin.idea.refactoring.getContainer
 import org.jetbrains.kotlin.idea.refactoring.getExtractionContainers
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.name.FqName
-import org.jetbrains.kotlin.psi.*
+import org.jetbrains.kotlin.psi.KtCallElement
+import org.jetbrains.kotlin.psi.KtClassOrObject
+import org.jetbrains.kotlin.psi.KtElement
+import org.jetbrains.kotlin.psi.KtFile
+import org.jetbrains.kotlin.psi.KtPsiFactory
+import org.jetbrains.kotlin.psi.KtSimpleNameExpression
 
 /**
  * This class is an IntentionAction that creates Kotlin callables based on the given [request]. To create Kotlin
@@ -130,11 +144,16 @@ internal class CreateKotlinCallableAction(
         )
         val passedContainerElement = pointerToContainer.element ?: return
         val anchor = call ?: passedContainerElement
-        val shouldComputeContainerFromAnchor = if (call == null) false
-        else if (passedContainerElement is PsiFile) !passedContainerElement.isWritable
-            else passedContainerElement.getContainer() == anchor.getContainer()
+        val isScript = CreateFromUsageUtil.isTopLevelScriptContainer(passedContainerElement)
+        val shouldComputeContainerFromAnchor = if (call == null) {
+            false
+        } else if (passedContainerElement is PsiFile) {
+            !passedContainerElement.isWritable || isScript
+        } else {
+            passedContainerElement.getContainer() == anchor.getContainer()
+        }
         val insertContainer: PsiElement = if (shouldComputeContainerFromAnchor) {
-            anchor.getExtractionContainers().firstOrNull() ?:return
+            anchor.getExtractionContainers(acceptScript = isScript).firstOrNull() ?:return
         } else {
             passedContainerElement
         }

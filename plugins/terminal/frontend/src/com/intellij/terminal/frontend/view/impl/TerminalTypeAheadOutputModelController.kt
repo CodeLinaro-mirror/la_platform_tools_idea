@@ -1,7 +1,7 @@
 package com.intellij.terminal.frontend.view.impl
 
 import com.intellij.codeInsight.lookup.LookupManager
-import com.intellij.idea.AppModeAssertions
+import com.intellij.idea.AppMode
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.asContextElement
@@ -11,10 +11,16 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.NlsSafe
 import com.intellij.openapi.util.registry.Registry
 import com.jediterm.terminal.TextStyle
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.launch
 import org.jetbrains.plugins.terminal.block.output.TextStyleAdapter
 import org.jetbrains.plugins.terminal.block.util.TerminalDataContextUtils.isReworkedTerminalEditor
 import org.jetbrains.plugins.terminal.session.impl.StyleRange
@@ -29,7 +35,6 @@ import org.jetbrains.plugins.terminal.view.impl.updateContent
 import org.jetbrains.plugins.terminal.view.shellIntegration.TerminalCommandBlock
 import org.jetbrains.plugins.terminal.view.shellIntegration.TerminalOutputStatus
 import org.jetbrains.plugins.terminal.view.shellIntegration.TerminalShellIntegration
-import java.lang.Runnable
 
 /**
  * Implementation of the [TerminalOutputModelController] that supports type-ahead.
@@ -65,7 +70,7 @@ internal class TerminalTypeAheadOutputModelController(
   }
 
   private fun isTypeAheadEnabled(): Boolean {
-    if (!Registry.`is`("terminal.type.ahead", false)) return false
+    if (AppMode.isMonolith() || !Registry.`is`("terminal.type.ahead", false)) return false
     val shellIntegration = shellIntegrationDeferred.getNow() ?: return false
     val activeBlock = shellIntegration.blocksModel.activeBlock as? TerminalCommandBlock ?: return false
     // Ensure that the active block has "commandStartOffset" set to protect prompt from deleting in typeahead logic.
@@ -215,7 +220,7 @@ internal class TerminalTypeAheadOutputModelController(
      * In monolith, it is small enough to make the delay less noticeable when updates from the backend do not match the predictions.
      * In RemDev, it should be greater than the regular ping.
      */
-    private val BACKEND_EVENTS_DELAY_MILLIS = if (AppModeAssertions.isMonolith()) 100L else 500L
+    private val BACKEND_EVENTS_DELAY_MILLIS = if (AppMode.isMonolith()) 100L else 500L
   }
 }
 

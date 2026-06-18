@@ -16,19 +16,17 @@ import com.jetbrains.python.packaging.common.PythonSimplePackageDetails
 import com.jetbrains.python.packaging.pip.PypiPackageCache
 import kotlinx.io.IOException
 import org.jetbrains.annotations.ApiStatus
-import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
-import java.util.*
+import java.util.Base64
 
 
 @ApiStatus.Experimental
 internal fun RequestBuilder.withBasicAuthorization(repository: PyPackageRepository?): RequestBuilder {
   if (repository == null) return this
-  val password = repository.getPassword()
-  if (repository.login != null && password != null) {
-    val credentials = Base64.getEncoder().encode("${repository.login}:${password}".toByteArray()).toString(StandardCharsets.UTF_8)
-    this.tuner { connection -> connection.setRequestProperty("Authorization", "Basic $credentials") }
-  }
+  val login = repository.login ?: return this
+  val password = repository.getPassword() ?: return this
+  val credentials = Base64.getEncoder().encode("${login}:${password}".toByteArray()).toString(StandardCharsets.UTF_8)
+  this.tuner { connection -> connection.setRequestProperty("Authorization", "Basic $credentials") }
   return this
 }
 
@@ -40,11 +38,6 @@ internal fun PyPackageRepository.checkValid(): Boolean {
     .connectTimeout(3000)
     .throwStatusCodeException(false)
     .tryConnect() == 200
-}
-
-@ApiStatus.Experimental
-internal fun encodeCredentialsForUrl(login: String, password: String): String {
-  return "${URLEncoder.encode(login, StandardCharsets.UTF_8)}:${URLEncoder.encode(password, StandardCharsets.UTF_8)}"
 }
 
 @ApiStatus.Experimental

@@ -14,8 +14,7 @@ import com.intellij.spellchecker.dictionary.Dictionary.LookupStatus.Present
 internal class WordListAdapter : WordList, EditableWordListAdapter() {
   fun isAlien(word: String): Boolean {
     if (Alphabet.ENGLISH.matchAny(word)) {
-      // Asian English mixed text should never be highlighted. Each of the tokens must be checked separately
-      return Alphabet.Group.ASIAN.matchAny(word)
+      return false
     }
     val matchedLanguages = GrazieConfig.get().availableLanguages
       .filter { it.toLanguage().alphabet.matchEntire(word) }
@@ -27,18 +26,27 @@ internal class WordListAdapter : WordList, EditableWordListAdapter() {
 
   private fun contains(word: String, caseSensitive: Boolean, hunspell: List<Dictionary>): Boolean =
     if (caseSensitive) {
-      dictionaries.values.any { it.lookup(word) == Present } || hunspell.any { it.lookup(word) == Present }
+      return dictionaries.values.any { it.lookup(word) == Present } || hunspell.any { it.lookup(word) == Present }
     } else {
       val lowered = word.lowercase()
       // NOTE: dictionary may not contain a lowercase form, but may contain any form in a different case
       // current dictionary interface does not support caseSensitive
       val isPresent: (Dictionary) -> Boolean = { it.lookup(lowered) == Present || it.lookup(word) == Present }
-      dictionaries.values.any(isPresent) || hunspell.any(isPresent)
+      return dictionaries.values.any(isPresent) || hunspell.any(isPresent)
     }
 
   override fun suggest(word: String): LinkedHashSet<String> {
     val result = LinkedHashSet<String>()
-    for (dictionary in dictionaries.values) {
+    suggest(result, word, dictionaries.values)
+    suggest(result, word, GrazieConfig.get().dictionaries)
+
+    result.addAll(aggregator.suggest(word))
+    result.remove("")
+    return result
+  }
+
+  private fun suggest(result: LinkedHashSet<String>, word: String, dictionaries: Collection<Dictionary>) {
+    for (dictionary in dictionaries) {
       dictionary.consumeSuggestions(word) {
         if (it.isEmpty()) {
           return@consumeSuggestions
@@ -49,9 +57,5 @@ internal class WordListAdapter : WordList, EditableWordListAdapter() {
         }
       }
     }
-
-    result.addAll(aggregator.suggest(word))
-    result.remove("")
-    return result
   }
 }

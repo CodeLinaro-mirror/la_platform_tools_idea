@@ -17,6 +17,9 @@ import com.intellij.openapi.command.CommandProcessor;
 import com.intellij.openapi.diagnostic.Attachment;
 import com.intellij.openapi.diagnostic.JulLogger;
 import com.intellij.openapi.diagnostic.RuntimeExceptionWithAttachments;
+import com.intellij.openapi.diagnostic.UnhandledException;
+import com.intellij.openapi.diagnostic.UnhandledReportSinkService;
+import com.intellij.openapi.diagnostic.UnhandledReportSinkService.PluginExceptionReportData;
 import com.intellij.openapi.util.objectTree.ThrowableInterner;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.ExceptionUtil;
@@ -25,7 +28,8 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.VisibleForTesting;
 
-import java.awt.*;
+import java.awt.Component;
+import java.awt.Graphics;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -118,6 +122,20 @@ public final class IdeaLogger extends JulLogger {
       var pluginId = pluginUtil.findPluginId(t);
       var kind = DefaultIdeaErrorLogger.getOOMErrorKind(t);
       LifecycleUsageTriggerCollector.onError(pluginId, t, kind);
+
+      if (pluginId != null) {
+        @Nullable UnhandledReportSinkService sinkService;
+        try {
+          sinkService = UnhandledReportSinkService.getInstance();
+        }
+        catch (CancellationException e) {
+          return; // application disposed already
+        }
+
+        if (sinkService != null) { // might be null in CLI utils
+          sinkService.report(new PluginExceptionReportData(pluginId, t));
+        }
+      }
     }
   }
 
@@ -170,7 +188,9 @@ public final class IdeaLogger extends JulLogger {
 
   @Override
   public void error(String message, @Nullable Throwable t, String @NotNull ... details) {
-    if (isTooFrequentException(t)) return;
+    if (isTooFrequentException(t)) {
+      return;
+    }
 
     var detailString = String.join("\n", details);
     if (!detailString.isEmpty()) {
@@ -189,6 +209,11 @@ public final class IdeaLogger extends JulLogger {
 
     if (t != null && shouldRethrow(t)) {
       ExceptionUtil.rethrow(t);
+    }
+
+    // Unhandled exception wraps real exception which might be control flow exception
+    if (t instanceof UnhandledException uh && shouldRethrow(uh.getCause())) {
+      ExceptionUtil.rethrow(uh.getCause());
     }
 
     if (t != null) {

@@ -21,16 +21,18 @@ public final class TypeEvalConstraints {
   final boolean myAllowDataFlow;
   final boolean myAllowStubToAST;
   final boolean myAllowCallContext;
+  final boolean myIsExternal;
   final @Nullable PsiFile myOrigin;
 
   /**
    * @see TypeEvalContext
    */
   TypeEvalConstraints(final boolean allowDataFlow, final boolean allowStubToAST, final boolean allowCallContext,
-                      final @Nullable PsiFile origin) {
+                      final boolean isExternal, final @Nullable PsiFile origin) {
     myAllowDataFlow = allowDataFlow;
     myAllowStubToAST = allowStubToAST;
     myAllowCallContext = allowCallContext;
+    myIsExternal = isExternal;
     myOrigin = origin;
   }
 
@@ -39,9 +41,10 @@ public final class TypeEvalConstraints {
     if (this == o) return true;
     if (!(o instanceof TypeEvalConstraints that)) return false;
 
-    return myAllowDataFlow == that.myAllowDataFlow && 
+    return myAllowDataFlow == that.myAllowDataFlow &&
            myAllowStubToAST == that.myAllowStubToAST &&
            myAllowCallContext == that.myAllowCallContext &&
+           myIsExternal == that.myIsExternal &&
            Objects.equals(myOrigin, that.myOrigin);
   }
 
@@ -51,11 +54,12 @@ public final class TypeEvalConstraints {
     result = 31 * result + (myAllowStubToAST ? 1 : 0);
     result = 31 * result + (myOrigin != null ? myOrigin.hashCode() : 0);
     result = 31 * result + (myAllowCallContext ? 1 : 0);
+    result = 31 * result + (myIsExternal ? 1 : 0);
     return result;
   }
 
   @Override
   public String toString() {
-    return String.format("TypeEvalConstraints(%b, %b, %b, %s)", myAllowDataFlow, myAllowStubToAST, myAllowCallContext, myOrigin);
+    return String.format("TypeEvalConstraints(%b, %b, %b, %b, %s)", myAllowDataFlow, myAllowStubToAST, myAllowCallContext, myIsExternal, myOrigin);
   }
 }

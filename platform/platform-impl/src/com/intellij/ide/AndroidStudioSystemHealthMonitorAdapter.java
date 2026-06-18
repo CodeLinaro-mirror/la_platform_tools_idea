@@ -25,13 +25,6 @@ import org.jetbrains.annotations.NotNull;
 
 public class AndroidStudioSystemHealthMonitorAdapter {
 
-  public static void countActionInvocation(AnAction anAction, Presentation presentation, AnActionEvent event) {
-    var ourListener = EventsListener.getInstance();
-    if (ourListener != null) {
-      ourListener.countActionInvocation(anAction, presentation, event);
-    }
-  }
-
   public static boolean handleExceptionEvent(IdeaLoggingEvent event, VMOptions.MemoryKind memoryKind) {
     var ourListener = EventsListener.getInstance();
     if (ourListener != null) {
@@ -47,8 +40,6 @@ public class AndroidStudioSystemHealthMonitorAdapter {
     private static EventsListener getInstance() {
       return ApplicationManager.getApplication().getService(EventsListener.class);
     }
-
-    void countActionInvocation(AnAction aClass, Presentation presentation, AnActionEvent event);
 
     boolean handleExceptionEvent(IdeaLoggingEvent event, VMOptions.MemoryKind memoryKind);
   }

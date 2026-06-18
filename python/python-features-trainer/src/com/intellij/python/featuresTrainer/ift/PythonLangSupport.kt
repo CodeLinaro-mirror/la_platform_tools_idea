@@ -14,7 +14,6 @@ import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.util.UserDataHolder
 import com.intellij.openapi.util.UserDataHolderBase
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.platform.ide.progress.runWithModalProgressBlocking
 import com.intellij.util.concurrency.annotations.RequiresEdt
 import com.intellij.util.concurrency.annotations.RequiresReadLock
 import com.intellij.util.ui.FormBuilder
@@ -25,12 +24,14 @@ import com.jetbrains.python.errorProcessing.ErrorSink
 import com.jetbrains.python.errorProcessing.emit
 import com.jetbrains.python.inspections.interpreter.InterpreterSettingsQuickFix
 import com.jetbrains.python.projectCreation.createVenvAndSdk
+import com.jetbrains.python.sdk.ModuleOrProject
 import com.jetbrains.python.sdk.PySdkToInstall
 import com.jetbrains.python.sdk.add.PySdkPathChoosingComboBox
 import com.jetbrains.python.sdk.add.addBaseInterpretersAsync
 import com.jetbrains.python.sdk.findBaseSdks
 import com.jetbrains.python.sdk.impl.PySdkBundle
 import com.jetbrains.python.sdk.pythonSdk
+import com.jetbrains.python.sdk.runWithSdkConfigurationLock
 import com.jetbrains.python.statistics.modules
 import com.jetbrains.python.util.ShowingMessageErrorSync
 import training.dsl.LessonContext
@@ -88,8 +89,8 @@ internal class PythonLangSupport(private val errorSink: ErrorSink = ShowingMessa
 
   @Throws(NoSdkException::class)
   @RequiresEdt
-  override fun getSdkForProject(project: Project, selectedSdk: Sdk?): Sdk = runWithModalProgressBlocking(project, "...") {
-    when (val r = createVenvAndSdk(project)) {
+  override fun getSdkForProject(project: Project, selectedSdk: Sdk?): Sdk = runWithSdkConfigurationLock(project) {
+    when (val r = createVenvAndSdk(ModuleOrProject.ProjectOnly(project))) {
       is Result.Failure -> {
         errorSink.emit(r.error, project)
         null
@@ -130,6 +131,7 @@ internal class PythonLangSupport(private val errorSink: ErrorSink = ShowingMessa
   }
 
   private fun showSdkChoosingDialog(existingSdks: List<Sdk>, context: UserDataHolder): Sdk? {
+    @Suppress("DEPRECATION_ERROR")
     val baseSdkField = PySdkPathChoosingComboBox()
 
     val warningPlaceholder = JLabel()

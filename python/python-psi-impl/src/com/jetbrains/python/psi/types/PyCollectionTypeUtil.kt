@@ -4,7 +4,12 @@
 package com.jetbrains.python.psi.types
 
 import com.jetbrains.python.PyNames
-import com.jetbrains.python.psi.*
+import com.jetbrains.python.psi.PyDictLiteralExpression
+import com.jetbrains.python.psi.PyExpression
+import com.jetbrains.python.psi.PyListLiteralExpression
+import com.jetbrains.python.psi.PySequenceExpression
+import com.jetbrains.python.psi.PySetLiteralExpression
+import com.jetbrains.python.psi.PyStringLiteralExpression
 import com.jetbrains.python.psi.impl.PyBuiltinCache
 
 object PyCollectionTypeUtil {
@@ -26,7 +31,8 @@ object PyCollectionTypeUtil {
   private fun getListOrSetIteratedValueType(sequence: PySequenceExpression, context: TypeEvalContext): PyType? {
     val elements = sequence.elements
     val analyzedElementsType = PyUnionType.union(
-      elements.take(MAX_ANALYZED_ELEMENTS_OF_LITERALS).map { PyLiteralType.upcastLiteralToClass(context.getType(it)) }
+      elements.take(MAX_ANALYZED_ELEMENTS_OF_LITERALS)
+        .map { PyLiteralType.upcastLiteralToClass(context.getType(it).widenTupleLiterals()) }
     )
     return if (elements.size > MAX_ANALYZED_ELEMENTS_OF_LITERALS) {
       PyUnionType.createWeakType(analyzedElementsType)
@@ -82,8 +88,8 @@ object PyCollectionTypeUtil {
       .forEach {
         val type = context.getType(it)
         val (keyType, valueType) = getKeyValueType(type)
-        keyTypes.add(PyLiteralType.upcastLiteralToClass(keyType))
-        valueTypes.add(PyLiteralType.upcastLiteralToClass(valueType))
+        keyTypes.add(PyLiteralType.upcastLiteralToClass(keyType.widenTupleLiterals()))
+        valueTypes.add(PyLiteralType.upcastLiteralToClass(valueType.widenTupleLiterals()))
       }
 
     if (elements.size > MAX_ANALYZED_ELEMENTS_OF_LITERALS) {

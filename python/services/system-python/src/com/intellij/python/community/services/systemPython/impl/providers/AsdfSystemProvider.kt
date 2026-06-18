@@ -5,17 +5,18 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.platform.eel.EelApi
 import com.intellij.platform.eel.getOrNull
 import com.intellij.platform.eel.path.EelPath
+import com.intellij.platform.eel.path.EelPathException
 import com.intellij.platform.eel.provider.asNioPath
-import com.jetbrains.python.PyToolUIInfo
-import com.intellij.python.community.services.systemPython.icons.PythonCommunityServicesSystemPythonIcons
 import com.intellij.python.community.services.systemPython.SystemPythonProvider
+import com.intellij.python.community.services.systemPython.icons.PythonCommunityServicesSystemPythonIcons
+import com.jetbrains.python.PyToolUIInfo
 import com.jetbrains.python.PythonBinary
 import com.jetbrains.python.errorProcessing.PyResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 
-private class AsdfSystemPythonProvider : SystemPythonProvider {
+internal class AsdfSystemPythonProvider : SystemPythonProvider {
   private val LOGGER: Logger = Logger.getInstance(AsdfSystemPythonProvider::class.java)
 
   override suspend fun findSystemPythons(eelApi: EelApi): PyResult<Set<PythonBinary>> {
@@ -26,8 +27,15 @@ private class AsdfSystemPythonProvider : SystemPythonProvider {
     val pythons = withContext(Dispatchers.IO) {
       try {
         val env = eelApi.exec.fetchLoginShellEnvVariables()
-        val asdfRoot = if ("ASDF_DATA_DIR" in env) {
-          EelPath.parse(env["ASDF_DATA_DIR"]!!, eelApi.descriptor)
+        val rawAsdfRoot = env["ASDF_DATA_DIR"]?.takeIf { it.isNotBlank() }
+        val asdfRoot = if (rawAsdfRoot != null) {
+          try {
+            EelPath.parse(rawAsdfRoot, eelApi.descriptor)
+          }
+          catch (e: EelPathException) {
+            LOGGER.warn("ASDF_DATA_DIR='$rawAsdfRoot' is not a valid ${eelApi.descriptor.osFamily} absolute path; skipping asdf discovery", e)
+            return@withContext emptySet()
+          }
         }
         else {
           eelApi.userInfo.home.resolve(".asdf")
@@ -44,9 +52,10 @@ private class AsdfSystemPythonProvider : SystemPythonProvider {
         val paths = entries
           .map { versionsDir.resolve(it).resolve("bin").asNioPath() }
 
-        return@withContext collectPythonsInPaths(eelApi, paths, listOf(python3NamePattern))
+        return@withContext collectPythonsInPaths( paths, listOf(python3NamePattern))
       }
       catch (e: RuntimeException) {
+        if (Logger.shouldRethrow(e)) throw e
         LOGGER.error("failed to discover asdf pythons", e)
       }
 

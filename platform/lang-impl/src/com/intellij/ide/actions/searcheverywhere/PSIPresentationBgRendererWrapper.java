@@ -30,8 +30,16 @@ import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import javax.swing.*;
-import java.awt.*;
+import javax.swing.JLabel;
+import javax.swing.JList;
+import javax.swing.JPanel;
+import javax.swing.ListCellRenderer;
+import javax.swing.SwingConstants;
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Component;
+import java.awt.FontMetrics;
+import java.awt.Insets;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
@@ -41,7 +49,7 @@ import java.util.function.Function;
 public final class PSIPresentationBgRendererWrapper implements WeightedSearchEverywhereContributor<Object>, ScopeSupporting,
                                                                AutoCompletionContributor, PossibleSlowContributor, EssentialContributor,
                                                                SearchEverywhereExtendedInfoProvider, SearchEverywherePreviewProvider,
-                                                               SearchEverywhereContributorWrapper {
+                                                               SearchEverywhereContributorWrapper, PossibleInternalCommandsContributor {
   private static final Logger LOG = Logger.getInstance(PSIPresentationBgRendererWrapper.class);
 
   private final WeightedSearchEverywhereContributor<Object> myDelegate;
@@ -72,6 +80,24 @@ public final class PSIPresentationBgRendererWrapper implements WeightedSearchEve
   @Override
   public @NotNull SearchEverywhereContributor<?> getEffectiveContributor() {
     return myDelegate;
+  }
+
+  @Override
+  @ApiStatus.Internal
+  public boolean shouldTreatAsACommandQuery(@NotNull String string) {
+    if (myDelegate instanceof PossibleInternalCommandsContributor) {
+      return ((PossibleInternalCommandsContributor)myDelegate).shouldTreatAsACommandQuery(string);
+    }
+    return false;
+  }
+
+  @Override
+  @ApiStatus.Internal
+  public boolean shouldTreatAsACommandQueryWithArg(@NotNull String string) {
+    if (myDelegate instanceof PossibleInternalCommandsContributor) {
+      return ((PossibleInternalCommandsContributor)myDelegate).shouldTreatAsACommandQueryWithArg(string);
+    }
+    return false;
   }
 
   public static WeightedSearchEverywhereContributor<Object> wrapIfNecessary(AbstractGotoSEContributor delegate) {

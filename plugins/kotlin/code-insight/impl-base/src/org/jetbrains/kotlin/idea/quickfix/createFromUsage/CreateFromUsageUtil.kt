@@ -14,8 +14,34 @@ import org.jetbrains.kotlin.idea.codeinsight.api.applicable.extensions.ForwardDe
 import org.jetbrains.kotlin.idea.core.insertMembersAfterAndReformat
 import org.jetbrains.kotlin.lexer.KtModifierKeywordToken
 import org.jetbrains.kotlin.lexer.KtTokens
-import org.jetbrains.kotlin.psi.*
-import org.jetbrains.kotlin.psi.psiUtil.*
+import org.jetbrains.kotlin.psi.KtBlockExpression
+import org.jetbrains.kotlin.psi.KtCallExpression
+import org.jetbrains.kotlin.psi.KtClass
+import org.jetbrains.kotlin.psi.KtClassBody
+import org.jetbrains.kotlin.psi.KtClassOrObject
+import org.jetbrains.kotlin.psi.KtDeclaration
+import org.jetbrains.kotlin.psi.KtEnumEntry
+import org.jetbrains.kotlin.psi.KtFile
+import org.jetbrains.kotlin.psi.KtFunctionLiteral
+import org.jetbrains.kotlin.psi.KtNamedDeclaration
+import org.jetbrains.kotlin.psi.KtNamedFunction
+import org.jetbrains.kotlin.psi.KtParameter
+import org.jetbrains.kotlin.psi.KtParameterList
+import org.jetbrains.kotlin.psi.KtPrimaryConstructor
+import org.jetbrains.kotlin.psi.KtProperty
+import org.jetbrains.kotlin.psi.KtPsiFactory
+import org.jetbrains.kotlin.psi.KtScriptInitializer
+import org.jetbrains.kotlin.psi.KtSecondaryConstructor
+import org.jetbrains.kotlin.psi.KtTypeAlias
+import org.jetbrains.kotlin.psi.createPrimaryConstructorIfAbsent
+import org.jetbrains.kotlin.psi.getOrCreateBody
+import org.jetbrains.kotlin.psi.psiUtil.allChildren
+import org.jetbrains.kotlin.psi.psiUtil.getChildOfType
+import org.jetbrains.kotlin.psi.psiUtil.getStrictParentOfType
+import org.jetbrains.kotlin.psi.psiUtil.isProtected
+import org.jetbrains.kotlin.psi.psiUtil.isPublic
+import org.jetbrains.kotlin.psi.psiUtil.parentsWithSelf
+import org.jetbrains.kotlin.psi.psiUtil.siblings
 import org.jetbrains.kotlin.utils.KotlinExceptionWithAttachments
 import org.jetbrains.kotlin.utils.addToStdlib.firstIsInstanceOrNull
 import kotlin.math.max
@@ -39,7 +65,7 @@ object CreateFromUsageUtil {
         val declarationInPlace = when {
             declaration is KtPrimaryConstructor -> {
                 val primaryConstructor = (container as? KtClass)?.createPrimaryConstructorIfAbsent()
-                primaryConstructor?.replaced(declaration) ?: declaration
+                (primaryConstructor?.replaced<KtPrimaryConstructor>(declaration) ?: declaration) as D
             }
 
             declaration is KtProperty && container !is KtBlockExpression -> {
@@ -149,21 +175,32 @@ object CreateFromUsageUtil {
         }
     }
 
+    fun isTopLevelScriptContainer(element: PsiElement): Boolean {
+        return when (element) {
+            is KtFile -> element.isScript()
+            is KtBlockExpression -> (element.parent as? KtFile)?.isScript() == true
+            is KtScriptInitializer -> true
+            else -> false
+        }
+    }
+
     fun computeDefaultVisibilityAsJvmModifier(
       containingElement: PsiElement,
       isAbstract: Boolean,
       isExtension: Boolean,
       isConstructor: Boolean,
-      originalElement: PsiElement
+      originalElement: PsiElement,
+      containerIsScript: Boolean = isTopLevelScriptContainer(containingElement),
     ): JvmModifier? {
         return if (isAbstract) null
         else if ((containingElement is KtClassOrObject || containingElement is PsiClass)
             && (isExtension || !(containingElement is KtClass && containingElement.isInterface() || containingElement is PsiClass && containingElement.isInterface))
             && (containingElement.isAncestor(originalElement) || isExtension && containingElement.containingFile == originalElement.containingFile)
             && !isConstructor
+            && !containerIsScript
         ) JvmModifier.PRIVATE
         else if (isExtension) {
-            if (containingElement is KtFile && containingElement.isScript()) null else JvmModifier.PRIVATE
+            if (containerIsScript || containingElement is KtFile && containingElement.isScript()) null else JvmModifier.PRIVATE
         } else null
     }
 
