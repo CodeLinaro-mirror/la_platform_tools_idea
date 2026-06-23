@@ -61,6 +61,7 @@ class AndroidStudioProperties : ProductProperties() {
       "intellij.eclipse",
       "intellij.featuresTrainer",
       "intellij.java.byteCodeViewer",
+      "intellij.jcef.plugin",
       "intellij.maven.plugin",
       "intellij.mcpserver",
     )
