@@ -19,7 +19,7 @@ def main():
     # Find workspace root.
     script_dir = Path(__file__).parent
     workspace = script_dir.joinpath('../..').resolve(strict=True)
-    assert workspace.joinpath('WORKSPACE').exists(), 'failed to find workspace root'
+    assert workspace.joinpath('MODULE.bazel').exists(), 'failed to find workspace root'
 
     # Set properties not currently exposed as flags.
     args.kotlinc_version = '2.4.255-dev-255'  # Must match BOOTSTRAP_VERSION in project-model-updater.
