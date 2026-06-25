@@ -95,7 +95,6 @@ class AndroidStudioProperties : ProductProperties() {
     productLayout.productImplementationModules = listOf(
       // From IdeaCommunityProperties:
       "intellij.platform.starter",
-      "intellij.idea.community.customization",
     )
     productLayout.addPlatformSpec { layout, _ ->
       // From JetBrainsProductProperties.
