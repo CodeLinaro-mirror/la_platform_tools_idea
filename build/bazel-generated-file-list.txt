@@ -339,6 +339,8 @@ mps/build
 mps/build/intellij.mps.resources
 notebooks/notebook-ui
 notebooks/visualization
+platform/acp
+platform/acp/tests
 platform/analysis-api
 platform/analysis-impl
 platform/backend
@@ -493,6 +495,10 @@ platform/lang-impl/backend
 platform/lang-impl/testEntities
 platform/libraries/cglib
 platform/locking-impl
+platform/lsp
+platform/lsp-impl
+platform/lsp-impl/tests
+platform/lsp/testFramework
 platform/lvcs-api
 platform/lvcs-impl
 platform/macro
@@ -1013,7 +1019,6 @@ plugins/kotlin/code-insight/structural-search-k2
 plugins/kotlin/code-insight/structural-search-k2/tests
 plugins/kotlin/code-insight/utils
 plugins/kotlin/compiler-plugins/allopen/common-k1
-plugins/kotlin/compiler-plugins/allopen/gradle
 plugins/kotlin/compiler-plugins/allopen/maven
 plugins/kotlin/compiler-plugins/allopen/tests-k1
 plugins/kotlin/compiler-plugins/android-extensions-stubs
@@ -1045,8 +1050,8 @@ plugins/kotlin/compiler-plugins/parcelize/k2
 plugins/kotlin/compiler-plugins/parcelize/tests
 plugins/kotlin/compiler-plugins/parcelize/tests/k1
 plugins/kotlin/compiler-plugins/parcelize/tests/k2
+plugins/kotlin/compiler-plugins/power-assert/gradle
 plugins/kotlin/compiler-plugins/sam-with-receiver/common
-plugins/kotlin/compiler-plugins/sam-with-receiver/gradle
 plugins/kotlin/compiler-plugins/sam-with-receiver/maven
 plugins/kotlin/compiler-plugins/scripting
 plugins/kotlin/compiler-reference-index
@@ -1164,6 +1169,7 @@ plugins/kotlin/navigation
 plugins/kotlin/navigation/tests
 plugins/kotlin/onboarding
 plugins/kotlin/onboarding-gradle
+plugins/kotlin/onboarding-maven
 plugins/kotlin/onboarding-promoter
 plugins/kotlin/plugin
 plugins/kotlin/plugin-updater
