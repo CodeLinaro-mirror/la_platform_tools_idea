@@ -22,7 +22,8 @@ import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 import org.apache.commons.lang3.RandomStringUtils
 import org.assertj.core.api.Assertions
-import org.jetbrains.plugins.terminal.block.reworked.hyperlinks.TerminalGenericFileFilter
+import org.jetbrains.plugins.terminal.hyperlinks.filter.FILENAME_MAX
+import org.jetbrains.plugins.terminal.hyperlinks.filter.TerminalGenericFileFilter
 import org.junit.Before
 import org.junit.Test
 import org.mockito.Mockito
@@ -52,13 +53,41 @@ internal class TerminalGenericFileFilterAbsolutePathTest {
     getFilterResultAndCheckHighlightPositions("hello / world, hello \\ world", listOf(),false).checkFileLinks()
 
   @Test
+  fun `slash-only strings are not highlighted`() {
+    val slashStrings = listOf(
+      "/",
+      "//",
+      "///",
+      "////",
+      "\\",
+      "\\\\",
+      "\\\\\\",
+      "\\\\\\\\",
+      "/\\",
+      "\\/",
+      "//\\\\",
+    )
+
+    for (slashString in slashStrings) {
+      getFilterResultAndCheckHighlightPositions(
+        "hello $slashString world",
+        emptyList(),
+        checkHighlights = false
+      ).checkFileLinks()
+    }
+
+    getFilterResultAndCheckHighlightPositions("/// @param", emptyList(), false).checkFileLinks()
+    getFilterResultAndCheckHighlightPositions("// comment", emptyList(), false).checkFileLinks()
+  }
+
+  @Test
   fun `short names are highlighted`() =
     getFilterResultAndCheckHighlightPositions("hello /a world, hello C:\\ C:\\b world C:\\d", listOf("/a", "C:\\", "C:\\b"),false)
       .checkFileLinks("/a", "C:\\", "C:\\b")
 
   @Test
   fun `honor FILENAME_MAX for performance reasons`() {
-    val longString = RandomStringUtils.secure().nextAlphanumeric(TerminalGenericFileFilter.FILENAME_MAX + 1)
+    val longString = RandomStringUtils.secure().nextAlphanumeric(FILENAME_MAX + 1)
     whenever(localFileSystem.findFileByPathIfCached(eq("/$longString"))).thenThrow(AssertionError("Should not be queried"))
 
     getFilterResultAndCheckHighlightPositions("/$longString /path/to/file", listOf("/path/to/file"), checkHighlights = false)
@@ -67,9 +96,9 @@ internal class TerminalGenericFileFilterAbsolutePathTest {
 
   @Test
   fun `honor FILENAME_MAX for performance reasons (with spaces)`() {
-    val p1 = RandomStringUtils.secure().nextAlphanumeric(TerminalGenericFileFilter.FILENAME_MAX / 2 + 1)
-    val p2 = RandomStringUtils.secure().nextAlphanumeric(TerminalGenericFileFilter.FILENAME_MAX / 2 + 1)
-    assert(p1.length + p2.length > TerminalGenericFileFilter.FILENAME_MAX)
+    val p1 = RandomStringUtils.secure().nextAlphanumeric(FILENAME_MAX / 2 + 1)
+    val p2 = RandomStringUtils.secure().nextAlphanumeric(FILENAME_MAX / 2 + 1)
+    assert(p1.length + p2.length > FILENAME_MAX)
 
     whenever(localFileSystem.findFileByPathIfCached(eq("/$p1"))).thenReturn(null)
     whenever(localFileSystem.findFileByPathIfCached(eq("/$p1 $p2"))).thenThrow(AssertionError("Should not be queried"))

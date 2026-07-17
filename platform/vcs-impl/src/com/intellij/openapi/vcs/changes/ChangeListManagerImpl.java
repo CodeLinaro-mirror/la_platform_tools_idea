@@ -10,6 +10,7 @@ import com.intellij.openapi.application.AccessToken;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.application.ReadAction;
+import com.intellij.openapi.application.ex.ApplicationManagerEx;
 import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
@@ -77,6 +78,7 @@ import com.intellij.util.containers.MultiMap;
 import com.intellij.util.messages.MessageBusConnection;
 import com.intellij.util.messages.Topic;
 import com.intellij.util.ui.UIUtil;
+import com.intellij.util.ui.VcsConfirmationUtil;
 import com.intellij.vcs.commit.ChangeListCommitState;
 import com.intellij.vcs.commit.CommitModeManager;
 import com.intellij.vcs.commit.LocalChangesCommitter;
@@ -121,6 +123,8 @@ import static java.util.stream.Collectors.toSet;
 @State(name = "ChangeListManager", storages = @Storage(StoragePathMacros.WORKSPACE_FILE))
 public final class ChangeListManagerImpl extends ChangeListManagerEx implements PersistentStateComponent<Element>, Disposable {
   private static final Logger LOG = Logger.getInstance(ChangeListManagerImpl.class);
+  private static final String DEADLOCK_ADVICE =
+    "A lock may not be taken while com.intellij.openapi.vcs.changes.ChangeListManagerImpl.myDataLock is held, as this might lead to a deadlock";
 
   @Topic.ProjectLevel
   public static final Topic<LocalChangeListsLoadedListener> LISTS_LOADED =
@@ -331,26 +335,32 @@ public final class ChangeListManagerImpl extends ChangeListManagerEx implements 
                             : StringUtil.join(lists, list -> StringUtil.first(list.getName(), 30, true), BR);
     String question = VcsBundle.message("changes.empty.changelists.no.longer.active", lists.size(), changeListName);
 
+    VcsShowConfirmationOption option = new VcsShowConfirmationOption() {
+      @Override
+      public Value getValue() {
+        return config.REMOVE_EMPTY_INACTIVE_CHANGELISTS;
+      }
 
-    VcsConfirmationDialog dialog =
-      new VcsConfirmationDialog(project, VcsBundle.message("dialog.title.remove.empty.changelist"), VcsBundle.message("button.remove"),
-                                CommonBundle.getCancelButtonText(), new VcsShowConfirmationOption() {
-        @Override
-        public Value getValue() {
-          return config.REMOVE_EMPTY_INACTIVE_CHANGELISTS;
-        }
+      @Override
+      public void setValue(Value value) {
+        config.REMOVE_EMPTY_INACTIVE_CHANGELISTS = value;
+      }
 
-        @Override
-        public void setValue(Value value) {
-          config.REMOVE_EMPTY_INACTIVE_CHANGELISTS = value;
-        }
+      @Override
+      public boolean isPersistent() {
+        return true;
+      }
+    };
 
-        @Override
-        public boolean isPersistent() {
-          return true;
-        }
-      }, XmlStringUtil.wrapInHtml(question), VcsBundle.message("checkbox.remember.my.choice"));
-    return dialog.showAndGet();
+    return VcsConfirmationUtil.requestConfirmation(
+      option,
+      project,
+      XmlStringUtil.wrapInHtml(question),
+      VcsBundle.message("dialog.title.remove.empty.changelist"),
+      Messages.getQuestionIcon(),
+      VcsBundle.message("button.remove"),
+      CommonBundle.getCancelButtonText()
+    );
   }
 
   @Override
@@ -466,7 +476,7 @@ public final class ChangeListManagerImpl extends ChangeListManagerEx implements 
   }
 
   public void executeUnderDataLock(@NotNull Runnable r) {
-    ApplicationManager.getApplication().runReadAction(() -> {
+    ReadAction.runBlocking(() -> {
       synchronized (myDataLock) {
         r.run();
       }
@@ -577,7 +587,7 @@ public final class ChangeListManagerImpl extends ChangeListManagerEx implements 
         boolean wasCancelled = vcsIndicator.isCanceled();
 
         // for the case of project being closed we need a read action here -> to be more consistent
-        ApplicationManager.getApplication().runReadAction(() -> {
+        ReadAction.runBlocking(() -> {
           if (project.isDisposed()) return;
 
           synchronized (myDataLock) {
@@ -831,7 +841,7 @@ public final class ChangeListManagerImpl extends ChangeListManagerEx implements 
   }
 
   public boolean isUnversionedInUpdateMode() {
-    return ReadAction.compute(() -> {
+    return ReadAction.computeBlocking(() -> {
       synchronized (myDataLock) {
         return myComposite.getUnversionedFileHolder().isInUpdatingMode();
       }
@@ -849,7 +859,7 @@ public final class ChangeListManagerImpl extends ChangeListManagerEx implements 
 
   @Override
   public @NotNull List<FilePath> getUnversionedFilesPaths() {
-    return ReadAction.compute(() -> {
+    return ReadAction.computeBlocking(() -> {
       synchronized (myDataLock) {
         return new ArrayList<>(myComposite.getUnversionedFileHolder().getFiles());
       }
@@ -861,7 +871,7 @@ public final class ChangeListManagerImpl extends ChangeListManagerEx implements 
     VcsRoot vcsRoot = ProjectLevelVcsManager.getInstance(project).getVcsRootObjectFor(file);
     if (vcsRoot == null) return false;
 
-    return ReadAction.compute(() -> {
+    return ReadAction.computeBlocking(() -> {
       synchronized (myDataLock) {
         return myComposite.getResolvedMergeFilesHolder().containsFile(file, vcsRoot);
       }
@@ -870,7 +880,7 @@ public final class ChangeListManagerImpl extends ChangeListManagerEx implements 
 
   @Override
   public @NotNull List<FilePath> getResolvedConflictPaths() {
-    return ReadAction.compute(() -> {
+    return ReadAction.computeBlocking(() -> {
       synchronized (myDataLock) {
         return new ArrayList<>(myComposite.getResolvedMergeFilesHolder().getFiles());
       }
@@ -879,7 +889,7 @@ public final class ChangeListManagerImpl extends ChangeListManagerEx implements 
 
   @Override
   public @NotNull @Unmodifiable List<VirtualFile> getModifiedWithoutEditing() {
-    return ReadAction.compute(() -> {
+    return ReadAction.computeBlocking(() -> {
       synchronized (myDataLock) {
         return myComposite.getModifiedWithoutEditingFileHolder().getFiles();
       }
@@ -888,7 +898,7 @@ public final class ChangeListManagerImpl extends ChangeListManagerEx implements 
 
   @Override
   public @NotNull List<FilePath> getIgnoredFilePaths() {
-    return ReadAction.compute(() -> {
+    return ReadAction.computeBlocking(() -> {
       synchronized (myDataLock) {
         return new ArrayList<>(myComposite.getIgnoredFileHolder().getFiles());
       }
@@ -896,7 +906,7 @@ public final class ChangeListManagerImpl extends ChangeListManagerEx implements 
   }
 
   public boolean isIgnoredInUpdateMode() {
-    return ReadAction.compute(() -> {
+    return ReadAction.computeBlocking(() -> {
       synchronized (myDataLock) {
         return myComposite.getIgnoredFileHolder().isInUpdatingMode();
       }
@@ -904,7 +914,7 @@ public final class ChangeListManagerImpl extends ChangeListManagerEx implements 
   }
 
   public List<VirtualFile> getLockedFolders() {
-    return ReadAction.compute(() -> {
+    return ReadAction.computeBlocking(() -> {
       synchronized (myDataLock) {
         return myComposite.getLockedFileHolder().getFiles();
       }
@@ -912,7 +922,7 @@ public final class ChangeListManagerImpl extends ChangeListManagerEx implements 
   }
 
   public Map<VirtualFile, LogicalLock> getLogicallyLockedFolders() {
-    return ReadAction.compute(() -> {
+    return ReadAction.computeBlocking(() -> {
       synchronized (myDataLock) {
         return new HashMap<>(myComposite.getLogicallyLockedFileHolder().getMap());
       }
@@ -920,7 +930,7 @@ public final class ChangeListManagerImpl extends ChangeListManagerEx implements 
   }
 
   public boolean isLogicallyLocked(final VirtualFile file) {
-    return ReadAction.compute(() -> {
+    return ReadAction.computeBlocking(() -> {
       synchronized (myDataLock) {
         return myComposite.getLogicallyLockedFileHolder().containsKey(file);
       }
@@ -928,7 +938,7 @@ public final class ChangeListManagerImpl extends ChangeListManagerEx implements 
   }
 
   public boolean isContainedInLocallyDeleted(final FilePath filePath) {
-    return ReadAction.compute(() -> {
+    return ReadAction.computeBlocking(() -> {
       synchronized (myDataLock) {
         return myComposite.getDeletedFileHolder().isContainedInLocallyDeleted(filePath);
       }
@@ -936,7 +946,7 @@ public final class ChangeListManagerImpl extends ChangeListManagerEx implements 
   }
 
   public List<LocallyDeletedChange> getDeletedFiles() {
-    return ReadAction.compute(() -> {
+    return ReadAction.computeBlocking(() -> {
       synchronized (myDataLock) {
         return myComposite.getDeletedFileHolder().getFiles();
       }
@@ -944,7 +954,7 @@ public final class ChangeListManagerImpl extends ChangeListManagerEx implements 
   }
 
   public MultiMap<String, VirtualFile> getSwitchedFilesMap() {
-    return ReadAction.compute(() -> {
+    return ReadAction.computeBlocking(() -> {
       synchronized (myDataLock) {
         return myComposite.getSwitchedFileHolder().getBranchToFileMap();
       }
@@ -952,7 +962,7 @@ public final class ChangeListManagerImpl extends ChangeListManagerEx implements 
   }
 
   public @Nullable Map<VirtualFile, String> getSwitchedRoots() {
-    return ReadAction.compute(() -> {
+    return ReadAction.computeBlocking(() -> {
       synchronized (myDataLock) {
         return myComposite.getRootSwitchFileHolder().getFilesMapCopy();
       }
@@ -1012,7 +1022,7 @@ public final class ChangeListManagerImpl extends ChangeListManagerEx implements 
 
   @Override
   public @NotNull LocalChangeList addChangeList(@NotNull String name, @Nullable String comment, @Nullable ChangeListData data) {
-    return ReadAction.compute(() -> {
+    return ReadAction.computeBlocking(() -> {
       synchronized (myDataLock) {
         final LocalChangeList changeList = myModifier.addChangeList(name, comment, data);
         scheduleChangesViewRefresh();
@@ -1024,7 +1034,7 @@ public final class ChangeListManagerImpl extends ChangeListManagerEx implements 
 
   @Override
   public void removeChangeList(@NotNull String name) {
-    ApplicationManager.getApplication().runReadAction(() -> {
+    ReadAction.runBlocking(() -> {
       synchronized (myDataLock) {
         myModifier.removeChangeList(name);
         scheduleChangesViewRefresh();
@@ -1038,7 +1048,7 @@ public final class ChangeListManagerImpl extends ChangeListManagerEx implements 
   }
 
   public void setDefaultChangeList(@NotNull String name, boolean automatic) {
-    ApplicationManager.getApplication().runReadAction(() -> {
+    ReadAction.runBlocking(() -> {
       synchronized (myDataLock) {
         myModifier.setDefault(name, automatic);
         scheduleChangesViewRefresh();
@@ -1063,7 +1073,7 @@ public final class ChangeListManagerImpl extends ChangeListManagerEx implements 
 
   @Override
   public boolean setReadOnly(@NotNull String name, final boolean value) {
-    return ReadAction.compute(() -> {
+    return ReadAction.computeBlocking(() -> {
       synchronized (myDataLock) {
         final boolean result = myModifier.setReadOnly(name, value);
         scheduleChangesViewRefresh();
@@ -1074,7 +1084,7 @@ public final class ChangeListManagerImpl extends ChangeListManagerEx implements 
 
   @Override
   public boolean editName(final @NotNull String fromName, final @NotNull String toName) {
-    return ReadAction.compute(() -> {
+    return ReadAction.computeBlocking(() -> {
       synchronized (myDataLock) {
         final boolean result = myModifier.editName(fromName, toName);
         scheduleChangesViewRefresh();
@@ -1085,7 +1095,7 @@ public final class ChangeListManagerImpl extends ChangeListManagerEx implements 
 
   @Override
   public String editComment(@NotNull String name, String newComment) {
-    return ReadAction.compute(() -> {
+    return ReadAction.computeBlocking(() -> {
       synchronized (myDataLock) {
         final String oldComment = myModifier.editComment(name, StringUtil.notNullize(newComment));
         scheduleChangesViewRefresh();
@@ -1096,7 +1106,7 @@ public final class ChangeListManagerImpl extends ChangeListManagerEx implements 
 
   @Override
   public boolean editChangeListData(@NotNull String name, @Nullable ChangeListData newData) {
-    return ReadAction.compute(() -> {
+    return ReadAction.computeBlocking(() -> {
       synchronized (myDataLock) {
         final boolean result = myModifier.editData(name, newData);
         scheduleChangesViewRefresh();
@@ -1112,7 +1122,7 @@ public final class ChangeListManagerImpl extends ChangeListManagerEx implements 
 
   @Override
   public void moveChangesTo(@NotNull LocalChangeList list, @NotNull List<? extends @NotNull Change> changes) {
-    ApplicationManager.getApplication().runReadAction(() -> {
+    ReadAction.runBlocking(() -> {
       synchronized (myDataLock) {
         myModifier.moveChangesTo(list.getName(), changes);
         scheduleChangesViewRefresh();
@@ -1217,7 +1227,7 @@ public final class ChangeListManagerImpl extends ChangeListManagerEx implements 
       if (vcsRoot == null) return false;
     }
 
-    return ReadAction.compute(() -> {
+    return ReadAction.computeBlocking(() -> {
       synchronized (myDataLock) {
         return myComposite.getUnversionedFileHolder().containsFile(VcsUtil.getFilePath(file), vcsRoot);
       }
@@ -1240,7 +1250,7 @@ public final class ChangeListManagerImpl extends ChangeListManagerEx implements 
                                    : ProjectLevelVcsManager.getInstance(project).getVcsRootObjectFor(path);
     if (vcsRoot == null) return FileStatus.NOT_CHANGED;
 
-    return ReadAction.compute(() -> {
+    return ReadAction.computeBlocking(() -> {
       synchronized (myDataLock) {
         if (myComposite.getUnversionedFileHolder().containsFile(path, vcsRoot)) return FileStatus.UNKNOWN;
         if (myComposite.getResolvedMergeFilesHolder().containsFile(path, vcsRoot)) return FileStatus.MERGE;
@@ -1303,12 +1313,6 @@ public final class ChangeListManagerImpl extends ChangeListManagerEx implements 
   @Override
   public void removeChangeListListener(@NotNull ChangeListListener listener) {
     myListeners.removeListener(listener);
-  }
-
-  @SuppressWarnings("removal")
-  @Override
-  public void registerCommitExecutor(@NotNull CommitExecutor executor) {
-    myRegisteredCommitExecutors.add(executor);
   }
 
   @Override
@@ -1419,7 +1423,7 @@ public final class ChangeListManagerImpl extends ChangeListManagerEx implements 
     VcsRoot vcsRoot = ProjectLevelVcsManager.getInstance(project).getVcsRootObjectFor(file);
     if (vcsRoot == null) return false;
 
-    return ReadAction.compute(() -> {
+    return ReadAction.computeBlocking(() -> {
       synchronized (myDataLock) {
         return myComposite.getIgnoredFileHolder().containsFile(file, vcsRoot);
       }
@@ -1473,11 +1477,11 @@ public final class ChangeListManagerImpl extends ChangeListManagerEx implements 
   @Override
   public @Nullable String getSwitchedBranch(@NotNull VirtualFile file) {
     if (!file.isInLocalFileSystem()) return null;
-    return ReadAction.compute(() -> {
-      synchronized (myDataLock) {
+    synchronized (myDataLock) {
+      return ApplicationManagerEx.getApplicationEx().withLocksProhibited(DEADLOCK_ADVICE, () -> {
         return myComposite.getSwitchedFileHolder().getBranchForFile(file);
-      }
-    });
+      });
+    }
   }
 
   @TestOnly
@@ -1600,7 +1604,7 @@ public final class ChangeListManagerImpl extends ChangeListManagerEx implements 
 
   // only a light attempt to show that some dirty scope request is asynchronously coming
   // for users to see changes are not valid
-  // (commit -> asynch synch VFS -> asynch vcs dirty scope)
+  // (commit -> asynch sync VFS -> asynch vcs dirty scope)
   public void showLocalChangesInvalidated() {
     myShowLocalChangesInvalidated = true;
     myStateProvider.setInUpdateMode(true);

@@ -1,11 +1,11 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.agent.workbench.sessions.util
 
-import com.intellij.agent.workbench.common.buildAgentThreadIdentity
-import com.intellij.agent.workbench.common.parseAgentThreadIdentity
-import com.intellij.agent.workbench.common.session.AgentSessionProvider
-import com.intellij.agent.workbench.sessions.core.providers.AgentSessionProviders
-import com.intellij.agent.workbench.sessions.core.providers.AgentSessionTerminalLaunchSpec
+import com.intellij.platform.ai.agent.core.buildAgentThreadIdentity
+import com.intellij.platform.ai.agent.core.parseAgentThreadIdentity
+import com.intellij.platform.ai.agent.core.session.AgentSessionProvider
+import com.intellij.platform.ai.agent.sessions.core.isAgentSessionPendingThreadId
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentSessionProviders
 import java.util.UUID
 
 internal class AgentSessionProviderUnavailableException(provider: AgentSessionProvider) :
@@ -14,10 +14,6 @@ internal class AgentSessionProviderUnavailableException(provider: AgentSessionPr
 private fun requireAgentSessionProviderDescriptor(provider: AgentSessionProvider) =
   AgentSessionProviders.find(provider)
   ?: throw AgentSessionProviderUnavailableException(provider)
-
-internal fun buildAgentSessionEntryLaunchSpec(provider: AgentSessionProvider): AgentSessionTerminalLaunchSpec {
-  return requireAgentSessionProviderDescriptor(provider).buildNewEntryLaunchSpec()
-}
 
 internal fun buildAgentSessionIdentity(provider: AgentSessionProvider, sessionId: String): String {
   return buildAgentThreadIdentity(providerId = provider.value, threadId = sessionId)
@@ -40,7 +36,7 @@ internal fun isAgentSessionNewIdentity(identity: String): Boolean {
 }
 
 fun isAgentSessionNewSessionId(sessionId: String): Boolean {
-  return sessionId.startsWith("new-")
+  return isAgentSessionPendingThreadId(sessionId)
 }
 
 internal fun resolveAgentSessionId(identity: String): String {

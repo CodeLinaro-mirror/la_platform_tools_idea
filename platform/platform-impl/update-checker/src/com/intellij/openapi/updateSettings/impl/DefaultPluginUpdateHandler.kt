@@ -5,12 +5,10 @@ import com.intellij.ide.plugins.api.PluginDto
 import com.intellij.ide.plugins.newui.PluginUiModel
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.util.BuildNumber
-import com.intellij.openapi.util.IntellijInternalApi
 import org.jetbrains.annotations.ApiStatus
 import java.util.concurrent.ConcurrentHashMap
 import javax.swing.JComponent
 
-@OptIn(IntellijInternalApi::class)
 @ApiStatus.Internal
 class DefaultPluginUpdateHandler : PluginUpdateHandler {
   private val downloaders = ConcurrentHashMap<String, PluginDownloaders>()
@@ -25,8 +23,8 @@ class DefaultPluginUpdateHandler : PluginUpdateHandler {
 
     val pluginUpdates = internalPluginUpdates.pluginUpdates
     val notIgnoredDownloaders = pluginUpdates.allEnabled.filterNot { UpdateChecker.isIgnored(it.descriptor) }
-    val updateModels = notIgnoredDownloaders.mapNotNull { it.uiModel }
-    val disabledUpdateModels = pluginUpdates.allDisabled.mapNotNull { it.uiModel }
+    val updateModels = notIgnoredDownloaders.map { it.uiModel }
+    val disabledUpdateModels = pluginUpdates.allDisabled.map { it.uiModel }
     val incompatiblePluginNames = pluginUpdates.incompatible.map { it.name }
     registerDownloaders(sessionId, notIgnoredDownloaders)
     val errors = internalPluginUpdates.errors.map { it.key to it.value.message.orEmpty() }.toMap()

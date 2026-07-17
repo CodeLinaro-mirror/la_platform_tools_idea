@@ -33,6 +33,7 @@ import com.jetbrains.python.psi.Property;
 import com.jetbrains.python.psi.PyAnnotationOwner;
 import com.jetbrains.python.psi.PyCallExpression;
 import com.jetbrains.python.psi.PyCallSiteExpression;
+import com.jetbrains.python.psi.PyCallSiteOwner;
 import com.jetbrains.python.psi.PyCallable;
 import com.jetbrains.python.psi.PyClass;
 import com.jetbrains.python.psi.PyElsePart;
@@ -71,7 +72,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -197,24 +197,6 @@ public class PyClassTypeImpl extends UserDataHolderBase implements PyClassType {
       final Ref<ResolveResultList> resultRef = findProperty(name, direction, false, resolveContext.getTypeEvalContext());
       if (resultRef != null) {
         return resultRef.get();
-      }
-    }
-
-    if ("super".equals(getClassQName()) && isBuiltin() && location instanceof PyCallExpression) {
-      // methods of super() call are not of class super!
-      PyExpression first_arg = ((PyCallExpression)location).getArgument(0, PyExpression.class);
-      if (first_arg != null) { // the usual case: first arg is the derived class that super() is proxying for
-        PyType first_arg_type = context.getType(first_arg);
-        if (first_arg_type instanceof PyClassType) {
-          PyClass derived_class = ((PyClassType)first_arg_type).getPyClass();
-          final Iterator<PyClass> base_it = derived_class.getAncestorClasses(context).iterator();
-          if (base_it.hasNext()) {
-            return new PyClassTypeImpl(base_it.next(), true).resolveMember(name, location, direction, resolveContext);
-          }
-          else {
-            return null; // no base classes = super() cannot proxy anything meaningful from a base class
-          }
-        }
       }
     }
 
@@ -416,13 +398,13 @@ public class PyClassTypeImpl extends UserDataHolderBase implements PyClassType {
   }
 
   @Override
-  public @Nullable PyType getCallType(@NotNull TypeEvalContext context, @NotNull PyCallSiteExpression callSite) {
+  public @Nullable PyType getCallType(@NotNull TypeEvalContext context, @NotNull PyCallSiteOwner callSite) {
     return getPossibleCallType(context, callSite);
   }
 
-  private @Nullable PyType getPossibleCallType(@NotNull TypeEvalContext context, @Nullable PyCallSiteExpression callSite) {
+  private @Nullable PyType getPossibleCallType(@NotNull TypeEvalContext context, @Nullable PyCallSiteOwner callSite) {
     if (!isDefinition()) {
-      return PyUtil.getReturnTypeOfMember(this, PyNames.CALL, callSite, context);
+      return PyUtil.getReturnTypeOfMember(this, PyNames.CALL, callSite instanceof PyCallSiteExpression callSiteExpression ? callSiteExpression : null , context);
     }
     else {
       return withUserDataCopy(new PyClassTypeImpl(getPyClass(), false));

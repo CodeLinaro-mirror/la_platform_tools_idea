@@ -10,17 +10,30 @@ import {
   LATEST_PROTOCOL_VERSION,
   ListToolsRequestSchema,
   ResultSchema,
+  SUPPORTED_PROTOCOL_VERSIONS,
   ToolListChangedNotificationSchema
 } from '@modelcontextprotocol/sdk/types.js'
 import {clearLogFile, logProgress, logToFile} from '../shared/mcp-rpc.mjs'
 import {createStreamTransport} from './stream-transport'
-import {UpstreamConnection} from './upstream'
+import {requestContext, UpstreamConnection} from './upstream'
 import {findReachablePorts} from './discovery'
-import {isMergeTool, resolveIdeForPath, resolveRoute, rewriteArgsForTarget, riderItemTransformer, RIDER_PROJECT_SUBPATH} from './routing'
 import type {ItemTransformer} from './routing'
+import {
+  isMergeTool,
+  resolveIdeForPath,
+  resolveRoute,
+  rewriteArgsForTarget,
+  RIDER_PROJECT_SUBPATH,
+  riderItemTransformer,
+  splitPathListArgsByIde
+} from './routing'
 import {BLOCKED_TOOL_NAMES, getReplacedToolNames} from './proxy-tools/registry'
 import {createProxyTooling} from './proxy-tools/tooling'
-import {extractItems, extractTextFromResult} from './proxy-tools/shared'
+import {
+  handleReformatFileTool,
+  normalizeReformatFileArgs
+} from './proxy-tools/handlers/reformat-file'
+import {extractItems, extractStructuredContent, extractTextFromResult} from './proxy-tools/shared'
 import type {SearchItem, ToolArgs, ToolSpecLike} from './proxy-tools/types'
 import {detectContainerSession} from './container-session'
 
@@ -53,6 +66,27 @@ type ToolOutput = {
   content: Array<{type: 'text'; text: string}>
   isError?: boolean
 }
+
+interface LintFilesToolResult {
+  items: SearchItem[]
+  more?: boolean
+}
+
+interface DiscoveredUpstream {
+  conn: UpstreamConnection
+  url: string
+  name: string
+}
+
+type ProjectMatchStatus = 'match' | 'mismatch' | 'unknown'
+
+const PROJECT_MATCH_PROBE_TOOLS: ReadonlyArray<{toolName: string; args: ToolArgs}> = [
+  {toolName: 'get_all_open_file_paths', args: {}},
+  {toolName: 'get_project_dependencies', args: {}},
+  {toolName: 'get_project_modules', args: {}},
+]
+
+const PROJECT_MISMATCH_RE = /\bdoesn['’]t correspond to any open project\b|\bNo exact project is specified while multiple projects are opened\b|\bCurrently open projects:\b/i
 
 function parseEnvInt(name: string, fallback: number): number {
   const raw = env[name]
@@ -141,6 +175,8 @@ type ProxyToolCaller = (toolName: string, args: ToolArgs) => Promise<unknown>
 
 let proxyToolSpecs: ToolSpecLike[] = []
 let proxyToolNames: Set<string> = new Set()
+let ideaProxyToolNames: Set<string> = new Set()
+let riderProxyToolNames: Set<string> = new Set()
 let ideaProxyToolCall: ProxyToolCaller | null = null
 let riderProxyToolCall: ProxyToolCaller | null = null
 
@@ -186,14 +222,18 @@ function updateProxyTooling(): void {
       callUpstreamTool: (name, args) => ideaUpstream!.callTool(name, args),
       callUpstreamToolRaw: (name, args) => ideaUpstream!.callToolRaw(name, args),
       searchCapabilities: ideaUpstream.searchCapabilities,
+      analysisCapabilities: ideaUpstream.analysisCapabilities,
+      formattingCapabilities: ideaUpstream.formattingCapabilities,
       readCapabilities: ideaUpstream.readCapabilities,
       ideVersion: ideaUpstream.ideVersion,
       containerSession
     })
     ideaSpecs = tooling.proxyToolSpecs
     ideaNames = tooling.proxyToolNames
+    ideaProxyToolNames = tooling.proxyToolNames
     ideaProxyToolCall = tooling.runProxyToolCall
   } else {
+    ideaProxyToolNames = new Set()
     ideaProxyToolCall = null
   }
 
@@ -206,14 +246,18 @@ function updateProxyTooling(): void {
       callUpstreamTool: (name, args) => riderUpstream!.callTool(name, args),
       callUpstreamToolRaw: (name, args) => riderUpstream!.callToolRaw(name, args),
       searchCapabilities: riderUpstream.searchCapabilities,
+      analysisCapabilities: riderUpstream.analysisCapabilities,
+      formattingCapabilities: riderUpstream.formattingCapabilities,
       readCapabilities: riderUpstream.readCapabilities,
       ideVersion: riderUpstream.ideVersion,
       containerSession
     })
     riderSpecs = tooling.proxyToolSpecs
     riderNames = tooling.proxyToolNames
+    riderProxyToolNames = tooling.proxyToolNames
     riderProxyToolCall = tooling.runProxyToolCall
   } else {
+    riderProxyToolNames = new Set()
     riderProxyToolCall = null
   }
 
@@ -294,6 +338,7 @@ function createUpstreamForUrl(url: string): UpstreamConnection {
     transport,
     projectPath,
     defaultProjectPathKey,
+    connectTimeoutMs,
     forceInjectProjectPath: containerSession != null,
     toolCallTimeoutMs,
     buildTimeoutMs,
@@ -333,6 +378,79 @@ function isRiderServerName(name: string): boolean {
   return /rider/i.test(name)
 }
 
+function formatUpstream(candidate: DiscoveredUpstream): string {
+  return `${candidate.url} (${candidate.name})`
+}
+
+function isProjectMismatchError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  return PROJECT_MISMATCH_RE.test(message)
+}
+
+async function probeProjectMatch(candidate: DiscoveredUpstream): Promise<ProjectMatchStatus> {
+  const tools = await candidate.conn.getTools()
+  const availableToolNames = new Set(tools.map((tool) => tool.name))
+
+  for (const probe of PROJECT_MATCH_PROBE_TOOLS) {
+    if (!availableToolNames.has(probe.toolName)) continue
+    try {
+      await candidate.conn.callTool(probe.toolName, {...probe.args})
+      return 'match'
+    } catch (error) {
+      if (isProjectMismatchError(error)) {
+        return 'mismatch'
+      }
+      const message = error instanceof Error ? error.message : String(error)
+      warn(`Failed to verify injected project path for ${formatUpstream(candidate)} via ${probe.toolName}: ${message}`)
+    }
+  }
+
+  return 'unknown'
+}
+
+async function chooseUpstreamForProject(
+  candidates: DiscoveredUpstream[],
+  ideLabel: string,
+  targetProjectPath: string
+): Promise<DiscoveredUpstream | null> {
+  if (candidates.length === 0) return null
+  if (candidates.length === 1) return candidates[0]
+
+  const unknownCandidates: DiscoveredUpstream[] = []
+  for (const candidate of candidates) {
+    const matchStatus = await probeProjectMatch(candidate)
+    if (matchStatus === 'match') {
+      return candidate
+    }
+    if (matchStatus === 'unknown') {
+      unknownCandidates.push(candidate)
+      continue
+    }
+    note(`Skipping ${formatUpstream(candidate)}: injected project path ${targetProjectPath} is not open there`)
+  }
+
+  if (unknownCandidates.length > 0) {
+    const fallback = unknownCandidates[0]
+    warn(`No ${ideLabel} upstream confirmed project path ${targetProjectPath}; using ${formatUpstream(fallback)} without verification`)
+    return fallback
+  }
+
+  const fallback = candidates[0]
+  warn(`No ${ideLabel} upstream matched project path ${targetProjectPath}; using first reachable ${formatUpstream(fallback)}`)
+  return fallback
+}
+
+async function closeUnusedUpstreams(candidates: DiscoveredUpstream[], selected: DiscoveredUpstream | null): Promise<void> {
+  await Promise.allSettled(
+    candidates
+      .filter((candidate) => candidate !== selected)
+      .map(async (candidate) => {
+        try {
+          await candidate.conn.client.close()
+        } catch {}
+      })
+  )
+}
 
 async function ensureDiscovered(): Promise<void> {
   if (ideaUpstream || riderUpstream) return
@@ -370,29 +488,47 @@ async function performDiscovery(): Promise<void> {
       warn
     })
 
+    const ideaCandidates: DiscoveredUpstream[] = []
+    const riderCandidates: DiscoveredUpstream[] = []
+
     for (const {url} of reachable) {
       const conn = createUpstreamForUrl(url)
       try {
         await conn.connect()
         const name = conn.client.getServerVersion()?.name ?? ''
+        const candidate: DiscoveredUpstream = {conn, url, name}
 
-        if (isRiderServerName(name) && !riderUpstream) {
+        if (isRiderServerName(name)) {
           conn.updateProjectPath(path.join(projectPath, RIDER_PROJECT_SUBPATH))
-          riderUpstream = conn
-          setupUpstreamClientHandlers(conn)
-          note(`Rider upstream: ${url} (${name})`)
-        } else if (!isRiderServerName(name) && !ideaUpstream) {
-          ideaUpstream = conn
-          setupUpstreamClientHandlers(conn)
-          note(`IDEA upstream: ${url} (${name})`)
+          riderCandidates.push(candidate)
         } else {
-          // Extra IDE instance — close unused connection
-          try { await conn.client.close() } catch {}
+          ideaCandidates.push(candidate)
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         warn(`Failed to connect to ${url}: ${message}`)
       }
+    }
+
+    const selectedIdea = await chooseUpstreamForProject(ideaCandidates, 'IDEA', projectPath)
+    const selectedRider = await chooseUpstreamForProject(
+      riderCandidates,
+      'Rider',
+      path.join(projectPath, RIDER_PROJECT_SUBPATH)
+    )
+
+    await closeUnusedUpstreams(ideaCandidates, selectedIdea)
+    await closeUnusedUpstreams(riderCandidates, selectedRider)
+
+    if (selectedIdea) {
+      ideaUpstream = selectedIdea.conn
+      setupUpstreamClientHandlers(selectedIdea.conn)
+      note(`IDEA upstream: ${formatUpstream(selectedIdea)}`)
+    }
+    if (selectedRider) {
+      riderUpstream = selectedRider.conn
+      setupUpstreamClientHandlers(selectedRider.conn)
+      note(`Rider upstream: ${formatUpstream(selectedRider)}`)
     }
 
     if (!ideaUpstream && !riderUpstream) {
@@ -424,16 +560,25 @@ const serverCapabilities = {
 
 const proxyServer = new Server(serverInfo, {capabilities: serverCapabilities})
 
-proxyServer.setRequestHandler(InitializeRequestSchema, async () => {
+proxyServer.setRequestHandler(InitializeRequestSchema, async (request) => {
   // Discover IDEs eagerly — no IDE means no reason to run
   await performDiscovery()
+
+  // Negotiate the protocol version instead of forcing LATEST_PROTOCOL_VERSION:
+  // echo the client's requested version when we support it, otherwise fall back
+  // to our latest. Older MCP clients (e.g. the Air hub's Kotlin SDK) reject an
+  // unknown newer version outright and drop the connection.
+  const requestedVersion = request.params.protocolVersion
+  const protocolVersion = SUPPORTED_PROTOCOL_VERSIONS.includes(requestedVersion)
+    ? requestedVersion
+    : LATEST_PROTOCOL_VERSION
 
   const instructions = buildInstructions()
   const effectiveServerInfo = containerSession
     ? {name: `ij-mcp-proxy [container:${containerSession.sessionId}]`, version: '1.0.0'}
     : serverInfo
   return {
-    protocolVersion: LATEST_PROTOCOL_VERSION,
+    protocolVersion,
     capabilities: serverCapabilities,
     serverInfo: effectiveServerInfo,
     ...(instructions && {instructions})
@@ -470,81 +615,111 @@ proxyServer.setRequestHandler(CallToolRequestSchema, async (request) => {
     ? {...(rawArgs as ToolArgs)}
     : {}
 
+  let clientTimeoutMs: number | undefined
+  try {
+    clientTimeoutMs = extractClientTimeoutMs(args)
+  } catch (error) {
+    return makeToolError(error instanceof Error ? error.message : String(error))
+  }
+
   if (containerSession) {
     note(`Tool call: ${toolName} [container:${containerSession.sessionId}, proxy:${proxyToolNames.has(toolName)}, hasUpstream:${!!ideaUpstream}]`)
   }
 
-  if (!toolName) {
-    return makeToolError('Tool name is required')
-  }
-
-  if (BASE_BLOCKED_TOOL_NAMES.has(toolName)) {
-    return makeToolError(blockedToolMessage(toolName))
-  }
-
-  await ensureDiscovered()
-
-  // Proxy-handled tools
-  if (proxyToolNames.has(toolName)) {
-    // Both IDEs available: merge search tools, route file tools by path
-    if (ideaProxyToolCall && riderProxyToolCall) {
-      if (isMergeTool(toolName)) {
-        return await callMergedProxyTool(toolName, args)
-      }
-      const ide = resolveIdeForPath(args, projectPath)
-      const proxyCall = ide === 'rider' ? riderProxyToolCall : ideaProxyToolCall
-      const rewrittenArgs = rewriteArgsForTarget(ide === 'rider' ? 'target-rider' : 'target-idea', args)
-      try {
-        return makeToolOutput(await proxyCall(toolName, rewrittenArgs))
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        return makeToolError(message)
-      }
+  return await requestContext.run({clientTimeoutMs}, async () => {
+    if (!toolName) {
+      return makeToolError('Tool name is required')
     }
 
-    // Single IDE: use whichever is available
-    const proxyCall = ideaProxyToolCall ?? riderProxyToolCall
-    if (proxyCall) {
-      try {
-        return makeToolOutput(await proxyCall(toolName, args))
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        return makeToolError(message)
-      }
+    if (BASE_BLOCKED_TOOL_NAMES.has(toolName)) {
+      return makeToolError(blockedToolMessage(toolName))
     }
-  }
 
-  // Passthrough tools with routing
-  if (ideaUpstream && riderUpstream) {
-    const route = resolveRoute(toolName, args, projectPath)
+    await ensureDiscovered()
 
-    switch (route) {
-      case 'merge':
-        return await callMergedPassthroughTool(toolName, args)
-
-      case 'target-idea':
-      case 'target-rider': {
-        const target = route === 'target-rider' ? riderUpstream : ideaUpstream
+    // Proxy-handled tools
+    if (proxyToolNames.has(toolName)) {
+      // Both IDEs available: merge search tools, route file tools by path
+      if (ideaProxyToolCall && riderProxyToolCall) {
+        if (isMergeTool(toolName)) {
+          return await callMergedProxyTool(toolName, args)
+        }
+        if (toolName === 'lint_files') {
+          return await callSplitMergedProxyTool(toolName, args)
+      }
+      if (toolName === 'reformat_file') {
+        return await callSplitMergedProxyTool(toolName, args)
+        }
+        const ide = resolveIdeForPath(args, projectPath)
+        const proxyCall = ide === 'rider' ? riderProxyToolCall : ideaProxyToolCall
+        const rewrittenArgs = rewriteArgsForTarget(ide === 'rider' ? 'target-rider' : 'target-idea', args)
         try {
-          return await target.callToolForClient(toolName, rewriteArgsForTarget(route, args))
+          return makeToolOutput(await proxyCall(toolName, rewrittenArgs))
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error)
           return makeToolError(message)
         }
       }
 
-      case 'primary':
-        break // fall through to single-IDE path
+      // Single IDE: use whichever is available
+      const proxyCall = ideaProxyToolCall ?? riderProxyToolCall
+      if (proxyCall) {
+        try {
+          if (toolName === 'lint_files') {
+            return await callSingleLintFilesTool(args)
+          }
+        if (toolName === 'reformat_file') {
+          return await callSingleReformatFileTool(args)
+        }
+          return makeToolOutput(await proxyCall(toolName, args))
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          return makeToolError(message)
+        }
+      }
     }
-  }
 
-  // Single IDE
-  try {
-    return await primaryUpstream().callToolForClient(toolName, args)
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    return makeToolError(message)
-  }
+    // Passthrough tools with routing
+    if (ideaUpstream && riderUpstream) {
+      const route = resolveRoute(toolName, args, projectPath)
+
+      switch (route) {
+        case 'merge':
+          return await callMergedPassthroughTool(toolName, args)
+
+        case 'split-merge':
+          return await callSplitMergedPassthroughTool(toolName, args)
+
+        case 'target-idea':
+        case 'target-rider': {
+          const target = route === 'target-rider' ? riderUpstream : ideaUpstream
+          try {
+            return await target.callToolForClient(toolName, rewriteArgsForTarget(route, args))
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error)
+            return makeToolError(message)
+          }
+        }
+
+        case 'primary':
+          break // fall through to single-IDE path
+      }
+    }
+
+    // Single IDE
+    try {
+      if (toolName === 'lint_files') {
+        return await callSingleLintFilesTool(args)
+      }
+    if (toolName === 'reformat_file') {
+      return await callSingleReformatFileTool(args)
+    }
+      return await primaryUpstream().callToolForClient(toolName, args)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      return makeToolError(message)
+    }
+  })
 })
 
 proxyServer.fallbackRequestHandler = async (request) => {
@@ -578,12 +753,303 @@ async function callMergedProxyTool(toolName: string, args: ToolArgs): Promise<To
   return mergeSettledResults(results, 'proxy', [undefined, riderItemTransformer])
 }
 
+async function callSplitMergedProxyTool(toolName: string, args: ToolArgs): Promise<ToolOutput> {
+  switch (toolName) {
+    case 'lint_files': {
+      return await callSplitMergedLintFiles(args)
+    }
+
+    case 'reformat_file': {
+      return await callSplitMergedReformatFile(args)
+    }
+
+    default:
+      return makeToolError(`Tool '${toolName}' is not configured for split-merge proxy routing.`)
+  }
+}
+
 async function callMergedPassthroughTool(toolName: string, args: ToolArgs): Promise<ToolOutput> {
   const results = await Promise.allSettled([
     ideaUpstream!.callToolForClient(toolName, {...args}),
     riderUpstream!.callToolForClient(toolName, {...args})
   ])
   return mergeSettledResults(results, 'passthrough', [undefined, riderItemTransformer])
+}
+
+async function callSplitMergedPassthroughTool(toolName: string, args: ToolArgs): Promise<ToolOutput> {
+  switch (toolName) {
+    case 'lint_files': {
+      return await callSplitMergedLintFiles(args)
+    }
+
+    case 'reformat_file': {
+      return await callSplitMergedReformatFile(args)
+    }
+
+    default:
+      return makeToolError(`Tool '${toolName}' is not configured for split-merge routing.`)
+  }
+}
+
+async function callLintFilesViaProxyOrNative(side: 'idea' | 'rider', args: ToolArgs): Promise<unknown> {
+  if (side === 'idea') {
+    if (ideaProxyToolCall && ideaProxyToolNames.has('lint_files')) {
+      return await ideaProxyToolCall('lint_files', {...args})
+    }
+    if (ideaUpstream?.analysisCapabilities.hasLintFilesFiles) {
+      return await ideaUpstream.callToolForClient('lint_files', {...args})
+    }
+  } else {
+    if (riderProxyToolCall && riderProxyToolNames.has('lint_files')) {
+      return await riderProxyToolCall('lint_files', {...args})
+    }
+    if (riderUpstream?.analysisCapabilities.hasLintFilesFiles) {
+      return await riderUpstream.callToolForClient('lint_files', {...args})
+    }
+  }
+
+  throw new Error(`Tool 'lint_files' is not supported by the ${side === 'idea' ? 'IDEA' : 'Rider'} upstream.`)
+}
+
+async function callReformatFileViaProxyOrNative(side: 'idea' | 'rider', args: ToolArgs): Promise<string> {
+  if (side === 'idea') {
+    if (ideaProxyToolCall && ideaProxyToolNames.has('reformat_file')) {
+      return String(await ideaProxyToolCall('reformat_file', {...args}))
+    }
+    if (ideaUpstream?.formattingCapabilities.hasReformatFileFiles) {
+      return extractTextFromResult(await ideaUpstream.callToolForClient('reformat_file', {...args})) ?? 'ok'
+    }
+    if (ideaUpstream?.formattingCapabilities.hasReformatFile) {
+      return await handleReformatFileTool(
+        args,
+        (name, toolArgs) => ideaUpstream!.callTool(name, toolArgs),
+        ideaUpstream.formattingCapabilities
+      )
+    }
+  } else {
+    if (riderProxyToolCall && riderProxyToolNames.has('reformat_file')) {
+      return String(await riderProxyToolCall('reformat_file', {...args}))
+    }
+    if (riderUpstream?.formattingCapabilities.hasReformatFileFiles) {
+      return extractTextFromResult(await riderUpstream.callToolForClient('reformat_file', {...args})) ?? 'ok'
+    }
+    if (riderUpstream?.formattingCapabilities.hasReformatFile) {
+      return await handleReformatFileTool(
+        args,
+        (name, toolArgs) => riderUpstream!.callTool(name, toolArgs),
+        riderUpstream.formattingCapabilities
+      )
+    }
+  }
+
+  throw new Error(`Tool 'reformat_file' is not supported by the ${side === 'idea' ? 'IDEA' : 'Rider'} upstream.`)
+}
+
+async function callSingleLintFilesTool(args: ToolArgs): Promise<ToolOutput> {
+  const normalizedArgs = normalizeLintFilesArgs(args)
+  const side = getSingleLintFilesSide()
+  const result = await callLintFilesForSide(side, normalizedArgs)
+  const items = side === 'rider' ? riderItemTransformer(result.items) : result.items
+  return createLintFilesToolOutput(result.more === true ? {items, more: true} : {items})
+}
+
+async function callSplitMergedLintFiles(args: ToolArgs): Promise<ToolOutput> {
+  const normalizedArgs = normalizeLintFilesArgs(args)
+  const normalizedFilePaths = normalizedArgs.files as string[]
+
+  let splitArgs: {ideaArgs?: ToolArgs; riderArgs?: ToolArgs}
+  try {
+    splitArgs = splitPathListArgsByIde(normalizedArgs, projectPath)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return makeToolError(message)
+  }
+
+  const calls: Array<{promise: Promise<LintFilesToolResult>; transformer?: ItemTransformer}> = []
+  if (splitArgs.ideaArgs) {
+    calls.push({promise: callLintFilesForSide('idea', splitArgs.ideaArgs)})
+  }
+  if (splitArgs.riderArgs) {
+    calls.push({promise: callLintFilesForSide('rider', splitArgs.riderArgs), transformer: riderItemTransformer})
+  }
+
+  const results = await Promise.allSettled(calls.map((call) => call.promise))
+  for (const result of results) {
+    if (result.status === 'rejected') {
+      const message = result.reason instanceof Error ? result.reason.message : String(result.reason)
+      return makeToolError(message)
+    }
+  }
+
+  const mergedItems: SearchItem[] = []
+  let more = false
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i]
+    if (result.status !== 'fulfilled') continue
+    mergedItems.push(...transformLintItems(result.value.items, calls[i].transformer))
+    more = more || result.value.more === true
+  }
+
+  const items = orderLintItems(normalizedFilePaths, mergedItems)
+  return createLintFilesToolOutput(more ? {items, more: true} : {items})
+}
+
+async function callSingleReformatFileTool(args: ToolArgs): Promise<ToolOutput> {
+  const side = getSingleReformatFileSide()
+  const result = await callReformatFileForSide(side, args)
+  return makeToolOutput(result)
+}
+
+async function callSplitMergedReformatFile(args: ToolArgs): Promise<ToolOutput> {
+  const normalizedArgs = normalizeReformatFileArgs(args)
+
+  let splitArgs: {ideaArgs?: ToolArgs; riderArgs?: ToolArgs}
+  try {
+    splitArgs = splitPathListArgsByIde(normalizedArgs, projectPath)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return makeToolError(message)
+  }
+
+  const calls: Array<Promise<string>> = []
+  if (splitArgs.ideaArgs) {
+    calls.push(callReformatFileForSide('idea', splitArgs.ideaArgs))
+  }
+  if (splitArgs.riderArgs) {
+    calls.push(callReformatFileForSide('rider', splitArgs.riderArgs))
+  }
+
+  const results = await Promise.allSettled(calls)
+  for (const result of results) {
+    if (result.status === 'rejected') {
+      const message = result.reason instanceof Error ? result.reason.message : String(result.reason)
+      return makeToolError(message)
+    }
+  }
+
+  return makeToolOutput('ok')
+}
+
+async function callReformatFileForSide(side: 'idea' | 'rider', args: ToolArgs): Promise<string> {
+  const normalizedArgs = normalizeReformatFileArgs(args)
+  return await callReformatFileViaProxyOrNative(side, normalizedArgs)
+}
+
+async function callLintFilesForSide(side: 'idea' | 'rider', args: ToolArgs): Promise<LintFilesToolResult> {
+  const normalizedArgs = normalizeLintFilesArgs(args)
+  const result = parseLintFilesToolResult(await callLintFilesViaProxyOrNative(side, normalizedArgs))
+  const filePaths = normalizedArgs.files as string[]
+  const items = orderLintItems(filePaths, result.items)
+  return result.more === true ? {items, more: true} : {items}
+}
+
+function getSingleLintFilesSide(): 'idea' | 'rider' {
+  if (ideaProxyToolCall || ideaUpstream) {
+    return 'idea'
+  }
+  if (riderProxyToolCall || riderUpstream) {
+    return 'rider'
+  }
+  throw new Error("Tool 'lint_files' is not available because no upstream is connected.")
+}
+
+function getSingleReformatFileSide(): 'idea' | 'rider' {
+  if (ideaProxyToolCall || ideaUpstream) {
+    return 'idea'
+  }
+  if (riderProxyToolCall || riderUpstream) {
+    return 'rider'
+  }
+  throw new Error("Tool 'reformat_file' is not available because no upstream is connected.")
+}
+
+function normalizeLintFilesArgs(args: ToolArgs): ToolArgs {
+  if (Object.prototype.hasOwnProperty.call(args, 'file_paths')) {
+    throw new Error('file_paths is no longer supported; use files')
+  }
+
+  const files = normalizeLintFilesArg(args.files)
+  const timeout = normalizeLintTimeoutArg(args.timeout)
+  const normalizedArgs: ToolArgs = {
+    ...args,
+    files
+  }
+  if (timeout !== undefined) {
+    normalizedArgs.timeout = timeout
+  } else {
+    delete normalizedArgs.timeout
+  }
+  return normalizedArgs
+}
+
+function normalizeLintFilesArg(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    throw new Error('files must be an array of non-empty strings')
+  }
+
+  const result: string[] = []
+  const seen = new Set<string>()
+  for (const rawPath of value) {
+    if (typeof rawPath !== 'string' || rawPath.trim().length === 0) {
+      throw new Error('files must contain non-empty strings')
+    }
+
+    const normalizedPath = rawPath.trim()
+    if (seen.has(normalizedPath)) continue
+    seen.add(normalizedPath)
+    result.push(normalizedPath)
+  }
+
+  if (result.length === 0) {
+    throw new Error('files must contain at least one path')
+  }
+  return result
+}
+
+function normalizeLintTimeoutArg(value: unknown): number | undefined {
+  if (value === undefined || value === null) {
+    return undefined
+  }
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+    throw new Error('timeout must be a non-negative integer')
+  }
+  return value
+}
+
+function extractClientTimeoutMs(args: ToolArgs): number | undefined {
+  const raw = args.timeout
+  if (raw === undefined || raw === null) return undefined
+  if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 0) {
+    throw new Error('timeout must be a non-negative integer (milliseconds)')
+  }
+  return raw
+}
+
+function parseLintFilesToolResult(result: unknown): LintFilesToolResult {
+  const structured = extractStructuredContent(result)
+  if (!isRecord(structured)) {
+    throw new Error('Upstream lint_files returned unexpected result')
+  }
+  const items = extractItems({structuredContent: structured})
+  return structured.more === true ? {items, more: true} : {items}
+}
+
+function orderLintItems(filePaths: string[], items: SearchItem[]): SearchItem[] {
+  const itemsByPath = new Map<string, SearchItem>()
+  for (const item of items) {
+    if (!itemsByPath.has(item.filePath)) {
+      itemsByPath.set(item.filePath, item)
+    }
+  }
+  return filePaths.map((filePath) => itemsByPath.get(filePath)).filter((item): item is SearchItem => item != null)
+}
+
+function transformLintItems(items: SearchItem[], transformer?: ItemTransformer): SearchItem[] {
+  return transformer ? transformer(items) : items
+}
+
+function createLintFilesToolOutput(result: LintFilesToolResult): ToolOutput {
+  return makeToolOutput(JSON.stringify(result.more === true ? {items: result.items, more: true} : {items: result.items}))
 }
 
 function logSettledErrors(results: PromiseSettledResult<unknown>[]): void {
@@ -605,12 +1071,27 @@ function settledErrorOutput(results: PromiseSettledResult<unknown>[]): ToolOutpu
 }
 
 function extractItemsFromResult(value: unknown, mode: 'proxy' | 'passthrough'): SearchItem[] {
+  const structured = extractStructuredContentFromResult(value, mode)
+  if (!structured) return []
+  return extractItems({structuredContent: structured})
+}
+
+function extractMoreFromResult(value: unknown, mode: 'proxy' | 'passthrough'): boolean {
+  const structured = extractStructuredContentFromResult(value, mode)
+  return isRecord(structured) && structured.more === true
+}
+
+function extractStructuredContentFromResult(value: unknown, mode: 'proxy' | 'passthrough'): unknown | null {
   if (mode === 'proxy') {
-    return extractItems(value)
+    return extractStructuredContent(value)
   }
   const text = extractTextFromResult(value)
-  if (!text) return []
-  return extractItems({content: [{type: 'text', text}]})
+  if (!text) return null
+  return extractStructuredContent({content: [{type: 'text', text}]})
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
 function mergeSettledResults(
@@ -621,19 +1102,23 @@ function mergeSettledResults(
   logSettledErrors(results)
 
   const allItems: unknown[] = []
+  let more = false
+  let hasFulfilledResult = false
   for (let i = 0; i < results.length; i++) {
     const r = results[i]
     if (r.status !== 'fulfilled') continue
+    hasFulfilledResult = true
     const value = r.value
     if (value == null) continue
 
     const items = extractItemsFromResult(value, mode)
     const transformer = transformers[i]
     allItems.push(...(transformer ? transformer(items) : items))
+    more = more || extractMoreFromResult(value, mode)
   }
 
-  if (allItems.length > 0) {
-    return makeToolOutput(JSON.stringify({items: allItems}))
+  if (hasFulfilledResult) {
+    return makeToolOutput(JSON.stringify(more ? {items: allItems, more: true} : {items: allItems}))
   }
   return settledErrorOutput(results)
 }

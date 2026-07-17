@@ -22,6 +22,7 @@ import com.intellij.compose.ide.plugin.resources.ResourceType
 import com.intellij.compose.ide.plugin.shared.isFileInAndroidModule
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.readAction
+import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.fileEditor.AsyncFileEditorProvider
 import com.intellij.openapi.fileEditor.FileDocumentManager
@@ -57,7 +58,8 @@ internal class ComposeResourceEditorProvider : AsyncFileEditorProvider, DumbAwar
   }
 
   override fun createEditor(project: Project, file: VirtualFile): FileEditor {
-    error("ComposeResourceEditorProvider.createEditor should not be called")
+    thisLogger().warn("ComposeResourceEditorProvider.createEditor should not be called")
+    return TextEditorProvider.getInstance().createEditor(project, file)
   }
 
   override suspend fun createFileEditor(

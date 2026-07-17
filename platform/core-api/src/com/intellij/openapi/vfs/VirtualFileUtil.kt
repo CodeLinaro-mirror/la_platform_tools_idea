@@ -16,6 +16,7 @@ import com.intellij.openapi.util.io.PathPrefixTree
 import com.intellij.openapi.util.io.relativizeToClosestAncestor
 import com.intellij.openapi.vfs.VirtualFilePrefixTree.VirtualFileElement
 import com.intellij.openapi.vfs.limits.FileSizeLimit
+import com.intellij.psi.PsiDirectory
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
 import com.intellij.testFramework.LightVirtualFileBase
@@ -33,7 +34,7 @@ import java.nio.file.Path
 import java.nio.file.Paths
 import kotlin.io.path.pathString
 
-fun VirtualFile.validOrNull() = if (isValid) this else null
+fun VirtualFile.validOrNull(): VirtualFile? = if (isValid) this else null
 
 val VirtualFile.isFile: Boolean
   get() = isValid && !isDirectory
@@ -65,9 +66,16 @@ fun VirtualFile.isTooLargeForIntellijSense(): Boolean {
   return length > maxFileSize
 }
 
-fun VirtualFile.toNioPathOrNull(): Path? {
-  return runCatching { toNioPath() }.getOrNull()
-}
+/**
+ * Works as [VirtualFile.toNioPath] but returns `null` instead of throwing [UnsupportedOperationException]
+ */
+fun VirtualFile.toNioPathOrNull(): Path? =
+  try {
+    toNioPath()
+  }
+  catch (_: UnsupportedOperationException) {
+    null
+  }
 
 @RequiresReadLock
 fun VirtualFile.findDocument(): Document? {
@@ -77,6 +85,23 @@ fun VirtualFile.findDocument(): Document? {
 @RequiresReadLock
 fun VirtualFile.findPsiFile(project: Project): PsiFile? {
   return PsiManager.getInstance(project).findFile(this)
+}
+
+/**
+ * Finds the [PsiDirectory] that encapsulates current [VirtualFile].
+ * If the [VirtualFile] is a directory itself, the method will return null.
+ *
+ */
+@RequiresReadLock
+fun VirtualFile.findPsiDirectory(project: Project): PsiDirectory? {
+  return PsiManager.getInstance(project).findDirectory(this)
+}
+
+/**
+ * @return [LightVirtualFileBase.originalFile] recursively unwrapped
+ */
+fun VirtualFile.rootOriginalFile(): VirtualFile? {
+  return generateSequence(this) { f -> f.originalFile() }.lastOrNull()
 }
 
 /**
@@ -94,7 +119,7 @@ fun VirtualFile.originalFileOrSelf(): VirtualFile {
 }
 
 private fun VirtualFile.relativizeToClosestAncestor(
-  relativePath: String
+  relativePath: String,
 ): Pair<VirtualFile, Path> {
   val basePath = Paths.get(path)
   val (normalizedBasePath, normalizedRelativePath) = basePath.relativizeToClosestAncestor(relativePath)
@@ -113,7 +138,7 @@ private fun VirtualFile.relativizeToClosestAncestor(
 
 private inline fun VirtualFile.getResolvedVirtualFile(
   relativePath: String,
-  getChild: VirtualFile.(String, Boolean) -> VirtualFile
+  getChild: VirtualFile.(String, Boolean) -> VirtualFile,
 ): VirtualFile {
   val (baseVirtualFile, normalizedRelativePath) = relativizeToClosestAncestor(relativePath)
   var virtualFile = baseVirtualFile
@@ -135,6 +160,7 @@ private inline fun VirtualFile.getResolvedVirtualFile(
 
 @RequiresReadLock
 fun VirtualFile.findFileOrDirectory(relativePath: @SystemIndependent String): VirtualFile? {
+  if(!isValid) return null
   return getResolvedVirtualFile(relativePath) { name, _ ->
     findChild(name) ?: return null // return from findFileOrDirectory
   }
@@ -199,9 +225,17 @@ fun VirtualFile.findOrCreateDirectory(relativePath: @SystemIndependent String): 
   return directory
 }
 
+/**
+ * Find [VirtualFile] by [Path] without refreshing the file system.
+ */
+fun Path.findVirtualFileOrDirectory(): VirtualFile? {
+  val fileManager = VirtualFileManager.getInstance()
+  return fileManager.findFileByNioPath(this.normalize())
+}
+
 fun Path.refreshAndFindVirtualFileOrDirectory(): VirtualFile? {
   val fileManager = VirtualFileManager.getInstance()
-  return fileManager.refreshAndFindFileByNioPath(this)
+  return fileManager.refreshAndFindFileByNioPath(this.normalize())
 }
 
 fun Path.refreshAndFindVirtualFile(): VirtualFile? {
@@ -252,10 +286,12 @@ fun VirtualFile.resolveFromRootOrRelative(absoluteOrRelativeFilePath: String): V
  * @param canCache       Whether the value can be cached in particular circumstance
  */
 @Experimental
-fun <T : Any> VirtualFile.getCachedValue(key: Key<VirtualFileCachedValue<T>>,
-                                         useSoftCache: Boolean = false,
-                                         canCache: ((VirtualFile) -> Boolean)? = null,
-                                         provider: (VirtualFile, CharSequence?) -> T,): T {
+fun <T : Any> VirtualFile.getCachedValue(
+  key: Key<VirtualFileCachedValue<T>>,
+  useSoftCache: Boolean = false,
+  canCache: ((VirtualFile) -> Boolean)? = null,
+  provider: (VirtualFile, CharSequence?) -> T,
+): T {
   if (!isValid() && ApplicationManager.getApplication().isReadAccessAllowed) {
     thisLogger().error(InvalidVirtualFileAccessException(this))
     return provider(this, null)
@@ -279,14 +315,14 @@ fun <T : Any> VirtualFile.getCachedValue(key: Key<VirtualFileCachedValue<T>>,
   return data
 }
 
-private fun loadText(packageJsonFile: VirtualFile, packageJsonDocument: Document?): CharSequence? {
-  if (packageJsonDocument != null) {
-    return packageJsonDocument.immutableCharSequence
+private fun loadText(file: VirtualFile, document: Document?): CharSequence? {
+  if (document != null) {
+    return document.immutableCharSequence
   }
   return try {
-    VfsUtilCore.loadText(packageJsonFile)
+    VfsUtilCore.loadText(file)
   }
-  catch (e: IOException) {
+  catch (_: IOException) {
     null
   }
 }
@@ -297,9 +333,9 @@ class VirtualFileCachedValue<T> private constructor(
   private val weakData: SoftReference<T?>?,
   internal val fileModificationStamp: Long,
   internal val documentModificationStamp: Long,
-  ) {
+) {
 
-  internal constructor(data: T, useWeakCache: Boolean, fileModificationStamp: Long, documentModificationStamp: Long, ):
+  internal constructor(data: T, useWeakCache: Boolean, fileModificationStamp: Long, documentModificationStamp: Long) :
     this(if (useWeakCache) null else data,
          if (useWeakCache) SoftReference(data) else null,
          fileModificationStamp, documentModificationStamp)

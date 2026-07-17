@@ -26,7 +26,7 @@ import com.jetbrains.python.sdk.flavors.conda.PyCondaEnv
 import com.jetbrains.python.sdk.flavors.conda.PyCondaEnvIdentity
 import com.jetbrains.python.sdk.flavors.conda.PyCondaFlavorData
 import com.jetbrains.python.sdk.flavors.conda.fixCondaPathEnvIfNeeded
-import com.jetbrains.python.sdk.getOrCreateAdditionalData
+import com.jetbrains.python.sdk.pySdkAdditionalData
 import org.hamcrest.MatcherAssert
 import org.hamcrest.Matchers
 import org.junit.Assert
@@ -107,7 +107,6 @@ internal class PyCondaSdkTest {
       val condaSdk = condaRule.condaCommand.createCondaSdkFromExistingEnvironment(
         condaIdentity = condaEnv.envIdentity,
         existingSdks = emptyList(),
-        project = projectRule.project,
       ).getOrThrow()
       val request = LocalTargetEnvironmentRequest()
       val targetEnvironment = LocalTargetEnvironment(request)
@@ -137,7 +136,6 @@ internal class PyCondaSdkTest {
     val sdk = condaRule.condaCommand.createCondaSdkFromExistingEnvironment(
       condaIdentity = condaEnv.envIdentity,
       existingSdks = emptyList(),
-      project = projectRule.project,
     ).getOrThrow()
     val request = LocalTargetEnvironmentRequest()
 
@@ -150,9 +148,9 @@ internal class PyCondaSdkTest {
   @Test
   fun createSdkByFile() =  timeoutRunBlocking(120.seconds) {
     val newCondaInfo = NewCondaEnvRequest.LocalEnvByLocalEnvironmentFile(yamlRule.yamlFilePath, emptyList())
-    val sdk = condaRule.condaCommand.createCondaSdkAlongWithNewEnv(newCondaInfo, emptyList(),
-                                                                   projectRule.project).getOrThrow()
-    val env = (sdk.getOrCreateAdditionalData().flavorAndData.data as PyCondaFlavorData).env
+    val sdk = condaRule.condaCommand.createCondaSdkAlongWithNewEnv(newCondaInfo, emptyList()
+    ).getOrThrow()
+    val env = (sdk.pySdkAdditionalData.flavorAndData.data as PyCondaFlavorData).env
     val namedEnv = env.envIdentity as PyCondaEnvIdentity.NamedEnv
     Assert.assertEquals("Wrong env name", yamlRule.envName, namedEnv.envName)
     ensureHomePathCorrect(sdk)
@@ -164,10 +162,9 @@ internal class PyCondaSdkTest {
     val sdk = condaRule.condaCommand.createCondaSdkFromExistingEnvironment(
       condaIdentity = env.envIdentity,
       existingSdks = emptyList(),
-      project = projectRule.project,
     ).getOrThrow()
 
-    Assert.assertEquals(sdk.getOrCreateAdditionalData().flavor, CondaEnvSdkFlavor)
+    Assert.assertEquals(CondaEnvSdkFlavor, sdk.pySdkAdditionalData.flavor)
     Assert.assertTrue(env.toString(), getPythonVersion(sdk, LocalTargetEnvironmentRequest())?.isNotBlank() == true)
 
     Assert.assertTrue("Bad home path", Files.isExecutable(Path.of(sdk.homePath!!)))

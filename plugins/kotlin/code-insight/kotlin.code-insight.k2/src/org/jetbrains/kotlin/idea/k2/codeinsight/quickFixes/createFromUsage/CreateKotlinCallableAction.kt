@@ -18,9 +18,9 @@ import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiMethodCallExpression
-import com.intellij.psi.PsiNameHelper
 import com.intellij.psi.SmartPsiElementPointer
 import com.intellij.psi.createSmartPointer
+import com.intellij.util.text.UniqueNameGenerator
 import org.jetbrains.kotlin.analysis.api.analyze
 import org.jetbrains.kotlin.analysis.api.symbols.KaCallableSymbol
 import org.jetbrains.kotlin.analysis.api.types.KaTypeParameterType
@@ -32,14 +32,19 @@ import org.jetbrains.kotlin.idea.k2.codeinsight.quickFixes.createFromUsage.Creat
 import org.jetbrains.kotlin.idea.quickfix.createFromUsage.CreateFromUsageUtil
 import org.jetbrains.kotlin.idea.refactoring.getContainer
 import org.jetbrains.kotlin.idea.refactoring.getExtractionContainers
+import org.jetbrains.kotlin.psi.KtBinaryExpression
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.name.FqName
+import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.KtCallElement
 import org.jetbrains.kotlin.psi.KtClassOrObject
 import org.jetbrains.kotlin.psi.KtElement
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.KtPsiFactory
 import org.jetbrains.kotlin.psi.KtSimpleNameExpression
+import org.jetbrains.kotlin.psi.psiUtil.isIdentifier
+import org.jetbrains.kotlin.psi.psiUtil.quoteIfNeeded
+import org.jetbrains.kotlin.types.expressions.OperatorConventions
 
 /**
  * This class is an IntentionAction that creates Kotlin callables based on the given [request]. To create Kotlin
@@ -69,13 +74,35 @@ internal class CreateKotlinCallableAction(
 
     private fun hasReferenceName(): Boolean {
         return ((call as? KtCallElement)?.calleeExpression as? KtSimpleNameExpression)?.getReferencedName() != null
+                || (call as? KtBinaryExpression)?.operationReference?.getReferencedName()?.isNotEmpty() == true
                 || (call as? PsiMethodCallExpression)?.methodExpression?.referenceName != null
     }
 
     internal data class ParamCandidate(val names: Collection<String>, val renderedTypes: List<String>)
 
-    private val parameterCandidates: List<ParamCandidate> = (call as? KtElement ?: pointerToContainer.element as? KtElement)?.let { element -> allowAnalysisFromWriteActionInEdt(element) { analyze(it) { renderCandidatesOfParameterTypes(request.expectedParameters, it) } } } ?: emptyList()
-    private val candidatesOfRenderedReturnType: List<String> = (call as? KtElement ?: pointerToContainer.element as? KtElement)?.let { element -> allowAnalysisFromWriteActionInEdt(element) { analyze(it) { renderCandidatesOfReturnType(request, it) } } } ?: emptyList()
+    private val callTypeParamInfo: CallTypeParameterInfo =
+        (request as? CreateMethodFromKotlinUsageRequest)?.callTypeParameterInfo ?: CallTypeParameterInfo.EMPTY
+
+    private val parameterCandidates: List<ParamCandidate> = run {
+        val raw = (call as? KtElement ?: pointerToContainer.element as? KtElement)?.let { element -> allowAnalysisFromWriteActionInEdt(element) { analyze(it) { renderCandidatesOfParameterTypes(request.expectedParameters, it) } } } ?: emptyList()
+        if (callTypeParamInfo.substitutionMap.isEmpty()) return@run raw
+        val nameGenerator = UniqueNameGenerator()
+        raw.map { candidate ->
+            val names2Types = candidate.renderedTypes.zip(candidate.names) { type, name ->
+                val substitutedType = callTypeParamInfo.substitutionMap[type]
+                if (substitutedType != null) (nameGenerator.generateUniqueName(substitutedType.lowercase()) to substitutedType)
+                else (nameGenerator.generateUniqueName(name) to type)
+            }
+
+            ParamCandidate(names2Types.map { it.first }, names2Types.map { it.second })
+        }
+    }
+
+    private val candidatesOfRenderedReturnType: List<String> = run {
+        val raw = (call as? KtElement ?: pointerToContainer.element as? KtElement)?.let { element -> allowAnalysisFromWriteActionInEdt(element) { analyze(it) { renderCandidatesOfReturnType(request, it) } } } ?: emptyList()
+        if (callTypeParamInfo.substitutionMap.isEmpty()) return@run raw
+        raw.map { callTypeParamInfo.substitutionMap[it] ?: it }
+    }
     private val containerClassFqName: FqName? = (getContainer() as? KtClassOrObject)?.fqName
 
     private val isForCompanion: Boolean =
@@ -107,7 +134,7 @@ internal class CreateKotlinCallableAction(
     override fun isAvailable(project: Project, editor: Editor?, file: PsiFile?): Boolean {
         return pointerToContainer.element != null
                 && (callPointer == null || callPointer.element != null && hasReferenceName())
-                && PsiNameHelper.getInstance(project).isIdentifier(methodName)
+                && methodName.quoteIfNeeded().isIdentifier()
                 && callableDefinitionAsString != null
     }
 
@@ -193,6 +220,12 @@ internal class CreateKotlinCallableAction(
                 if (isNotEmpty()) append(" ")
                 append("abstract")
             }
+            if ((request as? CreateMethodFromKotlinUsageRequest)?.operatorFunction == true) {
+                if (isNotEmpty()) append(" ")
+                val operationToken =
+                    if (OperatorConventions.isConventionName(Name.identifier(methodName))) KtTokens.OPERATOR_KEYWORD else KtTokens.INFIX_KEYWORD
+                append(operationToken)
+            }
             if (isNotEmpty()) append(" ")
             append(KtTokens.FUN_KEYWORD)
             append(" ")
@@ -207,7 +240,7 @@ internal class CreateKotlinCallableAction(
                     append(receiver)
                 }
             }
-            append(request.methodName)
+            append(request.methodName.quoteIfNeeded())
             append("(")
             append(renderParameterList())
             append(")")
@@ -229,6 +262,9 @@ internal class CreateKotlinCallableAction(
         container: KtElement,
         receiverTypeText: String
     ): String {
+        if (callTypeParamInfo.typeParameterDeclarations.isNotEmpty()) {
+            return "<${callTypeParamInfo.typeParameterDeclarations.joinToString(", ") { it.typeParameterName }}> "
+        }
         if (request is CreateMethodFromKotlinUsageRequest && request.receiverExpression != null && request.isExtension) {
             analyze(call as? KtElement ?: container) {
                 val receiverSymbol = request.receiverExpression.resolveExpression()

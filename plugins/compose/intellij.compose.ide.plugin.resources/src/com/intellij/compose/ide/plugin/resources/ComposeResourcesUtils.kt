@@ -3,8 +3,16 @@ package com.intellij.compose.ide.plugin.resources
 
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.openapi.vfs.VirtualFileManager
+import com.intellij.openapi.vfs.findVirtualFileOrDirectory
+import com.intellij.openapi.vfs.toNioPathOrNull
 import com.intellij.psi.PsiFile
+import org.jetbrains.kotlin.idea.base.psi.kotlinFqName
+import org.jetbrains.kotlin.idea.base.util.module
+import org.jetbrains.kotlin.idea.references.mainReference
+import org.jetbrains.kotlin.name.FqName
+import org.jetbrains.kotlin.name.Name
+import org.jetbrains.kotlin.psi.KtDotQualifiedExpression
+import org.jetbrains.kotlin.psi.KtNameReferenceExpression
 
 internal const val COMPOSE_RESOURCES_DIR: String = "composeResources"
 internal const val STRINGS_XML_FILENAME: String = "strings.xml"
@@ -12,7 +20,8 @@ internal const val VALUES_DIRNAME: String = "values"
 
 internal const val ANDROID_RESOURCE_REFERENCE = "org.jetbrains.android.dom.converters.AndroidResourceReference"
 
-private val VALID_INNER_COMPOSE_RESOURCES_DIR_NAMES = setOf("drawable", "font", "values")
+internal val ALL_STRING_TAGS = setOf("string", "string-array", "plurals", "item", "resources")
+internal val VALID_INNER_COMPOSE_RESOURCES_DIR_NAMES = setOf("drawable", "font", "values")
 
 internal val String.isValidInnerComposeResourcesDirName: Boolean
   get() =
@@ -32,8 +41,7 @@ internal val String.withoutExtension: String get() = substringBeforeLast(".")
 internal fun Module.getComposeResourcesDir(): VirtualFile? {
   val composeData = ComposeResourcesDataProvider.findProviderForProject(project)
                       ?.getComposeDataForModule(this) ?: return null
-  val fileManager = VirtualFileManager.getInstance()
-  return fileManager.findFileByNioPath(composeData.directoryPath) ?: composeData.commonResourcesPath?.let(fileManager::findFileByNioPath)
+  return composeData.directoryPath.findVirtualFileOrDirectory() ?: composeData.commonResourcesPath?.findVirtualFileOrDirectory()
 }
 
 /**
@@ -51,3 +59,50 @@ internal fun PsiFile.isComposeResourcesFile(
   return parentName.isValidInnerComposeResourcesDirNameFor(validInnerComposeResourcesDirNames) &&
          ComposeResourcesDataProvider.findProviderForProject(project)?.getComposeDataForResourceFile(this) != null
 }
+
+/**
+ * Returns the [ResourceType] of the given file if it belongs to a Compose resources directory structure or `null` otherwise.
+ *
+ * This function calls [isComposeResourcesFile] and, if the file is a valid Compose resources file,
+ * it resolves its [ResourceType] from the file's path via [ResourceType.fromPath].
+ *
+ * @return the [ResourceType] associated with this file, or `null` if the file is not a Compose resources file
+ */
+internal fun PsiFile.getComposeResourceType(
+  validInnerComposeResourcesDirNames: Set<String> = VALID_INNER_COMPOSE_RESOURCES_DIR_NAMES,
+): ResourceType? {
+  if (!isComposeResourcesFile(validInnerComposeResourcesDirNames)) return null
+  val filePath = this.virtualFile?.toNioPathOrNull() ?: return null
+  return ResourceType.fromPath(filePath)
+}
+
+/** Return the nameOfResClass for the given [Module] */
+private fun Module.getNameOfResClass(): String? =
+  ComposeResourcesDataProvider.findProviderForProject(project)
+    ?.getComposeDataForModule(this)
+    ?.nameOfResClass
+
+/** Return the packageOfResClass for the given [Module] */
+private fun Module.getPackageOfResClass(): String? =
+  ComposeResourcesDataProvider.findProviderForProject(project)
+    ?.getComposeDataForModule(this)
+    ?.packageOfResClass
+
+internal val KtDotQualifiedExpression.isComposeResClass: Boolean
+  get() {
+    val module = module ?: return false
+
+    val resDotAccessorWithoutType = receiverExpression
+    val resReference = (resDotAccessorWithoutType as? KtNameReferenceExpression)
+                       ?: (resDotAccessorWithoutType as? KtDotQualifiedExpression)?.selectorExpression as? KtNameReferenceExpression
+                       ?: return false
+
+    val nameOfResClass = module.getNameOfResClass() ?: return false
+    if (resReference.getReferencedName() != nameOfResClass) return false
+    val packageOfResClass = module.getPackageOfResClass() ?: return false
+    val expectedFqn = FqName(packageOfResClass).child(Name.identifier(nameOfResClass))
+
+    val resolvedFqn = resReference.mainReference.resolve()?.kotlinFqName
+
+    return resolvedFqn == expectedFqn
+  }

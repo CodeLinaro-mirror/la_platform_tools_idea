@@ -10,6 +10,7 @@ import com.intellij.platform.pluginGraph.PluginGraph
 import com.intellij.platform.pluginGraph.PluginId
 import com.intellij.platform.pluginGraph.TargetName
 import com.intellij.platform.pluginGraph.baseModuleName
+import com.intellij.platform.pluginGraph.contentName
 import com.intellij.platform.pluginGraph.isSlashNotation
 import com.intellij.platform.pluginGraph.isTestDescriptor
 import com.intellij.platform.pluginSystem.parser.impl.elements.ModuleLoadingRuleValue
@@ -34,6 +35,7 @@ import org.jetbrains.intellij.build.productLayout.buildContentBlocksAndChainMapp
 import org.jetbrains.intellij.build.productLayout.buildProductContentXml
 import org.jetbrains.intellij.build.productLayout.collectAndValidateAliases
 import org.jetbrains.intellij.build.productLayout.config.SuppressionConfig
+import org.jetbrains.intellij.build.productLayout.contentName
 import org.jetbrains.intellij.build.productLayout.debug
 import org.jetbrains.intellij.build.productLayout.dependency.ModuleDescriptorCache
 import org.jetbrains.intellij.build.productLayout.dependency.PluginContentCache
@@ -51,7 +53,7 @@ import org.jetbrains.intellij.build.productLayout.traversal.collectPluginContent
 import org.jetbrains.intellij.build.productLayout.traversal.collectProductModuleNames
 import org.jetbrains.intellij.build.productLayout.util.AsyncCache
 import org.jetbrains.intellij.build.productLayout.util.DeferredFileUpdater
-import org.jetbrains.intellij.build.productLayout.util.XmlWritePolicy
+import org.jetbrains.intellij.build.productLayout.util.GeneratedArtifactWritePolicy
 import org.jetbrains.jps.model.java.JavaResourceRootType
 import org.jetbrains.jps.model.java.JavaSourceRootType
 import org.jetbrains.jps.model.module.JpsModule
@@ -104,12 +106,10 @@ internal object ModelBuildingStage {
   ): GenerationModel {
     val projectRoot = config.projectRoot
     val outputProvider = config.outputProvider
-    val isUltimateBuild = Files.exists(projectRoot.resolve("community"))
     val productPluginXmlOverrides = buildProductPluginXmlOverrides(
       products = discovery.products,
       outputProvider = outputProvider,
       projectRoot = projectRoot,
-      isUltimateBuild = isUltimateBuild,
       skipXIncludePaths = config.skipXIncludePaths,
       xIncludePrefixFilter = config.xIncludePrefixFilter,
     )
@@ -124,10 +124,10 @@ internal object ModelBuildingStage {
       !commitChanges -> GenerationMode.VALIDATE_ONLY
       else -> GenerationMode.NORMAL
     }
-    val xmlWritePolicy = XmlWritePolicy(generationMode, fileUpdater)
+    val generatedArtifactWritePolicy = GeneratedArtifactWritePolicy(generationMode, fileUpdater)
 
     // Create xi:include cache (shared across plugin content extraction)
-    val xIncludeCache = AsyncCache<String, ByteArray?>(scope)
+    val xIncludeCache = AsyncCache<String, ByteArray?>()
 
     // Create plugin content cache
     // ErrorSink is used to emit xi:include errors during plugin content extraction
@@ -137,10 +137,8 @@ internal object ModelBuildingStage {
       skipXIncludePaths = config.skipXIncludePaths,
       xIncludePrefixFilter = config.xIncludePrefixFilter,
       pluginXmlOverrides = productPluginXmlOverrides,
-      scope = scope,
       errorSink = errorSink,
     )
-
     // Build lookup for DSL-defined test plugins keyed by PluginId (semantically correct)
     // Note: PluginId is the XML plugin identifier, distinct from ModuleName (JPS module)
     val dslTestPluginsByProduct = discovery.products
@@ -157,11 +155,13 @@ internal object ModelBuildingStage {
     }
     for ((pluginId, owners) in dslTestPluginIdOwners) {
       if (owners.size <= 1) continue
-      errorSink.emit(DuplicateDslTestPluginIdError(
-        context = pluginId.value,
-        pluginId = pluginId,
-        productCounts = owners.groupingBy { it }.eachCount(),
-      ))
+      errorSink.emit(
+        DuplicateDslTestPluginIdError(
+          context = pluginId.value,
+          pluginId = pluginId,
+          productCounts = owners.groupingBy { it }.eachCount(),
+        )
+      )
     }
     val dslTestPlugins = dslTestPluginsByProduct.values.flatten()
     val dslTestPluginIds: Set<PluginId> = dslTestPlugins.mapTo(HashSet()) { it.pluginId }
@@ -170,7 +170,7 @@ internal object ModelBuildingStage {
       .toSet()
 
     // Create descriptor cache
-    val descriptorCache = ModuleDescriptorCache(outputProvider = outputProvider, scope = scope)
+    val descriptorCache = ModuleDescriptorCache(outputProvider = outputProvider)
 
     // Build unified graph model for plugin/module/product relationships
     // Graph is the single source of truth - built DURING extraction
@@ -204,8 +204,8 @@ internal object ModelBuildingStage {
       testFrameworkContentModules = config.testFrameworkContentModules,
     )
 
-    val includeAliasCache = AsyncCache<String, Set<PluginId>>(scope)
-    val moduleDescriptorAliasCache = AsyncCache<ContentModuleName, Set<PluginId>>(scope)
+    val includeAliasCache = AsyncCache<String, Set<PluginId>>()
+    val moduleDescriptorAliasCache = AsyncCache<ContentModuleName, Set<PluginId>>()
     linkProductsAndBundledPlugins(discovery, builder)
     linkTestPluginsByProduct(config, builder)
     addModuleSets(discovery, builder)
@@ -216,7 +216,6 @@ internal object ModelBuildingStage {
       builder = builder,
       graphView = baseGraphView,
       outputProvider = outputProvider,
-      isUltimateBuild = isUltimateBuild,
       descriptorCache = descriptorCache,
       includeAliasCache = includeAliasCache,
       moduleDescriptorAliasCache = moduleDescriptorAliasCache,
@@ -258,11 +257,10 @@ internal object ModelBuildingStage {
       config = config,
       projectRoot = projectRoot,
       outputProvider = outputProvider,
-      isUltimateBuild = isUltimateBuild,
       descriptorCache = descriptorCache,
       pluginContentCache = pluginContentCache,
       fileUpdater = fileUpdater,
-      xmlWritePolicy = xmlWritePolicy,
+      generatedArtifactWritePolicy = generatedArtifactWritePolicy,
       scope = scope,
       pluginGraph = pluginGraph,
       dslTestPluginsByProduct = dslTestPluginExpansion.pluginsByProduct,
@@ -308,8 +306,8 @@ internal object ModelBuildingStage {
     val extractedPlugins = coroutineScope {
       pluginTargets.map { plugin ->
         async {
-            val info = pluginContentCache.extract(plugin = plugin, isTest = plugin in testPluginModuleNames)
-            info?.let { plugin to it }
+          val info = pluginContentCache.extract(plugin = plugin, isTest = plugin in testPluginModuleNames)
+          info?.let { plugin to it }
         }
       }.awaitAll().filterNotNull()
     }
@@ -329,7 +327,6 @@ internal object ModelBuildingStage {
     products: List<DiscoveredProduct>,
     outputProvider: ModuleOutputProvider,
     projectRoot: Path,
-    isUltimateBuild: Boolean,
     skipXIncludePaths: Set<String>,
     xIncludePrefixFilter: (String) -> String?,
   ): Map<TargetName, PluginXmlOverride> {
@@ -375,7 +372,7 @@ internal object ModelBuildingStage {
       }
 
       val module = outputProvider.findModule(pluginModule.value)
-        ?: error("Cannot find module '${pluginModule.value}' for product plugin.xml '$relativePluginXmlPath'")
+                   ?: error("Cannot find module '${pluginModule.value}' for product plugin.xml '$relativePluginXmlPath'")
       if (Files.notExists(pluginXmlPath)) {
         error("Product '${product.name}' plugin.xml '$relativePluginXmlPath' does not exist at '$pluginXmlPath'")
       }
@@ -412,7 +409,6 @@ internal object ModelBuildingStage {
         metadataBuilder = { sb ->
           appendDefaultProductPluginMetadata(sb = sb, spec = spec)
         },
-        isUltimateBuild = isUltimateBuild,
       ).xml
       val unresolvedXIncludeInGenerated = findFirstUnresolvedXIncludePath(
         pluginXmlData = generatedPluginXml.toByteArray(),
@@ -430,7 +426,7 @@ internal object ModelBuildingStage {
       val reason = unresolvedXInclude?.let {
         "unresolved xi:include '$it' in source plugin.xml"
       }
-        ?: "content module '$missingBackingContentModule' has no backing JPS module in source plugin.xml"
+                   ?: "content module '$missingBackingContentModule' has no backing JPS module in source plugin.xml"
       debug("productPluginOverride") {
         "using generated override for ${pluginModule.value} due to $reason"
       }
@@ -595,6 +591,10 @@ internal object ModelBuildingStage {
       val productId = builder.addProduct(product.name)
       builder.addEdge(productId, corePluginNodeId, EDGE_BUNDLES)
 
+      for (pluginModule in product.bundledModuleSetPluginModules) {
+        builder.linkProductBundlesPlugin(productName = product.name, pluginName = pluginModule, isTest = false)
+      }
+
       val spec = product.spec ?: continue
 
       // Bundled plugins - addPlugin finds existing nodes created in Phase 1
@@ -608,8 +608,8 @@ internal object ModelBuildingStage {
       }
 
       // Additional modules (product content)
-      for ((moduleName, loadingMode) in spec.additionalModules) {
-        builder.linkProductContainsContent(product.name, moduleName, loadingMode)
+      for (module in spec.additionalModules) {
+        builder.linkProductContainsContent(product.name, module.moduleId, module.loading)
       }
 
       // allowed missing dependencies (for validation)
@@ -667,7 +667,6 @@ internal object ModelBuildingStage {
     builder: PluginGraphBuilder,
     graphView: PluginGraph,
     outputProvider: ModuleOutputProvider,
-    isUltimateBuild: Boolean,
     descriptorCache: ModuleDescriptorCache,
     includeAliasCache: AsyncCache<String, Set<PluginId>>,
     moduleDescriptorAliasCache: AsyncCache<ContentModuleName, Set<PluginId>>,
@@ -681,10 +680,9 @@ internal object ModelBuildingStage {
     //
     // DEPENDS ON: Phase 2 (product edges) + Phase 4 (module sets added)
     // ───────────────────────────────────────────────────────────────────────────────
-    fun aliasNodeName(alias: PluginId): TargetName = TargetName("__alias__:${alias.value}")
     fun linkProductBundlesAlias(productName: String, alias: PluginId) {
       val productId = builder.addProduct(productName)
-      val aliasNodeId = builder.addPlugin(name = aliasNodeName(alias), isTest = false, pluginId = alias)
+      val aliasNodeId = builder.addAliasPlugin(alias)
       builder.addEdge(productId, aliasNodeId, EDGE_BUNDLES)
     }
 
@@ -702,14 +700,15 @@ internal object ModelBuildingStage {
           aliasIds.addAll(OS_MODULE_ALIASES)
           val moduleSetAliases = buildContentBlocksAndChainMapping(spec, collectModuleSetAliases = true).aliasToSource
           aliasIds.addAll(collectAndValidateAliases(spec, moduleSetAliases))
-          aliasIds.addAll(collectAliasesFromDeprecatedIncludes(
-            spec,
-            outputProvider,
-            isUltimateBuild,
-            includeAliasCache,
-            config.xIncludePrefixFilter,
-            config.skipXIncludePaths,
-          ))
+          aliasIds.addAll(
+            collectAliasesFromDeprecatedIncludes(
+              spec,
+              outputProvider,
+              includeAliasCache,
+              config.xIncludePrefixFilter,
+              config.skipXIncludePaths,
+            )
+          )
 
           val productModuleNames = collectProductModuleNames(graphView, product.name)
             .toCollection(LinkedHashSet())
@@ -722,7 +721,7 @@ internal object ModelBuildingStage {
                 aliasIds.addAll(info.pluginAliases)
               }
               if (info.contentModules.isNotEmpty()) {
-                val pluginModuleNames = info.contentModules.mapTo(LinkedHashSet()) { it.name }
+                val pluginModuleNames = info.contentModules.mapTo(LinkedHashSet()) { it.moduleId.contentName() }
                 aliasIds.addAll(collectAliasesFromModuleDescriptors(pluginModuleNames, descriptorCache, moduleDescriptorAliasCache))
               }
             }
@@ -941,12 +940,13 @@ internal object ModelBuildingStage {
   ) {
     // Compare by string value since TargetName (JPS module) and PluginId are different semantic types.
     val dslTestPluginIdStrings = dslTestPluginIds.mapTo(HashSet()) { it.value }
-    fun addPlugin(target: TargetName) {
+    fun addPlugin(target: TargetName, pluginId: PluginId? = null, isModuleSetWrapper: Boolean = false) {
       if (target.value in dslTestPluginIdStrings) return
-      builder.addPlugin(name = target, isTest = false)
+      builder.addPlugin(name = target, isTest = false, pluginId = pluginId, isModuleSetWrapper = isModuleSetWrapper)
     }
 
     for (product in discovery.products) {
+      product.bundledModuleSetPluginModules.forEach(::addPlugin)
       product.spec?.bundledPlugins?.forEach(::addPlugin)
     }
     for (nonBundled in config.nonBundledPlugins.values) {
@@ -1012,7 +1012,7 @@ internal object ModelBuildingStage {
     val contentData = buildContentBlocksAndChainMapping(spec, collectModuleSetAliases = false)
     return contentData.contentBlocks
       .flatMap { it.modules }
-      .mapTo(LinkedHashSet()) { it.name }
+      .mapTo(LinkedHashSet()) { it.contentName() }
   }
 
   private fun expandTestPluginSpec(
@@ -1022,8 +1022,7 @@ internal object ModelBuildingStage {
     autoAddedModulesLoadingMode: ModuleLoadingRuleValue,
   ): TestPluginSpec {
     val autoAddedModules = content.contentModules
-      .map { it.name }
-      .filter { it !in declaredModules }
+      .filter { it.moduleId.contentName() !in declaredModules }
 
     if (autoAddedModules.isEmpty()) {
       return spec
@@ -1034,7 +1033,9 @@ internal object ModelBuildingStage {
       vendor = spec.spec.vendor,
       deprecatedXmlIncludes = spec.spec.deprecatedXmlIncludes,
       moduleSets = spec.spec.moduleSets,
-      additionalModules = spec.spec.additionalModules + autoAddedModules.map { ContentModule(it, autoAddedModulesLoadingMode) },
+      additionalModules = spec.spec.additionalModules + autoAddedModules.map {
+        ContentModule(moduleId = it.moduleId, loading = autoAddedModulesLoadingMode)
+      },
       bundledPlugins = spec.spec.bundledPlugins,
       allowedMissingDependencies = spec.spec.allowedMissingDependencies,
       compositionGraph = spec.spec.compositionGraph,
@@ -1048,7 +1049,6 @@ internal object ModelBuildingStage {
   private suspend fun collectAliasesFromDeprecatedIncludes(
     spec: ProductModulesContentSpec,
     outputProvider: ModuleOutputProvider,
-    isUltimateBuild: Boolean,
     includeAliasCache: AsyncCache<String, Set<PluginId>>,
     prefixFilter: (String) -> String?,
     skipXIncludePaths: Set<String>,
@@ -1059,10 +1059,6 @@ internal object ModelBuildingStage {
 
     val result = LinkedHashSet<PluginId>()
     for (include in spec.deprecatedXmlIncludes) {
-      if (include.ultimateOnly && !isUltimateBuild) {
-        continue
-      }
-
       val moduleName = include.contentModuleName.value
       val cacheKey = "$moduleName:${include.resourcePath}"
       val aliases = includeAliasCache.getOrPut(cacheKey) {
@@ -1109,12 +1105,8 @@ internal object ModelBuildingStage {
   ): Set<PluginId> {
     val moduleName = include.contentModuleName.value
     val module = outputProvider.findModule(moduleName)
-      ?: if (include.ultimateOnly) {
-        error("Ultimate-only module '$moduleName' not found in Ultimate build - this is a configuration error (referenced in deprecated include for '${include.resourcePath}')")
-      }
-      else {
-        error("Module '$moduleName' not found (referenced in deprecated include for '${include.resourcePath}')")
-      }
+                 ?: error("Module '$moduleName' not found (referenced in deprecated include for '${include.resourcePath}')")
+
 
     val initialData = resolveDeprecatedIncludeBytes(include, module, outputProvider)
     if (initialData == null) {

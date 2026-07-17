@@ -86,6 +86,7 @@ class ActionsOnSaveFileDocumentManagerListener private constructor(private val p
    * [DocumentUpdatingActionOnSave.updateDocument] runs with cancelable background progress.
    */
   abstract class DocumentUpdatingActionOnSave : ActionOnSave() {
+    @ApiStatus.Internal
     final override fun processDocuments(project: Project, documents: Array<Document>) {}
 
     /**
@@ -130,6 +131,7 @@ class ActionsOnSaveFileDocumentManagerListener private constructor(private val p
     abstract suspend fun updateDocument(project: Project, document: Document)
   }
 
+  @ApiStatus.Internal
   override fun beforeDocumentSaving(document: Document) {
     if (!ActionsOnSaveManager.getInstance(project).runningSaveDocumentAction) {
       // There are hundreds of places in IntelliJ codebase where saveDocument() is called. IDE and plugins may decide to save some specific
@@ -148,6 +150,7 @@ class ActionsOnSaveFileDocumentManagerListener private constructor(private val p
     }
   }
 
+  @ApiStatus.Internal
   override fun beforeAllDocumentsSaving() {
     val documents = FileDocumentManager.getInstance().unsavedDocuments
     if (documents.isEmpty()) {
@@ -165,6 +168,7 @@ class ActionsOnSaveFileDocumentManagerListener private constructor(private val p
 
 @Service(Service.Level.PROJECT)
 class ActionsOnSaveManager private constructor(private val project: Project, private val coroutineScope: CoroutineScope) {
+  @ApiStatus.Internal
   companion object {
     fun getInstance(project: Project) = project.service<ActionsOnSaveManager>()
   }
@@ -388,6 +392,7 @@ class ActionsOnSaveManager private constructor(private val project: Project, pri
     return coroutineScope.coroutineContext.job.children.iterator().hasNext()
   }
 
+  /** Also consider `ActionOnSaveTestUtil.waitForActionsOnSaveToFinish` */
   @TestOnly
   @RequiresBackgroundThread(generateAssertion = true)
   fun waitForTasks() {

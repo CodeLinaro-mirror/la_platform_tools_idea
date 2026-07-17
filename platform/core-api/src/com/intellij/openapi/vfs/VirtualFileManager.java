@@ -36,7 +36,6 @@ public abstract class VirtualFileManager implements ModificationTracker {
   public static final Topic<BulkFileListener> VFS_CHANGES = new Topic<>(BulkFileListener.class, Topic.BroadcastDirection.TO_DIRECT_CHILDREN, true);
 
   @Topic.AppLevel
-  @ApiStatus.Experimental
   public static final Topic<BulkFileListenerBackgroundable> VFS_CHANGES_BG =
     new Topic<>(BulkFileListenerBackgroundable.class, Topic.BroadcastDirection.TO_DIRECT_CHILDREN, true);
 
@@ -211,9 +210,8 @@ public abstract class VirtualFileManager implements ModificationTracker {
 
   /**
    * Consider using extension point {@code vfs.asyncListenerBackgroundable}.
-   * The listeners registered this way will be able to run on background threads.
+   * The listeners registered this way will always to run on background threads.
    */
-  @ApiStatus.Experimental
   public abstract void addAsyncFileListenerBackgroundable(@NotNull AsyncFileListener listener, @NotNull Disposable parentDisposable);
 
   public abstract void addAsyncFileListener(@NotNull CoroutineScope coroutineScope, @NotNull AsyncFileListener listener);

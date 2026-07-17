@@ -155,6 +155,21 @@ enum class PredefinedPyEnvironments(val spec: PyEnvironmentSpec<*>) {
     }
   }),
 
+  /**
+   * Python 3.12 with pandas and numpy for dataframe debugging tests
+   * ID: py312_pandas
+   * Tags: python3.12, pandas, numpy
+   * Packages: virtualenv, pandas, numpy
+   */
+  VENV_3_12_PANDAS(venvEnvironment {
+    pythonVersion = pythonVersion("3.12")
+    libraries {
+      +"virtualenv"
+      +"pandas"
+      +"numpy"
+    }
+  }),
+
   VANILLA_3_13(pythonEnvironment {
     pythonVersion = pythonVersion("3.13")
   }),
@@ -190,6 +205,25 @@ enum class PredefinedPyEnvironments(val spec: PyEnvironmentSpec<*>) {
    */
   CONDA(condaEnvironment("py312_24.9.2-0") {
     pythonVersion = pythonVersion("3.12")
+  }),
+
+  /**
+   * Conda 25.x environment used by helper-script tests that need to cover the
+   * `conda.core.subdir_data.SubdirData` branch (conda removed `get_index` from `conda.core.index`
+   * starting with 25.x).
+   * Tags: conda, conda25
+   */
+  CONDA_25(condaEnvironment("py312_25.11.1-1") {
+    pythonVersion = pythonVersion("3.12")
+  }),
+
+  /**
+   * Conda 26.x environment used by helper-script tests to verify that the index-loading
+   * code path continues to work on the latest major conda release.
+   * Tags: conda, conda26
+   */
+  CONDA_26(condaEnvironment("py312_26.5.3-1") {
+    pythonVersion = pythonVersion("3.12")
   });
 
   companion object {
@@ -215,10 +249,13 @@ enum class PredefinedPyEnvironments(val spec: PyEnvironmentSpec<*>) {
         "python3.12", "django", "django2", "django20", "behave", "behave-django",
         "pytest", "untangle"
       ),
+      VENV_3_12_PANDAS to setOf("python3.12", "pandas", "numpy"),
       VENV_3_13 to setOf("python3.13", "ruff"),
       VENV_3_14 to setOf("python3", "python3.14", "ruff"),
       VANILLA_3_14 to setOf("vanilla"),
-      CONDA to setOf("conda")
+      CONDA to setOf("conda"),
+      CONDA_25 to setOf("conda", "conda25"),
+      CONDA_26 to setOf("conda", "conda26")
     )
   }
 }

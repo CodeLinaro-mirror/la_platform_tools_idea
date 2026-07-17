@@ -9,14 +9,14 @@ import com.intellij.psi.PsiFile
 import com.intellij.testFramework.TestLoggerFactory
 import org.jdom.Document
 import org.jdom.input.SAXBuilder
-import org.jetbrains.kotlin.formatter.FormatSettingsUtil
 import org.jetbrains.kotlin.idea.base.test.IgnoreTests
 import org.jetbrains.kotlin.idea.base.test.InTextDirectivesUtils
+import org.jetbrains.kotlin.idea.base.test.configureCodeStyleAndRun
+import org.jetbrains.kotlin.idea.base.test.formatter.FormatSettingsUtil
 import org.jetbrains.kotlin.idea.compiler.configuration.KotlinPluginLayout
 import org.jetbrains.kotlin.idea.test.KotlinLightCodeInsightFixtureTestCase
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils
 import org.jetbrains.kotlin.idea.test.TestFixtureExtension
-import org.jetbrains.kotlin.idea.test.configureCodeStyleAndRun
 import org.jetbrains.kotlin.idea.test.configureRegistryAndRun
 import org.jetbrains.kotlin.idea.test.runAll
 import org.jetbrains.kotlin.idea.test.withCustomCompilerOptions
@@ -67,8 +67,10 @@ abstract class AbstractInspectionTest : KotlinLightCodeInsightFixtureTestCase() 
         val optionsFile = File(path)
         val options = FileUtil.loadFile(optionsFile, true)
 
-        val inspectionClass = Class.forName(InTextDirectivesUtils.findStringWithPrefixes(options, inspectionClassDirective())
-                                                ?: error("Not found line with directive ${inspectionClassDirective()}"))
+        val inspectionClass = Class.forName(
+            InTextDirectivesUtils.findStringWithPrefixes(options, inspectionClassDirective())
+                ?: error("Not found line with directive ${inspectionClassDirective()}")
+        )
 
         val fixtureClasses = InTextDirectivesUtils.findListWithPrefixes(options, "// FIXTURE_CLASS: ")
 
@@ -98,7 +100,7 @@ abstract class AbstractInspectionTest : KotlinLightCodeInsightFixtureTestCase() 
                             val text = FileUtil.loadFile(file, true)
 
                             val shouldBeIgnored =
-                                InTextDirectivesUtils.isDirectiveDefined(text, IgnoreTests.DIRECTIVES.of(pluginMode))
+                                InTextDirectivesUtils.isDirectiveDefined(text, IgnoreTests.DIRECTIVES.IGNORE_K2)
                             if (shouldBeIgnored) return@mapNotNull null
 
                             val fileText =

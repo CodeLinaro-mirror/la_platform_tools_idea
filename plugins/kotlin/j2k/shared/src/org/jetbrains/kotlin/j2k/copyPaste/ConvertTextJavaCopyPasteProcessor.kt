@@ -133,7 +133,7 @@ class ConvertTextJavaCopyPasteProcessor : CopyPastePostProcessor<TextBlockTransf
 
         val copiedJavaCode = prepareCopiedJavaCodeByContext(text, javaConversionContext, pasteTarget)
         val conversionData = ConversionData.prepare(copiedJavaCode, project)
-        val j2kKind = getJ2kKind(targetData.file)
+        val j2kKind = getJ2kKind()
 
         val converter = J2KTextCopyPasteConverter(project, editor, conversionData, targetData, j2kKind)
         val conversionTime = measureTimeMillis { converter.convert() }
@@ -246,6 +246,7 @@ class ConvertTextJavaCopyPasteProcessor : CopyPastePostProcessor<TextBlockTransf
         val dummyContainingClassHeader = if (javaContext == JavaContext.TOP_LEVEL) {
             ""
         } else {
+            // TODO(KTIJ-38052): drop light classes
             val lightClass = target.getParentOfType<KtClass>(strict = false)?.toLightClass()
             val className = lightClass?.name ?: "Dummy"
             val extendsClause = lightClass?.getExtendsClause() ?: ""

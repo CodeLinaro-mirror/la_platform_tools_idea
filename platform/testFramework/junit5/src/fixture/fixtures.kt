@@ -11,7 +11,6 @@ import com.intellij.openapi.application.Application
 import com.intellij.openapi.application.UiWithModelAccess
 import com.intellij.openapi.application.edtWriteAction
 import com.intellij.openapi.application.readAction
-import com.intellij.openapi.application.writeAction
 import com.intellij.openapi.components.ComponentManager
 import com.intellij.openapi.components.ComponentManagerEx
 import com.intellij.openapi.components.serviceAsync
@@ -40,6 +39,7 @@ import com.intellij.openapi.util.registry.RegistryValue
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.VirtualFileManager
+import com.intellij.openapi.vfs.newvfs.ManagingFS
 import com.intellij.openapi.vfs.refreshAndFindVirtualFileOrDirectory
 import com.intellij.platform.eel.fs.EelFileSystemApi.CreateTemporaryEntryOptions
 import com.intellij.platform.eel.getOrThrow
@@ -104,6 +104,8 @@ fun tempPathFixture(root: Path? = null, prefix: String = "IJ", subdirName: Strin
   val realTempDir = tempDir.toRealPath()
   initialized(realTempDir) {
     withContext(Dispatchers.IO) {
+      //If files were loaded into VFS, there could be pending updates for them: apply them before deleting the files
+      ManagingFS.getInstanceOrNull()?.flushPendingUpdates()
       repeat(10) {
         try {
           // This method might throw DirectoryNotEmptyException due to races, hence retry
@@ -140,6 +142,21 @@ fun TestFixture<Project>.fileOrDirInProjectFixture(relativePath: String): TestFi
   initialized(file) {}
 }
 
+/**
+ * Finds an existing [PsiFile] in the project by [relativePath].
+ * Unlike [psiFileFixture], this does not create a new file but locates one that already exists in the project.
+ */
+@TestOnly
+fun TestFixture<Project>.existingPsiFileFixture(relativePath: String): TestFixture<PsiFile> = testFixture {
+  val project = this@existingPsiFileFixture.init()
+  val virtualFile = fileOrDirInProjectFixture(relativePath).init()
+  val psiFile = readAction {
+    PsiManager.getInstance(project).findFile(virtualFile)
+    ?: error("Cannot find PsiFile for $virtualFile")
+  }
+  initialized(psiFile) {}
+}
+
 @TestOnly
 fun TestFixture<Project>.moduleInProjectFixture(name: String): TestFixture<Module> = testFixture {
   val project = init()
@@ -150,6 +167,7 @@ fun TestFixture<Project>.moduleInProjectFixture(name: String): TestFixture<Modul
 /**
  * Creates [Project] fixture. If the fixture is stored in a static variable, the [Project] will be created
  * only once. On the contrary, storing a fixture in the instance variable will create a new [Project] for each test.
+ * Optionally, it can copy the content of a specified resource path into the project directory before it is created or opened.
  *
  * <p>
  *
@@ -164,9 +182,13 @@ fun projectFixture(
   pathFixture: TestFixture<Path> = tempPathFixture(),
   openProjectTask: OpenProjectTask = OpenProjectTask.build(),
   openAfterCreation: Boolean = false,
+  blueprintResourcePath: Path? = null,
 ): TestFixture<Project> = testFixture {
   // Background service preloading might trigger service loading after a project gets disposed leading to a test failure.
   val path = pathFixture.init()
+  blueprintResourcePath?.let {
+    copyBlueprintToDirectory(it, path)
+  }
   // if project already contains .idea folder we should open it instead of creating a new project
   val isValidIdeaProject = ProjectUtil.isValidProjectPath(path)
   // we should respect if user explicitly set isNewProject
@@ -187,10 +209,20 @@ fun projectFixture(
     newProject
   }
   // Wait until components fully loaded. Otherwise, we might start loading then when a project is already disposed when a test is too fast.
-  project.serviceAsync<RunManager>()
+  RunManager.getInstanceAsync(project)
   initialized(project) {
     ProjectManagerEx.getInstanceEx().forceCloseProjectAsync(project, save = false)
   }
+}
+
+@TestOnly
+@OptIn(ExperimentalPathApi::class)
+private fun copyBlueprintToDirectory(blueprintResourcePath: Path, targetDirectoryPath: Path) {
+  require(blueprintResourcePath.exists()) { "Blueprint resource path provided does not exist: $blueprintResourcePath" }
+  if (!targetDirectoryPath.exists()) {
+    targetDirectoryPath.createDirectories()
+  }
+  blueprintResourcePath.copyToRecursively(targetDirectoryPath, followLinks = false, overwrite = true)
 }
 
 @JvmOverloads
@@ -280,7 +312,6 @@ fun disposableFixture(): TestFixture<Disposable> = testFixture { context ->
  * @return A fixture providing a PsiDirectory instance representing the initialized source root.
  */
 @JvmOverloads
-@OptIn(ExperimentalPathApi::class)
 @TestOnly
 fun TestFixture<Module>.sourceRootFixture(
   isTestSource: Boolean = false,
@@ -293,8 +324,7 @@ fun TestFixture<Module>.sourceRootFixture(
     val directoryVfs = VfsUtil.createDirectories(directoryPath.toCanonicalPath())
 
     blueprintResourcePath?.let {
-      require(it.exists()) { "Blueprint resource path provided does not exist: $it" }
-      it.copyToRecursively(directoryPath, followLinks = false, overwrite = true)
+      copyBlueprintToDirectory(it, directoryPath)
     }
 
     ModuleRootModificationUtil.updateModel(module) { model ->
@@ -305,6 +335,11 @@ fun TestFixture<Module>.sourceRootFixture(
     }
     initialized(directory) {
       edtWriteAction {
+        if (!module.isDisposed) {
+          ModuleRootModificationUtil.updateModel(module) { model ->
+            model.contentEntries.firstOrNull { it.file == directoryVfs }?.let(model::removeContentEntry)
+          }
+        }
         directory.delete()
       }
     }
@@ -357,7 +392,7 @@ fun TestFixture<PsiFile>.editorFixture(): TestFixture<Editor> = testFixture { _ 
   val file = psiFile.virtualFile
   val editor = withContext(Dispatchers.UiWithModelAccess) {
     val fileEditorManager = project.serviceAsync<FileEditorManager>()
-    writeAction {
+    edtWriteAction {
       val editor = fileEditorManager.openTextEditor(OpenFileDescriptor(project, file), true)
       requireNotNull(editor)
 
@@ -372,7 +407,7 @@ fun TestFixture<PsiFile>.editorFixture(): TestFixture<Editor> = testFixture { _ 
   initialized(editor) {
     withContext(Dispatchers.UiWithModelAccess) {
       val fileEditorManager = project.serviceAsync<FileEditorManager>()
-      writeAction {
+      edtWriteAction {
         fileEditorManager.closeFile(file)
       }
     }
@@ -419,7 +454,7 @@ fun TestFixture<Project>.fileEditorManagerFixture(initDockableContentFactory: Bo
       {
         runBlocking {
           withContext(Dispatchers.UiWithModelAccess) {
-            writeAction {
+            edtWriteAction {
               manager.closeAllFiles()
             }
           }

@@ -19,6 +19,7 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.ApiStatus.Obsolete;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -162,6 +163,12 @@ public interface Editor extends UserDataHolder {
    * for the editor document at the moment and provides basic management functions for them.
    */
   @NotNull SoftWrapModel getSoftWrapModel();
+
+  @ApiStatus.Experimental
+  @NotNull
+  default CustomWrapModel getCustomWrapModel() {
+    return EmptyCustomWrapModel.INSTANCE;
+  }
 
   /**
    * Returns the editor settings for this editor instance.
@@ -448,12 +455,36 @@ public interface Editor extends UserDataHolder {
     EditorThreading.assertInteractionAllowed();
     return EditorThreading.compute(() -> {
       Rectangle rect = getScrollingModel().getVisibleArea();
-      LogicalPosition startPosition = xyToLogicalPosition(new Point(rect.x, rect.y));
+      int stickyLinesHeight = getStickyLinesPanelHeight();
+
+      LogicalPosition startPosition = xyToLogicalPosition(new Point(rect.x, rect.y + stickyLinesHeight));
       int visibleStart = logicalPositionToOffset(startPosition);
+
       LogicalPosition endPosition = xyToLogicalPosition(new Point(rect.x + rect.width, rect.y + rect.height));
       int visibleEnd = logicalPositionToOffset(new LogicalPosition(endPosition.line + 1, 0));
+
       return new ProperTextRange(visibleStart, Math.max(visibleEnd, visibleStart));
     });
+  }
+
+  @ApiStatus.Internal
+  default @NotNull Document getElfDocument() {
+    return getDocument();
+  }
+
+  /**
+   * Returns the current height of the sticky lines panel component in pixels.
+   * <p>
+   * The integer value is in the range from {@code 0} to {@code lineHeight * stickyLinesLimit}.
+   * It is zero if the sticky lines feature is disabled or the panel is empty.
+   * <p>
+   * NOTE: the value is not necessarily a multiple of line height.
+   * For example, it can be {@code lineHeight / 2} if the editor is scrolled that way
+   * to render only bottom half of a sticky line.
+   */
+  @ApiStatus.Experimental
+  default int getStickyLinesPanelHeight() {
+    return 0;
   }
 
   /**

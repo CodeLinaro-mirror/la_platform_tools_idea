@@ -17,10 +17,13 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 
 @TestApplication
+@Timeout(value = 2, unit = TimeUnit.MINUTES)
 class AgentPromptSuggestionControllerTest {
   @Test
   fun reloadSuggestionsPublishesSubscriptionCandidates() {
@@ -29,7 +32,7 @@ class AgentPromptSuggestionControllerTest {
     val subscription = FakeSubscription(listOf(candidate(id = "tests.fix")))
     try {
       val controller = AgentPromptSuggestionController(
-        popupScope = scope,
+        sessionScope = scope,
         subscriptionProvider = { subscription },
         onSuggestionsUpdated = observed::add,
       )
@@ -51,7 +54,7 @@ class AgentPromptSuggestionControllerTest {
     val subscription = FakeSubscription(listOf(candidate(id = "tests.fix", promptText = "template")))
     try {
       val controller = AgentPromptSuggestionController(
-        popupScope = scope,
+        sessionScope = scope,
         subscriptionProvider = { subscription },
         onSuggestionsUpdated = observed::add,
       )
@@ -83,7 +86,7 @@ class AgentPromptSuggestionControllerTest {
     val subscriptionCallCount = AtomicInteger(0)
     try {
       val controller = AgentPromptSuggestionController(
-        popupScope = scope,
+        sessionScope = scope,
         subscriptionProvider = {
           subscriptionCallCount.incrementAndGet()
           subscription
@@ -112,7 +115,7 @@ class AgentPromptSuggestionControllerTest {
     val subscriptionCallCount = AtomicInteger(0)
     try {
       val controller = AgentPromptSuggestionController(
-        popupScope = scope,
+        sessionScope = scope,
         subscriptionProvider = {
           subscriptionCallCount.incrementAndGet()
           subscription
@@ -143,7 +146,7 @@ class AgentPromptSuggestionControllerTest {
     val secondSubscription = FakeSubscription(listOf(candidate(id = "fresh")))
     try {
       val controller = AgentPromptSuggestionController(
-        popupScope = scope,
+        sessionScope = scope,
         subscriptionProvider = { request ->
           when (request.contextItems.single().title) {
             "first" -> firstSubscription
@@ -177,7 +180,7 @@ class AgentPromptSuggestionControllerTest {
     val subscriptionCallCount = AtomicInteger(0)
     try {
       val controller = AgentPromptSuggestionController(
-        popupScope = scope,
+        sessionScope = scope,
         subscriptionProvider = { request ->
           subscriptionCallCount.incrementAndGet()
           FakeSubscription(listOf(candidate(id = request.targetModeId)))
@@ -205,7 +208,7 @@ class AgentPromptSuggestionControllerTest {
     val subscriptionCallCount = AtomicInteger(0)
     try {
       val controller = AgentPromptSuggestionController(
-        popupScope = scope,
+        sessionScope = scope,
         subscriptionProvider = { request ->
           subscriptionCallCount.incrementAndGet()
           FakeSubscription(listOf(candidate(id = request.projectPath.orEmpty())))
@@ -233,7 +236,7 @@ class AgentPromptSuggestionControllerTest {
     val subscriptionCallCount = AtomicInteger(0)
     try {
       val controller = AgentPromptSuggestionController(
-        popupScope = scope,
+        sessionScope = scope,
         subscriptionProvider = { request ->
           subscriptionCallCount.incrementAndGet()
           FakeSubscription(
@@ -275,16 +278,16 @@ class AgentPromptSuggestionControllerTest {
   fun clearSuggestionsClosesActiveSubscriptionAndPublishesEmptyState() {
     val observed = CopyOnWriteArrayList<List<AgentPromptSuggestionCandidate>>()
     val scope = controllerScope()
-    val subscription = FakeSubscription(listOf(candidate(id = "paths.plan")))
+    val subscription = FakeSubscription(listOf(candidate(id = "paths.duplication")))
     try {
       val controller = AgentPromptSuggestionController(
-        popupScope = scope,
+        sessionScope = scope,
         subscriptionProvider = { subscription },
         onSuggestionsUpdated = observed::add,
       )
 
       controller.reloadSuggestions(request(label = "first"))
-      waitForCondition { observed.lastOrNull()?.map(AgentPromptSuggestionCandidate::id) == listOf("paths.plan") }
+      waitForCondition { observed.lastOrNull()?.map(AgentPromptSuggestionCandidate::id) == listOf("paths.duplication") }
 
       controller.clearSuggestions()
 
@@ -300,16 +303,16 @@ class AgentPromptSuggestionControllerTest {
   fun disposeClosesActiveSubscriptionWithoutClearingSuggestions() {
     val observed = CopyOnWriteArrayList<List<AgentPromptSuggestionCandidate>>()
     val scope = controllerScope()
-    val subscription = FakeSubscription(listOf(candidate(id = "paths.plan")))
+    val subscription = FakeSubscription(listOf(candidate(id = "paths.duplication")))
     try {
       val controller = AgentPromptSuggestionController(
-        popupScope = scope,
+        sessionScope = scope,
         subscriptionProvider = { subscription },
         onSuggestionsUpdated = observed::add,
       )
 
       controller.reloadSuggestions(request(label = "first"))
-      waitForCondition { observed.lastOrNull()?.map(AgentPromptSuggestionCandidate::id) == listOf("paths.plan") }
+      waitForCondition { observed.lastOrNull()?.map(AgentPromptSuggestionCandidate::id) == listOf("paths.duplication") }
       val updateCount = observed.size
 
       controller.dispose()
@@ -328,10 +331,10 @@ class AgentPromptSuggestionControllerTest {
     val observed = CopyOnWriteArrayList<List<AgentPromptSuggestionCandidate>>()
     val scope = controllerScope()
     val available = AtomicInteger(1)
-    val firstSubscription = FakeSubscription(listOf(candidate(id = "paths.plan")))
+    val firstSubscription = FakeSubscription(listOf(candidate(id = "paths.duplication")))
     try {
       val controller = AgentPromptSuggestionController(
-        popupScope = scope,
+        sessionScope = scope,
         subscriptionProvider = { request ->
           when {
             request.contextItems.single().title == "first" && available.getAndSet(0) == 1 -> firstSubscription
@@ -342,7 +345,7 @@ class AgentPromptSuggestionControllerTest {
       )
 
       controller.reloadSuggestions(request(label = "first"))
-      waitForCondition { observed.lastOrNull()?.map(AgentPromptSuggestionCandidate::id) == listOf("paths.plan") }
+      waitForCondition { observed.lastOrNull()?.map(AgentPromptSuggestionCandidate::id) == listOf("paths.duplication") }
 
       controller.reloadSuggestions(request(label = "second"))
 

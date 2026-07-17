@@ -1,4 +1,4 @@
-// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.kotlin.idea.codeinsight.utils
 
 import org.jetbrains.annotations.ApiStatus
@@ -130,7 +130,7 @@ fun KtCallExpression.isImplicitInvokeCall(): Boolean? {
 context(_: KaSession)
 fun KtReference.resolveCompanionObjectShortReferenceToContainingClassSymbol(): KaNamedClassSymbol? {
     if (this !is KtSimpleNameReference) return null
-    if (!isImplicitReferenceToCompanion()) return null
+    if (!element.isImplicitReferenceToCompanion) return null
 
     val symbol = this.resolveToSymbol()
     if (symbol !is KaClassSymbol || symbol.classKind != KaClassKind.COMPANION_OBJECT) return null
@@ -168,8 +168,8 @@ fun KtExpression.resolveExpression(): KaSymbol? {
  * N.B. This function should NOT be used everywhere - only in cases where exceptions are too frequent.
  */
 @OptIn(KaContextParameterApi::class)
-context(_: KaSession)
 @get:ApiStatus.Internal
+context(_: KaSession)
 val KtTypeReference.typeIfSafeToResolve: KaType?
     get() {
         if (!this.isSafeToResolve) return null
@@ -177,7 +177,6 @@ val KtTypeReference.typeIfSafeToResolve: KaType?
         return this.type
     }
 
-@OptIn(KaContextParameterApi::class)
 context(_: KaSession)
 fun KaNamedFunctionSymbol.isEqualsMethodSymbol(): Boolean {
     if (name != OperatorNameConventions.EQUALS) return false

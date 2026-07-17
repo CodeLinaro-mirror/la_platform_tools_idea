@@ -1,14 +1,16 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.agent.workbench.sessions.launch.config.backend
 
-import com.intellij.agent.workbench.common.session.AgentSessionProvider
-import com.intellij.agent.workbench.sessions.core.providers.AgentSessionTerminalLaunchSpec
+import com.intellij.platform.ai.agent.core.session.AgentSessionProvider
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentSessionTerminalLaunchSpec
 import com.intellij.platform.eel.EelOsFamily
 import com.intellij.testFramework.junit5.TestApplication
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
+import java.util.concurrent.TimeUnit
 import org.junit.jupiter.api.io.TempDir
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -16,6 +18,7 @@ import java.nio.file.Path
 import kotlin.io.path.invariantSeparatorsPathString
 
 @TestApplication
+@Timeout(value = 2, unit = TimeUnit.MINUTES)
 class AgentWorkbenchProjectLaunchConfigTest {
   @TempDir
   lateinit var tempDir: Path
@@ -36,7 +39,7 @@ class AgentWorkbenchProjectLaunchConfigTest {
       environmentVariables = mapOf("PATH" to targetPathEntries.joinToString(":")),
     ).augmentBlocking(
       projectPath = projectDir.toString(),
-      provider = AgentSessionProvider.CODEX,
+      provider = AgentSessionProvider.from("codex"),
       launchSpec = AgentSessionTerminalLaunchSpec(
         command = listOf("codex", "resume", "thread-1"),
         envVariables = mapOf("DISABLE_AUTOUPDATER" to "1"),
@@ -48,7 +51,8 @@ class AgentWorkbenchProjectLaunchConfigTest {
 
     val pathEntries = splitPathEntries(launchSpec.envVariables.getValue("PATH"), EelOsFamily.Posix)
     val shimDirectory = Path.of(pathEntries.first())
-    assertThat(shimDirectory.startsWith(tempDir.resolve("system").resolve("agent-workbench").resolve("command-shims").resolve("codex"))).isTrue()
+    assertThat(shimDirectory.startsWith(tempDir.resolve("system").resolve("agent-workbench").resolve("command-shims")
+                                          .resolve("codex"))).isTrue()
     assertThat(Files.isRegularFile(shimDirectory.resolve("bun"))).isTrue()
     assertThat(pathEntries[1]).isEqualTo(projectDir.resolve(AGENT_WORKBENCH_TEST_PATH_PREPEND).toString())
     assertThat(pathEntries.drop(2)).containsExactlyElementsOf(targetPathEntries.map(Path::toString))
@@ -71,7 +75,7 @@ class AgentWorkbenchProjectLaunchConfigTest {
       environmentVariables = mapOf("PATH" to targetPath.toString()),
     ).augmentBlocking(
       projectPath = projectDir.toString(),
-      provider = AgentSessionProvider.CODEX,
+      provider = AgentSessionProvider.from("codex"),
       launchSpec = AgentSessionTerminalLaunchSpec(
         command = listOf("codex", "resume", "thread-1"),
         envVariables = mapOf("PATH" to providerPath.toString()),
@@ -102,7 +106,7 @@ class AgentWorkbenchProjectLaunchConfigTest {
         environmentVariables = mapOf("PATH" to tempDir.resolve("base-path").toString()),
       ).augmentBlocking(
         projectPath = projectDir.toString(),
-        provider = AgentSessionProvider.CODEX,
+        provider = AgentSessionProvider.from("codex"),
         launchSpec = launchSpec,
       )
     ).isEqualTo(launchSpec)
@@ -123,7 +127,7 @@ class AgentWorkbenchProjectLaunchConfigTest {
       environmentVariables = mapOf("PATH" to tempDir.resolve("base-path").toString()),
     ).augmentBlocking(
       projectPath = projectDir.toString(),
-      provider = AgentSessionProvider.CODEX,
+      provider = AgentSessionProvider.from("codex"),
       launchSpec = AgentSessionTerminalLaunchSpec(command = listOf("codex", "resume", "thread-1")),
     )
 
@@ -144,7 +148,7 @@ class AgentWorkbenchProjectLaunchConfigTest {
       environmentVariables = mapOf("PATH" to tempDir.resolve("base-path").toString()),
     ).augmentBlocking(
       projectPath = projectDir.toString(),
-      provider = AgentSessionProvider.CODEX,
+      provider = AgentSessionProvider.from("codex"),
       launchSpec = AgentSessionTerminalLaunchSpec(command = listOf("codex", "resume", "thread-1")),
     )
 
@@ -164,7 +168,7 @@ class AgentWorkbenchProjectLaunchConfigTest {
       environmentVariables = windowsEnvironment(targetPathValue),
     ).augmentBlocking(
       projectPath = projectDir.toString(),
-      provider = AgentSessionProvider.CLAUDE,
+      provider = AgentSessionProvider.from("claude"),
       launchSpec = AgentSessionTerminalLaunchSpec(command = listOf("claude", "resume", "thread-1")),
     )
 
@@ -200,7 +204,7 @@ class AgentWorkbenchProjectLaunchConfigTest {
       environmentVariables = mapOf("PATH" to basePath.toString()),
     ).augmentBlocking(
       projectPath = projectDir.toString(),
-      provider = AgentSessionProvider.CODEX,
+      provider = AgentSessionProvider.from("codex"),
       launchSpec = AgentSessionTerminalLaunchSpec(command = listOf("codex", "resume", "thread-1")),
     )
 
@@ -219,7 +223,7 @@ class AgentWorkbenchProjectLaunchConfigTest {
       projectDir,
       shared = testLaunchConfig(),
       providers = mapOf(
-        AgentSessionProvider.CLAUDE to testLaunchConfig(
+        AgentSessionProvider.from("claude") to testLaunchConfig(
           pathPrepend = providerPathPrepend,
           commandShimTarget = providerCommandShimTarget,
         )
@@ -236,7 +240,7 @@ class AgentWorkbenchProjectLaunchConfigTest {
       environmentVariables = mapOf("PATH" to basePath.toString()),
     ).augmentBlocking(
       projectPath = projectDir.toString(),
-      provider = AgentSessionProvider.CLAUDE,
+      provider = AgentSessionProvider.from("claude"),
       launchSpec = AgentSessionTerminalLaunchSpec(command = listOf("claude", "resume", "thread-1")),
     )
 
@@ -276,7 +280,7 @@ class AgentWorkbenchProjectLaunchConfigTest {
       environmentVariables = mapOf("PATH" to basePath.toString()),
     ).augmentBlocking(
       projectPath = projectDir.toString(),
-      provider = AgentSessionProvider.CODEX,
+      provider = AgentSessionProvider.from("codex"),
       launchSpec = AgentSessionTerminalLaunchSpec(command = listOf("codex", "resume", "thread-1")),
     )
 
@@ -306,7 +310,7 @@ class AgentWorkbenchProjectLaunchConfigTest {
 
     val firstLaunchSpec = augmenter.augmentBlocking(
       projectPath = projectDir.toString(),
-      provider = AgentSessionProvider.CODEX,
+      provider = AgentSessionProvider.from("codex"),
       launchSpec = baseLaunchSpec,
     )
 
@@ -320,7 +324,7 @@ class AgentWorkbenchProjectLaunchConfigTest {
 
     val secondLaunchSpec = augmenter.augmentBlocking(
       projectPath = projectDir.toString(),
-      provider = AgentSessionProvider.CODEX,
+      provider = AgentSessionProvider.from("codex"),
       launchSpec = baseLaunchSpec,
     )
 
@@ -328,6 +332,68 @@ class AgentWorkbenchProjectLaunchConfigTest {
       .containsExactly(projectDir.resolve("old/bin").toString())
     assertThat(splitPathEntries(secondLaunchSpec.envVariables.getValue("PATH"), EelOsFamily.Posix))
       .containsExactly(projectDir.resolve("old/bin").toString())
+  }
+
+  @Test
+  fun augmentUsesProjectDirectoryWhenProjectPathIsBazelProjectIdentity() {
+    val projectDir = tempDir.resolve("ultimate")
+    val bazelProjectPath = projectDir.resolve("toolbox").resolve("toolbox.bazelproject")
+    Files.createDirectories(bazelProjectPath.parent)
+    writeAgentWorkbenchProjectConfig(
+      projectDir,
+      shared = testLaunchConfig(commandShimTarget = null),
+    )
+    val basePath = tempDir.resolve("base-path")
+    Files.createDirectories(basePath)
+
+    val launchSpec = augmenter(
+      osFamily = EelOsFamily.Posix,
+      environmentVariables = mapOf("PATH" to basePath.toString()),
+    ).augmentBlocking(
+      projectPath = bazelProjectPath.toString(),
+      projectDirectory = projectDir.toString(),
+      provider = AgentSessionProvider.from("codex"),
+      launchSpec = AgentSessionTerminalLaunchSpec(command = listOf("codex", "resume", "thread-1")),
+    )
+
+    assertThat(splitPathEntries(launchSpec.envVariables.getValue("PATH"), EelOsFamily.Posix))
+      .containsExactly(projectDir.resolve(AGENT_WORKBENCH_TEST_PATH_PREPEND).toString(), basePath.toString())
+  }
+
+  @Test
+  fun runtimeConfigDefaultsToRefreshingVfsOnStatusUpdates() {
+    val projectDir = tempDir.resolve("project")
+    Files.createDirectories(projectDir)
+
+    assertThat(AgentWorkbenchProjectLaunchConfigCache().isRefreshVfsOnStatusUpdatesEnabled(projectDir)).isTrue()
+  }
+
+  @Test
+  fun runtimeConfigReadsRefreshVfsOnStatusUpdatesFlag() {
+    val projectDir = tempDir.resolve("project")
+    writeAgentWorkbenchProjectConfig(
+      projectDir = projectDir,
+      shared = AgentWorkbenchTestLaunchConfig(),
+      refreshVfsOnStatusUpdates = false,
+    )
+    val cache = AgentWorkbenchProjectLaunchConfigCache()
+
+    assertThat(cache.isRefreshVfsOnStatusUpdatesEnabled(projectDir)).isFalse()
+    assertThat(cache.getProviderConfig(projectRoot = projectDir, provider = AgentSessionProvider.from("codex"))).isNull()
+    assertThat(AgentWorkbenchProjectRuntimeConfigProviderImpl(cache).isRefreshVfsOnStatusUpdatesEnabled(projectDir.toString())).isFalse()
+  }
+
+  @Test
+  fun runtimeConfigIgnoresInvalidRefreshVfsOnStatusUpdatesFlag() {
+    val projectDir = tempDir.resolve("project")
+    Files.createDirectories(projectDir)
+    Files.writeString(
+      projectDir.resolve(".agent-workbench.yaml"),
+      "refreshVfsOnStatusUpdates: maybe\n",
+      StandardCharsets.UTF_8,
+    )
+
+    assertThat(AgentWorkbenchProjectLaunchConfigCache().isRefreshVfsOnStatusUpdatesEnabled(projectDir)).isTrue()
   }
 
   @Test
@@ -343,7 +409,9 @@ class AgentWorkbenchProjectLaunchConfigTest {
       targetPathStringResolver = { path ->
         when {
           path == tempDir.resolve("system") -> "/remote/system"
-          path.startsWith(tempDir.resolve("system")) -> "/remote/system/${tempDir.resolve("system").relativize(path).invariantSeparatorsPathString}"
+          path.startsWith(tempDir.resolve("system")) -> "/remote/system/${
+            tempDir.resolve("system").relativize(path).invariantSeparatorsPathString
+          }"
           path == commandShimTarget -> "/remote/project/community/tools/bun.cmd"
           path == projectDir.resolve(AGENT_WORKBENCH_TEST_PATH_PREPEND) -> "/remote/project/$AGENT_WORKBENCH_TEST_PATH_PREPEND"
           else -> path.toString()
@@ -351,7 +419,7 @@ class AgentWorkbenchProjectLaunchConfigTest {
       },
     ).augmentBlocking(
       projectPath = projectDir.toString(),
-      provider = AgentSessionProvider.CODEX,
+      provider = AgentSessionProvider.from("codex"),
       launchSpec = AgentSessionTerminalLaunchSpec(command = listOf("codex", "resume", "thread-1")),
     )
 
@@ -389,10 +457,11 @@ class AgentWorkbenchProjectLaunchConfigTest {
 
 private fun AgentWorkbenchProjectLaunchConfigAugmenter.augmentBlocking(
   projectPath: String,
+  projectDirectory: String? = null,
   provider: AgentSessionProvider,
   launchSpec: AgentSessionTerminalLaunchSpec,
 ): AgentSessionTerminalLaunchSpec {
   return runBlocking(Dispatchers.Default) {
-    augment(projectPath = projectPath, provider = provider, launchSpec = launchSpec)
+    augment(projectPath = projectPath, projectDirectory = projectDirectory, provider = provider, launchSpec = launchSpec)
   }
 }

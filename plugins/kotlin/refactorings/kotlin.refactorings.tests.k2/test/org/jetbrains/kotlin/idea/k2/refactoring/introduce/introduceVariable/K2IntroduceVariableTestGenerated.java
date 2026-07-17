@@ -1,9 +1,8 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package org.jetbrains.kotlin.idea.k2.refactoring.introduce.introduceVariable;
 
 import com.intellij.testFramework.TestDataPath;
-import org.jetbrains.kotlin.idea.base.plugin.KotlinPluginMode;
 import org.jetbrains.kotlin.idea.base.test.TestRoot;
 import org.jetbrains.kotlin.idea.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils;
@@ -23,12 +22,6 @@ public abstract class K2IntroduceVariableTestGenerated extends AbstractK2Introdu
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../idea/tests/testData/refactoring/introduceVariable/anonymousObjects")
     public static class AnonymousObjects extends AbstractK2IntroduceVariableTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doIntroduceVariableTest, this, testDataFilePath);
         }
@@ -87,12 +80,6 @@ public abstract class K2IntroduceVariableTestGenerated extends AbstractK2Introdu
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../idea/tests/testData/refactoring/introduceVariable/collectionElement")
     public static class CollectionElement extends AbstractK2IntroduceVariableTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doIntroduceVariableTest, this, testDataFilePath);
         }
@@ -134,12 +121,6 @@ public abstract class K2IntroduceVariableTestGenerated extends AbstractK2Introdu
         @RunWith(JUnit3RunnerWithInners.class)
         @TestMetadata("../../idea/tests/testData/refactoring/introduceVariable/explicateTypeArguments/smartCast")
         public static class SmartCast extends AbstractK2IntroduceVariableTest {
-            @java.lang.Override
-            @org.jetbrains.annotations.NotNull
-            public final KotlinPluginMode getPluginMode() {
-                return KotlinPluginMode.K2;
-            }
-
             private void runTest(String testDataFilePath) throws Exception {
                 KotlinTestUtils.runTest(this::doIntroduceVariableTest, this, testDataFilePath);
             }
@@ -158,12 +139,6 @@ public abstract class K2IntroduceVariableTestGenerated extends AbstractK2Introdu
         @RunWith(JUnit3RunnerWithInners.class)
         @TestMetadata("../../idea/tests/testData/refactoring/introduceVariable/explicateTypeArguments")
         public static class Uncategorized extends AbstractK2IntroduceVariableTest {
-            @java.lang.Override
-            @org.jetbrains.annotations.NotNull
-            public final KotlinPluginMode getPluginMode() {
-                return KotlinPluginMode.K2;
-            }
-
             private void runTest(String testDataFilePath) throws Exception {
                 KotlinTestUtils.runTest(this::doIntroduceVariableTest, this, testDataFilePath);
             }
@@ -203,12 +178,6 @@ public abstract class K2IntroduceVariableTestGenerated extends AbstractK2Introdu
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../idea/tests/testData/refactoring/introduceVariable/extractToScope")
     public static class ExtractToScope extends AbstractK2IntroduceVariableTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doIntroduceVariableTest, this, testDataFilePath);
         }
@@ -292,12 +261,6 @@ public abstract class K2IntroduceVariableTestGenerated extends AbstractK2Introdu
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../idea/tests/testData/refactoring/introduceVariable/multiDeclarations")
     public static class MultiDeclarations extends AbstractK2IntroduceVariableTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doIntroduceVariableTest, this, testDataFilePath);
         }
@@ -356,12 +319,6 @@ public abstract class K2IntroduceVariableTestGenerated extends AbstractK2Introdu
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../idea/tests/testData/refactoring/introduceVariable/multiDollarStringTemplates")
     public static class MultiDollarStringTemplates extends AbstractK2IntroduceVariableTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doIntroduceVariableTest, this, testDataFilePath);
         }
@@ -520,12 +477,6 @@ public abstract class K2IntroduceVariableTestGenerated extends AbstractK2Introdu
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../idea/tests/testData/refactoring/introduceVariable/qualifiers")
     public static class Qualifiers extends AbstractK2IntroduceVariableTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doIntroduceVariableTest, this, testDataFilePath);
         }
@@ -614,12 +565,6 @@ public abstract class K2IntroduceVariableTestGenerated extends AbstractK2Introdu
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../idea/tests/testData/refactoring/introduceVariable/script")
     public static class Script extends AbstractK2IntroduceVariableTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doIntroduceVariableTest, this, testDataFilePath);
         }
@@ -643,12 +588,6 @@ public abstract class K2IntroduceVariableTestGenerated extends AbstractK2Introdu
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../idea/tests/testData/refactoring/introduceVariable/stringTemplates")
     public static class StringTemplates extends AbstractK2IntroduceVariableTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doIntroduceVariableTest, this, testDataFilePath);
         }
@@ -757,12 +696,6 @@ public abstract class K2IntroduceVariableTestGenerated extends AbstractK2Introdu
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../idea/tests/testData/refactoring/introduceVariable")
     public static class Uncategorized extends AbstractK2IntroduceVariableTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doIntroduceVariableTest, this, testDataFilePath);
         }
@@ -845,6 +778,16 @@ public abstract class K2IntroduceVariableTestGenerated extends AbstractK2Introdu
         @TestMetadata("enumEntry.kt")
         public void testEnumEntry() throws Exception {
             runTest("../../idea/tests/testData/refactoring/introduceVariable/enumEntry.kt");
+        }
+
+        @TestMetadata("explicitContextArgument.kt")
+        public void testExplicitContextArgument() throws Exception {
+            runTest("../../idea/tests/testData/refactoring/introduceVariable/explicitContextArgument.kt");
+        }
+
+        @TestMetadata("explicitContextArgument2.kt")
+        public void testExplicitContextArgument2() throws Exception {
+            runTest("../../idea/tests/testData/refactoring/introduceVariable/explicitContextArgument2.kt");
         }
 
         @TestMetadata("expressionBodyErrorType.kt")
@@ -950,6 +893,51 @@ public abstract class K2IntroduceVariableTestGenerated extends AbstractK2Introdu
         @TestMetadata("IntroduceLambdaAndCreateBlock2.kt")
         public void testIntroduceLambdaAndCreateBlock2() throws Exception {
             runTest("../../idea/tests/testData/refactoring/introduceVariable/IntroduceLambdaAndCreateBlock2.kt");
+        }
+
+        @TestMetadata("IntroduceNameBasedDestructuringDeclarationComplete.kt")
+        public void testIntroduceNameBasedDestructuringDeclarationComplete() throws Exception {
+            runTest("../../idea/tests/testData/refactoring/introduceVariable/IntroduceNameBasedDestructuringDeclarationComplete.kt");
+        }
+
+        @TestMetadata("IntroduceNameBasedDestructuringDeclarationComplete2.kt")
+        public void testIntroduceNameBasedDestructuringDeclarationComplete2() throws Exception {
+            runTest("../../idea/tests/testData/refactoring/introduceVariable/IntroduceNameBasedDestructuringDeclarationComplete2.kt");
+        }
+
+        @TestMetadata("IntroduceNameBasedDestructuringDeclarationNameMismatch.kt")
+        public void testIntroduceNameBasedDestructuringDeclarationNameMismatch() throws Exception {
+            runTest("../../idea/tests/testData/refactoring/introduceVariable/IntroduceNameBasedDestructuringDeclarationNameMismatch.kt");
+        }
+
+        @TestMetadata("IntroduceNameBasedDestructuringDeclarationOnlySyntax.kt")
+        public void testIntroduceNameBasedDestructuringDeclarationOnlySyntax() throws Exception {
+            runTest("../../idea/tests/testData/refactoring/introduceVariable/IntroduceNameBasedDestructuringDeclarationOnlySyntax.kt");
+        }
+
+        @TestMetadata("IntroduceNameBasedDestructuringDeclarationOnlySyntax2.kt")
+        public void testIntroduceNameBasedDestructuringDeclarationOnlySyntax2() throws Exception {
+            runTest("../../idea/tests/testData/refactoring/introduceVariable/IntroduceNameBasedDestructuringDeclarationOnlySyntax2.kt");
+        }
+
+        @TestMetadata("IntroducePositionBasedDestructuringDeclarationAsArgument.kt")
+        public void testIntroducePositionBasedDestructuringDeclarationAsArgument() throws Exception {
+            runTest("../../idea/tests/testData/refactoring/introduceVariable/IntroducePositionBasedDestructuringDeclarationAsArgument.kt");
+        }
+
+        @TestMetadata("IntroducePositionBasedDestructuringDeclarationComplete.kt")
+        public void testIntroducePositionBasedDestructuringDeclarationComplete() throws Exception {
+            runTest("../../idea/tests/testData/refactoring/introduceVariable/IntroducePositionBasedDestructuringDeclarationComplete.kt");
+        }
+
+        @TestMetadata("IntroducePositionBasedDestructuringDeclarationComplete2.kt")
+        public void testIntroducePositionBasedDestructuringDeclarationComplete2() throws Exception {
+            runTest("../../idea/tests/testData/refactoring/introduceVariable/IntroducePositionBasedDestructuringDeclarationComplete2.kt");
+        }
+
+        @TestMetadata("IntroducePositionBasedDestructuringDeclarationOnlySyntax.kt")
+        public void testIntroducePositionBasedDestructuringDeclarationOnlySyntax() throws Exception {
+            runTest("../../idea/tests/testData/refactoring/introduceVariable/IntroducePositionBasedDestructuringDeclarationOnlySyntax.kt");
         }
 
         @TestMetadata("introduceToClass.kt")
@@ -1115,6 +1103,11 @@ public abstract class K2IntroduceVariableTestGenerated extends AbstractK2Introdu
         @TestMetadata("notNullAssertion.kt")
         public void testNotNullAssertion() throws Exception {
             runTest("../../idea/tests/testData/refactoring/introduceVariable/notNullAssertion.kt");
+        }
+
+        @TestMetadata("nullableIndexValue.kt")
+        public void testNullableIndexValue() throws Exception {
+            runTest("../../idea/tests/testData/refactoring/introduceVariable/nullableIndexValue.kt");
         }
 
         @TestMetadata("OccurrencesInStringTemplate.kt")

@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.xdebugger.impl.proxy
 
 import com.intellij.openapi.editor.markup.GutterDraggableObject
@@ -122,6 +122,9 @@ internal open class MonolithBreakpointProxy @Deprecated("Use breakpoint.asProxy(
     breakpoint.conditionExpression = condition
   }
 
+  override fun hasCustomCondition(): Boolean {
+    return XBreakpointUtil.hasCustomCondition(breakpoint)
+  }
 
   override fun getGeneralDescription(): String = XBreakpointUtil.getGeneralDescription(breakpoint)
 
@@ -149,10 +152,6 @@ internal open class MonolithBreakpointProxy @Deprecated("Use breakpoint.asProxy(
   }
 
   override fun isDisposed(): Boolean = breakpoint.isDisposed
-
-  override fun updateIcon() {
-    breakpoint.updateIcon()
-  }
 
   override fun dispose() {
     breakpoint.dispose()

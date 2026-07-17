@@ -5,7 +5,6 @@ package org.jetbrains.intellij.build.bazel
 
 import com.intellij.openapi.util.NlsSafe
 import com.intellij.util.containers.MultiMap
-import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap
 import org.jetbrains.jps.model.JpsProject
 import org.jetbrains.jps.model.java.JavaResourceRootProperties
 import org.jetbrains.jps.model.java.JavaResourceRootType
@@ -14,6 +13,7 @@ import org.jetbrains.jps.model.java.JavaSourceRootType
 import org.jetbrains.jps.model.java.JpsJavaDependencyScope
 import org.jetbrains.jps.model.java.JpsJavaExtensionService
 import org.jetbrains.jps.model.java.LanguageLevel
+import org.jetbrains.jps.model.java.compiler.JpsCompilerExcludes
 import org.jetbrains.jps.model.module.JpsLibraryDependency
 import org.jetbrains.jps.model.module.JpsModule
 import org.jetbrains.jps.model.module.JpsModuleDependency
@@ -23,15 +23,17 @@ import org.jetbrains.jps.util.JpsPathUtil
 import org.jetbrains.kotlin.cli.common.arguments.Argument
 import org.jetbrains.kotlin.cli.common.arguments.K2JVMCompilerArguments
 import org.jetbrains.kotlin.jps.model.JpsKotlinFacetModuleExtension
-import java.nio.file.Files
 import java.nio.file.Path
 import java.util.IdentityHashMap
 import java.util.TreeMap
 import java.util.logging.Level
 import java.util.logging.Logger
-import kotlin.io.path.div
+import kotlin.io.path.exists
+import kotlin.io.path.extension
 import kotlin.io.path.invariantSeparatorsPathString
+import kotlin.io.path.readText
 import kotlin.io.path.relativeTo
+import kotlin.io.path.walk
 import kotlin.reflect.KProperty1
 import kotlin.reflect.full.memberProperties
 import kotlin.reflect.jvm.javaField
@@ -39,9 +41,12 @@ import kotlin.reflect.jvm.javaField
 internal class ModuleList(
   @JvmField val community: List<ModuleDescriptor>,
   @JvmField val ultimate: List<ModuleDescriptor>,
-  val skippedModules: List<String>,
+  @JvmField val skipped: List<ModuleDescriptor>,
 ) {
-  private val nameToDescriptor = community.associateBy { it.module.name } + ultimate.associateBy { it.module.name }
+  @JvmField val allModules = community + ultimate + skipped
+  val skippedModules = skipped.map { it.module.name }
+
+  private val nameToDescriptor = allModules.associateBy { it.module.name }
 
   fun getModuleDescriptor(name: String): ModuleDescriptor {
     return nameToDescriptor[name] ?: error("Unknown module name: $name")
@@ -90,6 +95,11 @@ internal val DEFAULT_CUSTOM_MODULES: Map<String, CustomModuleDescription> = list
                           sources = listOf("@rules_jvm//jps-builders-6:build-javac-rt_sources")),
 ).associateBy { it.moduleName }
 
+internal enum class SnapshotLibraryMode {
+  WRITE_TO_REPO,
+  REUSE_GENERATED,
+}
+
 @Suppress("ReplaceGetOrSet")
 internal class BazelBuildFileGenerator(
   val ultimateRoot: Path?,
@@ -98,10 +108,19 @@ internal class BazelBuildFileGenerator(
   private val projectDir: Path,
   val urlCache: UrlCache,
   val customModules: Map<String, CustomModuleDescription>,
+  val snapshotLibraryMode: SnapshotLibraryMode = SnapshotLibraryMode.WRITE_TO_REPO,
+  private val kotlincDefaults: KotlincProjectDefaults,
 ) {
   @JvmField
   val javaExtensionService: JpsJavaExtensionService = JpsJavaExtensionService.getInstance()
   private val projectJavacSettings = javaExtensionService.getCompilerConfiguration(project)
+  private val projectCompileExcludes = computeProjectCompileExcludes(projectDir = projectDir, compilerExcludes = projectJavacSettings.compilerExcludes)
+  private val projectLanguageLevel: LanguageLevel = run {
+    val projectExtension = javaExtensionService.getProjectExtension(project)
+                           ?: error("Project-level language version is not defined: JpsJavaProjectExtension is missing on project ${project.name}")
+    projectExtension.languageLevel
+    ?: error("Project-level language version is not defined: JpsJavaProjectExtension.languageLevel is null on project ${project.name}")
+  }
 
   private val moduleToDescriptor = IdentityHashMap<JpsModule, ModuleDescriptor>()
 
@@ -139,7 +158,12 @@ internal class BazelBuildFileGenerator(
       throw IllegalStateException("Computed dir for BUILD.bazel for community module ${module.name} is not under community directory")
     }
 
-    val resourceDescriptors = computeResources(module = module, contentRoots = contentRoots, bazelBuildDir = bazelBuildDir, type = JavaResourceRootType.RESOURCE)
+    val packageExcludes = computePackageRelativeExcludes(
+      projectDir = projectDir,
+      bazelBuildFileDir = bazelBuildDir,
+      projectCompileExcludes = projectCompileExcludes,
+    )
+    val resourceDescriptors = computeResources(module = module, contentRoots = contentRoots, bazelBuildDir = bazelBuildDir, type = JavaResourceRootType.RESOURCE, packageExcludes = packageExcludes)
 
     val imlFile = imlDir.resolve("${module.name}.iml")
     val moduleContent = ModuleDescriptor(
@@ -148,10 +172,10 @@ internal class BazelBuildFileGenerator(
       contentRoots = contentRoots,
       bazelBuildFileDir = bazelBuildDir,
       isCommunity = isCommunity,
-      sources = computeSources(module = module, contentRoots = contentRoots, bazelBuildDir = bazelBuildDir, type = JavaSourceRootType.SOURCE),
+      sources = computeSources(module = module, contentRoots = contentRoots, bazelBuildDir = bazelBuildDir, type = JavaSourceRootType.SOURCE, packageExcludes = packageExcludes),
       resources = resourceDescriptors,
-      testSources = computeSources(module = module, contentRoots = contentRoots, bazelBuildDir = bazelBuildDir, type = JavaSourceRootType.TEST_SOURCE),
-      testResources = computeResources(module = module, contentRoots = contentRoots, bazelBuildDir = bazelBuildDir, type = JavaResourceRootType.TEST_RESOURCE),
+      testSources = computeSources(module = module, contentRoots = contentRoots, bazelBuildDir = bazelBuildDir, type = JavaSourceRootType.TEST_SOURCE, packageExcludes = packageExcludes),
+      testResources = computeResources(module = module, contentRoots = contentRoots, bazelBuildDir = bazelBuildDir, type = JavaResourceRootType.TEST_RESOURCE, packageExcludes = packageExcludes),
       targetName = jpsModuleNameToBazelBuildName(module = module, baseBuildDir = bazelBuildDir, communityRoot = communityRoot, ultimateRoot = ultimateRoot),
       relativePathFromProjectRoot = if (isCommunity) {
         bazelBuildDir.relativeTo(communityRoot)
@@ -191,8 +215,8 @@ internal class BazelBuildFileGenerator(
     val targetName: String
   )
 
-  val mavenLibraries: Object2ObjectOpenHashMap<LibraryKey, MavenLibrary> = Object2ObjectOpenHashMap()
-  val localLibraries: Object2ObjectOpenHashMap<LibraryKey, LocalLibrary> = Object2ObjectOpenHashMap()
+  val mavenLibraries: LinkedHashMap<LibraryKey, MavenLibrary> = LinkedHashMap()
+  val localLibraries: LinkedHashMap<LibraryKey, LocalLibrary> = LinkedHashMap()
 
   val allLibraries: Collection<Library>
     get() = mavenLibraries.values + localLibraries.values
@@ -364,21 +388,22 @@ internal class BazelBuildFileGenerator(
   fun computeModuleList(m2Repo: Path): ModuleList {
     val community = ArrayList<ModuleDescriptor>()
     val ultimate = ArrayList<ModuleDescriptor>()
-    val skippedModules = ArrayList<String>()
+    val skippedModules = ArrayList<ModuleDescriptor>()
     for (module in project.model.project.modules) {
+      val descriptor = getModuleDescriptor(module)
+
       if (module.name == "intellij.platform.buildScripts.bazel") {
         // Skip bazel generator itself since it's a standalone Bazel project
-        skippedModules.add(module.name)
+        skippedModules.add(descriptor)
         continue
       }
 
       if (module.name == "intellij.tools.build.bazel.jvmIncBuilder" || module.name == "intellij.tools.build.bazel.jvmIncBuilderTests") {
         // Skip bazel generator itself since it's a standalone Bazel project
-        skippedModules.add(module.name)
+        skippedModules.add(descriptor)
         continue
       }
 
-      val descriptor = getModuleDescriptor(module)
       if (descriptor.isCommunity) {
         community.add(descriptor)
       }
@@ -389,16 +414,15 @@ internal class BazelBuildFileGenerator(
 
     community.sortBy { it.module.name }
     ultimate.sortBy { it.module.name }
-    val result = ModuleList(community = community, ultimate = ultimate, skippedModules = skippedModules)
+    skippedModules.sortBy { it.module.name }
+
+    val result = ModuleList(community = community, ultimate = ultimate, skipped = skippedModules)
     for (module in (community + ultimate)) {
       val hasSources = module.sources.isNotEmpty()
       result.deps.put(module, generateDeps(m2Repo = m2Repo, module = module, hasSources = hasSources, isTest = false, context = this))
 
       val hasTestSources = module.testSources.isNotEmpty()
-      val hasTestResources = module.testResources.isNotEmpty()
-      if (hasTestSources || hasTestResources || isTestClasspathModule(module)) {
-        result.testDeps.put(module, generateDeps(m2Repo = m2Repo, module = module, hasSources = hasTestSources, isTest = true, context = this))
-      }
+      result.testDeps.put(module, generateDeps(m2Repo = m2Repo, module = module, hasSources = hasTestSources, isTest = true, context = this))
     }
 
     return result
@@ -409,14 +433,30 @@ internal class BazelBuildFileGenerator(
     val moduleTargets: List<ModuleTargets>,
   )
 
-  fun generateModuleBuildFiles(list: ModuleList, isCommunity: Boolean): ModuleGenerationResult {
-    // assert that customModules are still actual
+  private fun validateCustomModules(list: ModuleList) {
     for (customModule in customModules.values) {
       check(list.ultimate.any { it.module.name == customModule.moduleName } ||
             list.community.any { it.module.name == customModule.moduleName }) {
         "Unknown module name: ${customModule.moduleName} in `customModules`"
       }
     }
+  }
+
+  fun generateModuleTargets(list: ModuleList, isCommunity: Boolean): List<ModuleTargets> {
+    validateCustomModules(list)
+
+    val targetsPerModule = mutableListOf<ModuleTargets>()
+    for (module in (if (isCommunity) list.community else list.ultimate)) {
+      if (generated.putIfAbsent(module, true) == null) {
+        val buildTargetsBazel = BuildFile()
+        targetsPerModule.add(buildTargetsBazel.generateBuildTargets(module, list))
+      }
+    }
+    return targetsPerModule
+  }
+
+  fun generateModuleBuildFiles(list: ModuleList, isCommunity: Boolean): ModuleGenerationResult {
+    validateCustomModules(list)
     val targetsPerModule = mutableListOf<ModuleTargets>()
     val fileToUpdater = LinkedHashMap<Path, BazelFileUpdater>()
     // bazel build file -> (bzlFile (for import) -> already imported symbols)
@@ -426,6 +466,7 @@ internal class BazelBuildFileGenerator(
         val fileUpdater = fileToUpdater.computeIfAbsent(module.bazelBuildFileDir) {
           val fileUpdater = BazelFileUpdater(module.bazelBuildFileDir.resolve("BUILD.bazel"))
           fileUpdater.removeSections("build")
+          fileUpdater.removeSections("iml ")
           fileUpdater.removeSections("test")
           fileUpdater.removeSections("maven libs of ")
           fileUpdater
@@ -433,6 +474,9 @@ internal class BazelBuildFileGenerator(
 
         val buildTargetsBazel = BuildFile()
         val moduleBuildTargets = buildTargetsBazel.generateBuildTargets(module, list)
+
+        val imlTargetsBazel = BuildFile()
+        imlTargetsBazel.exportFile(module.imlFile.relativeTo(module.bazelBuildFileDir).invariantSeparatorsPathString)
 
         val testTargetsBazel = BuildFile()
         testTargetsBazel.generateTestTargets(module, list)
@@ -450,17 +494,21 @@ internal class BazelBuildFileGenerator(
 
         val buildSectionName = "build ${module.module.name}"
         if (!fileUpdater.isSectionSkipped(buildSectionName)) {
-          fileUpdater.insertAutoGeneratedSection(sectionName = buildSectionName, autoGeneratedContent = buildTargetsBazel.render(existingLoadSymbols))
+          fileUpdater.insertAutoGeneratedSection(sectionName = buildSectionName, autoGeneratedContent = buildTargetsBazel.render())
           collectLoadStatements(buildTargetsBazel.loadStatements)
         }
 
+        fileUpdater.insertAutoGeneratedSection(sectionName = "iml ${module.module.name}", autoGeneratedContent = imlTargetsBazel.render())
+
         val testSectionName = "test ${module.module.name}"
         if (!fileUpdater.isSectionSkipped(testSectionName)) {
-          fileUpdater.insertAutoGeneratedSection(sectionName = testSectionName, autoGeneratedContent = testTargetsBazel.render(existingLoadSymbols))
+          fileUpdater.insertAutoGeneratedSection(sectionName = testSectionName, autoGeneratedContent = testTargetsBazel.render())
           collectLoadStatements(buildTargetsBazel.loadStatements)
         }
+        fileUpdater.appendLoadSymbols(existingLoadSymbols)
       }
     }
+
     return ModuleGenerationResult(
       moduleBuildFiles = fileToUpdater.mapValues { it.value },
       moduleTargets = targetsPerModule,
@@ -570,12 +618,14 @@ internal class BazelBuildFileGenerator(
     val module = moduleDescriptor.module
     val customModule = customModules[moduleDescriptor.module.name]
     val jvmTarget = getLanguageLevel(module)
-    val kotlincOptionsLabel = computeKotlincOptions(buildFile = this, module = moduleDescriptor, jvmTarget = jvmTarget)
-                              ?: (if (jvmTarget == "21") null else "@community//:k$jvmTarget")
+    val kotlincOptionsLabel = computeKotlincOptions(buildFile = this, module = moduleDescriptor, jvmTarget = jvmTarget, kotlincDefaults = kotlincDefaults)
+                              ?: (if (jvmTarget == kotlincDefaults.jvmTarget) null else "@community//:k$jvmTarget")
     val javacOptionsLabel = computeJavacOptions(moduleDescriptor, jvmTarget)
 
-    val resourceTargets = mutableListOf<BazelLabel>()
-    val testResourceTargets = mutableListOf<BazelLabel>()
+    var directResources: ResourcesInfo? = null
+    var directTestResources: ResourcesInfo? = null
+    val resourceJarTargets = mutableListOf<BazelLabel>()
+    val testResourceJarTargets = mutableListOf<BazelLabel>()
     val productionCompileTargets = mutableListOf<BazelLabel>()
     val productionCompileJars = mutableListOf<BazelLabel>()
     val testCompileTargets = mutableListOf<BazelLabel>()
@@ -584,11 +634,13 @@ internal class BazelBuildFileGenerator(
     if (customModule == null) {
       if (moduleDescriptor.resources.isNotEmpty()) {
         val result = generateResources(module = moduleDescriptor, forTests = false)
-        resourceTargets.addAll(result.resourceTargets)
+        directResources = result.resources
+        resourceJarTargets.addAll(result.resourceJarsTargets)
       }
       if (moduleDescriptor.testResources.isNotEmpty()) {
         val result = generateResources(module = moduleDescriptor, forTests = true)
-        testResourceTargets.addAll(result.resourceTargets)
+        directTestResources = result.resources
+        testResourceJarTargets.addAll(result.resourceJarsTargets)
       }
     }
 
@@ -597,96 +649,137 @@ internal class BazelBuildFileGenerator(
 
     load("@rules_jvm//:jvm.bzl", "jvm_library")
 
+    var deps = moduleList.deps.get(moduleDescriptor)
+    if (deps != null && deps.provided.isNotEmpty()) {
+      val extraDeps = generateProvidedLibs(deps.provided)
+      deps = deps.copy(deps = deps.deps + extraDeps)
+      generatedProvidedLibs = extraDeps
+    }
+
+    val mustGenerateFleetPluginServicesResources = moduleDescriptor.isFleetModule() && hasRhizomeDbOrPluginDependency(moduleList, moduleDescriptor)
+    if (mustGenerateFleetPluginServicesResources) {
+      val codegenTargetName = "${moduleDescriptor.targetName}_fleet_plugin_services_resources"
+      val ruleName = "fleet_plugin_services_resources"
+      load("@community//fleet/build:fleet.bzl", ruleName)
+      target(ruleName) {
+        option("name", codegenTargetName)
+        option("srcs", sourcesToGlob(sources, moduleDescriptor))
+        if (deps?.deps?.isNotEmpty() == true) {
+          option("deps", deps.deps.sorted())
+        }
+      }
+      resourceJarTargets.add(BazelLabel(label = codegenTargetName, module = null))
+    }
+
     target("jvm_library") {
       option("name", moduleDescriptor.targetName)
       productionCompileTargets.add(moduleDescriptor.targetAsLabel)
       productionCompileJars.add(moduleDescriptor.targetAsLabel)
 
-      if (sources.isNotEmpty()) {
-        option("module_name", module.name)
-      }
-
-      visibility(arrayOf("//visibility:public"))
       if (customModule == null) {
         option("srcs", sourcesToGlob(sources, moduleDescriptor))
       }
       else if (customModule.sources.isNotEmpty()) {
         option("srcs", customModule.sources)
       }
-      if (customModule == null) {
-        if (resourceTargets.isNotEmpty()) {
-          option("resources", resourceTargets.map { ":${it.label}" })
-        }
-      }
-      else if (customModule.resources.isNotEmpty()) {
-        option("resources", customModule.resources)
-      }
-      if (javacOptionsLabel != null && sources.isNotEmpty()) {
-        option("javac_opts", javacOptionsLabel)
-      }
-      if (kotlincOptionsLabel != null && sources.isNotEmpty()) {
-        option("kotlinc_opts", kotlincOptionsLabel)
-      }
 
       @Suppress("CascadeIf")
       if (module.name == "fleet.util.multiplatform" || module.name == "intellij.platform.multiplatformSupport") {
         option("exported_compiler_plugins", listOf("@community//fleet/compiler-plugins/expects:expects-plugin"))
       }
-      //else if (module.name == "fleet.rhizomedb") {
-        // https://youtrack.jetbrains.com/issue/IJI-2662/RhizomedbCommandLineProcessor-requires-output-dir-but-we-dont-have-it-for-Bazel-compilation
-        //option("exported_compiler_plugins", arrayOf("@lib//:rhizomedb-plugin"))
-      //}
       else if (module.name == "fleet.rpc") {
         option("exported_compiler_plugins", listOf("@community//fleet/compiler-plugins/rpc:rpc-plugin"))
       }
       else if (module.name == "fleet.noria.cells") {
         option("exported_compiler_plugins", listOf("@community//fleet/compiler-plugins/noria:noria-plugin"))
       }
-
-      var deps = moduleList.deps.get(moduleDescriptor)
-      if (deps != null && deps.provided.isNotEmpty()) {
-        val extraDeps = generateProvidedLibs(deps.provided)
-        deps = deps.copy(deps = deps.deps + extraDeps)
-        generatedProvidedLibs = extraDeps
+      else if (module.name == "intellij.libraries.compose.runtime.desktop") {
+        option("exported_compiler_plugins", listOf("@lib//:compose-plugin"))
       }
+
+      if (deps != null) {
+        if (deps.associates.isNotEmpty()) {
+          option("associates", deps.associates.sorted())
+        }
+      }
+
+      if (javacOptionsLabel != null && sources.isNotEmpty()) {
+        option("javac_opts", javacOptionsLabel)
+      }
+
+      if (kotlincOptionsLabel != null && sources.isNotEmpty()) {
+        option("kotlinc_opts", kotlincOptionsLabel)
+      }
+
+      option("module_name", module.name)
+
+      if (deps != null && deps.plugins.isNotEmpty()) {
+        option("plugins", deps.plugins.sorted())
+      }
+
+      if (customModule == null) {
+        if (resourceJarTargets.isNotEmpty()) {
+          option("resource_jars", resourceJarTargets.map { ":${it.label}" })
+        }
+        if (directResources != null) {
+          option("resource_strip_prefix", directResources.stripPrefix)
+          option("resources", glob(directResources.fileGlobs, exclude = directResources.excludes, allowEmpty = directResources.excludes.isNotEmpty()))
+        }
+      }
+      else if (customModule.resources.isNotEmpty()) {
+        option("resource_jars", customModule.resources)
+      }
+
+      visibility(arrayOf("//visibility:public"))
 
       renderDeps(deps = deps, target = this, resourceDependencies = emptyList(), forTests = false)
     }
 
-    val moduleHasTestSources = moduleDescriptor.testSources.isNotEmpty()
-    val moduleHasTestResources = moduleDescriptor.testResources.isNotEmpty()
-
-    // Decide whether to render a test target at all
-    if (moduleHasTestSources || moduleHasTestResources || isTestClasspathModule(moduleDescriptor)) {
+    target("jvm_library") {
       val testLibTargetName = "${moduleDescriptor.targetName}$TEST_LIB_NAME_SUFFIX"
       testCompileTargets.add(BazelLabel(testLibTargetName, moduleDescriptor))
+      option("name", testLibTargetName)
+      option("testonly", true)
 
-      load("@rules_jvm//:jvm.bzl", "jvm_library")
-      target("jvm_library") {
-        option("name", testLibTargetName)
+      option("srcs", sourcesToGlob(moduleDescriptor.testSources, moduleDescriptor))
 
-        var testDeps = moduleList.testDeps.get(moduleDescriptor)
-        if (testDeps == null || testDeps.associates.isEmpty()) { // => in this case no 'associates' attribute will be generated
-          option("module_name", module.name)
+      var testDeps = moduleList.testDeps.get(moduleDescriptor)
+
+      if (testDeps != null) {
+        if (testDeps.associates.isNotEmpty()) {
+          option("associates", testDeps.associates.sorted())
         }
-
-        visibility(arrayOf("//visibility:public"))
-
-        option("srcs", sourcesToGlob(moduleDescriptor.testSources, moduleDescriptor))
-        if (testResourceTargets.isNotEmpty()) {
-          option("resources", testResourceTargets.map { ":${it.label}" })
-        }
-
-        javacOptionsLabel?.let { option("javac_opts", it) }
-        kotlincOptionsLabel?.let { option("kotlinc_opts", it) }
-
-        if (testDeps != null && testDeps.provided.isNotEmpty()) {
-          val extraDeps = generateProvidedLibs(testDeps.provided - moduleList.deps.get(moduleDescriptor)?.provided.orEmpty().toSet())
-          testDeps = testDeps.copy(deps = testDeps.deps + generatedProvidedLibs + extraDeps)
-        }
-
-        renderDeps(deps = testDeps, target = this, resourceDependencies = emptyList(), forTests = true)
       }
+
+      javacOptionsLabel?.let { option("javac_opts", it) }
+
+      kotlincOptionsLabel?.let { option("kotlinc_opts", it) }
+
+      if (testDeps == null || testDeps.associates.isEmpty()) { // => in this case no 'associates' attribute will be generated
+        option("module_name", module.name)
+      }
+
+      if (testDeps != null && testDeps.provided.isNotEmpty()) {
+        val extraDeps = generateProvidedLibs(testDeps.provided - moduleList.deps.get(moduleDescriptor)?.provided.orEmpty().toSet())
+        testDeps = testDeps.copy(deps = testDeps.deps + generatedProvidedLibs + extraDeps)
+      }
+
+      if (testDeps != null && testDeps.plugins.isNotEmpty()) {
+        option("plugins", testDeps.plugins.sorted())
+      }
+
+      if (testResourceJarTargets.isNotEmpty()) {
+        option("resource_jars", testResourceJarTargets.map { ":${it.label}" })
+      }
+
+      if (directTestResources != null) {
+        option("resource_strip_prefix", directTestResources.stripPrefix)
+        option("resources", glob(directTestResources.fileGlobs, exclude = directTestResources.excludes, allowEmpty = directTestResources.excludes.isNotEmpty()))
+      }
+
+      visibility(arrayOf("//visibility:public"))
+
+      renderDeps(deps = testDeps, target = this, resourceDependencies = emptyList(), forTests = true)
     }
 
     val relativePathFromRoot = moduleDescriptor.relativePathFromProjectRoot.invariantSeparatorsPathString
@@ -734,12 +827,21 @@ internal class BazelBuildFileGenerator(
     )
   }
 
+  private fun ModuleDescriptor.isFleetModule(): Boolean {
+    return module.name.startsWith("fleet.")
+  }
+
+  private fun hasRhizomeDbOrPluginDependency(
+    moduleList: ModuleList,
+    moduleDescriptor: ModuleDescriptor,
+  ): Boolean {
+    val moduleDeps = moduleList.deps.get(moduleDescriptor) ?: return false
+    val allDependencies = moduleDeps.deps + moduleDeps.provided
+    return allDependencies.any { it.module?.module?.name in setOf("fleet.rhizomedb", "fleet.kernel.plugins") }
+  }
+
   private fun Target.sourcesToGlob(sources: List<SourceDirDescriptor>, module: ModuleDescriptor): Renderable {
-    var exclude = sources.asSequence().flatMap { it.excludes }
-    if (module.module.name.startsWith("fleet.")) {
-      exclude += sequenceOf("**/module-info.java")
-    }
-    return glob(sources.flatMap { it.glob }, exclude = exclude.toList())
+    return glob(sources.flatMap { it.glob }, exclude = sources.flatMap { it.excludes })
   }
 
   private fun BuildFile.generateProvidedLibs(providedLibs: List<BazelLabel>): List<BazelLabel> {
@@ -758,8 +860,15 @@ internal class BazelBuildFileGenerator(
     return extraDeps
   }
 
+  private data class ResourcesInfo(
+    val fileGlobs: List<String>,
+    val stripPrefix: String,
+    val excludes: List<String>,
+  )
+
   private data class GenerateResourcesResult(
-    val resourceTargets: List<BazelLabel>,
+    val resources: ResourcesInfo?,
+    val resourceJarsTargets: List<BazelLabel>,
   )
 
   private fun BuildFile.generateResources(
@@ -791,32 +900,46 @@ internal class BazelBuildFileGenerator(
       else {
         listOf(BazelLabel("$productionLabel$PRODUCTION_RESOURCES_TARGET_SUFFIX", module))
       }
-      return GenerateResourcesResult(resourceTargets = fixedTargetsList)
+      return GenerateResourcesResult(resources = null, resourceJarsTargets = fixedTargetsList)
     }
-
-    load("@rules_jvm//:jvm.bzl", "resourcegroup")
 
     val targetNameSuffix = if (forTests) TEST_RESOURCES_TARGET_SUFFIX else PRODUCTION_RESOURCES_TARGET_SUFFIX
-
-    val resourceTargets = resources.withIndex().map { (i, resource) ->
-      val name = "${module.targetName}$targetNameSuffix" + (if (i == 0) "" else "_$i")
-
-      target("resourcegroup") {
-        option("name", name)
-        option("srcs", glob(resource.files, allowEmpty = false))
-        if (resource.baseDirectory.isNotEmpty()) {
-          option("strip_prefix", resource.baseDirectory)
+    if (resources.isEmpty()) return GenerateResourcesResult(null, emptyList())
+    val directResources = resources
+      .singleOrNull()
+      ?: resources.find { it.root.containsXmlDescriptors() }
+      ?: resources.first()
+    val resourceJarsTargets = resources
+      .minus(directResources)
+      .withIndex()
+      .map { (i, resource) ->
+        val name = "${module.targetName}$targetNameSuffix" + (if (i == 0) "" else "_$i")
+        target("resourcegroup") {
+          option("name", name)
+          option("srcs", glob(resource.files, exclude = resource.excludes, allowEmpty = resource.excludes.isNotEmpty()))
+          if (resource.baseDirectory.isNotEmpty()) {
+            option("strip_prefix", resource.baseDirectory)
+          }
+          if (resource.relativeOutputPath.isNotEmpty()) {
+            option("add_prefix", resource.relativeOutputPath)
+          }
         }
-        if (resource.relativeOutputPath.isNotEmpty()) {
-          option("add_prefix", resource.relativeOutputPath)
-        }
+
+        BazelLabel(name, module)
       }
 
-      BazelLabel(name, module)
-    }
-
-    return GenerateResourcesResult(resourceTargets = resourceTargets)
+    if (resourceJarsTargets.isNotEmpty()) load("@rules_jvm//:jvm.bzl", "resourcegroup")
+    return GenerateResourcesResult(
+      resources = ResourcesInfo(
+        fileGlobs = directResources.files,
+        stripPrefix = directResources.baseDirectory,
+        excludes = directResources.excludes,
+      ),
+      resourceJarsTargets = resourceJarsTargets
+    )
   }
+
+  private fun Path.containsXmlDescriptors(): Boolean = exists() && walk().any { it.extension == "xml" && it.readText().contains("<idea-plugin") }
 
   private fun BuildFile.computeJavacOptions(module: ModuleDescriptor, jvmTarget: String): String? {
     val extraJavacOptions = projectJavacSettings.currentCompilerOptions.ADDITIONAL_OPTIONS_OVERRIDE.get(module.module.name) ?: ""
@@ -831,25 +954,26 @@ internal class BazelBuildFileGenerator(
     target("kt_javac_options") {
       option("name", customJavacOptionsName)
       // release is not compatible with --add-exports (*** java)
-      require(jvmTarget == "21")
-      option("x_ep_disable_all_checks", true)
-      option("warn", "off")
+      require(jvmTarget == "25") {
+        "failed requirement: jvmTarget == \"25\" for module ${module.module.name}"
+      }
       option("add_exports", exports)
       option("no_proc", noProc)
+      option("warn", "off")
+      option("x_ep_disable_all_checks", true)
     }
     return ":$customJavacOptionsName"
   }
 
   private fun getLanguageLevel(module: JpsModule): String {
-    val languageLevel = javaExtensionService.getLanguageLevel(module)
-    return when {
-      languageLevel == LanguageLevel.JDK_1_7 -> "7"
-      languageLevel == LanguageLevel.JDK_1_8 -> "8"
-      languageLevel == LanguageLevel.JDK_11 -> "11"
-      languageLevel == LanguageLevel.JDK_17 -> "17"
-      languageLevel == LanguageLevel.JDK_21 -> "21"
-      languageLevel != null -> error("Unsupported language level: $languageLevel")
-      else -> "21"
+    val languageLevel = javaExtensionService.getLanguageLevel(module) ?: projectLanguageLevel
+    return when (languageLevel) {
+      LanguageLevel.JDK_1_8 -> "8"
+      LanguageLevel.JDK_11 -> "11"
+      LanguageLevel.JDK_17 -> "17"
+      LanguageLevel.JDK_21 -> "21"
+      LanguageLevel.JDK_25 -> "25"
+      else -> error("Unsupported language level: $languageLevel for module ${module.name}")
     }
   }
 
@@ -872,8 +996,10 @@ internal class BazelBuildFileGenerator(
       .removePrefix("intellij.")
 
     val parentDirDirName = when {
-      baseBuildDir == ultimateRoot -> null
+      // In a community-only checkout, root-level module names still keep the `main.` segment.
+      baseBuildDir == communityRoot || baseBuildDir == ultimateRoot -> null
       baseBuildDir.parent == ultimateRoot -> "idea"
+      baseBuildDir.parent == communityRoot -> "community"
       else -> baseBuildDir.parent?.fileName.toString()
     }
 
@@ -881,86 +1007,6 @@ internal class BazelBuildFileGenerator(
       .let { if (parentDirDirName != null) it.removePrefix("$parentDirDirName.") else it }
       .replace('.', '-')
   }
-
-  private data class ToolboxDep(val name: String, val os: String, val arch: String, val url: String, val legacyPath: String, val sha256: String)
-
-  private class TripleQuotedArg(private val value: String) : Renderable {
-    override fun render(): String = "\"\"\"\n${value}\n\"\"\""
-  }
-
-  fun generateToolboxDeps() {
-    if (ultimateRoot == null) {
-      error("Cannot generate toolbox deps without ultimate root")
-    }
-    val sectionName = "toolbox deps"
-    val dependenciesTxtPath = ultimateRoot / "toolbox" / "dependencies.txt"
-    val targetPath = ultimateRoot / "toolbox" / "deps_bazel" / "MODULE.bazel"
-    val dependenciesTxtContent = Files.readString(dependenciesTxtPath)
-    val lines = dependenciesTxtContent.lines()
-      .map { it.trimStart() }
-      .filterNot { it.startsWith("#") || it.isBlank() }
-    val buildFilesDir = ultimateRoot / "toolbox" / "deps_bazel" / "buildfiles"
-    val buildFiles = if (Files.exists(buildFilesDir) && Files.isDirectory(buildFilesDir)) {
-      Files.list(buildFilesDir).map { buildFilePath ->
-        buildFilePath.fileName.toString().removeSuffix(".BUILD.bazel") to Files.readString(buildFilePath)
-      }.toList()
-    } else {
-      emptyList()
-    }
-
-    val deps = lines.mapNotNull { line ->
-      val fields = line.split("\\s+".toRegex())
-      if (fields.size != 6) {
-        println("WARN: Skipping line '$line'")
-        return@mapNotNull null
-      }
-      ToolboxDep(fields[0], fields[1], fields[2], fields[3], fields[4], fields[5])
-    }
-    val bazelFileUpdater = BazelFileUpdater(targetPath).also {
-      it.removeSections(sectionName)
-    }
-
-    fun mapOs(os: String) = when (os) {
-      "Linux" -> "linux"
-      "Darwin" -> "macos"
-      "Windows" -> "win32"
-      else -> ""
-    }
-    buildFile(bazelFileUpdater, sectionName) {
-      deps.forEach { dep ->
-        val isArchive = dep.url.endsWith(".tar.gz") || dep.url.endsWith(".zip") || dep.url.endsWith(".nupkg") || dep.url.endsWith(".tar.zst")
-        target(if (isArchive) "http_archive" else "http_file") {
-          val osComponent = dep.os.takeIf { it != "*" }?.let { "-${mapOs(it)}" }.orEmpty()
-          val archComponent = dep.arch.takeIf { it != "*" }?.let { "-$it" }.orEmpty()
-          val fullName = "${dep.name}$osComponent$archComponent"
-          option("name", fullName)
-          option("url", dep.url)
-          option("sha256", dep.sha256)
-          // TODO: shouldn't be part of dependencies.txt ?
-          if (dep.name == "jbrsdk") {
-            val filename = dep.url.substringAfterLast("/")
-            val filenameWithoutExtension = filename.removeSuffix(".tar.gz")
-            option("strip_prefix", filenameWithoutExtension)
-          }
-          val buildFileContentFromFile = (
-            buildFiles.find { it.first == fullName } ?:
-            buildFiles.find { it.first == "${dep.name}$osComponent" } ?:
-            buildFiles.find { it.first == dep.name })?.second
-          val globStr = """glob(["**"])"""
-          val defaultBuildFileContent = """filegroup(name="all", srcs = $globStr, visibility = ["//visibility:public"])"""
-          if (isArchive) {
-            option(
-              "build_file_content",
-              TripleQuotedArg(buildFileContentFromFile ?: defaultBuildFileContent)
-            )
-          }
-        }
-      }
-    }
-
-    bazelFileUpdater.save()
-  }
-
 }
 
 // This is a usual convention in the intellij repository for storing classpath for running tests
@@ -981,12 +1027,19 @@ private fun getTestClasspathModule(module: ModuleDescriptor, moduleList: ModuleL
   return mainModuleName?.let { moduleList.getModuleDescriptor(it) }
 }
 
-private fun computeSources(module: JpsModule, contentRoots: List<Path>, bazelBuildDir: Path, type: JpsModuleSourceRootType<*>): List<SourceDirDescriptor> {
+private fun computeSources(
+  module: JpsModule,
+  contentRoots: List<Path>,
+  bazelBuildDir: Path,
+  type: JpsModuleSourceRootType<*>,
+  packageExcludes: List<String>,
+): List<SourceDirDescriptor> {
   return module.sourceRoots.asSequence()
     .filter { it.rootType == type }
     .flatMap { root ->
       val rootDir = root.path
       var prefix = resolveRelativeToBazelBuildFileDirectory(childDir = rootDir, contentRoots = contentRoots, bazelBuildDir = bazelBuildDir, module = module).invariantSeparatorsPathString
+      val rootPrefix = prefix
       if (prefix.isNotEmpty()) {
         prefix += "/"
       }
@@ -1002,32 +1055,60 @@ private fun computeSources(module: JpsModule, contentRoots: List<Path>, bazelBui
           excludes.add("$relativeExcludedPath/**/*")
         }
       }
+      excludes.addAll(compileExcludesForRoot(packageExcludes = packageExcludes, rootPrefix = rootPrefix))
+      val sourceExcludes = excludes.distinct()
 
       if (type == JavaSourceRootType.SOURCE || type == JavaSourceRootType.TEST_SOURCE) {
         if (!(root.properties as JavaSourceRootProperties).isForGeneratedSources) {
-          sequenceOf(SourceDirDescriptor(glob = listOf("$prefix**/*.kt", "$prefix**/*.java", "$prefix**/*.form"), excludes = excludes))
+          sequenceOf(SourceDirDescriptor(glob = listOf("$prefix**/*.kt", "$prefix**/*.java", "$prefix**/*.form"), excludes = sourceExcludes))
         }
         else {
-          sequenceOf(SourceDirDescriptor(glob = listOf("$prefix**/*.kt", "$prefix**/*.java"), excludes = excludes))
+          sequenceOf(SourceDirDescriptor(glob = listOf("$prefix**/*.kt", "$prefix**/*.java"), excludes = sourceExcludes))
         }
       }
       else {
-        sequenceOf(SourceDirDescriptor(glob = listOf("$prefix**/*"), excludes = excludes))
+        sequenceOf(SourceDirDescriptor(glob = listOf("$prefix**/*"), excludes = sourceExcludes))
       }
     }
     .toList()
 }
 
-private fun computeResources(module: JpsModule, contentRoots: List<Path>, bazelBuildDir: Path, type: JavaResourceRootType): List<ResourceDescriptor> {
+private fun computeResources(
+  module: JpsModule,
+  contentRoots: List<Path>,
+  bazelBuildDir: Path,
+  type: JavaResourceRootType,
+  packageExcludes: List<String>,
+): List<ResourceDescriptor> {
   return module.sourceRoots
     .asSequence()
     .filter { it.rootType == type }
-    .map {
-      val prefix = resolveRelativeToBazelBuildFileDirectory(it.path, contentRoots, bazelBuildDir, module = module).invariantSeparatorsPathString
-      val relativeOutputPath = (it.properties as JavaResourceRootProperties).relativeOutputPath
-      ResourceDescriptor(baseDirectory = prefix, files = listOf("${if (prefix.isEmpty()) "" else "$prefix/"}**/*"), relativeOutputPath = relativeOutputPath)
+    .map { root ->
+      val prefix = resolveRelativeToBazelBuildFileDirectory(root.path, contentRoots, bazelBuildDir, module = module).invariantSeparatorsPathString
+      val excludes = compileExcludesForRoot(packageExcludes = packageExcludes, rootPrefix = prefix)
+      val relativeOutputPath = (root.properties as JavaResourceRootProperties).relativeOutputPath
+      ResourceDescriptor(
+        baseDirectory = prefix,
+        files = listOf("${if (prefix.isEmpty()) "" else "$prefix/"}**/*"),
+        relativeOutputPath = relativeOutputPath,
+        root = root.path,
+        excludes = excludes,
+      )
     }
     .toList()
+}
+
+private fun compileExcludesForRoot(packageExcludes: List<String>, rootPrefix: String): List<String> {
+  if (packageExcludes.isEmpty() || rootPrefix.isEmpty()) {
+    return packageExcludes
+  }
+
+  return packageExcludes.filter { pattern ->
+    pattern == "**/*" ||
+    pattern == rootPrefix ||
+    pattern == "$rootPrefix/**/*" ||
+    pattern.startsWith("$rootPrefix/")
+  }
 }
 
 private fun checkAndGetRelativePath(parentDir: Path, childDir: Path): Path {
@@ -1056,7 +1137,7 @@ private fun resolveRelativeToBazelBuildFileDirectory(childDir: Path, contentRoot
   return bazelBuildDir.relativize(childDir)
 }
 
-private fun computeKotlincOptions(buildFile: BuildFile, module: ModuleDescriptor, jvmTarget: String): String? {
+private fun computeKotlincOptions(buildFile: BuildFile, module: ModuleDescriptor, jvmTarget: String, kotlincDefaults: KotlincProjectDefaults): String? {
   val kotlinFacetModuleExtension = module.module.container.getChild(JpsKotlinFacetModuleExtension.KIND) ?: return null
   val mergedCompilerArguments = kotlinFacetModuleExtension.settings.mergedCompilerArguments as? K2JVMCompilerArguments ?: return null
   val options = HashMap<String, Any>()
@@ -1069,24 +1150,21 @@ private fun computeKotlincOptions(buildFile: BuildFile, module: ModuleDescriptor
 
   //api_version
   handleArgument(K2JVMCompilerArguments::apiVersion) { apiVersion ->
-    if (apiVersion != null && apiVersion != "2.3") {
+    if (apiVersion != null && apiVersion != kotlincDefaults.apiVersion) {
       options.put("api_version", apiVersion)
     }
   }
   //language_version
   handleArgument(K2JVMCompilerArguments::languageVersion) { languageVersion ->
-    if (languageVersion != null && languageVersion != "2.3") {
+    if (languageVersion != null && languageVersion != kotlincDefaults.languageVersion) {
       options.put("language_version", languageVersion)
     }
   }
   //optin
   handleArgument(K2JVMCompilerArguments::optIn) {
-    // see create_kotlinc_options
-    var effectiveOptIn = it?.asList() ?: emptyList()
-    if (effectiveOptIn.size == 1 && effectiveOptIn[0] == "com.intellij.openapi.util.IntellijInternalApi") {
-      effectiveOptIn = emptyList()
-    }
-    if (effectiveOptIn.isNotEmpty()) {
+    // see create_kotlinc_options; treat empty facet opt-in as "use project default"
+    val effectiveOptIn = it?.asList() ?: emptyList()
+    if (effectiveOptIn.isNotEmpty() && effectiveOptIn != kotlincDefaults.optIn) {
       options.put("opt_in", effectiveOptIn)
     }
   }
@@ -1153,7 +1231,7 @@ private fun computeKotlincOptions(buildFile: BuildFile, module: ModuleDescriptor
   //x_jvm_default
   handleArgument(K2JVMCompilerArguments::jvmDefault) { xJvmDefault ->
     if (xJvmDefault != null) {
-      if (xJvmDefault != "all") {
+      if (xJvmDefault != kotlincDefaults.rawJvmDefault) {
         options.put("x_jvm_default", xJvmDefault)
       }
     } else {
@@ -1162,7 +1240,7 @@ private fun computeKotlincOptions(buildFile: BuildFile, module: ModuleDescriptor
       }
     }
   }
-  //x_lambdas
+  //x_lambdas: not project-configurable via kotlinc.xml; default is the kt_kotlinc_options default "indy".
   handleArgument(K2JVMCompilerArguments::lambdas) { lambdas ->
     if (lambdas != null && lambdas != "indy") {
       options.put("x_lambdas", lambdas)
@@ -1192,7 +1270,7 @@ private fun computeKotlincOptions(buildFile: BuildFile, module: ModuleDescriptor
       options.put("x_report_all_warnings", true)
     }
   }
-  //x_sam_conversions
+  //x_sam_conversions: not project-configurable via kotlinc.xml; default is the kt_kotlinc_options default "indy".
   handleArgument(K2JVMCompilerArguments::samConversions) { samConversions ->
     if (samConversions != null && samConversions != "indy") {
       options.put("x_sam_conversions", samConversions)
@@ -1220,16 +1298,21 @@ private fun computeKotlincOptions(buildFile: BuildFile, module: ModuleDescriptor
   }
   //x_x_language
   val effectiveXXLanguage = mergedCompilerArguments.internalArguments.map { it.stringRepresentation }.filter { it.startsWith("-XXLanguage:") }
-  if (effectiveXXLanguage.size != 1 || effectiveXXLanguage[0] != "-XXLanguage:+AllowEagerSupertypeAccessibilityChecks") {
-    options.put("x_x_language", effectiveXXLanguage.map { it.removePrefix("-XXLanguage:") })
+    .map { it.removePrefix("-XXLanguage:") }
+  if (effectiveXXLanguage != kotlincDefaults.xxLanguage) {
+    options.put("x_x_language", effectiveXXLanguage)
   }
+
+  val allowedInternalXXLanguage = kotlincDefaults.xxLanguage.map { "-XXLanguage:$it" }.toMutableSet()
+  // Some modules use -XXLanguage:+InlineClasses to opt into inline classes; this pre-existed kotlinc.xml-driven defaults.
+  allowedInternalXXLanguage += "-XXLanguage:+InlineClasses"
 
   checkNoUnhandledKotlincOptions(
     module.module,
     mergedCompilerArguments,
     handledArguments = handledArguments + setOf("jvmTarget", "pluginClasspaths"),
-    handledInternalArguments = setOf("-XXLanguage:+AllowEagerSupertypeAccessibilityChecks", "-XXLanguage:+InlineClasses"),
-    handledUnknownExtraFlags = setOf("-Xallow-result-return-type", "-Xstrict-java-nullability-assertions", "-Xwasm-attach-js-exception", "-Xwasm-kclass-fqn"),
+    allowedInternalArguments = allowedInternalXXLanguage,
+    allowedUnknownExtraFlags = setOf("-Xallow-result-return-type", "-Xstrict-java-nullability-assertions", "-Xwasm-attach-js-exception", "-Xwasm-kclass-fqn"),
   )
 
   if (options.isEmpty()) {
@@ -1241,7 +1324,7 @@ private fun computeKotlincOptions(buildFile: BuildFile, module: ModuleDescriptor
   val kotlincOptionsName = "custom_" + module.targetName
   buildFile.target("create_kotlinc_options") {
     option("name", kotlincOptionsName)
-    if (jvmTarget != "21") {
+    if (jvmTarget != kotlincDefaults.jvmTarget) {
       option("jvm_target", jvmTarget)
     }
     for ((name, value) in options.entries.sortedBy { it.key }) {
@@ -1251,7 +1334,7 @@ private fun computeKotlincOptions(buildFile: BuildFile, module: ModuleDescriptor
   return ":$kotlincOptionsName"
 }
 
-private fun checkNoUnhandledKotlincOptions(module: JpsModule, mergedCompilerArguments: K2JVMCompilerArguments, handledArguments: Set<String>, handledInternalArguments: Set<String>, handledUnknownExtraFlags: Set<String>) {
+private fun checkNoUnhandledKotlincOptions(module: JpsModule, mergedCompilerArguments: K2JVMCompilerArguments, handledArguments: Set<String>, allowedInternalArguments: Set<String>, allowedUnknownExtraFlags: Set<String>) {
   // check arguments:
   mergedCompilerArguments::class.memberProperties
     .filter { it.javaField!!.getAnnotation(Argument::class.java) != null }
@@ -1264,7 +1347,7 @@ private fun checkNoUnhandledKotlincOptions(module: JpsModule, mergedCompilerArgu
     }
 
   // check internal arguments:
-  mergedCompilerArguments.internalArguments.filterNot { it.stringRepresentation in handledInternalArguments }.forEach {
+  mergedCompilerArguments.internalArguments.filterNot { it.stringRepresentation in allowedInternalArguments }.forEach {
     error("module '${module.name}' has compiler internal argument which is not supported: ${it.stringRepresentation}")
   }
 
@@ -1272,7 +1355,7 @@ private fun checkNoUnhandledKotlincOptions(module: JpsModule, mergedCompilerArgu
   mergedCompilerArguments.errors?.unknownArgs.orEmpty().forEach {
     error("module '${module.name}' has unknown compiler argument: $it")
   }
-  mergedCompilerArguments.errors?.unknownExtraFlags.orEmpty().filterNot { it in handledUnknownExtraFlags }.forEach {
+  mergedCompilerArguments.errors?.unknownExtraFlags.orEmpty().filterNot { it in allowedUnknownExtraFlags }.forEach {
     error("module '${module.name}' has unknown compiler extra flag: $it")
   }
   mergedCompilerArguments.errors?.argumentWithoutValue?.let {
@@ -1298,14 +1381,8 @@ private fun renderDeps(
   forTests: Boolean,
 ) {
   if (deps != null) {
-    if (deps.associates.isNotEmpty()) {
-      target.option("associates", deps.associates)
-    }
-    if (deps.deps.isNotEmpty()) {
-      target.option("deps", deps.deps)
-    }
     if (deps.exports.isNotEmpty()) {
-      target.option("exports", deps.exports)
+      target.option("exports", deps.exports.unsorted())
     }
   }
 
@@ -1335,11 +1412,14 @@ private fun renderDeps(
                           }
                         } + (deps?.runtimeDeps ?: emptyList())
     if (runtimeDeps.isNotEmpty()) {
-      target.option("runtime_deps", runtimeDeps)
+      target.option("runtime_deps", runtimeDeps.unsorted())
     }
   }
-  if (deps != null && deps.plugins.isNotEmpty()) {
-    target.option("plugins", deps.plugins)
+
+  if (deps != null) {
+    if (deps.deps.isNotEmpty()) {
+      target.option("deps", deps.deps.unsorted())
+    }
   }
 }
 
@@ -1355,3 +1435,67 @@ private fun getUniqueSegmentName(labels: List<String>): Map<String, String> {
 }
 
 private val LOG = Logger.getLogger("build-files")
+
+internal fun computeProjectCompileExcludes(projectDir: Path, compilerExcludes: JpsCompilerExcludes): List<String> {
+  val normalizedProjectDir = projectDir.toAbsolutePath().normalize()
+  val patterns = ArrayList<String>()
+
+  for (file in compilerExcludes.excludedFiles) {
+    toProjectRelativePattern(projectDir = normalizedProjectDir, file = file.toPath())?.let { patterns.add(it) }
+  }
+  for (directory in compilerExcludes.excludedDirectories) {
+    toProjectRelativePattern(projectDir = normalizedProjectDir, file = directory.toPath())?.let { patterns.add("$it/*") }
+  }
+  for (directory in compilerExcludes.recursivelyExcludedDirectories) {
+    toProjectRelativePattern(projectDir = normalizedProjectDir, file = directory.toPath())?.let { patterns.add("$it/**/*") }
+  }
+
+  return patterns.distinct()
+}
+
+private fun toProjectRelativePattern(projectDir: Path, file: Path): String? {
+  val path = file.toAbsolutePath().normalize()
+  if (!path.startsWith(projectDir)) {
+    return null
+  }
+
+  val relativePath = projectDir.relativize(path).invariantSeparatorsPathString
+  require(relativePath.isNotEmpty()) {
+    "Project root cannot be excluded from compilation: $file"
+  }
+  return relativePath
+}
+
+// Filters [projectCompileExcludes] (root-relative glob patterns) down to those that apply to the Bazel
+// package located at [bazelBuildFileDir], and converts them to package-relative patterns suitable for
+// Bazel's `glob(..., exclude = [...])`.
+//
+// Patterns that don't fall under [bazelBuildFileDir] are ignored. A pattern that exactly equals the
+// package path becomes a recursive '**/*' exclude for that package.
+internal fun computePackageRelativeExcludes(
+  projectDir: Path,
+  bazelBuildFileDir: Path,
+  projectCompileExcludes: List<String>,
+): List<String> {
+  if (projectCompileExcludes.isEmpty()) {
+    return emptyList()
+  }
+
+  val packagePath = projectDir.relativize(bazelBuildFileDir).invariantSeparatorsPathString
+  if (packagePath.startsWith("..")) {
+    // Bazel package is outside the project root; project-level excludes don't apply.
+    return emptyList()
+  }
+
+  val prefix = if (packagePath.isEmpty()) "" else "$packagePath/"
+  return projectCompileExcludes.mapNotNull { pattern ->
+    when {
+      packagePath.isEmpty() -> pattern
+      pattern == packagePath -> "**/*"
+      pattern.startsWith(prefix) -> pattern.removePrefix(prefix)
+      else -> null
+    }
+  }.sortedBy { compileExcludeSortKey(it) }
+}
+
+private fun compileExcludeSortKey(pattern: String): String = pattern.lowercase().replace('/', '{')

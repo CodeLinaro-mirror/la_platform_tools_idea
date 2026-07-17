@@ -46,6 +46,7 @@ import com.siyeh.ig.psiutils.CommentTracker;
 import com.siyeh.ig.psiutils.EquivalenceChecker;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -74,8 +75,13 @@ public final class MathClampMigrationInspection extends BaseInspection {
   }
 
   @Override
-  protected String buildErrorString(Object @Nullable ... infos) {
-    return CommonQuickFixBundle.message("fix.can.replace.with.x", "Math.clamp()");
+  protected String buildErrorString(Object... infos) {
+    @SuppressWarnings("unchecked")
+    List<String> targets = (List<String>)infos[0];
+    return CommonQuickFixBundle.message(
+      braveMode && targets.size() > 1
+      ? "fix.replace.with.x.may.change.semantics"
+      : "fix.can.replace.with.x", "Math.clamp()");
   }
 
   @Override
@@ -117,7 +123,10 @@ public final class MathClampMigrationInspection extends BaseInspection {
 
     @Override
     public String getFamilyName() {
-      return CommonQuickFixBundle.message("fix.replace.with.x", "Math.clamp()");
+      return CommonQuickFixBundle.message(
+        braveMode && potentialTargets.size() > 1
+        ? "fix.replace.with.x.may.change.semantics"
+        : "fix.can.replace.with.x", "Math.clamp()");
     }
 
     @Override
@@ -300,7 +309,7 @@ public final class MathClampMigrationInspection extends BaseInspection {
     return borderType;
   }
 
-  /// Variant of [#sortInfos(List, PsiElement, boolean)] for brave mode. **Not Dfa aware**
+  /// Variant of [#sortInfos(Couple, PsiElement, boolean)] for brave mode. **Not Dfa aware**
   private static Couple<ClampInfo> sortInfosBraveMode(Couple<ClampInfo> infos, PsiElement target, boolean isMin) {
     boolean isTargetFound = infos.getFirst().flatten().anyMatch(info -> info.element.equals(target));
     ClampInfo maxInfo, minInfo;
@@ -328,7 +337,7 @@ public final class MathClampMigrationInspection extends BaseInspection {
   ///
   /// @param topLevelInfo     The information about the top level math call
   /// @param assignmentTarget The variable that gets assigned the result of the "clamp" operation, if any.
-  private static List<PsiExpression> getPossibleTargets(Couple<ClampInfo> topLevelInfo, @Nullable PsiExpression assignmentTarget) {
+  private static @Unmodifiable List<PsiExpression> getPossibleTargets(Couple<ClampInfo> topLevelInfo, @Nullable PsiExpression assignmentTarget) {
     List<Condition<ClampInfo>> filters = List.of(info -> {
       //Side effect, if the intended target "ends up" being a constant-like, the inspection will bail out.
       if (info.values instanceof DfConstantType<?> constant && constant.getValue() != null) return false;

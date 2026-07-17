@@ -10,7 +10,6 @@ import com.intellij.openapi.actionSystem.CustomShortcutSet
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.fileChooser.FileChooserDescriptor
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
-import com.intellij.openapi.observable.properties.AtomicProperty
 import com.intellij.openapi.observable.properties.ObservableMutableProperty
 import com.intellij.openapi.observable.properties.ObservableProperty
 import com.intellij.openapi.observable.util.and
@@ -262,7 +261,7 @@ internal class ValidatedPathField<T, P : PathHolder, VP : ValidatedPath<T, P>>(
   private fun createBrowseFolderListener(browseFolderDialogTitle: @Nls String, isFileSelectionMode: Boolean): ActionListener? {
     val descriptor = getFileChooserDescriptor(browseFolderDialogTitle, isFileSelectionMode)
     val targetBrowserHints = TargetBrowserHints(showLocalFsInBrowser = true, descriptor)
-    val targetEnvironmentConfiguration = (fileSystem as? FileSystem.Target)?.targetEnvironmentConfiguration
+    val targetEnvironmentConfiguration = (fileSystem as? TargetFileSystem)?.targetEnvironmentConfiguration
 
     val listener = if (targetEnvironmentConfiguration == null) {
       BrowseFolderActionListener(this, null, descriptor, fieldAccessor)
@@ -294,7 +293,7 @@ private fun <T, P : PathHolder, V : ValidatedPath<T, P>> Panel.installToolRow(
   installAction: ActionLink,
   validatedPathField: ValidatedPathField<T, P, V>,
 ): Row {
-  val selectExecutableLink = if (fileSystem.isBrowseable) ActionLink(message("sdk.create.custom.select.executable.link")) {
+  val selectExecutableLink = if (fileSystem.isBrowsable) ActionLink(message("sdk.create.custom.select.executable.link")) {
     validatedPathField.button.doClick()
   }
   else null

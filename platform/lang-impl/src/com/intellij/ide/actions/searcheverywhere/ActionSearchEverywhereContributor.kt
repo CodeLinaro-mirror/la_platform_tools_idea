@@ -20,6 +20,7 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.DataContext
+import com.intellij.openapi.actionSystem.DataSink
 import com.intellij.openapi.actionSystem.IdeActions
 import com.intellij.openapi.actionSystem.PlatformCoreDataKeys
 import com.intellij.openapi.actionSystem.Presentation
@@ -51,10 +52,12 @@ import java.awt.KeyboardFocusManager
 import java.awt.event.InputEvent
 import java.lang.ref.WeakReference
 import java.util.Optional
+import java.util.function.BiConsumer
 import javax.swing.ListCellRenderer
 
 private val LOG = logger<ActionSearchEverywhereContributor>()
 
+@Internal
 open class ActionSearchEverywhereContributor : WeightedSearchEverywhereContributor<MatchedValue>, LightEditCompatible, SearchEverywhereExtendedInfoProvider {
   private val myProject: Project?
   private val myContextComponent: WeakReference<Component?>
@@ -149,8 +152,8 @@ open class ActionSearchEverywhereContributor : WeightedSearchEverywhereContribut
 
   override fun getSearchProviderId(): String = ActionSearchEverywhereContributor::class.java.simpleName
 
-  override fun getDataForItem(element: MatchedValue, dataId: String): Any? {
-    return if (SetShortcutAction.SELECTED_ACTION.`is`(dataId)) element.getUnwrappedAction() else null
+  override fun getDataProviders(): List<BiConsumer<MatchedValue, DataSink>> = super.getDataProviders() + BiConsumer { element, sink ->
+    sink.lazy(SetShortcutAction.SELECTED_ACTION) { element.getUnwrappedAction() }
   }
 
   override fun getItemDescription(element: MatchedValue): String? {
@@ -192,6 +195,7 @@ open class ActionSearchEverywhereContributor : WeightedSearchEverywhereContribut
     return !inplaceChange
   }
 
+  @Internal
   class Factory : SearchEverywhereContributorFactory<MatchedValue> {
     override fun createContributor(initEvent: AnActionEvent): SearchEverywhereContributor<MatchedValue> {
       return ActionSearchEverywhereContributor(
@@ -253,6 +257,7 @@ open class ActionSearchEverywhereContributor : WeightedSearchEverywhereContribut
     }
   }
 
+  @Internal
   companion object {
     fun showAssignShortcutDialog(myProject: Project?, value: MatchedValue) {
       val action = value.getUnwrappedAction()

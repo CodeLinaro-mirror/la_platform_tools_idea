@@ -1,57 +1,82 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.agent.workbench.sessions
 
-import com.intellij.agent.workbench.common.icons.AgentWorkbenchCommonIcons
-import com.intellij.agent.workbench.common.session.AgentSessionLaunchMode
-import com.intellij.agent.workbench.common.session.AgentSessionProvider
-import com.intellij.agent.workbench.common.session.AgentSessionThread
+import com.intellij.platform.ai.agent.core.AgentThreadActivity
+import com.intellij.platform.ai.agent.common.icons.AgentWorkbenchCommonIcons
+import com.intellij.platform.ai.agent.core.session.AgentSessionLaunchMode
+import com.intellij.platform.ai.agent.core.session.AgentSessionProvider
+import com.intellij.platform.ai.agent.core.session.AgentSessionThread
 import com.intellij.agent.workbench.prompt.core.AGENT_PROMPT_INVOCATION_DATA_CONTEXT_KEY
 import com.intellij.agent.workbench.prompt.core.AGENT_PROMPT_PROJECT_PATH_CONTEXT_DATA_KEY
+import com.intellij.agent.workbench.prompt.core.AgentPromptAddContextTargetCandidate
+import com.intellij.agent.workbench.prompt.core.AgentPromptAddContextToTargetRequest
+import com.intellij.agent.workbench.prompt.core.AgentPromptAddContextToTargetResult
+import com.intellij.agent.workbench.prompt.core.AgentPromptContainerLauncher
 import com.intellij.agent.workbench.prompt.core.AgentPromptContextItem
+import com.intellij.agent.workbench.prompt.core.AgentPromptGenerationModel
+import com.intellij.agent.workbench.prompt.core.AgentPromptGenerationSettings
 import com.intellij.agent.workbench.prompt.core.AgentPromptInitialMessageRequest
 import com.intellij.agent.workbench.prompt.core.AgentPromptInvocationData
 import com.intellij.agent.workbench.prompt.core.AgentPromptLaunchError
 import com.intellij.agent.workbench.prompt.core.AgentPromptLaunchRequest
+import com.intellij.agent.workbench.prompt.core.AgentPromptLaunchResult
 import com.intellij.agent.workbench.prompt.core.AgentPromptLauncherBridge
 import com.intellij.agent.workbench.prompt.core.AgentPromptProjectPathCandidate
 import com.intellij.agent.workbench.prompt.core.AgentPromptProjectPathContext
-import com.intellij.agent.workbench.sessions.core.providers.AgentInitialMessageDispatchCompletionPolicy
-import com.intellij.agent.workbench.sessions.core.providers.AgentInitialMessageDispatchStep
-import com.intellij.agent.workbench.sessions.core.providers.AgentInitialMessagePlan
-import com.intellij.agent.workbench.sessions.core.providers.AgentInitialMessageStartupPolicy
-import com.intellij.agent.workbench.sessions.core.providers.AgentInitialMessageTimeoutPolicy
-import com.intellij.agent.workbench.sessions.core.providers.AgentSessionLaunchSpec
-import com.intellij.agent.workbench.sessions.core.providers.AgentSessionProviderDescriptor
-import com.intellij.agent.workbench.sessions.core.providers.AgentSessionProviders
-import com.intellij.agent.workbench.sessions.core.providers.AgentSessionSource
-import com.intellij.agent.workbench.sessions.core.providers.AgentSessionTerminalLaunchSpec
-import com.intellij.agent.workbench.sessions.core.providers.InMemoryAgentSessionProviderRegistry
-import com.intellij.agent.workbench.sessions.core.statistics.AgentWorkbenchEntryPoint
-import com.intellij.agent.workbench.sessions.core.statistics.AgentWorkbenchPromptLaunchResultKind
-import com.intellij.agent.workbench.sessions.core.statistics.AgentWorkbenchTargetKind
-import com.intellij.agent.workbench.sessions.core.statistics.AgentWorkbenchTelemetry
-import com.intellij.agent.workbench.sessions.core.statistics.AgentWorkbenchTelemetryEvent
-import com.intellij.agent.workbench.sessions.core.statistics.AgentWorkbenchTelemetryProvider
+import com.intellij.agent.workbench.prompt.core.AgentPromptReasoningEffort
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentInitialMessageDispatchAction
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentInitialMessageDispatchStep
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentInitialMessageMode
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentInitialMessagePlan
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentInitialMessageProviderDispatchRequest
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentInitialMessageStartupPolicy
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentInitialMessageTimeoutPolicy
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentInitialPromptDeliveryChannel
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentInitialPromptDeliveryPlan
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentInitialPromptDeliveryStatus
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentInitialPromptRecord
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentPrestartedNewSessionLaunch
+import com.intellij.platform.ai.agent.sessions.core.providers.AGENT_PROMPT_PROVIDER_OPTION_PLAN_MODE
+import com.intellij.platform.ai.agent.sessions.core.providers.AGENT_PROMPT_PROVIDER_PLAN_MODE_OPTION
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentPromptProviderOption
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentSessionProviderDescriptor
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentSessionProviders
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentSessionSource
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentSessionTerminalLaunchSpec
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentTerminalPromptDispatch
+import com.intellij.platform.ai.agent.sessions.core.providers.InMemoryAgentSessionProviderRegistry
+import com.intellij.platform.ai.agent.sessions.core.providers.isPlanModeRequested
+import com.intellij.agent.workbench.sessions.statistics.AgentWorkbenchEntryPoint
+import com.intellij.agent.workbench.sessions.statistics.AgentWorkbenchPromptLaunchResultKind
+import com.intellij.agent.workbench.sessions.statistics.AgentWorkbenchTargetKind
+import com.intellij.agent.workbench.sessions.statistics.AgentWorkbenchTelemetry
+import com.intellij.agent.workbench.sessions.statistics.AgentWorkbenchTelemetryEvent
+import com.intellij.agent.workbench.sessions.model.AgentSessionProviderLoadState
 import com.intellij.agent.workbench.sessions.frame.AgentChatOpenModeSettings
 import com.intellij.agent.workbench.sessions.frame.AgentWorkbenchDedicatedFrameProjectManager
-import com.intellij.agent.workbench.sessions.frame.OPEN_CHAT_IN_DEDICATED_FRAME_SETTING_ID
 import com.intellij.agent.workbench.sessions.service.AgentSessionLaunchService
 import com.intellij.agent.workbench.sessions.service.AgentSessionPromptLauncherBridge
+import com.intellij.agent.workbench.sessions.service.OpenThreadLaunchOrigin
 import com.intellij.agent.workbench.sessions.service.resolveAgentSessionPathState
 import com.intellij.agent.workbench.sessions.state.AgentSessionUiPreferencesStateService
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.impl.SimpleDataContext
-import com.intellij.openapi.options.advanced.AdvancedSettings
-import com.intellij.openapi.options.advanced.AdvancedSettingsImpl
+import com.intellij.openapi.application.ModalityState
+import com.intellij.openapi.application.contextModality
+import com.intellij.openapi.extensions.impl.ExtensionPointImpl
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
-import com.intellij.openapi.util.Disposer
 import com.intellij.testFramework.junit5.TestApplication
+import com.intellij.testFramework.junit5.TestDisposable
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
+import java.util.concurrent.TimeUnit
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Proxy
 import java.util.concurrent.CopyOnWriteArrayList
@@ -60,11 +85,15 @@ import java.util.concurrent.atomic.AtomicReference
 import javax.swing.Icon
 
 @TestApplication
+@Timeout(value = 2, unit = TimeUnit.MINUTES)
 class AgentSessionPromptLauncherBridgeTest {
+  @TestDisposable
+  lateinit var testRootDisposable: Disposable
+
   @Test
   fun launchCreatesNewSessionForPromptRequest() {
     val providerBridge = RecordingPromptLaunchProviderBridge(
-      provider = AgentSessionProvider.CODEX,
+      provider = AgentSessionProvider.from("codex"),
       supportedModes = setOf(AgentSessionLaunchMode.STANDARD),
     )
     val chatOpenExecutor = RecordingChatOpenExecutor()
@@ -95,25 +124,23 @@ class AgentSessionPromptLauncherBridgeTest {
               telemetryEvents.any { it.id == AgentWorkbenchTelemetry.PROMPT_LAUNCH_RESOLVED_EVENT_ID }
             }
 
-            assertThat(providerBridge.lastCreatePath.get()).isEqualTo(INVALID_PROMPT_PROJECT_PATH)
             assertThat(providerBridge.lastCreateMode.get()).isEqualTo(AgentSessionLaunchMode.STANDARD)
             assertThat(providerBridge.composeCalls.get()).isEqualTo(1)
             assertThat(providerBridge.lastComposeRequest.get()).isEqualTo(request.initialMessageRequest)
             assertThat(providerBridge.startupCommandCalls.get()).isEqualTo(1)
             assertThat(providerBridge.lastStartupBaseLaunchSpec.get()?.command)
-              .containsExactly("test", "create", INVALID_PROMPT_PROJECT_PATH, AgentSessionLaunchMode.STANDARD.name)
+              .containsExactly("test", "new", AgentSessionLaunchMode.STANDARD.name)
             assertThat(providerBridge.lastStartupPrompt.get()).isEqualTo("composed:Refactor selected code")
             val openRequest = checkNotNull(chatOpenExecutor.lastOpenNewChatRequest.get())
             assertThat(openRequest.normalizedPath).isEqualTo(INVALID_PROMPT_PROJECT_PATH)
             assertThat(openRequest.identity).startsWith("codex:new-")
             assertThat(openRequest.launchSpec.command)
-              .containsExactly("test", "create", INVALID_PROMPT_PROJECT_PATH, AgentSessionLaunchMode.STANDARD.name)
+              .containsExactly("test", "new", AgentSessionLaunchMode.STANDARD.name)
             assertThat(openRequest.launchSpec.envVariables).isEmpty()
             assertThat(openRequest.startupLaunchSpecOverride?.command)
               .containsExactly(
                 "test",
-                "create",
-                INVALID_PROMPT_PROJECT_PATH,
+                "new",
                 AgentSessionLaunchMode.STANDARD.name,
                 "--",
                 "composed:Refactor selected code",
@@ -149,9 +176,180 @@ class AgentSessionPromptLauncherBridgeTest {
   }
 
   @Test
+  fun launchRoutesSupportedContainerRequestToContainerLauncher() {
+    val project = ProjectManager.getInstance().defaultProject
+    val containerLauncher = RecordingContainerLauncher(
+      supportedProviders = setOf(AgentSessionProvider.from("claude")),
+      available = true,
+    )
+    val standardLaunchCalls = AtomicInteger()
+    val bridge = containerPromptLauncherBridge(
+      launchPromptRequest = {
+        standardLaunchCalls.incrementAndGet()
+        AgentPromptLaunchResult.SUCCESS
+      },
+      sourceProjectResolver = { path -> project.takeIf { path == PROJECT_PATH } },
+    )
+    val request = promptLaunchRequest(provider = AgentSessionProvider.from("claude")).copy(containerMode = true)
+
+    withContainerLauncherForTest(containerLauncher, testRootDisposable) {
+      val result = runBlocking { bridge.launch(request) }
+
+      assertThat(result).isEqualTo(AgentPromptLaunchResult.SUCCESS)
+      assertThat(standardLaunchCalls.get()).isZero()
+      assertThat(containerLauncher.launchCalls.get()).isEqualTo(1)
+      assertThat(containerLauncher.lastProject.get()).isSameAs(project)
+      assertThat(containerLauncher.lastRequest.get()).isEqualTo(request)
+    }
+  }
+
+  @Test
+  fun launchRejectsContainerRequestForUnsupportedProviderWithoutStandardFallback() {
+    val containerLauncher = RecordingContainerLauncher(
+      supportedProviders = setOf(AgentSessionProvider.from("claude")),
+      available = true,
+    )
+    val standardLaunchCalls = AtomicInteger()
+    val bridge = containerPromptLauncherBridge(
+      launchPromptRequest = {
+        standardLaunchCalls.incrementAndGet()
+        AgentPromptLaunchResult.SUCCESS
+      },
+    )
+    val request = promptLaunchRequest(provider = AgentSessionProvider.from("codex")).copy(containerMode = true)
+    val telemetryEvents = CopyOnWriteArrayList<AgentWorkbenchTelemetryEvent>()
+    val token = AgentWorkbenchTelemetry.pushTestHandler(telemetryEvents::add)
+
+    try {
+      withContainerLauncherForTest(containerLauncher, testRootDisposable) {
+        val result = runBlocking { bridge.launch(request) }
+
+        assertThat(result.launched).isFalse()
+        assertThat(result.error).isEqualTo(AgentPromptLaunchError.UNSUPPORTED_LAUNCH_MODE)
+        assertThat(standardLaunchCalls.get()).isZero()
+        assertThat(containerLauncher.launchCalls.get()).isZero()
+      }
+      assertPromptLaunchResolvedTelemetry(
+        telemetryEvents = telemetryEvents,
+        provider = "codex",
+        launchResult = AgentWorkbenchPromptLaunchResultKind.UNSUPPORTED_LAUNCH_MODE,
+      )
+    }
+    finally {
+      token.finish()
+    }
+  }
+
+  @Test
+  fun launchRejectsContainerRequestWhenLauncherIsUnavailableWithoutStandardFallback() {
+    val containerLauncher = RecordingContainerLauncher(
+      supportedProviders = setOf(AgentSessionProvider.from("claude")),
+      available = false,
+    )
+    val standardLaunchCalls = AtomicInteger()
+    val bridge = containerPromptLauncherBridge(
+      launchPromptRequest = {
+        standardLaunchCalls.incrementAndGet()
+        AgentPromptLaunchResult.SUCCESS
+      },
+    )
+    val request = promptLaunchRequest(provider = AgentSessionProvider.from("claude")).copy(containerMode = true)
+    val telemetryEvents = CopyOnWriteArrayList<AgentWorkbenchTelemetryEvent>()
+    val token = AgentWorkbenchTelemetry.pushTestHandler(telemetryEvents::add)
+
+    try {
+      withContainerLauncherForTest(containerLauncher, testRootDisposable) {
+        val result = runBlocking { bridge.launch(request) }
+
+        assertThat(result.launched).isFalse()
+        assertThat(result.error).isEqualTo(AgentPromptLaunchError.PROVIDER_UNAVAILABLE)
+        assertThat(standardLaunchCalls.get()).isZero()
+        assertThat(containerLauncher.launchCalls.get()).isZero()
+      }
+      assertPromptLaunchResolvedTelemetry(
+        telemetryEvents = telemetryEvents,
+        provider = "claude",
+        launchResult = AgentWorkbenchPromptLaunchResultKind.PROVIDER_UNAVAILABLE,
+      )
+    }
+    finally {
+      token.finish()
+    }
+  }
+
+  @Test
+  fun launchRejectsContainerRequestWhenContainerLauncherIsMissingWithoutStandardFallback() {
+    val standardLaunchCalls = AtomicInteger()
+    val bridge = containerPromptLauncherBridge(
+      launchPromptRequest = {
+        standardLaunchCalls.incrementAndGet()
+        AgentPromptLaunchResult.SUCCESS
+      },
+    )
+    val request = promptLaunchRequest(provider = AgentSessionProvider.from("claude")).copy(containerMode = true)
+    val telemetryEvents = CopyOnWriteArrayList<AgentWorkbenchTelemetryEvent>()
+    val token = AgentWorkbenchTelemetry.pushTestHandler(telemetryEvents::add)
+
+    try {
+      withContainerLaunchersForTest(emptyList(), testRootDisposable) {
+        val result = runBlocking { bridge.launch(request) }
+
+        assertThat(result.launched).isFalse()
+        assertThat(result.error).isEqualTo(AgentPromptLaunchError.UNSUPPORTED_LAUNCH_MODE)
+        assertThat(standardLaunchCalls.get()).isZero()
+      }
+      assertPromptLaunchResolvedTelemetry(
+        telemetryEvents = telemetryEvents,
+        provider = "claude",
+        launchResult = AgentWorkbenchPromptLaunchResultKind.UNSUPPORTED_LAUNCH_MODE,
+      )
+    }
+    finally {
+      token.finish()
+    }
+  }
+
+  @Test
+  fun launchRejectsContainerRequestWhenSourceProjectCannotBeResolvedWithoutStandardFallback() {
+    val containerLauncher = RecordingContainerLauncher(
+      supportedProviders = setOf(AgentSessionProvider.from("claude")),
+      available = true,
+    )
+    val standardLaunchCalls = AtomicInteger()
+    val bridge = containerPromptLauncherBridge(
+      launchPromptRequest = {
+        standardLaunchCalls.incrementAndGet()
+        AgentPromptLaunchResult.SUCCESS
+      },
+    )
+    val request = promptLaunchRequest(provider = AgentSessionProvider.from("claude")).copy(containerMode = true)
+    val telemetryEvents = CopyOnWriteArrayList<AgentWorkbenchTelemetryEvent>()
+    val token = AgentWorkbenchTelemetry.pushTestHandler(telemetryEvents::add)
+
+    try {
+      withContainerLauncherForTest(containerLauncher, testRootDisposable) {
+        val result = runBlocking { bridge.launch(request) }
+
+        assertThat(result.launched).isFalse()
+        assertThat(result.error).isEqualTo(AgentPromptLaunchError.INTERNAL_ERROR)
+        assertThat(standardLaunchCalls.get()).isZero()
+        assertThat(containerLauncher.launchCalls.get()).isZero()
+      }
+      assertPromptLaunchResolvedTelemetry(
+        telemetryEvents = telemetryEvents,
+        provider = "claude",
+        launchResult = AgentWorkbenchPromptLaunchResultKind.INTERNAL_ERROR,
+      )
+    }
+    finally {
+      token.finish()
+    }
+  }
+
+  @Test
   fun launchReportsPromptFailureTelemetryWhenTargetThreadIsMissing() {
     val providerBridge = RecordingPromptLaunchProviderBridge(
-      provider = AgentSessionProvider.CODEX,
+      provider = AgentSessionProvider.from("codex"),
       supportedModes = setOf(AgentSessionLaunchMode.STANDARD),
     )
     AgentSessionProviders.withRegistryForTest(
@@ -190,9 +388,86 @@ class AgentSessionPromptLauncherBridgeTest {
   }
 
   @Test
+  fun launchReportsPromptFailureTelemetryWhenTargetThreadIsBusyForPlanMode() {
+    val providerBridge = RecordingPromptLaunchProviderBridge(
+      provider = AgentSessionProvider.from("codex"),
+      supportedModes = setOf(AgentSessionLaunchMode.STANDARD),
+      composedMessageBuilder = { request -> request.prompt.trim() },
+    )
+    AgentSessionProviders.withRegistryForTest(
+      InMemoryAgentSessionProviderRegistry(listOf(providerBridge))
+    ) {
+      runBlocking(Dispatchers.Default) {
+        withServiceAndLaunch(
+          sessionSourcesProvider = {
+            listOf(
+              ScriptedSessionSource(
+                provider = AgentSessionProvider.from("codex"),
+                listFromOpenProject = { path, _ ->
+                  if (path == PROJECT_PATH) {
+                    listOf(
+                      thread(
+                        id = "thread-existing",
+                        updatedAt = 200,
+                        provider = AgentSessionProvider.from("codex"),
+                        activity = AgentThreadActivity.PROCESSING,
+                      )
+                    )
+                  }
+                  else {
+                    emptyList()
+                  }
+                },
+              )
+            )
+          },
+          projectEntriesProvider = { listOf(openProjectEntry(PROJECT_PATH, "Project A")) },
+        ) { service, launchService ->
+          service.refresh()
+          waitForCondition {
+            val project = service.state.value.projects.firstOrNull { it.path == PROJECT_PATH } ?: return@waitForCondition false
+            project.providerLoadStates[AgentSessionProvider.from("codex")] == AgentSessionProviderLoadState.LOADED &&
+            project.threads.any { thread -> thread.id == "thread-existing" }
+          }
+
+          val bridge = promptLauncherBridge(service, launchService)
+          val telemetryEvents = CopyOnWriteArrayList<AgentWorkbenchTelemetryEvent>()
+          val token = AgentWorkbenchTelemetry.pushTestHandler(telemetryEvents::add)
+
+          try {
+            val baseRequest = promptLaunchRequest(targetThreadId = "thread-existing")
+            val result = bridge.launch(
+              baseRequest.copy(
+                initialMessageRequest = baseRequest.initialMessageRequest.copy(
+                  providerOptionIds = setOf(AGENT_PROMPT_PROVIDER_OPTION_PLAN_MODE),
+                ),
+              )
+            )
+
+            assertThat(result.launched).isFalse()
+            assertThat(result.error).isEqualTo(AgentPromptLaunchError.TARGET_THREAD_BUSY_FOR_PLAN_MODE)
+            assertThat(telemetryEvents).contains(
+              AgentWorkbenchTelemetryEvent(
+                id = AgentWorkbenchTelemetry.PROMPT_LAUNCH_RESOLVED_EVENT_ID,
+                provider = telemetryEvents.single().provider,
+                launchMode = AgentSessionLaunchMode.STANDARD,
+                targetKind = AgentWorkbenchTargetKind.THREAD,
+                launchResult = AgentWorkbenchPromptLaunchResultKind.TARGET_THREAD_BUSY_FOR_PLAN_MODE,
+              )
+            )
+          }
+          finally {
+            token.finish()
+          }
+        }
+      }
+    }
+  }
+
+  @Test
   fun launchReportsDroppedDuplicateTelemetryWhenNewSessionRequestIsAlreadyInFlight() {
     val providerBridge = RecordingPromptLaunchProviderBridge(
-      provider = AgentSessionProvider.CODEX,
+      provider = AgentSessionProvider.from("codex"),
       supportedModes = setOf(AgentSessionLaunchMode.STANDARD),
     )
     val releaseFirstOpen = CompletableDeferred<Unit>()
@@ -241,7 +516,7 @@ class AgentSessionPromptLauncherBridgeTest {
               assertThat(telemetryEvents).contains(
                 AgentWorkbenchTelemetryEvent(
                   id = AgentWorkbenchTelemetry.PROMPT_LAUNCH_RESOLVED_EVENT_ID,
-                  provider = AgentWorkbenchTelemetryProvider.CODEX,
+                  provider = "codex",
                   launchMode = AgentSessionLaunchMode.STANDARD,
                   targetKind = AgentWorkbenchTargetKind.NEW_THREAD,
                   launchResult = AgentWorkbenchPromptLaunchResultKind.DROPPED_DUPLICATE,
@@ -259,9 +534,173 @@ class AgentSessionPromptLauncherBridgeTest {
   }
 
   @Test
-  fun successfulLaunchUpdatesPreferredProvider() {
+  fun createNewSessionAllowsConcurrentRequestsWithDifferentSingleFlightDiscriminators() {
     val providerBridge = RecordingPromptLaunchProviderBridge(
-      provider = AgentSessionProvider.CLAUDE,
+      provider = AgentSessionProvider.from("codex"),
+      supportedModes = setOf(AgentSessionLaunchMode.STANDARD),
+    )
+    val releaseFirstOpen = CompletableDeferred<Unit>()
+    val chatOpenExecutor = RecordingChatOpenExecutor(
+      onOpenNewChat = { _, callIndex ->
+        if (callIndex == 1) {
+          releaseFirstOpen.await()
+        }
+      }
+    )
+    withOpenInNonDedicatedFrameSettingForTest {
+      AgentSessionProviders.withRegistryForTest(
+        InMemoryAgentSessionProviderRegistry(listOf(providerBridge))
+      ) {
+        runBlocking(Dispatchers.Default) {
+          withServiceAndLaunch(
+            sessionSourcesProvider = { listOf(providerBridge.sessionSource) },
+            projectEntriesProvider = { listOf(openProjectEntry(PROJECT_PATH, "Project A")) },
+            chatOpenExecutor = chatOpenExecutor,
+          ) { _, launchService ->
+            try {
+              launchService.createNewSession(
+                path = PROJECT_PATH,
+                provider = AgentSessionProvider.from("codex"),
+                mode = AgentSessionLaunchMode.STANDARD,
+                entryPoint = AgentWorkbenchEntryPoint.TOOLBAR,
+                singleFlightDiscriminator = "merge-session-1",
+              )
+              waitForCondition {
+                chatOpenExecutor.openNewChatCalls.get() == 1
+              }
+
+              launchService.createNewSession(
+                path = PROJECT_PATH,
+                provider = AgentSessionProvider.from("codex"),
+                mode = AgentSessionLaunchMode.STANDARD,
+                entryPoint = AgentWorkbenchEntryPoint.TOOLBAR,
+                singleFlightDiscriminator = "merge-session-2",
+              )
+
+              waitForCondition {
+                providerBridge.createCalls.get() == 2 &&
+                chatOpenExecutor.openNewChatCalls.get() == 2
+              }
+            }
+            finally {
+              releaseFirstOpen.complete(Unit)
+            }
+          }
+        }
+      }
+    }
+  }
+
+  @Test
+  fun createNewSessionWaitsForOpenedChatHandlerBeforeReleasingSingleFlight() {
+    val providerBridge = RecordingPromptLaunchProviderBridge(
+      provider = AgentSessionProvider.from("codex"),
+      supportedModes = setOf(AgentSessionLaunchMode.STANDARD),
+    )
+    val releaseOpenedChatHandler = CompletableDeferred<Unit>()
+    val firstLaunchResult = CompletableDeferred<AgentPromptLaunchResult>()
+    val secondLaunchResult = CompletableDeferred<AgentPromptLaunchResult>()
+    val chatOpenExecutor = RecordingChatOpenExecutor()
+    withOpenInNonDedicatedFrameSettingForTest {
+      AgentSessionProviders.withRegistryForTest(
+        InMemoryAgentSessionProviderRegistry(listOf(providerBridge))
+      ) {
+        runBlocking(Dispatchers.Default) {
+          withServiceAndLaunch(
+            sessionSourcesProvider = { listOf(providerBridge.sessionSource) },
+            projectEntriesProvider = { listOf(openProjectEntry(PROJECT_PATH, "Project A")) },
+            chatOpenExecutor = chatOpenExecutor,
+          ) { _, launchService ->
+            launchService.createNewSession(
+              path = PROJECT_PATH,
+              provider = AgentSessionProvider.from("codex"),
+              mode = AgentSessionLaunchMode.STANDARD,
+              entryPoint = AgentWorkbenchEntryPoint.TOOLBAR,
+              openedChatHandler = { _, _ -> releaseOpenedChatHandler.await() },
+              promptLaunchResolved = { result -> firstLaunchResult.complete(result) },
+            )
+            chatOpenExecutor.awaitOpenPreparingNewChatCalls(1)
+
+            launchService.createNewSession(
+              path = PROJECT_PATH,
+              provider = AgentSessionProvider.from("codex"),
+              mode = AgentSessionLaunchMode.STANDARD,
+              entryPoint = AgentWorkbenchEntryPoint.TOOLBAR,
+              promptLaunchResolved = { result -> secondLaunchResult.complete(result) },
+            )
+
+            waitForCondition {
+              secondLaunchResult.isCompleted
+            }
+            val droppedDuplicateResult = secondLaunchResult.await()
+            assertThat(firstLaunchResult.isCompleted).isFalse()
+            assertThat(droppedDuplicateResult.launched).isFalse()
+            assertThat(droppedDuplicateResult.error).isEqualTo(AgentPromptLaunchError.DROPPED_DUPLICATE)
+            assertThat(chatOpenExecutor.openNewChatCalls.get()).isZero()
+
+            releaseOpenedChatHandler.complete(Unit)
+
+            assertThat(firstLaunchResult.await()).isEqualTo(AgentPromptLaunchResult.SUCCESS)
+            chatOpenExecutor.awaitOpenNewChatCalls(1)
+          }
+        }
+      }
+    }
+  }
+
+  @Test
+  fun createNewSessionRunsOpenAndOpenedChatHandlerInProvidedLaunchModality() {
+    val providerBridge = RecordingPromptLaunchProviderBridge(
+      provider = AgentSessionProvider.from("codex"),
+      supportedModes = setOf(AgentSessionLaunchMode.STANDARD),
+    )
+    val openModality = AtomicReference<ModalityState?>(null)
+    val handlerModality = AtomicReference<ModalityState?>(null)
+    val launchModalityState = createTestModalityState()
+    val chatOpenExecutor = RecordingChatOpenExecutor(
+      onOpenNewChat = { _, _ ->
+        openModality.set(currentCoroutineContext().contextModality())
+      }
+    )
+    withOpenInNonDedicatedFrameSettingForTest {
+      AgentSessionProviders.withRegistryForTest(
+        InMemoryAgentSessionProviderRegistry(listOf(providerBridge))
+      ) {
+        runBlocking(Dispatchers.Default) {
+          withServiceAndLaunch(
+            sessionSourcesProvider = { listOf(providerBridge.sessionSource) },
+            projectEntriesProvider = { listOf(openProjectEntry(PROJECT_PATH, "Project A")) },
+            chatOpenExecutor = chatOpenExecutor,
+          ) { _, launchService ->
+            assertThat(launchModalityState).isNotEqualTo(ModalityState.nonModal())
+
+            launchService.createNewSession(
+              path = PROJECT_PATH,
+              provider = AgentSessionProvider.from("codex"),
+              mode = AgentSessionLaunchMode.STANDARD,
+              entryPoint = AgentWorkbenchEntryPoint.TOOLBAR,
+              launchModalityState = launchModalityState,
+              openedChatHandler = { _, _ ->
+                handlerModality.set(currentCoroutineContext().contextModality())
+              },
+            )
+
+            waitForCondition {
+              openModality.get() === launchModalityState &&
+              handlerModality.get() === launchModalityState
+            }
+
+            assertThat(chatOpenExecutor.openNewChatCalls.get()).isEqualTo(1)
+          }
+        }
+      }
+    }
+  }
+
+  @Test
+  fun successfulLaunchUpdatesProviderOptions() {
+    val providerBridge = RecordingPromptLaunchProviderBridge(
+      provider = AgentSessionProvider.from("claude"),
       supportedModes = setOf(AgentSessionLaunchMode.STANDARD),
     )
     val chatOpenExecutor = RecordingChatOpenExecutor()
@@ -276,17 +715,169 @@ class AgentSessionPromptLauncherBridgeTest {
           uiPreferencesState = uiPreferencesState,
           chatOpenExecutor = chatOpenExecutor,
         ) { service, launchService ->
-          val bridge = promptLauncherBridge(service, launchService, uiPreferencesState::getLastUsedProvider)
+          val bridge = promptLauncherBridge(service, launchService)
+          val request = promptLaunchRequest(provider = AgentSessionProvider.from("claude"))
 
-          assertThat(bridge.preferredProvider()).isNull()
-
-          val result = bridge.launch(promptLaunchRequest(provider = AgentSessionProvider.CLAUDE))
+          val result = bridge.launch(
+            request.copy(
+              initialMessageRequest = request.initialMessageRequest.copy(
+                providerOptionIds = setOf(AGENT_PROMPT_PROVIDER_OPTION_PLAN_MODE),
+              )
+            )
+          )
 
           assertThat(result.launched).isTrue()
           waitForCondition {
-            uiPreferencesState.getLastUsedProvider() == AgentSessionProvider.CLAUDE
+            uiPreferencesState.getProviderPreferences().providerOptionsByProviderId[AgentSessionProvider.from("claude").value] ==
+              setOf(AGENT_PROMPT_PROVIDER_OPTION_PLAN_MODE)
           }
-          assertThat(bridge.preferredProvider()).isEqualTo(AgentSessionProvider.CLAUDE)
+        }
+      }
+    }
+  }
+
+  @Test
+  fun promptLaunchAppliesGenerationSettingsToNewSessionLaunchSpec() {
+    val providerBridge = RecordingPromptLaunchProviderBridge(
+      provider = AgentSessionProvider.from("codex"),
+      supportedModes = setOf(AgentSessionLaunchMode.STANDARD),
+      supportedReasoningEffortsOverride = setOf(AgentPromptReasoningEffort.HIGH),
+      generationSettingsApplier = { launchSpec, settings ->
+        launchSpec.copy(command = launchSpec.command + listOf("--effort", settings.reasoningEffort.name.lowercase()))
+      },
+    )
+    val chatOpenExecutor = RecordingChatOpenExecutor()
+    AgentSessionProviders.withRegistryForTest(
+      InMemoryAgentSessionProviderRegistry(listOf(providerBridge))
+    ) {
+      runBlocking(Dispatchers.Default) {
+        withServiceAndLaunch(
+          sessionSourcesProvider = { listOf(providerBridge.sessionSource) },
+          projectEntriesProvider = { listOf(openProjectEntry(PROJECT_PATH, "Project A")) },
+          chatOpenExecutor = chatOpenExecutor,
+        ) { service, launchService ->
+          val bridge = promptLauncherBridge(service, launchService)
+
+          val result = bridge.launch(
+            promptLaunchRequest(
+              provider = AgentSessionProvider.from("codex"),
+              generationSettings = AgentPromptGenerationSettings(reasoningEffort = AgentPromptReasoningEffort.HIGH),
+            )
+          )
+
+          assertThat(result.launched).isTrue()
+          waitForCondition { chatOpenExecutor.openNewChatCalls.get() == 1 }
+          assertThat(chatOpenExecutor.lastOpenNewChatRequest.get()?.launchSpec?.command)
+            .containsExactly("test", "new", AgentSessionLaunchMode.STANDARD.name, "--effort", "high")
+          assertThat(chatOpenExecutor.lastOpenNewChatRequest.get()?.generationSettings)
+            .isEqualTo(AgentPromptGenerationSettings(reasoningEffort = AgentPromptReasoningEffort.HIGH))
+        }
+      }
+    }
+  }
+
+  @Test
+  fun promptLaunchAppliesGenerationSettingsToExistingThreadResumeLaunchSpec() {
+    val generationSettings = AgentPromptGenerationSettings(modelId = "pi:custom-model")
+    val providerBridge = RecordingPromptLaunchProviderBridge(
+      provider = AgentSessionProvider.from("codex"),
+      supportedModes = setOf(AgentSessionLaunchMode.STANDARD),
+      startupPolicyOverride = AgentInitialMessageStartupPolicy.POST_START_ONLY,
+      generationSettingsApplier = { launchSpec, settings ->
+        launchSpec.copy(command = launchSpec.command + listOf("--model", settings.modelId.orEmpty()))
+      },
+    )
+    val chatOpenExecutor = RecordingChatOpenExecutor()
+    AgentSessionProviders.withRegistryForTest(
+      InMemoryAgentSessionProviderRegistry(listOf(providerBridge))
+    ) {
+      runBlocking(Dispatchers.Default) {
+        withServiceAndLaunch(
+          sessionSourcesProvider = {
+            listOf(
+              ScriptedSessionSource(
+                provider = AgentSessionProvider.from("codex"),
+                listFromOpenProject = { path, _ ->
+                  if (path == PROJECT_PATH) {
+                    listOf(thread(id = "thread-existing", updatedAt = 200, provider = AgentSessionProvider.from("codex")))
+                  }
+                  else {
+                    emptyList()
+                  }
+                },
+              )
+            )
+          },
+          projectEntriesProvider = { listOf(openProjectEntry(PROJECT_PATH, "Project A")) },
+          chatOpenExecutor = chatOpenExecutor,
+        ) { service, launchService ->
+          service.refresh()
+          waitForCondition {
+            val project = service.state.value.projects.firstOrNull { it.path == PROJECT_PATH } ?: return@waitForCondition false
+            project.providerLoadStates[AgentSessionProvider.from("codex")] == AgentSessionProviderLoadState.LOADED &&
+            project.threads.any { thread -> thread.id == "thread-existing" }
+          }
+
+          val bridge = promptLauncherBridge(service, launchService)
+
+          val result = bridge.launch(
+            promptLaunchRequest(
+              provider = AgentSessionProvider.from("codex"),
+              targetThreadId = "thread-existing",
+              generationSettings = generationSettings,
+            )
+          )
+
+          assertThat(result.launched).isTrue()
+          waitForCondition { chatOpenExecutor.openChatCalls.get() == 1 }
+          val openRequest = chatOpenExecutor.lastOpenChatRequest.get()
+          assertThat(openRequest?.launchSpecOverride?.command)
+            .containsExactly("test", "resume", "thread-existing", "--model", "pi:custom-model")
+          assertThat(openRequest?.generationSettings).isEqualTo(generationSettings)
+          assertThat(providerBridge.lastGenerationSettings.get()).isEqualTo(generationSettings)
+          assertThat(chatOpenExecutor.openNewChatCalls.get()).isZero()
+        }
+      }
+    }
+  }
+
+  @Test
+  fun createNewSessionCanSkipUpdatingGeneralProviderOptions() {
+    val providerBridge = RecordingPromptLaunchProviderBridge(
+      provider = AgentSessionProvider.from("codex"),
+      supportedModes = setOf(AgentSessionLaunchMode.STANDARD),
+    )
+    val chatOpenExecutor = RecordingChatOpenExecutor()
+    val uiPreferencesState = AgentSessionUiPreferencesStateService().apply {
+      setProviderPreferences(
+        AgentPromptLauncherBridge.ProviderPreferences(
+          providerOptionsByProviderId = mapOf("claude" to setOf("plan_mode")),
+        )
+      )
+    }
+    AgentSessionProviders.withRegistryForTest(
+      InMemoryAgentSessionProviderRegistry(listOf(providerBridge))
+    ) {
+      runBlocking(Dispatchers.Default) {
+        withServiceAndLaunch(
+          sessionSourcesProvider = { listOf(providerBridge.sessionSource) },
+          projectEntriesProvider = { listOf(openProjectEntry(PROJECT_PATH, "Project A")) },
+          uiPreferencesState = uiPreferencesState,
+          chatOpenExecutor = chatOpenExecutor,
+        ) { _, launchService ->
+          launchService.createNewSession(
+            path = PROJECT_PATH,
+            provider = AgentSessionProvider.from("codex"),
+            mode = AgentSessionLaunchMode.STANDARD,
+            entryPoint = AgentWorkbenchEntryPoint.TOOLBAR,
+            updateGeneralProviderPreferences = false,
+          )
+
+          waitForCondition {
+            chatOpenExecutor.openNewChatCalls.get() == 1
+          }
+          assertThat(uiPreferencesState.getProviderPreferences().providerOptionsByProviderId)
+            .isEqualTo(mapOf("claude" to setOf("plan_mode")))
         }
       }
     }
@@ -295,7 +886,7 @@ class AgentSessionPromptLauncherBridgeTest {
   @Test
   fun launchCarriesStartupOverrideEnvVariablesForNewSession() {
     val providerBridge = RecordingPromptLaunchProviderBridge(
-      provider = AgentSessionProvider.CODEX,
+      provider = AgentSessionProvider.from("codex"),
       supportedModes = setOf(AgentSessionLaunchMode.STANDARD),
       startupPromptCommandEnvVariables = mapOf("DISABLE_AUTOUPDATER" to "1"),
     )
@@ -328,7 +919,7 @@ class AgentSessionPromptLauncherBridgeTest {
   @Test
   fun launchAugmentsNewSessionAndStartupOverrideFromAugmenter() {
     val providerBridge = RecordingPromptLaunchProviderBridge(
-      provider = AgentSessionProvider.CODEX,
+      provider = AgentSessionProvider.from("codex"),
       supportedModes = setOf(AgentSessionLaunchMode.STANDARD),
       startupPromptCommandEnvVariables = mapOf("DISABLE_AUTOUPDATER" to "1"),
     )
@@ -369,7 +960,7 @@ class AgentSessionPromptLauncherBridgeTest {
   @Test
   fun launchFallsBackWhenStartupPromptCommandIsNotSupported() {
     val providerBridge = RecordingPromptLaunchProviderBridge(
-      provider = AgentSessionProvider.CODEX,
+      provider = AgentSessionProvider.from("codex"),
       supportedModes = setOf(AgentSessionLaunchMode.STANDARD),
       startupPromptCommandSupported = false,
     )
@@ -411,7 +1002,7 @@ class AgentSessionPromptLauncherBridgeTest {
   @Test
   fun launchFallsBackWhenBridgePolicyDisablesStartupPromptCommand() {
     val providerBridge = RecordingPromptLaunchProviderBridge(
-      provider = AgentSessionProvider.CODEX,
+      provider = AgentSessionProvider.from("codex"),
       supportedModes = setOf(AgentSessionLaunchMode.STANDARD),
       startupPromptCommandPolicyEnabled = false,
     )
@@ -457,13 +1048,13 @@ class AgentSessionPromptLauncherBridgeTest {
   }
 
   @Test
-  fun launchKeepsManualCodexPlanPromptOnPostStartDispatchWhenTryStartupCommandIsEnabled() {
+  fun launchUsesProviderDispatchForCodexPlanPromptOnNewThread() {
     val providerBridge = RecordingPromptLaunchProviderBridge(
-      provider = AgentSessionProvider.CODEX,
+      provider = AgentSessionProvider.from("codex"),
       supportedModes = setOf(AgentSessionLaunchMode.STANDARD),
-      startupPolicyOverride = AgentInitialMessageStartupPolicy.TRY_STARTUP_COMMAND,
       timeoutPolicy = AgentInitialMessageTimeoutPolicy.REQUIRE_EXPLICIT_READINESS,
       composedMessageBuilder = { request -> request.prompt.trim() },
+      prestartPlanPromptThreadId = "thread-prestarted-plan",
     )
     val chatOpenExecutor = RecordingChatOpenExecutor()
     AgentSessionProviders.withRegistryForTest(
@@ -478,7 +1069,89 @@ class AgentSessionPromptLauncherBridgeTest {
           val bridge = promptLauncherBridge(service, launchService)
           val baseRequest = promptLaunchRequest(projectPath = INVALID_PROMPT_PROJECT_PATH)
           val request = baseRequest.copy(
-            initialMessageRequest = baseRequest.initialMessageRequest.copy(prompt = "/plan Refactor selected code"),
+            initialMessageRequest = baseRequest.initialMessageRequest.copy(
+              providerOptionIds = setOf(AGENT_PROMPT_PROVIDER_OPTION_PLAN_MODE),
+            ),
+          )
+
+          val result = bridge.launch(request)
+
+          assertThat(result.launched).isTrue()
+          assertThat(result.error).isNull()
+          waitForCondition {
+            providerBridge.composeCalls.get() == 1 &&
+            providerBridge.createCalls.get() == 1 &&
+            providerBridge.prestartPlanPromptCalls.get() == 1 &&
+            chatOpenExecutor.openNewChatCalls.get() == 1
+          }
+
+          assertThat(providerBridge.createCalls.get()).isEqualTo(1)
+          assertThat(providerBridge.prestartPlanPromptCalls.get()).isEqualTo(1)
+          assertThat(providerBridge.lastCreateMode.get()).isEqualTo(AgentSessionLaunchMode.STANDARD)
+          assertThat(providerBridge.lastComposeRequest.get()).isEqualTo(request.initialMessageRequest)
+          assertThat(providerBridge.generationSettingsApplyCalls.get()).isEqualTo(1)
+          assertThat(providerBridge.lastGenerationSettingsInitialMessagePlan.get()?.mode).isEqualTo(AgentInitialMessageMode.PLAN)
+          assertThat(providerBridge.startupCommandCalls.get()).isZero()
+          assertThat(providerBridge.lastStartupBaseLaunchSpec.get()).isNull()
+          assertThat(providerBridge.lastStartupPrompt.get()).isNull()
+          assertThat(chatOpenExecutor.openChatCalls.get()).isZero()
+
+          val openRequest = checkNotNull(chatOpenExecutor.lastOpenNewChatRequest.get())
+          assertThat(openRequest.identity).isEqualTo("codex:thread-prestarted-plan")
+          assertThat(openRequest.launchSpec.command)
+            .containsExactly(
+              "test",
+              "new",
+              AgentSessionLaunchMode.STANDARD.name,
+              "resume",
+              "--remote",
+              "ws://test-codex-app-server",
+              "thread-prestarted-plan",
+            )
+          assertThat(openRequest.launchSpec.preallocatedSessionId).isEqualTo("thread-prestarted-plan")
+          assertThat(openRequest.startupLaunchSpecOverride).isNull()
+          assertThat(openRequest.postStartDispatchSteps).containsExactly(
+            AgentInitialMessageDispatchStep(
+              text = "Refactor selected code",
+              timeoutPolicy = AgentInitialMessageTimeoutPolicy.REQUIRE_EXPLICIT_READINESS,
+              action = AgentInitialMessageDispatchAction.PROVIDER,
+            ),
+          )
+          assertThat(openRequest.initialPromptMessage).isEqualTo("Refactor selected code")
+          assertThat(openRequest.initialMessageToken).isNull()
+          assertThat(openRequest.initialPromptDeliveryStatus).isEqualTo(AgentInitialPromptDeliveryStatus.PENDING)
+          assertThat(openRequest.initialPromptDeliveryChannel).isEqualTo(AgentInitialPromptDeliveryChannel.APP_SERVER)
+        }
+      }
+    }
+  }
+
+  @Test
+  fun launchUsesStartupOverrideForPlanModeWhenPlanPolicyAllowsStartupCommand() {
+    val providerBridge = RecordingPromptLaunchProviderBridge(
+      provider = AgentSessionProvider.from("codex"),
+      supportedModes = setOf(AgentSessionLaunchMode.STANDARD),
+      startupPolicyOverride = AgentInitialMessageStartupPolicy.TRY_STARTUP_COMMAND,
+      timeoutPolicy = AgentInitialMessageTimeoutPolicy.REQUIRE_EXPLICIT_READINESS,
+      composedMessageBuilder = { request -> request.prompt.trim() },
+      supportedReasoningEffortsOverride = setOf(AgentPromptReasoningEffort.HIGH),
+    )
+    val chatOpenExecutor = RecordingChatOpenExecutor()
+    AgentSessionProviders.withRegistryForTest(
+      InMemoryAgentSessionProviderRegistry(listOf(providerBridge))
+    ) {
+      runBlocking(Dispatchers.Default) {
+        withServiceAndLaunch(
+          sessionSourcesProvider = { listOf(providerBridge.sessionSource) },
+          projectEntriesProvider = { listOf(openProjectEntry(PROJECT_PATH, "Project A")) },
+          chatOpenExecutor = chatOpenExecutor,
+        ) { service, launchService ->
+          val bridge = promptLauncherBridge(service, launchService)
+          val baseRequest = promptLaunchRequest(projectPath = INVALID_PROMPT_PROJECT_PATH)
+          val request = baseRequest.copy(
+            initialMessageRequest = baseRequest.initialMessageRequest.copy(
+              providerOptionIds = setOf(AGENT_PROMPT_PROVIDER_OPTION_PLAN_MODE),
+            ),
           )
           val result = bridge.launch(request)
 
@@ -490,29 +1163,21 @@ class AgentSessionPromptLauncherBridgeTest {
           }
 
           assertThat(providerBridge.createCalls.get()).isEqualTo(1)
-          assertThat(providerBridge.lastCreatePath.get()).isEqualTo(INVALID_PROMPT_PROJECT_PATH)
           assertThat(providerBridge.lastComposeRequest.get()).isEqualTo(request.initialMessageRequest)
-          assertThat(providerBridge.startupCommandCalls.get()).isZero()
-          assertThat(providerBridge.lastStartupBaseLaunchSpec.get()).isNull()
-          assertThat(providerBridge.lastStartupPrompt.get()).isNull()
+          assertThat(providerBridge.startupCommandCalls.get()).isEqualTo(1)
+          assertThat(providerBridge.lastStartupBaseLaunchSpec.get()?.command)
+            .containsExactly("test", "new", AgentSessionLaunchMode.STANDARD.name)
+          assertThat(providerBridge.lastStartupPrompt.get()).isEqualTo("Refactor selected code")
           assertThat(chatOpenExecutor.openChatCalls.get()).isZero()
 
           val openRequest = checkNotNull(chatOpenExecutor.lastOpenNewChatRequest.get())
           assertThat(openRequest.launchSpec.command)
-            .containsExactly("test", "create", INVALID_PROMPT_PROJECT_PATH, AgentSessionLaunchMode.STANDARD.name)
-          assertThat(openRequest.startupLaunchSpecOverride).isNull()
-          assertThat(openRequest.initialComposedMessage).isNull()
-          assertThat(openRequest.postStartDispatchSteps).containsExactly(
-            AgentInitialMessageDispatchStep(
-              text = "/plan",
-              timeoutPolicy = AgentInitialMessageTimeoutPolicy.REQUIRE_EXPLICIT_READINESS,
-              completionPolicy = AgentInitialMessageDispatchCompletionPolicy.RETRY_ON_CODEX_PLAN_BUSY,
-            ),
-            AgentInitialMessageDispatchStep(
-              text = "Refactor selected code",
-              timeoutPolicy = AgentInitialMessageTimeoutPolicy.REQUIRE_EXPLICIT_READINESS,
-            ),
-          )
+            .containsExactly("test", "new", AgentSessionLaunchMode.STANDARD.name)
+          assertThat(openRequest.startupLaunchSpecOverride?.command)
+            .containsExactly("test", "new", AgentSessionLaunchMode.STANDARD.name, "--", "Refactor selected code")
+          assertThat(openRequest.startupLaunchSpecOverride?.envVariables).isEmpty()
+          assertThat(openRequest.initialComposedMessage).isEqualTo("Refactor selected code")
+          assertThat(openRequest.postStartDispatchSteps).isEmpty()
           assertThat(openRequest.initialMessageToken).isNotNull()
         }
       }
@@ -522,7 +1187,7 @@ class AgentSessionPromptLauncherBridgeTest {
   @Test
   fun launchRoutesPromptToExistingThreadWhenTargetThreadIdIsProvided() {
     val providerBridge = RecordingPromptLaunchProviderBridge(
-      provider = AgentSessionProvider.CODEX,
+      provider = AgentSessionProvider.from("codex"),
       supportedModes = setOf(AgentSessionLaunchMode.STANDARD),
     )
     val chatOpenExecutor = RecordingChatOpenExecutor()
@@ -534,10 +1199,10 @@ class AgentSessionPromptLauncherBridgeTest {
           sessionSourcesProvider = {
             listOf(
               ScriptedSessionSource(
-                provider = AgentSessionProvider.CODEX,
+                provider = AgentSessionProvider.from("codex"),
                 listFromOpenProject = { path, _ ->
                   if (path == PROJECT_PATH) {
-                    listOf(thread(id = "thread-existing", updatedAt = 200, provider = AgentSessionProvider.CODEX))
+                    listOf(thread(id = "thread-existing", updatedAt = 200, provider = AgentSessionProvider.from("codex")))
                   }
                   else {
                     emptyList()
@@ -552,7 +1217,8 @@ class AgentSessionPromptLauncherBridgeTest {
           service.refresh()
           waitForCondition {
             val project = service.state.value.projects.firstOrNull { it.path == PROJECT_PATH } ?: return@waitForCondition false
-            project.hasLoaded && project.threads.any { thread -> thread.id == "thread-existing" }
+            project.providerLoadStates[AgentSessionProvider.from("codex")] == AgentSessionProviderLoadState.LOADED &&
+            project.threads.any { thread -> thread.id == "thread-existing" }
           }
 
           val bridge = promptLauncherBridge(service, launchService)
@@ -589,13 +1255,17 @@ class AgentSessionPromptLauncherBridgeTest {
   }
 
   @Test
-  fun launchRoutesManualCodexPlanPromptToExistingThreadAsPostStartDispatchWhenTryStartupCommandIsEnabled() {
+  fun launchRoutesProviderOptionPlanPromptToExistingThreadAsStartupOverrideWhenTryStartupCommandIsEnabled() {
     val providerBridge = RecordingPromptLaunchProviderBridge(
-      provider = AgentSessionProvider.CODEX,
+      provider = AgentSessionProvider.from("codex"),
       supportedModes = setOf(AgentSessionLaunchMode.STANDARD),
       startupPolicyOverride = AgentInitialMessageStartupPolicy.TRY_STARTUP_COMMAND,
       timeoutPolicy = AgentInitialMessageTimeoutPolicy.REQUIRE_EXPLICIT_READINESS,
       composedMessageBuilder = { request -> request.prompt.trim() },
+      supportedReasoningEffortsOverride = setOf(AgentPromptReasoningEffort.HIGH),
+      generationSettingsApplier = { launchSpec, settings ->
+        launchSpec.copy(command = launchSpec.command + listOf("--effort", settings.reasoningEffort.name.lowercase()))
+      },
     )
     val chatOpenExecutor = RecordingChatOpenExecutor()
     AgentSessionProviders.withRegistryForTest(
@@ -606,10 +1276,10 @@ class AgentSessionPromptLauncherBridgeTest {
           sessionSourcesProvider = {
             listOf(
               ScriptedSessionSource(
-                provider = AgentSessionProvider.CODEX,
+                provider = AgentSessionProvider.from("codex"),
                 listFromOpenProject = { path, _ ->
                   if (path == PROJECT_PATH) {
-                    listOf(thread(id = "thread-existing", updatedAt = 200, provider = AgentSessionProvider.CODEX))
+                    listOf(thread(id = "thread-existing", updatedAt = 200, provider = AgentSessionProvider.from("codex")))
                   }
                   else {
                     emptyList()
@@ -624,13 +1294,19 @@ class AgentSessionPromptLauncherBridgeTest {
           service.refresh()
           waitForCondition {
             val project = service.state.value.projects.firstOrNull { it.path == PROJECT_PATH } ?: return@waitForCondition false
-            project.hasLoaded && project.threads.any { thread -> thread.id == "thread-existing" }
+            project.providerLoadStates[AgentSessionProvider.from("codex")] == AgentSessionProviderLoadState.LOADED &&
+            project.threads.any { thread -> thread.id == "thread-existing" }
           }
 
           val bridge = promptLauncherBridge(service, launchService)
-          val baseRequest = promptLaunchRequest(targetThreadId = "thread-existing")
+          val baseRequest = promptLaunchRequest(
+            targetThreadId = "thread-existing",
+            generationSettings = AgentPromptGenerationSettings(reasoningEffort = AgentPromptReasoningEffort.HIGH),
+          )
           val request = baseRequest.copy(
-            initialMessageRequest = baseRequest.initialMessageRequest.copy(prompt = "/plan Refactor selected code"),
+            initialMessageRequest = baseRequest.initialMessageRequest.copy(
+              providerOptionIds = setOf(AGENT_PROMPT_PROVIDER_OPTION_PLAN_MODE),
+            ),
           )
 
           val result = bridge.launch(request)
@@ -644,29 +1320,97 @@ class AgentSessionPromptLauncherBridgeTest {
           }
 
           assertThat(providerBridge.lastComposeRequest.get()).isEqualTo(request.initialMessageRequest)
-          assertThat(providerBridge.startupCommandCalls.get()).isZero()
-          assertThat(providerBridge.lastStartupBaseLaunchSpec.get()).isNull()
-          assertThat(providerBridge.lastStartupPrompt.get()).isNull()
+          assertThat(providerBridge.startupCommandCalls.get()).isEqualTo(1)
+          assertThat(providerBridge.lastStartupBaseLaunchSpec.get()?.command)
+            .containsExactly("test", "resume", "thread-existing", "--effort", "high")
+          assertThat(providerBridge.lastStartupPrompt.get()).isEqualTo("Refactor selected code")
+          assertThat(providerBridge.generationSettingsApplyCalls.get()).isEqualTo(1)
           assertThat(chatOpenExecutor.openNewChatCalls.get()).isZero()
 
           val openRequest = checkNotNull(chatOpenExecutor.lastOpenChatRequest.get())
           assertThat(openRequest.normalizedPath).isEqualTo(PROJECT_PATH)
           assertThat(openRequest.thread.id).isEqualTo("thread-existing")
           assertThat(openRequest.subAgent).isNull()
-          assertThat(openRequest.startupLaunchSpecOverride).isNull()
-          assertThat(openRequest.initialComposedMessage).isNull()
-          assertThat(openRequest.postStartDispatchSteps).containsExactly(
-            AgentInitialMessageDispatchStep(
-              text = "/plan",
-              timeoutPolicy = AgentInitialMessageTimeoutPolicy.REQUIRE_EXPLICIT_READINESS,
-              completionPolicy = AgentInitialMessageDispatchCompletionPolicy.RETRY_ON_CODEX_PLAN_BUSY,
-            ),
-            AgentInitialMessageDispatchStep(
-              text = "Refactor selected code",
-              timeoutPolicy = AgentInitialMessageTimeoutPolicy.REQUIRE_EXPLICIT_READINESS,
-            ),
-          )
+          assertThat(openRequest.startupLaunchSpecOverride?.command)
+            .containsExactly("test", "resume", "thread-existing", "--effort", "high", "--", "Refactor selected code")
+          assertThat(openRequest.startupLaunchSpecOverride?.envVariables).isEmpty()
+          assertThat(openRequest.initialComposedMessage).isEqualTo("Refactor selected code")
+          assertThat(openRequest.postStartDispatchSteps).isEmpty()
           assertThat(openRequest.initialMessageToken).isNotNull()
+        }
+      }
+    }
+  }
+
+  @Test
+  fun openChatThreadRechecksPromptPlanModeAgainstLatestThreadActivity() {
+    val providerBridge = RecordingPromptLaunchProviderBridge(
+      provider = AgentSessionProvider.from("codex"),
+      supportedModes = setOf(AgentSessionLaunchMode.STANDARD),
+      composedMessageBuilder = { request -> request.prompt.trim() },
+    )
+    val chatOpenExecutor = RecordingChatOpenExecutor()
+    AgentSessionProviders.withRegistryForTest(
+      InMemoryAgentSessionProviderRegistry(listOf(providerBridge))
+    ) {
+      runBlocking(Dispatchers.Default) {
+        withServiceAndLaunch(
+          sessionSourcesProvider = {
+            listOf(
+              ScriptedSessionSource(
+                provider = AgentSessionProvider.from("codex"),
+                listFromOpenProject = { path, _ ->
+                  if (path == PROJECT_PATH) {
+                    listOf(
+                      thread(
+                        id = "thread-existing",
+                        updatedAt = 200,
+                        provider = AgentSessionProvider.from("codex"),
+                        activity = AgentThreadActivity.PROCESSING,
+                      )
+                    )
+                  }
+                  else {
+                    emptyList()
+                  }
+                },
+              )
+            )
+          },
+          projectEntriesProvider = { listOf(openProjectEntry(PROJECT_PATH, "Project A")) },
+          chatOpenExecutor = chatOpenExecutor,
+        ) { service, launchService ->
+          service.refresh()
+          waitForCondition {
+            val project = service.state.value.projects.firstOrNull { it.path == PROJECT_PATH } ?: return@waitForCondition false
+            project.providerLoadStates[AgentSessionProvider.from("codex")] == AgentSessionProviderLoadState.LOADED &&
+            project.threads.any { thread -> thread.id == "thread-existing" }
+          }
+
+          val promptLaunchResults = CopyOnWriteArrayList<AgentPromptLaunchResult>()
+          launchService.openChatThread(
+            path = PROJECT_PATH,
+            thread = thread(
+              id = "thread-existing",
+              updatedAt = 150,
+              provider = AgentSessionProvider.from("codex"),
+              activity = AgentThreadActivity.READY,
+            ),
+            entryPoint = AgentWorkbenchEntryPoint.PROMPT,
+            initialMessageRequest = AgentPromptInitialMessageRequest(
+              prompt = "Refactor selected code",
+              providerOptionIds = setOf(AGENT_PROMPT_PROVIDER_OPTION_PLAN_MODE),
+            ),
+            launchOrigin = OpenThreadLaunchOrigin.PROMPT_LAUNCH,
+            promptLaunchResolved = promptLaunchResults::add,
+          )
+
+          waitForCondition { promptLaunchResults.isNotEmpty() }
+
+          assertThat(promptLaunchResults).containsExactly(
+            AgentPromptLaunchResult.failure(AgentPromptLaunchError.TARGET_THREAD_BUSY_FOR_PLAN_MODE)
+          )
+          assertThat(chatOpenExecutor.openChatCalls.get()).isZero()
         }
       }
     }
@@ -675,7 +1419,7 @@ class AgentSessionPromptLauncherBridgeTest {
   @Test
   fun launchRoutesPromptToExistingThreadWhenThreadOpenIsInFlight() {
     val providerBridge = RecordingPromptLaunchProviderBridge(
-      provider = AgentSessionProvider.CODEX,
+      provider = AgentSessionProvider.from("codex"),
       supportedModes = setOf(AgentSessionLaunchMode.STANDARD),
     )
     val firstOpenStarted = CompletableDeferred<Unit>()
@@ -697,10 +1441,10 @@ class AgentSessionPromptLauncherBridgeTest {
             sessionSourcesProvider = {
               listOf(
                 ScriptedSessionSource(
-                  provider = AgentSessionProvider.CODEX,
+                  provider = AgentSessionProvider.from("codex"),
                   listFromOpenProject = { path, _ ->
                     if (path == PROJECT_PATH) {
-                      listOf(thread(id = "thread-existing", updatedAt = 200, provider = AgentSessionProvider.CODEX))
+                      listOf(thread(id = "thread-existing", updatedAt = 200, provider = AgentSessionProvider.from("codex")))
                     }
                     else {
                       emptyList()
@@ -714,8 +1458,10 @@ class AgentSessionPromptLauncherBridgeTest {
           ) { service, launchService ->
             service.refresh()
             waitForCondition {
-              val project = service.state.value.projects.firstOrNull { it.path == PROJECT_PATH } ?: return@waitForCondition false
-              project.hasLoaded && project.threads.any { thread -> thread.id == "thread-existing" }
+              val project =
+                service.state.value.projects.firstOrNull { it.path == PROJECT_PATH } ?: return@waitForCondition false
+              project.providerLoadStates[AgentSessionProvider.from("codex")] == AgentSessionProviderLoadState.LOADED &&
+              project.threads.any { thread -> thread.id == "thread-existing" }
             }
 
             val existingThread = checkNotNull(
@@ -725,7 +1471,11 @@ class AgentSessionPromptLauncherBridgeTest {
                 ?.firstOrNull { thread -> thread.id == "thread-existing" }
             )
 
-            launchService.openChatThread(path = PROJECT_PATH, thread = existingThread, entryPoint = AgentWorkbenchEntryPoint.TREE_ROW)
+            launchService.openChatThread(
+              path = PROJECT_PATH,
+              thread = existingThread,
+              entryPoint = AgentWorkbenchEntryPoint.TREE_ROW
+            )
             waitForCondition {
               firstOpenStarted.isCompleted
             }
@@ -783,7 +1533,7 @@ class AgentSessionPromptLauncherBridgeTest {
   @Test
   fun launchUsesPostStartDispatchForExistingThreadWithoutEvaluatingStartupPromptCommandSupport() {
     val providerBridge = RecordingPromptLaunchProviderBridge(
-      provider = AgentSessionProvider.CODEX,
+      provider = AgentSessionProvider.from("codex"),
       supportedModes = setOf(AgentSessionLaunchMode.STANDARD),
       startupPromptCommandSupported = false,
     )
@@ -796,10 +1546,10 @@ class AgentSessionPromptLauncherBridgeTest {
           sessionSourcesProvider = {
             listOf(
               ScriptedSessionSource(
-                provider = AgentSessionProvider.CODEX,
+                provider = AgentSessionProvider.from("codex"),
                 listFromOpenProject = { path, _ ->
                   if (path == PROJECT_PATH) {
-                    listOf(thread(id = "thread-existing", updatedAt = 200, provider = AgentSessionProvider.CODEX))
+                    listOf(thread(id = "thread-existing", updatedAt = 200, provider = AgentSessionProvider.from("codex")))
                   }
                   else {
                     emptyList()
@@ -814,7 +1564,8 @@ class AgentSessionPromptLauncherBridgeTest {
           service.refresh()
           waitForCondition {
             val project = service.state.value.projects.firstOrNull { it.path == PROJECT_PATH } ?: return@waitForCondition false
-            project.hasLoaded && project.threads.any { thread -> thread.id == "thread-existing" }
+            project.providerLoadStates[AgentSessionProvider.from("codex")] == AgentSessionProviderLoadState.LOADED &&
+            project.threads.any { thread -> thread.id == "thread-existing" }
           }
 
           val bridge = promptLauncherBridge(service, launchService)
@@ -853,7 +1604,7 @@ class AgentSessionPromptLauncherBridgeTest {
   @Test
   fun launchReturnsThreadNotFoundWhenTargetThreadIsMissing() {
     val providerBridge = RecordingPromptLaunchProviderBridge(
-      provider = AgentSessionProvider.CODEX,
+      provider = AgentSessionProvider.from("codex"),
       supportedModes = setOf(AgentSessionLaunchMode.STANDARD),
     )
     val chatOpenExecutor = RecordingChatOpenExecutor()
@@ -865,10 +1616,10 @@ class AgentSessionPromptLauncherBridgeTest {
           sessionSourcesProvider = {
             listOf(
               ScriptedSessionSource(
-                provider = AgentSessionProvider.CODEX,
+                provider = AgentSessionProvider.from("codex"),
                 listFromOpenProject = { path, _ ->
                   if (path == PROJECT_PATH) {
-                    listOf(thread(id = "thread-existing", updatedAt = 200, provider = AgentSessionProvider.CODEX))
+                    listOf(thread(id = "thread-existing", updatedAt = 200, provider = AgentSessionProvider.from("codex")))
                   }
                   else {
                     emptyList()
@@ -882,7 +1633,8 @@ class AgentSessionPromptLauncherBridgeTest {
         ) { service, launchService ->
           service.refresh()
           waitForCondition {
-            service.state.value.projects.firstOrNull { it.path == PROJECT_PATH }?.hasLoaded == true
+            val project = service.state.value.projects.firstOrNull { it.path == PROJECT_PATH } ?: return@waitForCondition false
+            project.providerLoadStates[AgentSessionProvider.from("codex")] == AgentSessionProviderLoadState.LOADED
           }
 
           val bridge = promptLauncherBridge(service, launchService)
@@ -916,7 +1668,7 @@ class AgentSessionPromptLauncherBridgeTest {
           val token = AgentWorkbenchTelemetry.pushTestHandler(telemetryEvents::add)
 
           try {
-            val result = bridge.launch(promptLaunchRequest(provider = AgentSessionProvider.CODEX))
+            val result = bridge.launch(promptLaunchRequest(provider = AgentSessionProvider.from("codex")))
 
             assertThat(result.launched).isFalse()
             assertThat(result.error).isEqualTo(AgentPromptLaunchError.PROVIDER_UNAVAILABLE)
@@ -925,7 +1677,7 @@ class AgentSessionPromptLauncherBridgeTest {
             assertThat(telemetryEvents).contains(
               AgentWorkbenchTelemetryEvent(
                 id = AgentWorkbenchTelemetry.PROMPT_LAUNCH_RESOLVED_EVENT_ID,
-                provider = AgentWorkbenchTelemetryProvider.CODEX,
+          provider = "codex",
                 launchMode = AgentSessionLaunchMode.STANDARD,
                 targetKind = AgentWorkbenchTargetKind.NEW_THREAD,
                 launchResult = AgentWorkbenchPromptLaunchResultKind.PROVIDER_UNAVAILABLE,
@@ -943,7 +1695,7 @@ class AgentSessionPromptLauncherBridgeTest {
   @Test
   fun launchReturnsUnsupportedLaunchModeWhenProviderDoesNotSupportMode() {
     val providerBridge = RecordingPromptLaunchProviderBridge(
-      provider = AgentSessionProvider.CODEX,
+      provider = AgentSessionProvider.from("codex"),
       supportedModes = setOf(AgentSessionLaunchMode.STANDARD),
     )
     val chatOpenExecutor = RecordingChatOpenExecutor()
@@ -963,7 +1715,7 @@ class AgentSessionPromptLauncherBridgeTest {
           try {
             val result = bridge.launch(
               promptLaunchRequest(
-                provider = AgentSessionProvider.CODEX,
+                provider = AgentSessionProvider.from("codex"),
                 launchMode = AgentSessionLaunchMode.YOLO,
               )
             )
@@ -976,7 +1728,7 @@ class AgentSessionPromptLauncherBridgeTest {
             assertThat(telemetryEvents).contains(
               AgentWorkbenchTelemetryEvent(
                 id = AgentWorkbenchTelemetry.PROMPT_LAUNCH_RESOLVED_EVENT_ID,
-                provider = AgentWorkbenchTelemetryProvider.CODEX,
+          provider = "codex",
                 launchMode = AgentSessionLaunchMode.YOLO,
                 targetKind = AgentWorkbenchTargetKind.NEW_THREAD,
                 launchResult = AgentWorkbenchPromptLaunchResultKind.UNSUPPORTED_LAUNCH_MODE,
@@ -992,207 +1744,275 @@ class AgentSessionPromptLauncherBridgeTest {
   }
 
   @Test
-  fun observeExistingThreadsFiltersProviderThreadsFromSharedState() = runBlocking(Dispatchers.Default) {
-    withServiceAndLaunch(
-      sessionSourcesProvider = {
-        listOf(
-          ScriptedSessionSource(
-            provider = AgentSessionProvider.CODEX,
-            listFromOpenProject = { path, _ ->
-              if (path == PROJECT_PATH) listOf(thread(id = "codex-1", updatedAt = 200, provider = AgentSessionProvider.CODEX))
-              else emptyList()
-            },
-          ),
-          ScriptedSessionSource(
-            provider = AgentSessionProvider.CLAUDE,
-            listFromOpenProject = { path, _ ->
-              if (path == PROJECT_PATH) {
-                listOf(
-                  thread(id = "claude-1", updatedAt = 100, provider = AgentSessionProvider.CLAUDE),
-                  thread(id = "claude-2", updatedAt = 300, provider = AgentSessionProvider.CLAUDE),
-                )
-              }
-              else {
-                emptyList()
-              }
-            },
-          ),
-        )
-      },
-      projectEntriesProvider = {
-        listOf(openProjectEntry(PROJECT_PATH, "Project A"))
-      },
-    ) { service, launchService ->
-      service.refresh()
-      waitForCondition {
-        service.state.value.projects.firstOrNull { it.path == PROJECT_PATH }?.hasLoaded == true
-      }
-
-      val bridge = promptLauncherBridge(service, launchService)
-      val snapshot = bridge.observeExistingThreads(
-        projectPath = PROJECT_PATH,
-        provider = AgentSessionProvider.CLAUDE,
-      ).first { it.hasLoaded }
-
-      assertThat(snapshot.threads.map { thread -> thread.id })
-        .containsExactly("claude-2", "claude-1")
-      assertThat(snapshot.hasError).isFalse()
-    }
-  }
-
-  @Test
-  fun refreshExistingThreadsBootstrapsWhenPathIsMissing() = runBlocking(Dispatchers.Default) {
-    val openLoads = AtomicInteger(0)
-    withServiceAndLaunch(
-      sessionSourcesProvider = {
-        listOf(
-          ScriptedSessionSource(
-            provider = AgentSessionProvider.CLAUDE,
-            listFromOpenProject = { path, _ ->
-              if (path == PROJECT_PATH) {
-                openLoads.incrementAndGet()
-                listOf(thread(id = "claude-1", updatedAt = 100, provider = AgentSessionProvider.CLAUDE))
-              }
-              else {
-                emptyList()
-              }
-            },
+  fun observeExistingThreadsFiltersProviderThreadsFromSharedState() = withCliAvailableTestRegistry {
+    runBlocking(Dispatchers.Default) {
+      withServiceAndLaunch(
+        sessionSourcesProvider = {
+          listOf(
+            ScriptedSessionSource(
+              provider = AgentSessionProvider.from("codex"),
+              listFromOpenProject = { path, _ ->
+                if (path == PROJECT_PATH) listOf(thread(id = "codex-1", updatedAt = 200, provider = AgentSessionProvider.from("codex")))
+                else emptyList()
+              },
+            ),
+            ScriptedSessionSource(
+              provider = AgentSessionProvider.from("claude"),
+              listFromOpenProject = { path, _ ->
+                if (path == PROJECT_PATH) {
+                  listOf(
+                    thread(id = "claude-1", updatedAt = 100, provider = AgentSessionProvider.from("claude")),
+                    thread(id = "claude-2", updatedAt = 300, provider = AgentSessionProvider.from("claude")),
+                  )
+                }
+                else {
+                  emptyList()
+                }
+              },
+            ),
           )
-        )
-      },
-      projectEntriesProvider = {
-        listOf(openProjectEntry(PROJECT_PATH, "Project A"))
-      },
-    ) { service, launchService ->
-      assertThat(service.state.value.projects).isEmpty()
+        },
+        projectEntriesProvider = {
+          listOf(openProjectEntry(PROJECT_PATH, "Project A"))
+        },
+      ) { service, launchService ->
+        service.refresh()
+        waitForCondition {
+          val project = service.state.value.projects.firstOrNull { it.path == PROJECT_PATH } ?: return@waitForCondition false
+          project.providerLoadStates[AgentSessionProvider.from("claude")] == AgentSessionProviderLoadState.LOADED
+        }
 
-      val bridge = promptLauncherBridge(service, launchService)
-      bridge.refreshExistingThreads(projectPath = PROJECT_PATH, provider = AgentSessionProvider.CLAUDE)
+        val bridge = promptLauncherBridge(service, launchService)
+        val snapshot = bridge.observeExistingThreads(
+          projectPath = PROJECT_PATH,
+          provider = AgentSessionProvider.from("claude"),
+        ).first { it.hasLoaded }
 
-      waitForCondition {
-        val project = service.state.value.projects.firstOrNull { it.path == PROJECT_PATH } ?: return@waitForCondition false
-        project.hasLoaded && project.threads.map { thread -> thread.id } == listOf("claude-1")
+        assertThat(snapshot.threads.map { thread -> thread.id })
+          .containsExactly("claude-2", "claude-1")
+        assertThat(snapshot.hasError).isFalse()
       }
-
-      assertThat(openLoads.get()).isEqualTo(1)
     }
   }
 
   @Test
-  fun refreshExistingThreadsUsesProviderScopedRefreshForLoadedPath() = runBlocking(Dispatchers.Default) {
-    val codexClosedLoads = AtomicInteger(0)
-    val claudeClosedLoads = AtomicInteger(0)
-    var claudeClosedThreadId = "claude-closed-1"
+  fun observeExistingThreadsFiltersPendingNewThreads() = withCliAvailableTestRegistry {
+    runBlocking(Dispatchers.Default) {
+      withServiceAndLaunch(
+        sessionSourcesProvider = {
+          listOf(
+            ScriptedSessionSource(
+              provider = AgentSessionProvider.from("codex"),
+              listFromOpenProject = { path, _ ->
+                if (path == PROJECT_PATH) {
+                  listOf(
+                    thread(id = "new-global-prompt", updatedAt = 300, provider = AgentSessionProvider.from("codex")),
+                    thread(id = "codex-1", updatedAt = 200, provider = AgentSessionProvider.from("codex")),
+                  )
+                }
+                else {
+                  emptyList()
+                }
+              },
+            ),
+          )
+        },
+        projectEntriesProvider = {
+          listOf(openProjectEntry(PROJECT_PATH, "Project A"))
+        },
+      ) { service, launchService ->
+        service.refresh()
+        waitForCondition {
+          val project = service.state.value.projects.firstOrNull { it.path == PROJECT_PATH } ?: return@waitForCondition false
+          project.providerLoadStates[AgentSessionProvider.from("codex")] == AgentSessionProviderLoadState.LOADED
+        }
 
-    withServiceAndLaunch(
-      sessionSourcesProvider = {
-        listOf(
-          ScriptedSessionSource(
-            provider = AgentSessionProvider.CODEX,
-            listFromOpenProject = { path, _ ->
-              if (path == PROJECT_PATH) listOf(thread(id = "codex-open", updatedAt = 300, provider = AgentSessionProvider.CODEX))
-              else emptyList()
-            },
-            listFromClosedProject = { path ->
-              if (path == PROJECT_PATH) {
-                codexClosedLoads.incrementAndGet()
-                listOf(thread(id = "codex-closed", updatedAt = 250, provider = AgentSessionProvider.CODEX))
-              }
-              else {
-                emptyList()
-              }
-            },
-          ),
-          ScriptedSessionSource(
-            provider = AgentSessionProvider.CLAUDE,
-            listFromOpenProject = { path, _ ->
-              if (path == PROJECT_PATH) listOf(thread(id = "claude-open", updatedAt = 200, provider = AgentSessionProvider.CLAUDE))
-              else emptyList()
-            },
-            listFromClosedProject = { path ->
-              if (path == PROJECT_PATH) {
-                claudeClosedLoads.incrementAndGet()
-                listOf(thread(id = claudeClosedThreadId, updatedAt = 400, provider = AgentSessionProvider.CLAUDE))
-              }
-              else {
-                emptyList()
-              }
-            },
-          ),
-        )
-      },
-      projectEntriesProvider = {
-        listOf(openProjectEntry(PROJECT_PATH, "Project A"))
-      },
-    ) { service, launchService ->
-      service.refresh()
-      waitForCondition {
-        val ids = service.state.value.projects.firstOrNull { it.path == PROJECT_PATH }?.threads?.map { thread -> thread.id }
-                  ?: return@waitForCondition false
-        ids.contains("codex-open") && ids.contains("claude-open")
+        val bridge = promptLauncherBridge(service, launchService)
+        val snapshot = bridge.observeExistingThreads(
+          projectPath = PROJECT_PATH,
+          provider = AgentSessionProvider.from("codex"),
+        ).first { it.hasLoaded }
+
+        assertThat(snapshot.threads.map { thread -> thread.id })
+          .containsExactly("codex-1")
       }
-
-      claudeClosedThreadId = "claude-closed-2"
-      val bridge = promptLauncherBridge(service, launchService)
-      bridge.refreshExistingThreads(projectPath = PROJECT_PATH, provider = AgentSessionProvider.CLAUDE)
-
-      waitForCondition {
-        val ids = service.state.value.projects.firstOrNull { it.path == PROJECT_PATH }?.threads?.map { thread -> thread.id }
-                  ?: return@waitForCondition false
-        ids.contains("codex-open") && ids.contains("claude-closed-2")
-      }
-
-      assertThat(claudeClosedLoads.get()).isEqualTo(1)
-      assertThat(codexClosedLoads.get()).isEqualTo(0)
     }
   }
 
   @Test
-  fun observeExistingThreadsMarksProviderWarningAsError() = runBlocking(Dispatchers.Default) {
-    withServiceAndLaunch(
-      sessionSourcesProvider = {
-        listOf(
-          ScriptedSessionSource(
-            provider = AgentSessionProvider.CODEX,
-            listFromOpenProject = { path, _ ->
-              if (path == PROJECT_PATH) listOf(thread(id = "codex-1", updatedAt = 200, provider = AgentSessionProvider.CODEX))
-              else emptyList()
-            },
-          ),
-          ScriptedSessionSource(
-            provider = AgentSessionProvider.CLAUDE,
-            listFromOpenProject = { path, _ ->
-              if (path == PROJECT_PATH) {
-                throw IllegalStateException("Claude backend failed")
-              }
-              emptyList()
-            },
-          ),
-        )
-      },
-      projectEntriesProvider = {
-        listOf(openProjectEntry(PROJECT_PATH, "Project A"))
-      },
-    ) { service, launchService ->
-      service.refresh()
-      waitForCondition {
-        service.state.value.projects.firstOrNull { it.path == PROJECT_PATH }?.hasLoaded == true
+  fun refreshExistingThreadsBootstrapsWhenPathIsMissing() = withCliAvailableTestRegistry {
+    runBlocking(Dispatchers.Default) {
+      val openLoads = AtomicInteger(0)
+      withServiceAndLaunch(
+        sessionSourcesProvider = {
+          listOf(
+            ScriptedSessionSource(
+              provider = AgentSessionProvider.from("claude"),
+              listFromOpenProject = { path, _ ->
+                if (path == PROJECT_PATH) {
+                  openLoads.incrementAndGet()
+                  listOf(thread(id = "claude-1", updatedAt = 100, provider = AgentSessionProvider.from("claude")))
+                }
+                else {
+                  emptyList()
+                }
+              },
+            )
+          )
+        },
+        projectEntriesProvider = {
+          listOf(openProjectEntry(PROJECT_PATH, "Project A"))
+        },
+      ) { service, launchService ->
+        assertThat(service.state.value.projects).isEmpty()
+
+        val bridge = promptLauncherBridge(service, launchService)
+        bridge.refreshExistingThreads(projectPath = PROJECT_PATH, provider = AgentSessionProvider.from("claude"))
+
+        waitForCondition {
+          val project = service.state.value.projects.firstOrNull { it.path == PROJECT_PATH } ?: return@waitForCondition false
+          project.providerLoadStates[AgentSessionProvider.from("claude")] == AgentSessionProviderLoadState.LOADED &&
+          project.threads.map { thread -> thread.id } == listOf("claude-1")
+        }
+
+        assertThat(openLoads.get()).isEqualTo(1)
       }
+    }
+  }
 
-      val bridge = promptLauncherBridge(service, launchService)
-      val claudeSnapshot = bridge.observeExistingThreads(
-        projectPath = PROJECT_PATH,
-        provider = AgentSessionProvider.CLAUDE,
-      ).first { it.hasLoaded && !it.isLoading }
-      val codexSnapshot = bridge.observeExistingThreads(
-        projectPath = PROJECT_PATH,
-        provider = AgentSessionProvider.CODEX,
-      ).first { it.hasLoaded && !it.isLoading }
+  @Test
+  fun refreshExistingThreadsUsesProviderScopedRefreshForLoadedPath() = withCliAvailableTestRegistry {
+    runBlocking(Dispatchers.Default) {
+      val codexClosedLoads = AtomicInteger(0)
+      val claudeClosedLoads = AtomicInteger(0)
+      var claudeClosedThreadId = "claude-closed-1"
 
-      assertThat(claudeSnapshot.threads).isEmpty()
-      assertThat(claudeSnapshot.hasError).isTrue()
-      assertThat(codexSnapshot.threads.map { thread -> thread.id }).containsExactly("codex-1")
-      assertThat(codexSnapshot.hasError).isFalse()
+      withServiceAndLaunch(
+        sessionSourcesProvider = {
+          listOf(
+            ScriptedSessionSource(
+              provider = AgentSessionProvider.from("codex"),
+              listFromOpenProject = { path, _ ->
+                if (path == PROJECT_PATH) listOf(
+                  thread(
+                    id = "codex-open",
+                    updatedAt = 300,
+                    provider = AgentSessionProvider.from("codex")
+                  )
+                )
+                else emptyList()
+              },
+              listFromClosedProject = { path ->
+                if (path == PROJECT_PATH) {
+                  codexClosedLoads.incrementAndGet()
+                  listOf(thread(id = "codex-closed", updatedAt = 250, provider = AgentSessionProvider.from("codex")))
+                }
+                else {
+                  emptyList()
+                }
+              },
+            ),
+            ScriptedSessionSource(
+              provider = AgentSessionProvider.from("claude"),
+              listFromOpenProject = { path, _ ->
+                if (path == PROJECT_PATH) listOf(
+                  thread(
+                    id = "claude-open",
+                    updatedAt = 200,
+                    provider = AgentSessionProvider.from("claude")
+                  )
+                )
+                else emptyList()
+              },
+              listFromClosedProject = { path ->
+                if (path == PROJECT_PATH) {
+                  claudeClosedLoads.incrementAndGet()
+                  listOf(thread(id = claudeClosedThreadId, updatedAt = 400, provider = AgentSessionProvider.from("claude")))
+                }
+                else {
+                  emptyList()
+                }
+              },
+            ),
+          )
+        },
+        projectEntriesProvider = {
+          listOf(openProjectEntry(PROJECT_PATH, "Project A"))
+        },
+      ) { service, launchService ->
+        service.refresh()
+        waitForCondition {
+          val ids = service.state.value.projects.firstOrNull { it.path == PROJECT_PATH }?.threads?.map { thread -> thread.id }
+                    ?: return@waitForCondition false
+          ids.contains("codex-open") && ids.contains("claude-open")
+        }
+
+        claudeClosedThreadId = "claude-closed-2"
+        val bridge = promptLauncherBridge(service, launchService)
+        bridge.refreshExistingThreads(projectPath = PROJECT_PATH, provider = AgentSessionProvider.from("claude"))
+
+        waitForCondition {
+          val ids = service.state.value.projects.firstOrNull { it.path == PROJECT_PATH }?.threads?.map { thread -> thread.id }
+                    ?: return@waitForCondition false
+          ids.contains("codex-open") && ids.contains("claude-closed-2")
+        }
+
+        assertThat(claudeClosedLoads.get()).isEqualTo(1)
+        assertThat(codexClosedLoads.get()).isEqualTo(0)
+      }
+    }
+  }
+
+  @Test
+  fun observeExistingThreadsMarksProviderWarningAsError() = withCliAvailableTestRegistry {
+    runBlocking(Dispatchers.Default) {
+      withServiceAndLaunch(
+        sessionSourcesProvider = {
+          listOf(
+            ScriptedSessionSource(
+              provider = AgentSessionProvider.from("codex"),
+              listFromOpenProject = { path, _ ->
+                if (path == PROJECT_PATH) listOf(thread(id = "codex-1", updatedAt = 200, provider = AgentSessionProvider.from("codex")))
+                else emptyList()
+              },
+            ),
+            ScriptedSessionSource(
+              provider = AgentSessionProvider.from("claude"),
+              listFromOpenProject = { path, _ ->
+                if (path == PROJECT_PATH) {
+                  throw IllegalStateException("Claude backend failed")
+                }
+                emptyList()
+              },
+            ),
+          )
+        },
+        projectEntriesProvider = {
+          listOf(openProjectEntry(PROJECT_PATH, "Project A"))
+        },
+      ) { service, launchService ->
+        service.refresh()
+        waitForCondition {
+          val project = service.state.value.projects.firstOrNull { it.path == PROJECT_PATH } ?: return@waitForCondition false
+          project.providerLoadStates[AgentSessionProvider.from("codex")] == AgentSessionProviderLoadState.LOADED &&
+          project.providerLoadStates[AgentSessionProvider.from("claude")] == AgentSessionProviderLoadState.FAILED
+        }
+
+        val bridge = promptLauncherBridge(service, launchService)
+        val claudeSnapshot = bridge.observeExistingThreads(
+          projectPath = PROJECT_PATH,
+          provider = AgentSessionProvider.from("claude"),
+        ).first { it.hasLoaded && !it.isLoading }
+        val codexSnapshot = bridge.observeExistingThreads(
+          projectPath = PROJECT_PATH,
+          provider = AgentSessionProvider.from("codex"),
+        ).first { it.hasLoaded && !it.isLoading }
+
+        assertThat(claudeSnapshot.threads).isEmpty()
+        assertThat(claudeSnapshot.hasError).isTrue()
+        assertThat(codexSnapshot.threads.map { thread -> thread.id }).containsExactly("codex-1")
+        assertThat(codexSnapshot.hasError).isFalse()
+      }
     }
   }
 
@@ -1273,7 +2093,6 @@ class AgentSessionPromptLauncherBridgeTest {
       pathStateResolver = ::resolveAgentSessionPathState,
       refreshCatalogAndLoadNewlyOpened = {},
       refreshProviderForPath = { _, _ -> },
-      preferredProviderProvider = { null },
       sourceProjectResolver = { path ->
         resolvedPaths.add(path)
         sourceProject.takeIf { path == selectedTreePath }
@@ -1327,7 +2146,6 @@ class AgentSessionPromptLauncherBridgeTest {
       pathStateResolver = ::resolveAgentSessionPathState,
       refreshCatalogAndLoadNewlyOpened = {},
       refreshProviderForPath = { _, _ -> },
-      preferredProviderProvider = { null },
       providerPreferencesLoader = { stored },
       providerPreferencesSaver = { prefs -> stored = prefs },
     )
@@ -1335,8 +2153,6 @@ class AgentSessionPromptLauncherBridgeTest {
     assertThat(bridge.loadProviderPreferences()).isEqualTo(AgentPromptLauncherBridge.ProviderPreferences())
 
     val prefs = AgentPromptLauncherBridge.ProviderPreferences(
-      providerId = AgentSessionProvider.CODEX.value,
-      launchMode = AgentSessionLaunchMode.STANDARD,
       providerOptionsByProviderId = mapOf("codex" to setOf("plan_mode")),
     )
     bridge.saveProviderPreferences(prefs)
@@ -1344,26 +2160,156 @@ class AgentSessionPromptLauncherBridgeTest {
     assertThat(stored).isEqualTo(prefs)
     assertThat(bridge.loadProviderPreferences()).isEqualTo(prefs)
   }
+
+  @Test
+  fun addContextToOpenChatTargetDelegatesToInjectedHandler() {
+    val capturedRequest = AtomicReference<AgentPromptAddContextToTargetRequest>()
+    val bridge = AgentSessionPromptLauncherBridge(
+      launchPromptRequest = { error("not used") },
+      stateFlowProvider = { error("not used") },
+      pathStateResolver = ::resolveAgentSessionPathState,
+      refreshCatalogAndLoadNewlyOpened = {},
+      refreshProviderForPath = { _, _ -> },
+      addContextToOpenChatTarget = { request ->
+        capturedRequest.set(request)
+        AgentPromptAddContextToTargetResult.ADDED_TO_CHAT
+      },
+    )
+    val request = addContextToTargetRequest()
+
+    val result = runBlocking(Dispatchers.Default) {
+      bridge.addContextToOpenChatTarget(request)
+    }
+
+    assertThat(result).isEqualTo(AgentPromptAddContextToTargetResult.ADDED_TO_CHAT)
+    assertThat(capturedRequest.get()).isEqualTo(request)
+  }
+
+  @Test
+  fun addContextToOpenChatTargetPropagatesAlreadyAddedResult() {
+    val bridge = AgentSessionPromptLauncherBridge(
+      launchPromptRequest = { error("not used") },
+      stateFlowProvider = { error("not used") },
+      pathStateResolver = ::resolveAgentSessionPathState,
+      refreshCatalogAndLoadNewlyOpened = {},
+      refreshProviderForPath = { _, _ -> },
+      addContextToOpenChatTarget = {
+        AgentPromptAddContextToTargetResult.ALREADY_ADDED_TO_CHAT
+      },
+    )
+
+    val result = runBlocking(Dispatchers.Default) {
+      bridge.addContextToOpenChatTarget(addContextToTargetRequest())
+    }
+
+    assertThat(result).isEqualTo(AgentPromptAddContextToTargetResult.ALREADY_ADDED_TO_CHAT)
+  }
+}
+
+private fun addContextToTargetRequest(): AgentPromptAddContextToTargetRequest {
+  return AgentPromptAddContextToTargetRequest(
+    target = AgentPromptAddContextTargetCandidate(
+      projectPath = PROJECT_PATH,
+      provider = AgentSessionProvider.from("codex"),
+      threadId = "thread-existing",
+      displayText = "Existing thread",
+    ),
+    contextItems = listOf(
+      AgentPromptContextItem(
+        rendererId = "test",
+        title = "Selected code",
+        body = "fun selected() {}",
+        source = "test",
+      )
+    ),
+  )
 }
 
 private fun <T> withOpenInNonDedicatedFrameSettingForTest(action: () -> T): T {
-  val advancedSettings = AdvancedSettings.getInstance() as AdvancedSettingsImpl
-  val disposable = Disposer.newDisposable()
-  registerDedicatedFrameSettingForTest(disposable)
-  advancedSettings.setSetting(OPEN_CHAT_IN_DEDICATED_FRAME_SETTING_ID, false, disposable)
+  val previousValue = AgentChatOpenModeSettings.openInDedicatedFrame()
+  AgentChatOpenModeSettings.setOpenInDedicatedFrame(false)
   try {
-    AgentChatOpenModeSettings.setOpenInDedicatedFrame(false)
     return action()
   }
   finally {
-    Disposer.dispose(disposable)
+    AgentChatOpenModeSettings.setOpenInDedicatedFrame(previousValue)
+  }
+}
+
+private fun assertPromptLaunchResolvedTelemetry(
+  telemetryEvents: Iterable<AgentWorkbenchTelemetryEvent>,
+  provider: String,
+  launchResult: AgentWorkbenchPromptLaunchResultKind,
+  launchMode: AgentSessionLaunchMode = AgentSessionLaunchMode.STANDARD,
+  targetKind: AgentWorkbenchTargetKind = AgentWorkbenchTargetKind.NEW_THREAD,
+) {
+  assertThat(telemetryEvents).contains(
+    AgentWorkbenchTelemetryEvent(
+      id = AgentWorkbenchTelemetry.PROMPT_LAUNCH_RESOLVED_EVENT_ID,
+      provider = provider,
+      launchMode = launchMode,
+      targetKind = targetKind,
+      launchResult = launchResult,
+    )
+  )
+}
+
+private fun containerPromptLauncherBridge(
+  launchPromptRequest: (AgentPromptLaunchRequest) -> AgentPromptLaunchResult,
+  sourceProjectResolver: (String) -> Project? = { null },
+): AgentSessionPromptLauncherBridge {
+  return AgentSessionPromptLauncherBridge(
+    launchPromptRequest = launchPromptRequest,
+    stateFlowProvider = {
+      error("stateFlowProvider is unavailable in this test setup")
+    },
+    pathStateResolver = ::resolveAgentSessionPathState,
+    refreshCatalogAndLoadNewlyOpened = {},
+    refreshProviderForPath = { _, _ -> },
+    sourceProjectResolver = sourceProjectResolver,
+  )
+}
+
+private fun <T> withContainerLauncherForTest(
+  launcher: AgentPromptContainerLauncher,
+  parentDisposable: Disposable,
+  action: () -> T,
+): T {
+  return withContainerLaunchersForTest(listOf(launcher), parentDisposable, action)
+}
+
+private fun <T> withContainerLaunchersForTest(
+  launchers: List<AgentPromptContainerLauncher>,
+  parentDisposable: Disposable,
+  action: () -> T,
+): T {
+  val point = AgentPromptContainerLauncher.EP_NAME.point as ExtensionPointImpl<AgentPromptContainerLauncher>
+  point.maskAll(newList = launchers, parentDisposable = parentDisposable, fireEvents = false)
+  return action()
+}
+
+private class RecordingContainerLauncher(
+  private val supportedProviders: Set<AgentSessionProvider>,
+  private val available: Boolean,
+) : AgentPromptContainerLauncher {
+  val launchCalls = AtomicInteger()
+  val lastProject = AtomicReference<Project?>()
+  val lastRequest = AtomicReference<AgentPromptLaunchRequest?>()
+
+  override fun isAvailable(): Boolean = available
+
+  override fun supportsProvider(provider: AgentSessionProvider): Boolean = provider in supportedProviders
+
+  override fun launch(project: Project, request: AgentPromptLaunchRequest) {
+    launchCalls.incrementAndGet()
+    lastProject.set(project)
+    lastRequest.set(request)
   }
 }
 
 private fun promptLauncherBridge(
   service: AgentSessionStateSyncTestFacade,
   launchService: AgentSessionLaunchService,
-  preferredProviderProvider: () -> AgentSessionProvider? = { null },
   providerPreferencesLoader: () -> AgentPromptLauncherBridge.ProviderPreferences = { AgentPromptLauncherBridge.ProviderPreferences() },
   providerPreferencesSaver: (AgentPromptLauncherBridge.ProviderPreferences) -> Unit = {},
 ): AgentSessionPromptLauncherBridge {
@@ -1373,7 +2319,6 @@ private fun promptLauncherBridge(
     pathStateResolver = ::resolveAgentSessionPathState,
     refreshCatalogAndLoadNewlyOpened = { service.refreshCatalogAndLoadNewlyOpened() },
     refreshProviderForPath = { path, provider -> service.refreshProviderForPath(path = path, provider = provider) },
-    preferredProviderProvider = preferredProviderProvider,
     providerPreferencesLoader = providerPreferencesLoader,
     providerPreferencesSaver = providerPreferencesSaver,
   )
@@ -1381,11 +2326,17 @@ private fun promptLauncherBridge(
 
 private const val INVALID_PROMPT_PROJECT_PATH: String = "invalid\u0000project"
 
+private fun createTestModalityState(): ModalityState {
+  val modalityClass = Class.forName("com.intellij.openapi.application.impl.ModalityStateEx")
+  return modalityClass.getDeclaredConstructor().newInstance() as ModalityState
+}
+
 private fun promptLaunchRequest(
-  provider: AgentSessionProvider = AgentSessionProvider.CODEX,
+  provider: AgentSessionProvider = AgentSessionProvider.from("codex"),
   launchMode: AgentSessionLaunchMode = AgentSessionLaunchMode.STANDARD,
   projectPath: String = PROJECT_PATH,
   targetThreadId: String? = null,
+  generationSettings: AgentPromptGenerationSettings = AgentPromptGenerationSettings.AUTO,
 ): AgentPromptLaunchRequest {
   return AgentPromptLaunchRequest(
     provider = provider,
@@ -1404,6 +2355,7 @@ private fun promptLaunchRequest(
     ),
     targetThreadId = targetThreadId,
     preferredDedicatedFrame = null,
+    generationSettings = generationSettings,
   )
 }
 
@@ -1458,17 +2410,27 @@ private class RecordingPromptLaunchProviderBridge(
   private val timeoutPolicy: AgentInitialMessageTimeoutPolicy = AgentInitialMessageTimeoutPolicy.ALLOW_TIMEOUT_FALLBACK,
   private val startupPromptCommandEnvVariables: Map<String, String> = emptyMap(),
   private val composedMessageBuilder: (AgentPromptInitialMessageRequest) -> String = { request -> "composed:${request.prompt.trim()}" },
+  override val promptOptions: List<AgentPromptProviderOption> = listOf(AGENT_PROMPT_PROVIDER_PLAN_MODE_OPTION),
+  private val supportedReasoningEffortsOverride: Set<AgentPromptReasoningEffort> = emptySet(),
+  private val generationSettingsApplier: (
+    AgentSessionTerminalLaunchSpec,
+    AgentPromptGenerationSettings,
+  ) -> AgentSessionTerminalLaunchSpec = { launchSpec, _ -> launchSpec },
+  private val prestartPlanPromptThreadId: String? = null,
 ) : AgentSessionProviderDescriptor {
   val createCalls: AtomicInteger = AtomicInteger(0)
   val composeCalls: AtomicInteger = AtomicInteger(0)
   val startupCommandCalls: AtomicInteger = AtomicInteger(0)
   val shouldUseStartupPromptCommandCalls: AtomicInteger = AtomicInteger(0)
-  val lastCreatePath: AtomicReference<String?> = AtomicReference(null)
   val lastCreateMode: AtomicReference<AgentSessionLaunchMode?> = AtomicReference(null)
   val lastComposeRequest: AtomicReference<AgentPromptInitialMessageRequest?> = AtomicReference(null)
   val lastStartupBaseLaunchSpec: AtomicReference<AgentSessionTerminalLaunchSpec?> = AtomicReference(null)
   val lastStartupPrompt: AtomicReference<String?> = AtomicReference(null)
   val lastShouldUseStartupPromptCommandRequest: AtomicReference<AgentPromptInitialMessageRequest?> = AtomicReference(null)
+  val lastGenerationSettings: AtomicReference<AgentPromptGenerationSettings?> = AtomicReference(null)
+  val lastGenerationSettingsInitialMessagePlan: AtomicReference<AgentInitialMessagePlan?> = AtomicReference(null)
+  val generationSettingsApplyCalls: AtomicInteger = AtomicInteger(0)
+  val prestartPlanPromptCalls: AtomicInteger = AtomicInteger(0)
 
   override val displayNameKey: String
     get() = "toolwindow.provider.codex"
@@ -1477,77 +2439,142 @@ private class RecordingPromptLaunchProviderBridge(
     get() = "toolwindow.action.new.session.codex"
 
   override val icon: Icon
-    get() = if (provider == AgentSessionProvider.CLAUDE) AgentWorkbenchCommonIcons.Claude_14x14 else AgentWorkbenchCommonIcons.Codex_14x14
+    get() = if (provider == AgentSessionProvider.from("claude")) AgentWorkbenchCommonIcons.Claude else AgentWorkbenchCommonIcons.Codex
 
   override val supportedLaunchModes: Set<AgentSessionLaunchMode>
     get() = supportedModes
+
+  override val supportedReasoningEfforts: Set<AgentPromptReasoningEffort>
+    get() = supportedReasoningEffortsOverride
 
   override val sessionSource: AgentSessionSource = object : AgentSessionSource {
     override val provider: AgentSessionProvider
       get() = this@RecordingPromptLaunchProviderBridge.provider
 
-    override suspend fun listThreadsFromOpenProject(path: String, project: Project): List<AgentSessionThread> = emptyList()
+    override suspend fun listThreads(path: String, openProject: Project?): List<AgentSessionThread> = emptyList()
 
-    override suspend fun listThreadsFromClosedProject(path: String): List<AgentSessionThread> = emptyList()
   }
 
   override val cliMissingMessageKey: String
     get() = "toolwindow.error.cli"
 
-  override fun isCliAvailable(): Boolean = true
+  override suspend fun isCliAvailable(): Boolean = true
 
   override suspend fun buildResumeLaunchSpec(sessionId: String): AgentSessionTerminalLaunchSpec {
     return AgentSessionTerminalLaunchSpec(command = listOf("test", "resume", sessionId))
   }
 
   override suspend fun buildNewSessionLaunchSpec(mode: AgentSessionLaunchMode): AgentSessionTerminalLaunchSpec {
+    createCalls.incrementAndGet()
+    lastCreateMode.set(mode)
     return AgentSessionTerminalLaunchSpec(command = listOf("test", "new", mode.name))
   }
 
-  override fun buildNewEntryLaunchSpec(): AgentSessionTerminalLaunchSpec {
-    return AgentSessionTerminalLaunchSpec(command = listOf("test"))
+  override fun applyGenerationSettings(
+    baseLaunchSpec: AgentSessionTerminalLaunchSpec,
+    generationSettings: AgentPromptGenerationSettings,
+    initialMessagePlan: AgentInitialMessagePlan,
+  ): AgentSessionTerminalLaunchSpec {
+    generationSettingsApplyCalls.incrementAndGet()
+    val sanitizedGenerationSettings = sanitizeGenerationSettings(generationSettings)
+    lastGenerationSettings.set(sanitizedGenerationSettings)
+    lastGenerationSettingsInitialMessagePlan.set(initialMessagePlan)
+    return generationSettingsApplier(baseLaunchSpec, sanitizedGenerationSettings)
   }
 
-  override fun buildLaunchSpecWithInitialPrompt(
+  override fun buildLaunchSpecWithInitialMessage(
     baseLaunchSpec: AgentSessionTerminalLaunchSpec,
-    prompt: String,
+    initialMessagePlan: AgentInitialMessagePlan,
   ): AgentSessionTerminalLaunchSpec? {
     startupCommandCalls.incrementAndGet()
     lastStartupBaseLaunchSpec.set(baseLaunchSpec)
-    lastStartupPrompt.set(prompt)
+    lastStartupPrompt.set(initialMessagePlan.message)
     if (!startupPromptCommandSupported) {
       return null
     }
+    val message = initialMessagePlan.message ?: return baseLaunchSpec
     return baseLaunchSpec.copy(
-      command = baseLaunchSpec.command + listOf("--", prompt),
+      command = baseLaunchSpec.command + listOf("--", message),
       envVariables = baseLaunchSpec.envVariables + startupPromptCommandEnvVariables,
     )
   }
 
-  override suspend fun createNewSession(path: String, mode: AgentSessionLaunchMode): AgentSessionLaunchSpec {
-    createCalls.incrementAndGet()
-    lastCreatePath.set(path)
-    lastCreateMode.set(mode)
-    return AgentSessionLaunchSpec(
-      sessionId = null,
-      launchSpec = AgentSessionTerminalLaunchSpec(command = listOf("test", "create", path, mode.name)),
+  override suspend fun prestartNewSessionLaunch(
+    projectPath: String,
+    launchMode: AgentSessionLaunchMode,
+    initialMessagePlan: AgentInitialMessagePlan,
+    generationSettings: AgentPromptGenerationSettings,
+    generationModelCatalog: List<AgentPromptGenerationModel>,
+    launchSpec: AgentSessionTerminalLaunchSpec,
+  ): AgentPrestartedNewSessionLaunch? {
+    val threadId = prestartPlanPromptThreadId ?: return null
+    if (initialMessagePlan.mode != AgentInitialMessageMode.PLAN) return null
+    val prompt = initialMessagePlan.message?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    prestartPlanPromptCalls.incrementAndGet()
+    return AgentPrestartedNewSessionLaunch(
+      launchSpec = launchSpec.copy(
+        command = launchSpec.command + listOf("resume", "--remote", "ws://test-codex-app-server", threadId),
+        preallocatedSessionId = threadId,
+      ),
+      initialMessageDispatchPlan = AgentInitialPromptDeliveryPlan(
+        promptRecord = AgentInitialPromptRecord(
+          message = prompt,
+          mode = AgentInitialMessageMode.PLAN,
+          deliveryStatus = AgentInitialPromptDeliveryStatus.PENDING,
+          deliveryChannel = AgentInitialPromptDeliveryChannel.APP_SERVER,
+        ),
+        terminalDispatch = AgentTerminalPromptDispatch(
+          steps = listOf(
+            AgentInitialMessageDispatchStep(
+              text = prompt,
+              timeoutPolicy = initialMessagePlan.timeoutPolicy,
+              action = AgentInitialMessageDispatchAction.PROVIDER,
+            )
+          )
+        ).normalized(),
+      ),
     )
   }
+
+  override suspend fun dispatchInitialMessageToProvider(request: AgentInitialMessageProviderDispatchRequest): Boolean = true
 
   override fun buildInitialMessagePlan(request: AgentPromptInitialMessageRequest): AgentInitialMessagePlan {
     composeCalls.incrementAndGet()
     lastComposeRequest.set(request)
     shouldUseStartupPromptCommandCalls.incrementAndGet()
     lastShouldUseStartupPromptCommandRequest.set(request)
+    val composedMessage = composedMessageBuilder(request)
+    val planMode = request.isPlanModeRequested()
+    val startupPolicy = startupPolicyOverride ?: when {
+      planMode && provider == AgentSessionProvider.from("codex") -> AgentInitialMessageStartupPolicy.POST_START_ONLY
+      startupPromptCommandPolicyEnabled -> AgentInitialMessageStartupPolicy.TRY_STARTUP_COMMAND
+      else -> AgentInitialMessageStartupPolicy.POST_START_ONLY
+    }
     return AgentInitialMessagePlan(
-      message = composedMessageBuilder(request),
-      startupPolicy = startupPolicyOverride ?: if (startupPromptCommandPolicyEnabled) {
-        AgentInitialMessageStartupPolicy.TRY_STARTUP_COMMAND
-      }
-      else {
-        AgentInitialMessageStartupPolicy.POST_START_ONLY
-      },
+      message = composedMessage,
+      mode = if (planMode) AgentInitialMessageMode.PLAN else AgentInitialMessageMode.STANDARD,
+      startupPolicy = startupPolicy,
       timeoutPolicy = timeoutPolicy,
     )
   }
+}
+
+private fun <T> withCliAvailableTestRegistry(action: () -> T): T {
+  return AgentSessionProviders.withRegistryForTest(
+    InMemoryAgentSessionProviderRegistry(
+      listOf(
+        TestAgentSessionProviderDescriptor(
+          provider = AgentSessionProvider.from("claude"),
+          supportedModes = setOf(AgentSessionLaunchMode.STANDARD),
+          cliAvailable = true,
+        ),
+        TestAgentSessionProviderDescriptor(
+          provider = AgentSessionProvider.from("codex"),
+          supportedModes = setOf(AgentSessionLaunchMode.STANDARD),
+          cliAvailable = true,
+        ),
+      )
+    ),
+    action,
+  )
 }

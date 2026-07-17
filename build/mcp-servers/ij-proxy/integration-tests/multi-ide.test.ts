@@ -1,6 +1,6 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
-import {ok, strictEqual} from 'node:assert/strict'
+import {deepStrictEqual, ok, strictEqual} from 'node:assert/strict'
 import {mkdtempSync, rmSync} from 'node:fs'
 import {spawn} from 'node:child_process'
 import {tmpdir} from 'node:os'
@@ -8,7 +8,7 @@ import {dirname, join} from 'node:path'
 import {env} from 'node:process'
 import {fileURLToPath} from 'node:url'
 import {describe, it} from 'bun:test'
-import {buildUpstreamTool, debug, defaultUpstreamTools, McpTestClient, startFakeMcpServer, SUITE_TIMEOUT_MS} from '../test-utils'
+import {buildUpstreamTool, defaultUpstreamTools, McpTestClient, startFakeMcpServer, SUITE_TIMEOUT_MS} from '../test-utils'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -20,6 +20,18 @@ interface ToolCall {
 async function withDualProxy(
   run: (context: {proxyClient: McpTestClient; ideaCalls: ToolCall[]; riderCalls: ToolCall[]}) => Promise<void>
 ): Promise<void> {
+  return await withConfiguredDualProxy({}, run)
+}
+
+async function withConfiguredDualProxy(
+  options: {
+    ideaTools?: ReturnType<typeof buildUpstreamTool>[]
+    riderTools?: ReturnType<typeof buildUpstreamTool>[]
+    ideaOnToolCall?: ({name, args}: {name: string | undefined; args: Record<string, unknown>}) => unknown
+    riderOnToolCall?: ({name, args}: {name: string | undefined; args: Record<string, unknown>}) => unknown
+  },
+  run: (context: {proxyClient: McpTestClient; ideaCalls: ToolCall[]; riderCalls: ToolCall[]}) => Promise<void>
+): Promise<void> {
   const ideaCalls: ToolCall[] = []
   const riderCalls: ToolCall[] = []
   let ideaServer, riderServer, proxyClient, testDir
@@ -27,18 +39,24 @@ async function withDualProxy(
   try {
     ideaServer = await startFakeMcpServer({
       serverName: 'IntelliJ IDEA MCP Server',
-      tools: defaultUpstreamTools,
+      tools: options.ideaTools ?? defaultUpstreamTools,
       onToolCall({name, args}) {
         ideaCalls.push({name, args})
+        if (options.ideaOnToolCall) {
+          return options.ideaOnToolCall({name, args})
+        }
         return {text: JSON.stringify({items: [{filePath: 'src/Main.kt', lineNumber: 1, lineText: 'idea result'}]})}
       }
     })
 
     riderServer = await startFakeMcpServer({
       serverName: 'JetBrains Rider MCP Server',
-      tools: defaultUpstreamTools,
+      tools: options.riderTools ?? defaultUpstreamTools,
       onToolCall({name, args}) {
         riderCalls.push({name, args})
+        if (options.riderOnToolCall) {
+          return options.riderOnToolCall({name, args})
+        }
         return {text: JSON.stringify({items: [{filePath: 'Psi/Foo.cs', lineNumber: 1, lineText: 'rider result'}]})}
       }
     })
@@ -138,6 +156,185 @@ describe('ij MCP proxy multi-IDE', {timeout: SUITE_TIMEOUT_MS}, () => {
 
       const ideaReadCalls = ideaCalls.filter((c) => c.name === 'get_file_text_by_path')
       ok(ideaReadCalls.length > 0, 'IDEA should have received read call')
+    })
+  })
+
+  it('falls back to get_file_problems when one upstream lacks lint_files', async () => {
+    const legacyLintTool = buildUpstreamTool('get_file_problems', {
+      filePath: {type: 'string'},
+      errorsOnly: {type: 'boolean'},
+      timeout: {type: 'number'}
+    }, ['filePath'])
+    const lintFilesTool = buildUpstreamTool('lint_files', {
+      files: {type: 'array', items: {type: 'string'}},
+      min_severity: {type: 'string'},
+      timeout: {type: 'number'}
+    }, ['files'])
+
+    await withConfiguredDualProxy({
+      ideaTools: [legacyLintTool],
+      riderTools: [lintFilesTool],
+      ideaOnToolCall({name, args}) {
+        ok(name === 'get_file_problems')
+        strictEqual(args.filePath, 'src/Main.kt')
+        strictEqual(args.errorsOnly, false)
+        return {
+          structuredContent: {
+            filePath: 'src/Main.kt',
+            errors: [{severity: 'WARNING', description: 'legacy warning', lineContent: 'idea line', line: 3, column: 2}]
+          },
+          text: JSON.stringify({
+            filePath: 'src/Main.kt',
+            errors: [{severity: 'WARNING', description: 'legacy warning', lineContent: 'idea line', line: 3, column: 2}]
+          })
+        }
+      },
+      riderOnToolCall({name, args}) {
+        ok(name === 'lint_files')
+        strictEqual(JSON.stringify(args.files), JSON.stringify(['Psi/Foo.cs']))
+        strictEqual(args.min_severity ?? 'warning', 'warning')
+        return {
+          structuredContent: {
+            items: [{filePath: 'Psi/Foo.cs', problems: [{severity: 'ERROR', description: 'native error', lineText: 'rider line', line: 5, column: 1}]}]
+          },
+          text: JSON.stringify({
+            items: [{filePath: 'Psi/Foo.cs', problems: [{severity: 'ERROR', description: 'native error', lineText: 'rider line', line: 5, column: 1}]}]
+          })
+        }
+      }
+    }, async ({proxyClient, ideaCalls, riderCalls}) => {
+      const listResponse = await proxyClient.send('tools/list')
+      const names = listResponse.result.tools.map((tool) => tool.name)
+      ok(names.includes('lint_files'))
+      ok(!names.includes('get_file_problems'))
+
+      const response = await proxyClient.send('tools/call', {
+        name: 'lint_files',
+        arguments: {files: ['src/Main.kt', 'dotnet/Psi/Foo.cs']}
+      })
+
+      const parsed = JSON.parse(response.result.content[0].text)
+      strictEqual(parsed.items.length, 2)
+      strictEqual(parsed.items[0].filePath, 'src/Main.kt')
+      strictEqual(parsed.items[0].problems[0].lineText, 'idea line')
+      strictEqual(parsed.items[1].filePath, 'dotnet/Psi/Foo.cs')
+      strictEqual(parsed.items[1].problems[0].lineText, 'rider line')
+
+      strictEqual(ideaCalls.length, 1)
+      strictEqual(ideaCalls[0].name, 'get_file_problems')
+      strictEqual(riderCalls.length, 1)
+      strictEqual(riderCalls[0].name, 'lint_files')
+    })
+  })
+
+  it('calls native lint_files once per IDE and preserves original interleaved order', async () => {
+    const lintFilesTool = buildUpstreamTool('lint_files', {
+      files: {type: 'array', items: {type: 'string'}},
+      min_severity: {type: 'string'},
+      timeout: {type: 'number'}
+    }, ['files'])
+    const requestedPaths = [
+      'src/File1.kt',
+      'dotnet/Psi/File1.cs',
+      'src/File2.kt',
+      'dotnet/Psi/File2.cs',
+      'src/File3.kt',
+      'dotnet/Psi/File3.cs',
+      'src/File4.kt',
+      'dotnet/Psi/File4.cs',
+      'src/File5.kt',
+      'dotnet/Psi/File5.cs',
+      'src/File6.kt',
+      'dotnet/Psi/File6.cs'
+    ]
+
+    await withConfiguredDualProxy({
+      ideaTools: [lintFilesTool],
+      riderTools: [lintFilesTool],
+      ideaOnToolCall({name, args}) {
+        strictEqual(name, 'lint_files')
+        const filePaths = args.files as string[]
+        const items = filePaths.slice().reverse().map((filePath) => ({
+          filePath,
+          problems: [{severity: 'WARNING', description: filePath, lineText: `idea:${filePath}`, line: 1, column: 1}]
+        }))
+        return {
+          structuredContent: {items},
+          text: JSON.stringify({items})
+        }
+      },
+      riderOnToolCall({name, args}) {
+        strictEqual(name, 'lint_files')
+        const filePaths = args.files as string[]
+        const items = filePaths.slice().reverse().map((filePath) => ({
+          filePath,
+          problems: [{severity: 'WARNING', description: filePath, lineText: `rider:${filePath}`, line: 1, column: 1}]
+        }))
+        return {
+          structuredContent: {items},
+          text: JSON.stringify({items})
+        }
+      }
+    }, async ({proxyClient, ideaCalls, riderCalls}) => {
+      await proxyClient.send('tools/list')
+      const response = await proxyClient.send('tools/call', {
+        name: 'lint_files',
+        arguments: {files: requestedPaths, timeout: 500}
+      })
+
+      const parsed = JSON.parse(response.result.content[0].text)
+      deepStrictEqual(parsed.items.map((item) => item.filePath), requestedPaths)
+      deepStrictEqual(ideaCalls.map((call) => call.args.files), [[
+        'src/File1.kt',
+        'src/File2.kt',
+        'src/File3.kt',
+        'src/File4.kt',
+        'src/File5.kt',
+        'src/File6.kt'
+      ]])
+      deepStrictEqual(riderCalls.map((call) => call.args.files), [[
+        'Psi/File1.cs',
+        'Psi/File2.cs',
+        'Psi/File3.cs',
+        'Psi/File4.cs',
+        'Psi/File5.cs',
+        'Psi/File6.cs'
+      ]])
+      deepStrictEqual(ideaCalls.map((call) => call.args.timeout), [500])
+      deepStrictEqual(riderCalls.map((call) => call.args.timeout), [500])
+    })
+  })
+
+  it('splits reformat_file files across IDEA and Rider', async () => {
+    const reformatTool = buildUpstreamTool('reformat_file', {
+      files: {type: 'array', items: {type: 'string'}}
+    }, ['files'])
+
+    await withConfiguredDualProxy({
+      ideaTools: [reformatTool],
+      riderTools: [reformatTool],
+      ideaOnToolCall({name, args}) {
+        strictEqual(name, 'reformat_file')
+        deepStrictEqual(args.files, ['src/File1.kt', 'src/File2.kt'])
+        return {text: 'ok'}
+      },
+      riderOnToolCall({name, args}) {
+        strictEqual(name, 'reformat_file')
+        deepStrictEqual(args.files, ['Psi/File1.cs', 'Psi/File2.cs'])
+        return {text: 'ok'}
+      }
+    }, async ({proxyClient, ideaCalls, riderCalls}) => {
+      await proxyClient.send('tools/list')
+      const response = await proxyClient.send('tools/call', {
+        name: 'reformat_file',
+        arguments: {
+          files: ['src/File1.kt', 'dotnet/Psi/File1.cs', 'src/File2.kt', 'dotnet/Psi/File2.cs']
+        }
+      })
+
+      strictEqual(response.result.content[0].text, 'ok')
+      strictEqual(ideaCalls.length, 1)
+      strictEqual(riderCalls.length, 1)
     })
   })
 })

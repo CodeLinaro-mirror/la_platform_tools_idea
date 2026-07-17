@@ -1,11 +1,13 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.agent.workbench.prompt.ui.context
 
+import com.intellij.agent.workbench.prompt.core.AGENT_PROMPT_INVOCATION_DATA_CONTEXT_KEY
 import com.intellij.agent.workbench.prompt.core.AgentPromptContextRendererIds
 import com.intellij.agent.workbench.prompt.core.AgentPromptContextTruncationReason
 import com.intellij.agent.workbench.prompt.core.AgentPromptInvocationData
 import com.intellij.agent.workbench.prompt.core.number
 import com.intellij.agent.workbench.prompt.core.objOrNull
+import com.intellij.agent.workbench.prompt.context.AgentPromptProjectViewSelectionContextContributor
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.actionSystem.DataKey
@@ -21,12 +23,15 @@ import com.intellij.testFramework.LightVirtualFile
 import com.intellij.testFramework.junit5.TestApplication
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
+import java.util.concurrent.TimeUnit
 import java.lang.reflect.Proxy
 import java.nio.file.Files
 import java.nio.file.Path
 import javax.swing.JTree
 
 @TestApplication
+@Timeout(value = 2, unit = TimeUnit.MINUTES)
 class AgentPromptProjectViewSelectionContextContributorTest {
   private val contributor = AgentPromptProjectViewSelectionContextContributor()
 
@@ -154,7 +159,7 @@ class AgentPromptProjectViewSelectionContextContributorTest {
     assertThat(result.single().rendererId).isEqualTo(AgentPromptContextRendererIds.PATHS)
   }
 
-  private fun invocationData(dataContext: com.intellij.openapi.actionSystem.DataContext): AgentPromptInvocationData {
+  private fun invocationData(dataContext: DataContext): AgentPromptInvocationData {
     val project = ProjectManager.getInstance().defaultProject
     return AgentPromptInvocationData(
       project = project,

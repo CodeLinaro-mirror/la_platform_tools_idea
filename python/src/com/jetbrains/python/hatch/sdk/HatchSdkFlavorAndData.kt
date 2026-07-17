@@ -17,7 +17,7 @@ typealias HatchSdkFlavorData = PyFlavorData.Empty
 internal object HatchSdkFlavor : CPythonSdkFlavor<HatchSdkFlavorData>() {
   override fun getIcon(): Icon = PythonHatchIcons.Logo
   override fun getFlavorDataClass(): Class<HatchSdkFlavorData> = HatchSdkFlavorData::class.java
-  override fun isValidSdkPath(pathStr: String): Boolean = false
+  override fun isValidSdkPath(pythonBinaryPath: Path): Boolean = false
   override fun isPlatformIndependent(): Boolean = true
 }
 
@@ -25,7 +25,7 @@ internal class HatchSdkFlavorProvider : PythonFlavorProvider {
   override fun getFlavor(): PythonSdkFlavor<*> = HatchSdkFlavor
 }
 
-class HatchSdkAdditionalData(
+internal class HatchSdkAdditionalData(
   val hatchWorkingDirectory: Path?,
   val hatchEnvironmentName: String?,
 ) : PythonSdkAdditionalData(PyFlavorAndData(data = HatchSdkFlavorData, flavor = HatchSdkFlavor)) {

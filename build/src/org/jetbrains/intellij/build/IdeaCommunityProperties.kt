@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.intellij.build
 
 import kotlinx.collections.immutable.PersistentList
@@ -9,6 +9,7 @@ import org.jetbrains.intellij.build.impl.createBuildContext
 import org.jetbrains.intellij.build.impl.qodana.QodanaProductProperties
 import org.jetbrains.intellij.build.io.copyDir
 import org.jetbrains.intellij.build.io.copyFileToDir
+import org.jetbrains.intellij.build.kotlin.KotlinBinaries
 import org.jetbrains.intellij.build.productLayout.CommunityModuleSets
 import org.jetbrains.intellij.build.productLayout.CommunityProductFragments
 import org.jetbrains.intellij.build.productLayout.ProductModulesContentSpec
@@ -17,7 +18,6 @@ import java.nio.file.Path
 
 val MAVEN_ARTIFACTS_ADDITIONAL_MODULES: PersistentList<String> = persistentListOf(
   "intellij.tools.jps.build.standalone",
-  "intellij.devkit.runtimeModuleRepository.jps",
   "intellij.devkit.jps",
   "intellij.idea.community.build.tasks",
   "intellij.platform.debugger.testFramework",
@@ -51,6 +51,8 @@ open class IdeaCommunityProperties(private val communityHomeDir: Path) : JetBrai
     buildCrossPlatformDistribution = true
     buildSourcesArchive = true
 
+    imagesDirectoryPath = communityHomeDir.resolve("build/idea-community-images")
+
     productLayout.productImplementationModules = listOf(
       "intellij.platform.starter",
       "intellij.idea.community.customization",
@@ -64,8 +66,8 @@ open class IdeaCommunityProperties(private val communityHomeDir: Path) : JetBrai
     productLayout.buildAllCompatiblePlugins = true
     productLayout.pluginLayouts = CommunityRepositoryModules.COMMUNITY_REPOSITORY_PLUGINS + persistentListOf(
       JavaPluginLayout.javaPlugin(),
-      CommunityRepositoryModules.androidPlugin(allPlatforms = true),
       CommunityRepositoryModules.groovyPlugin(),
+      CommunityRepositoryModules.androidPlugin(allPlatforms = true),
     )
 
     productLayout.skipUnresolvedContentModules = true
@@ -118,7 +120,6 @@ open class IdeaCommunityProperties(private val communityHomeDir: Path) : JetBrai
 
   override fun getProductContentDescriptor(): ProductModulesContentSpec = productModules {
     include(intellijCommunityBaseFragment(platformPrefix))
-    include(communityExtensionsFragment())
   }
 
   override suspend fun copyAdditionalFiles(targetDir: Path, context: BuildContext) {
@@ -137,11 +138,11 @@ open class IdeaCommunityProperties(private val communityHomeDir: Path) : JetBrai
 
   protected open suspend fun bundleExternalPlugins(context: BuildContext, targetDirectory: Path) {}
 
-  override fun createWindowsCustomizer(projectHome: Path): WindowsDistributionCustomizer = communityWindowsCustomizer(communityHomeDir)
+  override fun createWindowsCustomizer(projectHome: Path): WindowsDistributionCustomizer = ideaCommunityWindowsCustomizer(communityHomeDir)
 
-  override fun createLinuxCustomizer(projectHome: String): LinuxDistributionCustomizer = communityLinuxCustomizer(communityHomeDir)
+  override fun createLinuxCustomizer(projectHome: Path): LinuxDistributionCustomizer = ideaCommunityLinuxCustomizer(communityHomeDir)
 
-  override fun createMacCustomizer(projectHome: Path): MacDistributionCustomizer = communityMacCustomizer(communityHomeDir)
+  override fun createMacCustomizer(projectHome: Path): MacDistributionCustomizer = ideaCommunityMacCustomizer(communityHomeDir)
 
   override fun getSystemSelector(appInfo: ApplicationInfoProperties, buildNumber: String): String {
     return "IdeaIC${appInfo.majorVersion}.${appInfo.minorVersionMainPart}"
@@ -162,8 +163,8 @@ open class AndroidStudioProperties(communityHomeDir: Path) : IdeaCommunityProper
     productLayout.productImplementationModules += "intellij.idea.android.customization"
 
     val defaultBundledPlugins = IDEA_BUNDLED_PLUGINS
-      .remove("intellij.mcpserver")
-      .remove("intellij.featuresTrainer")
+      .removing("intellij.mcpserver")
+      .removing("intellij.featuresTrainer")
 
     productLayout.bundledPluginModules = defaultBundledPlugins + persistentListOf(
       "intellij.android.compose-ide-plugin",
@@ -199,13 +200,10 @@ fun intellijCommunityBaseFragment(platformPrefix: String? = null): ProductModule
 
   if (platformPrefix != "AndroidStudio") {
     alias("com.intellij.platform.ide.provisioner")
-    alias("com.intellij.modules.jcef")
   }
 
   include(CommunityProductFragments.javaIdeBaseFragment())
   deprecatedInclude("intellij.idea.community.customization", "META-INF/tips-intellij-idea-community.xml")
-
-  moduleSet(CommunityModuleSets.debuggerStreams())
 
   module("intellij.platform.coverage")
   module("intellij.platform.coverage.agent")
@@ -228,10 +226,51 @@ fun intellijCommunityBaseFragment(platformPrefix: String? = null): ProductModule
   deprecatedInclude("intellij.idea.community.customization", "META-INF/community-customization.xml")
 }
 
-/**
- * Community extensions fragment for Ultimate builds.
- * This fragment is composable - subclasses can choose to include or exclude it.
- */
-fun communityExtensionsFragment(): ProductModulesContentSpec = productModules {
-  deprecatedInclude("intellij.platform.extended.community.impl", "META-INF/community-extensions.xml", ultimateOnly = true)
+inline fun ideaCommunityWindowsCustomizer(
+  projectHome: Path,
+  configure: WindowsCustomizerBuilder.() -> Unit = {}
+): WindowsDistributionCustomizer = windowsCustomizer(projectHome) {
+  fileAssociations = listOf("java", "gradle", "groovy", "kt", "kts", "pom")
+
+  fullName { "IntelliJ IDEA Open Source" }
+  installDirNameHandler { "IntelliJ IDEA OSS" }
+
+  uninstallFeedbackUrl { appInfo ->
+    "https://www.jetbrains.com/idea/uninstall/?edition=IC-${appInfo.majorVersion}.${appInfo.minorVersion}"
+  }
+
+  configure()
+}
+
+inline fun ideaCommunityMacCustomizer(
+  projectHome: Path,
+  configure: MacCustomizerBuilder.() -> Unit = {}
+): MacDistributionCustomizer = macCustomizer(projectHome) {
+  urlSchemes = listOf("idea")
+  associateIpr = true
+  fileAssociations = FileAssociation.from("java", "groovy", "kt", "kts")
+  bundleIdentifier = "com.jetbrains.intellij.ce"
+
+  rootDirectoryName { _, _ -> "IntelliJ IDEA OSS.app" }
+
+  executableFilePatterns { base, _, _, _ ->
+    val kotlinExecutables = KotlinBinaries.kotlinCompilerExecutables
+    (base + kotlinExecutables).filterNot { it == "plugins/**/*.sh" }
+  }
+
+  configure()
+}
+
+inline fun ideaCommunityLinuxCustomizer(
+  projectHome: Path,
+  configure: LinuxCustomizerBuilder.() -> Unit = {}
+): LinuxDistributionCustomizer = linuxCustomizer(projectHome) {
+
+  rootDirectoryName { _, _ -> "idea-oss" }
+
+  executableFilePatterns { base, _, _, _, _ ->
+    base.plus(KotlinBinaries.kotlinCompilerExecutables).filterNot { it == "plugins/**/*.sh" }
+  }
+
+  configure()
 }

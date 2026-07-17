@@ -4,9 +4,11 @@ package com.jetbrains.python.packaging.pip
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.readAction
 import com.intellij.openapi.module.Module
+import com.intellij.openapi.module.ModuleUtilCore
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.psi.PsiFile
 import com.intellij.python.community.execService.Args
 import com.intellij.python.community.execService.ExecService
 import com.intellij.python.community.execService.execGetStdout
@@ -19,15 +21,16 @@ import com.jetbrains.python.packaging.common.PythonOutdatedPackage
 import com.jetbrains.python.packaging.common.PythonPackage
 import com.jetbrains.python.packaging.common.PythonRepositoryPackageSpecification
 import com.jetbrains.python.packaging.common.toPythonPackage
+import com.jetbrains.python.packaging.management.DependenciesExporter
 import com.jetbrains.python.packaging.management.PyWorkspaceMember
 import com.jetbrains.python.packaging.management.PythonPackageInstallRequest
 import com.jetbrains.python.packaging.management.PythonPackageManager
 import com.jetbrains.python.packaging.management.PythonRepositoryManager
 import com.jetbrains.python.packaging.management.hasInstalledPackage
 import com.jetbrains.python.packaging.requirementsTxt.RequirementsTxtManipulationHelper
+import com.jetbrains.python.packaging.syncWithImports
 import com.jetbrains.python.psi.LanguageLevel
 import com.jetbrains.python.sdk.PythonSdkAdditionalData
-import com.jetbrains.python.sdk.associatedModuleDir
 import com.jetbrains.python.sdk.legacy.PythonSdkUtil
 import com.jetbrains.python.statistics.version
 import kotlinx.coroutines.Dispatchers
@@ -35,11 +38,21 @@ import kotlinx.coroutines.withContext
 import org.jetbrains.annotations.ApiStatus
 import java.nio.file.Path
 
-@ApiStatus.Experimental
+/**
+ * This class will be internal soon, please do not use it outside of this module, even in monorepo
+ */
 @ApiStatus.Internal
 open class PipPythonPackageManager(project: Project, sdk: Sdk) : PythonPackageManager(project, sdk) {
   override val repositoryManager: PythonRepositoryManager = PipRepositoryManager.getInstance(project)
   private val engine = PipPackageManagerEngine(project, sdk)
+
+  override val dependenciesExporter: DependenciesExporter?
+    get() = object : DependenciesExporter {
+      override fun export(file: PsiFile) {
+        val module = ModuleUtilCore.findModuleForPsiElement(file) ?: return
+        syncWithImports(module)
+      }
+    }
 
   override suspend fun loadOutdatedPackagesCommand(): PyResult<List<PythonOutdatedPackage>> = engine.loadOutdatedPackagesCommand()
 
@@ -49,10 +62,10 @@ open class PipPythonPackageManager(project: Project, sdk: Sdk) : PythonPackageMa
     module: Module?,
   ): PyResult<Unit> = engine.installPackageCommand(installRequest, options)
 
-  override suspend fun syncCommand(): PyResult<Unit> {
-    val requirementsFile = getDependencyFile()
+  override suspend fun syncLockedCommand(): PyResult<Unit> {
+    val requirementsFile = getRootDependenciesFile()
     return if (requirementsFile != null) {
-      engine.syncRequirementsTxt(requirementsFile)
+      engine.syncRequirementsTxt(requirementsFile.virtualFile)
     }
     else {
       engine.syncProject()
@@ -75,23 +88,22 @@ open class PipPythonPackageManager(project: Project, sdk: Sdk) : PythonPackageMa
   override suspend fun loadPackagesCommand(): PyResult<List<PythonPackage>> = engine.loadPackagesCommand()
 
   override suspend fun listDeclaredPackages(): PyResult<List<PythonPackage>>? {
-    val requirementsFile = getDependencyFile() ?: return null
+    val requirementsFile = getRootDependenciesFile() ?: return null
     val requirements = readAction {
-      PyRequirementParser.fromFile(requirementsFile)
+      PyRequirementParser.fromFile(requirementsFile.virtualFile)
     }
     return PyResult.success(requirements.mapNotNull { it.toPythonPackage() })
   }
 
-  override fun getDependencyFile(): VirtualFile? {
-    val data = sdk.sdkAdditionalData as? PythonSdkAdditionalData ?: return null
-    val requirementsPath = data.requiredTxtPath ?: Path.of(PythonSdkAdditionalData.REQUIREMENT_TXT_DEFAULT)
-    return sdk.associatedModuleDir?.findFileByRelativePath(requirementsPath.toString())
-  }
+  override val dependenciesFilesRelativePaths: List<Path>
+    get() = listOf(
+      PythonSdkAdditionalData.REQUIREMENT_TXT_DEFAULT,
+    )
 
   override suspend fun addDependencyImpl(requirement: PyRequirement): Boolean {
-    val requirementsFile = getDependencyFile() ?: return false
+    val requirementsFile = getRootDependenciesFile() ?: return false
     return withContext(Dispatchers.EDT) {
-      RequirementsTxtManipulationHelper.addToRequirementsTxt(project, requirementsFile, requirement.presentableText)
+      RequirementsTxtManipulationHelper.addToRequirementsTxt(project, requirementsFile.virtualFile, requirement.presentableText)
     }
   }
 }

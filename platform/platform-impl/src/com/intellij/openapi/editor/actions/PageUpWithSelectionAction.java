@@ -8,10 +8,13 @@ import com.intellij.openapi.editor.Caret;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.actionSystem.EditorAction;
 import com.intellij.openapi.editor.actionSystem.EditorActionHandler;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+@ApiStatus.Internal
 public final class PageUpWithSelectionAction extends EditorAction implements ActionRemoteBehaviorSpecification.Frontend {
+  @ApiStatus.Internal
   public static final class Handler extends EditorActionHandler {
     @Override
     public void doExecute(final @NotNull Editor editor, @Nullable Caret caret, DataContext dataContext) {
@@ -29,7 +32,7 @@ public final class PageUpWithSelectionAction extends EditorAction implements Act
       }
       else {
         if (caret == null) {
-          editor.getCaretModel().runForEachCaret(__ -> EditorActionUtil.moveCaretPageUp(editor, true));
+          editor.getCaretModel().runForEachCaret(_ -> EditorActionUtil.moveCaretPageUp(editor, true));
         }
         else {
           // assuming caret is equal to CaretModel.getCurrentCaret()

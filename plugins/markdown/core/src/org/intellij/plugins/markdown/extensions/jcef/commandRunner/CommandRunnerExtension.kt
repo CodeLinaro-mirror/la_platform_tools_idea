@@ -25,8 +25,11 @@ import com.intellij.openapi.application.runReadAction
 import com.intellij.openapi.diagnostic.ControlFlowException
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.project.BaseProjectDirectories
 import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.vfs.LocalFileSystem
+import org.jetbrains.annotations.ApiStatus
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.AppUIUtil
 import org.intellij.plugins.markdown.MarkdownBundle
@@ -39,6 +42,7 @@ import org.intellij.plugins.markdown.ui.preview.BrowserPipe
 import org.intellij.plugins.markdown.ui.preview.MarkdownHtmlPanel
 import org.intellij.plugins.markdown.ui.preview.ResourceProvider
 import org.intellij.plugins.markdown.ui.preview.html.MarkdownUtil
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -46,6 +50,7 @@ internal class CommandRunnerExtension(
   val panel: MarkdownHtmlPanel,
   private val provider: Provider
 ): MarkdownBrowserPreviewExtension {
+  private val sessionKey = UUID.randomUUID().toString()
   override val scripts: List<String> = listOf("commandRunner/commandRunner.js")
   override val styles: List<String> = listOf("commandRunner/commandRunner.css")
   private val hash2Cmd = mutableMapOf<String, String>()
@@ -108,10 +113,10 @@ internal class CommandRunnerExtension(
     try {
       val project = panel.project
       val file = panel.virtualFile
-      if (project != null && file != null && file.parent != null
-          && matches(project, file.parent.canonicalPath, true, rawCodeLine.trim(), allowRunConfigurations)
+      if (project != null && file != null
+          && matches(project, getMarkdownCommandWorkingDirectory(project, file), true, rawCodeLine.trim(), allowRunConfigurations)
       ) {
-        val hash = MarkdownUtil.md5(rawCodeLine, "")
+        val hash = MarkdownUtil.md5(rawCodeLine, sessionKey)
         hash2Cmd[hash] = rawCodeLine
         return hash
       }
@@ -141,7 +146,7 @@ internal class CommandRunnerExtension(
       }
       if (runner == null) return ""
 
-      val hash = MarkdownUtil.md5(codeFenceRawContent, "")
+      val hash = MarkdownUtil.md5(codeFenceRawContent, sessionKey)
       hash2Cmd[hash] = codeFenceRawContent
       val lines = codeFenceRawContent.trimEnd().lines()
       val firstLineHash = if (lines.size > 1) processLine(lines[0], false) else null
@@ -170,7 +175,7 @@ internal class CommandRunnerExtension(
       val cmdHash: String = data.substringAfter(":")
       val command = hash2Cmd[cmdHash]
       if (command == null) {
-        LOG.error("Command index $cmdHash not found. Please attach .md file to error report. commandCache = ${hash2Cmd}")
+        LOG.error("Command index not found. Please attach .md file to error report.")
         return true
       }
       executeLineCommand(command, executorId)
@@ -183,7 +188,7 @@ internal class CommandRunnerExtension(
     val project = panel.project
     val virtualFile = panel.virtualFile
     if (project != null && virtualFile != null) {
-      execute(project, virtualFile.parent.canonicalPath, true, command, executor, RunnerPlace.PREVIEW)
+      execute(project, getMarkdownCommandWorkingDirectory(project, virtualFile), true, command, executor, RunnerPlace.PREVIEW)
     }
   }
 
@@ -196,7 +201,7 @@ internal class CommandRunnerExtension(
       TrustedProjectUtil.executeIfTrusted(project) {
         RUNNER_EXECUTED.log(project,  RunnerPlace.PREVIEW, RunnerType.BLOCK, runner.javaClass)
         invokeLater {
-          runner.run(command, project, virtualFile.parent.canonicalPath, executor)
+          runner.run(command, project, getMarkdownCommandWorkingDirectory(project, virtualFile), executor)
         }
       }
     }
@@ -210,7 +215,7 @@ internal class CommandRunnerExtension(
       val command = hash2Cmd[cmdHash]
       val firstLineCommand = hash2Cmd[args[2]]
       if (command == null) {
-        LOG.error("Command hash $cmdHash not found. Please attach .md file to error report.\n${hash2Cmd}")
+        LOG.error("Command hash not found. Please attach .md file to error report.")
         return true
       }
       val trimmedCmd = trimPrompt(command)
@@ -366,4 +371,15 @@ enum class RunnerPlace {
 
 enum class RunnerType {
   BLOCK, LINE
+}
+
+@ApiStatus.Internal
+fun getMarkdownCommandWorkingDirectory(project: Project, virtualFile: VirtualFile?): String? {
+  return if (Registry.`is`("markdown.command.runner.use.file.directory")) {
+    virtualFile?.parent?.canonicalPath
+  }
+  else {
+    virtualFile?.let { BaseProjectDirectories.getInstance(project).getBaseDirectoryFor(it) }?.canonicalPath
+    ?: virtualFile?.parent?.canonicalPath
+  }
 }

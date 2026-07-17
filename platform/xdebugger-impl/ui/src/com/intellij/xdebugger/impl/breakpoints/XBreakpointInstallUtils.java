@@ -25,6 +25,7 @@ import com.intellij.util.ModalityUiUtil;
 import com.intellij.xdebugger.XDebuggerBundle;
 import com.intellij.xdebugger.XDebuggerUtil;
 import com.intellij.xdebugger.XSourcePosition;
+import com.intellij.xdebugger.breakpoints.XLineBreakpointVerticalPlacement;
 import com.intellij.xdebugger.impl.FrontendXLineBreakpointVariant;
 import com.intellij.xdebugger.impl.FrontendXLineBreakpointVariantKt;
 import com.intellij.xdebugger.impl.VariantChoiceData;
@@ -64,7 +65,7 @@ public final class XBreakpointInstallUtils {
     boolean isLogging,
     @Nullable String logExpression
   ) {
-    var breakpointInfo = new XLineBreakpointInstallationInfo(types, position, temporary, isLogging, logExpression, canRemove);
+    var breakpointInfo = new XLineBreakpointInstallationInfo(types, position, XLineBreakpointVerticalPlacement.ON_LINE, temporary, isLogging, logExpression, canRemove);
     return toggleAndReturnLineBreakpointProxy(project, editor, breakpointInfo, selectVariantByPositionColumn);
   }
 
@@ -92,17 +93,16 @@ public final class XBreakpointInstallUtils {
     var breakpointManager = XDebugManagerProxy.getInstance().getBreakpointManagerProxy(project);
 
     for (XLineBreakpointTypeProxy type : breakpointInfo.getTypes()) {
-      XLineBreakpointProxy breakpoint = breakpointManager.findBreakpointAtLine(type, file, line);
+      XLineBreakpointProxy breakpoint = breakpointManager.findBreakpointAtLine(type, file, line, breakpointInfo.getPlacement());
       if (breakpoint != null) {
-        XBreakpointUIUtil.removeBreakpointIfPossible(project, breakpointInfo, breakpoint);
-        return CompletableFuture.completedFuture(null);
+        return XBreakpointUIUtil.removeBreakpointIfPossible(breakpointInfo, breakpoint).thenApply(v -> null);
       }
     }
     return FrontendXLineBreakpointVariantKt.computeBreakpointProxy(project, editor, breakpointInfo, variantChoice -> {
       assert !variantChoice.getVariants().isEmpty();
       ModalityUiUtil.invokeLaterIfNeeded(ModalityState.defaultModalityState(), () -> {
         for (XLineBreakpointTypeProxy type : breakpointInfo.getTypes()) {
-          if (breakpointManager.findBreakpointAtLine(type, file, line) != null) {
+          if (breakpointManager.findBreakpointAtLine(type, file, line, breakpointInfo.getPlacement()) != null) {
             variantChoice.breakpointRemoved();
             return;
           }
@@ -238,8 +238,8 @@ public final class XBreakpointInstallUtils {
                                                                                                      : ((FrontendXLineBreakpointVariant)o).getHighlightRange());
 
         if (breakpointOrVariant instanceof XLineBreakpointProxy existingBreakpoint) {
-          XBreakpointUIUtil.removeBreakpointIfPossible(project, breakpointInfo, existingBreakpoint);
-          variantChoice.breakpointRemoved();
+          XBreakpointUIUtil.removeBreakpointIfPossible(breakpointInfo, existingBreakpoint)
+            .thenRun(variantChoice::breakpointRemoved);
           return Unit.INSTANCE;
         }
 
@@ -247,8 +247,8 @@ public final class XBreakpointInstallUtils {
       }
       else {
         if (!breakpoints.isEmpty()) {
-          XBreakpointUIUtil.removeBreakpointIfPossible(project, breakpointInfo, breakpoints.toArray(XLineBreakpointProxy[]::new));
-          variantChoice.breakpointRemoved();
+          XBreakpointUIUtil.removeBreakpointIfPossible(breakpointInfo, breakpoints.toArray(XLineBreakpointProxy[]::new))
+            .thenRun(variantChoice::breakpointRemoved);
           return Unit.INSTANCE;
         }
 

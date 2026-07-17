@@ -7,7 +7,6 @@ import com.intellij.codeInsight.generation.MemberChooserObject
 import com.intellij.codeInsight.generation.MemberChooserObjectBase
 import com.intellij.codeInsight.generation.OverrideImplementsAnnotationsFilter
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.IntellijInternalApi
 import com.intellij.openapi.util.NlsContexts
 import com.intellij.openapi.util.NlsSafe
 import com.intellij.psi.PsiDocCommentOwner
@@ -32,6 +31,7 @@ import org.jetbrains.kotlin.analysis.api.renderer.base.annotations.KaRendererAnn
 import org.jetbrains.kotlin.analysis.api.renderer.base.contextReceivers.KaContextReceiversRenderer
 import org.jetbrains.kotlin.analysis.api.renderer.base.contextReceivers.renderers.KaContextReceiverLabelRenderer
 import org.jetbrains.kotlin.analysis.api.renderer.base.contextReceivers.renderers.KaContextReceiverListRenderer
+import org.jetbrains.kotlin.analysis.api.renderer.declarations.KaCallableReturnTypeFilter
 import org.jetbrains.kotlin.analysis.api.renderer.declarations.KaDeclarationRenderer
 import org.jetbrains.kotlin.analysis.api.renderer.declarations.bodies.KaFunctionLikeBodyRenderer
 import org.jetbrains.kotlin.analysis.api.renderer.declarations.impl.KaDeclarationRendererForSource
@@ -53,6 +53,7 @@ import org.jetbrains.kotlin.analysis.api.symbols.KaNamedFunctionSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaPropertySymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbolModality
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbolOrigin
+import org.jetbrains.kotlin.analysis.api.symbols.KaTypeAliasSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaTypeParameterSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaValueParameterSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.findClass
@@ -60,6 +61,8 @@ import org.jetbrains.kotlin.analysis.api.symbols.markers.KaContextParameterOwner
 import org.jetbrains.kotlin.analysis.api.symbols.name
 import org.jetbrains.kotlin.analysis.api.symbols.pointers.KaSymbolPointer
 import org.jetbrains.kotlin.analysis.api.symbols.symbol
+import org.jetbrains.kotlin.analysis.api.types.KaErrorType
+import org.jetbrains.kotlin.analysis.api.types.KaType
 import org.jetbrains.kotlin.analysis.utils.printer.PrettyPrinter
 import org.jetbrains.kotlin.idea.base.util.names.FqNames.OptInFqNames.isRequiresOptInFqName
 import org.jetbrains.kotlin.idea.core.TemplateKind
@@ -153,16 +156,16 @@ data class KaClassOrObjectSymbolChooserObject(
 ) :
     MemberChooserObjectBase(symbolText, symbolIcon)
 
-@IntellijInternalApi
+@ApiStatus.Internal
 fun createKtClassMember(
     memberInfo: KtClassMemberInfo,
     bodyType: BodyType,
     preferConstructorParameter: Boolean
 ): KtClassMember = KtClassMember(memberInfo, bodyType, preferConstructorParameter)
 
-context(_: KaSession)
 @KaExperimentalApi
 @ApiStatus.Internal
+context(_: KaSession)
 fun generateMember(
     project: Project,
     ktClassMember: KtClassMember?,
@@ -233,17 +236,15 @@ private fun getBodyType(
     }
 }
 
-context(_: KaSession)
 @KaExperimentalApi
 @ApiStatus.Internal
+context(_: KaSession)
 fun generateClassWithMembers(
     project: Project,
-    ktClassMember: KtClassMember?,
     symbol: KaClassSymbol,
     targetClass: KtClassOrObject?,
     mode: MemberGenerateMode = MemberGenerateMode.OVERRIDE
-): KtClassOrObject = with(ktClassMember) {
-
+): KtClassOrObject {
     val renderer = createRenderer(targetClass, mode, symbol)
 
     val newClass = generateClass(project, symbol, renderer, mode)
@@ -303,8 +304,8 @@ fun generateClassWithMembers(
 
 private fun KtClassOrObject.areConstructorPropertiesAllowed(): Boolean = this is KtClass && (isAnnotation() || isInline())
 
-context(_: KaSession)
 @KaExperimentalApi
+context(_: KaSession)
 private fun createRenderer(
     targetClass: KtClassOrObject?,
     mode: MemberGenerateMode,
@@ -438,7 +439,30 @@ private fun createRenderer(
     return renderer
 }
 
-@OptIn(KaExperimentalApi::class, KaImplementationDetail::class)
+// When the return type is an error type (e.g. from an unresolved or malformed type in compiled bytecode),
+// fall back to the PSI type reference text from the original declaration to avoid generating "ERROR" as the type.
+@OptIn(KaExperimentalApi::class)
+context(_: KaSession)
+private fun renderCallableWithPsiFallbackForErrorType(
+    targetSymbol: KaCallableSymbol,
+    renderer: KaDeclarationRenderer
+): String {
+    if (targetSymbol.returnType is KaErrorType) {
+        val psiReturnType = (targetSymbol.fakeOverrideOriginal.psi as? KtCallableDeclaration)?.typeReference?.text
+        if (psiReturnType != null) {
+            val rendererWithoutReturnType = renderer.with {
+                returnTypeFilter = object : KaCallableReturnTypeFilter {
+                    override fun shouldRenderReturnType(analysisSession: KaSession, type: KaType, symbol: KaCallableSymbol): Boolean =
+                        symbol !== targetSymbol
+                }
+            }
+            return targetSymbol.render(rendererWithoutReturnType) + ": $psiReturnType"
+        }
+    }
+    return targetSymbol.render(renderer)
+}
+
+@OptIn(KaExperimentalApi::class)
 fun KaDeclarationRenderer.Builder.withoutLabel() {
     contextReceiversRenderer = contextReceiversRenderer.with {
         contextReceiverListRenderer = ContextParametersListRenderer
@@ -518,18 +542,18 @@ private fun KaClassSymbol.hasRequiresOptInAnnotation(): Boolean = annotations.an
     isRequiresOptInFqName(annotation.classId?.asSingleFqName())
 }
 
-context(_: KaSession)
 @KaExperimentalApi
+context(_: KaSession)
 private fun generateConstructorParameter(
     project: Project,
     symbol: KaCallableSymbol,
     renderer: KaDeclarationRenderer,
 ): KtCallableDeclaration {
-    return KtPsiFactory(project).createParameter(symbol.render(renderer))
+    return KtPsiFactory(project).createParameter(renderMemberText(symbol, renderer))
 }
 
-context(_: KaSession)
 @KaExperimentalApi
+context(_: KaSession)
 private fun generateFunction(
     project: Project,
     symbol: KaFunctionSymbol,
@@ -553,7 +577,7 @@ private fun generateFunction(
     }
 
     val factory = KtPsiFactory(project)
-    val functionText = symbol.render(renderer) + body
+    val functionText = renderCallableWithPsiFallbackForErrorType(symbol, renderer) + body
 
     if (symbol is KaConstructorSymbol) {
         return if (symbol.isPrimary) {
@@ -565,8 +589,8 @@ private fun generateFunction(
     return factory.createFunction(functionText)
 }
 
-context(_: KaSession)
 @KaExperimentalApi
+context(_: KaSession)
 private fun generateClass(
     project: Project,
     symbol: KaClassSymbol,
@@ -629,6 +653,10 @@ private fun generateClass(
             is KaEnumEntrySymbol -> {
                 KtPsiFactory(project).createEnumEntry(declaration.render(renderer))
             }
+            is KaTypeAliasSymbol -> {
+                // Skip nested type aliases: expect/actual nested type aliases are forbidden
+                null
+            }
             else -> {
                 error("Unsupported declaration type: ${declaration::class}")
             }
@@ -660,8 +688,8 @@ private fun generateClass(
     return klass
 }
 
-context(_: KaSession)
 @KaExperimentalApi
+context(_: KaSession)
 private fun generateProperty(
     project: Project,
     symbol: KaPropertySymbol,
@@ -683,7 +711,7 @@ private fun generateProperty(
             }
         }
     } else ""
-    return KtPsiFactory(project).createProperty(symbol.render(renderer) + body)
+    return KtPsiFactory(project).createProperty(renderCallableWithPsiFallbackForErrorType(symbol, renderer) + body)
 }
 
 context(_: KaSession)
@@ -692,7 +720,8 @@ private fun isToKeepAbstract(
     symbol: KaCallableSymbol
 ): Boolean = mode != MemberGenerateMode.OVERRIDE && symbol.modality == KaSymbolModality.ABSTRACT
 
-context(_: KaSession) @OptIn(KaExperimentalApi::class)
+@OptIn(KaExperimentalApi::class)
+context(_: KaSession)
 fun <T> generateUnsupportedOrSuperCall(
     project: Project, symbol: T, bodyType: BodyType, canBeEmpty: Boolean = true
 ): String where T : KaCallableSymbol {

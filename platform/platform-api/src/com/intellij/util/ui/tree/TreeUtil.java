@@ -493,7 +493,7 @@ public final class TreeUtil {
   /** @deprecated use TreeUtil#treeTraverser() or TreeUtil#treeNodeTraverser() directly */
   @Deprecated(forRemoval = true)
   public static boolean traverseDepth(@NotNull TreeNode node, @NotNull Traverse traverse) {
-    return treeNodeTraverser(node).traverse(TreeTraversal.PRE_ORDER_DFS).processEach(traverse::accept);
+    return treeNodeTraverser(node).traverse(TreeTraversal.PRE_ORDER_DFS).processEach(node1 -> traverse.accept(node1));
   }
 
   /**
@@ -2012,7 +2012,7 @@ public final class TreeUtil {
     if (model == null) return Promises.rejectedPromise("tree model is not set");
     AsyncPromise<TreePath> promise = new AsyncPromise<>();
     // Code run under "invokeLaterIfNeeded" must not touch PSI, but this code touches it.
-    EdtInvocationManager.invokeLaterIfNeeded(() -> ReadAction.run(() -> promise.setResult(visitModel(model, visitor))));
+    EdtInvocationManager.invokeLaterIfNeeded(() -> ReadAction.runBlocking(() -> promise.setResult(visitModel(model, visitor))));
     return promise;
   }
 

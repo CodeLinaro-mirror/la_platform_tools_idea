@@ -7,7 +7,6 @@ import com.intellij.codeInsight.completion.LightCompletionTestCase;
 import com.intellij.codeInsight.lookup.Lookup;
 import com.intellij.codeInsight.lookup.LookupElementPresentation;
 import com.intellij.lang.java.JavaLanguage;
-import com.intellij.openapi.util.registry.Registry;
 import com.intellij.pom.java.JavaFeature;
 import com.intellij.pom.java.LanguageLevel;
 import com.intellij.psi.PsiMethod;
@@ -127,6 +126,24 @@ public class KeywordCompletionTest extends LightCompletionTestCase {
   public void testInstanceOf3() { doTest(); }
   public void testCatchFinally() { doTest(2, "catch", "finally"); }
   public void testSecondCatch() { doTest(2, "catch", "finally"); }
+  public void testSuperParen() {
+    configureFromFileText("Test.java", """
+      class X {
+        X() {
+          s<caret>
+        }
+      }
+      """);
+    complete();
+    type('(');
+    checkResultByText("""
+      class X {
+        X() {
+          super();
+        }
+      }
+      """);
+  }
   public void testSuper1() { doTest(1, "super"); }
   public void testSuper2() { doTest(0, "super"); }
   public void testSuper3() { doTest(); }
@@ -305,6 +322,54 @@ public class KeywordCompletionTest extends LightCompletionTestCase {
     assertContainsItems("import");
   }
 
+  public void testNoInstanceOfAfterUnknownVariable() {
+    configureFromFileText("Test.java", """
+      class Main {
+        void test() {
+          FooBar ins<caret>
+        }
+      }""");
+    complete();
+    checkResultByText("""
+      class Main {
+        void test() {
+          FooBar ins
+        }
+      }""");
+  }
+
+  public void testInstanceOfAfterKnownVariable() {
+    configureFromFileText("Test.java", """
+      class Main {
+        void test(Object fooBar) {
+          fooBar ins<caret>
+        }
+      }""");
+    complete();
+    checkResultByText("""
+      class Main {
+        void test(Object fooBar) {
+          fooBar instanceof <caret>
+        }
+      }""");
+  }
+
+  public void testNoSecondSpaceAfterKeyword() {
+    configureFromFileText("Test.java", """
+      class X {
+        void test(f<caret>)
+      }
+      """);
+    complete();
+    assertNotNull(getLookup());
+    type(' ');
+    checkResultByText("""
+      class X {
+        void test(final <caret>)
+      }
+      """);
+  }
+
   public void testPackageKeyword() {
     configureFromFileText("Test.java", """
       pa<caret>ckage hello.world;
@@ -348,6 +413,11 @@ public class KeywordCompletionTest extends LightCompletionTestCase {
   public void testNoPrimitivesAfterExpressions3() { doTest(); }
 
   public void testNoPrimitivesAfterExpressions4() { doTest(); }
+  
+  @NeedsIndex.SmartMode(reason = "Smart is necessary for injection")
+  public void testInInjection() {
+    doTest();
+  }
 
   private void doTest() {
     configureByTestName();
@@ -372,28 +442,4 @@ public class KeywordCompletionTest extends LightCompletionTestCase {
     configureByTestName();
     assertContainsItems(Arrays.stream(values).filter(Objects::nonNull).toArray(String[]::new));
   }
-  
-  public static class ModCommandBasedTest extends KeywordCompletionTest {
-    @Override
-    protected void setUp() throws Exception {
-      super.setUp();
-      Registry.get("ide.completion.modcommand").setValue(true, getTestRootDisposable());
-    }
-
-    @Override
-    public void testNoExtraArrowMultiCaret() {
-      configureByTestName();
-      // Intermittently no-variants delegator appears here adding a second completion item 
-      // ResourceBundle (as it contains 'SO'), and now no-variants delegators 
-      // gets no information that we have no other variants.
-      selectItem(myItems[0]);
-      checkResultByTestName();
-    }
-
-    @Override
-    public void testInstanceofNegation() {
-      // skip; TODO: support custom completion chars
-    }
-  }
-
 }

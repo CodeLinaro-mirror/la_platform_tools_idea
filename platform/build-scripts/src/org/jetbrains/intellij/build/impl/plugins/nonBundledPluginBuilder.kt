@@ -3,7 +3,6 @@
 
 package org.jetbrains.intellij.build.impl.plugins
 
-import com.fasterxml.jackson.jr.ob.JSON
 import com.intellij.openapi.util.io.NioFiles
 import com.jetbrains.plugin.blockmap.core.BlockMap
 import com.jetbrains.plugin.blockmap.core.FileHash
@@ -47,19 +46,22 @@ import org.jetbrains.intellij.build.impl.generatePluginRepositoryMetaFile
 import org.jetbrains.intellij.build.impl.handleCustomPlatformSpecificAssets
 import org.jetbrains.intellij.build.impl.nonBundledPluginsStageDir
 import org.jetbrains.intellij.build.impl.projectStructureMapping.DistributionFileEntry
+import org.jetbrains.intellij.build.impl.validateCoScramblePluginsAreNotPublished
 import org.jetbrains.intellij.build.io.W_CREATE_NEW
 import org.jetbrains.intellij.build.io.ZipArchiver
 import org.jetbrains.intellij.build.io.archiveDir
 import org.jetbrains.intellij.build.io.writeNewFile
 import org.jetbrains.intellij.build.io.writeNewZipWithoutIndex
 import org.jetbrains.intellij.build.io.zipWithCompression
-import org.jetbrains.intellij.build.productLayout.util.mapConcurrent
+import org.jetbrains.intellij.build.mapConcurrent
 import org.jetbrains.intellij.build.telemetry.TraceManager.spanBuilder
 import org.jetbrains.intellij.build.telemetry.use
+import tools.jackson.jr.ob.JSON
 import java.nio.ByteBuffer
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentLinkedQueue
+import kotlin.io.path.invariantSeparatorsPathString
 
 internal suspend fun buildNonBundledPlugins(
   pluginsToPublish: Set<PluginLayout>,
@@ -100,6 +102,7 @@ private suspend fun buildNonBundledPlugins(
   if (pluginsToPublish.isEmpty()) {
     return emptyList()
   }
+  validateCoScramblePluginsAreNotPublished(pluginsToPublish)
 
   val buildKeymapPluginsTask = if (context.options.buildStepsToSkip.contains(BuildOptions.KEYMAP_PLUGINS_STEP)) {
     null
@@ -121,6 +124,10 @@ private suspend fun buildNonBundledPlugins(
   val json: Lazy<JSON> = lazy { JSON.std.without(JSON.Feature.USE_FIELDS) }
   val pluginDirs = getOsSpecificNonBundledPluginsDirs(context)
   val mappings = pluginDirs.mapNotNull { (os, arch, targetDir) ->
+    if (os != null && arch != null && !context.shouldBuildDistributionForOS(os, arch)) {
+      return@mapNotNull null
+    }
+
     val filteredPlugins = pluginsToPublish.filter {
       satisfiesOsArchRestrictions(plugin = it, osFamily = os, arch = arch)
     }.sortedWith(PLUGIN_LAYOUT_COMPARATOR_BY_MAIN_MODULE)
@@ -190,10 +197,10 @@ private suspend fun buildNonBundledPlugins(
           json = json,
         )
 
-        if (isPluginValidationEnabled) {
+        if (isPluginValidationEnabled && plugin.mainModule != "intellij.agent.workbench.plugin") {
           spanBuilder("plugin validation").use { span ->
             if (Files.notExists(destFile)) {
-              span.addEvent("doesn't exist, skipped", Attributes.of(AttributeKey.stringKey("path"), "$destFile"))
+              span.addEvent("doesn't exist, skipped", Attributes.of(AttributeKey.stringKey("path"), destFile.invariantSeparatorsPathString))
             }
             else {
               validatePlugin(file = destFile, span = span, context = context)
@@ -205,7 +212,6 @@ private suspend fun buildNonBundledPlugins(
       entries
     }
   }.flatten()
-
 
   val helpPlugin = buildHelpPlugin(context.pluginBuildNumber, context)
   if (helpPlugin != null) {
@@ -268,7 +274,8 @@ private fun getOsSpecificNonBundledPluginsDirs(context: BuildContext): List<Trip
     val arch = it.second
     if (os == null && arch == null) {
       Triple(null, null, stageDir)
-    } else {
+    }
+    else {
       val archName = arch?.name ?: "all"
       val path = stageDir.resolve("dist.${os!!.distSuffix}.$archName")
       Triple(os, arch, path)
@@ -395,10 +402,10 @@ private fun validatePlugin(file: Path, span: Span, context: BuildContext) {
     val problemType = problem::class.java.simpleName
     span.addEvent(
       "plugin validation failed", Attributes.of(
-      AttributeKey.stringKey("id"), "$id",
-      AttributeKey.stringKey("path"), "$file",
-      AttributeKey.stringKey("problemType"), problemType,
-    )
+        AttributeKey.stringKey("id"), "$id",
+        AttributeKey.stringKey("path"), "$file",
+        AttributeKey.stringKey("problemType"), problemType,
+      )
     )
     context.messages.reportBuildProblem(
       description = "${id ?: file}, $problemType: $problem",

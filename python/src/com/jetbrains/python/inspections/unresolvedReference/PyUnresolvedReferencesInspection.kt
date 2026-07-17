@@ -76,22 +76,36 @@ class PyUnresolvedReferencesInspection : PyUnresolvedReferencesInspectionBase() 
   @JvmField
   var ignoredIdentifiers: List<String> = ArrayList()
 
+  @JvmField
+  var strictClassAttributes: Boolean = true
+
+  @JvmField
+  var strictInstanceAttributes: Boolean = true
+
   override fun createVisitor(holder: ProblemsHolder, session: LocalInspectionToolSession): PyUnresolvedReferencesVisitor =
     Visitor(holder,
             ignoredIdentifiers,
             PyInspectionVisitor.getContext(session),
-            getEffectiveLanguageLevel(session.file))
+            getEffectiveLanguageLevel(session.file),
+            strictClassAttributes,
+            strictInstanceAttributes)
 
   override fun getOptionsPane(): OptPane = OptPane.pane(
     OptPane.stringList("ignoredIdentifiers",
-                       PyPsiBundle.message("INSP.unresolved.refs.ignore.references.label")))
+                       PyPsiBundle.message("INSP.unresolved.refs.ignore.references.label")),
+    OptPane.checkbox("strictClassAttributes",
+                     PyPsiBundle.message("INSP.unresolved.refs.strict.class.attr.option")),
+    OptPane.checkbox("strictInstanceAttributes",
+                     PyPsiBundle.message("INSP.unresolved.refs.strict.instance.attr.option")))
 
   private class Visitor(
     holder: ProblemsHolder,
     ignoredIdentifiers: List<String>,
     context: TypeEvalContext,
     languageLevel: LanguageLevel,
-  ) : PyUnresolvedReferencesVisitor(holder, ignoredIdentifiers, context, languageLevel) {
+    strictClassAttributes: Boolean,
+    strictInstanceAttributes: Boolean,
+  ) : PyUnresolvedReferencesVisitor(holder, ignoredIdentifiers, context, languageLevel, strictClassAttributes, strictInstanceAttributes) {
 
     override fun getInstallPackageQuickFixes(
       node: PyElement,
@@ -196,9 +210,7 @@ class PyUnresolvedReferencesInspection : PyUnresolvedReferencesInspectionBase() 
             project.getService(PySourceRootDetectionService::class.java).onSourceRootDetected(containingDirectory)
           }
         }
-        return PyMarkDirectoryAsSourceRootQuickFix(project, containingDirectory).also {
-
-        }
+        return PyMarkDirectoryAsSourceRootQuickFix(project, containingDirectory)
       }
       return null
     }
@@ -279,7 +291,7 @@ class PyUnresolvedReferencesInspection : PyUnresolvedReferencesInspectionBase() 
       return result
     }
 
-    override fun getPluginQuickFixes(fixes: List<LocalQuickFix>, reference: PsiReference) {
+    override fun getPluginQuickFixes(fixes: MutableList<LocalQuickFix>, reference: PsiReference) {
       for (provider in PyUnresolvedReferenceQuickFixProvider.EP_NAME.extensionList) {
         provider.registerQuickFixes(reference, fixes)
       }

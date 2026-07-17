@@ -33,9 +33,6 @@ public interface EntityPointer<out E : WorkspaceEntity> {
   //   cases don't always break the type variance.
   public fun isPointerTo(entity: @UnsafeVariance E): Boolean
 
-  /**
-   * Checks whether this and [other] references point to the same type of entity.
-   */
   @ApiStatus.Experimental
   public fun isPointerToEntityOfSameTypeAs(other: EntityPointer<*>): Boolean
 

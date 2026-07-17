@@ -5,7 +5,6 @@ package com.jetbrains.lsp.protocol
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.nullable
-import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.JsonElement
 
 /**
@@ -392,13 +391,20 @@ object Diagnostics {
     errorSerializer = DiagnosticServerCancellationData.serializer().nullable,
   )
 
+  val DocumentCompilationErrorsRequestType: RequestType<DocumentDiagnosticParams, DocumentDiagnosticReport, DiagnosticServerCancellationData?> = RequestType(
+    method = "textDocument/compilationErrors",
+    paramsSerializer = DocumentDiagnosticParams.serializer(),
+    resultSerializer = DocumentDiagnosticReport.serializer(),
+    errorSerializer = DiagnosticServerCancellationData.serializer().nullable,
+  )
+
   /**
    * @see <a href="https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#diagnostic_refresh">workspace/diagnostic/refresh (LSP spec)</a>
    */
-  val Refresh: RequestType<Unit, Unit, Unit> = RequestType(
+  val Refresh: RequestType<Nothing?, Nothing?, Nothing?> = RequestType(
     method = "workspace/diagnostic/refresh",
-    paramsSerializer = Unit.serializer(),
-    resultSerializer = Unit.serializer(),
-    errorSerializer = Unit.serializer(),
+    paramsSerializer = NoValueSerializer,
+    resultSerializer = NoValueSerializer,
+    errorSerializer = NoValueSerializer,
   )
 }

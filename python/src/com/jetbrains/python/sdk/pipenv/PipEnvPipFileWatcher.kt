@@ -6,7 +6,6 @@ import com.intellij.notification.NotificationListener
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.edtWriteAction
-import com.intellij.openapi.application.writeAction
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.event.DocumentEvent
@@ -31,7 +30,7 @@ import com.jetbrains.python.sdk.findAmongRoots
 import com.jetbrains.python.sdk.pythonSdk
 import com.jetbrains.python.sdk.skeleton.PySkeletonUtil
 import com.jetbrains.python.statistics.PipfileWatcherIdsHolder.Companion.RUN_PIPENV_LOCK_SUGGESTION
-import com.jetbrains.python.util.ShowingMessageErrorSync
+import com.jetbrains.python.errorProcessing.ErrorSink
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.nio.file.Path
@@ -78,7 +77,7 @@ internal class PipEnvPipFileWatcher : EditorFactoryListener {
   private suspend fun notifyPipFileChanged(module: Module) {
     if (module.getUserData(notificationActive) == true) return
     val title = when {
-      getPipFileLock(module) == null -> PyBundle.message("python.sdk.pipenv.pip.file.lock.not.found")
+      findAmongRoots(module, PIP_FILE_LOCK) == null -> PyBundle.message("python.sdk.pipenv.pip.file.lock.not.found")
       else -> PyBundle.message("python.sdk.pipenv.pip.file.lock.out.of.date")
     }
     val content = PyBundle.message("python.sdk.pipenv.pip.file.notification.content")
@@ -93,7 +92,7 @@ internal class PipEnvPipFileWatcher : EditorFactoryListener {
         notification.expire()
         module.putUserData(notificationActive, null)
         PyPackageCoroutine.launch(module.project) {
-          writeAction {
+          edtWriteAction {
             FileDocumentManager.getInstance().saveAllDocuments()
           }
           when (event.description) {
@@ -116,10 +115,10 @@ internal class PipEnvPipFileWatcher : EditorFactoryListener {
       withBackgroundProgress(module.project, description) {
         val sdk = module.pythonSdk ?: return@withBackgroundProgress
         runPipEnv(sdk.associatedModulePath?.let { Path.of(it) }, *args.toTypedArray()).onFailure {
-          ShowingMessageErrorSync.emit(it, module.project)
+          ErrorSink().emit(it, module.project)
         }
 
-        withContext(Dispatchers.Default) {
+        withContext(Dispatchers.IO) {
           PySkeletonUtil.getSitePackagesDirectory(sdk)?.refresh(true, true)
           sdk.associatedModuleDir?.refresh(true, false)
         }
@@ -129,18 +128,15 @@ internal class PipEnvPipFileWatcher : EditorFactoryListener {
 
   private suspend fun isPipFileEditor(editor: Editor): Boolean {
     val file = editor.document.virtualFile ?: return false
-    if (file.name != PipEnvFileHelper.PIP_FILE) return false
+    if (file.name != PIP_FILE) return false
     val project = editor.project ?: return false
     val module = file.getModule(project) ?: return false
-    if (PipEnvFileHelper.pipFile(module) != file) return false
+    if (findAmongRoots(module, PIP_FILE) != file) return false
     return module.pythonSdk?.isPipEnv == true
   }
 
   private val Document.virtualFile: VirtualFile?
     get() = FileDocumentManager.getInstance().getFile(this)
 
-  private fun VirtualFile.getModule(project: Project): Module? =
-    ModuleUtil.findModuleForFile(this, project)
-
-  private suspend fun getPipFileLock(module: Module): VirtualFile? = findAmongRoots(module, PipEnvFileHelper.PIP_FILE_LOCK)
+  private fun VirtualFile.getModule(project: Project): Module? = ModuleUtil.findModuleForFile(this, project)
 }

@@ -201,8 +201,7 @@ private fun createJewelComposePanel(
         val causePluginId = PluginUtil.getInstance().findPluginId(Throwable("Detecting Guilty Plugin"))
         Logger.getInstance(JewelComposePanelWrapper::class.java)
             .error(
-                "Backend IDE mode does not support Compose UI and Jewel Components. " +
-                    "Split the plugin to .frontend and .backend modules. " +
+                "Backend IDE mode does not support Compose UI and Jewel Components. Split the plugin to .frontend and .backend modules. " +
                     "See https://plugins.jetbrains.com/docs/intellij/split-mode-and-remote-development.html",
                 PluginException("Plugin uses Compose UI on backend", causePluginId),
             )
@@ -229,6 +228,7 @@ public class JewelComposePanelWrapper(private val focusOnClickInside: Boolean) :
 
     init {
         super.addToCenter(composePanel)
+        composePanel.isClearFocusOnMouseDownEnabled = false
     }
 
     override fun addImpl(comp: Component, constraints: Any?, index: Int) {

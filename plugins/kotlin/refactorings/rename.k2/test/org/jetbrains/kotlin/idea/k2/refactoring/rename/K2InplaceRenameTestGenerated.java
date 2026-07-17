@@ -3,7 +3,6 @@
 package org.jetbrains.kotlin.idea.k2.refactoring.rename;
 
 import com.intellij.testFramework.TestDataPath;
-import org.jetbrains.kotlin.idea.base.plugin.KotlinPluginMode;
 import org.jetbrains.kotlin.idea.base.test.TestRoot;
 import org.jetbrains.kotlin.idea.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils;
@@ -20,12 +19,6 @@ import org.junit.runner.RunWith;
 @RunWith(JUnit3RunnerWithInners.class)
 @TestMetadata("../../idea/tests/testData/refactoring/rename/inplace")
 public class K2InplaceRenameTestGenerated extends AbstractK2InplaceRenameTest {
-    @java.lang.Override
-    @org.jetbrains.annotations.NotNull
-    public final KotlinPluginMode getPluginMode() {
-        return KotlinPluginMode.K2;
-    }
-
     private void runTest(String testDataFilePath) throws Exception {
         KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
     }
@@ -465,6 +458,11 @@ public class K2InplaceRenameTestGenerated extends AbstractK2InplaceRenameTest {
         runTest("../../idea/tests/testData/refactoring/rename/inplace/HidingTypeParameterByContainingClassTypeParameter1.kt");
     }
 
+    @TestMetadata("ImportAliasConstructor.kt")
+    public void testImportAliasConstructor() throws Exception {
+        runTest("../../idea/tests/testData/refactoring/rename/inplace/ImportAliasConstructor.kt");
+    }
+
     @TestMetadata("InvokeToFoo.kt")
     public void testInvokeToFoo() throws Exception {
         runTest("../../idea/tests/testData/refactoring/rename/inplace/InvokeToFoo.kt");
@@ -580,6 +578,31 @@ public class K2InplaceRenameTestGenerated extends AbstractK2InplaceRenameTest {
         runTest("../../idea/tests/testData/refactoring/rename/inplace/MultiDeclaration.kt");
     }
 
+    @TestMetadata("NameBasedDestructuringFull.kt")
+    public void testNameBasedDestructuringFull() throws Exception {
+        runTest("../../idea/tests/testData/refactoring/rename/inplace/NameBasedDestructuringFull.kt");
+    }
+
+    @TestMetadata("NameBasedDestructuringFullFromEntry.kt")
+    public void testNameBasedDestructuringFullFromEntry() throws Exception {
+        runTest("../../idea/tests/testData/refactoring/rename/inplace/NameBasedDestructuringFullFromEntry.kt");
+    }
+
+    @TestMetadata("NameBasedDestructuringFullFromUsage.kt")
+    public void testNameBasedDestructuringFullFromUsage() throws Exception {
+        runTest("../../idea/tests/testData/refactoring/rename/inplace/NameBasedDestructuringFullFromUsage.kt");
+    }
+
+    @TestMetadata("NameBasedDestructuringShort.kt")
+    public void testNameBasedDestructuringShort() throws Exception {
+        runTest("../../idea/tests/testData/refactoring/rename/inplace/NameBasedDestructuringShort.kt");
+    }
+
+    @TestMetadata("NameBasedDestructuringShortFromUsage.kt")
+    public void testNameBasedDestructuringShortFromUsage() throws Exception {
+        runTest("../../idea/tests/testData/refactoring/rename/inplace/NameBasedDestructuringShortFromUsage.kt");
+    }
+
     @TestMetadata("NamedArguments.kt")
     public void testNamedArguments() throws Exception {
         runTest("../../idea/tests/testData/refactoring/rename/inplace/NamedArguments.kt");
@@ -613,6 +636,26 @@ public class K2InplaceRenameTestGenerated extends AbstractK2InplaceRenameTest {
     @TestMetadata("ParameterRedecklaration.kt")
     public void testParameterRedecklaration() throws Exception {
         runTest("../../idea/tests/testData/refactoring/rename/inplace/ParameterRedecklaration.kt");
+    }
+
+    @TestMetadata("PositionBasedDestructuring.kt")
+    public void testPositionBasedDestructuring() throws Exception {
+        runTest("../../idea/tests/testData/refactoring/rename/inplace/PositionBasedDestructuring.kt");
+    }
+
+    @TestMetadata("PositionBasedDestructuringFromUsage.kt")
+    public void testPositionBasedDestructuringFromUsage() throws Exception {
+        runTest("../../idea/tests/testData/refactoring/rename/inplace/PositionBasedDestructuringFromUsage.kt");
+    }
+
+    @TestMetadata("PositionBasedDestructuringFull.kt")
+    public void testPositionBasedDestructuringFull() throws Exception {
+        runTest("../../idea/tests/testData/refactoring/rename/inplace/PositionBasedDestructuringFull.kt");
+    }
+
+    @TestMetadata("PositionBasedDestructuringFullFromUsage.kt")
+    public void testPositionBasedDestructuringFullFromUsage() throws Exception {
+        runTest("../../idea/tests/testData/refactoring/rename/inplace/PositionBasedDestructuringFullFromUsage.kt");
     }
 
     @TestMetadata("PropertyFunctionConflict.kt")

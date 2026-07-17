@@ -365,19 +365,16 @@ private fun SelectableLazyColumnImpl(
     //  - Compare `state.selectedKeys` before/after by identity to detect real changes (the state replaces the set).
     //  - Translate keys→indices via the current `container` so callers that want indices receive them right away.
     //  - Deduplicate with `lastEmittedIndices` so both this synchronous path and the effect path don’t double emit.
-    //  - Call via `latestOnSelectedIndexesChange` (rememberUpdatedState) so the callback is always current even
-    //    though this object is remembered - without this the item modifier captures the initial lambda and never
-    //    sees later recompositions of the caller.
     //
     // Why a wrapper? In flows like a List/ComboBox dropdown, the popup is disposed as a consequence of the click.
     // If we waited for an effect to run, the component might already be gone and the emission would be lost.
     val notifyingPointerEventActions =
-        remember(pointerEventActions, container, state) {
+        remember(pointerEventActions, container, state, onSelectedIndexesChange) {
             object : PointerEventActions {
                 private fun emitIfSelectionChanged(before: Set<Any>) {
                     state.selectedIndicesIfChanged(before, container, lastEmittedIndices)?.let { indices ->
                         lastEmittedIndices = indices
-                        latestOnSelectedIndexesChange.value(indices)
+                        onSelectedIndexesChange(indices)
                     }
                 }
 
@@ -435,7 +432,7 @@ private fun SelectableLazyColumnImpl(
     //  - Only emit if the delegate reports `handled` and `selectedKeys` has changed since the event.
     //  - Use the current `container` to compute indices and dedupe with `lastEmittedIndices`.
     val notifyingKeyActions =
-        remember(keyActions, container, state) {
+        remember(keyActions, container, state, onSelectedIndexesChange) {
             object : KeyActions {
                 override val keybindings
                     get() = keyActions.keybindings
@@ -456,7 +453,7 @@ private fun SelectableLazyColumnImpl(
                         if (handled) {
                             state.selectedIndicesIfChanged(before, container, lastEmittedIndices)?.let { indices ->
                                 lastEmittedIndices = indices
-                                latestOnSelectedIndexesChange.value(indices)
+                                onSelectedIndexesChange(indices)
                             }
                         }
                         handled

@@ -128,7 +128,7 @@
   files:
   - name: $PROJECT_DIR$/community/lib/ant/lib/ant.jar
   reason: withProjectLibrary
-- name: lib/gradle-api-9.3.0.jar
+- name: lib/gradle-api-9.6.0.jar
   library: Gradle
   files:
   - name: $MAVEN_REPOSITORY$/org/jetbrains/intellij/deps/gradle-api/9/gradle-api-9.jar
@@ -137,24 +137,45 @@
   modules:
   - name: intellij.gradle.plugin
   - name: intellij.gradle.common
-  - name: intellij.gradle.toolingProxy
-  contentModules:
-  - name: intellij.gradle
 - name: lib/gradle-tooling-extension-api.jar
   modules:
   - name: intellij.gradle.toolingExtension
 - name: lib/gradle-tooling-extension-impl.jar
   modules:
   - name: intellij.gradle.toolingExtension.impl
+- name: lib/gradle-tooling-proxy.jar
+  modules:
+  - name: intellij.gradle.toolingProxy
+- name: lib/groovy-ant.jar
+  modules:
+  - name: intellij.libraries.groovy.ant
+    libraries:
+      groovy-ant:
+      - name: $MAVEN_REPOSITORY$/org/codehaus/groovy/groovy-ant/3/groovy-ant-3.jar
+- name: lib/groovy.jar
+  modules:
+  - name: intellij.libraries.groovy
+    libraries:
+      groovy:
+      - name: $MAVEN_REPOSITORY$/org/codehaus/groovy/groovy/3/groovy-3.jar
+- name: lib/intellij.gradle.jar
+  contentModules:
+  - name: intellij.gradle
+- name: lib/intellij.gradle.settings.jar
+  contentModules:
+  - name: intellij.gradle.settings
+- name: lib/modules/intellij.gradle.completion.ex.jar
+  contentModules:
+  - name: intellij.gradle.completion.ex
 - name: lib/modules/intellij.gradle.completion.jar
   contentModules:
   - name: intellij.gradle.completion
-- name: lib/modules/intellij.gradle.kotlin.jar
+- name: lib/modules/intellij.gradle.completion.kotlin.jar
   contentModules:
-  - name: intellij.gradle.kotlin
+  - name: intellij.gradle.completion.kotlin
+- name: lib/modules/intellij.gradle.completion.toml.jar
+  contentModules:
+  - name: intellij.gradle.completion.toml
 - name: lib/modules/intellij.gradle.properties.jar
   contentModules:
   - name: intellij.gradle.properties
-- name: lib/modules/intellij.gradle.toml.jar
-  contentModules:
-  - name: intellij.gradle.toml

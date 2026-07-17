@@ -2,16 +2,18 @@
 package org.jetbrains.kotlin.gradle.scripting.k2.inspections
 
 import org.gradle.util.GradleVersion
-import org.jetbrains.kotlin.gradle.scripting.k2.K2GradleCodeInsightTestCase
+import org.jetbrains.kotlin.gradle.K2GradleCodeInsightTestCase
 import org.jetbrains.plugins.gradle.codeInspection.GradleAvoidDuplicateDependenciesInspection
 import org.jetbrains.plugins.gradle.frameworkSupport.GradleDsl
 import org.jetbrains.plugins.gradle.testFramework.GradleTestFixtureBuilder
 import org.jetbrains.plugins.gradle.testFramework.annotations.AllGradleVersionsSource
-import org.jetbrains.plugins.gradle.testFramework.util.assumeThatGradleIsAtLeast
-import org.jetbrains.plugins.gradle.testFramework.util.assumeThatKotlinDslScriptsModelImportIsSupported
-import org.jetbrains.plugins.gradle.testFramework.util.assumeThatVersionCatalogsAreSupported
+import org.jetbrains.plugins.gradle.testFramework.util.KOTLIN_DSL_DELEGATING_PROPERTY_SUPPORTED_VERSIONS
+import org.jetbrains.plugins.gradle.testFramework.util.KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS
+import org.jetbrains.plugins.gradle.testFramework.util.VERSION_CATALOGS_SUPPORTED_VERSIONS
+import org.jetbrains.plugins.gradle.testFramework.util.assertThatKotlinDslScriptsModelImportIsSupported
 import org.jetbrains.plugins.gradle.testFramework.util.withBuildFile
 import org.jetbrains.plugins.gradle.testFramework.util.withSettingsFile
+import org.jetbrains.plugins.gradle.tooling.annotation.TargetVersions
 import org.junit.jupiter.params.ParameterizedTest
 
 class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCase() {
@@ -21,9 +23,8 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
         withVersionCatalogs: Boolean,
         test: () -> Unit
     ) {
-        assumeThatKotlinDslScriptsModelImportIsSupported(gradleVersion)
+        assertThatKotlinDslScriptsModelImportIsSupported(gradleVersion)
         val fixture = if (withVersionCatalogs) {
-            assumeThatVersionCatalogsAreSupported(gradleVersion)
             WITH_CUSTOM_CONFIGURATIONS_AND_VERSION_CATALOGS_FIXTURE
         } else {
             WITH_CUSTOM_CONFIGURATIONS_FIXTURE
@@ -36,6 +37,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testSingleDependency(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testHighlighting(
@@ -50,6 +52,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testDifferentDependencies(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testHighlighting(
@@ -66,6 +69,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testSimpleSameDependency(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testHighlighting(
@@ -81,6 +85,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testSameDependencyDifferentConfigurations(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testHighlighting(
@@ -96,6 +101,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testSameDependencyInDifferentBlocks(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testHighlighting(
@@ -114,6 +120,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testSameDependencyConfigurationBlock(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testHighlighting(
@@ -129,6 +136,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testSameDependencyNamedArguments(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testHighlighting(
@@ -144,6 +152,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testSameDependencyNoVersion(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testHighlighting(
@@ -159,6 +168,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testDifferentVersions(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testHighlighting(
@@ -175,6 +185,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(VERSION_CATALOGS_SUPPORTED_VERSIONS)
     fun testSimpleVersionCatalogsResolve(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = true) {
             testHighlighting(
@@ -190,6 +201,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(VERSION_CATALOGS_SUPPORTED_VERSIONS)
     fun testSimpleVersionCatalogsResolveNoVersion(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = true) {
             testHighlighting(
@@ -205,6 +217,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(VERSION_CATALOGS_SUPPORTED_VERSIONS)
     fun testVersionCatalogsResolve(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = true) {
             testHighlighting(
@@ -228,6 +241,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(VERSION_CATALOGS_SUPPORTED_VERSIONS)
     fun testVersionCatalogsResolveVersionRef(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = true) {
             testHighlighting(
@@ -251,6 +265,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(VERSION_CATALOGS_SUPPORTED_VERSIONS)
     fun testVersionCatalogsResolveMultiline(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = true) {
             testHighlighting(
@@ -266,6 +281,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testSameVersionVal(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testHighlighting(
@@ -282,6 +298,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testStringInterpolation(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testHighlighting(
@@ -300,6 +317,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testNamedArgumentsVals(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testHighlighting(
@@ -319,6 +337,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testCoordinateVal(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testHighlighting(
@@ -335,6 +354,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testDifferentVersionSameNameVal(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testHighlighting(
@@ -354,6 +374,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testDifferentVersionSameNameValNamedArguments(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testHighlighting(
@@ -373,6 +394,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS, KOTLIN_DSL_DELEGATING_PROPERTY_SUPPORTED_VERSIONS)
     fun testCustomConfigurationSimple(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testHighlighting(
@@ -389,6 +411,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(VERSION_CATALOGS_SUPPORTED_VERSIONS, KOTLIN_DSL_DELEGATING_PROPERTY_SUPPORTED_VERSIONS)
     fun testCustomConfigurationVersionCatalog(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = true) {
             testHighlighting(
@@ -405,6 +428,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testSameKotlinArg(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testHighlighting(
@@ -420,6 +444,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testDifferentKotlinArg(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testHighlighting(
@@ -435,6 +460,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testKotlinArgVar(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testHighlighting(
@@ -451,6 +477,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testSameKotlinArgDifferentVals(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testHighlighting(
@@ -468,6 +495,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testSameKotlinArgWithSameVersion(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testHighlighting(
@@ -483,6 +511,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testSameKotlinArgWithDifferentVersion(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testHighlighting(
@@ -498,6 +527,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testSameKotlinArgWithSameVersionVals(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testHighlighting(
@@ -515,6 +545,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testSameKotlinArgWithDifferentVersionVals(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testHighlighting(
@@ -532,6 +563,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testEquivalentKotlinArgWithSingleString(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testHighlighting(
@@ -547,6 +579,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testEquivalentKotlinArgWithNamedArguments(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testHighlighting(
@@ -562,6 +595,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testEquivalentKotlinArgWithSingleStringAndVersions(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testHighlighting(
@@ -577,6 +611,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testEquivalentKotlinArgWithNamedArgumentsAndVersions(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testHighlighting(
@@ -592,6 +627,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testNotEquivalentKotlinArg(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testHighlighting(
@@ -611,6 +647,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testIgnoreOtherDependencyBlocks(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testHighlighting(
@@ -630,6 +667,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testRemoveSimple(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testIntention(
@@ -651,6 +689,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testRemoveSimpleMultiple(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testIntention(
@@ -673,6 +712,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testRemoveSimpleUnselected(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testIntention(
@@ -699,6 +739,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testRemoveNamedArguments(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testIntention(
@@ -720,6 +761,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testNoRemoveNamedArgumentsAndSimpleMix(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testNoIntentions(
@@ -745,6 +787,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testRemoveVals(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testIntention(
@@ -769,6 +812,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testNoRemoveDifferentConfiguration(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testNoIntentions(
@@ -794,6 +838,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testNoRemoveWithConfigurationBlock(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testNoIntentions(
@@ -819,6 +864,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testNoRemoveDifferentExtraArguments(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testNoIntentions(
@@ -844,6 +890,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testAnnotationProcessorSeparation(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testHighlighting(
@@ -859,6 +906,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testAnnotationProcessorGrouping(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testHighlighting(
@@ -875,6 +923,7 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions(KOTLIN_DSL_SCRIPTS_MODEL_IMPORT_SUPPORTED_VERSIONS)
     fun testAnnotationProcessorDifferentGrouping(gradleVersion: GradleVersion) {
         runTest(gradleVersion, withVersionCatalogs = false) {
             testHighlighting(
@@ -891,10 +940,8 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions("7.0+", reason = "Gradle 7.0+ supports type-safe project dependencies")
     fun `test different unresolvable accessors are not duplicates`(gradleVersion: GradleVersion) {
-        assumeThatGradleIsAtLeast(gradleVersion, "7.0") {
-            "Gradle 7.0+ supports type-safe project dependencies"
-        }
         test(gradleVersion, WITH_TYPE_SAFE_PROJECT_DEPENDENCIES) {
             codeInsightFixture.enableInspections(GradleAvoidDuplicateDependenciesInspection::class.java)
             testHighlighting(
@@ -910,10 +957,8 @@ class KotlinAvoidDuplicateDependenciesInspectionTest : K2GradleCodeInsightTestCa
 
     @ParameterizedTest
     @AllGradleVersionsSource
+    @TargetVersions("7.0+", reason = "Gradle 7.0+ supports type-safe project dependencies")
     fun `test identical unresolvable accessors are duplicates`(gradleVersion: GradleVersion) {
-        assumeThatGradleIsAtLeast(gradleVersion, "7.0") {
-            "Gradle 7.0+ supports type-safe project dependencies"
-        }
         test(gradleVersion, WITH_TYPE_SAFE_PROJECT_DEPENDENCIES) {
             codeInsightFixture.enableInspections(GradleAvoidDuplicateDependenciesInspection::class.java)
             testHighlighting(

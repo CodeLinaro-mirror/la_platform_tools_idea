@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.ide.projectWizard
 
 import com.intellij.ide.util.projectWizard.ModuleBuilder
@@ -13,14 +13,14 @@ import com.intellij.internal.statistic.eventLog.events.EventPair
 import com.intellij.internal.statistic.eventLog.events.IntEventField
 import com.intellij.internal.statistic.eventLog.events.PrimitiveEventField
 import com.intellij.internal.statistic.eventLog.events.VarargEventId
-import com.intellij.internal.statistic.eventLog.validator.ValidationResultType
-import com.intellij.internal.statistic.eventLog.validator.rules.EventContext
 import com.intellij.internal.statistic.eventLog.validator.rules.impl.CustomValidationRule
 import com.intellij.internal.statistic.service.fus.collectors.CounterUsagesCollector
 import com.intellij.internal.statistic.utils.getPluginInfo
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.util.lang.JavaVersion
+import com.jetbrains.fus.reporting.api.IEventContext
+import com.jetbrains.fus.reporting.api.ValidationResultType
 import org.jetbrains.annotations.ApiStatus
 import java.lang.Integer.min
 import com.intellij.ide.projectWizard.NewProjectWizardCollector.Base.logAddSampleCodeChanged as logAddSampleCodeChangedImpl
@@ -37,7 +37,7 @@ object NewProjectWizardCollector : CounterUsagesCollector() {
 
   override fun getGroup(): EventLogGroup = GROUP
 
-  val GROUP: EventLogGroup = EventLogGroup("new.project.wizard.interactions", 40)
+  val GROUP: EventLogGroup = EventLogGroup("new.project.wizard.interactions", 41)
 
   private val LANGUAGES = listOf(
     NewProjectWizardConstants.Language.JAVA, NewProjectWizardConstants.Language.KOTLIN,
@@ -123,7 +123,9 @@ object NewProjectWizardCollector : CounterUsagesCollector() {
   private val useCompactProjectStructureFinished = GROUP.registerVarargEvent("build.system.use.compact.project.structure.finished", *buildSystemFields, useCompactProjectStructureField)
   private val generateMultipleModulesChanged = GROUP.registerVarargEvent("kotlin.generate.multiple.modules.changed", *buildSystemFields, generateMultipleModulesField)
   private val generateMultipleModulesFinished = GROUP.registerVarargEvent("kotlin.generate.multiple.modules.finished", *buildSystemFields, generateMultipleModulesField)
-  private val kotlinClickKmpWizardLinkEvent = GROUP.registerVarargEvent("kotlin.kmp.wizard.link.clicked", *buildSystemFields)
+  private val kotlinClickKmpWizardWebEvent = GROUP.registerVarargEvent("kotlin.kmp.wizard.web.clicked", *buildSystemFields)
+  private val kotlinClickKmpWizardOpenKmpPluginEvent = GROUP.registerVarargEvent("kotlin.kmp.wizard.open.kmp.plugin.clicked", *buildSystemFields)
+  private val kotlinClickKmpWizardInstallKmpPluginEvent = GROUP.registerVarargEvent("kotlin.kmp.wizard.install.kmp.plugin.clicked", *buildSystemFields)
   // @formatter:on
 
   @JvmStatic
@@ -321,8 +323,14 @@ object NewProjectWizardCollector : CounterUsagesCollector() {
     fun NewProjectWizardStep.logGenerateMultipleModulesFinished(isSelected: Boolean): Unit =
       generateMultipleModulesFinished.logBuildSystemEvent(this, generateMultipleModulesField with isSelected)
 
-    fun NewProjectWizardStep.logKmpWizardLinkClicked(): Unit =
-      kotlinClickKmpWizardLinkEvent.logBuildSystemEvent(this)
+    fun NewProjectWizardStep.logKmpWizardWebClicked(): Unit =
+      kotlinClickKmpWizardWebEvent.logBuildSystemEvent(this)
+
+    fun NewProjectWizardStep.logKmpWizardOpenKmpPluginClicked(): Unit =
+      kotlinClickKmpWizardOpenKmpPluginEvent.logBuildSystemEvent(this)
+
+    fun NewProjectWizardStep.logKmpWizardInstallKmpPluginClicked(): Unit =
+      kotlinClickKmpWizardInstallKmpPluginEvent.logBuildSystemEvent(this)
   }
 
   private class GeneratorEventField(override val name: String) : PrimitiveEventField<ModuleBuilder?>() {
@@ -340,12 +348,9 @@ object NewProjectWizardCollector : CounterUsagesCollector() {
   class GeneratorValidationRule : CustomValidationRule() {
     override fun getRuleId(): String = GENERATOR_VALIDATION_RULE_ID
 
-    override fun doValidate(data: String, context: EventContext): ValidationResultType {
-      if (isThirdPartyValue(data) || NewProjectWizardConstants.OTHER == data) {
-        return ValidationResultType.ACCEPTED
-      }
-      return acceptWhenReportedByPluginFromPluginRepository(context)
-    }
+    override fun doValidate(data: String, context: IEventContext): ValidationResultType =
+      if (isThirdPartyValue(data) || NewProjectWizardConstants.OTHER == data) ValidationResultType.ACCEPTED
+      else acceptWhenReportedByPluginFromPluginRepository(context)
   }
 }
 

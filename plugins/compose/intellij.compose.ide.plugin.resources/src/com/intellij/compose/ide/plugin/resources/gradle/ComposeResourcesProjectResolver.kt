@@ -6,18 +6,16 @@ import com.intellij.compose.ide.plugin.gradleTooling.rt.ComposeResourcesModel
 import com.intellij.compose.ide.plugin.gradleTooling.rt.ComposeResourcesModelBuilder
 import com.intellij.compose.ide.plugin.gradleTooling.rt.ComposeResourcesModelImpl
 import com.intellij.compose.ide.plugin.resources.COMPOSE_RESOURCES_DIR
-import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.externalSystem.model.DataNode
 import com.intellij.openapi.externalSystem.model.project.ModuleData
-import com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil
 import com.intellij.openapi.externalSystem.util.ExternalSystemConstants
 import com.intellij.openapi.externalSystem.util.Order
 import org.gradle.tooling.model.idea.IdeaModule
+import org.jetbrains.kotlin.idea.gradleJava.run.usesComposeGradlePlugin
 import org.jetbrains.kotlin.idea.gradleTooling.KotlinGradleModel
 import org.jetbrains.kotlin.idea.gradleTooling.KotlinMPPGradleModel
-import org.jetbrains.plugins.gradle.model.GradleExtension
 import org.jetbrains.plugins.gradle.service.project.AbstractProjectResolverExtension
-import org.jetbrains.plugins.gradle.service.project.data.GradleExtensionsDataService
 import java.nio.file.Path
 import kotlin.io.path.absolutePathString
 
@@ -78,7 +76,7 @@ internal class ComposeResourcesProjectResolver : AbstractProjectResolverExtensio
   }
 
   companion object {
-    val log = Logger.getInstance(this::class.java)
+    private val log = logger<ComposeResourcesProjectResolver>()
 
     private const val KOTLIN_ANDROID = "kotlin-android"
   }
@@ -108,12 +106,4 @@ private val commonComposeResourcesSourceSetNames = setOf("commonMain", "commonTe
 private val androidComposeResourcesSourceSetNames = setOf("main")
 
 private fun Path.defaultComposeResourcesDirFor(sourceSetName: String): String =
-  resolve("src").resolve(sourceSetName).resolve(COMPOSE_RESOURCES_DIR).absolutePathString()
-
-private fun getGradleExtensions(moduleDataNode: DataNode<*>): List<GradleExtension>? =
-  ExternalSystemApiUtil.find(moduleDataNode, GradleExtensionsDataService.KEY)?.data?.extensions
-
-private fun usesComposeGradlePlugin(mainModuleDataNode: DataNode<out ModuleData>): Boolean =
-  getGradleExtensions(mainModuleDataNode)?.any {
-    it.name == "compose" && it.typeFqn == "org.jetbrains.compose.ComposeExtension"
-  } == true
+  resolve("src", sourceSetName, COMPOSE_RESOURCES_DIR).absolutePathString()

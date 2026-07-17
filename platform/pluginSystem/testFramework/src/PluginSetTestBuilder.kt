@@ -3,15 +3,17 @@ package com.intellij.platform.pluginSystem.testFramework
 
 import com.intellij.ide.plugins.DiscoveredPluginsList
 import com.intellij.ide.plugins.PluginDescriptorLoadingContext
-import com.intellij.ide.plugins.PluginDescriptorLoadingResult
+import com.intellij.ide.plugins.PluginInitContextFactory
 import com.intellij.ide.plugins.PluginInitializationContext
+import com.intellij.ide.plugins.PluginLoadingErrorReportingPolicy
 import com.intellij.ide.plugins.PluginMainDescriptor
 import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.ide.plugins.PluginManagerState
 import com.intellij.ide.plugins.PluginSet
+import com.intellij.ide.plugins.PluginsDiscoveryResult
 import com.intellij.ide.plugins.PluginsSourceContext
 import com.intellij.ide.plugins.loadDescriptorFromFileOrDir
-import com.intellij.ide.plugins.withInitContextForLoadingRuleDetermination
+import com.intellij.ide.plugins.withCustomFactoryInUnitTests
 import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.util.BuildNumber
 import com.intellij.platform.ide.bootstrap.ZipFilePoolImpl
@@ -19,7 +21,6 @@ import com.intellij.platform.runtime.product.ProductMode
 import com.intellij.util.io.directoryStreamIfExists
 import com.intellij.util.lang.UrlClassLoader
 import java.nio.file.Path
-import java.util.Collections.emptySet
 
 class PluginSetTestBuilder private constructor(
   private val pluginDescriptorLoader: (loadingContext: PluginDescriptorLoadingContext) -> List<PluginMainDescriptor>,
@@ -81,44 +82,40 @@ class PluginSetTestBuilder private constructor(
     }
 
   fun buildInitContext(): PluginInitializationContext {
-    // copy just in case
-    val buildNumber = productBuildNumber
-    return PluginInitializationContext.buildForTest(
-      essentialPlugins = emptySet(),
-      disabledPlugins = disabledPluginIds.toSet(),
-      expiredPlugins = expiredPluginIds.toSet(),
-      brokenPluginVersions = brokenPlugins.mapValues { it.value.toSet() }.toMap(),
-      getProductBuildNumber = { buildNumber },
-      requirePlatformAliasDependencyForLegacyPlugins = false,
-      checkEssentialPlugins = false,
-      explicitPluginSubsetToLoad = explicitPluginSubsetToLoad,
-      disablePluginLoadingCompletely = false,
-      currentProductModeId = productMode.id,
-    )
+    return object : PseudoProductTestPluginInitContext() {
+      override val expiredPlugins: Set<PluginId> = this@PluginSetTestBuilder.expiredPluginIds
+      override val productBuildNumber: BuildNumber = this@PluginSetTestBuilder.productBuildNumber
+      override fun isPluginDisabled(id: PluginId): Boolean = id in disabledPluginIds
+      override fun isPluginBroken(id: PluginId, version: String?): Boolean {
+        brokenPlugins[id]?.let { return version in it }
+        return false
+      }
+      override val explicitPluginSubsetToLoad: Set<PluginId>? = this@PluginSetTestBuilder.explicitPluginSubsetToLoad
+      override val currentProductModeId: String = productMode.id
+    }
   }
 
-  fun discoverPlugins(): Pair<PluginDescriptorLoadingContext, PluginDescriptorLoadingResult> {
+  fun discoverPlugins(): Pair<PluginDescriptorLoadingContext, PluginsDiscoveryResult> {
     val loadingContext = PluginDescriptorLoadingContext(getBuildNumberForDefaultDescriptorVersion = { productBuildNumber })
     val pluginList = DiscoveredPluginsList(pluginDescriptorLoader(loadingContext), PluginsSourceContext.Custom)
-    return loadingContext to PluginDescriptorLoadingResult.build(listOf(pluginList))
+    return loadingContext to PluginsDiscoveryResult.build(listOf(pluginList))
   }
 
-  fun buildState(): PluginManagerState {
-    //clear errors, which may be registered by other tests
-    PluginManagerCore.getAndClearPluginLoadingErrors()
-
+  fun buildState(configureClassLoaders: Boolean = true): PluginManagerState {
     val initContext = buildInitContext()
     val loadingContext = PluginDescriptorLoadingContext(getBuildNumberForDefaultDescriptorVersion = { productBuildNumber })
-    val pluginList = withInitContextForLoadingRuleDetermination(initContext) { // FIXME this should not exist
+    val pluginList = PluginInitContextFactory.withCustomFactoryInUnitTests(TestPluginInitContextFactory(initContext)) { // FIXME this should not exist
       DiscoveredPluginsList(pluginDescriptorLoader(loadingContext), PluginsSourceContext.Custom)
     }
-    val discoveredPlugins = PluginDescriptorLoadingResult.build(listOf(pluginList))
+    val discoveredPlugins = PluginsDiscoveryResult.build(listOf(pluginList))
     return PluginManagerCore.initializePlugins(
       descriptorLoadingErrors = loadingContext.copyDescriptorLoadingErrors(),
       initContext = initContext,
       discoveredPlugins = discoveredPlugins,
       coreLoader = customCoreLoader ?: UrlClassLoader.build().get(),
       parentActivity = null,
+      configureClassLoaders = configureClassLoaders,
+      reportingPolicy = PluginLoadingErrorReportingPolicy.TEST,
     )
   }
 

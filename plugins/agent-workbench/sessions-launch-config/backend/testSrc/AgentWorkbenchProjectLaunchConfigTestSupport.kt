@@ -1,7 +1,7 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.agent.workbench.sessions.launch.config.backend
 
-import com.intellij.agent.workbench.common.session.AgentSessionProvider
+import com.intellij.platform.ai.agent.core.session.AgentSessionProvider
 import com.intellij.openapi.util.io.NioFiles
 import com.intellij.platform.eel.EelOsFamily
 import com.intellij.platform.eel.pathSeparator
@@ -36,6 +36,7 @@ internal fun writeAgentWorkbenchProjectConfig(
   projectDir: Path,
   shared: AgentWorkbenchTestLaunchConfig = testLaunchConfig(),
   providers: Map<AgentSessionProvider, AgentWorkbenchTestLaunchConfig> = emptyMap(),
+  refreshVfsOnStatusUpdates: Boolean? = null,
 ) {
   Files.createDirectories(projectDir)
   sequenceOf(shared, *providers.values.toTypedArray())
@@ -43,6 +44,9 @@ internal fun writeAgentWorkbenchProjectConfig(
     .forEach { Files.createDirectories(projectDir.resolve(it)) }
 
   val yaml = buildString {
+    if (refreshVfsOnStatusUpdates != null) {
+      appendLine("refreshVfsOnStatusUpdates: $refreshVfsOnStatusUpdates")
+    }
     appendLaunchConfig(shared, indent = "")
     if (providers.isNotEmpty()) {
       appendLine("providers:")

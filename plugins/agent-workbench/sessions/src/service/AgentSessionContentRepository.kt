@@ -1,18 +1,21 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.agent.workbench.sessions.service
 
-import com.intellij.agent.workbench.common.AgentThreadActivity
-import com.intellij.agent.workbench.common.normalizeAgentWorkbenchPath
-import com.intellij.agent.workbench.common.session.AgentSessionProvider
-import com.intellij.agent.workbench.common.session.AgentSessionThread
+import com.intellij.platform.ai.agent.core.AgentThreadActivity
+import com.intellij.platform.ai.agent.core.AgentThreadActivityReport
+import com.intellij.platform.ai.agent.core.normalizeAgentWorkbenchPath
+import com.intellij.platform.ai.agent.core.session.AgentSessionProvider
+import com.intellij.platform.ai.agent.core.session.AgentSessionThread
 import com.intellij.agent.workbench.sessions.AgentSessionsBundle
-import com.intellij.agent.workbench.sessions.core.formatCompactAgentSessionThreadTitle
-import com.intellij.agent.workbench.sessions.core.formatCompactAgentSessionTitle
+import com.intellij.platform.ai.agent.sessions.core.formatCompactAgentSessionThreadTitle
+import com.intellij.platform.ai.agent.sessions.core.formatCompactAgentSessionTitle
 import com.intellij.agent.workbench.sessions.model.AgentProjectSessions
+import com.intellij.agent.workbench.sessions.model.AgentSessionProviderLoadState
 import com.intellij.agent.workbench.sessions.model.AgentSessionsState
 import com.intellij.agent.workbench.sessions.model.AgentWorktree
 import com.intellij.agent.workbench.sessions.model.ArchiveThreadTarget
 import com.intellij.agent.workbench.sessions.model.normalizeArchiveThreadTarget
+import com.intellij.agent.workbench.sessions.model.sortAgentSessionThreadsForDisplay
 import com.intellij.agent.workbench.sessions.state.AgentSessionWarmPathSnapshot
 import com.intellij.agent.workbench.sessions.state.AgentSessionsStateStore
 import com.intellij.agent.workbench.sessions.state.SessionWarmState
@@ -38,11 +41,18 @@ internal class AgentSessionContentRepository(
     if (content.errorMessage != null) {
       return false
     }
-    return warmState.setPathSnapshot(
+    val currentSnapshot = warmState.getPathSnapshot(normalizedPath)
+    val matchesCurrentSnapshot = currentSnapshot?.let { snapshot ->
+      snapshot.threads == content.threads &&
+      snapshot.providerLoadStates == content.providerLoadStates &&
+      snapshot.providersWithUnknownThreadCount == content.providersWithUnknownThreadCount
+    } == true
+    return !matchesCurrentSnapshot && warmState.setPathSnapshot(
       normalizedPath,
       AgentSessionWarmPathSnapshot(
         threads = content.threads,
-        hasUnknownThreadCount = content.hasUnknownThreadCount,
+        providerLoadStates = content.providerLoadStates,
+        providersWithUnknownThreadCount = content.providersWithUnknownThreadCount,
         updatedAt = System.currentTimeMillis(),
       ),
     )
@@ -226,6 +236,52 @@ internal class AgentSessionContentRepository(
     return changed
   }
 
+  fun updateThreadCosts(
+    path: String,
+    provider: AgentSessionProvider,
+    costUpdatesByThreadId: Map<String, ThreadCostUpdate>,
+  ): Boolean {
+    val normalizedPath = normalizeAgentWorkbenchPath(path)
+    var changed = false
+    stateStore.update { state ->
+      val nextProjects = state.projects.map { project ->
+        if (project.path == normalizedPath) {
+          val nextThreads = updateThreadCosts(project.threads, provider, costUpdatesByThreadId)
+          if (nextThreads != project.threads) {
+            changed = true
+            project.copy(threads = nextThreads)
+          }
+          else {
+            project
+          }
+        }
+        else {
+          val nextWorktrees = project.worktrees.map { worktree ->
+            if (worktree.path == normalizedPath) {
+              val nextThreads = updateThreadCosts(worktree.threads, provider, costUpdatesByThreadId)
+              if (nextThreads != worktree.threads) {
+                changed = true
+                worktree.copy(threads = nextThreads)
+              }
+              else {
+                worktree
+              }
+            }
+            else {
+              worktree
+            }
+          }
+          if (nextWorktrees == project.worktrees) project else project.copy(worktrees = nextWorktrees)
+        }
+      }
+      if (!changed) state else state.copy(projects = nextProjects, lastUpdatedAt = System.currentTimeMillis())
+    }
+    if (changed) {
+      syncWarmSnapshotFromRuntime(normalizedPath)
+    }
+    return changed
+  }
+
   private fun updateWarmSnapshot(
     path: String,
     transform: (AgentSessionWarmPathSnapshot) -> AgentSessionWarmPathSnapshot?,
@@ -239,7 +295,8 @@ internal class AgentSessionContentRepository(
 private data class PathContent(
   @JvmField val isOpen: Boolean,
   @JvmField val threads: List<AgentSessionThread>,
-  @JvmField val hasUnknownThreadCount: Boolean,
+  @JvmField val providerLoadStates: Map<AgentSessionProvider, AgentSessionProviderLoadState>,
+  @JvmField val providersWithUnknownThreadCount: Set<AgentSessionProvider>,
   @JvmField val errorMessage: String?,
 )
 
@@ -258,7 +315,8 @@ private fun AgentProjectSessions.toPathContent(): PathContent {
   return PathContent(
     isOpen = isOpen,
     threads = threads,
-    hasUnknownThreadCount = hasUnknownThreadCount,
+    providerLoadStates = providerLoadStates,
+    providersWithUnknownThreadCount = providersWithUnknownThreadCount,
     errorMessage = errorMessage,
   )
 }
@@ -267,7 +325,8 @@ private fun AgentWorktree.toPathContent(): PathContent {
   return PathContent(
     isOpen = isOpen,
     threads = threads,
-    hasUnknownThreadCount = hasUnknownThreadCount,
+    providerLoadStates = providerLoadStates,
+    providersWithUnknownThreadCount = providersWithUnknownThreadCount,
     errorMessage = errorMessage,
   )
 }
@@ -311,6 +370,26 @@ private fun List<AgentSessionThread>.resolveArchivedTargetThread(target: Archive
   }
 }
 
+private fun updateThreadCosts(
+  threads: List<AgentSessionThread>,
+  provider: AgentSessionProvider,
+  costUpdatesByThreadId: Map<String, ThreadCostUpdate>,
+): List<AgentSessionThread> {
+  var changed = false
+  val updatedThreads = threads.map { thread ->
+    if (thread.provider != provider) {
+      return@map thread
+    }
+    val costUpdate = costUpdatesByThreadId[thread.id] ?: return@map thread
+    if (thread.updatedAt != costUpdate.expectedUpdatedAt || thread.cost == costUpdate.cost) {
+      return@map thread
+    }
+    changed = true
+    thread.copy(cost = costUpdate.cost)
+  }
+  return if (changed) updatedThreads else threads
+}
+
 private fun restoreArchivedThread(
   threads: List<AgentSessionThread>,
   thread: AgentSessionThread,
@@ -318,7 +397,7 @@ private fun restoreArchivedThread(
   if (threads.any { existing -> existing.provider == thread.provider && existing.id == thread.id }) {
     return threads
   }
-  return (threads + thread).sortedByDescending { it.updatedAt }
+  return sortAgentSessionThreadsForDisplay(threads + thread)
 }
 
 private fun removeArchivedTarget(
@@ -363,9 +442,17 @@ private fun markThreadAsRead(
 ): List<AgentSessionThread> {
   var changed = false
   val nextThreads = threads.map { thread ->
-    if (thread.provider == provider && thread.id == threadId && thread.activity == AgentThreadActivity.UNREAD && thread.updatedAt <= updatedAt) {
+    if (thread.provider == provider &&
+        thread.id == threadId &&
+        thread.updatedAt <= updatedAt &&
+        thread.hasUnreadActivitySignal()) {
       changed = true
-      thread.copy(activity = AgentThreadActivity.READY)
+      thread.copy(
+        activityReport = AgentThreadActivityReport(
+          rowActivity = thread.activity.takeUnless { it == AgentThreadActivity.UNREAD } ?: AgentThreadActivity.READY,
+          chromeActivity = thread.summaryActivity?.takeUnless { it == AgentThreadActivity.UNREAD } ?: AgentThreadActivity.READY,
+        ),
+      )
     }
     else {
       thread

@@ -3,15 +3,16 @@ package com.intellij.ide.plugins
 
 import com.intellij.diagnostic.LoadingState
 import com.intellij.ide.plugins.marketplace.statistics.PluginManagerUsageCollector
+import com.intellij.openapi.application.runInEdt
 import com.intellij.openapi.diagnostic.getOrLogException
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.progress.util.PotemkinProgress
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.IntellijInternalApi
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.Nls
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.swing.JComponent
 
 private val LOG = logger<DynamicPluginEnabler>()
@@ -21,7 +22,6 @@ fun interface PluginEnableStateChangedListener{
 }
 
 @ApiStatus.Internal
-@IntellijInternalApi
 class DynamicPluginEnabler : PluginEnabler {
   companion object {
     private val pluginEnableStateChangedListeners = CopyOnWriteArrayList<PluginEnableStateChangedListener>()
@@ -62,17 +62,31 @@ class DynamicPluginEnabler : PluginEnabler {
       PluginManagerUsageCollector.pluginsStateChanged(descriptors, enable = true, project)
     }
 
-    PluginEnabler.HEADLESS.enable(descriptors)
+    val disabledStateChanged = PluginEnabler.HEADLESS.enable(descriptors)
     val installedDescriptors = findInstalledPlugins(descriptors) ?: return false
-    val pluginsLoaded = if (progressTitle == null) {
-      DynamicPlugins.loadPlugins(installedDescriptors, project)
-    } else {
+
+    val pluginsLoaded: Boolean
+    if (!disabledStateChanged && installedDescriptors.all { PluginManagerCore.isLoaded(it) }) {
+      // nothing to do
+      pluginsLoaded = true
+    }
+    else if (
+      progressTitle == null
+      || DynamicPluginsSupport.getInstance() != null // FIXME disregards custom title, `PotemkinProgress` causes a deadlock with the new support enabled
+    ) {
+      val loaded = AtomicBoolean(false)
+      runInEdt {
+        loaded.set(DynamicPlugins.loadPlugins(installedDescriptors, project))
+      }
+      pluginsLoaded = loaded.get()
+    }
+    else {
       val progress = PotemkinProgress(progressTitle, project, null, null)
       var result = false
       progress.runInSwingThread {
         result = DynamicPlugins.loadPlugins(installedDescriptors, project)
       }
-      result
+      pluginsLoaded = result
     }
 
     for (listener in pluginEnableStateChangedListeners) {

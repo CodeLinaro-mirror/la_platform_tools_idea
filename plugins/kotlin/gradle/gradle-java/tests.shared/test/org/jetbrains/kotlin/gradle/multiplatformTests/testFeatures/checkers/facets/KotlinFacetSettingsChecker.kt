@@ -70,7 +70,7 @@ object KotlinFacetSettingsChecker : WorkspaceModelChecker<KotlinFacetSettingsChe
                 configuration.includedCompilerArguments!!.joinToString("\n") {
                     when(it) {
                         CommonCompilerArguments::pluginClasspaths -> {
-                            val pluginClasspaths = fieldValue.pluginClasspaths ?: emptyArray<String>()
+                            val pluginClasspaths = fieldValue.pluginClasspaths
                             pluginClasspaths.joinToString {
                                 Path(it).fileName.toString().replace(
                                     testProperties.kotlinVersion.toString(),

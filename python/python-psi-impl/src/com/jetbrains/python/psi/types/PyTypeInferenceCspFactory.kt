@@ -1,8 +1,10 @@
 package com.jetbrains.python.psi.types
 
+import com.intellij.openapi.util.registry.Registry
 import com.jetbrains.python.psi.PyArgumentList
 import com.jetbrains.python.psi.PyCallExpression
 import com.jetbrains.python.psi.PyCallSiteExpression
+import com.jetbrains.python.psi.PyCallSiteOwner
 import com.jetbrains.python.psi.PyDecoratorList
 import com.jetbrains.python.psi.PyExpression
 import com.jetbrains.python.psi.PyTypedElement
@@ -23,9 +25,12 @@ object PyTypeInferenceCspFactory {
 
   @JvmStatic
   fun unifyReceiver(argsMapping: PyCallExpression.PyArgumentsMapping, context: TypeEvalContext): GenericSubstitutions {
-    val callSite = argsMapping.callSiteExpression
+    val callSite = argsMapping.callSiteOwner
     val callableType = argsMapping.callableType
     val receiver = callSite.getReceiver(callableType?.callable)
+    if (!Registry.`is`("python.use.csp.type.inference")) {
+      return PyTypeChecker.unifyReceiver(receiver, context)
+    }
     try {
       return doUnifyFunctionCall(callSite, receiver, callableType, argsMapping.mappedParameters, context) ?: GenericSubstitutions()
     }
@@ -36,12 +41,15 @@ object PyTypeInferenceCspFactory {
 
   @JvmStatic
   fun unifyGenericCall(
-    callSite: PyCallSiteExpression?,
+    callSite: PyCallSiteOwner?,
     receiver: PyExpression?,
     callableType: PyCallableType?,
     mappedParameters: Map<PyExpression, PyCallableParameter>,
     context: TypeEvalContext,
   ): GenericSubstitutions? {
+    if (!Registry.`is`("python.use.csp.type.inference")) {
+      return PyTypeChecker.unifyGenericCall(receiver, mappedParameters, context)
+    }
     try {
       return doUnifyFunctionCall(callSite, receiver, callableType, mappedParameters, context)
     }
@@ -53,7 +61,7 @@ object PyTypeInferenceCspFactory {
   // TODO: wrong parameter mapping passed by testExplicitlyParameterizedGenericConstructorCall: self missing?
 
   private fun doUnifyFunctionCall(
-    callSite: PyCallSiteExpression?,
+    callSite: PyCallSiteOwner?,
     receiver: PyExpression?,
     callableType: PyCallableType?,
     mappedParameters: Map<PyExpression, PyCallableParameter>,
@@ -111,7 +119,7 @@ object PyTypeInferenceCspFactory {
     if (declaredReturn.hasGenerics(context)) {
       ensureInferenceVariables(builder, receiverType, declaredReturn, context)
       val expectedReturnType = getExpectedType(callSite, context)
-      if (!expectedReturnType.isUnknown) {
+      if (expectedReturnType != null) {
         val declaredReturn_selfBounded = substituteSelfTypes(declaredReturn, receiverType, context)
         // semantics: RT <: ExpectedReturnType
         builder.addConstraint(declaredReturn_selfBounded, expectedReturnType, Variance.COVARIANT, ConstraintPriority.LOW)
@@ -157,7 +165,7 @@ object PyTypeInferenceCspFactory {
     context: TypeEvalContext,
   ): PyType? {
     val promotedToLiteral = promoteToLiteral(argument, paramType, context, substitutions)
-    val actualArgType = promotedToLiteral ?: context.getType(argument)
+    val actualArgType = promotedToLiteral.takeIf { !it.isUnknown } ?: context.getType(argument)
     val argTypeSelfInstantiated = if (parameter.isSelf && actualArgType is PyClassLikeType && actualArgType.isDefinition)
       actualArgType.toInstance()
     else

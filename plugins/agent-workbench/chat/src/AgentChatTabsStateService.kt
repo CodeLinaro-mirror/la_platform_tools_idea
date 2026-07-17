@@ -3,11 +3,9 @@
 
 package com.intellij.agent.workbench.chat
 
-import com.intellij.agent.workbench.common.AgentThreadActivity
-import com.intellij.agent.workbench.common.normalizeAgentWorkbenchPath
-import com.intellij.agent.workbench.sessions.core.providers.AgentInitialMessageDispatchCompletionPolicy
-import com.intellij.agent.workbench.sessions.core.providers.AgentInitialMessageDispatchStep
-import com.intellij.agent.workbench.sessions.core.providers.AgentInitialMessageTimeoutPolicy
+import com.intellij.platform.ai.agent.core.AgentThreadActivity
+import com.intellij.platform.ai.agent.core.normalizeAgentWorkbenchPath
+import com.intellij.platform.ai.agent.sessions.core.isAgentSessionPendingThreadId
 import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.components.SerializablePersistentStateComponent
 import com.intellij.openapi.components.Service
@@ -25,7 +23,7 @@ import org.jetbrains.annotations.TestOnly
 import java.nio.file.Files
 import kotlin.time.Duration.Companion.minutes
 
-private const val AGENT_CHAT_TABS_STATE_VERSION = 6
+private const val AGENT_CHAT_TABS_STATE_VERSION = 12
 private const val AGENT_CHAT_TABS_STATE_TTL_MILLIS = 30L * 24 * 60 * 60 * 1000
 private const val AGENT_CHAT_LEGACY_METADATA_DIR_NAME = "agent-workbench-chat-frame"
 private const val AGENT_CHAT_LEGACY_METADATA_TABS_DIR_NAME = "tabs"
@@ -34,8 +32,8 @@ private val LOG = logger<AgentChatTabsStateService>()
 
 @Service(Service.Level.APP)
 @State(name = "AgentChatTabsState", storages = [Storage(StoragePathMacros.CACHE_FILE)])
-internal class AgentChatTabsStateService(scope: CoroutineScope?)
-  : SerializablePersistentStateComponent<AgentChatTabsState>(AgentChatTabsState()) {
+internal class AgentChatTabsStateService(scope: CoroutineScope?) :
+  SerializablePersistentStateComponent<AgentChatTabsState>(AgentChatTabsState()) {
 
   @Volatile
   private var versionMismatchForcedForTests: Boolean = false
@@ -84,13 +82,17 @@ internal class AgentChatTabsStateService(scope: CoroutineScope?)
   }
 
   fun delete(tabKey: AgentChatTabKey): Boolean {
-    var deleted = false
+    return deleteAndGetSnapshot(tabKey) != null
+  }
+
+  fun deleteAndGetSnapshot(tabKey: AgentChatTabKey): AgentChatTabSnapshot? {
+    var deletedSnapshot: AgentChatTabSnapshot? = null
 
     updateState { current ->
       val versionMismatch = hasVersionMismatch(current)
       val baseTabs = normalizeTabsForWrite(current)
-      deleted = tabKey.value in baseTabs
-      if (!deleted && !versionMismatch) {
+      deletedSnapshot = baseTabs[tabKey.value]?.toSnapshot(tabKey)
+      if (deletedSnapshot == null && !versionMismatch) {
         return@updateState current
       }
 
@@ -101,11 +103,7 @@ internal class AgentChatTabsStateService(scope: CoroutineScope?)
         tabsByKey = updatedTabs,
       )
     }
-    return deleted
-  }
-
-  fun delete(tabKey: String): Boolean {
-    return AgentChatTabKey.parse(tabKey)?.let(::delete) ?: false
+    return deletedSnapshot
   }
 
   fun deleteByThread(projectPath: String, threadIdentity: String, subAgentId: String? = null): Int {
@@ -119,17 +117,21 @@ internal class AgentChatTabsStateService(scope: CoroutineScope?)
   ): AgentChatDeleteByThreadResult {
     val normalizedProjectPath = normalizeAgentWorkbenchPath(projectPath)
     var keysToDelete = emptyList<String>()
+    var deletedTabs = emptyList<AgentChatTabSnapshot>()
 
     updateState { current ->
       val versionMismatch = hasVersionMismatch(current)
       val baseTabs = normalizeTabsForWrite(current)
-      keysToDelete = baseTabs.entries
+      val tabsToDelete = baseTabs.entries
         .filter { (_, tab) ->
           normalizeAgentWorkbenchPath(tab.projectPath) == normalizedProjectPath &&
           tab.threadIdentity == threadIdentity &&
           (subAgentId == null || tab.subAgentId == subAgentId)
         }
-        .map { (key, _) -> key }
+      keysToDelete = tabsToDelete.map { (key, _) -> key }
+      deletedTabs = tabsToDelete.mapNotNull { (key, tab) ->
+        AgentChatTabKey.parse(key)?.let(tab::toSnapshot)
+      }
 
       if (keysToDelete.isEmpty() && !versionMismatch) {
         return@updateState current
@@ -142,7 +144,10 @@ internal class AgentChatTabsStateService(scope: CoroutineScope?)
         tabsByKey = updatedTabs,
       )
     }
-    return AgentChatDeleteByThreadResult(keysToDelete)
+    return AgentChatDeleteByThreadResult(
+      deletedKeys = keysToDelete,
+      deletedTabs = deletedTabs,
+    )
   }
 
   fun pruneStale() {
@@ -192,37 +197,26 @@ internal data class AgentChatTabsState(
 
 internal data class AgentChatDeleteByThreadResult(
   @JvmField val deletedKeys: List<String>,
+  @JvmField val deletedTabs: List<AgentChatTabSnapshot>,
 )
 
 @Serializable
 internal data class PersistedAgentChatTabState(
   @JvmField val projectHash: String,
   @JvmField val projectPath: String,
+  @JvmField val projectDirectory: String? = null,
   @JvmField val threadIdentity: String,
   @JvmField val subAgentId: String?,
   @JvmField val threadId: String,
-  @JvmField val shellCommand: List<String>,
-  @JvmField val shellEnvVariables: Map<String, String> = emptyMap(),
   @JvmField val lastKnownTitle: String,
   @JvmField val lastKnownActivity: String = AgentThreadActivity.READY.name,
   @JvmField val pendingCreatedAtMs: Long? = null,
   @JvmField val pendingFirstInputAtMs: Long? = null,
   @JvmField val pendingLaunchMode: String? = null,
+  @JvmField val launchMode: String? = null,
+  @JvmField val launchProfileId: String? = null,
   @JvmField val newThreadRebindRequestedAtMs: Long? = null,
-  @JvmField val initialMessageDispatchSteps: List<PersistedAgentChatInitialMessageDispatchStep> = emptyList(),
-  @JvmField val initialMessageDispatchStepIndex: Int = 0,
-  @JvmField val initialComposedMessage: String? = null,
-  @JvmField val initialMessageToken: String? = null,
-  @JvmField val initialMessageSent: Boolean = false,
-  @JvmField val initialMessageTimeoutPolicy: String = AgentInitialMessageTimeoutPolicy.ALLOW_TIMEOUT_FALLBACK.name,
   @JvmField val updatedAt: Long,
-)
-
-@Serializable
-internal data class PersistedAgentChatInitialMessageDispatchStep(
-  @JvmField val text: String,
-  @JvmField val timeoutPolicy: String = AgentInitialMessageTimeoutPolicy.ALLOW_TIMEOUT_FALLBACK.name,
-  @JvmField val completionPolicy: String = AgentInitialMessageDispatchCompletionPolicy.IMMEDIATE.name,
 )
 
 private fun deleteLegacyMetadataDirectory() {
@@ -251,133 +245,64 @@ private fun isExpired(updatedAt: Long): Boolean {
 }
 
 private fun isExpired(updatedAt: Long, now: Long): Boolean {
-  if (updatedAt <= 0) {
-    return true
-  }
-  return now - updatedAt > AGENT_CHAT_TABS_STATE_TTL_MILLIS
+  return updatedAt <= 0 || now - updatedAt > AGENT_CHAT_TABS_STATE_TTL_MILLIS
 }
 
 private fun PersistedAgentChatTabState.toSnapshot(tabKey: AgentChatTabKey): AgentChatTabSnapshot {
   val resolvedPendingCreatedAtMs = pendingCreatedAtMs
-    ?: updatedAt.takeIf { it > 0L && isPersistedPendingThreadIdentity(threadIdentity) }
-  val runtimeSteps = if (initialMessageDispatchSteps.isNotEmpty()) {
-    initialMessageDispatchSteps.mapNotNull(PersistedAgentChatInitialMessageDispatchStep::toRuntime)
-  }
-  else {
-    initialComposedMessage
-      ?.trim()
-      ?.takeIf { it.isNotEmpty() }
-      ?.let { message ->
-        listOf(
-          AgentInitialMessageDispatchStep(
-            text = message,
-            timeoutPolicy = parseInitialMessageTimeoutPolicy(initialMessageTimeoutPolicy),
-          )
-        )
-      }
-      .orEmpty()
-  }
-  val runtimeStepIndex = when {
-    runtimeSteps.isEmpty() -> 0
-    initialMessageSent -> runtimeSteps.size
-    initialMessageDispatchSteps.isEmpty() -> 0
-    else -> initialMessageDispatchStepIndex.coerceIn(0, runtimeSteps.size)
-  }
+                                   ?: updatedAt.takeIf { it > 0L && isPersistedPendingThreadIdentity(threadIdentity) }
   return AgentChatTabSnapshot(
     tabKey = tabKey,
     identity = AgentChatTabIdentity(
       projectHash = projectHash,
       projectPath = projectPath,
+      projectDirectory = projectDirectory?.let(::normalizeAgentWorkbenchPath)?.takeIf { it.isNotBlank() },
       threadIdentity = threadIdentity,
       subAgentId = subAgentId,
     ),
     runtime = AgentChatTabRuntime(
       threadId = threadId,
       threadTitle = lastKnownTitle,
-      shellCommand = shellCommand,
-      shellEnvVariables = shellEnvVariables,
       threadActivity = parseThreadActivity(lastKnownActivity),
       pendingCreatedAtMs = resolvedPendingCreatedAtMs,
       pendingFirstInputAtMs = pendingFirstInputAtMs,
       pendingLaunchMode = pendingLaunchMode,
+      launchMode = normalizeAgentChatLaunchMode(launchMode),
+      launchProfileId = launchProfileId,
       newThreadRebindRequestedAtMs = newThreadRebindRequestedAtMs,
-      initialMessageDispatchSteps = runtimeSteps,
-      initialMessageDispatchStepIndex = runtimeStepIndex,
-      initialMessageToken = initialMessageToken,
-      initialMessageSent = initialMessageSent,
+      // Prompt text, tokens, delivery state, and dispatch queues are live-session metadata and are intentionally not restored.
+      initialPromptRecord = null,
+      terminalPromptDispatch = null,
     ),
   )
 }
 
 private fun AgentChatTabSnapshot.toPersisted(updatedAt: Long): PersistedAgentChatTabState {
-  val legacySingleStep = runtime.initialMessageDispatchSteps.singleOrNull()
-    ?.takeIf { step ->
-      runtime.initialMessageDispatchStepIndex == 0 &&
-      step.completionPolicy == AgentInitialMessageDispatchCompletionPolicy.IMMEDIATE
-    }
   return PersistedAgentChatTabState(
     projectHash = identity.projectHash,
     projectPath = identity.projectPath,
+    projectDirectory = identity.projectDirectory,
     threadIdentity = identity.threadIdentity,
     subAgentId = identity.subAgentId,
     threadId = runtime.threadId,
-    shellCommand = runtime.shellCommand,
-    shellEnvVariables = runtime.shellEnvVariables,
     lastKnownTitle = runtime.threadTitle,
     lastKnownActivity = runtime.threadActivity.name,
     pendingCreatedAtMs = runtime.pendingCreatedAtMs,
     pendingFirstInputAtMs = runtime.pendingFirstInputAtMs,
     pendingLaunchMode = runtime.pendingLaunchMode,
+    launchMode = runtime.launchMode,
+    launchProfileId = runtime.launchProfileId,
     newThreadRebindRequestedAtMs = runtime.newThreadRebindRequestedAtMs,
-    initialMessageDispatchSteps = runtime.initialMessageDispatchSteps.map(AgentInitialMessageDispatchStep::toPersisted),
-    initialMessageDispatchStepIndex = runtime.initialMessageDispatchStepIndex,
-    initialComposedMessage = legacySingleStep?.text,
-    initialMessageToken = runtime.initialMessageToken,
-    initialMessageSent = runtime.initialMessageSent,
-    initialMessageTimeoutPolicy = legacySingleStep?.timeoutPolicy?.name ?: AgentInitialMessageTimeoutPolicy.ALLOW_TIMEOUT_FALLBACK.name,
     updatedAt = updatedAt,
-  )
-}
-
-private fun PersistedAgentChatInitialMessageDispatchStep.toRuntime(): AgentInitialMessageDispatchStep? {
-  val normalizedText = text.trim()
-  if (normalizedText.isEmpty()) {
-    return null
-  }
-  return AgentInitialMessageDispatchStep(
-    text = normalizedText,
-    timeoutPolicy = parseInitialMessageTimeoutPolicy(timeoutPolicy),
-    completionPolicy = parseInitialMessageDispatchCompletionPolicy(completionPolicy),
-  )
-}
-
-private fun AgentInitialMessageDispatchStep.toPersisted(): PersistedAgentChatInitialMessageDispatchStep {
-  return PersistedAgentChatInitialMessageDispatchStep(
-    text = text,
-    timeoutPolicy = timeoutPolicy.name,
-    completionPolicy = completionPolicy.name,
   )
 }
 
 private fun isPersistedPendingThreadIdentity(threadIdentity: String): Boolean {
   val separator = threadIdentity.indexOf(':')
-  if (separator <= 0 || separator == threadIdentity.lastIndex) {
-    return false
-  }
-  return threadIdentity.substring(separator + 1).startsWith("new-")
+  return separator > 0 && isAgentSessionPendingThreadId(threadIdentity.substring(separator + 1))
 }
 
 private fun parseThreadActivity(value: String): AgentThreadActivity {
   return runCatching { AgentThreadActivity.valueOf(value) }
     .getOrDefault(AgentThreadActivity.READY)
-}
-
-private fun parseInitialMessageTimeoutPolicy(value: String): AgentInitialMessageTimeoutPolicy {
-  return runCatching { AgentInitialMessageTimeoutPolicy.valueOf(value) }
-    .getOrDefault(AgentInitialMessageTimeoutPolicy.ALLOW_TIMEOUT_FALLBACK)
-}
-
-private fun parseInitialMessageDispatchCompletionPolicy(value: String): AgentInitialMessageDispatchCompletionPolicy {
-  return runCatching { AgentInitialMessageDispatchCompletionPolicy.valueOf(value) }
-    .getOrDefault(AgentInitialMessageDispatchCompletionPolicy.IMMEDIATE)
 }

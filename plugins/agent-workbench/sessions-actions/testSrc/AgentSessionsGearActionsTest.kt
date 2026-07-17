@@ -1,46 +1,161 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.agent.workbench.sessions
 
+import com.intellij.agent.workbench.ui.AgentWorkbenchActionIds
 import com.intellij.agent.workbench.sessions.actions.AgentSessionsActivateWithProjectShortcutAction
 import com.intellij.agent.workbench.sessions.actions.AgentSessionsCopyThreadIdFromEditorTabAction
+import com.intellij.agent.workbench.sessions.actions.AgentSessionsCurrentProjectOnlyToggleAction
 import com.intellij.agent.workbench.sessions.actions.AgentSessionsDedicatedFrameToggleAction
 import com.intellij.agent.workbench.sessions.actions.AgentSessionsEditorTabArchiveThreadAction
-import com.intellij.agent.workbench.sessions.actions.AgentSessionsEditorTabNewThreadPopupGroup
-import com.intellij.agent.workbench.sessions.actions.AgentSessionsEditorTabNewThreadQuickAction
 import com.intellij.agent.workbench.sessions.actions.AgentSessionsEditorTabRenameThreadAction
 import com.intellij.agent.workbench.sessions.actions.AgentSessionsGoToSourceProjectFromEditorTabAction
 import com.intellij.agent.workbench.sessions.actions.AgentSessionsGoToSourceProjectFromToolbarAction
+import com.intellij.agent.workbench.sessions.actions.AgentSessionsMainToolbarNewThreadAction
+import com.intellij.agent.workbench.sessions.actions.AgentSessionsMoreSettingsAction
 import com.intellij.agent.workbench.sessions.actions.AgentSessionsOpenDedicatedFrameAction
 import com.intellij.agent.workbench.sessions.actions.AgentSessionsPreventSleepWhileWorkingToggleAction
 import com.intellij.agent.workbench.sessions.actions.AgentSessionsRefreshAction
 import com.intellij.agent.workbench.sessions.actions.AgentSessionsSelectThreadInToolWindowAction
+import com.intellij.agent.workbench.sessions.actions.AgentSessionsShowArchivedThreadsAction
+import com.intellij.agent.workbench.sessions.actions.AgentSessionsSwitchSourceAndChatAction
+import com.intellij.agent.workbench.sessions.actions.DumbAwareDefaultActionGroup
+import com.intellij.agent.workbench.settings.AgentWorkbenchSettings
+import com.intellij.agent.workbench.sessions.frame.AgentChatOpenModeSettings
+import com.intellij.agent.workbench.sessions.model.AgentSessionThreadViewMode
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
-import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.ActionManager
-import com.intellij.openapi.actionSystem.AnAction
-import com.intellij.openapi.actionSystem.Separator
+import com.intellij.openapi.actionSystem.ActionUpdateThread
+import com.intellij.openapi.actionSystem.CommonDataKeys
+import com.intellij.openapi.actionSystem.impl.SimpleDataContext
 import com.intellij.openapi.options.advanced.AdvancedSettings
 import com.intellij.openapi.options.advanced.AdvancedSettingsImpl
+import com.intellij.openapi.project.DumbService
+import com.intellij.openapi.project.ProjectManager
 import com.intellij.testFramework.TestActionEvent
 import com.intellij.testFramework.junit5.TestApplication
 import com.intellij.testFramework.junit5.TestDisposable
 import com.intellij.testFramework.runInEdtAndWait
 import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
+import java.util.concurrent.TimeUnit
 
 @TestApplication
+@Timeout(value = 2, unit = TimeUnit.MINUTES)
 class AgentSessionsGearActionsTest {
-  @Test
-  fun gearActionsContainOpenFileToggleAndRefresh() {
-    val actionManager = ActionManager.getInstance()
+  @BeforeEach
+  fun setUp() {
+    AgentWorkbenchSettings.getInstance().loadState(AgentWorkbenchSettings.SettingsState())
+  }
 
-    assertThat(actionManager.childActionIds("AgentWorkbenchSessions.ToolWindow.GearActions"))
-      .contains("OpenFile")
-      .contains("AgentWorkbenchSessions.ToggleDedicatedFrame")
-      .contains("AgentWorkbenchSessions.TogglePreventSleepWhileWorking")
-      .contains("AgentWorkbenchSessions.Refresh")
+  @AfterEach
+  fun tearDown() {
+    AgentWorkbenchSettings.getInstance().loadState(AgentWorkbenchSettings.SettingsState())
+  }
+
+  @Test
+  fun gearActionsAreGroupedByThreadViewScopePresentationAndSettings() {
+    val actionManager = ActionManager.getInstance()
+    val entries = actionManager.childActionEntries("AgentWorkbenchSessions.ToolWindow.GearActions")
+
+    assertThat(entries).containsExactly(
+      "OpenFile",
+      "AgentWorkbenchSessions.ShowArchivedThreads",
+      "AgentWorkbenchSessions.Refresh",
+      ACTION_SEPARATOR_MARKER,
+      "AgentWorkbenchSessions.ToggleDedicatedFrame",
+      "AgentWorkbenchSessions.ToggleCurrentProjectOnly",
+      ACTION_SEPARATOR_MARKER,
+      "AgentWorkbenchSessions.ToggleSessionCost",
+      "AgentWorkbenchSessions.TogglePreventSleepWhileWorking",
+      ACTION_SEPARATOR_MARKER,
+      "AgentWorkbenchSessions.MoreSettings",
+    )
+    assertThat(entries)
       .doesNotContain("AgentWorkbenchSessions.OpenDedicatedFrame")
+      .doesNotContain("AgentWorkbenchSessions.ToggleJbCentralQuotaWidget")
+      .doesNotContain("AgentWorkbenchSessions.ToggleClaudeQuotaWidget")
+    assertThat(actionManager.getAction("AgentWorkbenchSessions.MoreSettings"))
+      .isNotNull
+      .isInstanceOf(AgentSessionsMoreSettingsAction::class.java)
+  }
+
+  @Test
+  fun currentProjectOnlyToggleRegistersInGearMenuAndUpdatesScopeSetting() {
+    val actionManager = ActionManager.getInstance()
+    var currentProjectOnly = false
+    val action = AgentSessionsCurrentProjectOnlyToggleAction(
+      currentProjectPath = { "/tmp/project" },
+      isCurrentProjectOnly = { currentProjectOnly },
+      setCurrentProjectOnly = { currentProjectOnly = it },
+    )
+    val event = testEventWithProject(action)
+
+    assertThat(actionManager.getAction(AgentWorkbenchActionIds.Sessions.TOGGLE_CURRENT_PROJECT_ONLY))
+      .isNotNull
+      .isInstanceOf(AgentSessionsCurrentProjectOnlyToggleAction::class.java)
+    assertThat(actionManager.getAction(AgentWorkbenchActionIds.Sessions.TOGGLE_CURRENT_PROJECT_ONLY)?.templatePresentation?.icon)
+      .isNull()
+    assertThat(AgentSessionsBundle.message("action.AgentWorkbenchSessions.ToggleCurrentProjectOnly.text"))
+      .isEqualTo("Current Project Only")
+    assertThat(AgentSessionsBundle.message("action.AgentWorkbenchSessions.ToggleCurrentProjectOnly.description"))
+      .isEqualTo("Show only threads from the current project in Agent Threads")
+
+    action.update(event)
+    assertThat(event.presentation.isEnabled).isTrue()
+    assertThat(action.isSelected(event)).isFalse()
+
+    runInEdtAndWait {
+      action.setSelected(event, true)
+    }
+
+    assertThat(currentProjectOnly).isTrue()
+  }
+
+  @Test
+  fun currentProjectOnlyToggleIsDisabledWithoutOpenableProjectPath() {
+    var setSelectedInvocations = 0
+    val action = AgentSessionsCurrentProjectOnlyToggleAction(
+      currentProjectPath = { null },
+      isCurrentProjectOnly = { true },
+      setCurrentProjectOnly = { setSelectedInvocations++ },
+    )
+    val event = testEventWithProject(action)
+
+    action.update(event)
+    assertThat(event.presentation.isEnabled).isFalse()
+
+    runInEdtAndWait {
+      action.setSelected(event, false)
+    }
+
+    assertThat(setSelectedInvocations).isZero()
+  }
+
+  @Test
+  fun showArchivedThreadsActionSwitchesThreadViewAndLoadsArchivedSessions() {
+    var mode = AgentSessionThreadViewMode.ACTIVE
+    var loadInvocations = 0
+    val action = AgentSessionsShowArchivedThreadsAction(
+      viewMode = { mode },
+      setViewMode = { mode = it },
+      ensureArchivedSessionsLoaded = { loadInvocations++ },
+    )
+    val event = TestActionEvent.createTestEvent(action)
+
+    action.update(event)
+    assertThat(event.presentation.isVisible).isTrue()
+
+    action.actionPerformed(event)
+
+    assertThat(mode).isEqualTo(AgentSessionThreadViewMode.ARCHIVED)
+    assertThat(loadInvocations).isEqualTo(1)
+
+    action.update(event)
+    assertThat(event.presentation.isVisible).isFalse()
   }
 
   @Test
@@ -55,19 +170,18 @@ class AgentSessionsGearActionsTest {
   }
 
   @Test
-  fun toggleActionUpdatesAdvancedSetting(@TestDisposable disposable: Disposable) {
+  fun toggleActionUpdatesAgentWorkbenchSetting() {
     val actionManager = ActionManager.getInstance()
     val action = AgentSessionsDedicatedFrameToggleAction()
-    val advancedSettings = AdvancedSettings.getInstance() as AdvancedSettingsImpl
 
     assertThat(sessionsDescriptor())
       .contains("<advancedSetting")
-      .contains("id=\"agent.workbench.chat.open.in.dedicated.frame\"")
+      .doesNotContain("id=\"agent.workbench.chat.open.in.dedicated.frame\"")
     assertThat(actionManager.getAction("AgentWorkbenchSessions.ToggleDedicatedFrame"))
       .isNotNull
       .isInstanceOf(AgentSessionsDedicatedFrameToggleAction::class.java)
 
-    advancedSettings.setSetting(OPEN_CHAT_IN_DEDICATED_FRAME_SETTING_ID, true, disposable)
+    AgentChatOpenModeSettings.setOpenInDedicatedFrame(true)
     val event = TestActionEvent.createTestEvent(action)
     assertThat(action.isSelected(event)).isTrue()
 
@@ -75,13 +189,17 @@ class AgentSessionsGearActionsTest {
       action.setSelected(event, false)
     }
 
-    assertThat(AdvancedSettings.getBoolean(OPEN_CHAT_IN_DEDICATED_FRAME_SETTING_ID)).isFalse()
+    assertThat(AgentChatOpenModeSettings.openInDedicatedFrame()).isFalse()
+    assertThat(AgentWorkbenchSettings.getInstance().openInDedicatedFrame).isFalse()
+    assertThat(AgentWorkbenchSettings.getInstance().openInDedicatedFrameOverride).isNull()
 
     runInEdtAndWait {
       action.setSelected(event, true)
     }
 
-    assertThat(AdvancedSettings.getBoolean(OPEN_CHAT_IN_DEDICATED_FRAME_SETTING_ID)).isTrue()
+    assertThat(AgentChatOpenModeSettings.openInDedicatedFrame()).isTrue()
+    assertThat(AgentWorkbenchSettings.getInstance().openInDedicatedFrame).isTrue()
+    assertThat(AgentWorkbenchSettings.getInstance().openInDedicatedFrameOverride).isTrue()
   }
 
   @Test
@@ -143,6 +261,9 @@ class AgentSessionsGearActionsTest {
 
   @Test
   fun dedicatedFrameRegistersMainToolbarExclusions() {
+    val activityExclusion = "<projectFrameActionExclusion frameType=\"AGENT_DEDICATED\" place=\"MainToolbar\" " +
+                            "id=\"AgentWorkbenchSessions.MainToolbar.Activity\"/>"
+
     assertThat(sessionsDescriptor())
       .contains("<projectFrameActionExclusion frameType=\"AGENT_DEDICATED\" place=\"MainToolbar\" id=\"MainToolbarVCSGroup\"/>")
       .contains("<projectFrameActionExclusion frameType=\"AGENT_DEDICATED\" place=\"MainToolbar\" id=\"ExecutionTargetsToolbarGroup\"/>")
@@ -150,6 +271,7 @@ class AgentSessionsGearActionsTest {
       .contains("<projectFrameActionExclusion frameType=\"AGENT_DEDICATED\" place=\"MainToolbar\" id=\"AIAssistantHubPopupAction\"/>")
       .contains("<projectFrameActionExclusion frameType=\"AGENT_DEDICATED\" place=\"MainToolbar\" id=\"BuildSolutionBar\"/>")
       .contains("<projectFrameActionExclusion frameType=\"AGENT_DEDICATED\" place=\"MainToolbar\" id=\"ActiveDeviceGroup\"/>")
+      .doesNotContain(activityExclusion)
       .doesNotContain("actionConfigurationCustomizer")
   }
 
@@ -160,9 +282,50 @@ class AgentSessionsGearActionsTest {
     assertThat(actionManager.getAction("AgentWorkbenchSessions.GoToSourceProjectFromToolbar"))
       .isNotNull
       .isInstanceOf(AgentSessionsGoToSourceProjectFromToolbarAction::class.java)
-    assertThat(actionsDescriptor())
-      .contains("id=\"AgentWorkbenchSessions.GoToSourceProjectFromToolbar\"")
-      .contains("<add-to-group group-id=\"MainToolbarRight\" anchor=\"before\" relative-to-action=\"NewUiRunWidget\"/>")
+
+    val entries = actionManager.childActionIds("MainToolbarRight")
+    val goToSourceIndex = entries.requiredIndex("AgentWorkbenchSessions.GoToSourceProjectFromToolbar")
+    val runWidgetIndex = entries.requiredIndex("NewUiRunWidget")
+    assertThat(goToSourceIndex).isLessThan(runWidgetIndex)
+  }
+
+  @Test
+  fun mainToolbarNewThreadActionIsRegisteredAfterRunWidget() {
+    val actionManager = ActionManager.getInstance()
+    val newThreadActionId = AgentWorkbenchActionIds.Sessions.MainToolbar.NEW_THREAD
+
+    assertThat(actionManager.getAction(newThreadActionId))
+      .isNotNull
+      .isInstanceOf(AgentSessionsMainToolbarNewThreadAction::class.java)
+    assertThat(actionManager.getAction(newThreadActionId)?.actionUpdateThread)
+      .isEqualTo(ActionUpdateThread.BGT)
+
+    val entries = actionManager.childActionIds("MainToolbarRight")
+    val runWidgetIndex = entries.requiredIndex("NewUiRunWidget")
+    val newThreadIndex = entries.requiredIndex(newThreadActionId)
+    assertThat(newThreadIndex).isGreaterThan(runWidgetIndex)
+    assertThat(entries.count { it == newThreadActionId }).isEqualTo(1)
+  }
+
+  @Test
+  fun switchSourceAndChatActionIsRegisteredWithoutDefaultShortcut() {
+    val actionManager = ActionManager.getInstance()
+    val actionId = AgentWorkbenchActionIds.Sessions.SWITCH_SOURCE_AND_CHAT
+
+    assertThat(actionManager.getAction(actionId))
+      .isNotNull
+      .isInstanceOf(AgentSessionsSwitchSourceAndChatAction::class.java)
+    assertThat(actionManager.getAction(actionId)?.actionUpdateThread)
+      .isEqualTo(ActionUpdateThread.BGT)
+
+    val entries = actionManager.childActionIds("OpenProjectWindows")
+    val openFrameIndex = entries.requiredIndex(AgentWorkbenchActionIds.Sessions.OPEN_DEDICATED_FRAME)
+    val switchIndex = entries.requiredIndex(actionId)
+    assertThat(switchIndex).isGreaterThan(openFrameIndex)
+    val actionDescriptor = actionsDescriptor()
+      .substringAfter("id=\"AgentWorkbenchSessions.SwitchSourceAndChat\"")
+      .substringBefore("</action>")
+    assertThat(actionDescriptor).doesNotContain("keyboard-shortcut")
   }
 
   @Test
@@ -201,9 +364,9 @@ class AgentSessionsGearActionsTest {
     assertThat(renameIndex).isLessThan(copyThreadIdIndex)
     assertThat(copyThreadIdIndex).isLessThan(selectInThreadsIndex)
     assertThat(selectInThreadsIndex).isLessThan(copyPathsIndex)
-    assertThat(entries[closeEditorsGroupIndex - 1]).isEqualTo(SEPARATOR_MARKER)
-    assertThat(entries[closeEditorsGroupIndex + 1]).isEqualTo(SEPARATOR_MARKER)
-    assertThat(entries.subList(renameIndex + 1, copyPathsIndex)).doesNotContain(SEPARATOR_MARKER)
+    assertThat(entries[closeEditorsGroupIndex - 1]).isEqualTo(ACTION_SEPARATOR_MARKER)
+    assertThat(entries[closeEditorsGroupIndex + 1]).isEqualTo(ACTION_SEPARATOR_MARKER)
+    assertThat(entries.subList(renameIndex + 1, copyPathsIndex)).doesNotContain(ACTION_SEPARATOR_MARKER)
   }
 
   @Test
@@ -222,19 +385,21 @@ class AgentSessionsGearActionsTest {
   }
 
   @Test
-  fun editorTabNewThreadActionsAreRegisteredInActionSystem() {
+  fun aggregateAgentWorkbenchGroupsAreDumbAware() {
     val actionManager = ActionManager.getInstance()
-    val quickActionId = "AgentWorkbenchSessions.EditorTab.NewThreadQuick"
-    val popupGroupId = "AgentWorkbenchSessions.EditorTab.NewThreadPopup"
 
-    assertThat(actionManager.getAction(quickActionId))
-      .isNotNull
-      .isInstanceOf(AgentSessionsEditorTabNewThreadQuickAction::class.java)
-    assertThat(actionManager.getAction(popupGroupId))
-      .isNotNull
-      .isInstanceOf(AgentSessionsEditorTabNewThreadPopupGroup::class.java)
-    assertThat(actionManager.getAction(popupGroupId)?.templatePresentation?.icon)
-      .isEqualTo(AllIcons.General.Add)
+    listOf(
+      "AgentWorkbenchSessions.ToolWindow.GearActions",
+      "AgentWorkbenchSessions.TreePopup",
+      EDITOR_TAB_POPUP_SEPARATOR_BEFORE_CLOSE_ACTIONS_ID,
+    ).forEach { groupId ->
+      val group = actionManager.getAction(groupId)
+
+      assertThat(group)
+        .withFailMessage("Action group '%s' is not registered", groupId)
+        .isInstanceOf(DumbAwareDefaultActionGroup::class.java)
+      assertThat(DumbService.isDumbAware(group)).isTrue()
+    }
   }
 
   @Test
@@ -254,41 +419,6 @@ class AgentSessionsGearActionsTest {
       .isEqualTo(1)
   }
 
-  private fun ActionManager.childActionIds(groupId: String): List<String> {
-    val group = getAction(groupId) as? ActionGroup
-    assertThat(group).withFailMessage("Action group '%s' is not registered", groupId).isNotNull
-    return checkNotNull(group).getChildren(TestActionEvent.createTestEvent()).mapNotNull { getId(it) }
-  }
-
-  private fun ActionManager.editorTabPopupEntries(): List<String> {
-    val group = getAction("EditorTabPopupMenu") as? ActionGroup
-    assertThat(group).withFailMessage("Action group '%s' is not registered", "EditorTabPopupMenu").isNotNull
-    return flattenEditorTabPopupEntries(checkNotNull(group).getChildren(TestActionEvent.createTestEvent()))
-  }
-
-  private fun ActionManager.flattenEditorTabPopupEntries(actions: Array<AnAction>): List<String> {
-    return actions.flatMap { action ->
-      when (action) {
-        is Separator -> listOf(SEPARATOR_MARKER)
-        is ActionGroup -> {
-          if (getId(action) == INLINE_EDITOR_TAB_SEPARATOR_GROUP_ID) {
-            flattenEditorTabPopupEntries(action.getChildren(TestActionEvent.createTestEvent()))
-          }
-          else {
-            getId(action)?.let(::listOf).orEmpty()
-          }
-        }
-        else -> getId(action)?.let(::listOf).orEmpty()
-      }
-    }
-  }
-
-  private fun List<String>.requiredIndex(entry: String): Int {
-    val index = indexOf(entry)
-    assertThat(index).withFailMessage("Entry '%s' was not found in: %s", entry, this).isNotEqualTo(-1)
-    return index
-  }
-
   private fun actionsDescriptor(): String {
     return descriptorText("intellij.agent.workbench.sessions.actions.xml")
   }
@@ -303,9 +433,11 @@ class AgentSessionsGearActionsTest {
     }.readText()
   }
 
-  companion object {
-    private const val SEPARATOR_MARKER = "<separator>"
-    private const val INLINE_EDITOR_TAB_SEPARATOR_GROUP_ID = "AgentWorkbenchSessions.EditorTabPopup.SeparatorBeforeCloseActions"
-    private const val OPEN_CHAT_IN_DEDICATED_FRAME_SETTING_ID = "agent.workbench.chat.open.in.dedicated.frame"
-  }
+  private fun testEventWithProject(action: AgentSessionsCurrentProjectOnlyToggleAction) =
+    TestActionEvent.createTestEvent(
+      action,
+      SimpleDataContext.builder()
+        .add(CommonDataKeys.PROJECT, ProjectManager.getInstance().defaultProject)
+        .build(),
+    )
 }

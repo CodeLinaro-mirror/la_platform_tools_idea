@@ -1,18 +1,18 @@
 <component name="libraryTable">
   <library name="kotlinc.analysis-api-k2" type="repository">
-    <properties include-transitive-deps="false" maven-id="org.jetbrains.kotlin:analysis-api-k2-for-ide:2.4.0-ij261-71">
+    <properties include-transitive-deps="false" maven-id="org.jetbrains.kotlin:analysis-api-k2-for-ide:2.4.20-dev-6724">
       <verification>
-        <artifact url="file://$MAVEN_REPOSITORY$/org/jetbrains/kotlin/analysis-api-k2-for-ide/2.4.0-ij261-71/analysis-api-k2-for-ide-2.4.0-ij261-71.jar">
-          <sha256sum>35ba64556b17860346ddb928ef46841766751f073d1f6639f76dc614a285244c</sha256sum>
+        <artifact url="file://$MAVEN_REPOSITORY$/org/jetbrains/kotlin/analysis-api-k2-for-ide/2.4.20-dev-6724/analysis-api-k2-for-ide-2.4.20-dev-6724.jar">
+          <sha256sum>15c0ab07d3d2cf0d195a588df222f16661a750ff327eb231a27acadb691c43e3</sha256sum>
         </artifact>
       </verification>
     </properties>
     <CLASSES>
-      <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/kotlin/analysis-api-k2-for-ide/2.4.0-ij261-71/analysis-api-k2-for-ide-2.4.0-ij261-71.jar!/" />
+      <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/kotlin/analysis-api-k2-for-ide/2.4.20-dev-6724/analysis-api-k2-for-ide-2.4.20-dev-6724.jar!/" />
     </CLASSES>
     <JAVADOC />
     <SOURCES>
-      <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/kotlin/analysis-api-k2-for-ide/2.4.0-ij261-71/analysis-api-k2-for-ide-2.4.0-ij261-71-sources.jar!/" />
+      <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/kotlin/analysis-api-k2-for-ide/2.4.20-dev-6724/analysis-api-k2-for-ide-2.4.20-dev-6724-sources.jar!/" />
     </SOURCES>
   </library>
 </component>

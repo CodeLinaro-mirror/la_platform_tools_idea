@@ -1,7 +1,9 @@
 // "Change 'object' to 'class'" "false"
+// K2_ERROR: Objects cannot have constructors.
+// K2_ERROR: Unresolved reference 'Companion'.
 // K2_AFTER_ERROR: Objects cannot have constructors.
 // K2_AFTER_ERROR: Unresolved reference 'Companion'.
-// IGNORE_K1
+
 
 class Foo(val s: String) {
     companion object {

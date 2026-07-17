@@ -21,7 +21,6 @@ import com.jetbrains.python.PyPsiBundle;
 import com.jetbrains.python.codeInsight.controlflow.ControlFlowCache;
 import com.jetbrains.python.inspections.quickfix.PyUpdatePropertySignatureQuickFix;
 import com.jetbrains.python.inspections.quickfix.RenameParameterQuickFix;
-import com.jetbrains.python.psi.LanguageLevel;
 import com.jetbrains.python.psi.PyArgumentList;
 import com.jetbrains.python.psi.PyCallExpression;
 import com.jetbrains.python.psi.PyCallable;
@@ -45,14 +44,12 @@ import com.jetbrains.python.psi.PyUtil;
 import com.jetbrains.python.psi.PyYieldExpression;
 import com.jetbrains.python.psi.impl.PyBuiltinCache;
 import com.jetbrains.python.psi.types.PyCallableParameter;
-import com.jetbrains.python.psi.types.PyClassType;
 import com.jetbrains.python.psi.types.PyType;
 import com.jetbrains.python.psi.types.PyTypeChecker;
 import com.jetbrains.python.psi.types.TypeEvalContext;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -78,34 +75,9 @@ public final class PyPropertyDefinitionInspection extends PyInspection {
 
   public static class Visitor extends PyInspectionVisitor {
 
-    private final LanguageLevel myLevel;
-    private final List<PyClass> myStringClasses;
-    private PyFunction myOneParamFunction;
-    private PyFunction myTwoParamFunction; // arglist with two args, 'self' and 'value'
-
-    public Visitor(final ProblemsHolder holder, @NotNull TypeEvalContext context) {
+    public Visitor(@Nullable ProblemsHolder holder, @NotNull TypeEvalContext context) {
       super(holder, context);
-      PsiFile psiFile = holder.getFile();
-      // save us continuous checks for level, module, stc
-      myLevel = LanguageLevel.forElement(psiFile);
-      // string classes
-      final List<PyClass> stringClasses = new ArrayList<>(2);
-      final PyBuiltinCache builtins = PyBuiltinCache.getInstance(psiFile);
-      PyClass cls = builtins.getClass("str");
-      if (cls != null) stringClasses.add(cls);
-      cls = builtins.getClass("unicode");
-      if (cls != null) stringClasses.add(cls);
-      myStringClasses = stringClasses;
-      // reference signatures
-      PyClass objectClass = builtins.getClass("object");
-      if (objectClass != null) {
-        final PyFunction methodRepr = objectClass.findMethodByName("__repr__", false, null);
-        if (methodRepr != null) myOneParamFunction = methodRepr;
-        final PyFunction methodDelattr = objectClass.findMethodByName("__delattr__", false, null);
-        if (methodDelattr != null) myTwoParamFunction = methodDelattr;
-      }
     }
-
 
     @Override
     public void visitPyClass(final @NotNull PyClass node) {
@@ -176,7 +148,7 @@ public final class PyPropertyDefinitionInspection extends PyInspection {
       }
       else if ("doc".equals(paramName)) {
         PyType type = myTypeEvalContext.getType(argument);
-        if (!(type instanceof PyClassType && myStringClasses.contains(((PyClassType)type).getPyClass()))) {
+        if (!PyTypeChecker.match(type, PyBuiltinCache.getInstance(argument).getStrType(), myTypeEvalContext)) {
           registerProblem(argument, PyPsiBundle.message("INSP.doc.param.should.be.str"));
         }
       }
@@ -255,7 +227,8 @@ public final class PyPropertyDefinitionInspection extends PyInspection {
       if (callable != null) {
         // signature: at least two params, more optionals ok; first arg 'self'
         final PyParameterList paramList = callable.getParameterList();
-        if (myTwoParamFunction != null && !PyUtil.isSignatureCompatibleTo(callable, myTwoParamFunction, myTypeEvalContext)) {
+        List<PyCallableParameter> parameters = callable.getParameters(myTypeEvalContext);
+        if (parameters.size() != 2 || !parameters.getFirst().isSelf()) {
           registerProblem(beingChecked, PyPsiBundle.message("INSP.setter.signature.advice"), new PyUpdatePropertySignatureQuickFix(true));
         }
         checkForSelf(paramList);
@@ -273,7 +246,8 @@ public final class PyPropertyDefinitionInspection extends PyInspection {
 
     private void checkOneParameter(PyCallable callable, PsiElement beingChecked, boolean isGetter) {
       final PyParameterList parameterList = callable.getParameterList();
-      if (myOneParamFunction != null && !PyUtil.isSignatureCompatibleTo(callable, myOneParamFunction, myTypeEvalContext)) {
+      final List<PyCallableParameter> parameters = callable.getParameters(myTypeEvalContext);
+      if (parameters.size() != 1 || !parameters.getFirst().isSelf()) {
         if (isGetter) {
           registerProblem(beingChecked, PyPsiBundle.message("INSP.getter.signature.advice"),
                           new PyUpdatePropertySignatureQuickFix(false));
@@ -288,11 +262,12 @@ public final class PyPropertyDefinitionInspection extends PyInspection {
     private void checkForSelf(PyParameterList paramList) {
       PyParameter[] parameters = paramList.getParameters();
       final PyClass cls = PsiTreeUtil.getParentOfType(paramList, PyClass.class);
-      if (cls != null && cls.isSubclass("type", myTypeEvalContext)) return;
+      if (cls != null && cls.isSubclass(PyNames.FQN.TYPE, myTypeEvalContext)) {
+        return;
+      }
       if (parameters.length > 0 && !PyNames.CANONICAL_SELF.equals(parameters[0].getName())) {
         registerProblem(
-          parameters[0], PyPsiBundle.message("INSP.property.cannot.be.deleted", PyNames.CANONICAL_SELF), ProblemHighlightType.WEAK_WARNING,
-          null,
+          parameters[0], PyPsiBundle.problemMessage("INSP.property.cannot.be.deleted", PyNames.CANONICAL_SELF), ProblemHighlightType.WEAK_WARNING,
           new RenameParameterQuickFix(PyNames.CANONICAL_SELF));
       }
     }

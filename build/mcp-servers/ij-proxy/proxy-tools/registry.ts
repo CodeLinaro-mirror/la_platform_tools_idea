@@ -1,8 +1,10 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 import {handleApplyPatchTool} from './handlers/apply-patch'
+import {handleLintFilesTool} from './handlers/lint-files'
 import {handleListDirTool} from './handlers/list-dir'
 import {handleReadTool} from './handlers/read'
+import {handleReformatFileTool} from './handlers/reformat-file'
 import {handleRenameTool} from './handlers/rename'
 import {handleSearchFileTool, handleSearchRegexTool, handleSearchSymbolTool, handleSearchTextTool} from './handlers/search'
 import {
@@ -16,8 +18,10 @@ import {
 } from './container-handlers'
 import {
   createApplyPatchSchema,
+  createLintFilesSchema,
   createListDirSchema,
   createReadSchema,
+  createReformatFileSchema,
   createRenameSchema,
   createSearchFileSchema,
   createSearchRegexSchema,
@@ -27,6 +31,7 @@ import {
 import type {
   AnalysisCapabilities,
   ContainerSessionConfig,
+  FormattingCapabilities,
   ReadCapabilities,
   SearchCapabilities,
   ToolAnnotationsLike,
@@ -44,6 +49,7 @@ interface ToolContext {
   callUpstreamToolRaw: UpstreamToolCaller
   searchCapabilities: SearchCapabilities
   analysisCapabilities: AnalysisCapabilities
+  formattingCapabilities: FormattingCapabilities
   readCapabilities: ReadCapabilities
   shouldApplyWorkaround: WorkaroundChecker
   containerSession: ContainerSessionConfig | null
@@ -64,7 +70,7 @@ interface ToolVariant {
   expose?: ToolExpose
 }
 
-export const BLOCKED_TOOL_NAMES = new Set(['create_new_file', 'execute_terminal_command'])
+export const BLOCKED_TOOL_NAMES = new Set(['create_new_file', 'execute_terminal_command', 'execute_tool'])
 
 const EXTRA_REPLACED_TOOL_NAMES = [
   'search_in_files_by_text',
@@ -98,16 +104,31 @@ function buildToolSpec(
   return {
     name,
     description: resolveToolDescription(description, context),
-    inputSchema,
+    inputSchema: withTimeoutDeclared(inputSchema),
     ...(annotations ? {annotations} : {})
+  }
+}
+
+const TIMEOUT_INPUT_SCHEMA_PROPERTY = {
+  type: 'number',
+  description: 'Optional. Per-call timeout in milliseconds. Used as the ij-proxy MCP RPC deadline and forwarded to upstream tools that accept it. 0 disables. Defaults to the proxy\'s configured per-tool timeout (~60 s for most tools, ~1200 s for build/lint/container).'
+} as const
+
+function withTimeoutDeclared(inputSchema: ToolInputSchema): ToolInputSchema {
+  if (Object.prototype.hasOwnProperty.call(inputSchema.properties, 'timeout')) {
+    return inputSchema
+  }
+  return {
+    ...inputSchema,
+    properties: {...inputSchema.properties, timeout: TIMEOUT_INPUT_SCHEMA_PROPERTY}
   }
 }
 
 const TOOL_VARIANTS: ToolVariant[] = [
   {
     name: 'read_file',
-    description: 'Reads a local file and returns numbered lines (1-indexed) as text. Supports slice, lines, line_columns, offsets, and indentation modes.',
-    schemaFactory: () => createReadSchema(true),
+    description: 'Reads a local file and returns numbered lines (1-indexed) as text. Supports optional offset and limit line controls.',
+    schemaFactory: () => createReadSchema(),
     handlerFactory: ({projectPath, callUpstreamTool, callUpstreamToolRaw, readCapabilities, containerSession}) => {
       if (containerSession) return (args) => handleContainerReadFile(args, projectPath, callUpstreamToolRaw, containerSession)
       return (args) => handleReadTool(args, projectPath, callUpstreamTool, readCapabilities, {format: 'numbered'})
@@ -163,6 +184,25 @@ const TOOL_VARIANTS: ToolVariant[] = [
     expose: ({searchCapabilities}) => !searchCapabilities.hasSearchSymbol && searchCapabilities.supportsSymbol
   },
   {
+    name: 'lint_files',
+    description: 'Analyze several files and return per-file problems, including timed-out file entries when a batch is incomplete.',
+    schemaFactory: () => createLintFilesSchema(),
+    handlerFactory: ({callUpstreamTool, analysisCapabilities}) => (args) =>
+      handleLintFilesTool(args, callUpstreamTool, analysisCapabilities),
+    annotations: READ_ONLY_TOOL_ANNOTATIONS,
+    upstreamNames: ['get_file_problems'],
+    expose: ({analysisCapabilities}) => !analysisCapabilities.hasLintFilesFiles && analysisCapabilities.supportsLintFiles
+  },
+  {
+    name: 'reformat_file',
+    description: 'Reformats the specified files in the JetBrains IDE.',
+    schemaFactory: () => createReformatFileSchema(),
+    handlerFactory: ({callUpstreamTool, formattingCapabilities}) => (args) =>
+      handleReformatFileTool(args, callUpstreamTool, formattingCapabilities),
+    upstreamNames: ['reformat_file'],
+    expose: ({formattingCapabilities}) => formattingCapabilities.hasReformatFile && !formattingCapabilities.hasReformatFileFiles
+  },
+  {
     name: 'list_dir',
     description: 'Lists entries in a local directory with 1-indexed entry numbers and simple type labels.',
     schemaFactory: () => createListDirSchema(),
@@ -199,7 +239,7 @@ const TOOL_VARIANTS: ToolVariant[] = [
       type: 'object' as const,
       properties: {
         command: {type: 'string', description: 'The bash command to execute'},
-        timeout: {type: 'number', description: 'Timeout in seconds (default: 900). Use 1200+ for build commands.'}
+        timeout: {type: 'number', description: 'Per-call timeout in milliseconds. Used as the ij-proxy MCP RPC deadline and as the inner container_exec command deadline. 0 disables. Default: 900000 (15 min); use 1200000+ for build commands.'}
       },
       required: ['command']
     }),

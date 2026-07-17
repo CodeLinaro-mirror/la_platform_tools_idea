@@ -36,9 +36,16 @@ import com.intellij.platform.util.progress.RawProgressReporter
 import com.intellij.platform.util.progress.reportRawProgress
 import com.intellij.util.ExceptionUtil
 import com.intellij.util.concurrency.annotations.RequiresBackgroundThread
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Runnable
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.Nls
 import org.jetbrains.annotations.TestOnly
@@ -46,6 +53,7 @@ import org.jetbrains.annotations.VisibleForTesting
 import org.jetbrains.concurrency.AsyncPromise
 import org.jetbrains.idea.maven.buildtool.MavenEventHandler
 import org.jetbrains.idea.maven.buildtool.MavenSyncConsole
+import org.jetbrains.idea.maven.buildtool.MavenSyncSession
 import org.jetbrains.idea.maven.buildtool.MavenSyncSpec
 import org.jetbrains.idea.maven.buildtool.incrementalMode
 import org.jetbrains.idea.maven.importing.MavenImportStats
@@ -54,16 +62,22 @@ import org.jetbrains.idea.maven.importing.importActivityStarted
 import org.jetbrains.idea.maven.importing.runMavenConfigurationTask
 import org.jetbrains.idea.maven.model.MavenArtifact
 import org.jetbrains.idea.maven.model.MavenExplicitProfiles
-import org.jetbrains.idea.maven.model.MavenWorkspaceMap
 import org.jetbrains.idea.maven.project.preimport.MavenProjectStaticImporter
 import org.jetbrains.idea.maven.project.preimport.SimpleStructureProjectVisitor
-import org.jetbrains.idea.maven.server.*
-import org.jetbrains.idea.maven.server.MavenArtifactEvent.ArtifactEventType.*
+import org.jetbrains.idea.maven.server.MavenArtifactEvent
+import org.jetbrains.idea.maven.server.MavenArtifactEvent.ArtifactEventType.DOWNLOAD_FAILED
+import org.jetbrains.idea.maven.server.MavenDistributionsCache
+import org.jetbrains.idea.maven.server.MavenServerConsoleEvent
+import org.jetbrains.idea.maven.server.MavenServerConsoleIndicator
+import org.jetbrains.idea.maven.server.MavenWrapperDownloader
+import org.jetbrains.idea.maven.server.showUntrustedProjectNotification
+import org.jetbrains.idea.maven.statistics.MavenToolchainCollector
 import org.jetbrains.idea.maven.telemetry.tracer
 import org.jetbrains.idea.maven.utils.MavenActivityKey
 import org.jetbrains.idea.maven.utils.MavenLog
 import org.jetbrains.idea.maven.utils.MavenUtil
 import org.jetbrains.idea.maven.utils.withLazyProgressIndicator
+import java.nio.file.Path
 import kotlin.time.Duration
 
 
@@ -72,13 +86,15 @@ private interface MavenSyncFileReader {
 }
 
 private class MavenFullSyncFileReader(
+  val managedFiles: List<String>,
   val projectsTree: MavenProjectsTree,
   val spec: MavenSyncSpec,
   val generalSettings: MavenGeneralSettings,
+  val explicitProfiles: MavenExplicitProfiles,
 ) : MavenSyncFileReader {
   override suspend fun invoke(wrappers: MavenEmbedderWrappers): MavenProjectsTreeUpdateResult {
     return reportRawProgress { reporter ->
-      projectsTree.updateAll(spec.forceReading(), generalSettings, wrappers, reporter)
+      projectsTree.updateAllFiles(managedFiles, spec.forceReading(), generalSettings, explicitProfiles, wrappers, reporter)
     }
   }
 }
@@ -87,13 +103,14 @@ private class MavenPartialSyncFileReader(
   val projectsTree: MavenProjectsTree,
   val spec: MavenSyncSpec,
   val generalSettings: MavenGeneralSettings,
+  val explicitProfiles: MavenExplicitProfiles,
   val filesToUpdate: List<VirtualFile>,
   val filesToDelete: List<VirtualFile>,
 ) : MavenSyncFileReader {
   override suspend fun invoke(wrappers: MavenEmbedderWrappers): MavenProjectsTreeUpdateResult {
     return reportRawProgress { reporter ->
-      val deleted = projectsTree.delete(filesToDelete, generalSettings, wrappers, reporter)
-      val updated = projectsTree.update(filesToUpdate, spec.forceReading(), generalSettings, wrappers, reporter)
+      val deleted = projectsTree.delete(filesToDelete, generalSettings, explicitProfiles, wrappers, reporter)
+      val updated = projectsTree.update(filesToUpdate, spec.forceReading(), generalSettings, explicitProfiles, wrappers, reporter)
       deleted + updated
     }
   }
@@ -216,6 +233,11 @@ class MavenDownloadSourcesRequest private constructor(
 
 open class MavenProjectsManagerEx(project: Project, private val cs: CoroutineScope) : MavenProjectsManager(project, cs) {
 
+  private val existingManagedFiles: List<VirtualFile>
+    get() {
+      return state.originalFiles.mapNotNull { VirtualFileManager.getInstance().findFileByNioPath(Path.of(it)) }
+    }
+
   @TestOnly
   protected override fun runInBackgroundBlocking(r: Runnable) {
     runBlocking(Dispatchers.IO) { r.run() }
@@ -235,18 +257,18 @@ open class MavenProjectsManagerEx(project: Project, private val cs: CoroutineSco
 
   override suspend fun importMavenProjects(projects: List<MavenProject>) {
     reapplyModelStructureOnly {
-      importMavenProjects(projectsTree, projects, null, it)
+      importMavenProjects(projects, null, it, MavenSyncSession(project, MavenSyncSpec.incremental("reapply"), projectsTree))
     }
   }
 
   private suspend fun importMavenProjects(
-    tree: MavenProjectsTree,
     projectsToImport: List<MavenProject>,
     modelsProvider: IdeModifiableModelsProvider?,
     parentActivity: StructuredIdeActivity,
+    syncSession: MavenSyncSession,
   ): List<Module> {
     return tracer.spanBuilder("importMavenProjects").useWithScope {
-      val createdModules = doImportMavenProjects(tree, projectsToImport, modelsProvider, parentActivity)
+      val createdModules = doImportMavenProjects(projectsToImport, modelsProvider, parentActivity, syncSession)
       fireProjectImportCompleted()
       createdModules
     }
@@ -254,10 +276,10 @@ open class MavenProjectsManagerEx(project: Project, private val cs: CoroutineSco
 
   @RequiresBackgroundThread
   private suspend fun doImportMavenProjects(
-    tree: MavenProjectsTree,
     projectsToImport: List<MavenProject>,
     optionalModelsProvider: IdeModifiableModelsProvider?,
     parentActivity: StructuredIdeActivity,
+    syncSession: MavenSyncSession,
   ): List<Module> {
     val modelsProvider = optionalModelsProvider ?: ProjectDataManager.getInstance().createModifiableModelsProvider(myProject)
 
@@ -268,7 +290,7 @@ open class MavenProjectsManagerEx(project: Project, private val cs: CoroutineSco
       false
     ) {
       ApplicationManager.getApplication().messageBus.syncPublisher(MavenSyncListener.TOPIC).importStarted(myProject)
-      val importResult = runImportProjectActivity(tree, projectsToImport, modelsProvider, parentActivity)
+      val importResult = runImportProjectActivity(projectsToImport, modelsProvider, parentActivity, syncSession)
       tracer.spanBuilder("importFinished").use {
         ApplicationManager.getApplication().messageBus.syncPublisher(MavenSyncListener.TOPIC)
           .importFinished(myProject, projectsToImport, importResult.createdModules)
@@ -298,13 +320,12 @@ open class MavenProjectsManagerEx(project: Project, private val cs: CoroutineSco
   }
 
   private suspend fun runImportProjectActivity(
-    tree: MavenProjectsTree,
     projectsToImport: List<MavenProject>,
     modelsProvider: IdeModifiableModelsProvider,
     parentActivity: StructuredIdeActivity,
+    syncSession: MavenSyncSession,
   ): ImportResult {
-    val projectImporter = MavenProjectImporter.createImporter(
-      project, tree, projectsToImport,
+    val projectImporter = MavenProjectImporter.createImporter(syncSession, projectsToImport,
       modelsProvider, importingSettings, myPreviewModule, parentActivity
     )
     val postTasks = tracer.spanBuilder("importProject").useWithScope {
@@ -375,7 +396,7 @@ open class MavenProjectsManagerEx(project: Project, private val cs: CoroutineSco
     val mavenEmbedderWrappers = project.service<MavenEmbedderWrappersManager>().createMavenEmbedderWrappers()
     mavenEmbedderWrappers.use {
       return doUpdateMavenProjects(tree, spec, null, mavenEmbedderWrappers, MavenPartialSyncFileReader(
-        tree, spec, generalSettings, filesToUpdate, filesToDelete))
+        tree, spec, generalSettings, explicitProfiles, filesToUpdate, filesToDelete))
     }
   }
 
@@ -457,7 +478,7 @@ open class MavenProjectsManagerEx(project: Project, private val cs: CoroutineSco
       return doUpdateMavenProjects(treeToSync, spec,
                                    modelsProvider,
                                    mavenEmbedderWrappers,
-                                   MavenFullSyncFileReader(treeToSync, spec, generalSettings))
+                                   MavenFullSyncFileReader(state.originalFiles, treeToSync, spec, generalSettings, explicitProfiles))
     }
   }
 
@@ -468,6 +489,7 @@ open class MavenProjectsManagerEx(project: Project, private val cs: CoroutineSco
     mavenEmbedderWrappers: MavenEmbedderWrappers,
     read: MavenSyncFileReader,
   ): List<Module> {
+    val session = MavenSyncSession(project, spec, tree)
     return tracer.spanBuilder("syncMavenProject").useWithScope doUpdateMavenProjects@{
       // display all import activities using the same build progress
       logDebug("Start update ${project.name}, $spec ${myProject.name}")
@@ -483,7 +505,8 @@ open class MavenProjectsManagerEx(project: Project, private val cs: CoroutineSco
           val result = tracer.spanBuilder("doStaticSync").useWithScope doStaticSync@{
             MavenProjectStaticImporter.getInstance(myProject)
               .syncStatic(
-                tree.existingManagedFiles,
+                session,
+                existingManagedFiles,
                 modelsProvider,
                 importingSettings,
                 generalSettings,
@@ -511,7 +534,7 @@ open class MavenProjectsManagerEx(project: Project, private val cs: CoroutineSco
           return@doUpdateMavenProjects emptyList()
         }
         val result = tracer.spanBuilder("doDynamicSync").useWithScope {
-          doDynamicSync(tree, syncActivity, read, spec, modelsProvider, mavenEmbedderWrappers)
+          doDynamicSync(tree, session, syncActivity, read, modelsProvider, mavenEmbedderWrappers)
         }
 
         return@doUpdateMavenProjects result
@@ -541,17 +564,19 @@ open class MavenProjectsManagerEx(project: Project, private val cs: CoroutineSco
   }
 
   private suspend fun checkMavenEnvironment(tree: MavenProjectsTree, spec: MavenSyncSpec): Boolean {
-    return MavenEnvironmentChecker(syncConsole, project).checkEnvironment(tree.existingManagedFiles)
+    return MavenEnvironmentChecker(syncConsole, project).checkEnvironment(existingManagedFiles)
   }
 
   private suspend fun doDynamicSync(
     tree: MavenProjectsTree,
+    session: MavenSyncSession,
     syncActivity: StructuredIdeActivity,
     read: MavenSyncFileReader,
-    spec: MavenSyncSpec,
     modelsProvider: IdeModifiableModelsProvider?,
     mavenEmbedderWrappers: MavenEmbedderWrappers,
   ): List<Module> {
+
+    val spec = session.spec
     val readingResult = readMavenProjectsActivity(syncActivity) { read(mavenEmbedderWrappers) }
 
     fireImportAndResolveScheduled()
@@ -564,16 +589,18 @@ open class MavenProjectsManagerEx(project: Project, private val cs: CoroutineSco
     }
 
     val result = tracer.spanBuilder("importModules").useWithScope {
-      importModules(tree,  syncActivity, resolutionResult, modelsProvider, mavenEmbedderWrappers)
+      importModules(tree, syncActivity, resolutionResult, modelsProvider, mavenEmbedderWrappers, session)
     }
 
     tracer.spanBuilder("collectMavenProblems").useWithScope {
-      tree.collectProblems()
+      tree.collectProblems(session)
     }
 
     tracer.spanBuilder("notifyMavenProblems").useWithScope {
-      MavenResolveResultProblemProcessor.notifyMavenProblems(tree, myProject)
+      MavenResolveResultProblemProcessor.notifyMavenProblems(session)
     }
+    MavenToolchainCollector.logSyncStats(session)
+
     setNewTreeFromSync(tree)
     return result
   }
@@ -584,6 +611,7 @@ open class MavenProjectsManagerEx(project: Project, private val cs: CoroutineSco
     resolutionResult: MavenProjectResolutionResult,
     modelsProvider: IdeModifiableModelsProvider?,
     mavenEmbedderWrappers: MavenEmbedderWrappers,
+    syncSession: MavenSyncSession,
   ): List<Module> {
 
     val projectsToImport = resolutionResult.mavenProjectMap.entries
@@ -612,9 +640,7 @@ open class MavenProjectsManagerEx(project: Project, private val cs: CoroutineSco
                     for (mavenPluginId in pluginResolutionResult.unresolvedPluginIds) {
                       syncConsole.showArtifactBuildIssue(MavenServerConsoleIndicator.ResolveType.PLUGIN, mavenPluginId.key, null)
                     }
-                    for (mavenProject in mavenProjectsToResolvePlugins) {
-                      tree.firePluginsResolved(mavenProject)
-                    }
+                    tree.firePluginsResolved(mavenProjectsToResolvePlugins)
                   }
                 }
                 catch (e: Exception) {
@@ -628,7 +654,7 @@ open class MavenProjectsManagerEx(project: Project, private val cs: CoroutineSco
         }
       }
 
-      importMavenProjects(tree, projectsToImport, modelsProvider, syncActivity)
+      importMavenProjects(projectsToImport, modelsProvider, syncActivity, syncSession)
     }
 
   }
@@ -652,6 +678,7 @@ open class MavenProjectsManagerEx(project: Project, private val cs: CoroutineSco
               resolver.resolve(spec.resolveIncrementally(),
                                projectsToResolve,
                                tree,
+                               explicitProfiles,
                                tree.workspaceMap,
                                repositoryPath,
                                updateSnapshots,
@@ -669,8 +696,15 @@ open class MavenProjectsManagerEx(project: Project, private val cs: CoroutineSco
   }
 
   override suspend fun onProjectStartup() {
-    if (!isNormalProject) return
-    if (!wasMavenized()) return
+    MavenLog.LOG.debug("onProjectStartup")
+
+    val normalProject = isNormalProject
+    MavenLog.LOG.debug("isNormalProject: $normalProject")
+    if (!normalProject) return
+
+    val wasMavenized = wasMavenized()
+    MavenLog.LOG.debug("wasMavenized: $wasMavenized")
+    if (!wasMavenized) return
 
     MavenSettingsCache.getInstance(myProject).reloadAsync()
     initOnProjectStartup()
@@ -743,7 +777,7 @@ open class MavenProjectsManagerEx(project: Project, private val cs: CoroutineSco
       return
     }
     val baseDir = readAction {
-      if (tree.existingManagedFiles.size != 1) null else MavenUtil.getBaseDir(tree.existingManagedFiles[0])
+      if (existingManagedFiles.size != 1) null else MavenUtil.getBaseDir(existingManagedFiles[0])
     }
     if (null == baseDir) return
     withContext(Dispatchers.IO) {

@@ -1,8 +1,10 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.refactoring;
 
 import com.intellij.refactoring.util.CommonRefactoringUtil;
 import com.intellij.testFramework.TestDataPath;
+import com.jetbrains.python.allure.Layers;
+import com.jetbrains.python.allure.Subsystems;
 import com.jetbrains.python.psi.LanguageLevel;
 import com.jetbrains.python.psi.PyExpression;
 import com.jetbrains.python.refactoring.introduce.IntroduceHandler;
@@ -10,6 +12,8 @@ import com.jetbrains.python.refactoring.introduce.constant.PyIntroduceConstantHa
 
 
 @TestDataPath("$CONTENT_ROOT/../testData/refactoring/introduceConstant/")
+@Subsystems.Refactoring
+@Layers.Functional
 public class PyIntroduceConstantTest extends PyIntroduceTestCase {
   public void testPy1840() {
     doTest();
@@ -28,7 +32,7 @@ public class PyIntroduceConstantTest extends PyIntroduceTestCase {
   }
 
   public void testSuggestUniqueNames() {  // PY-4409
-    doTestSuggestions(PyExpression.class, "S1");
+    doTestSuggestions(PyExpression.class, "L1");
   }
 
   public void testSuggestUniqueNamesGlobalScope() {  // PY-4409

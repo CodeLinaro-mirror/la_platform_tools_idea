@@ -1,9 +1,11 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.agent.workbench.sessions.service
 
-import com.intellij.agent.workbench.common.session.AgentSessionProvider
-import com.intellij.agent.workbench.common.session.AgentSessionThread
-import com.intellij.agent.workbench.sessions.core.providers.AgentSessionSource
+import com.intellij.platform.ai.agent.core.session.AgentSessionProvider
+import com.intellij.platform.ai.agent.core.session.AgentSessionThread
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentSessionProviderDescriptor
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentSessionProviders
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentSessionSource
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
 import kotlinx.coroutines.CancellationException
@@ -11,8 +13,22 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
 
 private val LOG = logger<AgentSessionThreadLoadSupport>()
+
+internal data class AgentSessionOpenProjectLoadTarget(
+  @JvmField val identityPath: String,
+  @JvmField val projectDirectory: String?,
+  @JvmField val project: Project,
+  @JvmField val originalPath: String,
+)
+
+internal data class AgentSessionPrefetchedThreads(
+  @JvmField val projectDirectory: String?,
+  @JvmField val threads: List<AgentSessionThread>,
+)
 
 internal class AgentSessionThreadLoadSupport(
   private val sessionSourcesProvider: () -> List<AgentSessionSource>,
@@ -23,10 +39,11 @@ internal class AgentSessionThreadLoadSupport(
   ) -> List<AgentSessionThread>,
   private val resolveErrorMessage: (AgentSessionProvider, Throwable) -> String,
   private val resolveProviderWarningMessage: (AgentSessionProvider, Throwable) -> String,
+  private val providerDescriptorProvider: (AgentSessionProvider) -> AgentSessionProviderDescriptor? = AgentSessionProviders::find,
 ) {
-  suspend fun loadThreadsFromClosedProject(path: String): AgentSessionLoadResult {
+  suspend fun loadThreadsFromClosedProject(path: String, projectDirectory: String? = null): AgentSessionLoadResult {
     return loadThreads(path) { source ->
-      source.listThreadsFromClosedProject(path = path)
+      source.listThreads(path = projectDirectory?.takeIf { it.isNotBlank() } ?: path, openProject = null)
     }
   }
 
@@ -37,6 +54,9 @@ internal class AgentSessionThreadLoadSupport(
     val sourceResults = coroutineScope {
       sessionSourcesProvider().map { source ->
         async {
+          if (isProviderCliMissing(source.provider)) {
+            return@async null
+          }
           val result = try {
             Result.success(
               applyArchiveSuppressions(
@@ -48,6 +68,7 @@ internal class AgentSessionThreadLoadSupport(
           }
           catch (throwable: Throwable) {
             if (throwable is CancellationException) throw throwable
+            if (isProviderCliMissingError(source.provider, throwable)) return@async null
             LOG.warn("Failed to load ${source.provider.value} sessions for $path", throwable)
             Result.failure(throwable)
           }
@@ -57,7 +78,7 @@ internal class AgentSessionThreadLoadSupport(
             hasUnknownTotal = result.isSuccess && !source.canReportExactThreadCount,
           )
         }
-      }.awaitAll()
+      }.awaitAll().filterNotNull()
     }
     return mergeAgentSessionSourceLoadResults(
       sourceResults = sourceResults,
@@ -68,17 +89,21 @@ internal class AgentSessionThreadLoadSupport(
 
   private suspend fun loadSourceResultForOpenProject(
     source: AgentSessionSource,
-    normalizedPath: String,
-    project: Project,
-    prefetchedByProvider: Map<AgentSessionProvider, Map<String, List<AgentSessionThread>>>,
-    originalPath: String,
-  ): AgentSessionSourceLoadResult {
+    loadTarget: AgentSessionOpenProjectLoadTarget,
+    prefetchedByProvider: Map<AgentSessionProvider, Map<String, AgentSessionPrefetchedThreads>>,
+    cliAvailabilityByProvider: Map<AgentSessionProvider, Boolean>? = null,
+  ): AgentSessionSourceLoadResult? {
+    if (isProviderCliMissing(source.provider, cliAvailabilityByProvider)) return null
     return try {
-      val prefetched = prefetchedByProvider[source.provider]?.get(normalizedPath)
+      val prefetched = prefetchedByProvider[source.provider]?.get(loadTarget.identityPath)
+      val prefetchedThreads = prefetched
+        ?.takeIf { prefetchedResult -> prefetchedResult.projectDirectory == loadTarget.projectDirectory }
+        ?.threads
+      val sourcePath = loadTarget.projectDirectory?.takeIf { it.isNotBlank() } ?: loadTarget.identityPath
       val threads = applyArchiveSuppressions(
-        normalizedPath,
+        loadTarget.identityPath,
         source.provider,
-        prefetched ?: source.listThreadsFromOpenProject(path = normalizedPath, project = project),
+        prefetchedThreads ?: source.listThreads(path = sourcePath, openProject = loadTarget.project),
       )
       AgentSessionSourceLoadResult(
         provider = source.provider,
@@ -88,7 +113,8 @@ internal class AgentSessionThreadLoadSupport(
     }
     catch (e: Throwable) {
       if (e is CancellationException) throw e
-      LOG.warn("Failed to load ${source.provider.value} sessions for $originalPath", e)
+      if (isProviderCliMissingError(source.provider, e)) return null
+      LOG.warn("Failed to load ${source.provider.value} sessions for ${loadTarget.originalPath}", e)
       AgentSessionSourceLoadResult(
         provider = source.provider,
         result = Result.failure(e),
@@ -96,33 +122,51 @@ internal class AgentSessionThreadLoadSupport(
     }
   }
 
+  private suspend fun isProviderCliMissing(provider: AgentSessionProvider): Boolean {
+    return isProviderCliMissing(provider, cliAvailabilityByProvider = null)
+  }
+
+  private suspend fun isProviderCliMissing(
+    provider: AgentSessionProvider,
+    cliAvailabilityByProvider: Map<AgentSessionProvider, Boolean>?,
+  ): Boolean {
+    cliAvailabilityByProvider?.get(provider)?.let { available -> return !available }
+    val descriptor = providerDescriptorProvider(provider) ?: return false
+    return !descriptor.isCliAvailable()
+  }
+
+  private fun isProviderCliMissingError(provider: AgentSessionProvider, throwable: Throwable): Boolean {
+    return providerDescriptorProvider(provider)?.isCliMissingError(throwable) == true
+  }
+
   suspend fun loadSourcesIncrementally(
     sessionSources: List<AgentSessionSource>,
-    normalizedPath: String,
-    project: Project,
-    prefetchedByProvider: Map<AgentSessionProvider, Map<String, List<AgentSessionThread>>>,
-    originalPath: String,
+    loadTarget: AgentSessionOpenProjectLoadTarget,
+    prefetchedByProvider: Map<AgentSessionProvider, Map<String, AgentSessionPrefetchedThreads>>,
+    cliAvailabilityByProvider: Map<AgentSessionProvider, Boolean>? = null,
     onPartialResult: (AgentSessionLoadResult, isComplete: Boolean) -> Unit,
   ): AgentSessionLoadResult {
-    val sourceResults = java.util.concurrent.CopyOnWriteArrayList<AgentSessionSourceLoadResult>()
+    val sourceResults = CopyOnWriteArrayList<AgentSessionSourceLoadResult>()
     val totalSourceCount = sessionSources.size
+    val completedSourceCount = AtomicInteger()
     coroutineScope {
       for (source in sessionSources) {
         launch {
           val sourceResult = loadSourceResultForOpenProject(
             source = source,
-            normalizedPath = normalizedPath,
-            project = project,
+            loadTarget = loadTarget,
             prefetchedByProvider = prefetchedByProvider,
-            originalPath = originalPath,
+            cliAvailabilityByProvider = cliAvailabilityByProvider,
           )
-          sourceResults.add(sourceResult)
+          if (sourceResult != null) {
+            sourceResults.add(sourceResult)
+          }
           val partial = mergeAgentSessionSourceLoadResults(
             sourceResults = sourceResults.toList(),
             resolveErrorMessage = resolveErrorMessage,
             resolveWarningMessage = resolveProviderWarningMessage,
           )
-          onPartialResult(partial, sourceResults.size == totalSourceCount)
+          onPartialResult(partial, completedSourceCount.incrementAndGet() == totalSourceCount)
         }
       }
     }

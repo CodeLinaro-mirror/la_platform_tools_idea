@@ -1,6 +1,7 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.agent.workbench.prompt.testrunner.context
 
+import com.intellij.agent.workbench.prompt.core.AGENT_PROMPT_INVOCATION_DATA_CONTEXT_KEY
 import com.intellij.agent.workbench.prompt.core.AgentPromptContextRendererIds
 import com.intellij.agent.workbench.prompt.core.AgentPromptContextTruncationReason
 import com.intellij.agent.workbench.prompt.core.AgentPromptInvocationData
@@ -27,8 +28,11 @@ import com.intellij.testFramework.junit5.TestApplication
 import com.intellij.testFramework.runInEdtAndWait
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
+import java.util.concurrent.TimeUnit
 
 @TestApplication
+@Timeout(value = 2, unit = TimeUnit.MINUTES)
 class AgentPromptTestSelectionContextContributorTest {
   private val contributor = AgentPromptTestSelectionContextContributor()
 
@@ -331,7 +335,7 @@ class AgentPromptTestSelectionContextContributorTest {
       emptyMap()
     }
     else {
-      mapOf(AGENT_PROMPT_TEST_RUNNER_INVOCATION_DATA_CONTEXT_KEY to dataContext)
+      mapOf(AGENT_PROMPT_INVOCATION_DATA_CONTEXT_KEY to dataContext)
     }
     return AgentPromptInvocationData(
       project = project,

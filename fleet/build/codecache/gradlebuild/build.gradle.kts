@@ -34,6 +34,7 @@ kotlin {
     "-progressive",
   )
   jvm {}
+  sourceSets.jvmMain.configure { resources.srcDir(layout.projectDirectory.dir("../resources")) }
   sourceSets.commonMain.configure { kotlin.srcDir(layout.projectDirectory.dir("../srcCommonMain")) }
   sourceSets.commonMain.configure { resources.srcDir(layout.projectDirectory.dir("../resourcesCommonMain")) }
   sourceSets.commonTest.configure { kotlin.srcDir(layout.projectDirectory.dir("../srcCommonTest")) }
@@ -55,9 +56,6 @@ kotlin {
       isTransitive = false
       exclude(group = "org.slf4j", module = "slf4j-jdk14")
     }
-    implementation(jps.com.jetbrains.intellij.platform.util.zip.squashed55996306.get().let { "${it.group}:${it.name}:${it.version}" }) {
-      isTransitive = false
-    }
     implementation(jps.com.jetbrains.intellij.idea.idea.community.build.zip464377771.get().let { "${it.group}:${it.name}:${it.version}" }) {
       exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib")
     }
@@ -66,6 +64,11 @@ kotlin {
     implementation(project(":fleet.codecache"))
     implementation(project(":fleet.build.platform"))
     implementation(project(":fleet.build.fs"))
+  }
+  sourceSets.jvmMain.dependencies {
+    implementation(jps.com.jetbrains.intellij.platform.util.zip.squashed55996306.get().let { "${it.group}:${it.name}:${it.version}" }) {
+      isTransitive = false
+    }
   }
   // KOTLIN__MARKER_END
 }

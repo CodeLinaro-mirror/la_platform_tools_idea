@@ -5,7 +5,9 @@ package com.intellij.agent.workbench.prompt.ui
 
 import com.intellij.agent.workbench.prompt.core.AgentPromptSuggestionCandidate
 import com.intellij.icons.AllIcons
+import com.intellij.ide.setToolTipText
 import com.intellij.openapi.util.NlsSafe
+import com.intellij.openapi.util.text.HtmlChunk
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.JBLabel
@@ -59,7 +61,7 @@ internal class AgentPromptSuggestionsComponent(
       withFont(JBUI.Fonts.smallFont())
       foreground = UIUtil.getContextHelpForeground()
       border = JBUI.Borders.empty(2, 0)
-      toolTipText = candidate.promptText
+      setToolTipText(HtmlChunk.text(candidate.promptText))
       resolveActionIcon(candidate.id)?.let { icon ->
         setIcon(icon, false)
       }
@@ -85,7 +87,7 @@ internal class AgentPromptSuggestionsComponent(
       id.startsWith("editor.") -> when {
         id.contains("explain") -> AllIcons.Actions.IntentionBulb
         id.contains("refactor") -> AllIcons.Actions.RefactoringBulb
-        id.contains("review") -> AllIcons.General.InspectionsEye
+        id == "editor.review" -> AllIcons.General.InspectionsEye
         else -> null
       }
       else -> null

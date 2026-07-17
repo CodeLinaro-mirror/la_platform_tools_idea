@@ -1,5 +1,6 @@
 package com.intellij.mcpserver.impl.util
 
+import com.intellij.mcpserver.McpProjectPathCustomizer
 import com.intellij.mcpserver.McpToolCallResult
 import com.intellij.mcpserver.McpToolCallResultContent
 import com.intellij.mcpserver.McpToolSchema
@@ -31,6 +32,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import kotlinx.serialization.json.JsonArray as KtJsonArray
 import kotlinx.serialization.json.JsonObject as KtJsonObject
 import kotlinx.serialization.serializerOrNull
@@ -40,18 +42,17 @@ import kotlin.reflect.KParameter
 import kotlin.reflect.full.isSubtypeOf
 import kotlin.reflect.typeOf
 
-
-fun KCallable<*>.parametersSchema(vararg additionalImplicitParameters: KParameter): McpToolSchema {
+internal fun parametersSchema(callable: KCallable<*>, vararg additionalImplicitParameters: KParameter): McpToolSchema {
   val parameterSchemas = mutableMapOf<String, JsonElement>()
   val definitions = mutableMapOf<String, JsonElement>()
   val requiredParameters = mutableSetOf<String>()
 
   // probably passthrough something like `additionalImplicitParameters` from outsise
   // but it isn't neccessary right now
-  for (parameter in this.parameters + additionalImplicitParameters) {
+  for (parameter in callable.parameters + additionalImplicitParameters) {
     if (parameter.kind != KParameter.Kind.VALUE) continue
 
-    val parameterName = parameter.name ?: error("Parameter has no name: ${parameter.name} in $this")
+    val parameterName = parameter.name ?: error("Parameter has no name: ${parameter.name} in $callable")
 
     val parameterType = parameter.type
 
@@ -71,6 +72,21 @@ fun KCallable<*>.parametersSchema(vararg additionalImplicitParameters: KParamete
     }
     if (!parameter.isOptional) requiredParameters.add(parameterName)
   }
+
+  // Customize projectPath name and description via EP if needed
+  if (additionalImplicitParameters.any { it.name == "projectPath" }) {
+    val customizer = McpProjectPathCustomizer.EP.extensionList.firstOrNull()
+    if (customizer != null) {
+      parameterSchemas.remove("projectPath")?.let { originalSchema ->
+        parameterSchemas[customizer.parameterName] = buildJsonObject {
+          for ((key, value) in originalSchema as KtJsonObject) {
+            if (key == "description") put("description", customizer.parameterDescription) else put(key, value)
+          }
+        }
+      }
+    }
+  }
+
   return McpToolSchema.ofPropertiesMap(properties = parameterSchemas, requiredProperties = requiredParameters, definitions = definitions, definitionsPath = McpToolSchema.DEFAULT_DEFINITIONS_PATH)
 }
 
@@ -81,10 +97,10 @@ private fun projectPathParameterStub(
     | If you're not aware about the project path you can ask user about it.""")
   projectPath: String? = null) {}
 internal val projectPathParameter: KParameter get() = ::projectPathParameterStub.parameters.single()
-val projectPathParameterName: String get() = projectPathParameter.name ?: error("Parameter has no name: ${projectPathParameter.name}")
+val projectPathParameterName: String get() = McpProjectPathCustomizer.EP.extensionList.firstOrNull()?.parameterName ?: "projectPath"
 
-fun KCallable<*>.returnTypeSchema(): McpToolSchema? {
-  val type = this.returnType
+internal fun returnTypeSchema(callable: KCallable<*>): McpToolSchema? {
+  val type = callable.returnType
   // output schema should be provided only for non-primitive types and serializable types
   if (type == typeOf<String>()) return null
   if (type == typeOf<Char>()) return null
@@ -106,15 +122,15 @@ fun KCallable<*>.returnTypeSchema(): McpToolSchema? {
     .analyzeTypeUsingKotlinxSerialization()
     .generateJsonSchema()
     .handleCoreAnnotations()
-    .handleMcpDescriptionAnnotations(this)
+    .handleMcpDescriptionAnnotations(callable)
     .removeNumericBounds()
     .addStringTypeToEnums()
 
   val schema = intermediateJsonSchemaData.compileInlining()
-  val jsonSchema = schema.json.toKt() as? KtJsonObject ?: error("Non-primitive type is expected in return type: ${type.classifier} in $this")
+  val jsonSchema = schema.json.toKt() as? KtJsonObject ?: error("Non-primitive type is expected in return type: ${type.classifier} in $callable")
   val adjustedSchema = removeRequiredForDefaultValues(jsonSchema, serializer)
-  val properties = adjustedSchema["properties"] as? KtJsonObject ?: error("Properties are expected in return type: ${type.classifier} in $this")
-  val required = adjustedSchema["required"] as? KtJsonArray ?: error("Required is expected in return type: ${type.classifier} in $this")
+  val properties = adjustedSchema["properties"] as? KtJsonObject ?: error("Properties are expected in return type: ${type.classifier} in $callable")
+  val required = adjustedSchema["required"] as? KtJsonArray ?: error("Required is expected in return type: ${type.classifier} in $callable")
   val requiredProperties = required.map { it.jsonPrimitive.content }.toSet()
   return McpToolSchema.ofPropertiesSchema(properties = properties, requiredProperties = requiredProperties, definitions = emptyMap(), definitionsPath = McpToolSchema.DEFAULT_DEFINITIONS_PATH)
 }

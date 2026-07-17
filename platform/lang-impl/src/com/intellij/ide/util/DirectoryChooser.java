@@ -376,8 +376,10 @@ public class DirectoryChooser extends DialogWrapper {
       myModule = virtualFile != null ? ProjectRootManager.getInstance(project).getFileIndex().getModuleForFile(virtualFile) : null;
     }
 
+    @ApiStatus.Internal
     public PathFragment[] getFragments() { return myFragments; }
 
+    @ApiStatus.Internal
     public void setFragments(PathFragment @Nullable [] fragments) {
       myFragments = fragments;
     }
@@ -474,7 +476,7 @@ public class DirectoryChooser extends DialogWrapper {
     @Nullable Map<PsiDirectory,String> postfixes
   ) {
     ProgressManager.getInstance().runProcessWithProgressSynchronously(
-      () -> ReadAction.run(() -> fillItems(directories, postfixToShow, postfixes)),
+      () -> ReadAction.runBlocking(() -> fillItems(directories, postfixToShow, postfixes)),
       LangBundle.message("progress.title.validating"), true, project
     );
     if (defaultSelection == null) {
@@ -605,6 +607,7 @@ public class DirectoryChooser extends DialogWrapper {
   }
 
 
+  @ApiStatus.Internal
   public static final class PathFragment {
     private final String myText;
     private final boolean myCommon;

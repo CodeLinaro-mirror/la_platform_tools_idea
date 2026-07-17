@@ -9,12 +9,12 @@ import com.intellij.modcommand.ModCommand;
 import com.intellij.modcommand.ModUpdateFileText;
 import com.intellij.modcompletion.ModCompletionItem;
 import com.intellij.modcompletion.ModCompletionItemPresentation;
-import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.ReportingClassSubstitutor;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.util.text.MarkupText;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.ui.JBColor;
 import com.intellij.util.concurrency.annotations.RequiresReadLock;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.ApiStatus;
@@ -33,18 +33,32 @@ import java.util.stream.Stream;
 @NotNullByDefault
 @ApiStatus.Internal
 public final class CompletionItemLookupElement extends LookupElement implements ReportingClassSubstitutor {
-  private final ModCompletionItem item;
+  private final ModCompletionItem myItem;
   private volatile @Nullable ModCommand myCachedCommand;
+  private final AutoCompletionPolicy myPolicy;
 
   public CompletionItemLookupElement(ModCompletionItem item) {
-    this.item = item;
+    this(item, item.autoCompletionPolicy());
+  }
+  
+  private CompletionItemLookupElement(ModCompletionItem item, AutoCompletionPolicy policy) {
+    myItem = item;
+    myPolicy = policy;
+  }
+
+  /**
+   * @param policy auto-completion policy
+   * @return a lookup element with an overridden auto-completion policy
+   */
+  public CompletionItemLookupElement withAutoCompletionPolicy(AutoCompletionPolicy policy) {
+    return myPolicy == policy ? this : new CompletionItemLookupElement(myItem, policy);
   }
 
   /**
    * @return the completion item wrapped by this element.
    */
   public ModCompletionItem item() {
-    return item;
+    return myItem;
   }
 
   /**
@@ -61,13 +75,13 @@ public final class CompletionItemLookupElement extends LookupElement implements 
   @RequiresReadLock
   public ModCommand computeCommand(ActionContext actionContext, ModCompletionItem.InsertionContext insertionContext) {
     if (!insertionContext.equals(ModCompletionItem.DEFAULT_INSERTION_CONTEXT)) {
-      return item.perform(actionContext, insertionContext);
+      return myItem.perform(actionContext, insertionContext);
     }
     ModCommand command = getCachedCommand(actionContext, insertionContext);
     if (command != null) {
       return command;
     }
-    command = item.perform(actionContext, insertionContext);
+    command = myItem.perform(actionContext, insertionContext);
     myCachedCommand = command;
     return command;
   }
@@ -96,7 +110,7 @@ public final class CompletionItemLookupElement extends LookupElement implements 
 
   @Override
   public Class<?> getSubstitutedClass() {
-    return item.getClass();
+    return myItem.getClass();
   }
 
   private static boolean isApplicableToContext(ModCommand command, ActionContext context) {
@@ -119,43 +133,47 @@ public final class CompletionItemLookupElement extends LookupElement implements 
 
   @Override
   public boolean isValid() {
-    return item.isValid();
+    return myItem.isValid();
   }
 
   @Override
   public AutoCompletionPolicy getAutoCompletionPolicy() {
-    return item.autoCompletionPolicy();
+    return myPolicy;
   }
 
   @Override
   public String getLookupString() {
-    return item.mainLookupString();
+    return myItem.mainLookupString();
   }
 
   @Override
   public @Unmodifiable Set<String> getAllLookupStrings() {
-    Set<String> strings = item.additionalLookupStrings();
-    return strings.isEmpty() ? Set.of(item.mainLookupString()) :
-           Stream.concat(Stream.of(item.mainLookupString()), strings.stream()).collect(Collectors.toSet());
+    Set<String> strings = myItem.additionalLookupStrings();
+    return strings.isEmpty() ? Set.of(myItem.mainLookupString()) :
+           Stream.concat(Stream.of(myItem.mainLookupString()), strings.stream()).collect(Collectors.toSet());
   }
 
   @Override
   public Object getObject() {
-    return item.contextObject();
+    return myItem.contextObject();
   }
 
   @Override
   public void renderElement(LookupElementPresentation presentation) {
-    ModCompletionItemPresentation itemPresentation = item.presentation();
+    ModCompletionItemPresentation itemPresentation = myItem.presentation();
     // TODO: apply styles when possible
     MarkupText mainText = itemPresentation.mainText();
     List<MarkupText.Fragment> fragments = mainText.fragments();
     String tailText = "";
+    boolean gray = false;
     if (!fragments.isEmpty()) {
-      MarkupText.Fragment last = fragments.getLast();
-      if (last.kind() == MarkupText.Kind.GRAYED) {
-        tailText = last.text();
-        fragments = fragments.subList(0, fragments.size() - 1);
+      if (fragments.size() > 1) {
+        MarkupText.Fragment last = fragments.getLast();
+        if (last.kind() == MarkupText.Kind.GRAYED || last.kind() == MarkupText.Kind.NORMAL) {
+          gray = last.kind() == MarkupText.Kind.GRAYED;
+          tailText = last.text();
+          fragments = fragments.subList(0, fragments.size() - 1);
+        }
       }
       presentation.setItemText(StringUtil.join(fragments, MarkupText.Fragment::text, ""));
       MarkupText.Fragment onlyFragment = ContainerUtil.getOnlyItem(fragments);
@@ -164,14 +182,12 @@ public final class CompletionItemLookupElement extends LookupElement implements 
           case STRONG -> presentation.setItemTextBold(true);
           case EMPHASIZED -> presentation.setItemTextItalic(true);
           case STRIKEOUT -> presentation.setStrikeout(true);
+          case ERROR -> presentation.setItemTextForeground(JBColor.RED);
         }
       }
     }
     presentation.setIcon(itemPresentation.mainIcon());
-    if (!ApplicationManager.getApplication().isUnitTestMode()) {
-      tailText += " (MC)";
-    }
-    presentation.setTailText(tailText, true);
+    presentation.setTailText(tailText, gray);
     presentation.setTypeText(itemPresentation.detailText().toText(), itemPresentation.detailIcon());
   }
 
@@ -191,16 +207,16 @@ public final class CompletionItemLookupElement extends LookupElement implements 
 
   @Override
   public boolean equals(Object o) {
-    return o instanceof CompletionItemLookupElement element && item.equals(element.item);
+    return o instanceof CompletionItemLookupElement element && myItem.equals(element.myItem);
   }
 
   @Override
   public int hashCode() {
-    return item.hashCode();
+    return myItem.hashCode();
   }
 
   @Override
   public String toString() {
-    return "Adapter for: " + item;
+    return "Adapter for: " + myItem;
   }
 }

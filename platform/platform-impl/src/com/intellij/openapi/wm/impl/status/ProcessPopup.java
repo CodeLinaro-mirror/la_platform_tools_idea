@@ -14,6 +14,7 @@ import com.intellij.openapi.ui.popup.JBPopupListener;
 import com.intellij.openapi.ui.popup.LightweightWindowEvent;
 import com.intellij.openapi.ui.popup.util.MinimizeButton;
 import com.intellij.openapi.util.Key;
+import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.wm.IdeFrame;
 import com.intellij.openapi.wm.ex.StatusBarEx;
 import com.intellij.ui.ClientProperty;
@@ -26,15 +27,19 @@ import com.intellij.ui.popup.AbstractPopup;
 import com.intellij.util.IJSwingUtilities;
 import com.intellij.util.ui.JBDimension;
 import com.intellij.util.ui.JBUI;
+import com.intellij.util.ui.StartupUiUtil;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
+import javax.swing.KeyStroke;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Rectangle;
+import java.awt.event.KeyEvent;
+import java.util.List;
 
 import static javax.swing.ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER;
 import static javax.swing.ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED;
@@ -74,6 +79,10 @@ final class ProcessPopup {
 
     myContentPanel = new JBScrollPane(myIndicatorPanel, VERTICAL_SCROLLBAR_AS_NEEDED, HORIZONTAL_SCROLLBAR_NEVER);
     updateContentUI();
+  }
+  
+  boolean isBannerPresent() {
+    return myAnalyzingBannerDecorator.isBannerPresent();
   }
 
   public void addIndicator(@NotNull ProgressComponent indicator) {
@@ -251,8 +260,16 @@ final class ProcessPopup {
     Project project = ProjectUtil.getProjectForComponent(myProgressPanel.getComponent());
     builder.setDimensionServiceKey(project, DIMENSION_SERVICE_KEY, true);
     builder.setLocateWithinScreenBounds(false);
+    
+    if (StartupUiUtil.isWaylandToolkit()) {
+      builder.setHeaderAlwaysFocusable(true);
+    }
 
     builder.setCancelButton(new MinimizeButton(IdeBundle.message("tooltip.hide")));
+
+    builder.setKeyboardActions(List.of(
+      Pair.create(_ -> myProgressPanel.hideProcessPopup(), KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0))
+    ));
 
     myPopup = builder.createPopup();
   }

@@ -1,8 +1,6 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 @file:Suppress("ReplaceGetOrSet", "LeakingThis", "ReplaceJavaStaticMethodWithKotlinAnalog")
 @file:Internal
-@file:OptIn(IntellijInternalApi::class)
-
 package com.intellij.serviceContainer
 
 import com.intellij.codeWithMe.ClientIdContextElement
@@ -73,7 +71,6 @@ import com.intellij.openapi.progress.prepareThreadContext
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Condition
 import com.intellij.openapi.util.Disposer
-import com.intellij.openapi.util.IntellijInternalApi
 import com.intellij.openapi.util.UserDataHolderBase
 import com.intellij.platform.instanceContainer.internal.ContainerDisposedException
 import com.intellij.platform.instanceContainer.internal.InstanceContainerImpl
@@ -85,7 +82,6 @@ import com.intellij.platform.instanceContainer.internal.initializedInstances
 import com.intellij.platform.instanceContainer.internal.isStatic
 import com.intellij.platform.util.coroutines.childScope
 import com.intellij.util.IntelliJCoroutinesFacade
-import com.intellij.util.SystemProperties
 import com.intellij.util.concurrency.ThreadingAssertions
 import com.intellij.util.concurrency.annotations.RequiresBlockingContext
 import com.intellij.util.containers.UList
@@ -360,11 +356,14 @@ abstract class ComponentManagerImpl(
   final override fun getExtensionArea(): ExtensionsAreaImpl = extensionArea
 
   fun registerComponents() {
-    registerComponents(modules = PluginManagerCore.getPluginSet().getEnabledModules(), app = getApplication())
+    registerComponents(
+      descriptors = PluginManagerCore.getPluginSet().sequenceResolvedSortedDescriptorsForRegistration(),
+      app = getApplication()
+    )
   }
 
   open fun registerComponents(
-    modules: List<IdeaPluginDescriptorImpl>,
+    descriptors: Sequence<IdeaPluginDescriptorImpl>,
     app: Application?,
     listenerCallbacks: MutableList<ExtensionPointDeferredListenersNotification>? = null,
   ) {
@@ -379,32 +378,30 @@ abstract class ComponentManagerImpl(
     // register services before registering extensions because plugins can access services in their extensions,
     // which can be invoked right away if the plugin is loaded dynamically
     val extensionPoints = HashMap(extensionArea.nameToPointMap)
-    for (rootModule in modules) {
-      executeRegisterTask(rootModule) { module ->
-        val containerDescriptor = getContainerDescriptor(module)
-        registerServices(containerDescriptor.services, module)
-        registerComponents(pluginDescriptor = module, containerDescriptor = containerDescriptor, headless = isHeadless)
+    for (module in descriptors) {
+      val containerDescriptor = getContainerDescriptor(module)
+      registerServices(containerDescriptor.services, module)
+      registerComponents(pluginDescriptor = module, containerDescriptor = containerDescriptor, headless = isHeadless)
 
-        if (listenersByTopicName == null) {
-          listenersByTopicName = ConcurrentHashMap()
+      if (listenersByTopicName == null) {
+        listenersByTopicName = ConcurrentHashMap()
+      }
+      for (listener in containerDescriptor.listeners) {
+        if ((isUnitTestMode && !listener.activeInTestMode) || (isHeadless && !listener.activeInHeadlessMode)) {
+          continue
         }
-        for (listener in containerDescriptor.listeners) {
-          if ((isUnitTestMode && !listener.activeInTestMode) || (isHeadless && !listener.activeInHeadlessMode)) {
-            continue
-          }
-          if (listener.os != null && !listener.os!!.isSuitableForOs()) {
-            continue
-          }
-          listenersByTopicName.computeIfAbsent(listener.topicClassName) { ArrayList() }
-            .add(PluginListenerDescriptor(listener, module))
+        if (listener.os != null && !listener.os!!.isSuitableForOs()) {
+          continue
         }
+        listenersByTopicName.computeIfAbsent(listener.topicClassName) { ArrayList() }
+          .add(PluginListenerDescriptor(listener, module))
+      }
 
-        if (containerDescriptor.extensionPoints.isNotEmpty()) {
-          createExtensionPoints(points = containerDescriptor.extensionPoints,
-                                componentManager = this,
-                                result = extensionPoints,
-                                pluginDescriptor = module)
-        }
+      if (containerDescriptor.extensionPoints.isNotEmpty()) {
+        createExtensionPoints(points = containerDescriptor.extensionPoints,
+                              componentManager = this,
+                              result = extensionPoints,
+                              pluginDescriptor = module)
       }
     }
 
@@ -414,10 +411,8 @@ abstract class ComponentManagerImpl(
 
     extensionArea.reset(extensionPoints)
 
-    for (rootModule in modules) {
-      executeRegisterTask(rootModule) { module ->
-        extensionArea.registerExtensions(module.extensions, module, listenerCallbacks)
-      }
+    for (module in descriptors) {
+      extensionArea.registerExtensions(module.extensions, module, listenerCallbacks)
     }
 
     activity?.end()
@@ -1488,8 +1483,7 @@ abstract class ComponentManagerImpl(
     return intersectionScope
   }
 
-  internal open val useProxiesForOpenServices: Boolean =
-    SystemProperties.getBooleanProperty("intellij.platform.use.proxies.for.open.services", false)
+  internal open val useProxiesForOpenServices: Boolean = com.intellij.serviceContainer.useProxiesForOpenServices
 }
 
 private class PluginServicesStore {
@@ -1578,11 +1572,6 @@ internal fun doLoadClass(name: String, pluginDescriptor: PluginDescriptor, check
   }
 }
 
-private fun executeRegisterTask(mainPluginDescriptor: IdeaPluginDescriptorImpl, task: (IdeaPluginDescriptorImpl) -> Unit) {
-  task(mainPluginDescriptor)
-  executeRegisterTaskForOldContent(mainPluginDescriptor, task)
-}
-
 // Ask Core team approve before changing this set
 @Internal
 @Suppress("ReplaceJavaStaticMethodWithKotlinAnalog")
@@ -1607,12 +1596,14 @@ val servicePreloadingAllowListForNonCorePlugin: Set<String> = java.util.Set.of(
   "com.jetbrains.rider.protocol.RiderProtocolProjectSessionsManager",
   "com.jetbrains.rider.workspaceModel.RiderWorkspaceModel",
   "com.intellij.clouds.docker.gateway.host.DockerDevcontainerHostInitializer",
+  "com.intellij.ui.jcef.JBCefStartup",
 
   // Remote Development
   "com.intellij.cwm.plugin.driver.RemoteDriverHostService",
   "com.intellij.cwm.plugin.driver.RobotHostServiceImpl",
   "com.intellij.cwm.plugin.following.FollowMeManagerService",
   "com.intellij.cwm.plugin.following.GuestFollowMeManager",
+  "com.intellij.cwm.plugin.ui.BackendModalityHost",
   "com.intellij.cwm.plugin.ports.CwmPortForwardingToolWindowManager",
   "com.intellij.cwm.plugin.users.BackendUserManager",
   "com.intellij.platform.vcs.backend.split.BackendLocalChangesHost",
@@ -1622,6 +1613,7 @@ val servicePreloadingAllowListForNonCorePlugin: Set<String> = java.util.Set.of(
   "com.jetbrains.rdserver.daemon.BackendDaemonStatusHost",
   "com.jetbrains.rdserver.daemon.BackendHighlighterRegistrationsHost",
   "com.jetbrains.rdserver.daemon.inlays.BackendCodeVisionHost.Settings",
+  $$"com.jetbrains.rdserver.daemon.inlays.BackendCodeVisionHost$Settings",
   "com.jetbrains.rdserver.debugger.BackendBreakpointHost",
   "com.jetbrains.rdserver.debugger.BackendConsoleInfoHost",
   "com.jetbrains.rdserver.debugger.BackendDebuggerHost",
@@ -1638,7 +1630,7 @@ val servicePreloadingAllowListForNonCorePlugin: Set<String> = java.util.Set.of(
   "com.jetbrains.rdserver.quickDoc.BackendEditorMouseHoverPopupHost",
   "com.jetbrains.rdserver.settings.BackendPerClientSettingsStorageService",
   "com.jetbrains.rdserver.status.BackendStatusBarHost",
-  "com.jetbrains.rdserver.tests.BackendTestsContentHost",
+  "com.intellij.platform.smRunner.backend.split.BackendTestsContentHost",
   "com.jetbrains.rdserver.toolWindow.BackendServerToolWindowManager",
   "com.jetbrains.rdserver.toolWindow.BackendToolWindowHost",
   "com.jetbrains.rdserver.ui.BackendUserFocusHost",
@@ -1661,6 +1653,9 @@ private fun getInstanceBlocking(holder: InstanceHolder, debugString: String, cre
 private val forbidGetServiceEvenInNonCancellable: Boolean =
   System.getProperty("idea.forbid.get.service.in.nc.static.init", "false").toBoolean()
 
+@Internal
+var checkInsideClassInitializer: Boolean = true
+
 internal fun getOrCreateInstanceBlocking(holder: InstanceHolder, debugString: String, keyClass: Class<*>?): Any {
   // container scope might be canceled
   // => holder is initialized with CE
@@ -1675,7 +1670,12 @@ internal fun getOrCreateInstanceBlocking(holder: InstanceHolder, debugString: St
   @Suppress("UsagesOfObsoleteApi")
   val inNonCancelableSection = Cancellation.isInNonCancelableSection()
 
-  val guiltyClassName = if (inNonCancelableSection && !forbidGetServiceEvenInNonCancellable) null else isInsideClassInitializer(debugString)
+  val guiltyClassName = when {
+      checkInsideClassInitializer && (!inNonCancelableSection || forbidGetServiceEvenInNonCancellable) -> {
+        isInsideClassInitializer(debugString)
+      }
+      else -> null
+  }
   if (guiltyClassName != null) {
     checkOutsideClassInitializer(debugString, guiltyClassName)
   }

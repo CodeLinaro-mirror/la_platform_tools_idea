@@ -7,8 +7,10 @@
     <module name="intellij.libraries.jackson"/>
     <module name="intellij.libraries.jackson.databind"/>
     <module name="intellij.libraries.kotlinx.coroutines.core"/>
+    <module name="intellij.libraries.kotlinx.serialization.core"/>
     <module name="intellij.libraries.stream"/>
     <module name="intellij.platform.analysis"/>
+    <module name="intellij.platform.codeStyle"/>
     <module name="intellij.platform.core"/>
     <module name="intellij.platform.core.impl"/>
     <module name="intellij.platform.core.ui"/>
@@ -16,6 +18,10 @@
     <module name="intellij.platform.debugger.impl.rpc"/>
     <module name="intellij.platform.debugger.impl.shared"/>
     <module name="intellij.platform.diff"/>
+    <module name="intellij.platform.editor.ex"/>
+    <module name="intellij.platform.editor.ui"/>
+    <module name="intellij.platform.execution"/>
+    <module name="intellij.platform.execution.impl"/>
     <module name="intellij.platform.ide.core"/>
     <module name="intellij.platform.ide.impl"/>
     <module name="intellij.platform.lang"/>
@@ -24,7 +30,10 @@
     <module name="intellij.platform.projectModel"/>
     <module name="intellij.platform.rpc"/>
     <module name="intellij.platform.rpc.topics"/>
+    <module name="intellij.platform.statistics"/>
+    <module name="intellij.platform.util.coroutines"/>
     <module name="intellij.platform.util.ex"/>
+    <module name="intellij.platform.util.ui"/>
   </dependencies>
   <!-- endregion -->
 
@@ -46,6 +55,8 @@
                     interface="com.intellij.xdebugger.impl.actions.handlers.XDebuggerCustomEvaluateHandler" dynamic="true"/>
     <extensionPoint qualifiedName="com.intellij.xdebugger.customMuteBreakpointHandler"
                     interface="com.intellij.xdebugger.impl.actions.handlers.XDebuggerCustomMuteBreakpointHandler" dynamic="true"/>
+    <extensionPoint name="xdebugger.customQuickEvaluateActionProvider"
+                    interface="com.intellij.platform.debugger.impl.ui.actions.CustomQuickEvaluateActionProvider" dynamic="true"/>
   </extensionPoints>
 
   <extensions defaultExtensionNs="com.intellij">
@@ -61,6 +72,7 @@
     <xdebugger.breakpointGroupingRule implementation="com.intellij.xdebugger.impl.breakpoints.ui.grouping.XBreakpointGroupingByTypeRule"/>
     <xdebugger.breakpointGroupingRule implementation="com.intellij.xdebugger.impl.breakpoints.ui.grouping.XBreakpointFileGroupingRule"/>
     <xdebugger.breakpointGroupingRule implementation="com.intellij.xdebugger.impl.breakpoints.ui.grouping.XBreakpointCustomGroupingRule"/>
+    <readerModeMatcher implementation="com.intellij.xdebugger.impl.breakpoints.ui.BreakpointsDialog$BreakpointPreviewReaderModeMatcher"/>
 
     <xdebugger.configurableProvider implementation="com.intellij.xdebugger.impl.settings.XDebuggerConfigurableProvider" order="first"/>
 
@@ -96,6 +108,15 @@
     <xdebugger.textValueVisualizer implementation="com.intellij.xdebugger.impl.ui.visualizedtext.common.JsonTextVisualizer"/>
     <xdebugger.textValueVisualizer implementation="com.intellij.xdebugger.impl.ui.visualizedtext.common.JwtTextVisualizer"/>
     <xdebugger.textValueVisualizer implementation="com.intellij.xdebugger.impl.ui.visualizedtext.common.UrlEncodedTextVisualizer"/>
+
+    <gutterMarkPreprocessor implementation="com.intellij.xdebugger.impl.breakpoints.BreakpointGutterIconMerge"/>
+    <xdebugger.inlineValuePopupProvider implementation="com.intellij.xdebugger.impl.InlineTextValuePopupProvider"/>
+
+    <projectService serviceImplementation="com.intellij.platform.debugger.impl.ui.evaluate.quick.common.ValueLookupManager"/>
+
+    <remote.customDataContextSerializer implementation="com.intellij.xdebugger.impl.ui.XDebuggerTreeSelectedValuesSerializer"/>
+    <remote.customDataContextSerializer implementation="com.intellij.xdebugger.impl.ui.XDebuggerTreeSelectedStacksSerializer"/>
+    <projectSettings service="com.intellij.xdebugger.impl.XDebuggerHistoryManager"/>
   </extensions>
 
   <actions resource-bundle="messages.XDebuggerUiBundle">
@@ -157,6 +178,8 @@
       <action id="Debugger.ShowLibraryFrames" class="com.intellij.xdebugger.impl.actions.ShowLibraryFramesAction"/>
       <action id="Debugger.CopyStack" class="com.intellij.xdebugger.impl.frame.XDebuggerFramesList$CopyStackAction"
               icon="AllIcons.Actions.Copy"/>
+      <action id="Debugger.FocusOnBreakpoint" class="com.intellij.xdebugger.impl.actions.FocusOnBreakpointAction"/>
+      <action id="Debugger.FocusOnFinish" class="com.intellij.xdebugger.impl.actions.FocusOnFinishAction"/>
     </group>
 
     <group id="XDebugger.Settings" icon="AllIcons.General.GearPlain" popup="true">
@@ -312,6 +335,11 @@
       <separator/>
       <reference ref="EvaluateExpression"/>
       <reference ref="Debugger.AddToWatch"/>
+    </group>
+
+    <group id="ToolbarPopupActions.XDebugger.ToolWindow.TopToolbar3">
+      <group id="DebugToolbarQuickActions" class="com.intellij.xdebugger.impl.actions.DebuggerToolbarQuickActionsGroup" searchable="false"
+             popup="true"/>
     </group>
   </actions>
 

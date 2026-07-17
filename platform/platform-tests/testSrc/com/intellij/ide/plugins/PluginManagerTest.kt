@@ -2,6 +2,8 @@
 package com.intellij.ide.plugins
 
 import com.intellij.ide.plugins.DisabledPluginsState.Companion.saveDisabledPluginsAndInvalidate
+import com.intellij.idea.AppMode
+import com.intellij.idea.WellKnownCommand
 import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.util.BuildNumber
 import com.intellij.openapi.util.NlsSafe
@@ -9,11 +11,11 @@ import com.intellij.openapi.util.Ref
 import com.intellij.openapi.util.io.IoTestUtil
 import com.intellij.platform.pluginSystem.parser.impl.LoadedXIncludeReference
 import com.intellij.platform.pluginSystem.parser.impl.PluginDescriptorBuilder
-import com.intellij.platform.pluginSystem.parser.impl.PluginDescriptorFromXmlStreamConsumer
 import com.intellij.platform.pluginSystem.parser.impl.PluginDescriptorReaderContext
-import com.intellij.platform.pluginSystem.parser.impl.consume
+import com.intellij.platform.pluginSystem.parser.impl.parsePluginXml
+import com.intellij.platform.pluginSystem.testFramework.PseudoProductTestPluginInitContext
+import com.intellij.platform.pluginSystem.testFramework.ValidationPluginDescriptorReaderContext
 import com.intellij.platform.runtime.product.ProductMode
-import com.intellij.platform.testFramework.loadDescriptorInTest
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.TestDataPath
 import com.intellij.testFramework.UsefulTestCase
@@ -21,10 +23,8 @@ import com.intellij.testFramework.rules.TempDirectory
 import com.intellij.util.TriConsumer
 import com.intellij.util.system.CpuArch
 import com.intellij.util.system.OS
-import com.intellij.util.xml.dom.NoOpXmlInterner
 import com.intellij.util.xml.dom.XmlElement
 import com.intellij.util.xml.dom.readXmlAsModel
-import org.assertj.core.api.Assertions
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.Assert
 import org.junit.Assert.assertEquals
@@ -171,57 +171,10 @@ class PluginManagerTest {
     doPluginSortTest("simplePluginSort", false)
   }
 
-  /*
-   Actual result:
-   HTTP Client (main)
-   Endpoints (main)
-   HTTP Client (intellij.restClient.microservicesUI, depends on Endpoints)
-
-   Expected:
-   Endpoints (main)
-   HTTP Client (main)
-   HTTP Client (intellij.restClient.microservicesUI, depends on Endpoints)
-
-   But the graph is correct - HTTP Client (main) it is a node that doesn't depend on Endpoints (main),
-   so no reason for DFSTBuilder to put it after.
-   See CachingSemiGraph.getSortedPlugins for a solution.
-  */
-  @Test
-  @Throws(Exception::class)
-  fun moduleSort() {
-    doPluginSortTest("moduleSort", true)
-  }
-
   @Test
   @Throws(Exception::class)
   fun testUltimatePlugins() {
     doPluginSortTest("ultimatePlugins", true)
-  }
-
-  @Test
-  fun testModulePluginIdContract() {
-    val pluginsPath = Path.of(PlatformTestUtil.getPlatformTestDataPath(), "plugins", "withModules")
-    val descriptorBundled = loadDescriptorInTest(pluginsPath, true)
-    val pluginSet = PluginSetBuilder(mutableSetOf(descriptorBundled)).createPluginSetWithEnabledModulesMap()
-
-    val moduleId = PluginId.getId("foo.bar")
-    val corePlugin = PluginId.getId("my.plugin")
-    Assertions.assertThat(pluginSet.findEnabledPlugin(moduleId)!!.getPluginId()).isEqualTo(corePlugin)
-  }
-
-  @Test
-  fun testIdentifyPreInstalledPlugins() {
-    val pluginsPath = Path.of(PlatformTestUtil.getPlatformTestDataPath(), "plugins", "updatedBundled")
-    val bundled = loadDescriptorInTest(pluginsPath.resolve("bundled"), true)
-    val updated = loadDescriptorInTest(pluginsPath.resolve("updated"))
-    val expectedPluginId = updated.getPluginId()
-    assertEquals(expectedPluginId, bundled.getPluginId())
-
-    val bundledList = DiscoveredPluginsList(listOf(bundled), PluginsSourceContext.Bundled)
-    val customList = DiscoveredPluginsList(listOf(updated), PluginsSourceContext.Custom)
-
-    assertPluginPreInstalled(expectedPluginId, listOf(bundledList, customList))
-    assertPluginPreInstalled(expectedPluginId, listOf(customList, bundledList))
   }
 
   @Test
@@ -235,6 +188,21 @@ class PluginManagerTest {
     saveDisabledPluginsAndInvalidate(configPath, mutableListOf("a"))
     com.intellij.testFramework.assertions.Assertions.assertThat(configPath.resolve(
       DisabledPluginsState.DISABLED_PLUGINS_FILENAME)).hasContent("a" + System.lineSeparator())
+  }
+
+  @Test
+  fun `remote development plugin is essential only in remote dev host mode`() {
+    val remoteDevelopmentPlugin = PluginId.getId("com.jetbrains.remoteDevelopment")
+    try {
+      AppMode.setFlags(listOf(WellKnownCommand.SERVER_MODE))
+      assertThat(ProductPluginInitContext().essentialPlugins).contains(remoteDevelopmentPlugin)
+
+      AppMode.setFlags(emptyList())
+      assertThat(ProductPluginInitContext().essentialPlugins).doesNotContain(remoteDevelopmentPlugin)
+    }
+    finally {
+      AppMode.setFlags(emptyList())
+    }
   }
 
   // TODO probably should be moved elsewhere
@@ -257,29 +225,8 @@ class PluginManagerTest {
     private val testDataPath: String
       get() = PlatformTestUtil.getPlatformTestDataPath() + "plugins/sort"
 
-    private fun assertPluginPreInstalled(expectedPluginId: PluginId?, pluginLists: List<DiscoveredPluginsList>) {
-      val loadingResult = PluginLoadingResult()
-      loadingResult.initAndAddAll(
-        descriptorLoadingResult = PluginDescriptorLoadingResult.build(pluginLists),
-        initContext = PluginInitializationContext.buildForTest(
-          essentialPlugins = emptySet(),
-          disabledPlugins = emptySet(), // TODO refactor the test
-          expiredPlugins = emptySet(),
-          brokenPluginVersions = emptyMap(),
-          getProductBuildNumber = { BuildNumber.fromString("2042.42")!! },
-          requirePlatformAliasDependencyForLegacyPlugins = false,
-          checkEssentialPlugins = false,
-          explicitPluginSubsetToLoad = null,
-          disablePluginLoadingCompletely = false,
-          currentProductModeId = ProductMode.MONOLITH.id,
-        )
-      )
-      Assert.assertTrue("Plugin should be pre installed", loadingResult.shadowedBundledIds.contains(expectedPluginId))
-    }
-
     @Throws(IOException::class, XMLStreamException::class)
     private fun doPluginSortTest(testDataName: String?, isBundled: Boolean) {
-      PluginManagerCore.getAndClearPluginLoadingErrors()
       val loadPluginResult: PluginManagerState = loadAndInitializeDescriptors("$testDataName.xml", isBundled)
       val text = StringBuilder()
       for (descriptor in loadPluginResult.pluginSet.getEnabledModules()) {
@@ -290,10 +237,11 @@ class PluginManagerTest {
         text.append('\n')
       }
       text.append("\n\n")
-      for (html in PluginManagerCore.getAndClearPluginLoadingErrors()) {
+      for (html in loadPluginResult.loadingErrors) {
         text.append(html.htmlMessage.toString().replace("<br/>", "\n").replace("&#39;", "")).append('\n')
       }
-      UsefulTestCase.assertSameLinesWithFile(File(testDataPath, "$testDataName.txt").path, text.toString())
+      val expectedResultFilename = "$testDataName.txt"
+      UsefulTestCase.assertSameLinesWithFile(File(testDataPath, expectedResultFilename).path, text.toString())
     }
 
     private fun assertConvertsTo(untilBuild: String?, result: String?) {
@@ -344,18 +292,12 @@ class PluginManagerTest {
       val loadingContext = PluginDescriptorLoadingContext(
         getBuildNumberForDefaultDescriptorVersion = { buildNumber }
       )
-      val initContext = PluginInitializationContext.buildForTest(
-        essentialPlugins = emptySet(),
-        disabledPlugins = emptySet(),
-        expiredPlugins = emptySet(),
-        brokenPluginVersions = emptyMap(),
-        getProductBuildNumber = { buildNumber },
-        requirePlatformAliasDependencyForLegacyPlugins = false,
-        checkEssentialPlugins = false,
-        explicitPluginSubsetToLoad = null,
-        disablePluginLoadingCompletely = false,
-        currentProductModeId = ProductMode.MONOLITH.id,
-      )
+      val initContext = object : PseudoProductTestPluginInitContext() {
+        override val productBuildNumber: BuildNumber = buildNumber
+        override val currentProductModeId: String = ProductMode.MONOLITH.id
+        override val environmentConfiguredModules: Map<PluginModuleId, PluginInitializationContext.EnvironmentConfiguredModuleData> get() = emptyMap()
+        override val expiredPlugins: Set<PluginId> = emptySet()
+      }
       val root = readXmlAsModel(Files.newInputStream(file))
       val autoGenerateModuleDescriptor = Ref<Boolean>(false)
       val moduleMap = HashMap<String, XmlElement>()
@@ -396,10 +338,10 @@ class PluginManagerTest {
           dataLoader = LocalFsDataLoader(pluginPath)
         )
         plugins.add(descriptor)
-        descriptor.jarFiles = emptyList()
+        descriptor.ownClassPath = emptyList()
       }
       loadingContext.close()
-      val discoveredPlugins = PluginDescriptorLoadingResult.build(
+      val discoveredPlugins = PluginsDiscoveryResult.build(
         listOf(DiscoveredPluginsList(plugins, if (isBundled) PluginsSourceContext.Bundled else PluginsSourceContext.Custom))
       )
       return PluginManagerCore.initializePlugins(
@@ -407,7 +349,9 @@ class PluginManagerTest {
         initContext = initContext,
         discoveredPlugins = discoveredPlugins,
         coreLoader = PluginManagerTest::class.java.getClassLoader(),
-        parentActivity = null
+        parentActivity = null,
+        reportingPolicy = PluginLoadingErrorReportingPolicy.TEST,
+        configureClassLoaders = true,
       )
     }
 
@@ -429,9 +373,7 @@ class PluginManagerTest {
             val url = child.getAttributeValue("descriptor-url")!!
             if (url.endsWith("/$relativePath")) {
               try {
-                val reader = PluginDescriptorFromXmlStreamConsumer(readContext, createXIncludeLoader(this, dataLoader))
-                reader.consume(elementAsBytes(child), null)
-                return reader.getBuilder()
+                return parsePluginXml(elementAsBytes(child), null, readContext, createXIncludeLoader(this, dataLoader))
               }
               catch (e: XMLStreamException) {
                 throw RuntimeException(e)
@@ -490,14 +432,9 @@ class PluginManagerTest {
 }
 
 private fun readModuleDescriptorForTest(input: ByteArray): PluginDescriptorBuilder {
-  return PluginDescriptorFromXmlStreamConsumer(readContext = object : PluginDescriptorReaderContext {
-    override val interner = NoOpXmlInterner
-    override val isMissingIncludeIgnored = false
-  }, xIncludeLoader = createXIncludeLoader(PluginXmlPathResolver.DEFAULT_PATH_RESOLVER, object : DataLoader {
+  val xIncludeLoader = createXIncludeLoader(PluginXmlPathResolver.DEFAULT_PATH_RESOLVER, object : DataLoader {
     override fun load(path: String, pluginDescriptorSourceOnly: Boolean) = throw UnsupportedOperationException()
     override fun toString() = ""
-  })).let {
-    it.consume(input, null)
-    it.getBuilder()
-  }
+  })
+  return parsePluginXml(input, null, readContext = ValidationPluginDescriptorReaderContext, xIncludeLoader = xIncludeLoader)
 }

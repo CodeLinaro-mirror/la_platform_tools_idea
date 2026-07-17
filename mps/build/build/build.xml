@@ -8,10 +8,6 @@
   <condition property="is.windows">
     <os family="windows"/>
   </condition>
-  <condition property="script.suffix" value=".cmd">
-    <os family="windows" />
-  </condition>
-  <property name="script.suffix" value=".sh" />
 
   <macrodef name="apply.patch">
     <attribute name="file"/>
@@ -41,25 +37,26 @@
     <apply.patch file="${basedir}/patches/MPS-38229.patch"/>
     <apply.patch file="${basedir}/patches/MPS-38534-WelcomeScreenPromotions_for251.patch"/>
     <apply.patch file="${basedir}/patches/WindowsDistribution.patch"/>
+    <!-- After patching the platform build looks for .mps project folder instead of .idea -->
+    <symlink link="${platform.root}/.mps" resource="${platform.root}/.idea"/>
   </target>
 
-  <!-- Raw JPS build of modules and plugins required by MPS -->
+  <!-- Bazel build of modules and plugins required by MPS -->
   <target name="ij-platform" description="Compile and package the raw IJ platform">
-    <exec failonerror="true" executable="${platform.root}/platform/jps-bootstrap/jps-bootstrap${script.suffix}">
-      <arg value="${platform.root}"/>
-      <arg value="intellij.mps.build"/>
-      <arg value="org.jetbrains.intellij.build.mps.MPSBuilder"/>
+    <exec failonerror="true" executable="${platform.root}/bazel.cmd" dir="${platform.root}">
+      <arg value="run"/>
+      <arg value="//mps/build:mps_builder"/>
+      <arg value="--"/>
       <arg value="${platform.root}"/>
     </exec>
-    <jar destfile="${target.root}/dist.all/lib/jps/jps-build-test.jar" duplicate="preserve">
-      <fileset dir="${target.root}/classes/test/intellij.platform.jps.build.tests" />
-    </jar>
   </target>
 
   <!-- Post-compile customizations required for final platform artifacts used by MPS -->
   <target name="repackage" depends="repackage-app-jar,repackage-java-plugin,extract-plugin-xml,extract-win-exe"/>
 
   <!--In java-impl.jar, we remove META-INF contents for Idea not to try loading plugins from it (see MPS-30538) -->
+  <!--In java-impl.jar, we we then replace META-INF/plugin.xml with a minimal set of modules -->
+  <!--In java-impl.jar, we replace META-INF/JavaPlugin.xml with a minimal configuration (see MPS-39633)-->
   <target name="repackage-java-plugin" description="Remove IDEA specific descriptors">
     <jar destfile="${target.dist}/plugins/java/lib/stripped.jar">
       <zipfileset src="${target.dist}/plugins/java/lib/java-impl.jar" excludes="META-INF/**" />
@@ -71,9 +68,9 @@
   <!-- Remove IdeaApplicationInfo.xml and IdeaPlugin.xml. These will be provided during MPS build later -->
   <target name="repackage-app-jar" description="Remove IDEA specific descriptors">
     <jar destfile="${target.dist}/lib/stripped.jar" zip64Mode="as-needed">
-      <zipfileset src="${target.dist}/lib/app.jar" excludes="idea/IdeaApplicationInfo.xml,META-INF/IdeaPlugin.xml" />
+      <zipfileset src="${target.dist}/lib/intellij.idea.community.customization.jar" excludes="idea/IdeaApplicationInfo.xml,META-INF/IdeaPlugin.xml" />
     </jar>
-    <move file="${target.dist}/lib/stripped.jar" tofile="${target.dist}/lib/app.jar"/>
+    <move file="${target.dist}/lib/stripped.jar" tofile="${target.dist}/lib/intellij.idea.community.customization.jar"/>
   </target>
 
   <!-- Build contains exe files with proper MPS icons -->

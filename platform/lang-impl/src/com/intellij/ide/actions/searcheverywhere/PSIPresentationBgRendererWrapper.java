@@ -8,6 +8,7 @@ import com.intellij.navigation.ItemPresentation;
 import com.intellij.navigation.NavigationItem;
 import com.intellij.navigation.PsiElementNavigationItem;
 import com.intellij.openapi.actionSystem.AnAction;
+import com.intellij.openapi.actionSystem.DataSink;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.util.Disposer;
@@ -23,12 +24,14 @@ import com.intellij.ui.render.RendererPanelsUtils;
 import com.intellij.ui.speedSearch.SpeedSearchUtil;
 import com.intellij.util.IconUtil;
 import com.intellij.util.Processor;
+import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.NamedColorUtil;
 import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.Unmodifiable;
 
 import javax.swing.JLabel;
 import javax.swing.JList;
@@ -43,6 +46,7 @@ import java.awt.Insets;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
@@ -392,7 +396,7 @@ public final class PSIPresentationBgRendererWrapper implements WeightedSearchEve
   }
 
   @Override
-  public @NotNull List<SearchEverywhereCommandInfo> getSupportedCommands() {
+  public @NotNull @Unmodifiable List<SearchEverywhereCommandInfo> getSupportedCommands() {
     return myDelegate.getSupportedCommands();
   }
 
@@ -415,8 +419,12 @@ public final class PSIPresentationBgRendererWrapper implements WeightedSearchEve
   }
 
   @Override
-  public @Nullable Object getDataForItem(@NotNull Object element, @NotNull String dataId) {
-    return myDelegate.getDataForItem(getItem(element), dataId);
+  public @NotNull @Unmodifiable List<@NotNull BiConsumer<Object, @NotNull DataSink>> getDataProviders() {
+    List<BiConsumer<Object, DataSink>> delegateDataProviders = myDelegate.getDataProviders();
+
+    return ContainerUtil.map(delegateDataProviders, dataProvider -> {
+      return (o, sink) -> dataProvider.accept(getItem(o), sink);
+    });
   }
 
   @Override

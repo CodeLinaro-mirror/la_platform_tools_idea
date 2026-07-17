@@ -4,17 +4,20 @@ package com.intellij.agent.workbench.prompt.ui
 import com.intellij.agent.workbench.prompt.core.AgentPromptContextItem
 import com.intellij.agent.workbench.prompt.core.AgentPromptContextRendererIds
 import com.intellij.agent.workbench.prompt.core.AgentPromptPayload
+import com.intellij.agent.workbench.prompt.context.MANUAL_PROJECT_PATHS_SOURCE_ID
+import com.intellij.agent.workbench.prompt.context.ManualPathSelectionEntry
+import com.intellij.agent.workbench.prompt.context.buildManualPathsContextItem
+import com.intellij.agent.workbench.prompt.context.extractCurrentPaths
 import com.intellij.agent.workbench.prompt.ui.AgentPromptContextRemovalDecisions.removeManualContextItemsAfterExplicitRemoval
 import com.intellij.agent.workbench.prompt.ui.AgentPromptContextRemovalDecisions.resolveContextEntriesAfterRemoval
 import com.intellij.agent.workbench.prompt.ui.AgentPromptContextRemovalDecisions.resolveManualContextItemsAfterRemoval
-import com.intellij.agent.workbench.prompt.ui.context.MANUAL_PROJECT_PATHS_SOURCE_ID
-import com.intellij.agent.workbench.prompt.ui.context.ManualPathSelectionEntry
-import com.intellij.agent.workbench.prompt.ui.context.buildManualPathsContextItem
-import com.intellij.agent.workbench.prompt.ui.context.extractCurrentPaths
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
+import java.util.concurrent.TimeUnit
 import java.nio.file.Files
 
+@Timeout(value = 2, unit = TimeUnit.MINUTES)
 class AgentPromptContextRemovalDecisionsTest {
   @Test
   fun removingParentRemovesAllDescendantsRecursively() {
@@ -160,7 +163,7 @@ class AgentPromptContextRemovalDecisionsTest {
 
   @Test
   fun explicitlyRemovingManualScreenshotSourceDeletesOnlyRemovedBackingImageFile() {
-    listOf("manual.ui.context", "manual.screen.capture").forEach { sourceId ->
+    listOf("manual.ui.context", "manual.screen.capture", "manual.drop.image").forEach { sourceId ->
       val keepScreenshotFile = Files.createTempFile("agent-workbench-context-", ".png")
       val screenshotFile = Files.createTempFile("agent-workbench-context-", ".png")
       try {

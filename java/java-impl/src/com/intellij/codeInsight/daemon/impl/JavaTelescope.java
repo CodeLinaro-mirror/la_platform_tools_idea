@@ -2,9 +2,9 @@
 package com.intellij.codeInsight.daemon.impl;
 
 import com.intellij.concurrency.JobLauncher;
-import com.intellij.ide.highlighter.HtmlFileType;
 import com.intellij.java.JavaBundle;
 import com.intellij.openapi.fileTypes.FileType;
+import com.intellij.openapi.fileTypes.FileTypeManager;
 import com.intellij.openapi.options.advanced.AdvancedSettings;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.registry.Registry;
@@ -103,7 +103,7 @@ final class JavaTelescope {
     return count.get();
   }
 
-  private static final FileType[] ourFileTypesToIgnore =  new FileType[] { HtmlFileType.INSTANCE };
+  private static final FileType[] ourFileTypesToIgnore = new FileType[] { FileTypeManager.getInstance().getFileTypeByExtension("html") };
 
   private static @NotNull SearchScope getSearchScope(@NotNull Project project, @NotNull PsiMember member, @NotNull SearchScope scope) {
     SearchScope useScope = UnusedSymbolUtil.getUseScope(member);
@@ -127,14 +127,14 @@ final class JavaTelescope {
     AtomicInteger count = new AtomicInteger();
     ClassInheritorsSearch.INSTANCE.createQuery(new ClassInheritorsSearch.SearchParameters(aClass, aClass.getUseScope(), true, true, true))
       .asIterable()
-      .forEach((Consumer<? super PsiClass>)__ -> count.incrementAndGet());
+      .forEach((Consumer<? super PsiClass>)_ -> count.incrementAndGet());
 
     return count.get();
   }
 
   static int collectOverridingMethods(@NotNull PsiMethod method) {
     AtomicInteger count = new AtomicInteger();
-    OverridingMethodsSearch.search(method).asIterable().forEach((Consumer<? super PsiMethod>)__ -> count.incrementAndGet());
+    OverridingMethodsSearch.search(method).asIterable().forEach((Consumer<? super PsiMethod>)_ -> count.incrementAndGet());
 
     return count.get();
   }

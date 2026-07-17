@@ -8,6 +8,7 @@ import com.intellij.credentialStore.Credentials
 import com.intellij.credentialStore.generateServiceName
 import com.intellij.ide.passwordSafe.PasswordSafe
 import com.intellij.openapi.components.service
+import com.intellij.util.concurrency.annotations.RequiresBackgroundThread
 import com.intellij.util.io.HttpRequests
 import com.intellij.util.xmlb.annotations.Transient
 import com.jetbrains.python.errorProcessing.MessageError
@@ -15,7 +16,10 @@ import com.jetbrains.python.errorProcessing.PyResult
 import com.jetbrains.python.packaging.PyPIPackageUtil
 import com.jetbrains.python.packaging.PyPackageVersionComparator
 import com.jetbrains.python.packaging.PyRequirement
-import com.jetbrains.python.packaging.cache.PythonSimpleRepositoryCache
+import com.jetbrains.python.packaging.cache.PythonPackageSearchResult
+import com.jetbrains.python.packaging.cache.PythonSimpleRepositoryCacheService
+import com.jetbrains.python.packaging.common.DEFAULT_PROJECT_URL_LABEL
+import com.jetbrains.python.packaging.common.ProjectUrl
 import com.jetbrains.python.packaging.common.PythonPackageDetails
 import com.jetbrains.python.packaging.common.PythonRepositoryPackageSpecification
 import com.jetbrains.python.packaging.common.PythonSimplePackageDetails
@@ -23,6 +27,8 @@ import org.apache.http.client.utils.URIBuilder
 import org.jetbrains.annotations.ApiStatus
 import java.io.IOException
 import java.net.URL
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 
 private val GSON = Gson()
 
@@ -97,6 +103,7 @@ open class PyPackageRepository() {
   fun clearCredentials() = cachedPassword.set(null)
 
   @ApiStatus.Internal
+  @RequiresBackgroundThread
   fun findPackageSpecificationWithSpec(pyRequirement: PyRequirement): PythonRepositoryPackageSpecification? =
     if (hasPackage(pyRequirement))
       PythonRepositoryPackageSpecification(this, pyRequirement)
@@ -104,19 +111,49 @@ open class PyPackageRepository() {
       null
 
   @ApiStatus.Internal
+  @RequiresBackgroundThread
   fun findPackageSpecification(
     pyRequirement: PyRequirement,
   ): PythonRepositoryPackageSpecification? {
     return findPackageSpecificationWithSpec(pyRequirement)
   }
 
+  @RequiresBackgroundThread
+  open fun search(needle: String, pageSize: Int = 100): PythonPackageSearchResult {
+    val cache = service<PythonSimpleRepositoryCacheService>()[this] ?: return PythonPackageSearchResult(0, emptyList(), pageSize)
+    return cache.search(needle, pageSize)
+  }
 
-  protected open fun hasPackage(pyPackage: PyRequirement): Boolean = pyPackage.name in getPackages()
+  @RequiresBackgroundThread
+  open fun hasPackage(name: String): Boolean {
+    val cache = service<PythonSimpleRepositoryCacheService>()[this] ?: return false
+    return name in cache
+  }
 
-  open fun getPackages(): Set<String> = service<PythonSimpleRepositoryCache>()[this] ?: emptySet()
+  @RequiresBackgroundThread
+  open fun getSize(): Int {
+    val cache = service<PythonSimpleRepositoryCacheService>()[this] ?: return 0
+    return cache.size
+  }
+
+  @RequiresBackgroundThread
+  open fun hasPackage(pyPackage: PyRequirement): Boolean = hasPackage(pyPackage.name)
 
   open fun buildPackageDetails(packageName: String): PyResult<PythonPackageDetails> {
     return buildPackageDetailsBySimpleDetailsProtocol(packageName)
+  }
+
+  /**
+   * Generic project url link for [packageName]. Returns `null` when the repository has no
+   * `repositoryUrl` to point at — callers typically fall back to the PyPI project page in that
+   * case.
+   */
+  open fun getProjectUrl(packageName: String): ProjectUrl? {
+    val base = repositoryUrl?.trimEnd('/') ?: return null
+    if (base.isEmpty()) return null
+    val encoded = URLEncoder.encode(packageName, StandardCharsets.UTF_8)
+    val label = name.ifBlank { DEFAULT_PROJECT_URL_LABEL }
+    return ProjectUrl(label, "$base/project/$encoded/")
   }
 
   companion object {

@@ -218,7 +218,7 @@ internal open class PreCachedDataContext : AsyncDataContext, UserDataHolder, Inj
     if (answer == null && rulesSuppressed) {
       val throwable = Throwable()
       AppExecutorUtil.getAppExecutorService().execute {
-        if (ReadAction.compute(ThrowableComputable { getData(dataId) }) != null) {
+        if (ReadAction.computeBlocking(ThrowableComputable { getData(dataId) }) != null) {
           LOG.warn("$dataId is not available on EDT. Code that depends on data rules and slow data providers " +
                    "must be run in background. For example, an action must use `ActionUpdateThread.BGT`.", throwable)
         }
@@ -595,7 +595,7 @@ private fun composeKeyedProvider(
     data
   }
   existing !is KeyedDataProvider && lazyKey != null -> {
-    KeyedDataProvider(persistentHashMapOf<String, DataProvider>().put(lazyKey.name, data), existing)
+    KeyedDataProvider(persistentHashMapOf<String, DataProvider>().putting(lazyKey.name, data), existing)
   }
   existing is KeyedDataProvider && lazyKey == null -> {
     val first = if (toFront) data else existing
@@ -606,7 +606,7 @@ private fun composeKeyedProvider(
     val existingByKey = existing.map[lazyKey.name]
     val first = if (toFront) data else existingByKey
     val second = if (toFront) existingByKey else data
-    KeyedDataProvider((existing.map as PersistentMap).put(
+    KeyedDataProvider((existing.map as PersistentMap).putting(
       lazyKey.name, if (first == null) second!! else CompositeDataProvider.compose(first, second)), existing.generic)
   }
   else -> {

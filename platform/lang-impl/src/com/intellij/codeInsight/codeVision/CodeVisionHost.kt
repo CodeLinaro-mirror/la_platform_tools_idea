@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.codeVision
 
 import com.intellij.codeInsight.codeVision.settings.CodeVisionGroupDefaultSettingModel
@@ -17,19 +17,16 @@ import com.intellij.codeInsight.hints.settings.showInlaySettings
 import com.intellij.codeInsight.multiverse.EditorContextManager
 import com.intellij.codeInsight.multiverse.isSharedSourceSupportEnabled
 import com.intellij.codeWithMe.ClientId
+import com.intellij.ide.PowerSaveMode
 import com.intellij.ide.plugins.DynamicPluginListener
 import com.intellij.ide.plugins.IdeaPluginDescriptor
 import com.intellij.lang.Language
 import com.intellij.openapi.Disposable
-import com.intellij.openapi.actionSystem.ex.ActionUtil
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.ModalityState
-import com.intellij.openapi.application.ReadAction
-import com.intellij.openapi.application.asContextElement
 import com.intellij.openapi.application.readAction
-import com.intellij.openapi.application.runReadAction
-import com.intellij.openapi.components.ComponentManagerEx
+import com.intellij.openapi.application.runReadActionBlocking
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.ControlFlowException
 import com.intellij.openapi.diagnostic.logger
@@ -40,6 +37,8 @@ import com.intellij.openapi.editor.EditorKind
 import com.intellij.openapi.editor.event.DocumentEvent
 import com.intellij.openapi.editor.event.DocumentListener
 import com.intellij.openapi.editor.impl.DocumentImpl
+import com.intellij.openapi.extensions.ExtensionPointListener
+import com.intellij.openapi.extensions.PluginDescriptor
 import com.intellij.openapi.fileEditor.FileEditor
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.FileEditorManagerEvent
@@ -62,17 +61,16 @@ import com.intellij.psi.SyntaxTraverser
 import com.intellij.psi.util.PsiModificationTracker
 import com.intellij.testFramework.TestModeFlags
 import com.intellij.ui.SimpleTextAttributes
-import com.intellij.util.Alarm
 import com.intellij.util.application
 import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.util.concurrency.annotations.RequiresEdt
 import com.intellij.util.ui.EDT
-import com.intellij.util.ui.update.MergingUpdateQueue
-import com.intellij.util.ui.update.Update
+import com.intellij.util.ui.update.DebouncedUpdates
 import com.jetbrains.rd.util.lifetime.Lifetime
 import com.jetbrains.rd.util.lifetime.SequentialLifetimes
 import com.jetbrains.rd.util.reactive.Signal
 import com.jetbrains.rd.util.reactive.whenTrue
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -81,7 +79,8 @@ import org.jetbrains.annotations.TestOnly
 import java.util.concurrent.CompletableFuture
 import kotlin.time.Duration.Companion.milliseconds
 
-open class CodeVisionHost(val project: Project) {
+@ApiStatus.NonExtendable
+open class CodeVisionHost(val project: Project, protected val coroutineScope: CoroutineScope) {
   companion object {
     private val logger = logger<CodeVisionHost>()
     const val defaultVisibleLenses: Int = 5
@@ -106,6 +105,7 @@ open class CodeVisionHost(val project: Project) {
 
   val codeVisionLifetime: Lifetime = project.createLifetime()
 
+  @ApiStatus.Internal
   val lifeSettingModel: CodeVisionSettingsLiveModel = CodeVisionSettingsLiveModel(codeVisionLifetime)
 
   /**
@@ -130,10 +130,9 @@ open class CodeVisionHost(val project: Project) {
   @RequiresEdt
   protected open fun initialize() {
     lifeSettingModel.isRegistryEnabled.whenTrue(codeVisionLifetime) { enableCodeVisionLifetime ->
-      runReadAction {
-        if (project.isDisposed) {
-          return@runReadAction
-        }
+      runReadActionBlocking {
+        if (project.isDisposed) return@runReadActionBlocking
+
         subscribeEditorCreated(enableCodeVisionLifetime)
         subscribeAnchorLimitChanged(enableCodeVisionLifetime)
         subscribeMetricsPositionChanged()
@@ -146,6 +145,25 @@ open class CodeVisionHost(val project: Project) {
   @get:RequiresEdt
   val isInitialised: Boolean get() = _isInitialised
   private var _isInitialised = false
+
+  init {
+    CodeVisionContextExtensionProvider.EP_NAME.addExtensionPointListener(
+      coroutineScope,
+      object : ExtensionPointListener<CodeVisionContextExtensionProvider> {
+        override fun extensionAdded(
+          extension: CodeVisionContextExtensionProvider,
+          pluginDescriptor: PluginDescriptor,
+        ) {
+          EditorFactory.getInstance().editorList.asSequence()
+            .mapNotNull { it.getUserData(editorLensContextKey) }
+            .forEach { lensContext ->
+              val contextExtension = extension.createCodeVisionContext(project, lensContext) ?: return@forEach
+              lensContext.registerExtension(contextExtension)
+            }
+        }
+      }
+    )
+  }
 
   open fun handleLensClick(editor: Editor, range: TextRange, entry: CodeVisionEntry) {
     //todo intellij statistic
@@ -193,27 +211,28 @@ open class CodeVisionHost(val project: Project) {
     return getPriorityForId(entry.providerId)
   }
 
+  /**
+   * In particular tests, consider using
+   * `CodeVisionTestCase.waitForCodeVisionSync`
+   */
   @TestOnly
-  fun calculateCodeVisionSync(editor: Editor, testRootDisposable: Disposable) {
+  fun calculateCodeVisionSync(editor: Editor, testRootDisposable: Disposable): CompletableFuture<Unit> {
+    val future = CompletableFuture<Unit>()
     calculateFrontendLenses(testRootDisposable.createLifetime(), editor, inTestSyncMode = true) { lenses, _ ->
       if (EDT.isCurrentThreadEdt()) {
-        ReadAction.run<Throwable> {
+        runReadActionBlocking {
           editor.lensContext?.setResults(lenses)
+          future.complete(Unit)
         }
       }
       else {
-        // This code runs under modal progress
-        // We have no guarantees whether the scheduled event will be completed inside or outside the modal progress
-        // So here we forcibly wait for its completion
-        // This is a test method anyway, so it is acceptable to hold the read lock
-        val future = CompletableFuture<Unit>()
         ApplicationManager.getApplication().invokeLater {
           editor.lensContext?.setResults(lenses)
           future.complete(Unit)
         }
-        future.join()
       }
     }
+    return future
   }
 
   protected open fun subscribeForDocumentChanges(editor: Editor, editorLifetime: Lifetime, onDocumentChanged: () -> Unit) {
@@ -372,6 +391,17 @@ open class CodeVisionHost(val project: Project) {
     return defaultSortedProvidersList.indexOf(id)
   }
 
+  private sealed interface UpdateLensesRequest {
+    data object All : UpdateLensesRequest
+    data class Specific(val providerIds: Collection<String>) : UpdateLensesRequest
+
+    companion object {
+      fun of(providerIds: Collection<String>): UpdateLensesRequest {
+        return if (providerIds.isEmpty()) All else Specific(providerIds)
+      }
+    }
+  }
+
   private fun onEditorCreated(editorLifetime: Lifetime, editor: Editor) {
     val context = editor.lensContext
     if (context == null || editor.document !is DocumentImpl) return
@@ -383,19 +413,9 @@ open class CodeVisionHost(val project: Project) {
     var previousLenses: List<Pair<TextRange, CodeVisionEntry>> = context.zombies
     val openTimeNs = System.nanoTime()
     editor.putUserData(editorTrackingStart, openTimeNs)
-    val mergingQueueFront = MergingUpdateQueue(
-      CodeVisionHost::class.simpleName!!,
-      300,
-      true,
-      null,
-      editorLifetime.createNestedDisposable(),
-      null,
-      Alarm.ThreadToUse.POOLED_THREAD
-    )
-    mergingQueueFront.isPassThrough = false
     var calcRunning = false
 
-    fun recalculateLenses(groupToRecalculate: Collection<String> = emptyList()) {
+    fun recalculateLenses(lensesToUpdate: UpdateLensesRequest = UpdateLensesRequest.All) {
       val editorManager = FileEditorManager.getInstance(project)
       if (!isInlaySettingsEditor(editor) && !editorManager.selectedEditors.any {
           isAllowedFileEditor(it) && (it as TextEditor).editor == editor
@@ -404,12 +424,12 @@ open class CodeVisionHost(val project: Project) {
         return
       }
       recalculateWhenVisible = false
-      if (calcRunning && groupToRecalculate.isNotEmpty()) {
-        return recalculateLenses(emptyList())
+      if (calcRunning && lensesToUpdate is UpdateLensesRequest.Specific) {
+        return recalculateLenses(UpdateLensesRequest.All)
       }
       calcRunning = true
       val lt = calculationLifetimes.next()
-      calculateFrontendLenses(lt, editor, groupToRecalculate) { lenses, providersToUpdate ->
+      calculateFrontendLenses(lt, editor, lensesToUpdate) { lenses, providersToUpdate ->
         val newLenses = previousLenses.filter { !providersToUpdate.contains(it.second.providerId) } + lenses
 
         context.setResults(newLenses)
@@ -418,23 +438,30 @@ open class CodeVisionHost(val project: Project) {
       }
     }
 
-    fun pokeEditor(providersToRecalculate: Collection<String> = emptyList()) {
+    fun updateProvidersBatch(batch: List<UpdateLensesRequest>) {
+      val request = if (batch.any { it is UpdateLensesRequest.All }) {
+        UpdateLensesRequest.All
+      } else {
+        val allProviders = batch.filterIsInstance<UpdateLensesRequest.Specific>().flatMap { it.providerIds }.distinct()
+        UpdateLensesRequest.Specific(allProviders)
+      }
+      recalculateLenses(request)
+    }
+
+    val frontLensesUpdateQueue = DebouncedUpdates.forScope<UpdateLensesRequest>(editorLifetime.coroutineScope, CodeVisionHost::class.simpleName!!, 300.milliseconds)
+      .withContext(Dispatchers.EDT + ClientId.coroutineContext())
+      .withComponentModality(editor.contentComponent)
+      .restartTimerOnAdd(true)
+      .runBatched { updateProvidersBatch(it) }
+
+    fun pokeEditor(request: UpdateLensesRequest = UpdateLensesRequest.All) {
       context.notifyPendingLenses()
-      val shouldRecalculateAll = mergingQueueFront.isEmpty.not()
-      mergingQueueFront.cancelAllUpdates()
-      mergingQueueFront.queue(object : Update("") {
-        override fun run() {
-          val modalityState = ModalityState.stateForComponent(editor.contentComponent).asContextElement()
-          (project as ComponentManagerEx).getCoroutineScope().launch(Dispatchers.EDT + modalityState + ClientId.coroutineContext()) {
-            recalculateLenses(if (shouldRecalculateAll) emptyList() else providersToRecalculate)
-          }
-        }
-      })
+      frontLensesUpdateQueue.queue(request)
     }
 
     invalidateProviderSignal.advise(editorLifetime) {
       if (it.editor == null || it.editor === editor) {
-        pokeEditor(it.providerIds)
+        pokeEditor(UpdateLensesRequest.of(it.providerIds))
       }
     }
 
@@ -473,20 +500,21 @@ open class CodeVisionHost(val project: Project) {
   private fun calculateFrontendLenses(
     calcLifetime: Lifetime,
     editor: Editor,
-    groupsToRecalculate: Collection<String> = emptyList(),
+    lensesToUpdate: UpdateLensesRequest = UpdateLensesRequest.All,
     inTestSyncMode: Boolean = false,
     consumer: (newLenses: List<Pair<TextRange, CodeVisionEntry>>, providersToUpdate: List<String>) -> Unit,
   ) {
     val providers = providers
     val precalculatedUiThings = providers.associate {
-      if (groupsToRecalculate.isNotEmpty() && !groupsToRecalculate.contains(it.id)) return@associate it.id to null
-      it.id to it.precomputeOnUiThread(editor)
+      val shouldSkip = lensesToUpdate is UpdateLensesRequest.Specific && !lensesToUpdate.providerIds.contains(it.id)
+      it.id to if (shouldSkip) null else it.precomputeOnUiThread(editor)
     }
     val context = editor.lensContext
     // dropping all lenses if CV disabled
     if (context == null
         || !lifeSettingModel.isEnabled.value
-        || !CodeVisionProjectSettings.getInstance(project).isEnabledForProject()) {
+        || !CodeVisionProjectSettings.getInstance(project).isEnabledForProject()
+        || PowerSaveMode.isEnabled()) {
       consumer(emptyList(), providers.map { it.id })
       return
     }
@@ -515,7 +543,7 @@ open class CodeVisionHost(val project: Project) {
           }
         }
 
-        if (groupsToRecalculate.isNotEmpty() && !groupsToRecalculate.contains(providerId)) {
+        if (lensesToUpdate is UpdateLensesRequest.Specific && !lensesToUpdate.providerIds.contains(providerId)){
           continue
         }
 
@@ -538,9 +566,9 @@ open class CodeVisionHost(val project: Project) {
             results.addAll(state.result)
           }
           else if (editorOpenTimeNs == null || shouldConsiderProvider(editorOpenTimeNs)) {
-                everyProviderReadyToUpdate = false
-              }
-            }
+            everyProviderReadyToUpdate = false
+          }
+        }
 
         if (modCount != modificationCount(editor)) {
           // psi or document changed, aborting current run as outdated
@@ -591,7 +619,11 @@ open class CodeVisionHost(val project: Project) {
       }
     }
     else {
-      ActionUtil.underModalProgress(project, "") { runnable() }
+      coroutineScope.launch {
+        readAction {
+          runnable()
+        }
+      }
     }
 
     return indicator

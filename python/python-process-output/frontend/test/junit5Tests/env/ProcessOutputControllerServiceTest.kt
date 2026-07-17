@@ -17,6 +17,7 @@ import com.intellij.python.processOutput.frontend.OutputFilter
 import com.intellij.python.processOutput.frontend.ProcessOutputControllerService
 import com.intellij.python.processOutput.frontend.ProcessOutputControllerServiceLimits
 import com.intellij.python.processOutput.frontend.ProcessStatus
+import com.intellij.python.processOutput.frontend.ui.commandString
 import com.intellij.python.processOutput.frontend.ui.toggle
 import com.intellij.testFramework.common.timeoutRunBlocking
 import com.intellij.testFramework.common.waitUntil
@@ -29,8 +30,6 @@ import com.jetbrains.python.getOrThrow
 import java.awt.datatransfer.DataFlavor
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.Collections
-import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
@@ -38,11 +37,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.debug.DebugProbes
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
@@ -59,23 +56,85 @@ class ProcessOutputControllerServiceTest {
         @PythonBinaryPath python: PythonBinary,
     ): Unit = timeoutRunBlocking(15.minutes) {
         val service = projectFixture.get().service<ProcessOutputControllerService>()
-        val history = Collections.synchronizedMap(mutableMapOf<Int, LoggedProcess>())
-        var historyUpdates = 0
+        val newLineLen = if (OS.CURRENT == OS.Windows) 2 else 1
+        val binOnEel = BinOnEel(python, cwd)
+        val mainPy = Files.createFile(cwd.resolve(MAIN_PY))
 
-        val watcher = launch {
-            service.loggedProcesses.collect {
-                historyUpdates += 1
-                for (process in it) {
-                    if (!history.contains(process.data.id)) {
-                        history[process.data.id] = process
+        fun verifyCurrentProcesses(over: Int) {
+            var count = 0
+            val processes = service.loggedProcesses.value
+
+            for (process in processes) {
+                if (process.lines.isEmpty()
+                    || process.lines[0].kind != OutputKindDto.OUT
+                    || !process.lines[0].text.startsWith("test ")) {
+                    continue
+                }
+
+                with(process.lines) {
+                    assertEquals(
+                        3,
+                        size,
+                        buildString {
+                            appendLine("Test process output is expected to have 3 lines, but was $size.")
+                            appendLine("Lines preview:")
+                            append(process.lines.generatePreview(10))
+                        }
+                    )
+
+                    val testNumber = get(0).text.split(" ")[1].toInt()
+
+                    assert(testNumber >= over) {
+                       "Test process header ('test x') is expected to hold a number greater or equal to $over, but was $testNumber."
+                    }
+
+                    val xLen =
+                        LoggingLimits.MAX_OUTPUT_SIZE - (get(0).text.length + newLineLen)
+                    val yLen = LoggingLimits.MAX_OUTPUT_SIZE
+
+                    assertNotNull(
+                        find { elem ->
+                            elem.text.startsWith("xxx") && elem.text.length == xLen
+                        },
+                        buildString {
+                            appendLine("Test process output is expected to have a string of 'x' repeating $xLen amount of times.")
+                            appendLine("Lines preview:")
+                            append(process.lines.generatePreview(10))
+                        }
+                    )
+                    assertNotNull(
+                        find { elem ->
+                            elem.text.startsWith("yyy") && elem.text.length == yLen
+                        },
+                        buildString {
+                            appendLine("Test process output is expected to have a string of 'y' repeating $yLen amount of times.")
+                            appendLine("Lines preview:")
+                            append(process.lines.generatePreview(10))
+                        }
+                    )
+                }
+
+                with(process.status.value) {
+                    assert(this is ProcessStatus.Done && exitCode == 0)
+                }
+
+                count++
+            }
+
+            val processesToCheck = ProcessOutputControllerServiceLimits.MAX_PROCESSES - 30
+
+            // should expect to have found and asserted MAX_PROCESSES amount processes
+            // 30 for margin of error
+            assert(count > processesToCheck) {
+                buildString {
+                    appendLine("Call to `verifyCurrentProcesses` is expected to check at least $processesToCheck processes, but checked only $count.")
+
+                    for ((index, process) in processes.withIndex()) {
+                        appendLine("Process $index: ${process.data.commandString}")
                     }
                 }
             }
         }
-
-        val newLineLen = if (OS.CURRENT == OS.Windows) 2 else 1
-        val binOnEel = BinOnEel(python, cwd)
-        val mainPy = Files.createFile(cwd.resolve(MAIN_PY))
 
         edtWriteAction {
             mainPy.toFile().writeText(
@@ -94,53 +153,13 @@ class ProcessOutputControllerServiceTest {
             runBin(binOnEel, Args(MAIN_PY, it.toString()))
         }
 
-        waitUntil {
-            val index = ProcessOutputControllerServiceLimits.MAX_PROCESSES - 1
-            val process = history.toList().find { (_, it) ->
-                it.lines.find { it.text == "test $index" } != null
-            }
-
-            process != null && process.second.lines.size == 3
-        }
-
         // the amount of processes logged should exactly equal to MAX_PROCESSES
-        assertEquals(
-            ProcessOutputControllerServiceLimits.MAX_PROCESSES,
-            service.loggedProcesses.value.size,
-        )
-        assert(historyUpdates >= ProcessOutputControllerServiceLimits.MAX_PROCESSES)
-
-        run {
-            val processMap = history.remapByFirstLine()
-
-            repeat(ProcessOutputControllerServiceLimits.MAX_PROCESSES) {
-                val process = processMap["test $it"]
-
-                assertNotNull(process)
-
-                with(process.lines) {
-                    // (stdout): test $it
-                    // (stdout): x repeated MAX_OUTPUT_SIZE times minus the length of "test $it" + 1
-                    // (stderr): y repeated MAX_OUTPUT_SIZE times
-                    assertEquals(3, size)
-
-                    val xLen = LoggingLimits.MAX_OUTPUT_SIZE - ("test $it".length + newLineLen)
-                    val yLen = LoggingLimits.MAX_OUTPUT_SIZE
-
-                    assertTrue(contains(OutputLineDto(OutputKindDto.OUT, "test $it")))
-                    assertNotNull(
-                        find { elem ->
-                            elem.text.startsWith("xxx") && elem.text.length == xLen
-                        },
-                    )
-                    assertNotNull(
-                        find { elem ->
-                            elem.text.startsWith("yyy") && elem.text.length == yLen
-                        },
-                    )
-                }
-            }
+        waitUntil {
+            service.loggedProcesses.value.size == ProcessOutputControllerServiceLimits.MAX_PROCESSES
         }
+
+        // should have verified processes 0 to MAX_PROCESSES - 1
+        verifyCurrentProcesses(0)
 
         // adding processes 2 times over the limit
         repeat(ProcessOutputControllerServiceLimits.MAX_PROCESSES * 2) {
@@ -149,54 +168,14 @@ class ProcessOutputControllerServiceTest {
             runBin(binOnEel, Args(MAIN_PY, newIt.toString()))
         }
 
-        waitUntil {
-            val index = (ProcessOutputControllerServiceLimits.MAX_PROCESSES * 3) - 1
-            val process = history.toList().find { (_, it) ->
-                it.lines.getOrNull(0)?.text == "test $index"
-            }
-
-            process != null && process.second.lines.size == 3
-        }
-
         // older processes beyond MAX_PROCESSES should be truncated
         assertEquals(
             ProcessOutputControllerServiceLimits.MAX_PROCESSES,
             service.loggedProcesses.value.size,
         )
-        assert(historyUpdates >= ProcessOutputControllerServiceLimits.MAX_PROCESSES * 3)
 
-        run {
-            val processMap = history.remapByFirstLine()
-
-            repeat(ProcessOutputControllerServiceLimits.MAX_PROCESSES) {
-                val newIt = it + ProcessOutputControllerServiceLimits.MAX_PROCESSES * 2
-                val process = processMap["test $newIt"]
-
-                assertNotNull(process)
-
-                with(process.lines) {
-                    // (stdout): test $newIt
-                    // (stdout): x repeated MAX_OUTPUT_SIZE times minus the length of "test $newIt" + 1
-                    // (stderr): y repeated MAX_OUTPUT_SIZE times
-                    val xLen = LoggingLimits.MAX_OUTPUT_SIZE - ("test $newIt".length + newLineLen)
-                    val yLen = LoggingLimits.MAX_OUTPUT_SIZE
-
-                    assertTrue(contains(OutputLineDto(OutputKindDto.OUT, "test $newIt")))
-                    assertNotNull(
-                        find { elem ->
-                            elem.text.startsWith("xxx") && elem.text.length == xLen
-                        },
-                    )
-                    assertNotNull(
-                        find { elem ->
-                            elem.text.startsWith("yyy") && elem.text.length == yLen
-                        },
-                    )
-                }
-            }
-        }
-
-        watcher.cancelAndJoin()
+        // should have verified processes MAX_PROCESSES to MAX_PROCESSES * 2 - 1
+        verifyCurrentProcesses(ProcessOutputControllerServiceLimits.MAX_PROCESSES * 2)
     }
 
     @Test
@@ -556,17 +535,20 @@ class ProcessOutputControllerServiceTest {
         }
     }
 
-    private fun Map<Int, LoggedProcess>.remapByFirstLine(): Map<String?, LoggedProcess> =
-        mapOf(
-            *toList()
-                .map { (_, process) ->
-                    process.lines.firstOrNull()?.text to process
-                }
-                .toTypedArray(),
-        )
-
     companion object {
         const val MAIN_PY = "main.py"
+
+        fun List<OutputLineDto>.generatePreview(nLines: Int): String =
+            buildString {
+                for (line in this@generatePreview.take(nLines)) {
+                    when (line.kind) {
+                        OutputKindDto.OUT -> append("OUT: ")
+                        OutputKindDto.ERR -> append("ERR: ")
+                    }
+
+                    appendLine(line.text)
+                }
+            }
 
         suspend fun runBinWithInput(binOnEel: BinOnEel, args: Args): Process =
             ExecService().executeGetProcess(

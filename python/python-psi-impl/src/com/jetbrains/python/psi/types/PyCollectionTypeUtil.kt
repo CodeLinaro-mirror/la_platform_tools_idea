@@ -9,6 +9,7 @@ import com.jetbrains.python.psi.PyExpression
 import com.jetbrains.python.psi.PyListLiteralExpression
 import com.jetbrains.python.psi.PySequenceExpression
 import com.jetbrains.python.psi.PySetLiteralExpression
+import com.jetbrains.python.psi.PyStarExpression
 import com.jetbrains.python.psi.PyStringLiteralExpression
 import com.jetbrains.python.psi.impl.PyBuiltinCache
 
@@ -31,8 +32,16 @@ object PyCollectionTypeUtil {
   private fun getListOrSetIteratedValueType(sequence: PySequenceExpression, context: TypeEvalContext): PyType? {
     val elements = sequence.elements
     val analyzedElementsType = PyUnionType.union(
-      elements.take(MAX_ANALYZED_ELEMENTS_OF_LITERALS)
-        .map { PyLiteralType.upcastLiteralToClass(context.getType(it).widenTupleLiterals()) }
+      elements.take(MAX_ANALYZED_ELEMENTS_OF_LITERALS).map { element ->
+        if (element is PyStarExpression) {
+          val innerExpr = element.expression ?: return@map null
+          val innerType = context.getType(innerExpr)
+          PyTypeUtil.widenLiteralAndNumeric((innerType as? PyCollectionType)?.iteratedItemType)
+        }
+        else {
+          PyTypeUtil.widenLiteralAndNumeric(context.getType(element))
+        }
+      }
     )
     return if (elements.size > MAX_ANALYZED_ELEMENTS_OF_LITERALS) {
       PyUnionType.createWeakType(analyzedElementsType)
@@ -60,19 +69,20 @@ object PyCollectionTypeUtil {
       val elementType = context.getType(element)
       val (keyType, valueType) = getKeyValueType(elementType)
 
-      if (!(keyType is PyClassType && PyNames.TYPE_STR == keyType.classQName)) {
+      if (!(keyType is PyClassType && PyNames.FQN.STR == keyType.classQName)) {
         return null
       }
-      val keyExpression = if (keyType is PyLiteralType) {
-        keyType.expression
+      val keyString: String? = if (keyType is PyLiteralType) {
+        keyType.stringValue
       }
       else {
-        element.key
+        val keyExpression = element.key
+        if (keyExpression is PyStringLiteralExpression) keyExpression.stringValue else null
       }
-      if (keyExpression !is PyStringLiteralExpression) {
+      if (keyString == null) {
         return null
       }
-      strKeysToValueTypes[keyExpression.stringValue] = Pair(element.value, PyLiteralType.upcastLiteralToClass(valueType))
+      strKeysToValueTypes[keyString] = Pair(element.value, PyTypeUtil.widenLiteralAndNumeric(valueType))
     }
 
     return strKeysToValueTypes
@@ -88,13 +98,13 @@ object PyCollectionTypeUtil {
       .forEach {
         val type = context.getType(it)
         val (keyType, valueType) = getKeyValueType(type)
-        keyTypes.add(PyLiteralType.upcastLiteralToClass(keyType.widenTupleLiterals()))
-        valueTypes.add(PyLiteralType.upcastLiteralToClass(valueType.widenTupleLiterals()))
+        keyTypes.add(PyTypeUtil.widenLiteralAndNumeric(keyType))
+        valueTypes.add(PyTypeUtil.widenLiteralAndNumeric(valueType))
       }
 
     if (elements.size > MAX_ANALYZED_ELEMENTS_OF_LITERALS) {
-      keyTypes.add(null)
-      valueTypes.add(null)
+      keyTypes.add(PyAnyType.unknown)
+      valueTypes.add(PyAnyType.unknown)
     }
 
     return Pair(PyUnionType.union(keyTypes), PyUnionType.union(valueTypes))

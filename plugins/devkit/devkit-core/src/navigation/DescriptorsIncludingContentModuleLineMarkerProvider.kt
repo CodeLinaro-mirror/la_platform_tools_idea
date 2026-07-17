@@ -9,6 +9,7 @@ import com.intellij.icons.AllIcons
 import com.intellij.navigation.GotoRelatedItem
 import com.intellij.openapi.editor.markup.GutterIconRenderer
 import com.intellij.openapi.roots.ProjectRootManager
+import com.intellij.openapi.util.text.StringUtil
 import com.intellij.platform.backend.presentation.TargetPresentation
 import com.intellij.psi.PsiElement
 import com.intellij.psi.util.PsiTreeUtil
@@ -21,8 +22,9 @@ import org.jetbrains.annotations.Nls
 import org.jetbrains.idea.devkit.DevKitBundle
 import org.jetbrains.idea.devkit.dom.ContentDescriptor.ModuleDescriptor
 import org.jetbrains.idea.devkit.dom.IdeaPlugin
-import org.jetbrains.idea.devkit.dom.index.PluginIdDependenciesIndex
-import org.jetbrains.idea.devkit.util.DescriptorUtil
+import org.jetbrains.idea.devkit.inspections.remotedev.analysis.SplitModeModuleKindIcons
+import org.jetbrains.idea.devkit.inspections.remotedev.SplitModeInspectionUtil.findDependingContentModuleEntriesInFile
+import org.jetbrains.idea.devkit.inspections.remotedev.analysis.recognizeSplitModeModuleKind
 
 internal class DescriptorsIncludingContentModuleLineMarkerProvider : DevkitRelatedLineMarkerProviderBase() {
 
@@ -55,27 +57,37 @@ internal class DescriptorsIncludingContentModuleLineMarkerProvider : DevkitRelat
   }
 
   private fun findDependingContentModuleEntries(element: PsiElement): List<ModuleDescriptor> {
-    val moduleVirtualFile = element.containingFile.virtualFile ?: return emptyList()
-    val moduleName = moduleVirtualFile.nameWithoutExtension
-    val psiManager = element.manager
-    @Suppress("UNCHECKED_CAST")
-    return PluginIdDependenciesIndex.findDependsTo(element.project, moduleVirtualFile).flatMap { dependingFile ->
-      val psiFile = psiManager.findFile(dependingFile) as? XmlFile ?: return@flatMap emptyList<PsiElement>()
-      val plugin = DescriptorUtil.getIdeaPlugin(psiFile) ?: return@flatMap emptyList<PsiElement>()
-      plugin.content.flatMap { it.moduleEntry }.filter { it.name.stringValue == moduleName }
-    } as List<ModuleDescriptor>
+    val xmlFile = element.containingFile as? XmlFile ?: return emptyList()
+    return findDependingContentModuleEntriesInFile(xmlFile).toList()
   }
 
   private fun createLineMarkerInfo(
     leaf: PsiElement,
     contentEntries: List<ModuleDescriptor>,
   ): RelatedItemLineMarkerInfo<PsiElement> {
+    val recognizedModuleKind = recognizeSplitModeModuleKind(leaf.containingFile)
     val moduleName = leaf.containingFile.virtualFile.nameWithoutExtension
-    return NavigationGutterIconBuilder.create(AllIcons.Nodes.Module, CONVERTER, RELATED_ITEM_PROVIDER)
+    val gutterIcon =
+      if (recognizedModuleKind != null)
+        SplitModeModuleKindIcons.getKindIcon(recognizedModuleKind.kind, leaf.containingFile.name) ?: AllIcons.Nodes.Module
+      else
+        AllIcons.Nodes.Module
+    val tooltip = if (recognizedModuleKind != null) {
+      DevKitBundle.message(
+        "line.marker.descriptors.including.content.module.tooltip.with.kind",
+        StringUtil.capitalize(recognizedModuleKind.kind.id),
+        moduleName,
+        contentEntries.size,
+      )
+    }
+    else {
+      DevKitBundle.message("line.marker.descriptors.including.content.module.tooltip", moduleName, contentEntries.size)
+    }
+    return NavigationGutterIconBuilder.create(gutterIcon, CONVERTER, RELATED_ITEM_PROVIDER)
       .setTargets(contentEntries)
       .setTargetRenderer { TargetRenderer() }
       .setPopupTitle(DevKitBundle.message("line.marker.descriptors.including.content.module.popup.title"))
-      .setTooltipText(DevKitBundle.message("line.marker.descriptors.including.content.module.tooltip", moduleName, contentEntries.size))
+      .setTooltipText(tooltip)
       .setAlignment(GutterIconRenderer.Alignment.RIGHT)
       .createLineMarkerInfo(leaf)
   }
@@ -85,7 +97,7 @@ internal class DescriptorsIncludingContentModuleLineMarkerProvider : DevkitRelat
       val module = ProjectRootManager.getInstance(element.project).getFileIndex().getModuleForFile(element.containingFile.virtualFile)
                    ?: return super.getPresentation(element)
       return TargetPresentation.builder(element.containingFile.name)
-        .icon(DevkitCoreIcons.PluginV2)
+        .icon(SplitModeModuleKindIcons.getDescriptorIcon(element.containingFile) ?: DevkitCoreIcons.PluginV2)
         .containerText(getLoading(element))
         .locationText(module.name, AllIcons.Nodes.Module)
         .presentation()

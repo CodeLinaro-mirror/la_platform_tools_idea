@@ -424,13 +424,6 @@ final class GenericsChecker {
                                                 @NotNull PsiTypeElement typeElement2Highlight,
                                                 @Nullable PsiReferenceParameterList referenceParameterList) {
     PsiClass referenceClass = type instanceof PsiClassType classType ? classType.resolve() : null;
-    PsiType psiType = substitutor.substitute(classParameter);
-    if (psiType instanceof PsiClassType && !(PsiUtil.resolveClassInType(psiType) instanceof PsiTypeParameter)) {
-      if (GenericsUtil.checkNotInBounds(type, psiType, referenceParameterList)) {
-        myVisitor.report(JavaErrorKinds.TYPE_PARAMETER_ACTUAL_INFERRED_MISMATCH.create(typeElement2Highlight));
-        return;
-      }
-    }
 
     PsiClassType[] bounds = classParameter.getSuperTypes();
     for (PsiType bound : bounds) {
@@ -778,7 +771,8 @@ final class GenericsChecker {
   }
 
   private static PsiType detectExpectedType(@NotNull PsiReferenceParameterList referenceParameterList) {
-    PsiNewExpression newExpression = requireNonNull(PsiTreeUtil.getParentOfType(referenceParameterList, PsiNewExpression.class));
+    PsiNewExpression newExpression = PsiTreeUtil.getParentOfType(referenceParameterList, PsiNewExpression.class);
+    if (newExpression == null) return null;
     PsiElement parent = newExpression.getParent();
     PsiType expectedType = null;
     if (parent instanceof PsiVariable psiVariable && newExpression.equals(psiVariable.getInitializer())) {

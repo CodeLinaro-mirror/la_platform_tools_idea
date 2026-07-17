@@ -1,12 +1,9 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.kotlin.idea.core.script.k2.definitions
 
 import com.intellij.openapi.project.Project
 import org.jetbrains.kotlin.idea.base.plugin.artifacts.KotlinArtifacts
-import org.jetbrains.kotlin.idea.core.script.k2.configurations.MainKtsEntityProvider
-import org.jetbrains.kotlin.idea.core.script.k2.configurations.scriptEntityProvider
-import org.jetbrains.kotlin.idea.core.script.v1.NewScriptFileInfo
-import org.jetbrains.kotlin.idea.core.script.v1.kotlinScriptTemplateInfo
+import org.jetbrains.kotlin.idea.core.script.v1.kotlinScriptTemplate
 import org.jetbrains.kotlin.idea.core.script.v1.loggingReporter
 import org.jetbrains.kotlin.scripting.definitions.ScriptDefinition
 import org.jetbrains.kotlin.scripting.definitions.ScriptDefinitionsFromClasspathDiscoverySource
@@ -16,7 +13,6 @@ import kotlin.script.experimental.api.dependenciesSources
 import kotlin.script.experimental.api.hostConfiguration
 import kotlin.script.experimental.api.ide
 import kotlin.script.experimental.api.with
-import kotlin.script.experimental.dependencies.withTransformedResolvers
 import kotlin.script.experimental.jvm.JvmDependency
 import kotlin.script.experimental.jvm.defaultJvmScriptingHostConfiguration
 
@@ -30,22 +26,15 @@ class MainKtsScriptDefinitionSource(val project: Project) : ScriptDefinitionsSou
                 ::loggingReporter
             ).definitions
 
-            val mainKtsConfigurationProvider = MainKtsEntityProvider.getInstance(project)
-
             return discoveredDefinitions.map { definition ->
-                val compilationConfiguration = definition.compilationConfiguration.withTransformedResolvers {
-                    ReportingExternalDependenciesResolver(it, mainKtsConfigurationProvider)
-                }.with {
+                val compilationConfiguration = definition.compilationConfiguration.with {
                     ide.dependenciesSources(JvmDependency(KotlinArtifacts.kotlinStdlibSources))
-                    ide {
-                        kotlinScriptTemplateInfo(NewScriptFileInfo().apply {
-                            id = "main-kts"
-                            title = ".main.kts"
-                            templateName = "Kotlin Script MainKts"
-                        })
-                        scriptEntityProvider {
-                            mainKtsConfigurationProvider
-                        }
+                    kotlinScriptTemplate {
+                        id = "main-kts"
+                        title = ".main.kts"
+                        templateName = "Kotlin Script MainKts"
+                        @Suppress("HardCodedStringLiteral")
+                        description = "Standalone script, supports @file:DependsOn for external library imports."
                     }
                 }
 

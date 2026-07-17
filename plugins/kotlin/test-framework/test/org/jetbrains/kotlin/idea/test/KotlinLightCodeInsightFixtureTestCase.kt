@@ -29,13 +29,10 @@ import com.intellij.openapi.externalSystem.service.project.ProjectDataManager
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.projectRoots.Sdk
-import com.intellij.openapi.roots.DefaultSingleFileSourcesTracker
-import com.intellij.openapi.roots.SingleFileSourcesTracker
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.vfs.VfsUtilCore
-import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess
 import com.intellij.pom.java.LanguageLevel
 import com.intellij.psi.PsiClassOwner
@@ -43,7 +40,6 @@ import com.intellij.psi.PsiDirectory
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiJavaFile
 import com.intellij.psi.PsiManager
-import com.intellij.psi.codeStyle.CodeStyleSettings
 import com.intellij.psi.codeStyle.CodeStyleSettingsManager
 import com.intellij.psi.search.FileTypeIndex
 import com.intellij.psi.search.ProjectScope
@@ -52,15 +48,14 @@ import com.intellij.testFramework.LightProjectDescriptor
 import com.intellij.testFramework.LoggedErrorProcessor
 import com.intellij.testFramework.RunAll
 import com.intellij.testFramework.fixtures.JavaCodeInsightTestFixture
-import com.intellij.testFramework.registerServiceInstance
 import com.intellij.testFramework.runInEdtAndGet
 import com.intellij.testFramework.runInEdtAndWait
-import com.intellij.testFramework.unregisterService
 import com.intellij.util.ThrowableRunnable
 import org.jetbrains.kotlin.cli.common.arguments.K2JVMCompilerArguments
 import org.jetbrains.kotlin.config.ApiVersion
 import org.jetbrains.kotlin.config.CompilerSettings
 import org.jetbrains.kotlin.config.CompilerSettings.Companion.DEFAULT_ADDITIONAL_ARGUMENTS
+import org.jetbrains.kotlin.config.IKotlinFacetSettings
 import org.jetbrains.kotlin.config.JvmTarget
 import org.jetbrains.kotlin.config.LanguageVersion
 import org.jetbrains.kotlin.idea.KotlinFileType
@@ -154,6 +149,7 @@ abstract class KotlinLightCodeInsightFixtureTestCase : KotlinLightCodeInsightFix
                     options = parseExtraLibraryCompileOptions(libraryDir),
                 )
             }
+
             else -> error("Only one library directive is allowed")
         }
     }
@@ -181,8 +177,7 @@ abstract class KotlinLightCodeInsightFixtureTestCase : KotlinLightCodeInsightFix
             }) {
                 super.runBare(testRunnable)
             }
-        }
-        else {
+        } else {
             super.runBare(testRunnable)
         }
     }
@@ -429,7 +424,7 @@ fun <T> withCustomCompilerOptions(fileText: String, project: Project, module: Mo
 
 fun withRegistry(registryKey: String, value: Any, parentDisposable: Disposable, body: () -> Unit) {
     val registryValue = Registry.get(registryKey)
-    when(value) {
+    when (value) {
         is Boolean -> registryValue.setValue(value, parentDisposable)
         is Int -> registryValue.setValue(value, parentDisposable)
         else -> registryValue.setValue(value.toString(), parentDisposable)
@@ -440,27 +435,12 @@ fun withRegistry(registryKey: String, value: Any, parentDisposable: Disposable, 
 fun PsiDirectory.withImplicitPackagePrefix(implicitPackagePrefix: String?, body: () -> Unit) {
     implicitPackagePrefix?.let {
         this.setImplicitPackagePrefix(FqName(implicitPackagePrefix))
-        project.registerServiceInstance(SingleFileSourcesTracker::class.java, object : SingleFileSourcesTracker {
-            override fun isSingleFileSource(file: VirtualFile): Boolean = false
-
-            override fun isSourceDirectoryInModule(
-                dir: VirtualFile,
-                module: Module
-            ): Boolean = false
-
-            override fun getSourceDirectoryIfExists(file: VirtualFile): VirtualFile? = null
-
-            override fun getPackageNameForSingleFileSource(file: VirtualFile): String? = implicitPackagePrefix
-
-        })
     }
     try {
         body()
     } finally {
         implicitPackagePrefix?.let {
             this.setImplicitPackagePrefix(null)
-            project.unregisterService(SingleFileSourcesTracker::class.java)
-            project.registerServiceInstance(SingleFileSourcesTracker::class.java, DefaultSingleFileSourcesTracker())
         }
     }
 }
@@ -469,7 +449,7 @@ private fun configureCompilerOptions(fileText: String, project: Project, module:
     val jvmTarget = InTextDirectivesUtils.findStringWithPrefixes(fileText, "// $JVM_TARGET_DIRECTIVE ")
     // We can have several such directives in quickFixMultiFile tests
     // TODO: refactor such tests or add sophisticated check for the directive
-    val options = InTextDirectivesUtils.findListWithPrefixes(fileText, "// $COMPILER_ARGUMENTS_DIRECTIVE ").firstOrNull()
+    val options = InTextDirectivesUtils.findListWithPrefixes(fileText, "// $COMPILER_ARGUMENTS_DIRECTIVE ")
 
     val compilerVersion = InTextDirectivesUtils.findStringWithPrefixes(fileText, "// $KOTLIN_COMPILER_VERSION_DIRECTIVE ")
         ?.let(IdeKotlinVersion.Companion::opt)
@@ -485,8 +465,8 @@ private fun configureCompilerOptions(fileText: String, project: Project, module:
             KotlinCommonCompilerArgumentsHolder.getInstance(project).update { this.pluginOptions = it }
         }
 
-    if (compilerVersion != null || languageVersion != null || apiVersion != null || jvmTarget != null || options != null ||
-        projectLanguageVersion != null
+    if (compilerVersion != null || languageVersion != null || apiVersion != null || jvmTarget != null || projectLanguageVersion != null
+        || options.isNotEmpty()
     ) {
         configureLanguageAndApiVersion(
             project,
@@ -508,31 +488,41 @@ private fun configureCompilerOptions(fileText: String, project: Project, module:
             }
         }
 
-        if (options != null) {
-            val compilerSettings = facetSettings.compilerSettings ?: CompilerSettings().also {
-                facetSettings.compilerSettings = it
-            }
-
-            val expandedOptions =
-                // it is allowed to use KOTLIN_BUNDLE path macros in test data in the same way as project import does
-                // TEST_* path macros work for tests only
-                if (options.contains($$"$KOTLIN_BUNDLED$") || options.contains($$"$TEST_")) {
-                    val pathMacroManager = PathMacroManager.getInstance(project)
-                    pathMacroManager.expandPath(options)
-                } else {
-                    options
-                }
-
-            compilerSettings.additionalArguments = expandedOptions
-            facetSettings.updateMergedArguments()
-
-            KotlinCompilerSettings.getInstance(project).update { this.additionalArguments = expandedOptions }
+        if (options.isNotEmpty()) {
+            configureCompilerOptions(options, facetSettings, project)
         }
 
         return true
     }
 
     return false
+}
+
+private fun configureCompilerOptions(
+    options: List<String>,
+    facetSettings: IKotlinFacetSettings,
+    project: Project
+) {
+    val compilerSettings = facetSettings.compilerSettings ?: CompilerSettings().also {
+        facetSettings.compilerSettings = it
+    }
+
+    val expandedOptions =
+    // it is allowed to use KOTLIN_BUNDLE path macros in test data in the same way as project import does
+        // TEST_* path macros work for tests only
+        options.joinToString(" ") {
+            if (it.contains($$"$KOTLIN_BUNDLED$") || it.contains($$"$TEST_")) {
+                val pathMacroManager = PathMacroManager.getInstance(project)
+                pathMacroManager.expandPathNonNull(it)
+            } else {
+                it
+            }
+        }
+
+    compilerSettings.additionalArguments = expandedOptions
+    facetSettings.updateMergedArguments()
+
+    KotlinCompilerSettings.getInstance(project).update { this.additionalArguments = expandedOptions }
 }
 
 fun configureRegistryAndRun(project: Project, fileText: String, body: () -> Unit) {
@@ -549,18 +539,6 @@ fun configureRegistryAndRun(project: Project, fileText: String, body: () -> Unit
             register.resetToDefault()
         }
     }
-}
-
-fun configureCodeStyleAndRun(
-    project: Project,
-    configurator: (CodeStyleSettings) -> Unit = { },
-    body: () -> Unit
-) {
-    val testSettings = CodeStyle.createTestSettings(CodeStyle.getSettings(project))
-    CodeStyle.doWithTemporarySettings(project, testSettings, Runnable {
-        configurator(testSettings)
-        body()
-    })
 }
 
 fun enableKotlinOfficialCodeStyle(project: Project) {

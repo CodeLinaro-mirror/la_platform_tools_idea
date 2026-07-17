@@ -1,11 +1,11 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 @file:Suppress("ReplaceGetOrSet")
 
 package com.intellij.openapi.fileEditor.impl
 
 import com.intellij.diagnostic.PluginException
-import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.readAction
+import com.intellij.openapi.application.runReadActionBlocking
 import com.intellij.openapi.components.RoamingType
 import com.intellij.openapi.components.SerializablePersistentStateComponent
 import com.intellij.openapi.components.State
@@ -62,8 +62,10 @@ class FileEditorProviderManagerImpl
 
     val suppressors = FileEditorProviderSuppressor.EP_NAME.extensionList
     val hasDocument by lazy {
-      ApplicationManager.getApplication().runReadAction<Boolean, RuntimeException> {
-        FileDocumentManager.getInstance().getDocument(file) != null
+      runReadActionBlocking {
+        // Use the cheap predicate instead of getDocument() to avoid forcing
+        // content load (e.g. .class file decompilation) on EDT-blocking paths.
+        FileDocumentManager.getInstance().canHaveDocument(file)
       }
     }
 
@@ -78,7 +80,7 @@ class FileEditorProviderManagerImpl
         continue
       }
 
-      if (ApplicationManager.getApplication().runReadAction<Boolean, RuntimeException> {
+      if (runReadActionBlocking {
           SlowOperations.knownIssue("IDEA-307300, EA-816241").use {
             checkProvider(project = project, file = file, provider = provider, suppressors = suppressors)
           }
@@ -139,7 +141,7 @@ class FileEditorProviderManagerImpl
           if (item.isDocumentRequired) {
             if (hasDocument == null) {
               val fileDocumentManager = serviceAsync<FileDocumentManager>()
-              hasDocument = readAction { fileDocumentManager.getDocument(file) != null }
+              hasDocument = readAction { fileDocumentManager.canHaveDocument(file) }
             }
 
             if (hasDocument == false) {

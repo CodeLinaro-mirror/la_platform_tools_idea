@@ -1,212 +1,150 @@
 ---
 name: Global Prompt Entry
-description: Requirements for global prompt action behavior, target routing, manual context selection, keyboard semantics, validation, and launcher handoff.
+description: Requirements for opening, focusing, submitting, and routing the Agent Workbench global prompt.
 targets:
-  - ../../prompt/src/actions/AgentWorkbenchGlobalPromptAction.kt
-  - ../../prompt/src/actions/AgentWorkbenchGlobalPromptAutoSelectAction.kt
-  - ../../prompt/src/actions/AgentWorkbenchPromptShortcutActionPromoter.kt
-  - ../../prompt/src/ui/AgentPromptDraftPersistenceDecisions.kt
-  - ../../prompt/src/ui/AgentPromptPalettePopup.kt
-  - ../../prompt/src/ui/AgentPromptPaletteView.kt
-  - ../../prompt/src/ui/AgentPromptPaletteModels.kt
-  - ../../prompt/src/ui/AgentPromptUiSessionStateService.kt
-  - ../../prompt-vcs/src/context/AgentPromptVcsCommitManualContextSource.kt
-  - ../../prompt/resources/intellij.agent.workbench.prompt.xml
-  - ../../prompt/resources/messages/AgentPromptBundle.properties
+  - ../../prompt/ui/src/actions/AgentWorkbenchGlobalPromptAction.kt
+  - ../../prompt/ui/src/emptyState/AgentWorkbenchInlinePromptEmptyStateProvider.kt
+  - ../../prompt/ui/src/actions/AgentWorkbenchGlobalPromptEmptyTextProvider.kt
+  - ../../prompt/ui/src/AgentPromptPalettePopupService.kt
+  - ../../prompt/ui/src/AgentPromptPalettePopup.kt
+  - ../../prompt/ui/src/AgentPromptPaletteView.kt
+  - ../../prompt/ui/src/AgentPromptPaletteSubmitController.kt
+  - ../../prompt/ui/src/AgentPromptEnterHandlers.kt
+  - ../../prompt/ui/src/AgentPromptExistingTaskController.kt
+  - ../../prompt/ui/src/AgentPromptProviderSelector.kt
   - ../../prompt/core/src/AgentPromptLauncherBridge.kt
-  - ../../prompt/core/src/AgentPromptPaletteExtension.kt
+  - ../../sessions-actions/src/actions/NewThreadMenuActions.kt
   - ../../sessions/src/service/AgentSessionPromptLauncherBridge.kt
-  - ../../prompt/testSrc/ui/AgentPromptProviderSelectionDecisionsTest.kt
-  - ../../prompt/testSrc/ui/AgentPromptSubmitValidationDecisionsTest.kt
-  - ../../prompt/testSrc/ui/AgentPromptFooterHintDecisionsTest.kt
-  - ../../prompt/testSrc/ui/AgentPromptPlanModeDecisionsTest.kt
-  - ../../prompt/testSrc/ui/AgentPromptEnterHandlersTest.kt
-  - ../../prompt/testSrc/ui/AgentPromptDraftPersistenceDecisionsTest.kt
-  - ../../prompt/testSrc/ui/AgentPromptPaletteViewStructureTest.kt
-  - ../../prompt/testSrc/ui/AgentPromptPaletteViewLayoutTest.kt
-  - ../../prompt/testSrc/ui/AgentPromptUiSessionStateServiceTest.kt
-  - ../../prompt/testSrc/actions/AgentWorkbenchPromptActionPromoterTest.kt
-  - ../../prompt-vcs/testSrc/context/AgentPromptVcsCommitManualContextSourceTest.kt
+  - ../../sessions/src/service/AgentSessionLaunchService.kt
+  - ../../sessions/src/state/AgentSessionUiPreferencesStateService.kt
+  - ../../prompt/ui/testSrc/*.kt
   - ../../sessions/testSrc/AgentSessionPromptLauncherBridgeTest.kt
 ---
 
 # Global Prompt Entry
 
 Status: Draft
-Date: 2026-03-14
+Date: 2026-05-27
 
 ## Summary
-Define the global prompt entrypoint opened by `Cmd+\\` (macOS) / `Ctrl+\\` (Windows/Linux), including popup behavior, target mode switching, submit validation, and launch handoff.
-
-Prompt-context collection and rendering contracts are specified separately in `spec/prompt-context/*.spec.md`.
-Suggested prompt generation, rendering, and Codex polishing are specified separately in `spec/actions/global-prompt-suggestions.spec.md`.
-
-## Goals
-- Keep launch behavior consistent between `NEW_TASK` and `EXISTING_TASK` modes.
-- Keep keyboard semantics explicit and testable.
-- Keep submit validation deterministic before calling the launcher bridge.
-
-## Non-goals
-- Defining per-source prompt context payload/rendering details.
-- Defining context-based suggested prompt generation or AI polishing behavior.
-- Defining provider session discovery backend internals.
-- Defining command composition semantics (covered by `spec/agent-core-contracts.spec.md`).
+The global prompt opens a project-scoped prompt surface for starting a new task or sending a prompt to an existing loaded task. The surface is normally a popup, but the empty editor state may host a compact inline prompt composer instead of standard empty-state hints. This spec owns popup and inline lifecycle, target mode, validation, keyboard behavior, provider selection, and launcher handoff. Context collection and Add-to-Agent-Context routing are specified separately.
 
 ## Requirements
-- Global action id `AgentWorkbenchPrompt.OpenGlobalPalette` must be available only when a project is open.
+- `AgentWorkbenchPrompt.OpenGlobalPalette` and `AgentWorkbenchPrompt.OpenGlobalPaletteAutoSelect` are available only with an open project. Invoking either action while the popup is already visible for the same project focuses the existing popup and preserves live state.
+  [@test] ../../prompt/ui/testSrc/AgentPromptPalettePopupServiceTest.kt
 
-- When `AgentWorkbenchPrompt.OpenGlobalPalette` is invoked while the global prompt popup is already visible for the same project, the existing popup must be focused instead of creating a second popup instance.
+- When the main editor area is empty, Agent Workbench contributes a compact inline composer to the platform empty editor state. The composer owns the rich empty-state surface, uses the shared prompt content/session machinery, and suppresses the painted empty editor action hints while it is visible. Standard empty-state hints remain a fallback when no rich composer is available.
+  [@test] ../../prompt/ui/testSrc/emptyState/AgentWorkbenchInlinePromptEmptyStateProviderTest.kt
+  [@test] ../../../../platform/platform-impl/testSrc/com/intellij/openapi/fileEditor/impl/EditorEmptyTextPainterTest.kt
 
-- Re-focusing an already visible popup must preserve its live state, including prompt text, selected tab, provider selection, and context chips.
-  [@test] ../../prompt/testSrc/ui/AgentPromptPalettePopupServiceTest.kt
+- The inline empty-state composer is gated by the `agent.workbench.inline.empty.state.prompt` system property, enabled by default. When enabled, the inline provider creates the composer and the redundant `AgentWorkbenchPrompt.OpenGlobalPalette` promoted-text hint is suppressed. When disabled, the inline provider creates no component and the promoted-text hint is shown as the empty-editor affordance instead.
+  [@test] ../../prompt/ui/testSrc/emptyState/AgentWorkbenchInlinePromptEmptyStateProviderTest.kt
+  [@test] ../../prompt/ui/testSrc/actions/AgentWorkbenchGlobalPromptEmptyTextProviderTest.kt
 
-- When both `AgentWorkbenchPrompt.OpenGlobalPalette` and `AIAssistant.Editor.AskAiAssistantInEditor` are applicable for `Cmd+\\` / `Ctrl+\\` in an editor context, `AgentWorkbenchPrompt.OpenGlobalPalette` must be executed first.
+- Showing the empty editor state must not auto-focus the inline composer. Invoking `AgentWorkbenchPrompt.OpenGlobalPalette` opens the ordinary global prompt popup even when the inline composer is visible in the empty editor state.
+  [@test] ../../prompt/ui/testSrc/AgentPromptPalettePopupServiceTest.kt
+  [@test] ../../prompt/ui/testSrc/emptyState/AgentWorkbenchInlinePromptEmptyStateProviderTest.kt
 
-- Global action id `AgentWorkbenchPrompt.OpenGlobalPaletteAutoSelect` must be available only when a project is open. It opens the same popup but with EP-driven extension tab auto-selection (see below).
+- `AgentWorkbenchPrompt.OpenGlobalPalette` is invoked by pressing `Ctrl` twice. `AgentWorkbenchPrompt.OpenGlobalPaletteAutoSelect` is invoked by holding `Alt`/`Option` while pressing `Ctrl` twice. While Agent Workbench is installed, it displaces Run Anything from bare `Ctrl Ctrl` and must not install a replacement Run Anything keymap shortcut.
+  [@test] ../../prompt/ui/testSrc/actions/AgentWorkbenchGlobalPromptDoubleCtrlShortcutTest.kt
 
-- When `AgentWorkbenchPrompt.OpenGlobalPaletteAutoSelect` is invoked while the global prompt popup is already visible for the same project, it must behave the same as the standard action and only focus the existing popup.
-  [@test] ../../prompt/testSrc/ui/AgentPromptPalettePopupServiceTest.kt
+- The main prompt popup remains open when application focus moves to another app or IDE frame, and it refocuses when the originating project frame becomes active again. Popup dismissal is limited to explicit dismissal or clicks outside the popup inside the originating frame.
+  [@test] ../../prompt/ui/testSrc/AgentPromptPalettePopupActivationDecisionsTest.kt
+  [@test] ../../prompt/ui/testSrc/AgentPromptPalettePopupDismissalDecisionsTest.kt
 
-- Prompt target mode must support exactly:
-  - `PromptTargetMode.NEW_TASK`,
-  - `PromptTargetMode.EXISTING_TASK`.
-  [@test] ../../prompt/testSrc/ui/AgentPromptPaletteViewStructureTest.kt
+- The prompt supports exactly `NEW_TASK` and `EXISTING_TASK` target modes. Opening the standard prompt defaults to `NEW_TASK`; switching modes must not recreate the shared prompt editor.
+  [@test] ../../prompt/ui/testSrc/AgentPromptPaletteViewStructureTest.kt
+  [@test] ../../prompt/ui/testSrc/AgentPromptPaletteViewLayoutTest.kt
 
-- Prompt editor must be a shared component across both target modes; switching tabs must not recreate or hide the prompt viewport.
-  [@test] ../../prompt/testSrc/ui/AgentPromptPaletteViewStructureTest.kt
-  [@test] ../../prompt/testSrc/ui/AgentPromptPaletteViewLayoutTest.kt
+- Existing-task mode observes loaded threads through `AgentPromptLauncherBridge`, scoped to the resolved working project path, and may preselect the focused open chat thread or a single loaded thread without automatically switching modes.
+  [@test] ../../prompt/ui/testSrc/AgentPromptExistingTaskControllerTest.kt
 
-- Prompt composer must show an `Add Context` affordance only when at least one manual context source is available for the current project.
-- When shown, `Add Context` must be rendered once as a fixed control inside the prompt composer. Existing context chips must render in the same composer-integrated context cluster without repositioning that control.
-- `Add Context` must expose inline mnemonic activation consistent with other prompt controls.
-  [@test] ../../prompt/testSrc/ui/AgentPromptPaletteViewStructureTest.kt
-  [@test] ../../prompt/testSrc/ui/AgentPromptPaletteViewLayoutTest.kt
+- Submit validation must block empty prompts, missing provider, unavailable provider CLI, missing project path, missing launcher bridge, and existing-task submits without a selected task.
+  [@test] ../../prompt/ui/testSrc/AgentPromptSubmitValidationDecisionsTest.kt
 
-- Existing-task pane must stay bounded and must not starve prompt editor layout.
-  [@test] ../../prompt/testSrc/ui/AgentPromptPaletteViewLayoutTest.kt
-
-- Submit validation must block launch when any required precondition is missing:
-  - empty prompt,
-  - missing selected provider,
-  - selected provider CLI unavailable,
-  - missing project path,
-  - missing prompt launcher bridge,
-  - `EXISTING_TASK` mode without selected existing task id.
-  [@test] ../../prompt/testSrc/ui/AgentPromptSubmitValidationDecisionsTest.kt
-
-- Working project path resolution for submit and existing-task loading must never use dedicated-frame project path.
-
-- Working project path resolution order in dedicated-frame project must be:
-  - selected Sessions tree context path (project/thread/worktree),
-  - selected chat tab source path,
-  - most recent non-dedicated project path.
+- Working project path resolution must never use the dedicated-frame project path. In non-dedicated frames it resolves from the current open project's identity path, so Bazel projects contribute their `.bazelproject` identity instead of raw `project.basePath`. In a dedicated Agent frame, it resolves from selected Sessions context, selected chat tab source path, then most recent non-dedicated project; unresolved submits prompt for a source project and keep the popup open on cancel.
   [@test] ../../sessions/testSrc/AgentSessionPromptLauncherBridgeTest.kt
 
-- If no working project path can be resolved automatically, submit must prompt user to choose from available non-dedicated project candidates; cancel keeps popup open and shows project-path validation error.
+- Keyboard behavior is: Enter submits, Shift+Enter inserts a line break, Tab/Shift+Tab switch prompt tabs unless completion or Codex tab-queue handling consumes the key.
+  [@test] ../../prompt/ui/testSrc/AgentPromptEnterHandlersTest.kt
+  [@test] ../../prompt/ui/testSrc/AgentPromptFooterHintDecisionsTest.kt
 
-- Keyboard behavior contract:
-  - `Enter` runs submit action from the prompt editor and from the existing-task selector when it owns focus,
-  - `Shift+Enter` inserts line break,
-  - `Tab` submits only when tab-queue shortcut is enabled; otherwise it selects the next available prompt tab and wraps around,
-  - `Shift+Tab` selects the previous available prompt tab and wraps around.
-  [@test] ../../prompt/testSrc/ui/AgentPromptEnterHandlersTest.kt
+- Claude slash completion is available only for Claude provider prompts and only for explicit slash-token completion; it merges built-in Claude menu commands with project `.claude/commands` and `.claude/skills` definitions.
+  [@test] ../../prompt/ui/testSrc/AgentPromptClaudeSlashCompletionProviderTest.kt
 
-- Tab-queue shortcut must be enabled only when target mode is `EXISTING_TASK`, selected provider is `CODEX`, and there is no next prompt tab to select.
-  [@test] ../../prompt/testSrc/ui/AgentPromptFooterHintDecisionsTest.kt
+- New-task provider, mode, and generation defaults restore through launch profiles. Prompt drafts may persist provider options and container mode, but they must not persist a separate provider id default.
+  [@test] ../../prompt/ui/testSrc/AgentPromptLaunchProfileStateTest.kt
+  [@test] ../../prompt/ui/testSrc/AgentPromptUiSessionStateServiceTest.kt
 
-- Footer hint contract:
-  - existing-task Codex mode uses Codex-specific hint key only when the tab-queue shortcut is enabled,
-  - all other states use default hint key,
-  - explicit existing-task selection hint is shown only when mode is `EXISTING_TASK`, selection is empty, and provider is non-Codex.
-  [@test] ../../prompt/testSrc/ui/AgentPromptFooterHintDecisionsTest.kt
-
-- Provider restore order for opening the prompt must be:
-  - shared provider preferences from `AgentPromptLauncherBridge.loadProviderPreferences()` (authoritative, updated by all launch surfaces),
-  - prompt draft `providerId` (fallback for when shared preferences have no provider),
-  - provider-list default ordering.
-  [@test] ../../prompt/testSrc/ui/AgentPromptProviderSelectionDecisionsTest.kt
-
-- Submit flow must route through `AgentPromptLauncherBridge` using `AgentPromptLaunchRequest`; prompt popup must not directly call provider session sources.
-
-- Successful prompt launch must update the shared preferred provider used by future prompt openings and new-thread affordances.
+- Submit flow must route through `AgentPromptLauncherBridge` using `AgentPromptLaunchRequest`; the prompt UI must not call provider session sources directly.
+  [@test] ../../prompt/ui/testSrc/AgentPromptPaletteSubmitControllerTest.kt
   [@test] ../../sessions/testSrc/AgentSessionPromptLauncherBridgeTest.kt
 
-- Plan mode toggle contract:
-  - Toggle is visible when selected provider's bridge has `supportsPlanMode == true`.
-  - Toggle default is enabled and is persisted in per-project prompt draft state.
-  - When effective plan mode is enabled, submit must set `initialMessageRequest.planModeEnabled = true`.
-  - Effective plan mode must be forced off for `EXISTING_TASK` target when selected thread activity is `PROCESSING` or `REVIEWING`.
-  - Providers without `supportsPlanMode` must always submit with plan mode disabled.
-  [@test] ../../prompt/testSrc/ui/AgentPromptPlanModeDecisionsTest.kt
+- Inline empty-state submit uses the same validation and launch path as the popup prompt. Successful inline submit clears the submitted draft and resets the inline session without closing editor tabs or creating a popup.
+  [@test] ../../prompt/ui/testSrc/AgentPromptPaletteSubmitControllerTest.kt
+  [@test] ../../prompt/ui/testSrc/emptyState/AgentWorkbenchInlinePromptEmptyStateProviderTest.kt
 
-- Context block soft-cap limit is `12_000` characters. When exceeded, user must explicitly choose send-full, auto-trim, or cancel before launch.
+- Inline empty-state mode is always a `NEW_TASK` prompt. It must not restore `EXISTING_TASK` draft mode or extension-tab auto-selection because those controls are hidden in the compact empty-state surface.
+  [@test] ../../prompt/ui/testSrc/emptyState/AgentWorkbenchInlinePromptEmptyStateProviderTest.kt
 
-- Extension tab auto-selection (`Alt+Cmd+\` / `Alt+Ctrl+\`):
-  - When the popup is opened via `AgentWorkbenchPrompt.OpenGlobalPaletteAutoSelect`, the `AGENT_PROMPT_INVOCATION_PREFER_EXTENSIONS_KEY` attribute is set to `true`.
-  - When `preferExtensions` is true, the popup calls `AgentPromptPaletteExtension.shouldAutoSelect(contextItems)` on each active extension tab in order.
-  - The first extension that returns `true` from `shouldAutoSelect` has its tab auto-selected.
-  - If no extension returns `true`, the default "New Task" tab remains selected.
-  - `shouldAutoSelect` defaults to `false` in the EP interface; each extension opts in independently.
-  - When the popup is opened via the standard `AgentWorkbenchPrompt.OpenGlobalPalette` (`Cmd+\` / `Ctrl+\`), no auto-selection occurs regardless of extension tab state.
+- Inline new-thread mode is also always a `NEW_TASK` prompt. It is hosted inside a deferred chat tab, starts from the selected launch profile, skips extension-tab auto-selection, and keeps the inline prompt visible when `AgentPromptLauncherBridge.launch(...)` returns a failure so the same pending tab can be retried.
+  [@test] ../../prompt/ui/testSrc/AgentPromptPaletteSessionControllerTest.kt
+  [@test] ../../prompt/ui/testSrc/AgentPromptPaletteSubmitControllerTest.kt
+  [@test] ../../sessions/testSrc/AgentSessionLaunchServiceTest.kt
 
-- Extension tab submit flow:
-  - When an extension tab is active, submit delegates to the action returned by `AgentPromptPaletteExtension.getSubmitActionId()`.
-  - Provider options, plan mode, and existing-task routing are bypassed for extension tabs.
+- New-task launches accepted from the global prompt use the shared generic new-thread deferred tab: provider-neutral centered copy appears immediately, and the spinner appears only after a short delay.
+  [@test] ../../chat/testSrc/AgentChatFileEditorLifecycleTest.kt
+  [@test] ../../sessions/testSrc/AgentSessionLaunchServiceTest.kt
 
-- Manual context contract:
-  - manual context is additive to automatically resolved prompt context,
-  - manual context removal affects only the selected manual source item,
-  - submit uses the combined auto + manual context list through `AgentPromptLaunchRequest.initialMessageRequest.contextItems`,
-  - re-running the same manual source replaces that source's previous manual item instead of appending duplicates.
+- Plan mode is available as a compact header icon toggle only when the selected provider exposes the plan-mode option. Its last-used state is stored per provider as provider option preferences, restored on prompt open, sent in the launch payload, and forced off or rejected for busy existing tasks. A typed `/plan` prefix remains prompt text and does not toggle the option.
+  [@test] ../../prompt/ui/testSrc/AgentPromptPlanModeDecisionsTest.kt
+  [@test] ../../sessions/testSrc/AgentSessionPromptLauncherBridgeTest.kt
 
-- Prompt draft persistence contract:
-  - persisted `AgentPromptUiDraft` must not serialize manual context items,
-  - runtime-only restore snapshot may keep manual context items keyed by source id for the current IDE session,
-  - applying a suggested prompt without later manual edits must not replace the persisted per-tab user draft; closing and reopening restores the last user-authored text for that tab, or empty text when none existed,
-    [@test] ../../prompt/testSrc/ui/AgentPromptDraftPersistenceDecisionsTest.kt
-  - successful submit or explicit draft clear must clear both removed-auto context state and manual context state.
-    [@test] ../../prompt/testSrc/ui/AgentPromptUiSessionStateServiceTest.kt
+- Codex `NEW_TASK` prompts start through the Codex app-server remote-resume path. Standard prompts start plain app-server turns; Plan prompts do not type `/plan`, and the resumed TUI must visibly enter Plan mode before the prompt starts. An acknowledged no-op `thread/settings/update` without `thread/settings/updated` must not be treated as prompt-send failure.
+  [@test] ../../lib-agent/providers/codex/sessions/testSrc/CodexPlanPromptRealAppServerIntegrationTest.kt
+  [@test] ../../lib-agent/providers/codex/sessions/testSrc/CodexNewThreadPromptLaunchIntegrationTest.kt
+
+- `NEW_TASK` and `EXISTING_TASK` expose the provider selector. Changing provider in `EXISTING_TASK` reloads the selectable task list for that provider. Provider-backed model and reasoning-effort controls are exposed for `NEW_TASK` through the unified launch-settings control specified by `global-prompt-generation-controls.spec.md`. The prompt composer mental model, context/text/tray ownership, and content-lane layout contract are owned by `global-prompt-composer.spec.md`.
+  [@test] ../../prompt/ui/testSrc/AgentPromptPaletteViewStructureTest.kt
+  [@test] ../../prompt/ui/testSrc/AgentPromptProviderSelectorTest.kt
+  [@test] ../../prompt/ui/testSrc/AgentPromptPaletteSessionControllerTest.kt
+
+- Generation settings are applied only to `NEW_TASK` launches; `EXISTING_TASK` must not expose editable model or reasoning-effort controls.
+  [@test] ../../prompt/ui/testSrc/AgentPromptPaletteSubmitControllerTest.kt
+  [@test] ../../sessions/testSrc/AgentSessionPromptLauncherBridgeTest.kt
+
+- Extension tab auto-selection is opt-in through `AgentPromptPaletteExtension.shouldAutoSelect(contextItems)` and applies only to the auto-select action. Active extension tabs own their submit action and bypass provider/options routing, except that an extension may opt back into the provider selector through `AgentPromptPaletteExtension.showsProviderSelector()` and into the per-task model/reasoning controls through `AgentPromptPaletteExtension.showsGenerationControls()`. The chosen provider, generation settings, and model catalog are forwarded to the submit action through the data context.
+  [@test] ../../prompt/ui/testSrc/AgentPromptExtensionActionDataContextTest.kt
+
+- Prompt draft persistence must not serialize manual context items. Successful submit or explicit draft clear clears removed-auto-context and manual-context runtime state.
+  [@test] ../../prompt/ui/testSrc/AgentPromptDraftPersistenceDecisionsTest.kt
+  [@test] ../../prompt/ui/testSrc/AgentPromptUiSessionStateServiceTest.kt
+
+- Pasting a clipboard image into the prompt adds it as a screenshot context item. If the clipboard contains copied image files, those files are decoded and preferred over generic `imageFlavor` icon data; non-image copied files must not be consumed by the image paste provider.
+  [@test] ../../prompt/ui/testSrc/context/AgentPromptImagePasteProviderTest.kt
 
 ## User Experience
-- Popup opens as a project-scoped launcher for both new and existing task targets.
-- Existing-task mode exposes provider-scoped thread list with loading/empty/error states.
-- Context chips are removable before submit.
-- Composer context cluster is shown when at least one context chip is present or when `Add Context` is available; it collapses only when both chips and the `Add Context` affordance are absent.
-- Chip-removal hierarchy is provider-defined via context item relations (`itemId`/`parentItemId`); removing a parent chip may remove all descendant chips recursively.
-- The composer-integrated context cluster exposes `Add Context` as the single entry point for adding source-specific context.
-- `Files and Folders…` is the default manual context source for any resolved project and may be accompanied by source-specific additions such as VCS commits.
-- Manual context chips share the same composer-integrated context cluster and submit path as auto context chips.
-
-## Data & Backend
-- Existing-task list comes from launcher `observeExistingThreads(...)` stream with background refresh.
-- Existing-task list must be scoped to resolved working project path.
-- On successful launch, popup closes and draft is cleared; otherwise popup remains and shows error feedback.
-- `AgentPromptContextResolverService.collectDefaultContext(...)` remains the auto-context source of truth; manual context is merged later in popup state.
-- Manual context sources are discovered via `com.intellij.agent.workbench.promptManualContextSource` and invoked from popup-owned UI state.
-
-## Error Handling
-- Validation errors are shown inline in footer using message keys.
-- Existing-task loading failures degrade to empty/error list state without crashing popup.
+- The popup is a focused launcher, not a persistent tool window.
+- The empty editor inline composer is a compact persistent empty-state affordance, not a full embedded popup.
+- Empty editor rendering must not steal focus; users focus the inline composer by clicking it or invoking the global prompt action while it is visible.
+- The inline prompt editor exposes localized accessible name and description metadata, while validation and status feedback continue to use the shared prompt status strip behavior.
+- The popup keep-open toggle is a secondary footer control, not part of the primary header action cluster.
+- Validation errors appear inline and keep the popup open.
+- Successful launches close the popup and clear the submitted draft.
+- Successful inline new-thread launches clear the submitted draft and replace the prompt surface by starting the deferred chat tab.
 
 ## Testing / Local Run
-- `./tests.cmd '-Dintellij.build.test.patterns=com.intellij.agent.workbench.prompt.ui.AgentPromptSubmitValidationDecisionsTest'`
-- `./tests.cmd '-Dintellij.build.test.patterns=com.intellij.agent.workbench.prompt.ui.AgentPromptFooterHintDecisionsTest'`
-- `./tests.cmd '-Dintellij.build.test.patterns=com.intellij.agent.workbench.prompt.ui.AgentPromptPlanModeDecisionsTest'`
-- `./tests.cmd '-Dintellij.build.test.patterns=com.intellij.agent.workbench.prompt.ui.AgentPromptEnterHandlersTest'`
-- `./tests.cmd '-Dintellij.build.test.patterns=com.intellij.agent.workbench.prompt.ui.actions.AgentWorkbenchPromptActionPromoterTest'`
-- `./tests.cmd '-Dintellij.build.test.patterns=com.intellij.agent.workbench.prompt.ui.AgentPromptPaletteViewStructureTest'`
-- `./tests.cmd '-Dintellij.build.test.patterns=com.intellij.agent.workbench.prompt.ui.AgentPromptPaletteViewLayoutTest'`
-- `./tests.cmd '-Dintellij.build.test.patterns=com.intellij.agent.workbench.prompt.ui.AgentPromptUiSessionStateServiceTest'`
-- `./tests.cmd '-Dintellij.build.test.patterns=com.intellij.agent.workbench.prompt.ui.context.AgentPromptProjectPathsManualContextSourceTest'`
-- `./tests.cmd '-Dintellij.build.test.patterns=com.intellij.agent.workbench.prompt.vcs.context.AgentPromptVcsCommitManualContextSourceTest'`
-- `./tests.cmd '-Dintellij.build.test.patterns=com.intellij.agent.workbench.sessions.AgentSessionPromptLauncherBridgeTest'`
+- `./tests.cmd --module intellij.agent.workbench.prompt.ui.tests --test "com.intellij.agent.workbench.prompt.ui.AgentPrompt*Test"`
+- `./tests.cmd --module intellij.agent.workbench.prompt.ui.tests --test "com.intellij.agent.workbench.prompt.ui.emptyState.AgentWorkbenchInlinePromptEmptyStateProviderTest;com.intellij.agent.workbench.prompt.ui.AgentPromptPalettePopupServiceTest"`
+- `./tests.cmd --module intellij.agent.workbench.prompt.ui.tests --test "com.intellij.agent.workbench.prompt.ui.AgentPromptPaletteSessionControllerTest;com.intellij.agent.workbench.prompt.ui.AgentPromptPaletteSubmitControllerTest"`
+- `./tests.cmd --module intellij.platform.ide.impl.tests --test com.intellij.openapi.fileEditor.impl.EditorEmptyTextPainterTest`
+- `./tests.cmd --module intellij.agent.workbench.sessions.tests --test com.intellij.agent.workbench.sessions.AgentSessionPromptLauncherBridgeTest`
+- `./tests.cmd --module intellij.agent.workbench.sessions.tests --test com.intellij.agent.workbench.sessions.AgentSessionLaunchServiceTest`
 
 ## References
+- `global-prompt-composer.spec.md`
+- `add-to-agent-context.spec.md`
+- `global-prompt-generation-controls.spec.md`
 - `global-prompt-suggestions.spec.md`
 - `../prompt-context/prompt-context-contracts.spec.md`
-- `../prompt-context/prompt-context-editor.spec.md`
-- `../prompt-context/prompt-context-files.spec.md`
-- `../prompt-context/prompt-context-project-view.spec.md`
-- `../prompt-context/prompt-context-vcs.spec.md`
-- `../prompt-context/prompt-context-test-runner.spec.md`
-- `../agent-core-contracts.spec.md`
+- `../core/agent-core-contracts.spec.md`

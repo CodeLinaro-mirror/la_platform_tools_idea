@@ -5,12 +5,15 @@ package org.jetbrains.kotlin.idea.completion.impl.k2.checkers
 import com.intellij.lang.jvm.JvmModifier
 import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiElement
+import com.intellij.psi.PsiJavaFile
 import com.intellij.psi.PsiMember
+import com.intellij.psi.PsiModifierListOwner
 import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaSession
+import org.jetbrains.kotlin.analysis.api.components.KaDeprecationLevel
 import org.jetbrains.kotlin.analysis.api.components.KaUseSiteVisibilityChecker
 import org.jetbrains.kotlin.analysis.api.components.createUseSiteVisibilityChecker
-import org.jetbrains.kotlin.analysis.api.components.deprecationStatus
+import org.jetbrains.kotlin.analysis.api.components.deprecation
 import org.jetbrains.kotlin.analysis.api.permissions.forbidAnalysis
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassLikeSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaDeclarationSymbol
@@ -29,7 +32,6 @@ import org.jetbrains.kotlin.psi.KtDeclaration
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.KtModifierListOwner
 import org.jetbrains.kotlin.psi.psiUtil.parentsWithSelf
-import org.jetbrains.kotlin.resolve.deprecation.DeprecationLevelValue
 
 @OptIn(KaExperimentalApi::class)
 internal class CompletionVisibilityChecker(
@@ -46,6 +48,32 @@ internal class CompletionVisibilityChecker(
      */
     private fun KtDeclaration.hasEffectiveVisibility(visibility: KtModifierKeywordToken): Boolean {
         return parentsWithSelf.any { it is KtModifierListOwner && it.hasModifier(visibility) }
+    }
+
+    private fun canJavaElementBeVisible(element: PsiModifierListOwner): Boolean {
+        val containingClass = when (element) {
+            is PsiClass -> element.containingClass
+            is PsiMember -> element.containingClass
+            else -> null
+        }
+        if (element.hasModifier(JvmModifier.PRIVATE)) return false
+
+        // If it is a package private declaration, it might still be visible if it is in the same package
+        if (!element.hasModifier(JvmModifier.PUBLIC)) {
+            val containingFile = element.containingFile as? PsiJavaFile ?: return false
+            val declarationPackage = containingFile.packageName
+            val completionPackage = parameters.originalFile.packageFqName.asString()
+            if (declarationPackage != completionPackage) {
+                // We are package private, but we completing in a different package
+                return false
+            }
+        }
+
+        return when (element) {
+            is PsiClass -> containingClass == null || canJavaElementBeVisible(containingClass)
+            is PsiMember -> containingClass != null && canJavaElementBeVisible(containingClass)
+            else -> false
+        }
     }
 
     fun canBeVisible(declaration: PsiElement): Boolean = forbidAnalysis("canBeVisible") {
@@ -68,10 +96,8 @@ internal class CompletionVisibilityChecker(
             } else {
                 return true
             }
-        } else if (declaration is PsiClass) {
-            return declaration.hasModifier(JvmModifier.PUBLIC) && declaration.containingClass?.hasModifier(JvmModifier.PUBLIC) != false
-        } else if (declaration is PsiMember) {
-            return declaration.hasModifier(JvmModifier.PUBLIC) && declaration.containingClass?.hasModifier(JvmModifier.PUBLIC) == true
+        } else if (declaration.containingFile is PsiJavaFile && declaration is PsiModifierListOwner) {
+            return canJavaElementBeVisible(declaration)
         } else {
             return false
         }
@@ -96,7 +122,7 @@ internal class CompletionVisibilityChecker(
         if (positionContext is KDocNameReferencePositionContext) return true
 
         // Don't offer any deprecated items that could lead to compile errors.
-        if (symbol.deprecationStatus?.deprecationLevel == DeprecationLevelValue.HIDDEN) return false
+        if (symbol.deprecation?.level == KaDeprecationLevel.HIDDEN) return false
 
         if (parameters.invocationCount > 1) return true
 

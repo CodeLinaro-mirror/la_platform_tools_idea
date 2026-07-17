@@ -1,4 +1,4 @@
-// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 @file:JvmName("GradleScriptDefinitionEntityModifications")
 
 package org.jetbrains.kotlin.gradle.scripting.k2.workspaceModel
@@ -8,6 +8,7 @@ import com.intellij.platform.workspace.storage.EntityType
 import com.intellij.platform.workspace.storage.GeneratedCodeApiVersion
 import com.intellij.platform.workspace.storage.MutableEntityStorage
 import com.intellij.platform.workspace.storage.WorkspaceEntityBuilder
+import org.jetbrains.kotlin.gradle.scripting.k2.workspaceModel.impl.GradleScriptDefinitionEntityImpl
 import org.jetbrains.kotlin.idea.core.script.k2.modules.ScriptCompilationConfigurationData
 import org.jetbrains.kotlin.idea.core.script.k2.modules.ScriptEvaluationConfigurationEntity
 import org.jetbrains.kotlin.idea.core.script.k2.modules.ScriptingHostConfigurationEntity
@@ -16,23 +17,24 @@ import org.jetbrains.kotlin.idea.core.script.k2.modules.ScriptingHostConfigurati
 interface GradleScriptDefinitionEntityBuilder : WorkspaceEntityBuilder<GradleScriptDefinitionEntity> {
     override var entitySource: EntitySource
     var definitionId: String
-    var compilationConfiguration: ScriptCompilationConfigurationData
+    var compilationConfigurationData: ScriptCompilationConfigurationData
     var hostConfiguration: ScriptingHostConfigurationEntity
     var evaluationConfiguration: ScriptEvaluationConfigurationEntity?
 }
 
 internal object GradleScriptDefinitionEntityType : EntityType<GradleScriptDefinitionEntity, GradleScriptDefinitionEntityBuilder>() {
     override val entityClass: Class<GradleScriptDefinitionEntity> get() = GradleScriptDefinitionEntity::class.java
+    override val entityImplBuilderClass: Class<*> get() = GradleScriptDefinitionEntityImpl.Builder::class.java
     operator fun invoke(
         definitionId: String,
-        compilationConfiguration: ScriptCompilationConfigurationData,
+        compilationConfigurationData: ScriptCompilationConfigurationData,
         hostConfiguration: ScriptingHostConfigurationEntity,
         entitySource: EntitySource,
         init: (GradleScriptDefinitionEntityBuilder.() -> Unit)? = null,
     ): GradleScriptDefinitionEntityBuilder {
         val builder = builder()
         builder.definitionId = definitionId
-        builder.compilationConfiguration = compilationConfiguration
+        builder.compilationConfigurationData = compilationConfigurationData
         builder.hostConfiguration = hostConfiguration
         builder.entitySource = entitySource
         init?.invoke(builder)
@@ -49,9 +51,9 @@ fun MutableEntityStorage.modifyGradleScriptDefinitionEntity(
 @JvmName("createGradleScriptDefinitionEntity")
 fun GradleScriptDefinitionEntity(
     definitionId: String,
-    compilationConfiguration: ScriptCompilationConfigurationData,
+    compilationConfigurationData: ScriptCompilationConfigurationData,
     hostConfiguration: ScriptingHostConfigurationEntity,
     entitySource: EntitySource,
     init: (GradleScriptDefinitionEntityBuilder.() -> Unit)? = null,
 ): GradleScriptDefinitionEntityBuilder =
-    GradleScriptDefinitionEntityType(definitionId, compilationConfiguration, hostConfiguration, entitySource, init)
+    GradleScriptDefinitionEntityType(definitionId, compilationConfigurationData, hostConfiguration, entitySource, init)

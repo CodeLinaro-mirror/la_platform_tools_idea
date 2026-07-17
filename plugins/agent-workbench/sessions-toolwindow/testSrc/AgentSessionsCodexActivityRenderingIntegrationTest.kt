@@ -1,17 +1,15 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.agent.workbench.sessions.toolwindow
 
-import com.intellij.agent.workbench.codex.common.CodexAppServerNotification
-import com.intellij.agent.workbench.codex.common.CodexThread
-import com.intellij.agent.workbench.codex.common.CodexThreadActivitySnapshot
-import com.intellij.agent.workbench.codex.common.CodexThreadStatusKind
-import com.intellij.agent.workbench.common.AgentThreadActivity
-import com.intellij.agent.workbench.common.session.AgentSessionProvider
+import com.intellij.platform.ai.agent.core.AgentThreadActivity
+import com.intellij.platform.ai.agent.core.AgentThreadActivityReport
+import com.intellij.platform.ai.agent.core.session.AgentSessionProvider
+import com.intellij.platform.ai.agent.core.session.AgentSessionThread
 import com.intellij.agent.workbench.sessions.AgentSessionsBundle
-import com.intellij.agent.workbench.sessions.core.providers.AgentSessionRefreshThreadSeed
-import com.intellij.agent.workbench.sessions.core.providers.AgentSessionSource
+import com.intellij.agent.workbench.sessions.ScriptedSessionSource
 import com.intellij.agent.workbench.sessions.openTestProjectEntry
 import com.intellij.agent.workbench.sessions.state.InMemorySessionTreeUiState
+import com.intellij.agent.workbench.sessions.thread
 import com.intellij.agent.workbench.sessions.toolwindow.tree.SessionTreeId
 import com.intellij.agent.workbench.sessions.toolwindow.tree.SessionTreeNode
 import com.intellij.agent.workbench.sessions.toolwindow.tree.buildSessionTreeModel
@@ -24,17 +22,17 @@ import com.intellij.openapi.util.IconLoader
 import com.intellij.testFramework.junit5.TestApplication
 import com.intellij.ui.IconManager
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.runBlocking
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import java.lang.reflect.Proxy
+import org.junit.jupiter.api.Timeout
+import java.util.concurrent.TimeUnit
 import javax.swing.JTree
 
 @TestApplication
+@Timeout(value = 2, unit = TimeUnit.MINUTES)
 class AgentSessionsCodexActivityRenderingIntegrationTest {
   @BeforeEach
   fun setUp() {
@@ -50,38 +48,15 @@ class AgentSessionsCodexActivityRenderingIntegrationTest {
 
   @Test
   fun codexUnreadAssistantSnapshotRendersProcessingThreadBadge() = runBlocking(Dispatchers.Default) {
-    assumeTrue(isCodexSessionsAvailable(), "Codex sessions module is not available")
-
-    val source = createCodexSource(
-      backendThreads = listOf(
-        createCodexBackendThread(
-          CodexThread(
-            id = "thread-1",
-            title = "Thread 1",
-            updatedAt = 1_000L,
-            archived = false,
-            cwd = PROJECT_PATH,
-            statusKind = CodexThreadStatusKind.IDLE,
-          )
-        )
-      ),
-      snapshotsByThreadId = mapOf(
-        "thread-1" to CodexThreadActivitySnapshot(
-          threadId = "thread-1",
-          updatedAt = 1_000L,
-          statusKind = CodexThreadStatusKind.ACTIVE,
-          hasUnreadAssistantMessage = true,
-        )
-      ),
+    val source = ScriptedSessionSource(
+      provider = AgentSessionProvider.from("codex"),
+      listFromOpenProject = { path, _ ->
+        processingThreadsForPath(path)
+      },
+      listFromClosedProject = { path ->
+        processingThreadsForPath(path)
+      },
     )
-    assertThat(
-      source.prefetchRefreshHints(
-        paths = listOf(PROJECT_PATH),
-        refreshThreadSeedsByPath = mapOf(
-          PROJECT_PATH to setOf(AgentSessionRefreshThreadSeed(threadId = "thread-1", updatedAt = 1_000L))
-        ),
-      ).getValue(PROJECT_PATH).activityByThreadId
-    ).containsExactlyEntriesOf(mapOf("thread-1" to AgentThreadActivity.PROCESSING))
 
     withTestService(
       sessionSourcesProvider = { listOf(source) },
@@ -95,7 +70,7 @@ class AgentSessionsCodexActivityRenderingIntegrationTest {
           ?.id == "thread-1"
       }
 
-      service.refreshProviderForPath(PROJECT_PATH, AgentSessionProvider.CODEX)
+      service.refreshProviderForPath(PROJECT_PATH, AgentSessionProvider.from("codex"))
 
       waitForCondition {
         service.state.value.projects.firstOrNull { it.path == PROJECT_PATH }
@@ -115,7 +90,7 @@ class AgentSessionsCodexActivityRenderingIntegrationTest {
         visibleThreadCounts = state.visibleThreadCounts,
         treeUiState = InMemorySessionTreeUiState(),
       )
-      val threadId = SessionTreeId.Thread(project.path, AgentSessionProvider.CODEX, thread.id)
+      val threadId = SessionTreeId.Thread(project.path, AgentSessionProvider.from("codex"), thread.id)
       val processingNode = model.entriesById.getValue(threadId).node as SessionTreeNode.Thread
       assertThat(processingNode.thread.activity).isEqualTo(AgentThreadActivity.PROCESSING)
 
@@ -126,11 +101,12 @@ class AgentSessionsCodexActivityRenderingIntegrationTest {
       assertThat(processingIcon).isNotNull()
       assertThat(processingRenderer.getCharSequence(true).toString())
         .doesNotContain(AgentSessionsBundle.message("toolwindow.thread.status.in.progress"))
-        .doesNotContain(CodexThreadStatusKind.ACTIVE.name)
+        .doesNotContain("ACTIVE")
+      assertThat(processingRenderer.trailingThreadPaintForTest?.timeLabel).isEqualTo("now")
 
       val readyRenderer = createRenderer { id ->
         when (id) {
-          threadId -> processingNode.copy(thread = processingNode.thread.copy(activity = AgentThreadActivity.READY))
+          threadId -> processingNode.copy(thread = processingNode.thread.copy(activityReport = AgentThreadActivityReport(AgentThreadActivity.READY)))
           else -> model.entriesById[id]?.node
         }
       }
@@ -139,6 +115,51 @@ class AgentSessionsCodexActivityRenderingIntegrationTest {
       assertThat(readyIcon).isNotNull()
       assertThat(processingIcon).isNotSameAs(readyIcon)
     }
+  }
+
+  @Test
+  fun treeRowRendersActualActivityWhenSummaryActivityDoesNotContribute() {
+    val thread = AgentSessionThread(
+      id = "sub-agent-only",
+      title = "Sub-agent only",
+      updatedAt = 1_000L,
+      archived = false,
+      activity = AgentThreadActivity.UNREAD,
+      provider = AgentSessionProvider.from("codex"),
+      summaryActivity = null,
+    )
+    val project = AgentProjectSessions(
+      path = PROJECT_PATH,
+      name = "Project A",
+      isOpen = true,
+      providerLoadStates = loadedProviderStates(AgentSessionProvider.from("codex")),
+      threads = listOf(thread),
+    )
+    val model = buildSessionTreeModel(
+      projects = listOf(project),
+      visibleClosedProjectCount = Int.MAX_VALUE,
+      visibleThreadCounts = emptyMap(),
+      treeUiState = InMemorySessionTreeUiState(),
+    )
+    val threadId = SessionTreeId.Thread(project.path, AgentSessionProvider.from("codex"), thread.id)
+    val unreadNode = model.entriesById.getValue(threadId).node as SessionTreeNode.Thread
+    assertThat(unreadNode.thread.activity).isEqualTo(AgentThreadActivity.UNREAD)
+    assertThat(unreadNode.thread.summaryActivity).isNull()
+
+    val tree = createTree()
+    val unreadRenderer = createRenderer { id -> model.entriesById[id]?.node }
+    unreadRenderer.getTreeCellRendererComponent(tree, descriptorValue(threadId), false, false, true, 0, false)
+    val unreadIcon = unreadRenderer.icon
+    assertThat(unreadIcon).isNotNull()
+
+    val readyRenderer = createRenderer { id ->
+      when (id) {
+        threadId -> unreadNode.copy(thread = unreadNode.thread.copy(activityReport = AgentThreadActivityReport(AgentThreadActivity.READY)))
+        else -> model.entriesById[id]?.node
+      }
+    }
+    readyRenderer.getTreeCellRendererComponent(tree, descriptorValue(threadId), false, false, true, 0, false)
+    assertThat(unreadIcon).isNotSameAs(readyRenderer.icon)
   }
 
   private fun createRenderer(nodeResolver: (SessionTreeId) -> SessionTreeNode?): SessionTreeCellRenderer {
@@ -150,75 +171,20 @@ class AgentSessionsCodexActivityRenderingIntegrationTest {
     )
   }
 
-  private fun createCodexSource(
-    backendThreads: List<Any>,
-    snapshotsByThreadId: Map<String, CodexThreadActivitySnapshot>,
-  ): AgentSessionSource {
-    val refreshHintsProviderClass = Class.forName("com.intellij.agent.workbench.codex.sessions.backend.CodexRefreshHintsProvider")
-    val backendClass = Class.forName("com.intellij.agent.workbench.codex.sessions.backend.CodexSessionBackend")
-    val sourceClass = Class.forName("com.intellij.agent.workbench.codex.sessions.CodexSessionSource")
-    val constructor = sourceClass.getDeclaredConstructor(
-      backendClass,
-      refreshHintsProviderClass,
-      refreshHintsProviderClass,
+  private fun processingThreadsForPath(path: String): List<AgentSessionThread> {
+    if (path != PROJECT_PATH) {
+      return emptyList()
+    }
+    return listOf(
+      thread(
+        id = "thread-1",
+        title = "Thread 1",
+        updatedAt = 1_000L,
+        provider = AgentSessionProvider.from("codex"),
+        activity = AgentThreadActivity.PROCESSING,
+        summaryActivity = null,
+      )
     )
-    constructor.isAccessible = true
-    return constructor.newInstance(
-      createStaticBackend(backendClass, backendThreads),
-      createAppServerRefreshHintsProvider(snapshotsByThreadId),
-      createEmptyRefreshHintsProvider(refreshHintsProviderClass),
-    ) as AgentSessionSource
-  }
-
-  private fun createCodexBackendThread(thread: CodexThread): Any {
-    val backendThreadClass = Class.forName("com.intellij.agent.workbench.codex.sessions.backend.CodexBackendThread")
-    val activityClass = Class.forName("com.intellij.agent.workbench.codex.sessions.backend.CodexSessionActivity")
-    val readyActivity = activityClass.enumConstants.single { constant -> (constant as Enum<*>).name == "READY" }
-    val constructor = backendThreadClass.getDeclaredConstructor(CodexThread::class.java, activityClass, Boolean::class.javaPrimitiveType)
-    constructor.isAccessible = true
-    return constructor.newInstance(thread, readyActivity, false)
-  }
-
-  private fun createStaticBackend(backendClass: Class<*>, backendThreads: List<Any>): Any {
-    return Proxy.newProxyInstance(backendClass.classLoader, arrayOf(backendClass)) { proxy, method, args ->
-      when (method.name) {
-        "listThreads" -> if (args?.firstOrNull() == PROJECT_PATH) backendThreads else emptyList<Any?>()
-        "getUpdates" -> emptyFlow<Unit>()
-        "prefetchThreads" -> emptyMap<String, List<Any>>()
-        "toString" -> "StaticCodexSessionBackend"
-        "hashCode" -> System.identityHashCode(proxy)
-        "equals" -> proxy === args?.firstOrNull()
-        else -> throw UnsupportedOperationException("Unexpected method: ${method.name}")
-      }
-    }
-  }
-
-  private fun createAppServerRefreshHintsProvider(snapshotsByThreadId: Map<String, CodexThreadActivitySnapshot>): Any {
-    val providerClass = Class.forName("com.intellij.agent.workbench.codex.sessions.backend.appserver.CodexAppServerRefreshHintsProvider")
-    val constructor = providerClass.declaredConstructors.single { it.parameterCount == 2 }
-    constructor.isAccessible = true
-    val snapshotReader: suspend (String) -> CodexThreadActivitySnapshot? = { threadId -> snapshotsByThreadId[threadId] }
-    return constructor.newInstance(snapshotReader, emptyFlow<CodexAppServerNotification>())
-  }
-
-  private fun createEmptyRefreshHintsProvider(refreshHintsProviderClass: Class<*>): Any {
-    return Proxy.newProxyInstance(
-      refreshHintsProviderClass.classLoader,
-      arrayOf(refreshHintsProviderClass),
-    ) { proxy, method, args ->
-      when (method.name) {
-        "getUpdates" -> emptyFlow<Unit>()
-        "prefetchRefreshHints" -> emptyMap<String, Any>()
-        "toString" -> "EmptyCodexRefreshHintsProvider"
-        "hashCode" -> System.identityHashCode(proxy)
-        "equals" -> proxy === args?.firstOrNull()
-        else -> throw UnsupportedOperationException("Unexpected method: ${method.name}")
-      }
-    }
-  }
-
-  private fun isCodexSessionsAvailable(): Boolean {
-    return runCatching { Class.forName("com.intellij.agent.workbench.codex.sessions.CodexSessionSource") }.isSuccess
   }
 
   private fun createTree(): JTree {

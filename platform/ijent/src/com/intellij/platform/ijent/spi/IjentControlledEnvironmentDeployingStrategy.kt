@@ -1,8 +1,7 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.platform.ijent.spi
 
 import com.intellij.platform.eel.EelPlatform
-import com.intellij.platform.ijent.IjentApi
 import com.intellij.platform.ijent.IjentExecFileProvider
 import com.intellij.platform.ijent.IjentSession
 import com.intellij.platform.ijent.IjentUnavailableException
@@ -58,6 +57,19 @@ abstract class IjentControlledEnvironmentDeployingStrategy : IjentDeployingStrat
   protected abstract suspend fun getConnectionStrategy(): IjentConnectionStrategy
 
   /**
+   * Provider of the local IJent executable runnable on [targetPlatform].
+   *
+   * Its [IjentExecFileProvider.getIjentBinary] is invoked once per [createIjentSession] invocation,
+   * after [getTargetPlatform] and before [copyFile]; the returned file is uploaded to the target
+   * environment via [copyFile] and then executed via [createProcess]. Implementations must return
+   * a binary whose OS and CPU architecture match [targetPlatform]; mismatches will surface only at
+   * process launch on the remote side. The lookup may suspend for a long time (e.g., to download a
+   * missing binary or prompt the user) and throws [com.intellij.platform.ijent.IjentMissingBinary]
+   * if no compatible binary can be produced.
+   */
+  protected abstract val ijentExecFileProvider: IjentExecFileProvider
+
+  /**
    * Validates if a process exit code indicates normal termination.
    *
    * Called when [ProcessExitPolicy] is [CHECK_CODE] to determine if termination should raise [IjentUnavailableException].
@@ -74,19 +86,18 @@ abstract class IjentControlledEnvironmentDeployingStrategy : IjentDeployingStrat
    */
   open suspend fun isExpectedProcessExit(exitCode: Int): Boolean = exitCode == 0
 
-  final override suspend fun <T : IjentApi> createIjentSession(): IjentSession<T> =
+  override suspend fun createIjentSession(provider: IjentSessionProvider): IjentSession.Posix =
     try {
       val targetPlatform = getTargetPlatform()
       val connectionStrategy = getConnectionStrategy()
-      val remotePathToBinary = copyFile(IjentExecFileProvider.getInstance().getIjentBinary(targetPlatform))
+      val remotePathToBinary = copyFile(ijentExecFileProvider.getIjentBinary(targetPlatform))
       val mediator = createProcess(remotePathToBinary)
 
-      createIjentSession(IjentConnectionContext(
+      provider.connect(IjentConnectionContext(
         mediator = mediator,
         targetPlatform = targetPlatform,
-        remoteBinaryPath = remotePathToBinary,
         connectionStrategy = connectionStrategy,
-      ))
+      )) as IjentSession.Posix
     }
     finally {
       close()

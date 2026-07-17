@@ -436,11 +436,11 @@ public final class SdkConfigurationUtil {
   }
 
   /**
-   * @deprecated Please use {@link SdkConfigurationUtil#selectSdkHome(SdkType, Component, Path, Consumer)}
+   * @deprecated Please use {@link SdkConfigurationUtil#selectSdkHome(SdkType, Component, Path, Project, Consumer)}
    */
   @Deprecated
   public static void selectSdkHome(final @NotNull SdkType sdkType, final @NotNull Consumer<? super String> consumer) {
-    selectSdkHome(sdkType, null, Path.of(System.getProperty("user.home")), consumer);
+    selectSdkHome(sdkType, null, Path.of(System.getProperty("user.home")), null, consumer);
   }
 
   public static boolean selectSdkHomeForTests(@NotNull SdkType sdkType, @NotNull Consumer<? super String> consumer) {
@@ -453,13 +453,26 @@ public final class SdkConfigurationUtil {
     return false;
   }
 
+  /**
+   * @deprecated Use {@link #selectSdkHome(SdkType, Component, Path, Project, Consumer)} providing the correct project.
+   */
+  @Deprecated
   public static void selectSdkHome(final @NotNull SdkType sdkType,
                                    @Nullable Component component,
                                    @NotNull Path path,
                                    final @NotNull Consumer<? super String> consumer) {
+    selectSdkHome(sdkType, component, path, null, consumer);
+  }
+
+  public static void selectSdkHome(final @NotNull SdkType sdkType,
+                                   @Nullable Component component,
+                                   @NotNull Path path,
+                                   @Nullable Project project,
+                                   final @NotNull Consumer<? super String> consumer) {
     if (selectSdkHomeForTests(sdkType, consumer)) return;
 
     final FileChooserDescriptor descriptor = sdkType.getHomeChooserDescriptor();
+    descriptor.setEnvironmentRestricted(true);
 
     Future<VirtualFile> sdkRootFuture = PooledThreadExecutor.INSTANCE.submit(() -> getSuggestedSdkRoot(sdkType, path));
     VirtualFile suggestedSdkRoot = null;
@@ -472,7 +485,7 @@ public final class SdkConfigurationUtil {
     // passing project instance here seems to be the right idea, but it would make the dialog
     // selecting the last opened project path, instead of the suggested detected JDK home (one of many).
     // The behaviour may also depend on the FileChooser implementations which does not reuse that code
-    FileChooser.chooseFiles(descriptor, null, component, suggestedSdkRoot, chosen -> {
+    FileChooser.chooseFiles(descriptor, project, component, suggestedSdkRoot, chosen -> {
       final String chosenPath = chosen.get(0).getPath();
       if (!EelProviderUtil.getEelDescriptor(Path.of(chosenPath)).equals(EelProviderUtil.getEelDescriptor(path))) {
         Messages.showErrorDialog(

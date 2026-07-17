@@ -6,6 +6,8 @@ import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.plus
 import org.jetbrains.intellij.build.ApplicationInfoProperties
 import org.jetbrains.intellij.build.BuildContext
+import org.jetbrains.intellij.build.FileAssociation
+import org.jetbrains.intellij.build.JvmArchitecture
 import org.jetbrains.intellij.build.LinuxDistributionCustomizer
 import org.jetbrains.intellij.build.MacDistributionCustomizer
 import org.jetbrains.intellij.build.WindowsDistributionCustomizer
@@ -20,7 +22,7 @@ import org.jetbrains.intellij.build.windowsCustomizer
 import java.nio.file.Files
 import java.nio.file.Path
 
-open class PyCharmCommunityProperties(protected val communityHome: Path) : PyCharmPropertiesBase(enlargeWelcomeScreen = true) {
+class PyCharmCommunityProperties(private val communityHome: Path) : PyCharmPropertiesBase(enlargeWelcomeScreen = true) {
   override val customProductCode: String
     get() = "PC"
 
@@ -32,11 +34,11 @@ open class PyCharmCommunityProperties(protected val communityHome: Path) : PyCha
     scrambleMainJar = false
     buildSourcesArchive = true
 
-    productLayout.productApiModules = listOf()
+    imagesDirectoryPath = communityHome.resolve("python/build/images")
+
     productLayout.productImplementationModules = listOf(
       "intellij.platform.starter",
       "intellij.pycharm.community",
-      "intellij.platform.whatsNew",
     )
     productLayout.bundledPluginModules +=
       sequenceOf(
@@ -53,7 +55,7 @@ open class PyCharmCommunityProperties(protected val communityHome: Path) : PyCha
 
     mavenArtifacts.forIdeModules = true
     additionalVmOptions = persistentListOf("-Dllm.show.ai.promotion.window.on.start=false")
-    qodanaProductProperties = QodanaProductProperties(@Suppress("SpellCheckingInspection") "QDPYC", "Qodana Community for Python")
+    qodanaProductProperties = QodanaProductProperties("QDPYC", "Qodana Community for Python")
   }
 
   override fun getProductContentDescriptor(): ProductModulesContentSpec = productModules {
@@ -75,10 +77,10 @@ open class PyCharmCommunityProperties(protected val communityHome: Path) : PyCha
     include(CommunityProductFragments.pycharmCoreFragment())
 
     // Static includes
-    deprecatedInclude("intellij.platform.extended.community.impl", "META-INF/community-extensions.xml", ultimateOnly = true)
     deprecatedInclude("intellij.pycharm.community", "META-INF/pycharm-core-customization.xml")
 
     allowMissingDependencies(knownMissingModuleDependencies)
+    allowMissingDependencies("intellij.platform.commercial.dependencies")
     bundledPlugins(productLayout.bundledPluginModules)
   }
 
@@ -97,13 +99,10 @@ open class PyCharmCommunityProperties(protected val communityHome: Path) : PyCha
   override fun getBaseArtifactName(appInfo: ApplicationInfoProperties, buildNumber: String): String = "pycharmPC-$buildNumber"
 
   override fun createWindowsCustomizer(projectHome: Path): WindowsDistributionCustomizer = windowsCustomizer(communityHome) {
-    icoPath = "python/build/resources/PyCharmCore.ico"
-    icoPathForEAP = "python/build/resources/PyCharmCore_EAP.ico"
-    installerImagesPath = "python/build/resources"
-
     fileAssociations = SUPPORTED_FILE_EXTENSIONS
 
-    fullName { "PyCharm Community Edition" }
+    fullName { "PyCharm Open Source" }
+    installDirNameHandler { "PyCharm OSS" }
 
     copyAdditionalFiles { targetDir, _, context ->
       PyCharmBuildUtils.copySkeletons(context, targetDir, "skeletons-win*.zip")
@@ -114,25 +113,28 @@ open class PyCharmCommunityProperties(protected val communityHome: Path) : PyCha
     }
   }
 
-  override fun createMacCustomizer(projectHome: Path): MacDistributionCustomizer = PyCharmMacDistributionCustomizer(communityHome)
-
-  override fun createLinuxCustomizer(projectHome: String): LinuxDistributionCustomizer {
-    return object : LinuxDistributionCustomizer() {
-      init {
-        iconPngPath = communityHome.resolve("python/build/resources/PyCharmCore128.png")
-        iconPngPathForEAP = communityHome.resolve("python/build/resources/PyCharmCore128_EAP.png")
-        snaps += Snap(
-          name = "pycharm-community",
-          description =
-            "Python IDE for professional developers. Save time while PyCharm takes care of the routine. " +
-            "Focus on bigger things and embrace the keyboard-centric approach to get the most of PyCharm’s many productivity features."
-        )
-      }
-
-      override fun getRootDirectoryName(appInfo: ApplicationInfoProperties, buildNumber: String): String {
-        return "pycharm-community-${if (appInfo.isEAP) buildNumber else appInfo.fullVersion}"
+  override fun createMacCustomizer(projectHome: Path): MacDistributionCustomizer = object : MacDistributionCustomizer() {
+    init {
+      bundleIdentifier = "com.jetbrains.pycharm.ce"
+      fileAssociations = SUPPORTED_FILE_EXTENSIONS.map {
+        FileAssociation(it)
       }
     }
+
+    override fun getRootDirectoryName(appInfo: ApplicationInfoProperties, buildNumber: String): String = "PyCharm OSS.app"
+
+    override suspend fun copyAdditionalFiles(context: BuildContext, targetDir: Path, arch: JvmArchitecture) {
+      super.copyAdditionalFiles(context, targetDir, arch)
+      PyCharmBuildUtils.copySkeletons(context, targetDir, "skeletons-mac*.zip")
+    }
+
+    override fun getCustomIdeaProperties(appInfo: ApplicationInfoProperties): Map<String, String> = mapOf(
+      "ide.mac.useNativeClipboard" to "false"
+    )
+  }
+
+  override fun createLinuxCustomizer(projectHome: Path): LinuxDistributionCustomizer = object : LinuxDistributionCustomizer() {
+    override fun getRootDirectoryName(appInfo: ApplicationInfoProperties, buildNumber: String): String = "pycharm-oss"
   }
 
   override fun getOutputDirectoryName(appInfo: ApplicationInfoProperties): String = "pycharm-ce"

@@ -49,7 +49,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-import static com.intellij.codeInsight.completion.JavaCompletionContributor.UNEXPECTED_REFERENCE_AFTER_DOT;
 import static com.intellij.patterns.PsiJavaPatterns.psiElement;
 
 public final class JavaNoVariantsDelegator extends CompletionContributor implements DumbAware {
@@ -141,7 +140,7 @@ public final class JavaNoVariantsDelegator extends CompletionContributor impleme
     if (!Registry.is("java.completion.methods.use.tags")) {
       return false;
     }
-    if (!(JavaKeywordCompletion.AFTER_DOT.accepts(position))) {
+    if (!(JavaCompletionUtil.AFTER_DOT.accepts(position))) {
       return false;
     }
     if (!(position.getParent() instanceof PsiReferenceExpression psiReferenceExpression)) {
@@ -281,7 +280,7 @@ public final class JavaNoVariantsDelegator extends CompletionContributor impleme
   static void suggestNonImportedClasses(CompletionParameters parameters,
                                         CompletionResultSet result,
                                         @Nullable JavaCompletionSession session) {
-    if (UNEXPECTED_REFERENCE_AFTER_DOT.accepts(parameters.getPosition())) return;
+    if (JavaCompletionUtil.isUnexpectedReferenceAfterDot(parameters.getPosition())) return;
     List<LookupElement> sameNamedBatch = new ArrayList<>();
     PsiElement position = parameters.getPosition();
     JavaLookupElementHighlighter highlighter = JavaCompletionUtil.getHighlighterForPlace(position, parameters.getOriginalFile().getVirtualFile());

@@ -12,10 +12,12 @@ import org.jetbrains.kotlin.analysis.api.signatures.KaCallableSignature
 import org.jetbrains.kotlin.analysis.api.signatures.KaFunctionSignature
 import org.jetbrains.kotlin.analysis.api.signatures.KaVariableSignature
 import org.jetbrains.kotlin.analysis.api.symbols.KaCallableSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.KaClassKind
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassLikeSymbol
-import org.jetbrains.kotlin.analysis.api.symbols.KaClassSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassifierSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaConstructorSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.KaNamedFunctionSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.KaSamConstructorSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaTypeParameterSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.markers.KaNamedSymbol
 import org.jetbrains.kotlin.analysis.api.types.KaType
@@ -34,7 +36,6 @@ import org.jetbrains.kotlin.name.Name
 @ApiStatus.Internal
 object KotlinFirLookupElementFactory {
     context(_: KaSession)
-    @OptIn(KaExperimentalApi::class)
     fun createConstructorCallLookupElement(
         containingSymbol: KaClassLikeSymbol,
         visibleConstructorSymbols: List<KaConstructorSymbol>,
@@ -65,8 +66,8 @@ object KotlinFirLookupElementFactory {
         is KaTypeParameterSymbol -> TypeParameterLookupElementFactory.createLookup(symbol)
     }
 
-    context(_: KaSession)
     @OptIn(KaExperimentalApi::class)
+    context(_: KaSession)
     fun createLookupElement(
         symbol: KaNamedSymbol,
         importStrategyDetector: ImportStrategyDetector,
@@ -112,16 +113,37 @@ object KotlinFirLookupElementFactory {
 
     context(_: KaSession)
     fun createAnonymousObjectLookupElement(
-        classSymbol: KaClassSymbol,
+        classSymbol: KaClassLikeSymbol,
+        classKind: KaClassKind,
         typeArguments: List<KaTypeProjection>?,
         importingStrategy: ImportStrategy = ImportStrategy.DoNothing,
         aliasName: Name? = null,
     ): LookupElementBuilder {
         return ClassLookupElementFactory.createAnonymousObjectLookup(
             symbol = classSymbol,
+            classKind = classKind,
             typeArguments = typeArguments,
             importingStrategy = importingStrategy,
             aliasName = aliasName
+        )
+    }
+
+    context(_: KaSession)
+    internal fun createSamObjectLookupElement(
+        samInterfaceSymbol: KaClassLikeSymbol,
+        samFunction: KaNamedFunctionSymbol,
+        samConstructorSymbol: KaSamConstructorSymbol,
+        inputTypeArgumentsAreRequired: Boolean,
+        importingStrategy: ImportStrategy,
+        aliasName: Name?,
+    ): LookupElementBuilder {
+        return ClassLookupElementFactory.createSamObjectLookupElement(
+            samInterfaceSymbol = samInterfaceSymbol,
+            samFunction = samFunction,
+            samConstructorSymbol = samConstructorSymbol,
+            inputTypeArgumentsAreRequired = inputTypeArgumentsAreRequired,
+            importingStrategy = importingStrategy,
+            aliasName = aliasName,
         )
     }
 

@@ -9,8 +9,11 @@ import com.jetbrains.lsp.protocol.RequestMessage
 import com.jetbrains.lsp.protocol.RequestType
 import com.jetbrains.lsp.protocol.ResponseError
 import com.jetbrains.lsp.protocol.ResponseMessage
+import com.jetbrains.lsp.protocol.Shutdown
 import com.jetbrains.lsp.protocol.StringOrInt
 import fleet.multiplatform.shims.MultiplatformConcurrentHashMap
+import fleet.util.async.Resource
+import fleet.util.async.resourceOf
 import fleet.util.logging.logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -26,14 +29,15 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.concurrent.atomics.AtomicInt
 import kotlin.concurrent.atomics.incrementAndFetch
-import kotlin.coroutines.CoroutineContext
-import kotlin.coroutines.EmptyCoroutineContext
+
+private val LOG = logger<LspClient>()
 
 private class ProtocolViolation(message: String) : Exception(message)
 
@@ -51,78 +55,78 @@ private class OutgoingRequest(
     val requestType: RequestType<*, *, *>,
 )
 
-suspend fun withLsp(
+internal suspend fun withLspImpl(
     incoming: ReceiveChannel<JsonElement>,
     outgoing: SendChannel<JsonElement>,
-    handlers: LspHandlers,
-    createCoroutineContext: (LspClient) -> CoroutineContext = { EmptyCoroutineContext },
-    body: suspend CoroutineScope.(LspClient) -> Unit,
+    body: (LspClient) -> Resource<LspHandlers>,
 ) {
-    coroutineScope {
-        val outgoingRequests = MultiplatformConcurrentHashMap<StringOrInt, OutgoingRequest>()
-        val idGen = AtomicInt(0)
-        val lspClient = object : LspClient {
-            override suspend fun <Params, Result, Error> request(
-                requestType: RequestType<Params, Result, Error>,
-                params: Params,
-            ): Result {
-                val id = StringOrInt(JsonPrimitive(idGen.incrementAndFetch()))
-                val deferred = CompletableDeferred<Any?>()
-                outgoingRequests[id] = OutgoingRequest(deferred, requestType)
-                val request = RequestMessage(
-                    jsonrpc = "2.0",
-                    id = id,
-                    method = requestType.method,
-                    params = LSP.json.encodeToJsonElement(requestType.paramsSerializer, params)
-                )
-                outgoing.send(LSP.json.encodeToJsonElement(RequestMessage.serializer(), request))
-                @Suppress("UNCHECKED_CAST")
-                return try {
-                    deferred.await() as Result
-                } catch (c: CancellationException) {
-                    notifyAsync(LSP.CancelNotificationType, CancelParams(id))
-                    outgoingRequests.remove(id)
-                    throw c
-                }
-            }
-
-            override fun <Params> notifyAsync(
-                notificationType: NotificationType<Params>,
-                params: Params,
-            ) {
-                val notification = NotificationMessage(
-                    jsonrpc = "2.0",
-                    method = notificationType.method,
-                    params = LSP.json.encodeToJsonElement(notificationType.paramsSerializer, params)
-                )
-                outgoing.trySend(
-                    LSP.json.encodeToJsonElement(
-                        NotificationMessage.serializer(),
-                        notification
-                    )
-                ).getOrThrow()
-            }
-
-          override suspend fun <Params> notify(notificationType: NotificationType<Params>, params: Params) {
-            val notification = NotificationMessage(
-              jsonrpc = "2.0",
-              method = notificationType.method,
-              params = LSP.json.encodeToJsonElement(notificationType.paramsSerializer, params)
+    val outgoingRequests = MultiplatformConcurrentHashMap<StringOrInt, OutgoingRequest>()
+    val idGen = AtomicInt(0)
+    val lspClient = object : LspClient {
+        override suspend fun <Params, Result, Error> request(
+            requestType: RequestType<Params, Result, Error>,
+            params: Params,
+        ): Result {
+            val id = StringOrInt(JsonPrimitive(idGen.incrementAndFetch()))
+            val deferred = CompletableDeferred<Any?>()
+            outgoingRequests[id] = OutgoingRequest(deferred, requestType)
+            val request = RequestMessage(
+                jsonrpc = "2.0",
+                id = id,
+                method = requestType.method,
+                params = LSP.json.encodeToJsonElement(requestType.paramsSerializer, params)
             )
-            outgoing.send(
-              LSP.json.encodeToJsonElement(
-                NotificationMessage.serializer(),
-                notification
-              )
-            )
-          }
+            outgoing.send(LSP.json.encodeToJsonElement(RequestMessage.serializer(), request))
+            @Suppress("UNCHECKED_CAST")
+            return try {
+                when (requestType) {
+                    Shutdown -> null
+                    else -> deferred.await()
+                } as Result
+            } catch (c: CancellationException) {
+                notifyAsync(LSP.CancelNotificationType, CancelParams(id))
+                outgoingRequests.remove(id)
+                throw c
+            }
         }
 
-        val lspHandlerContext = LspHandlerContext(lspClient, this)
+        override fun <Params> notifyAsync(
+            notificationType: NotificationType<Params>,
+            params: Params,
+        ) {
+            val notification = NotificationMessage(
+                jsonrpc = "2.0",
+                method = notificationType.method,
+                params = LSP.json.encodeToJsonElement(notificationType.paramsSerializer, params)
+            )
+            outgoing.trySend(
+                LSP.json.encodeToJsonElement(
+                    NotificationMessage.serializer(),
+                    notification
+                )
+            ).getOrThrow()
+        }
 
-        launch(CoroutineName("incoming requests accepter") + createCoroutineContext(lspClient)) {
-            withSupervisor { supervisor ->
-                val incomingRequestsJobs = MultiplatformConcurrentHashMap<StringOrInt, Job>()
+        override suspend fun <Params> notify(notificationType: NotificationType<Params>, params: Params) {
+            val notification = NotificationMessage(
+                jsonrpc = "2.0",
+                method = notificationType.method,
+                params = LSP.json.encodeToJsonElement(notificationType.paramsSerializer, params)
+            )
+            outgoing.send(
+                LSP.json.encodeToJsonElement(
+                    NotificationMessage.serializer(),
+                    notification
+                )
+            )
+        }
+    }
+
+    body(lspClient).use { handlers ->
+        withSupervisor { supervisor ->
+            val lspHandlerContext = LspHandlerContext(lspClient, supervisor)
+            val incomingRequestsJobs = MultiplatformConcurrentHashMap<StringOrInt, Job>()
+            withContext(CoroutineName("incoming requests accepter")) {
                 incoming.consumeEach { jsonMessage ->
                     when {
                         jsonMessage !is JsonObject || jsonMessage["jsonrpc"] != JsonPrimitive("2.0") -> {
@@ -145,10 +149,10 @@ suspend fun withLsp(
                                     handler as LspRequestHandler<Any?, Any?, Any?>
 
                                     val result = handler.handler(
-                                          lspHandlerContext,
-                                          this,
-                                          deserializedParams
-                                      )
+                                        lspHandlerContext,
+                                        this,
+                                        deserializedParams
+                                    )
 
                                     LSP.json.encodeToJsonElement(
                                         serializer = handler.requestType.resultSerializer,
@@ -208,6 +212,10 @@ suspend fun withLsp(
                                     }
                                 ).let { responseMessage ->
                                     outgoing.send(LSP.json.encodeToJsonElement(ResponseMessage.serializer(), responseMessage))
+                                    if (request.method == Shutdown.method) {
+                                        incoming.cancel()
+                                        outgoing.close()
+                                    }
                                 }
                             }.also { requestJob ->
                                 incomingRequestsJobs[request.id] = requestJob
@@ -230,11 +238,11 @@ suspend fun withLsp(
                                             null -> {
                                                 val result = response.result?.let { result ->
                                                     runCatching {
-                                                      @Suppress("UNCHECKED_CAST")
-                                                      LSP.json.decodeFromJsonElement(
-                                                          client.requestType.resultSerializer as KSerializer<Any?>,
-                                                          result
-                                                      )
+                                                        @Suppress("UNCHECKED_CAST")
+                                                        LSP.json.decodeFromJsonElement(
+                                                            client.requestType.resultSerializer as KSerializer<Any?>,
+                                                            result
+                                                        )
                                                     }.onFailure { error ->
                                                         currentCoroutineContext().job.ensureActive()
                                                         LOG.error(error)
@@ -251,11 +259,11 @@ suspend fun withLsp(
                                                         cause = null,
                                                         payload = error.data?.let { data ->
                                                             runCatching {
-                                                              @Suppress("UNCHECKED_CAST")
-                                                              LSP.json.decodeFromJsonElement(
-                                                                  client.requestType.errorSerializer as KSerializer<Any?>,
-                                                                  data
-                                                              )
+                                                                @Suppress("UNCHECKED_CAST")
+                                                                LSP.json.decodeFromJsonElement(
+                                                                    client.requestType.errorSerializer as KSerializer<Any?>,
+                                                                    data
+                                                                )
                                                             }.onFailure { decodingError ->
                                                                 currentCoroutineContext().job.ensureActive()
                                                                 LOG.error(decodingError)
@@ -283,14 +291,18 @@ suspend fun withLsp(
                                     runCatching {
                                         when (val handler = handlers.notificationHandler(notification.method)) {
                                             null ->
-                                                LOG.debug("no handler for notification: ${notification.method}")
+                                                LOG.debug { "no handler for notification: ${notification.method}" }
 
                                             else -> {
                                                 val deserializedParams = notification.params?.let { params ->
                                                     LSP.json.decodeFromJsonElement(handler.notificationType.paramsSerializer, params)
                                                 }
                                                 @Suppress("UNCHECKED_CAST")
-                                                (handler as LspNotificationHandler<Any?>).handler(lspHandlerContext, this, deserializedParams)
+                                                (handler as LspNotificationHandler<Any?>).handler(
+                                                    lspHandlerContext,
+                                                    this,
+                                                    deserializedParams
+                                                )
                                             }
                                         }
                                     }.onFailure { error ->
@@ -306,10 +318,25 @@ suspend fun withLsp(
                     }
                 }
             }
-        }.use {
-            body(lspHandlerContext.lspClient)
         }
     }
 }
 
-private val LOG = logger<LspClient>()
+suspend fun withLsp(
+    incoming: ReceiveChannel<JsonElement>,
+    outgoing: SendChannel<JsonElement>,
+    handlers: LspHandlers,
+    body: suspend CoroutineScope.(LspClient) -> Unit,
+) {
+    coroutineScope {
+        val futureClient = CompletableDeferred<LspClient>()
+        launch {
+            withLspImpl(incoming, outgoing) { lspClient ->
+                futureClient.complete(lspClient)
+                resourceOf(handlers)
+            }
+        }.use {
+            body(futureClient.await())
+        }
+    }
+}

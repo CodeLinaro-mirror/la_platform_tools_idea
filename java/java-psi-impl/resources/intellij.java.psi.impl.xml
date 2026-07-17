@@ -13,7 +13,13 @@
   ~ See the License for the specific language governing permissions and
   ~ limitations under the License.
   -->
-<idea-plugin>
+<idea-plugin visibility="public">
+  <!-- region Generated dependencies - run `Generate Product Layouts` to regenerate -->
+  <dependencies>
+    <module name="intellij.java.psi"/>
+    <module name="intellij.java.syntax"/>
+  </dependencies>
+  <!-- endregion -->
 
   <extensionPoints>
     <!--suppress PluginXmlValidity -->
@@ -28,6 +34,7 @@
     <extensionPoint qualifiedName="com.intellij.psi.clsCustomNavigationPolicy" interface="com.intellij.psi.impl.compiled.ClsCustomNavigationPolicy" dynamic="true"/>
     <extensionPoint qualifiedName="com.intellij.jvm.elementProvider" area="IDEA_PROJECT" interface="com.intellij.lang.jvm.facade.JvmElementProvider" dynamic="true"/>
     <extensionPoint qualifiedName="com.intellij.java.elementFinder" area="IDEA_PROJECT" interface="com.intellij.psi.PsiElementFinder" dynamic="true"/>
+    <extensionPoint qualifiedName="com.intellij.packageDirectoryProvider" area="IDEA_PROJECT" interface="com.intellij.psi.PackageDirectoryProvider" dynamic="true"/>
     <extensionPoint qualifiedName="com.intellij.classTypePointerFactory" interface="com.intellij.psi.ClassTypePointerFactory" dynamic="true"/>
     <extensionPoint qualifiedName="com.intellij.customJavadocTagProvider" interface="com.intellij.psi.javadoc.CustomJavadocTagProvider" dynamic="true"/>
     <extensionPoint qualifiedName="com.intellij.javadocTagInfo" area="IDEA_PROJECT" interface="com.intellij.psi.javadoc.JavadocTagInfo" dynamic="true"/>
@@ -49,7 +56,6 @@
     <extensionPoint qualifiedName="com.intellij.annotationSupport" beanClass="com.intellij.lang.LanguageExtensionPoint" dynamic="true">
       <with attribute="implementationClass" implements="com.intellij.psi.PsiAnnotationSupport"/>
     </extensionPoint>
-    <extensionPoint qualifiedName="com.intellij.testFramework" interface="com.intellij.testIntegration.TestFramework" dynamic="true"/>
     <extensionPoint qualifiedName="com.intellij.lang.dumb.mode.supported" beanClass="com.intellij.lang.LanguageExtensionPoint"
                     dynamic="true">
       <with attribute="implementationClass" implements="com.intellij.lang.jvm.JvmLanguageDumbAware"/>
@@ -96,8 +102,9 @@
     <syntax.syntaxDefinition language="JAVA" implementationClass="com.intellij.java.frontback.psi.impl.syntax.JavaSyntaxDefinitionExtension"/>
     <syntax.syntaxDefinition language="JShellLanguage" implementationClass="com.intellij.java.frontback.psi.impl.syntax.JShellSyntaxDefinitionExtension"/>
 
-    <metaLanguage implementation="com.intellij.lang.jvm.JvmMetaLanguage"/>
+    <metaLanguageProvider implementation="com.intellij.lang.jvm.JvmMetaLanguage$Provider"/>
     <java.elementFinder implementation="com.intellij.psi.impl.PsiElementFinderImpl" id="java" order="first"/>
+
     <treeGenerator implementation="com.intellij.psi.impl.source.tree.JavaTreeGenerator"/>
     <itemPresentationProvider forClass="com.intellij.psi.PsiJavaModule"
                               implementationClass="com.intellij.psi.presentation.java.JavaModulePresentationProvider"/>
@@ -151,6 +158,9 @@
                  description="JLS 18.5.2: if R 0 is a parameterized type, G&lt;A1, ..., An&gt;, and one of A1, ..., An is a wildcard, then, for fresh inference variables B1, ..., Bn ... Javac creates fresh variables only for i: Ai is a wildcard"/>
     <registryKey key="JDK8042508.bug.fixed" defaultValue="false"
                  description="Disable check for type variable until javac bug is fixed" />
+
+    <registryKey key="java.dont.convert.digits.after.dollar.name" defaultValue="true"
+                 description="Skip digits after '$' in class names in class files"/>
 
     <registryKey key="java.folding.icons.for.control.flow"
                  defaultValue="true"

@@ -6,13 +6,8 @@
       <sourceFolder url="file://$MODULE_DIR$/resources" type="java-resource" />
     </content>
     <orderEntry type="inheritedJdk" />
+    <orderEntry type="module" module-name="intellij.toml" scope="RUNTIME" />
     <orderEntry type="sourceFolder" forTests="false" />
     <orderEntry type="module" module-name="intellij.platform.lang" />
-    <orderEntry type="module" module-name="intellij.python.community.communityOnly" scope="RUNTIME" />
-    <orderEntry type="module" module-name="intellij.python.community.services.systemPython" scope="RUNTIME" />
-    <orderEntry type="module" module-name="intellij.python.community.services.shared" scope="RUNTIME" />
-    <orderEntry type="module" module-name="intellij.json.backend" scope="RUNTIME" />
-    <orderEntry type="module" module-name="intellij.python.community.aliasProvider" scope="RUNTIME" />
-    <orderEntry type="module" module-name="intellij.python.community.helpersLocator" scope="RUNTIME" />
   </component>
 </module>

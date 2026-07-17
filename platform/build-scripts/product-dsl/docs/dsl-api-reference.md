@@ -98,7 +98,6 @@ productModules {
 fun deprecatedInclude(
   moduleName: String,
   resourcePath: String,
-  ultimateOnly: Boolean = false,
   optional: Boolean = false
 )
 ```
@@ -109,13 +108,12 @@ Adds an xi:include directive to include XML content from a module's resources.
 |-----------|-------------|
 | `moduleName` | Module containing the resource |
 | `resourcePath` | Path within the module (e.g., `META-INF/Plugin.xml`) |
-| `ultimateOnly` | If true, skipped in Community builds |
 | `optional` | If true, always uses xi:fallback (never inlined) |
 
 **Example:**
 ```kotlin
 deprecatedInclude("intellij.platform.resources", "META-INF/PlatformLangPlugin.xml")
-deprecatedInclude("intellij.ultimate.resources", "META-INF/UltimatePlugin.xml", ultimateOnly = true)
+deprecatedInclude("intellij.ultimate.resources", "META-INF/UltimatePlugin.xml")
 deprecatedInclude("intellij.rider.languages", "intellij.rider.languages.xml", optional = true)
 ```
 
@@ -392,6 +390,15 @@ fun ideCommon() = moduleSet("ide.common") {
 
 ---
 
+### Module-Set Wrapper Plugins
+
+Module-set wrapper plugins are not created by the Product DSL. Existing wrappers under
+`community/module-set-plugins/generated/` and `module-set-plugins/generated/` are static checked-in plugin modules pending migration.
+
+Create new wrappers as normal plugin modules with `plugin.xml` and `plugin-content.yaml`, and bundle those modules through product layout configuration.
+
+---
+
 ## Loading Override Builder
 
 Available when using `moduleSet(set) { ... }` with overrides:
@@ -443,8 +450,8 @@ Represents a module with optional loading attribute.
 
 ```kotlin
 data class ContentModule(
-  val name: String,
-  val loading: ModuleLoadingRuleValue? = null,
+  val moduleId: PluginModuleId,
+  val loading: ModuleLoadingRuleValue = ModuleLoadingRuleValue.OPTIONAL,
   val includeDependencies: Boolean = false
 )
 ```
@@ -472,7 +479,6 @@ Represents an XML include directive.
 data class DeprecatedXmlInclude(
   val moduleName: String,
   val resourcePath: String,
-  val ultimateOnly: Boolean = false,
   val optional: Boolean = false
 )
 ```

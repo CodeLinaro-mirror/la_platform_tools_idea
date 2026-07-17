@@ -25,8 +25,8 @@ import com.intellij.openapi.roots.SourceFolder;
 import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.util.TextRange;
-import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.io.FileUtilRt;
+import com.intellij.openapi.util.io.NioFiles;
 import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiComment;
@@ -74,7 +74,6 @@ import com.jetbrains.python.psi.resolve.QualifiedNameFinder;
 import com.jetbrains.python.psi.resolve.RatedResolveResult;
 import com.jetbrains.python.psi.stubs.PyLiteralKind;
 import com.jetbrains.python.psi.stubs.PySetuptoolsNamespaceIndex;
-import com.jetbrains.python.psi.types.PyCallableParameter;
 import com.jetbrains.python.psi.types.PyCallableType;
 import com.jetbrains.python.psi.types.PyClassLikeType;
 import com.jetbrains.python.psi.types.PyClassType;
@@ -96,7 +95,10 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.jps.model.java.JavaSourceRootType;
 
 import javax.swing.JComponent;
-import java.io.File;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -109,6 +111,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
 
+import static com.intellij.psi.util.PsiTreeUtil.getStubOrPsiParent;
 import static com.jetbrains.python.ast.PyAstFunction.Modifier.CLASSMETHOD;
 import static com.jetbrains.python.ast.PyAstFunction.Modifier.STATICMETHOD;
 
@@ -359,27 +362,28 @@ public final class PyUtil {
   }
 
   public static void deletePycFiles(String pyFilePath) {
-    if (pyFilePath.endsWith(PyNames.DOT_PY)) {
-      List<File> filesToDelete = new ArrayList<>();
-      File pyc = new File(pyFilePath + "c");
-      if (pyc.exists()) {
-        filesToDelete.add(pyc);
+    try {
+      if (pyFilePath.endsWith(PyNames.DOT_PY)) {
+        Files.deleteIfExists(Path.of(pyFilePath + "c"));
+        Files.deleteIfExists(Path.of(pyFilePath + "o"));
+        var file = Path.of(pyFilePath);
+        var pycache = file.resolveSibling(PyNames.PYCACHE);
+        if (Files.isDirectory(pycache)) {
+          var shortName = FileUtilRt.getNameWithoutExtension(NioFiles.getFileName(file));
+          for (var cacheFile : NioFiles.list(pycache)) {
+            var cacheFileName = NioFiles.getFileName(cacheFile);
+            if (FileUtilRt.extensionEquals(cacheFileName, "pyc")) {
+              var nameWithMagic = FileUtilRt.getNameWithoutExtension(cacheFileName);
+              if (FileUtilRt.getNameWithoutExtension(nameWithMagic).equals(shortName)) {
+                Files.deleteIfExists(cacheFile);
+              }
+            }
+          }
+        }
       }
-      File pyo = new File(pyFilePath + "o");
-      if (pyo.exists()) {
-        filesToDelete.add(pyo);
-      }
-      final File file = new File(pyFilePath);
-      File pycache = new File(file.getParentFile(), PyNames.PYCACHE);
-      if (pycache.isDirectory()) {
-        final String shortName = FileUtilRt.getNameWithoutExtension(file.getName());
-        Collections.addAll(filesToDelete, pycache.listFiles(pathname -> {
-          if (!FileUtilRt.extensionEquals(pathname.getName(), "pyc")) return false;
-          String nameWithMagic = FileUtilRt.getNameWithoutExtension(pathname.getName());
-          return FileUtilRt.getNameWithoutExtension(nameWithMagic).equals(shortName);
-        }));
-      }
-      FileUtil.asyncDelete(filesToDelete);
+    }
+    catch (IOException e) {
+      throw new UncheckedIOException(e);
     }
   }
 
@@ -444,7 +448,7 @@ public final class PyUtil {
   }
 
   /**
-   * Finds element declaration by resolving its references top the top but not further than file (to prevent un-stubbing)
+   * Finds element declaration by resolving its references to the top but not further than file (to prevent un-stubbing)
    *
    * @param elementToResolve element to resolve
    * @return its declaration
@@ -545,7 +549,14 @@ public final class PyUtil {
    * @return expression casted to appropriate type (if could be casted). Null otherwise.
    */
   public static @Nullable <T> T as(final @Nullable Object expression, final @NotNull Class<T> clazz) {
-    return ObjectUtils.tryCast(expression, clazz);
+    //noinspection unchecked
+    return ObjectUtils.tryCast(
+      expression,
+      (Class<T>)switch (clazz) {
+        case Class<?> c when c == boolean.class -> Boolean.class;
+        case Class<?> c when c == int.class -> Integer.class;
+        default -> clazz;
+      });
   }
 
   // TODO: Move to PsiElement?
@@ -728,6 +739,31 @@ public final class PyUtil {
     codeFragment.setContext(context);
     final PyExpressionStatement statement = as(codeFragment.getFirstChild(), PyExpressionStatement.class);
     return statement != null ? statement.getExpression() : null;
+  }
+
+  /**
+   * Returns the contextual PSI element if the given element is inside a {@link PyExpressionCodeFragment},
+   * created by {@link PyUtil#createExpressionFromFragment}, otherwise the element itself is returned.
+   */
+  public static @Nullable PsiElement getFragmentContext(@Nullable PsiElement element) {
+    return PsiTreeUtil.getParentOfType(element, PyExpressionCodeFragment.class) == null
+           ? element
+           : element.getContainingFile().getContext();
+  }
+
+  /**
+   * Returns the parent of the given element.
+   * Supports parent boundary transition if the given element is inside a {@link PyExpressionCodeFragment}
+   * created by {@link PyUtil#createExpressionFromFragment}.
+   */
+  public static @Nullable PsiElement getFragmentContextAwareParent(@Nullable PsiElement element) {
+    if (element == null) return null;
+    var parent = getStubOrPsiParent(element);
+    if (parent == null) return null;
+    if (parent instanceof PyExpressionStatement && getStubOrPsiParent(parent) instanceof PyExpressionCodeFragment fragment) {
+      return fragment.getContext();
+    }
+    return parent;
   }
 
   public static boolean isRoot(PsiFileSystemItem directory) {
@@ -1372,89 +1408,6 @@ public final class PyUtil {
     return PyUtilCore.findNextAtOffset(psiFile, caretOffset, toSkip);
   }
 
-
-  public static boolean isSignatureCompatibleTo(@NotNull PyCallable callable, @NotNull PyCallable otherCallable,
-                                                @NotNull TypeEvalContext context) {
-    final List<PyCallableParameter> parameters = callable.getParameters(context);
-    final List<PyCallableParameter> otherParameters = otherCallable.getParameters(context);
-    final int optionalCount = optionalParametersCount(parameters);
-    final int otherOptionalCount = optionalParametersCount(otherParameters);
-    final int requiredCount = requiredParametersCount(callable, parameters);
-    final int otherRequiredCount = requiredParametersCount(otherCallable, otherParameters);
-    if (hasPositionalContainer(otherParameters) || hasKeywordContainer(otherParameters)) {
-      if (otherParameters.size() == specialParametersCount(otherCallable, otherParameters)) {
-        return true;
-      }
-    }
-    if (hasPositionalContainer(parameters) || hasKeywordContainer(parameters)) {
-      return requiredCount <= otherRequiredCount;
-    }
-    return requiredCount <= otherRequiredCount &&
-           optionalCount >= otherOptionalCount &&
-           namedParametersCount(parameters) >= namedParametersCount(otherParameters);
-  }
-
-  private static int optionalParametersCount(@NotNull List<PyCallableParameter> parameters) {
-    int n = 0;
-    for (PyCallableParameter parameter : parameters) {
-      if (parameter.hasDefaultValue()) {
-        n++;
-      }
-    }
-    return n;
-  }
-
-  private static int requiredParametersCount(@NotNull PyCallable callable, @NotNull List<PyCallableParameter> parameters) {
-    return namedParametersCount(parameters) - optionalParametersCount(parameters) - specialParametersCount(callable, parameters);
-  }
-
-  private static int specialParametersCount(@NotNull PyCallable callable, @NotNull List<PyCallableParameter> parameters) {
-    int n = 0;
-    if (hasPositionalContainer(parameters)) {
-      n++;
-    }
-    if (hasKeywordContainer(parameters)) {
-      n++;
-    }
-    if (isFirstParameterSpecial(callable, parameters)) {
-      n++;
-    }
-    return n;
-  }
-
-  private static boolean hasPositionalContainer(@NotNull List<PyCallableParameter> parameters) {
-    for (PyCallableParameter parameter : parameters) {
-      if (parameter.isPositionalContainer()) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  private static boolean hasKeywordContainer(@NotNull List<PyCallableParameter> parameters) {
-    for (PyCallableParameter parameter : parameters) {
-      if (parameter.isKeywordContainer()) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  private static int namedParametersCount(@NotNull List<PyCallableParameter> parameters) {
-    return ContainerUtil.count(parameters, p -> p.getParameter() instanceof PyNamedParameter);
-  }
-
-  private static boolean isFirstParameterSpecial(@NotNull PyCallable callable, @NotNull List<PyCallableParameter> parameters) {
-    final PyFunction method = callable.asMethod();
-    if (method != null) {
-      return isNewMethod(method) || method.getModifier() != STATICMETHOD;
-    }
-    else {
-      final PyCallableParameter first = ContainerUtil.getFirstItem(parameters);
-      return first != null && PyNames.CANONICAL_SELF.equals(first.getName());
-    }
-  }
-
   /**
    * @return true if passed {@code element} is a method (this means a function inside a class) named {@code __init__}.
    * @see PyUtil#isNewMethod(PsiElement)
@@ -1519,7 +1472,8 @@ public final class PyUtil {
 
   public static boolean isObjectClass(@NotNull PyClass cls) {
     String qualifiedName = cls.getQualifiedName();
-    return PyNames.OBJECT.equals(qualifiedName) || (qualifiedName == null && PyNames.OBJECT.equals(cls.getName()));
+    return PyNames.FQN.OBJECT.equals(qualifiedName) ||
+           (qualifiedName == null && PyNames.OBJECT.equals(cls.getName()));
   }
 
   public static @Nullable PyType getReturnTypeOfMember(@NotNull PyType type,

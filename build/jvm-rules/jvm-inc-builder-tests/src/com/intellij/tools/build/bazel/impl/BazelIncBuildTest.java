@@ -4,9 +4,11 @@ import com.intellij.tools.build.bazel.jvmIncBuilder.DataPaths;
 import com.intellij.tools.build.bazel.jvmIncBuilder.NodeSourceSnapshot;
 import com.intellij.tools.build.bazel.jvmIncBuilder.impl.ConfigurationState;
 import com.intellij.tools.build.bazel.jvmIncBuilder.impl.Utils;
+import com.intellij.tools.build.bazel.jvmIncBuilder.impl.ZipElement;
 import com.intellij.tools.build.bazel.jvmIncBuilder.impl.graph.PersistentMVStoreMapletFactory;
 import kotlin.metadata.jvm.KmModule;
 import kotlin.metadata.jvm.KmPackageParts;
+import kotlin.metadata.jvm.KotlinClassMetadata;
 import kotlin.metadata.jvm.KotlinModuleMetadata;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -24,7 +26,6 @@ import org.junit.ComparisonFailure;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -50,6 +51,7 @@ import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 import java.util.zip.ZipInputStream;
 
 import static org.jetbrains.jps.util.Iterators.collect;
@@ -131,6 +133,11 @@ public abstract class BazelIncBuildTest {
       copyTestDataFile(file.toPath(), ourTestDataWorkRoot);
     }
 
+    // Extract patch files from the rules_jvm zip into the test workspace root.
+    // MODULE.bazel references these patches via single_version_override (root-module-only directive),
+    // which is needed because overrides declared in the rules_jvm dependency MODULE.bazel are ignored.
+    extractPatchFiles(Path.of(rulesJvmPath), ourTestDataWorkRoot);
+
     String moduleBazelContent = Files.readString(ourTestDataWorkRoot.resolve("MODULE.bazel"));
 
     String marker = "ABSOLUTE_RULES_JVM_ARTIFACT_PATH";
@@ -197,11 +204,12 @@ public abstract class BazelIncBuildTest {
 
     String bazelTarget = "//" + testDataRelativePath + "/...";
 
-    runBazelBuild(bazelTarget).assertSuccessful(); // the initial build
+    ExecutionResult result = runBazelBuild(bazelTarget); // the initial build
+
+    result.assertSuccessful();
     assertTrue("Tests output root directory " + testOutputDir + " should exist. Probably test expectations differ from Bazel's current output dir naming policy", Files.exists(testOutputDir));
     validateBuildOutput(testDataRelativePath, testOutputDir);
 
-    ExecutionResult result = null;
     StringBuilder buildLog = new StringBuilder();
     for (int idx = 0; idx < makesCount; idx++) {
       modify(testDataDir, testWorkDir, idx);
@@ -225,7 +233,7 @@ public abstract class BazelIncBuildTest {
       // only collect diagnostics on failures
       throw new ComparisonFailure(collectDiagnostics(testOutputDir), expectedBuildLog, actualBuildLog);
     }
-    if (result != null && result.isSuccessful()) {
+    if (result.isSuccessful()) {
       // todo: rebuild from scratch and compare graphs
     }
 
@@ -267,12 +275,10 @@ public abstract class BazelIncBuildTest {
 
   private static Iterable<String> readSessionLogs(Path diagnostic) throws IOException {
     List<String> logs = new ArrayList<>(); // the first description entry corresponds to the most recent build session
-    try (var zis = new ZipInputStream(new BufferedInputStream(Files.newInputStream(diagnostic)))) {
-      for (ZipEntry entry = zis.getNextEntry(); entry != null; entry = zis.getNextEntry()) {
-        if (entry.getName().endsWith("/description.txt")) {
-          ByteArrayOutputStream buf = new ByteArrayOutputStream();
-          zis.transferTo(buf);
-          logs.add(buf.toString(StandardCharsets.UTF_8));
+    try (var zip = new ZipFile(diagnostic.toFile())) {
+      for (ZipElement elem : ZipElement.fromZipFile(zip)) {
+        if (elem.getEntry().getName().endsWith("/description.txt")) {
+          logs.add(new String(elem.getContent(), StandardCharsets.UTF_8));
         }
       }
     }
@@ -339,10 +345,18 @@ public abstract class BazelIncBuildTest {
               Iterator<KotlinMeta> metadata = clsNode.getMetadata(KotlinMeta.class).iterator();
               if (metadata.hasNext()) {
                 hasKotlinBytecode = true;
-                if (metadata.next().isTopLevelDeclarationContainer()) {
-                  graphFacadeClassNames.add(clsNode.getName());
+                String facadeClassName = null;
+                KotlinClassMetadata classMeta = metadata.next().getClassMetadata();
+                if (classMeta instanceof KotlinClassMetadata.FileFacade) {
+                  facadeClassName = clsNode.getName();
+                }
+                else if (classMeta instanceof KotlinClassMetadata.MultiFileClassPart multiPart) {
+                  facadeClassName = multiPart.getFacadeClassName().replace('.', '/');
+                }
+                if (facadeClassName != null) {
+                  graphFacadeClassNames.add(facadeClassName);
                   if (isSourceDirty) {
-                    graphDirtyFacadeClassNames.add(clsNode.getName());
+                    graphDirtyFacadeClassNames.add(facadeClassName);
                   }
                 }
               }
@@ -406,13 +420,26 @@ public abstract class BazelIncBuildTest {
         }
 
       }
+      finally {
+        validateOutputArtifacts(output);
+      }
     }
   }
 
-  private record BuildOutput(DependencyGraph graph, ConfigurationState configState, Path outputJar) {
+  protected void validateOutputArtifacts(BuildOutput output) throws IOException {
+    // override to add additional checks
+  }
+
+  protected record BuildOutput(DependencyGraph graph, ConfigurationState configState, Path outputJar) {
 
     static Iterable<BuildOutput> scanOutputs(Path testOutputDir) throws IOException {
-      List<Path> targetOutputs = Files.list(testOutputDir).filter(path -> matches(path, ".jar") && !matches(path, DataPaths.ABI_JAR_SUFFIX)).toList();
+      Predicate<Path> outputFilter = path -> matches(path, ".jar") && !matches(path, DataPaths.ABI_JAR_SUFFIX);
+
+      // resourcegroup produces the supplementary resource jar with the actual providers to support Bazel plugin
+      // JvmIncBuilderTest#testRebuildOnUntrackedInputChange test previously ignored them because they were located under a platform-specific output directory (e.g. .../bazel-out/darwin_arm64-fastbuild), now they are under .../bazel-out/jvm-fastbuild
+      outputFilter = outputFilter.and(path -> !matches(path, "_resources_lib-class.jar") && !matches(path, "_resources_lib-native-header.jar") && !matches(path, "_resources_lib.jar")); // TODO: remove this
+
+      List<Path> targetOutputs = Files.list(testOutputDir).filter(outputFilter).toList();
 
       return map(targetOutputs, output -> {
         try {
@@ -572,7 +599,19 @@ public abstract class BazelIncBuildTest {
     return getFileName(path).endsWith(suffix);
   }
 
-  private static @NotNull String getFileName(Path p) {
+  protected static @NotNull String getFileName(Path p) {
     return p.getFileName().toString();
   }
+
+  private static void extractPatchFiles(Path zipPath, Path targetDir) throws IOException {
+    try (var zip = new ZipFile(zipPath.toFile())) {
+      for (ZipEntry entry : zip.stream().filter(e -> !e.isDirectory() && e.getName().endsWith(".patch")).toList()) {
+        Path fileName = Path.of(entry.getName()).getFileName();
+        try (var in = zip.getInputStream(entry)) {
+          Files.copy(in, targetDir.resolve(fileName), StandardCopyOption.REPLACE_EXISTING);
+        }
+      }
+    }
+  }
+
 }

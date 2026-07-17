@@ -7,18 +7,25 @@ import com.intellij.agent.workbench.prompt.core.AgentPromptManualContextPickerRe
 import com.intellij.agent.workbench.prompt.core.array
 import com.intellij.agent.workbench.prompt.core.number
 import com.intellij.agent.workbench.prompt.core.objOrNull
-import com.intellij.agent.workbench.prompt.vcs.AgentPromptVcsBundle
+import com.intellij.agent.workbench.prompt.core.string
 import com.intellij.agent.workbench.prompt.core.AgentPromptPayloadValue
+import com.intellij.agent.workbench.prompt.vcs.AgentPromptVcsBundle
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.testFramework.junit5.TestApplication
+import com.intellij.ui.components.JBList
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
+import java.awt.event.MouseEvent
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Proxy
+import java.util.concurrent.TimeUnit
 import javax.swing.JPanel
+import javax.swing.ListSelectionModel
 
 @TestApplication
+@Timeout(value = 2, unit = TimeUnit.MINUTES)
 class AgentPromptVcsCommitManualContextSourceTest {
   @Test
   fun resolveEligibleRootPathsPrefersRootsContainingWorkingProjectPath() {
@@ -48,7 +55,7 @@ class AgentPromptVcsCommitManualContextSourceTest {
 
     val item = buildManualVcsContextItem(selection)
 
-    assertThat(item.title).isEqualTo(AgentPromptVcsBundle.message("context.vcs.manual.title"))
+    assertThat(item.title).isEqualTo(AgentPromptVcsBundle.message("context.vcs.title"))
     assertThat(item.itemId).isEqualTo("manual.vcs.commits")
     assertThat(item.source).isEqualTo("manualVcs")
     assertThat(item.truncation.reason).isEqualTo(AgentPromptContextTruncationReason.SOURCE_LIMIT)
@@ -90,6 +97,26 @@ class AgentPromptVcsCommitManualContextSourceTest {
   }
 
   @Test
+  fun buildManualVcsContextItemIncludesCommitMetadataInPayload() {
+    val item = buildManualVcsContextItem(
+      listOf(
+        commitEntry(
+          hash = "abc12345",
+          rootPath = "/repo",
+          author = "Test User",
+          commitTimeMs = 1710000000000L,
+        )
+      )
+    )
+
+    val entry = item.payload.objOrNull()?.array("entries")?.single()?.objOrNull()
+    assertThat(entry?.string("subject")).isEqualTo("Fix issue")
+    assertThat(entry?.string("author")).isEqualTo("Test User")
+    assertThat(entry?.number("commitTimeMs")).isEqualTo("1710000000000")
+    assertThat(entry?.string("rootName")).isEqualTo("repo")
+  }
+
+  @Test
   fun normalizeManualVcsSelectionDeduplicatesAndTrimsHashes() {
     val normalized = normalizeManualVcsSelection(
       listOf(
@@ -102,6 +129,55 @@ class AgentPromptVcsCommitManualContextSourceTest {
 
     assertThat(normalized.map { it.hash }).containsExactly("abc12345", "def67890")
     assertThat(normalized.first().rootPath).isEqualTo("/repo")
+  }
+
+  @Test
+  fun createCommitPickerListUsesFixedWidthAndRestoresSelection() {
+    val entries = listOf(
+      commitEntry(hash = "abc12345", rootPath = "/repo"),
+      commitEntry(hash = "def67890", rootPath = "/repo"),
+    )
+
+    val list = createCommitPickerList(entries, selectedHashes = setOf("def67890"))
+
+    assertThat(list.fixedCellWidth).isGreaterThanOrEqualTo(COMMIT_CHOOSER_CELL_WIDTH)
+    assertThat(list.selectionMode).isEqualTo(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION)
+    assertThat(list.selectedValuesList).containsExactly(entries[1])
+  }
+
+  @Test
+  fun commitPickerRendererPaintsSelectedRowsAsFocusedSelection() {
+    val entries = listOf(
+      commitEntry(hash = "abc12345", rootPath = "/repo"),
+      commitEntry(hash = "def67890", rootPath = "/repo"),
+    )
+    val list = createCommitPickerList(entries, selectedHashes = emptySet())
+    val renderer = AgentPromptVcsCommitListCellRenderer(showRootNames = false)
+
+    val selectedWithoutFocus = renderer.getListCellRendererComponent(list, entries[1], 1, true, false).background
+    val selectedWithFocus = renderer.getListCellRendererComponent(list, entries[1], 1, true, true).background
+
+    assertThat(selectedWithoutFocus).isEqualTo(selectedWithFocus)
+  }
+
+  @Test
+  fun createCommitPickerPopupBuilderConfiguresMultiSelectionBehavior() {
+    val entries = listOf(
+      commitEntry(hash = "abc12345", rootPath = "/repo"),
+      commitEntry(hash = "def67890", rootPath = "/repo"),
+    )
+    val list = JBList(entries).apply {
+      selectionMode = ListSelectionModel.SINGLE_SELECTION
+    }
+    val listenersBefore = list.mouseListeners.toSet()
+
+    val builder = createCommitPickerPopupBuilder(list, showRootNames = false) {}
+    val event = commitPickerMouseReleasedEvent(list)
+    list.mouseListeners.filterNot { it in listenersBefore }.forEach { listener -> listener.mouseReleased(event) }
+
+    assertThat(builder.isAutoselectOnMouseMove).isFalse()
+    assertThat(list.selectionMode).isEqualTo(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION)
+    assertThat(event.isConsumed).isFalse()
   }
 
   @Test
@@ -134,11 +210,66 @@ class AgentPromptVcsCommitManualContextSourceTest {
     assertThat(errorMessage).isEqualTo(AgentPromptVcsBundle.message("manual.context.vcs.error.unavailable"))
   }
 
-  private fun commitEntry(hash: String, rootPath: String?, issueUrls: List<String> = emptyList()): CommitPickerEntry {
+  @Test
+  fun showPickerReportsUnavailableWhenVcsLogDoesNotBecomeReady() {
+    val hostProject = projectProxy(name = "Agent Dedicated Frame", basePath = "/dedicated")
+    val sourceProject = projectProxy(name = "Source Project", basePath = "/repo")
+    var errorMessage: String? = null
+    val source = AgentPromptVcsCommitManualContextSource(
+      projectLogAvailability = { true },
+      runWhenLogIsReady = { _, _, onUnavailable -> onUnavailable() },
+    )
+
+    source.showPicker(
+      AgentPromptManualContextPickerRequest(
+        hostProject = hostProject,
+        sourceProject = sourceProject,
+        invocationData = invocationData(hostProject),
+        workingProjectPath = "/repo",
+        currentItems = emptyList(),
+        anchorComponent = JPanel(),
+        onSelected = { error("Selection callback is not expected") },
+        onError = { message -> errorMessage = message },
+      )
+    )
+
+    assertThat(errorMessage).isEqualTo(AgentPromptVcsBundle.message("manual.context.vcs.error.unavailable"))
+  }
+
+  private fun commitPickerMouseReleasedEvent(
+    list: JBList<CommitPickerEntry> = createCommitPickerList(
+      entries = listOf(
+        commitEntry(hash = "abc12345", rootPath = "/repo"),
+      ),
+      selectedHashes = emptySet(),
+    ),
+  ): MouseEvent {
+    return MouseEvent(
+      list,
+      MouseEvent.MOUSE_RELEASED,
+      0L,
+      0,
+      1,
+      1,
+      1,
+      false,
+      MouseEvent.BUTTON1,
+    )
+  }
+
+  private fun commitEntry(
+    hash: String,
+    rootPath: String?,
+    issueUrls: List<String> = emptyList(),
+    author: String? = null,
+    commitTimeMs: Long? = null,
+  ): CommitPickerEntry {
     return CommitPickerEntry(
       commitIndex = 1,
       hash = hash,
       subject = "Fix issue",
+      author = author,
+      commitTimeMs = commitTimeMs,
       rootPath = rootPath,
       rootName = rootPath?.substringAfterLast('/'),
       issueUrls = issueUrls,

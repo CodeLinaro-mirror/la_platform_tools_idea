@@ -4,7 +4,7 @@ package com.intellij.util.indexing
 import com.google.common.util.concurrent.SettableFuture
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.backgroundWriteAction
-import com.intellij.openapi.application.runReadAction
+import com.intellij.openapi.application.runReadActionBlocking
 import com.intellij.openapi.components.service
 import com.intellij.openapi.components.serviceAsync
 import com.intellij.openapi.diagnostic.ControlFlowException
@@ -361,7 +361,7 @@ class UnindexedFilesScannerExecutorImpl(private val project: Project, cs: Corout
     else if (DumbService.isDumb(project)) {
       // here we want to immediately "start" executor without EDT in the case when scanning is started under a dumb task.
       // Acquire RA to make sure that dumb mode won't change to smart, otherwise we risk changing smart mode to not-smart outside WA.
-      runReadAction {
+      runReadActionBlocking {
         if (DumbService.isDumb(project)) {
           markAsRunning()
         }
@@ -427,12 +427,12 @@ class UnindexedFilesScannerExecutorImpl(private val project: Project, cs: Corout
    */
   @Suppress("OVERRIDE_DEPRECATION")
   override fun suspendScanningAndIndexingThenRun(activityName: @ProgressText String, runnable: Runnable) {
-    pauseReason.update { it.add(activityName) }
+    pauseReason.update { it.adding(activityName) }
     try {
       DumbService.getInstance(project).suspendIndexingAndRun(activityName, runnable)
     }
     finally {
-      pauseReason.update { it.remove(activityName) }
+      pauseReason.update { it.removing(activityName) }
     }
   }
 
@@ -440,12 +440,12 @@ class UnindexedFilesScannerExecutorImpl(private val project: Project, cs: Corout
     activityName: @ProgressText String,
     activity: suspend CoroutineScope.() -> Unit,
   ) {
-    pauseReason.update { it.add(activityName) }
+    pauseReason.update { it.adding(activityName) }
     try {
       project.serviceAsync<DumbService>().suspendIndexingAndRun(activityName, activity)
     }
     finally {
-      pauseReason.update { it.remove(activityName) }
+      pauseReason.update { it.removing(activityName) }
     }
   }
 

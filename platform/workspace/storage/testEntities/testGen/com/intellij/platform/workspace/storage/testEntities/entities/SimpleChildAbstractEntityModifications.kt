@@ -6,17 +6,20 @@ package com.intellij.platform.workspace.storage.testEntities.entities
 import com.intellij.platform.workspace.storage.EntitySource
 import com.intellij.platform.workspace.storage.EntityType
 import com.intellij.platform.workspace.storage.GeneratedCodeApiVersion
-import com.intellij.platform.workspace.storage.WorkspaceEntityBuilder
 import com.intellij.platform.workspace.storage.MutableEntityStorage
+import com.intellij.platform.workspace.storage.WorkspaceEntityBuilder
+import com.intellij.platform.workspace.storage.testEntities.entities.impl.SimpleChildAbstractEntityImpl
 
 @GeneratedCodeApiVersion(3)
-interface SimpleChildAbstractEntityBuilder : WorkspaceEntityBuilder<SimpleChildAbstractEntity>, SimpleAbstractEntityBuilder<SimpleChildAbstractEntity> {
+interface SimpleChildAbstractEntityBuilder : WorkspaceEntityBuilder<SimpleChildAbstractEntity>,
+                                             SimpleAbstractEntityBuilder<SimpleChildAbstractEntity> {
   override var entitySource: EntitySource
   override var parentInList: CompositeAbstractEntityBuilder<out CompositeAbstractEntity>?
 }
 
 internal object SimpleChildAbstractEntityType : EntityType<SimpleChildAbstractEntity, SimpleChildAbstractEntityBuilder>() {
   override val entityClass: Class<SimpleChildAbstractEntity> get() = SimpleChildAbstractEntity::class.java
+  override val entityImplBuilderClass: Class<*> get() = SimpleChildAbstractEntityImpl.Builder::class.java
   operator fun invoke(
     entitySource: EntitySource,
     init: (SimpleChildAbstractEntityBuilder.() -> Unit)? = null,

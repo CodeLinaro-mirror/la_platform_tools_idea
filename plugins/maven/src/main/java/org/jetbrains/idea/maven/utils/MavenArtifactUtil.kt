@@ -34,6 +34,7 @@ object MavenArtifactUtil {
   }
 
   @JvmStatic
+  @ApiStatus.ScheduledForRemoval
   @Deprecated("this method does not support split repositories")
   fun readPluginInfo(localRepository: Path, mavenId: MavenId): MavenPluginInfo? {
     val file = getArtifactNioPath(localRepository, mavenId.groupId, mavenId.artifactId, mavenId.version, "jar")
@@ -61,13 +62,6 @@ object MavenArtifactUtil {
   @Deprecated("this method does not support split repositories")
   internal fun hasArtifactFile(localRepository: Path, id: MavenId, type: String = "jar"): Boolean {
     return Files.exists(getArtifactFile(localRepository, id, type))
-  }
-
-  @JvmStatic
-  @ApiStatus.ScheduledForRemoval
-  @Deprecated("this method does not support split repositories")
-  fun getArtifactFile(localRepository: File, id: MavenId, type: String): Path {
-    return getArtifactNioPath(localRepository.toPath(), id.groupId, id.artifactId, id.version, type)
   }
 
   @JvmStatic

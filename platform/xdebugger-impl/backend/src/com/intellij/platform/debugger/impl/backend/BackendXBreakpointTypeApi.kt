@@ -7,10 +7,10 @@ import com.intellij.ide.ui.icons.rpcId
 import com.intellij.ide.vfs.VirtualFileId
 import com.intellij.ide.vfs.virtualFile
 import com.intellij.openapi.application.EDT
-import com.intellij.openapi.application.edtWriteAction
 import com.intellij.openapi.application.readAction
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.extensions.ExtensionPointAdapter
@@ -53,6 +53,7 @@ import com.intellij.xdebugger.XSourcePosition
 import com.intellij.xdebugger.breakpoints.SuspendPolicy
 import com.intellij.xdebugger.breakpoints.XBreakpointProperties
 import com.intellij.xdebugger.breakpoints.XBreakpointType
+import com.intellij.xdebugger.breakpoints.XLineBreakpointAdditionalInfo
 import com.intellij.xdebugger.breakpoints.XLineBreakpointType
 import com.intellij.xdebugger.impl.XDebuggerUtilImpl
 import com.intellij.xdebugger.impl.breakpoints.InlineBreakpointsVariantsManager
@@ -128,7 +129,8 @@ internal class BackendXBreakpointTypeApi : XBreakpointTypeApi {
         it?.toDto() ?: XBreakpointsLineInfo(listOf(), false)
       }
     }
-    catch (e: CancellationException) {
+    catch (@Suppress("IncorrectCancellationExceptionHandling") e: CancellationException) {
+      @Suppress("IncorrectCancellationExceptionHandling")
       LOG.info("Request getBreakpointsInfo was cancelled: $e")
       return null
     }
@@ -141,7 +143,7 @@ internal class BackendXBreakpointTypeApi : XBreakpointTypeApi {
       val requestId = requestCounter.getAndIncrement()
       val rawBreakpoint = type.addBreakpoint(project, null)
       val xBreakpointBase = rawBreakpoint as? XBreakpointBase<*, *, *>
-      LOG.info("[$requestId] Adding breakpoint through lux: ${xBreakpointBase?.breakpointId}")
+      LOG.debug { "[$requestId] Adding breakpoint through lux: ${xBreakpointBase?.breakpointId}" }
       xBreakpointBase?.toRpc()
     }
   }
@@ -151,33 +153,38 @@ internal class BackendXBreakpointTypeApi : XBreakpointTypeApi {
     val project = projectId.findProjectOrNull() ?: return null
     val position = request.position.sourcePosition()
     val lineTypes = request.types.mapNotNull { XBreakpointUtil.findType(it.id) as? XLineBreakpointType<*> }
-    LOG.info("[$requestId] Toggle line breakpoint request received file: ${request.position}, line: ${request.position.line}" +
-             "Request details: hasBreakpoints=${request.hasBreakpoints}, isTemporary=${request.isTemporary}, isLogging=${request.isLogging}," +
-             "  line breakpoint types: ${lineTypes.map { it.id }}")
+    LOG.debug { "[$requestId] Toggle line breakpoint request received file: ${request.position}, line: ${request.position.line}" +
+             "Request details: placement=${request.placement}, hasBreakpoints=${request.hasBreakpoints}, isTemporary=${request.isTemporary}, isLogging=${request.isLogging}," +
+             "  line breakpoint types: ${lineTypes.map { it.id }}" }
+
+    if (lineTypes.isEmpty()) {
+      LOG.debug { "[$requestId] No line breakpoint types found, returning XNoBreakpointPossibleResponse" }
+      return XNoBreakpointPossibleResponse
+    }
 
     val variants = readAction { XDebuggerUtilImpl.getLineBreakpointVariants(project, lineTypes, position) }.await()
 
     if (variants.isEmpty()) {
-      LOG.info("[$requestId] No variants found, returning XNoBreakpointPossibleResponse")
+      LOG.debug { "[$requestId] No variants found, returning XNoBreakpointPossibleResponse" }
       return XNoBreakpointPossibleResponse
     }
 
     val singleVariant = variants.singleOrNull()
     if (singleVariant != null) {
       val variantText = readAction { singleVariant.text }
-      LOG.info("[$requestId] Single variant found: $variantText")
+      LOG.debug { "[$requestId] Single variant found: $variantText" }
 
       if (request.hasBreakpoints) {
-        LOG.info("[$requestId] Breakpoint exists, returning XRemoveBreakpointResponse")
+        LOG.debug { "[$requestId] Breakpoint exists, returning XRemoveBreakpointResponse" }
         return XRemoveBreakpointResponse
       }
 
       val breakpoint = createBreakpointByVariant(project, singleVariant, position, request)
-      LOG.info("[$requestId] Created breakpoint: $breakpoint, returning XLineBreakpointInstalledResponse")
+      LOG.debug { "[$requestId] Created breakpoint: $breakpoint, returning XLineBreakpointInstalledResponse" }
       return XLineBreakpointInstalledResponse(breakpoint.breakpointId)
     }
 
-    LOG.info("[$requestId] Multiple variants found (${variants.size}), creating selection dialog")
+    LOG.debug { "[$requestId] Multiple variants found (${variants.size}), creating selection dialog" }
 
     val variantDtos = readAction {
       variants.map {
@@ -200,8 +207,8 @@ internal class BackendXBreakpointTypeApi : XBreakpointTypeApi {
         val variant = variants[selectedVariantIndex]
         val breakpoint = createBreakpointByVariant(project, variant, position, request)
         val variantText = readAction { variant.text }
-        LOG.info("[$requestId] Received variant selection: $receivedResponse Selected variant: $variantText" +
-                 "[$requestId] Created breakpoint from selected variant: $breakpoint")
+        LOG.debug { "[$requestId] Received variant selection: $receivedResponse Selected variant: $variantText" +
+                 "[$requestId] Created breakpoint from selected variant: $breakpoint" }
 
         it.send(breakpoint.breakpointId)
       }
@@ -216,50 +223,47 @@ internal class BackendXBreakpointTypeApi : XBreakpointTypeApi {
     position: XSourcePosition,
     request: XLineBreakpointInstallationRequest,
   ): XBreakpointBase<*, *, *> {
-    val breakpointManager = XDebuggerManager.getInstance(project).breakpointManager
-    val breakpoint = readAction {
-      XDebuggerUtilImpl.addLineBreakpoint(breakpointManager, variant, position.file, position.line, request.isTemporary)
-    }
-    if (request.isLogging) {
-      breakpoint.setSuspendPolicy(SuspendPolicy.NONE)
-      if (request.logExpression != null) {
-        breakpoint.setLogExpression(request.logExpression)
+    val breakpointManager = getBreakpointManager(project)
+    val placement = request.placement
+    val line = readAction { position.line }
+    val additionalInfoBuilder = XLineBreakpointAdditionalInfo.Builder().apply {
+      setVerticalPlacement(placement)
+      if (request.isLogging) {
+        setSuspendPolicy(SuspendPolicy.NONE)
+        setLogExpressionIfEnabled(request.logExpression)
       }
-      else {
-        breakpoint.setLogMessage(true)
-      }
+      setTemporary(request.isTemporary)
     }
+    val breakpoint = XDebuggerUtilImpl.addLineBreakpoint(breakpointManager,
+                                                         variant,
+                                                         position.file,
+                                                         line,
+                                                         additionalInfoBuilder.build())
     return breakpoint as XBreakpointBase<*, *, *>
   }
 
   override suspend fun removeBreakpoint(breakpointId: XBreakpointId) {
     val requestId = requestCounter.getAndIncrement()
-    LOG.info("[$requestId] Removing breakpoint: $breakpointId")
+    LOG.debug { "[$requestId] Removing breakpoint: $breakpointId" }
     val breakpoint = breakpointId.findValue() ?: return
-    edtWriteAction {
-      XDebuggerManager.getInstance(breakpoint.project).breakpointManager.removeBreakpoint(breakpoint)
-      LOG.info("[$requestId] Breakpoint removed: $breakpointId")
-    }
+    getBreakpointManager(breakpoint.project).removeBreakpoint(breakpoint)
+    LOG.debug { "[$requestId] Breakpoint removed: $breakpointId" }
   }
 
   override suspend fun rememberRemovedBreakpoint(breakpointId: XBreakpointId) {
     val requestId = requestCounter.getAndIncrement()
-    LOG.info("[$requestId] Remembering removed breakpoint: $breakpointId")
+    LOG.debug { "[$requestId] Remembering removed breakpoint: $breakpointId" }
     val breakpoint = breakpointId.findValue() ?: return
-    edtWriteAction {
-      (XDebuggerManager.getInstance(breakpoint.project).breakpointManager as XBreakpointManagerImpl).rememberRemovedBreakpoint(breakpoint)
-      LOG.info("[$requestId] Remembered removed breakpoint: $breakpointId")
-    }
+    getBreakpointManager(breakpoint.project).rememberRemovedBreakpoint(breakpoint)
+    LOG.debug { "[$requestId] Remembered removed breakpoint: $breakpointId" }
   }
 
   override suspend fun restoreRemovedBreakpoint(projectId: ProjectId) {
     val requestId = requestCounter.getAndIncrement()
-    LOG.info("[$requestId] Restoring removed breakpoint in $projectId")
+    LOG.debug { "[$requestId] Restoring removed breakpoint in $projectId" }
     val project = projectId.findProjectOrNull() ?: return
-    edtWriteAction {
-      val restored = (XDebuggerManager.getInstance(project).breakpointManager as XBreakpointManagerImpl).restoreLastRemovedBreakpoint()
-      LOG.info("[$requestId] Restored removed breakpoint: ${(restored as? XBreakpointBase<*, *, *>)?.breakpointId}")
-    }
+    val restored = getBreakpointManager(project).restoreLastRemovedBreakpoint()
+    LOG.debug { "[$requestId] Restored removed breakpoint: ${(restored as? XBreakpointBase<*, *, *>)?.breakpointId}" }
   }
 
   override suspend fun computeInlineBreakpointVariants(projectId: ProjectId, fileId: VirtualFileId, lines: Set<Int>, documentPatchVersion: DocumentPatchVersion?): List<InlineBreakpointVariantsOnLine>? {
@@ -277,23 +281,19 @@ internal class BackendXBreakpointTypeApi : XBreakpointTypeApi {
     val project = projectId.findProject()
     val file = fileId.virtualFile() ?: return
     val variant = variantId.findValue() ?: return
-    edtWriteAction {
-      val breakpointManager = XDebuggerManager.getInstance(project).breakpointManager
-      XDebuggerUtilImpl.addLineBreakpoint(breakpointManager, variant, file, line)
-    }
+    val breakpointManager = getBreakpointManager(project)
+    XDebuggerUtilImpl.addLineBreakpoint(breakpointManager, variant, file, line)
   }
 
   override suspend fun copyLineBreakpoint(breakpointId: XBreakpointId, fileId: VirtualFileId, line: Int) {
     val requestId = requestCounter.getAndIncrement()
     val file = fileId.virtualFile() ?: return
-    LOG.info("[$requestId] Copying line breakpoint: $breakpointId to file: $file, line: $line")
+    LOG.debug { "[$requestId] Copying line breakpoint: $breakpointId to file: $file, line: $line" }
     val breakpoint = breakpointId.findValue() as? XLineBreakpointImpl<*> ?: return
     val project = breakpoint.project ?: return
-    edtWriteAction {
-      val breakpointManager = XDebuggerManager.getInstance(project).breakpointManager as XBreakpointManagerImpl
-      val breakpointCopy = breakpointManager.copyLineBreakpoint(breakpoint, file.url, line)
-      LOG.info("[$requestId] Copied line breakpoint: ${(breakpointCopy as? XBreakpointBase<*, *, *>)?.breakpointId}")
-    }
+    val breakpointManager = getBreakpointManager(project)
+    val breakpointCopy = breakpointManager.copyLineBreakpoint(breakpoint, file.url, line)
+    LOG.debug { "[$requestId] Copied line breakpoint: ${(breakpointCopy as? XBreakpointBase<*, *, *>)?.breakpointId}" }
   }
 
   override suspend fun onBreakpointRemoval(breakpointId: XBreakpointId, sessionId: XDebugSessionId) {
@@ -308,13 +308,13 @@ internal class BackendXBreakpointTypeApi : XBreakpointTypeApi {
 
   private fun XBreakpointType<*, *>.toRpc(project: Project): XBreakpointTypeDto {
     val lineTypeInfo = if (this is XLineBreakpointType<*>) {
-      XLineBreakpointTypeInfo(priority)
+      XLineBreakpointTypeInfo(priority, supportsInterLinePlacement())
     }
     else {
       null
     }
     val index = XBreakpointType.EXTENSION_POINT_NAME.extensionList.indexOf(this)
-    val defaultState = (XDebuggerManager.getInstance(project).breakpointManager as XBreakpointManagerImpl).getBreakpointDefaults(this)
+    val defaultState = getBreakpointManager(project).getBreakpointDefaults(this)
     val icons = XBreakpointTypeIcons(
       enabledIcon = enabledIcon.rpcId(),
       disabledIcon = disabledIcon.rpcId(),
@@ -333,6 +333,9 @@ internal class BackendXBreakpointTypeApi : XBreakpointTypeApi {
       icons
     )
   }
+
+  private fun getBreakpointManager(project: Project): XBreakpointManagerImpl =
+    XDebuggerManager.getInstance(project).breakpointManager as XBreakpointManagerImpl
 
   private fun XBreakpointType.StandardPanels.toDto(): XBreakpointTypeSerializableStandardPanels {
     return when (this) {

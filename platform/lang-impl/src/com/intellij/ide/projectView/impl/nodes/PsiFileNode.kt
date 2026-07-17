@@ -30,14 +30,17 @@ import com.intellij.openapi.vfs.JarFileSystem
 import com.intellij.openapi.vfs.VFileProperty
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.platform.ide.navigation.impl.AsyncNavigatable
 import com.intellij.pom.NavigatableWithText
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
+import com.intellij.ui.IconManager
+import javax.swing.Icon
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 open class PsiFileNode(project: Project?, value: PsiFile, viewSettings: ViewSettings?)
-  : BasePsiNode<PsiFile>(project, value, viewSettings), NavigatableWithText, PathElementIdProvider {
+  : BasePsiNode<PsiFile>(project, value, viewSettings), NavigatableWithText, PathElementIdProvider, AsyncNavigatable {
   public override fun getChildrenImpl(): Collection<AbstractTreeNode<*>>? {
     val project = project
     val jarRoot = jarRoot
@@ -60,7 +63,7 @@ open class PsiFileNode(project: Project?, value: PsiFile, viewSettings: ViewSett
   override fun updateImpl(data: PresentationData) {
     val value = value ?: return
     data.presentableText = value.name
-    data.setIcon(value.getIcon(Iconable.ICON_FLAG_READ_STATUS))
+    data.setIcon(computeIcon(value))
 
     val file = virtualFile
     if (file != null && file.`is`(VFileProperty.SYMLINK)) {
@@ -73,6 +76,19 @@ open class PsiFileNode(project: Project?, value: PsiFile, viewSettings: ViewSett
         data.tooltip = FileUtil.toSystemDependentName(target)
       }
     }
+  }
+
+  private fun computeIcon(value: PsiFile): Icon? {
+    val flags = Iconable.ICON_FLAG_READ_STATUS
+    val file = virtualFile
+    val project = project
+    if (file != null && project != null && ProjectFileIndex.getInstance(project).isExcluded(file)) {
+      val baseIcon = value.fileType.icon
+      if (baseIcon != null) {
+        return IconManager.getInstance().createLayeredIcon(value, baseIcon, flags)
+      }
+    }
+    return value.getIcon(flags)
   }
 
   override fun canNavigate(): Boolean = isNavigatableLibraryRoot || super<BasePsiNode>.canNavigate()
@@ -111,7 +127,7 @@ open class PsiFileNode(project: Project?, value: PsiFile, viewSettings: ViewSett
     super<BasePsiNode>.navigate(requestFocus)
   }
 
-  internal suspend fun navigateAsync(requestFocus: Boolean) {
+  override suspend fun navigateAsync(requestFocus: Boolean) {
     val jarRoot = jarRoot
     val project = project
     if (requestFocus && jarRoot != null && project != null) {

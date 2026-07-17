@@ -5,9 +5,8 @@ import com.intellij.agent.workbench.chat.AgentChatEditorTabActionContext
 import com.intellij.agent.workbench.chat.AgentChatPendingTabRebindRequest
 import com.intellij.agent.workbench.chat.AgentChatTabRebindTarget
 import com.intellij.agent.workbench.chat.resolveAgentChatEditorTabActionContext
-import com.intellij.agent.workbench.common.AgentWorkbenchActionIds
-import com.intellij.agent.workbench.common.session.AgentSessionProvider
-import com.intellij.agent.workbench.sessions.core.providers.AgentSessionProviders
+import com.intellij.platform.ai.agent.core.session.AgentSessionProvider
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentSessionProviders
 import com.intellij.agent.workbench.sessions.service.AgentSessionReadService
 import com.intellij.agent.workbench.sessions.service.AgentSessionRefreshService
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -55,16 +54,13 @@ class AgentSessionsBindPendingThreadFromEditorTabAction @JvmOverloads constructo
 
 private fun resolvePendingRebindProvider(context: AgentChatEditorTabActionContext): AgentSessionProvider? {
   val threadCoordinates = context.threadCoordinates ?: return null
-  if (!threadCoordinates.isPending) {
+  if (!threadCoordinates.isPending || !threadCoordinates.participatesInPendingThreadLifecycle) {
     return null
   }
 
   val provider = threadCoordinates.provider
   val descriptor = AgentSessionProviders.find(provider) ?: return null
   if (!descriptor.supportsPendingEditorTabRebind) {
-    return null
-  }
-  if (AgentWorkbenchActionIds.Sessions.BIND_PENDING_AGENT_THREAD_FROM_EDITOR_TAB !in descriptor.editorTabActionIds) {
     return null
   }
   return provider

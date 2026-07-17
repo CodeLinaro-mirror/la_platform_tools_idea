@@ -3,7 +3,6 @@
   - name: intellij.platform.buildData
   - name: intellij.platform.codeStyle.impl
   - name: intellij.platform.diagnostic.startUpPerformanceReporter
-  - name: intellij.platform.ide.core.plugins
   - name: intellij.platform.ide.impl
   - name: intellij.platform.ide.recentProjects
   - name: intellij.platform.ide.ui
@@ -22,7 +21,6 @@
   - name: intellij.platform.syntax.psi
   - name: intellij.platform.syntax.tree
   - name: intellij.platform.syntax.util
-  - name: intellij.platform.ui.jcef
   library: zip-signer
   files:
   - name: $MAVEN_REPOSITORY$/org/jetbrains/marketplace-zip-signer/0/marketplace-zip-signer-0.jar

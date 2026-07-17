@@ -12,9 +12,13 @@ import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.openapi.util.NlsContexts
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.platform.icons.design.IconDesigner
+import com.intellij.platform.icons.scale.IconScale
 import com.intellij.ui.JBIntSpinner
 import com.intellij.ui.components.*
 import com.intellij.ui.components.fields.ExpandableTextField
+import com.intellij.ui.components.fields.ExtendableTextComponent
+import com.intellij.ui.components.fields.ExtendableTextField
 import com.intellij.ui.dsl.gridLayout.Grid
 import com.intellij.ui.dsl.gridLayout.UnscaledGapsY
 import com.intellij.ui.dsl.listCellRenderer.listCellRenderer
@@ -282,6 +286,12 @@ interface Row {
 
   fun icon(icon: Icon): Cell<JLabel>
 
+  @ApiStatus.Internal
+  fun icon(icon: com.intellij.platform.icons.Icon, scale: IconScale = IconScale.Default): Cell<JLabel>
+
+  @ApiStatus.Internal
+  fun icon(scale: IconScale = IconScale.Default, designer: IconDesigner.() -> Unit): Cell<JLabel>
+
   /**
    * Use [Cell.contextHelp] to add context help for a specific component. The [Cell.contextHelp] method provides
    * more functionality in terms of accessibility, automatically sets the correct gap between the component and the context help button,
@@ -346,8 +356,19 @@ interface Row {
   /**
    * Creates expandable text field with [columns] set to [COLUMNS_SHORT]
    */
-  fun expandableTextField(parser: Function<in String, out MutableList<String>> = ParametersListUtil.DEFAULT_LINE_PARSER,
-                          joiner: Function<in MutableList<String>, String> = ParametersListUtil.DEFAULT_LINE_JOINER): Cell<ExpandableTextField>
+  fun expandableTextField(
+    parser: Function<in String, out List<String>> = ParametersListUtil.DEFAULT_LINE_PARSER,
+    joiner: Function<in List<String>, String> = ParametersListUtil.DEFAULT_LINE_JOINER,
+  ): Cell<ExpandableTextField>
+
+  /**
+   * Creates extendable text field with [columns] set to [COLUMNS_SHORT].
+   * The field is useful when [extensions][ExtendableTextComponent.Extension] are needed.
+   *
+   * @see ExtendableTextField.addExtension
+   * @see ExtendableTextComponent.Extension.create
+   */
+  fun extendableTextField(): Cell<ExtendableTextField>
 
   /**
    * Creates integer text field with [columns] set to [COLUMNS_TINY]

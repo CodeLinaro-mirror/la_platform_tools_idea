@@ -1,8 +1,8 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.agent.workbench.chat
 
-import com.intellij.agent.workbench.common.normalizeAgentWorkbenchPath
-import com.intellij.openapi.application.EDT
+import com.intellij.platform.ai.agent.core.normalizeAgentWorkbenchPath
+import com.intellij.openapi.application.UiWithModelAccess
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import kotlinx.coroutines.Dispatchers
@@ -19,11 +19,8 @@ internal class AgentChatTabsService {
     get() = service<AgentChatTabsStateService>()
 
   fun resolveFromPath(path: String): AgentChatTabResolution? {
-    if (stateService.hasVersionMismatch()) {
-      return null
-    }
     val tabKey = AgentChatTabKey.parsePath(path) ?: return null
-    val snapshot = stateService.load(tabKey)
+    val snapshot = if (stateService.hasVersionMismatch()) null else stateService.load(tabKey)
     if (snapshot != null) {
       return AgentChatTabResolution.Resolved(snapshot)
     }
@@ -37,11 +34,12 @@ internal class AgentChatTabsService {
   }
 
   fun forget(tabKey: AgentChatTabKey): Boolean {
-    return stateService.delete(tabKey)
+    val deletedSnapshot = stateService.deleteAndGetSnapshot(tabKey)
+    return deletedSnapshot != null
   }
 
   fun forget(tabKey: String): Boolean {
-    return stateService.delete(tabKey)
+    return AgentChatTabKey.parse(tabKey)?.let(::forget) ?: false
   }
 
   fun load(tabKey: String): AgentChatTabSnapshot? {
@@ -54,8 +52,9 @@ internal class AgentChatTabsService {
     subAgentId: String? = null,
   ): AgentChatThreadCleanupResult {
     val normalizedProjectPath = normalizeAgentWorkbenchPath(projectPath)
-    val closedTabs = withContext(Dispatchers.EDT) {
-      closeMatchingOpenTabs(normalizedProjectPath, threadIdentity, subAgentId)
+    val closedTabs = withContext(Dispatchers.UiWithModelAccess) {
+      // FileEditorManager.closeFile() can initiate write-intent, which is disallowed on strict Dispatchers.UI.
+      collectOpenAgentChatTabsSnapshot().closeMatchingOpenTabs(normalizedProjectPath, threadIdentity, subAgentId)
     }
     val deleteResult = withContext(Dispatchers.IO) {
       stateService.deleteByThreadWithKeys(normalizedProjectPath, threadIdentity, subAgentId)
@@ -65,8 +64,4 @@ internal class AgentChatTabsService {
       deletedStates = deleteResult.deletedKeys.size,
     )
   }
-}
-
-private fun closeMatchingOpenTabs(projectPath: String, threadIdentity: String, subAgentId: String?): Int {
-  return collectOpenAgentChatTabsSnapshot().closeMatchingOpenTabs(projectPath, threadIdentity, subAgentId)
 }

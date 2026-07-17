@@ -7,7 +7,9 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
+import com.intellij.python.community.impl.conda.environmentYml.format.CondaEnvironmentYmlParser
 import com.jetbrains.python.errorProcessing.PyResult
 import com.jetbrains.python.packaging.PyRequirementParser
 import com.jetbrains.python.packaging.common.PythonOutdatedPackage
@@ -16,14 +18,14 @@ import com.jetbrains.python.packaging.common.PythonPackageDetails
 import com.jetbrains.python.packaging.common.PythonRepositoryPackageSpecification
 import com.jetbrains.python.packaging.common.toPythonPackage
 import com.jetbrains.python.packaging.common.toPythonPackages
-import com.jetbrains.python.packaging.conda.environmentYml.format.CondaEnvironmentYmlParser
 import com.jetbrains.python.packaging.setupPy.SetupPyHelpers
 import com.jetbrains.python.psi.PyFile
 import com.jetbrains.python.sdk.associatedModuleDir
 import org.jetbrains.annotations.TestOnly
+import java.nio.file.Path
 
 @TestOnly
-class TestPythonPackageManager(project: Project, sdk: Sdk) : PythonPackageManager(project, sdk) {
+internal class TestPythonPackageManager(project: Project, sdk: Sdk) : PythonPackageManager(project, sdk) {
   private var packageNames: List<String> = emptyList()
   private var packageDetails: PythonPackageDetails? = null
   private var packageVersions: Map<String, List<String>> = emptyMap()
@@ -38,23 +40,33 @@ class TestPythonPackageManager(project: Project, sdk: Sdk) : PythonPackageManage
       .withPackageDetails(packageDetails)
       .withRepoPackagesVersions(packageVersions)
 
+  // Non-null so the empty-dependency-file inspection can offer its "export dependencies" quick fix in tests.
+  override val dependenciesExporter: DependenciesExporter =
+    object : DependenciesExporter {
+      override fun export(file: PsiFile) {}
+    }
+
   override suspend fun loadOutdatedPackagesCommand(): PyResult<List<PythonOutdatedPackage>> {
     return PyResult.success(emptyList())
   }
 
-  override suspend fun syncCommand(): PyResult<Unit> {
+  override suspend fun syncLockedCommand(): PyResult<Unit> {
     return PyResult.success(Unit)
   }
 
-  override suspend fun installPackageCommand(installRequest: PythonPackageInstallRequest, options: List<String>, module: Module?): PyResult<Unit> {
+  override suspend fun installPackageCommand(
+    installRequest: PythonPackageInstallRequest,
+    options: List<String>,
+    module: Module?,
+  ): PyResult<Unit> {
     if (installRequest !is PythonPackageInstallRequest.ByRepositoryPythonPackageSpecifications) {
       return PyResult.localizedError("Test Manager supports only simple repository package specification")
     }
 
     val specification = installRequest.specifications.single()
-    return if (repositoryManager.allPackages().contains(specification.name)) {
+    return if (repositoryManager.hasPackageSnapshot(specification.name)) {
       val version = specification.versionSpec?.version.orEmpty()
-      installedPackages += PythonPackage(specification.name, version, false)
+      installedPackages = installedPackages?.plus(PythonPackage(specification.name, version, false))
       PyResult.success(Unit)
     }
     else {
@@ -70,26 +82,30 @@ class TestPythonPackageManager(project: Project, sdk: Sdk) : PythonPackageManage
     pythonPackages.forEach { pyPackage ->
       val packageToRemove = findPackageByName(pyPackage)
                             ?: return PyResult.localizedError(PACKAGE_UNINSTALL_FAILURE_MESSAGE)
-      installedPackages -= packageToRemove
+      installedPackages = installedPackages?.minus(packageToRemove)
     }
 
     return PyResult.success(Unit)
   }
 
   override suspend fun loadPackagesCommand(): PyResult<List<PythonPackage>> {
-    return PyResult.success(installedPackages)
+    return PyResult.success(listInstalledPackagesSnapshot())
   }
 
-  override fun getDependencyFile(): VirtualFile? {
-    val providerType = sdk.getUserData(REQUIREMENTS_PROVIDER_KEY) ?: return null
-    val moduleDir = sdk.associatedModuleDir ?: return null
+  override val dependenciesFilesRelativePaths: List<Path>
+    get() {
+      val providerType = sdk.getUserData(REQUIREMENTS_PROVIDER_KEY) ?: return emptyList()
+      sdk.associatedModuleDir ?: return emptyList()
 
-    return when (providerType) {
-      RequirementsProviderType.REQUIREMENTS_TXT -> moduleDir.findChild("requirements.txt")
-      RequirementsProviderType.SETUP_PY -> moduleDir.findChild("setup.py")
-      RequirementsProviderType.ENVIRONMENT_YML -> moduleDir.findChild("environment.yml")
+      return listOf(
+        when (providerType) {
+          RequirementsProviderType.REQUIREMENTS_TXT -> Path.of("requirements.txt")
+          RequirementsProviderType.SETUP_PY -> Path.of("setup.py")
+          RequirementsProviderType.ENVIRONMENT_YML -> Path.of("environment.yml")
+          RequirementsProviderType.PYPROJECT_TOML -> Path.of("pyproject.toml")
+        }
+      )
     }
-  }
 
   override suspend fun listDeclaredPackages(): PyResult<List<PythonPackage>>? {
     val providerType = sdk.getUserData(REQUIREMENTS_PROVIDER_KEY) ?: return null
@@ -107,6 +123,11 @@ class TestPythonPackageManager(project: Project, sdk: Sdk) : PythonPackageManage
       RequirementsProviderType.ENVIRONMENT_YML -> {
         val environmentYmlFile = moduleDir.findChild("environment.yml") ?: return null
         extractFromEnvironmentYml(environmentYmlFile)
+      }
+      RequirementsProviderType.PYPROJECT_TOML -> {
+        // The dependencies inspection parses pyproject.toml's [project].dependencies via its own
+        // injection-aware provider, so the manager only needs to expose the file as tracked here.
+        PyResult.success(emptyList())
       }
     }
   }
@@ -132,7 +153,7 @@ class TestPythonPackageManager(project: Project, sdk: Sdk) : PythonPackageManage
   }
 
   private fun findPackageByName(name: String): PythonPackage? {
-    return installedPackages.find { it.name == name }
+    return listInstalledPackagesSnapshot().find { it.name == name }
   }
 
   fun withRepoPackagesVersions(packageVersions: Map<String, List<String>>): TestPythonPackageManager {
@@ -153,6 +174,11 @@ class TestPythonPackageManager(project: Project, sdk: Sdk) : PythonPackageManage
 
   fun withPackageInstalled(packages: List<PythonPackage>): TestPythonPackageManager {
     this.installedPackages = packages
+    return this
+  }
+
+  fun withOutdatedPackages(packages: List<PythonOutdatedPackage>): TestPythonPackageManager {
+    this.outdatedPackages = packages.associateBy { it.name }
     return this
   }
 

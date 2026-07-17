@@ -1,10 +1,10 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.agent.workbench.sessions.toolwindow.ui
 
-import com.intellij.agent.workbench.common.AgentThreadActivity
-import com.intellij.agent.workbench.common.session.AgentSessionProvider
+import com.intellij.platform.ai.agent.core.session.AgentSessionProvider
+import com.intellij.platform.ai.agent.common.statusMessageKey
 import com.intellij.agent.workbench.sessions.AgentSessionsBundle
-import com.intellij.agent.workbench.sessions.core.providers.agentSessionThreadStatusIcon
+import com.intellij.agent.workbench.ui.agentSessionThreadStatusIcon
 import com.intellij.agent.workbench.sessions.model.AgentProjectSessions
 import com.intellij.agent.workbench.sessions.toolwindow.tree.SessionTreeId
 import com.intellij.agent.workbench.sessions.toolwindow.tree.SessionTreeNode
@@ -20,27 +20,113 @@ import com.intellij.util.IconUtil
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import java.awt.Color
+import java.awt.Component
 import java.awt.FontMetrics
 import java.awt.Graphics
 import java.awt.Graphics2D
 import javax.swing.Icon
 import javax.swing.JTree
+import javax.swing.tree.TreeCellRenderer
+import org.jetbrains.annotations.Nls
+
+private const val SESSION_TREE_MIDDLE_TEXT_CACHE_LIMIT = 1024
+private const val SESSION_TREE_FLAT_SEPARATOR_RIGHT_INSET = 8
+
+internal class SessionTreeCellRendererWithSeparators(
+  private val delegate: SessionTreeCellRenderer,
+  private val nodeResolver: (SessionTreeId) -> SessionTreeNode?,
+) : TreeCellRenderer {
+  private val flatSectionRenderer = SessionTreeFlatSectionRenderer()
+
+  override fun getTreeCellRendererComponent(
+    tree: JTree,
+    value: Any?,
+    selected: Boolean,
+    expanded: Boolean,
+    leaf: Boolean,
+    row: Int,
+    hasFocus: Boolean,
+  ): Component {
+    val treeId = extractSessionTreeId(value)
+    val treeNode = treeId?.let(nodeResolver)
+    if (leaf && treeId == SessionTreeId.Pinned && treeNode is SessionTreeNode.PinnedSection) {
+      flatSectionRenderer.caption = AgentSessionsBundle.message("toolwindow.section.pinned")
+      return flatSectionRenderer.getTreeCellRendererComponent(tree, value, false, expanded, true, row, false)
+    }
+    if (leaf && treeNode is SessionTreeNode.SectionSeparator) {
+      flatSectionRenderer.caption = null
+      return flatSectionRenderer.getTreeCellRendererComponent(tree, value, false, expanded, true, row, false)
+    }
+
+    return delegate.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus)
+  }
+}
+
+internal class SessionTreeFlatSectionRenderer : ColoredTreeCellRenderer() {
+  internal var caption: @Nls String? = null
+
+  init {
+    setOpaque(false)
+    setIconOpaque(false)
+  }
+
+  override fun customizeCellRenderer(
+    tree: JTree,
+    value: Any?,
+    selected: Boolean,
+    expanded: Boolean,
+    leaf: Boolean,
+    row: Int,
+    hasFocus: Boolean,
+  ) {
+    setOpaque(false)
+    setIconOpaque(false)
+    setBackground(null)
+    icon = null
+    caption?.let { label ->
+      append(label, SimpleTextAttributes(SimpleTextAttributes.STYLE_BOLD, SimpleTextAttributes.GRAY_ATTRIBUTES.fgColor))
+    }
+  }
+
+  override fun paintComponent(g: Graphics) {
+    if (caption != null) {
+      super.paintComponent(g)
+      return
+    }
+
+    val g2 = g as? Graphics2D ?: return
+    val startX = contentStartX()
+    val lineWidth = (width - startX - JBUI.scale(SESSION_TREE_FLAT_SEPARATOR_RIGHT_INSET)).coerceAtLeast(0)
+    if (lineWidth <= 0) return
+
+    g2.color = JBUI.CurrentTheme.Popup.separatorColor()
+    g2.fillRect(startX, height / 2, lineWidth, 1)
+  }
+
+  internal fun contentStartXForTest(): Int = contentStartX()
+
+  private fun contentStartX(): Int {
+    val borderInsets = myBorder?.getBorderInsets(this) ?: JBUI.emptyInsets()
+    return ipad.left + borderInsets.left + insets.left
+  }
+}
 
 internal class SessionTreeCellRenderer(
   private val nowProvider: () -> Long,
   private val rowActionsProvider: (row: Int, node: SessionTreeNode, selected: Boolean) -> SessionTreeRowActionPresentation?,
   private val nodeResolver: (SessionTreeId) -> SessionTreeNode?,
   private val providerIconProvider: ((AgentSessionProvider) -> Icon?)? = null,
-  private val duplicateProjectNamesProvider: () -> Set<String> = { emptySet() },
 ) : ColoredTreeCellRenderer() {
   private data class SharedTimeColumnWidthCacheKey(
     @JvmField val fontHash: Int,
     @JvmField val labelsSignature: @NlsSafe String,
   )
 
-  private data class ThreadCompositeIconCacheKey(
-    val provider: AgentSessionProvider,
-    @JvmField val activity: AgentThreadActivity,
+  private data class MiddleTextCacheKey(
+    @JvmField val fontHash: Int,
+    @JvmField val text: @NlsSafe String,
+    @JvmField val availTextWidth: Int,
+    @JvmField val rightReservedWidth: Int,
   )
 
   private data class ProjectCompositeIconCacheKey(
@@ -52,9 +138,9 @@ internal class SessionTreeCellRenderer(
   private var threadTrailingPaint: SessionTreeThreadTrailingPaint? = null
   private var sharedTimeColumnWidthCacheKey: SharedTimeColumnWidthCacheKey? = null
   private var sharedTimeColumnWidthCacheValue: Int = 0
-  private var cachedThreadIconSize: Int = -1
-  private val threadCompositeIconCache = LinkedHashMap<ThreadCompositeIconCacheKey, Icon>()
   private val projectCompositeIconCache = LinkedHashMap<ProjectCompositeIconCacheKey, Icon>()
+  private val middleTextCache = LinkedHashMap<MiddleTextCacheKey, @NlsSafe String>()
+  private val middleTextClipper = SessionTreeMiddleTextClipper(::clipMiddleText)
 
   internal val trailingThreadPaintForTest: SessionTreeThreadTrailingPaint?
     get() = threadTrailingPaint
@@ -74,11 +160,19 @@ internal class SessionTreeCellRenderer(
     val treeId = extractSessionTreeId(value) ?: return
     val treeNode = nodeResolver(treeId) ?: return
     val rowActions = rowActionsProvider(row, treeNode, selected)
-    val actionSlots = rowActions?.actionSlots ?: 0
-    val actionRightPadding = sessionTreeRowActionRightPadding(actionSlots)
+    val actionRightPadding = rowActions?.reservedWidth ?: 0
     var metaRightPadding = 0
 
     when (treeNode) {
+      is SessionTreeNode.PinnedSection -> {
+        icon = null
+        append(AgentSessionsBundle.message("toolwindow.section.pinned"), SimpleTextAttributes.GRAY_ATTRIBUTES)
+      }
+
+      is SessionTreeNode.SectionSeparator -> {
+        icon = null
+      }
+
       is SessionTreeNode.Project -> {
         val projectIcon = projectCompositeIcon(treeNode.project)
         icon = projectIcon
@@ -89,24 +183,25 @@ internal class SessionTreeCellRenderer(
         else {
           SimpleTextAttributes.REGULAR_ATTRIBUTES
         }
-        val projectName: @NlsSafe String = if (treeNode.project.name in duplicateProjectNamesProvider()) {
-          val projectPath: @NlsSafe String = treeNode.project.path
-          projectPath
-        }
-        else {
-          treeNode.project.name
-        }
-        val branchText = projectBranchText(treeNode.project)
-        if (branchText == null) {
+        val projectName: @NlsSafe String = treeNode.project.name
+        val inlineMetadataText = projectInlineMetadataText(treeNode)
+        if (inlineMetadataText == null) {
           append(projectName, titleAttributes)
         }
         else {
-          metaRightPadding = baseFontMetrics.stringWidth(branchText)
-          appendWithClipping(projectName, titleAttributes, SessionTreeMiddleTextClipper)
-          append(branchText, SimpleTextAttributes.GRAYED_ATTRIBUTES)
+          metaRightPadding = baseFontMetrics.stringWidth(inlineMetadataText)
+          appendWithClipping(projectName, titleAttributes, middleTextClipper)
+          append(inlineMetadataText, SimpleTextAttributes.GRAYED_ATTRIBUTES)
         }
-        if (treeNode.project.isLoading) {
-          setAccessibleStatusText(AgentSessionsBundle.message("toolwindow.loading"))
+        val accessibleTrailingText: @NlsSafe String? = inlineMetadataText?.trim()
+        val loadingText = if (treeNode.project.isLoading) AgentSessionsBundle.message("toolwindow.loading") else null
+        val accessibleStatusText: @NlsSafe String? = when {
+          accessibleTrailingText != null && loadingText != null -> "$accessibleTrailingText, $loadingText"
+          accessibleTrailingText != null -> accessibleTrailingText
+          else -> loadingText
+        }
+        if (accessibleStatusText != null) {
+          setAccessibleStatusText(accessibleStatusText)
         }
       }
 
@@ -125,17 +220,15 @@ internal class SessionTreeCellRenderer(
       is SessionTreeNode.Thread -> {
         val baseFontMetrics = getFontMetrics(getBaseFont())
         val sharedTimeColumnWidth = computeSharedTimeColumnWidth(baseFontMetrics)
-        val threadRowPresentation = buildSessionTreeThreadRowPresentation(
-          treeNode = treeNode,
-          now = nowProvider(),
-        )
-        icon = threadCompositeIcon(treeNode.thread.provider, treeNode.thread.activity)
+        val threadRowPresentation = buildSessionTreeThreadRowPresentation(treeNode = treeNode, now = nowProvider())
+        icon = threadCompositeIcon(treeNode)
         val threadTitle: @NlsSafe String = threadRowPresentation.title
-        appendWithClipping(threadTitle, SimpleTextAttributes.REGULAR_ATTRIBUTES, SessionTreeMiddleTextClipper)
+        appendWithClipping(threadTitle, SimpleTextAttributes.REGULAR_ATTRIBUTES, middleTextClipper)
         threadTrailingPaint = computeSessionTreeThreadTrailingPaint(
           tree = tree,
           actionRightPadding = actionRightPadding,
           timeLabel = threadRowPresentation.timeLabel,
+          statusLabel = threadRowPresentation.trailingMetadataLabel,
           fontMetrics = baseFontMetrics,
           sharedTimeColumnWidth = sharedTimeColumnWidth,
         )
@@ -152,10 +245,23 @@ internal class SessionTreeCellRenderer(
         }
       }
 
+      is SessionTreeNode.TaskFolder -> {
+        icon = AllIcons.Nodes.Folder
+        val folderName: @NlsSafe String = treeNode.folder.name
+        append(folderName, SimpleTextAttributes.REGULAR_ATTRIBUTES)
+        if (treeNode.assignedThreadCount > 0) {
+          append(
+            "  ${AgentSessionsBundle.message("toolwindow.task.folder.thread.count", treeNode.assignedThreadCount)}",
+            SimpleTextAttributes.GRAYED_ATTRIBUTES,
+          )
+        }
+      }
+
       is SessionTreeNode.SubAgent -> {
-        icon = AllIcons.Nodes.Plugin
+        icon = agentSessionThreadStatusIcon(AllIcons.Nodes.Plugin, treeNode.subAgent.activity)
         val subAgentLabel: @NlsSafe String = treeNode.subAgent.name.ifBlank { treeNode.subAgent.id }
         append(subAgentLabel, SimpleTextAttributes.GRAY_ATTRIBUTES)
+        setAccessibleStatusText(AgentSessionsBundle.message(treeNode.subAgent.activity.statusMessageKey()))
       }
 
       is SessionTreeNode.Warning -> {
@@ -169,7 +275,7 @@ internal class SessionTreeCellRenderer(
       }
 
       is SessionTreeNode.Empty -> {
-        icon = AllIcons.General.Information
+        icon = null
         append(treeNode.message, SimpleTextAttributes.GRAYED_ATTRIBUTES)
       }
 
@@ -185,7 +291,7 @@ internal class SessionTreeCellRenderer(
       is SessionTreeNode.MoreThreads -> {
         icon = null
         val label = treeNode.hiddenCount?.let { AgentSessionsBundle.message("toolwindow.action.more.count", it) }
-          ?: AgentSessionsBundle.message("toolwindow.action.more")
+                    ?: AgentSessionsBundle.message("toolwindow.action.more")
         append(label, SimpleTextAttributes.GRAYED_ATTRIBUTES, SESSION_TREE_MORE_ROW_FRAGMENT_TAG)
       }
     }
@@ -209,7 +315,7 @@ internal class SessionTreeCellRenderer(
       g2.fillRect(0, 0, width, height)
     }
 
-    // Paint the core renderer normally (selection/background/border), then overlay the trailing time.
+    // Paint the core renderer normally (selection/background/border), then overlay trailing thread metadata.
     // Title clipping is handled by SessionTreeMiddleTextClipper using right-side reserved space.
     super.paintComponent(g2)
     paintThreadTrailingMeta(g2)
@@ -230,8 +336,14 @@ internal class SessionTreeCellRenderer(
       selectionRightInset = trailing.selectionRightInset,
       timeTextWidth = trailing.timeTextWidth,
       timeColumnWidth = trailing.timeColumnWidth,
+      statusTextWidth = trailing.statusTextWidth,
+      statusColumnWidth = trailing.statusColumnWidth,
     )
 
+    trailing.statusLabel?.let { statusLabel ->
+      g.color = trailingTextColor()
+      g.drawString(statusLabel, horizontalLayout.statusX, baseline)
+    }
     g.color = trailingTextColor()
     g.drawString(trailing.timeLabel, horizontalLayout.timeX, baseline)
   }
@@ -241,6 +353,29 @@ internal class SessionTreeCellRenderer(
       return UIUtil.getTreeSelectionForeground(true)
     }
     return getActiveTextColor(SimpleTextAttributes.GRAYED_ATTRIBUTES.fgColor)
+  }
+
+  private fun clipMiddleText(
+    text: @NlsSafe String,
+    fontMetrics: FontMetrics,
+    availTextWidth: Int,
+    rightReservedWidth: Int,
+  ): @NlsSafe String {
+    val cacheKey = MiddleTextCacheKey(
+      fontHash = fontMetrics.font.hashCode(),
+      text = text,
+      availTextWidth = availTextWidth,
+      rightReservedWidth = rightReservedWidth,
+    )
+    middleTextCache[cacheKey]?.let { return it }
+    val clippedText = clipSessionTreeMiddleText(
+      text = text,
+      fontMetrics = fontMetrics,
+      availTextWidth = availTextWidth,
+      rightReservedWidth = rightReservedWidth,
+    )
+    middleTextCache.putBounded(cacheKey, clippedText, SESSION_TREE_MIDDLE_TEXT_CACHE_LIMIT)
+    return clippedText
   }
 
   private fun computeSharedTimeColumnWidth(fontMetrics: FontMetrics): Int {
@@ -263,18 +398,9 @@ internal class SessionTreeCellRenderer(
     return width
   }
 
-  private fun threadCompositeIcon(provider: AgentSessionProvider, activity: AgentThreadActivity): Icon {
-    val iconSize = JBUI.scale(SESSION_TREE_THREAD_PROVIDER_ICON_SIZE)
-    if (cachedThreadIconSize != iconSize) {
-      cachedThreadIconSize = iconSize
-      threadCompositeIconCache.clear()
-    }
-    val key = ThreadCompositeIconCacheKey(provider = provider, activity = activity)
-    return threadCompositeIconCache.getOrPut(key) {
-      val threadStatusIcon = providerIconProvider?.let { agentSessionThreadStatusIcon(it(provider), activity) }
-                             ?: agentSessionThreadStatusIcon(provider, activity)
-      IconUtil.toSize(threadStatusIcon, iconSize, iconSize)
-    }
+  private fun threadCompositeIcon(treeNode: SessionTreeNode.Thread): Icon {
+    return providerIconProvider?.let { agentSessionThreadStatusIcon(it(treeNode.thread.provider), treeNode.thread.activity) }
+           ?: agentSessionThreadStatusIcon(treeNode.thread.provider, treeNode.thread.activity)
   }
 
   private fun projectCompositeIcon(project: AgentProjectSessions): Icon {
@@ -305,6 +431,17 @@ private fun fitProjectIconSize(icon: Icon, targetWidth: Int, targetHeight: Int):
 internal fun projectBranchText(project: AgentProjectSessions): @NlsSafe String? {
   val branch = visibleProjectBranch(project) ?: return null
   return " [$branch]"
+}
+
+internal fun projectInlineMetadataText(node: SessionTreeNode.Project): @NlsSafe String? {
+  val branchText = projectBranchText(node.project)
+  val pathQualifier = node.pathQualifier
+  return when {
+    branchText != null && pathQualifier != null -> "$branchText  $pathQualifier"
+    branchText != null -> branchText
+    pathQualifier != null -> "  $pathQualifier"
+    else -> null
+  }
 }
 
 internal fun clipSessionTreeMiddleText(
@@ -345,7 +482,9 @@ internal fun clipSessionTreeMiddleText(
   return best.ifBlank { ellipsis }
 }
 
-private object SessionTreeMiddleTextClipper : FragmentTextClipper {
+private class SessionTreeMiddleTextClipper(
+  private val clipTextProvider: (String, FontMetrics, Int, Int) -> String,
+) : FragmentTextClipper {
   override fun clipText(
     component: com.intellij.ui.SimpleColoredComponent,
     g: Graphics2D,
@@ -354,14 +493,16 @@ private object SessionTreeMiddleTextClipper : FragmentTextClipper {
     availTextWidth: Int,
   ): String {
     // appendWithClipping gets full component width from SimpleColoredComponent; subtract right reserved
-    // area so thread titles don't paint into the trailing time/actions column.
+    // area so clipped row titles don't paint into inline metadata or trailing actions.
     val rightReservedWidth = component.ipad.right + component.insets.right
     val fontMetrics = component.getFontMetrics(g.font)
-    return clipSessionTreeMiddleText(
-      text = text,
-      fontMetrics = fontMetrics,
-      availTextWidth = availTextWidth,
-      rightReservedWidth = rightReservedWidth,
-    )
+    return clipTextProvider(text, fontMetrics, availTextWidth, rightReservedWidth)
+  }
+}
+
+private fun <K, V> LinkedHashMap<K, V>.putBounded(key: K, value: V, limit: Int) {
+  put(key, value)
+  while (size > limit) {
+    remove(entries.iterator().next().key)
   }
 }

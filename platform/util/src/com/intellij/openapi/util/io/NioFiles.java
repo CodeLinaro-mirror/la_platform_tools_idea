@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.util.io;
 
 import com.intellij.jna.JnaLoader;
@@ -269,6 +269,7 @@ public final class NioFiles {
   /**
    * See {@link #deleteRecursively(Path, Consumer)}.
    */
+  @SuppressWarnings("UsagesOfObsoleteApi")
   public static void deleteRecursively(@NotNull Path fileOrDirectory) throws IOException {
     FileUtilRt.deleteRecursively(fileOrDirectory, null);
   }
@@ -282,6 +283,7 @@ public final class NioFiles {
    * <p>Implementation detail: the method tries to delete a file up to 10 times with 10 ms pause between attempts -
    * usually it's enough to overcome intermittent file lock on Windows.</p>
    */
+  @SuppressWarnings("UsagesOfObsoleteApi")
   public static void deleteRecursively(@NotNull Path fileOrDirectory, @NotNull Consumer<Path> callback) throws IOException {
     FileUtilRt.deleteRecursively(fileOrDirectory, callback::accept);
   }

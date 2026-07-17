@@ -2,21 +2,20 @@
 <module type="JAVA_MODULE" version="4">
   <component name="FacetManager">
     <facet type="kotlin-language" name="Kotlin">
-      <configuration version="5" platform="JVM 21" allPlatforms="JVM [21]" useProjectSettings="false">
+      <configuration version="5" platform="JVM 25" allPlatforms="JVM [25]" useProjectSettings="false">
         <compilerSettings>
           <option name="additionalArguments" value="-Xjvm-default=all -opt-in=kotlin.RequiresOptIn -opt-in=kotlinx.serialization.ExperimentalSerializationApi -opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi -XXLanguage:+AllowEagerSupertypeAccessibilityChecks -progressive" />
         </compilerSettings>
         <compilerArguments>
           <stringArguments>
-            <stringArg name="jvmTarget" arg="21" />
-            <stringArg name="apiVersion" arg="2.3" />
-            <stringArg name="languageVersion" arg="2.3" />
+            <stringArg name="jvmTarget" arg="25" />
+            <stringArg name="apiVersion" arg="2.4" />
+            <stringArg name="languageVersion" arg="2.4" />
           </stringArguments>
           <arrayArguments>
             <arrayArg name="pluginClasspaths">
               <args>$KOTLIN_BUNDLED$/lib/kotlinx-serialization-compiler-plugin.jar</args>
             </arrayArg>
-            <arrayArg name="pluginOptions" />
           </arrayArguments>
         </compilerArguments>
       </configuration>
@@ -34,13 +33,15 @@
     <orderEntry type="module" module-name="intellij.platform.buildScripts.downloader" />
     <orderEntry type="module" module-name="intellij.libraries.commons.compress" />
     <orderEntry type="module" module-name="intellij.platform.util" />
+    <orderEntry type="module" module-name="intellij.platform.bazel.runfiles" />
     <orderEntry type="module" module-name="intellij.platform.jps.model" />
     <orderEntry type="module" module-name="intellij.tools.jps.build.standalone" />
-    <orderEntry type="library" name="opentelemetry" level="project" />
-    <orderEntry type="library" name="opentelemetry-semconv" level="project" />
+    <orderEntry type="module" module-name="intellij.libraries.opentelemetry" />
+    <orderEntry type="module" module-name="intellij.libraries.opentelemetry.semconv" />
     <orderEntry type="library" name="kotlin-stdlib" level="project" />
     <orderEntry type="module" module-name="intellij.java.aetherDependencyResolver" />
-    <orderEntry type="module" module-name="intellij.libraries.jackson" />
+    <orderEntry type="module" module-name="intellij.libraries.jackson" scope="RUNTIME" />
+    <orderEntry type="module" module-name="intellij.libraries.jackson3" />
     <orderEntry type="module" module-name="intellij.platform.jps.model.impl" />
     <orderEntry type="module" module-name="intellij.platform.util.xmlDom" />
     <orderEntry type="module" module-name="intellij.platform.jps.build" />
@@ -49,7 +50,7 @@
     <orderEntry type="module" module-name="intellij.platform.runtime.repository" />
     <orderEntry type="module" module-name="intellij.platform.testFramework.core" />
     <orderEntry type="module" module-name="intellij.platform.util.classLoader" />
-    <orderEntry type="module" module-name="intellij.libraries.jackson.jr.objects" />
+    <orderEntry type="module" module-name="intellij.libraries.jackson3.jr.objects" />
     <orderEntry type="module" module-name="intellij.libraries.fastutil" />
     <orderEntry type="module" module-name="intellij.libraries.gson" />
     <orderEntry type="module" module-name="intellij.libraries.protobuf" />
@@ -58,7 +59,9 @@
     <orderEntry type="module" module-name="intellij.idea.community.build.tasks" />
     <orderEntry type="module" module-name="intellij.idea.community.build.dependencies" />
     <orderEntry type="module" module-name="intellij.platform.util.jdom" />
-    <orderEntry type="module" module-name="intellij.libraries.jackson.databind" />
+    <orderEntry type="module" module-name="intellij.libraries.jackson.databind" scope="RUNTIME" />
+    <orderEntry type="module" module-name="intellij.libraries.jackson.dataformat.yaml" scope="RUNTIME" />
+    <orderEntry type="module" module-name="intellij.libraries.jackson3.databind" />
     <orderEntry type="library" name="json-schema-validator" level="project" />
     <orderEntry type="module" module-name="intellij.libraries.kotlinx.serialization.json" />
     <orderEntry type="module" module-name="intellij.libraries.kotlinx.serialization.core" />
@@ -69,14 +72,14 @@
     <orderEntry type="module" module-name="intellij.platform.util.rt.java8" />
     <orderEntry type="module" module-name="intellij.libraries.kotlinx.collections.immutable" />
     <orderEntry type="module" module-name="intellij.libraries.kotlinx.coroutines.core" />
-    <orderEntry type="library" name="opentelemetry-extension-kotlin" level="project" />
+    <orderEntry type="module" module-name="intellij.libraries.opentelemetry.extension.kotlin" />
     <orderEntry type="module" module-name="intellij.libraries.blockmap" />
     <orderEntry type="module" module-name="intellij.libraries.commons.io" />
     <orderEntry type="module" module-name="intellij.libraries.bouncy.castle.provider" />
     <orderEntry type="library" name="jetbrains.format.ripper" level="project" />
-    <orderEntry type="library" name="jackson-datatype-joda" level="project" />
+    <orderEntry type="module" module-name="intellij.libraries.jackson.datatype.joda" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.libraries.http.client" />
-    <orderEntry type="module" module-name="intellij.libraries.kotlinx.coroutines.slf4j" />
+    <orderEntry type="module" module-name="intellij.libraries.kotlinx.coroutines.slf4j" scope="RUNTIME" />
     <orderEntry type="library" name="slf4j-api" level="project" />
     <orderEntry type="module-library">
       <library name="jetbrains.apple.notary.api.kotlin.client" type="repository">
@@ -139,7 +142,7 @@
     <orderEntry type="library" scope="RUNTIME" name="jaxb-api" level="project" />
     <orderEntry type="library" scope="RUNTIME" name="jaxb-runtime" level="project" />
     <orderEntry type="module" module-name="intellij.libraries.javax.activation" scope="RUNTIME" />
-    <orderEntry type="library" name="tcServiceMessages" level="project" />
+    <orderEntry type="module" module-name="intellij.libraries.teamcity.service.messages" />
     <orderEntry type="module" module-name="intellij.libraries.kotlin.reflect" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.libraries.jsoup" />
     <orderEntry type="module" module-name="intellij.libraries.asm" />
@@ -198,98 +201,111 @@
     <orderEntry type="module" module-name="intellij.libraries.hash4j" />
     <orderEntry type="module" module-name="intellij.libraries.jbr" />
     <orderEntry type="module" module-name="intellij.libraries.kotlinx.serialization.protobuf" />
-    <orderEntry type="module" module-name="intellij.libraries.jackson.module.kotlin" scope="RUNTIME" />
-    <orderEntry type="module" module-name="intellij.libraries.jackson.dataformat.yaml" />
+    <orderEntry type="module" module-name="intellij.libraries.jackson3.module.kotlin" scope="RUNTIME" />
+    <orderEntry type="module" module-name="intellij.libraries.jackson3.dataformat.yaml" />
     <orderEntry type="module" module-name="intellij.libraries.ion" />
     <orderEntry type="module" module-name="intellij.platform.buildData" />
     <orderEntry type="module" module-name="intellij.platform.boot" />
     <orderEntry type="module" module-name="intellij.platform.ijent.community.buildConstants" />
-    <orderEntry type="module" module-name="intellij.devkit.runtimeModuleRepository.generator" />
     <orderEntry type="module" module-name="intellij.libraries.kotlinx.io" />
     <orderEntry type="module" module-name="intellij.libraries.snakeyaml" scope="RUNTIME" />
-    <orderEntry type="library" name="netty-tcnative-boringssl" level="project" />
+    <orderEntry type="module" module-name="intellij.libraries.snakeyaml.engine" scope="RUNTIME" />
+    <orderEntry type="module" module-name="intellij.libraries.netty.tcnative.boringssl" />
     <orderEntry type="module" module-name="intellij.platform.util.coroutines" />
+    <orderEntry type="module" module-name="intellij.platform.util.multiplatform" />
+    <orderEntry type="module" module-name="intellij.platform.util.base.multiplatform" />
+    <orderEntry type="module" module-name="intellij.platform.util.base" />
     <orderEntry type="module" module-name="intellij.idea.community.build.zip" />
     <orderEntry type="library" name="com.jetbrains.fus.reporting.fus-api" level="project" />
     <orderEntry type="library" name="com.jetbrains.fus.reporting.ap.validation.all" level="project" />
     <orderEntry type="module-library">
       <library name="netty" type="repository">
-        <properties maven-id="io.netty:netty-all:4.2.0.RC2">
+        <properties maven-id="io.netty:netty-all:4.2.15.Final">
           <verification>
-            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-all/4.2.0.RC2/netty-all-4.2.0.RC2.jar">
-              <sha256sum>4a12af2ac8345bfc7e0987ad8748787de033a9e27357cace7f45c7d40be522e0</sha256sum>
+            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-all/4.2.15.Final/netty-all-4.2.15.Final.jar">
+              <sha256sum>ad636e825d8637328991f5f32223055383dbd17656e28f12418769d44405dfe4</sha256sum>
             </artifact>
-            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-buffer/4.2.0.RC2/netty-buffer-4.2.0.RC2.jar">
-              <sha256sum>74d953cec00048b892112f9602fc7b1113ea55337dc1ede32e449efcb2b231c7</sha256sum>
+            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-buffer/4.2.15.Final/netty-buffer-4.2.15.Final.jar">
+              <sha256sum>1361fd9c9ba85b9831cf54a1b2e45ddc3ce34a768931726c099d3f5ef0efe4a3</sha256sum>
             </artifact>
-            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-codec-base/4.2.0.RC2/netty-codec-base-4.2.0.RC2.jar">
-              <sha256sum>f39581a55f89fb0586373e237e1e4a9d5e2fe3b94167c7a6762552651e5a6038</sha256sum>
+            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-codec-base/4.2.15.Final/netty-codec-base-4.2.15.Final.jar">
+              <sha256sum>2c6d39d7270628b8cfc3166fbd7a93d595958e59c461bc32ddb383c8c91bf811</sha256sum>
             </artifact>
-            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-codec/4.2.0.RC2/netty-codec-4.2.0.RC2.jar">
-              <sha256sum>b94f2d169acd04e8a41f1082e8f522529be1f5a10515473de9fb8d259afbfc77</sha256sum>
+            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-codec/4.2.15.Final/netty-codec-4.2.15.Final.jar">
+              <sha256sum>153b11a166459733af79fb0d4667f30bfa39792896f689b21c93a4a4091387ea</sha256sum>
             </artifact>
-            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-codec-http/4.2.0.RC2/netty-codec-http-4.2.0.RC2.jar">
-              <sha256sum>a44d21dff0254e4f4f9ceb7870e8b27a403d7f1d6325ab03ae6c045302957761</sha256sum>
+            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-codec-http/4.2.15.Final/netty-codec-http-4.2.15.Final.jar">
+              <sha256sum>76ae57e87af37b3c4107140f50b9244b1456163a6a225510838f7c5a4458ec22</sha256sum>
             </artifact>
-            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-codec-http2/4.2.0.RC2/netty-codec-http2-4.2.0.RC2.jar">
-              <sha256sum>c542657efd81b268535fb77e1866c8234c5a22de416ecbd8aea0e06e2c1588de</sha256sum>
+            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-codec-http2/4.2.15.Final/netty-codec-http2-4.2.15.Final.jar">
+              <sha256sum>4a9b052bd815c765d9c05e27b32abbd32a2c7c3e3364ccb992ce71da1a26bc0d</sha256sum>
             </artifact>
-            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-common/4.2.0.RC2/netty-common-4.2.0.RC2.jar">
-              <sha256sum>cc65afe17daf2f9380d3c64460f5b10ec279f98b9461fbf0ccf62b3cb3ee6c37</sha256sum>
+            <artifact url="file://$MAVEN_REPOSITORY$/org/jctools/jctools-core/4.0.6/jctools-core-4.0.6.jar">
+              <sha256sum>374fb4660436a70ba131e15ca7bab8423424c737898a894fb276841c94bdd962</sha256sum>
             </artifact>
-            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-handler/4.2.0.RC2/netty-handler-4.2.0.RC2.jar">
-              <sha256sum>3f1912b14a2fdd7ad2ef0bda9eeb1ae544c463857081d7dd69f9aa2b7137de6e</sha256sum>
+            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-unix-common/4.2.15.Final/netty-transport-native-unix-common-4.2.15.Final.jar">
+              <sha256sum>b9ea9fc5ad5eba04e99afdff75b2eb97b5ddfb2ad772e2f2ef5d8f277f3cbd76</sha256sum>
             </artifact>
-            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-unix-common/4.2.0.RC2/netty-transport-native-unix-common-4.2.0.RC2.jar">
-              <sha256sum>dfc1db2a05dafeba40987a76591004cc72d4a27062d874961fadc5059900f65d</sha256sum>
+            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-common/4.2.15.Final/netty-common-4.2.15.Final.jar">
+              <sha256sum>78206aa7f6d197caa926291408c01889b6b910ca0f74017d3fcbdaccf9562959</sha256sum>
             </artifact>
-            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-handler-ssl-ocsp/4.2.0.RC2/netty-handler-ssl-ocsp-4.2.0.RC2.jar">
-              <sha256sum>c1d3051facf0297a3d7e15078a2c94f3650b6beddd398f21c591d098fd549922</sha256sum>
+            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-handler/4.2.15.Final/netty-handler-4.2.15.Final.jar">
+              <sha256sum>99b59e4bea72220d2aed52df8baf37d97431b06ade0b135226cdf73168975eab</sha256sum>
             </artifact>
-            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-resolver/4.2.0.RC2/netty-resolver-4.2.0.RC2.jar">
-              <sha256sum>10fa70357cbfd55f52d64cf4bb4011e01ced0e0e5dea0bac77f73908cef676ff</sha256sum>
+            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-handler-ssl-ocsp/4.2.15.Final/netty-handler-ssl-ocsp-4.2.15.Final.jar">
+              <sha256sum>f2d1799a5e8df81cd959bc8e9c3cd1328b39e261b6cbe0b5df60463abcdca368</sha256sum>
             </artifact>
-            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-transport/4.2.0.RC2/netty-transport-4.2.0.RC2.jar">
-              <sha256sum>9c86cf3a130237b059f5ef89661a4fbe715f5e8bce9626a6aded95a1c3775a47</sha256sum>
+            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-resolver/4.2.15.Final/netty-resolver-4.2.15.Final.jar">
+              <sha256sum>24318497f2a3a645964fed418f48879ba11365cab8e1f8d66c47fa7da15ef19a</sha256sum>
             </artifact>
-            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-pkitesting/4.2.0.RC2/netty-pkitesting-4.2.0.RC2.jar">
-              <sha256sum>6d3fbdf60229ee2baafaa850bf46115923109c73d6d1b0fefdcce5a12ddd43e8</sha256sum>
+            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-transport/4.2.15.Final/netty-transport-4.2.15.Final.jar">
+              <sha256sum>9fb671e96651066cf1a28dad3f1382c7c99df5b8326d4a214d9a375b311f8dc1</sha256sum>
             </artifact>
-            <artifact url="file://$MAVEN_REPOSITORY$/org/bouncycastle/bcpkix-jdk18on/1.79/bcpkix-jdk18on-1.79.jar">
-              <sha256sum>3639a24ddf9ba4b7eba0659b44770e91eba816421888e571f285aadefe532cd6</sha256sum>
+            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-transport-classes-epoll/4.2.15.Final/netty-transport-classes-epoll-4.2.15.Final.jar">
+              <sha256sum>be509407fd71a4b83378567c613420db544d659bb522df7b253a1dbe8ca297fe</sha256sum>
             </artifact>
-            <artifact url="file://$MAVEN_REPOSITORY$/org/bouncycastle/bcutil-jdk18on/1.79/bcutil-jdk18on-1.79.jar">
-              <sha256sum>c70b88ada58938cbc2f005d40329054078bcfa1149e6ffc03e9242eb6ab21836</sha256sum>
+            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-transport-classes-kqueue/4.2.15.Final/netty-transport-classes-kqueue-4.2.15.Final.jar">
+              <sha256sum>2a15e2213a1fe49e73b4bb39bc746e7196dba8c1b182bc0d21a719a4d1be2c00</sha256sum>
             </artifact>
-            <artifact url="file://$MAVEN_REPOSITORY$/org/bouncycastle/bcprov-jdk18on/1.79/bcprov-jdk18on-1.79.jar">
-              <sha256sum>0d81ecc3124536b539bce9aa3fe9621b7f84c9cee371b635a5b31c78b79ab1da</sha256sum>
+            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-codec-classes-quic/4.2.15.Final/netty-codec-classes-quic-4.2.15.Final.jar">
+              <sha256sum>ec1d5da906ea0139741cd8c570907c399df5995e48a2b07fe3155272e0be21a6</sha256sum>
             </artifact>
-            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-transport-classes-epoll/4.2.0.RC2/netty-transport-classes-epoll-4.2.0.RC2.jar">
-              <sha256sum>b28e39a15989b29683ccbc360d27cdb71fa992c16e50f2b331278a68267d110a</sha256sum>
+            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-epoll/4.2.15.Final/netty-transport-native-epoll-4.2.15.Final-linux-x86_64.jar">
+              <sha256sum>5440e38f5ca2858fee8d7898e65291e05b665736c9e8a14c832e707511f5dba6</sha256sum>
             </artifact>
-            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-transport-classes-kqueue/4.2.0.RC2/netty-transport-classes-kqueue-4.2.0.RC2.jar">
-              <sha256sum>15c46096b22d0fc833c09ce85d002cc8e171c9f1741030663899a6315997d5bd</sha256sum>
+            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-epoll/4.2.15.Final/netty-transport-native-epoll-4.2.15.Final-linux-aarch_64.jar">
+              <sha256sum>5a401e9dfb4f937e37a2221f6b91da25a008eac1f08ddd4bb0d9ed20e0e32668</sha256sum>
             </artifact>
-            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-epoll/4.2.0.RC2/netty-transport-native-epoll-4.2.0.RC2-linux-x86_64.jar">
-              <sha256sum>d57f64acefa1cebc8b18f1add825f4d965bb495a340eee69b9d626d54e161a24</sha256sum>
+            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-epoll/4.2.15.Final/netty-transport-native-epoll-4.2.15.Final-linux-riscv64.jar">
+              <sha256sum>a33cd69712a264b6e6a8f1bcedbb52ee069169021f46c6ea3b8e6c49561b1eeb</sha256sum>
             </artifact>
-            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-epoll/4.2.0.RC2/netty-transport-native-epoll-4.2.0.RC2-linux-aarch_64.jar">
-              <sha256sum>9ff603349365d28397dc239097cab0ceca3b27cacd13fb5f1afda8d4d7388194</sha256sum>
+            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-kqueue/4.2.15.Final/netty-transport-native-kqueue-4.2.15.Final-osx-x86_64.jar">
+              <sha256sum>6095c29661abe1f2fbc2c79c54a94de4fdaddd6e99c702927fd3c00e66872574</sha256sum>
             </artifact>
-            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-epoll/4.2.0.RC2/netty-transport-native-epoll-4.2.0.RC2-linux-riscv64.jar">
-              <sha256sum>c9fb752bd54bf2dae1e4330d2446202fdfb28e6a7f933248886de13d4b2f6959</sha256sum>
+            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-kqueue/4.2.15.Final/netty-transport-native-kqueue-4.2.15.Final-osx-aarch_64.jar">
+              <sha256sum>c9696a41e549eb42432f1e2cc3f387c85435034b73a3bf8748ffff40d00f921a</sha256sum>
             </artifact>
-            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-kqueue/4.2.0.RC2/netty-transport-native-kqueue-4.2.0.RC2-osx-x86_64.jar">
-              <sha256sum>2c80194e02e8f2424be3eb18be4514ece9fcaec79cb11a7d2f0dbe92fe86e283</sha256sum>
+            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-codec-native-quic/4.2.15.Final/netty-codec-native-quic-4.2.15.Final-linux-x86_64.jar">
+              <sha256sum>850ed59fac6679b5e205bf53187b45dbaf2d105ee5f669440645d2acd89524ec</sha256sum>
             </artifact>
-            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-kqueue/4.2.0.RC2/netty-transport-native-kqueue-4.2.0.RC2-osx-aarch_64.jar">
-              <sha256sum>d942f12645bf694c5083e40d7ec2f1d03b897ceccb0d0acd9d1178bf4f72092d</sha256sum>
+            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-codec-native-quic/4.2.15.Final/netty-codec-native-quic-4.2.15.Final-linux-aarch_64.jar">
+              <sha256sum>59a8e59aa9d3a886cd7fae30fb3d3a18ebee40fa9dc08b83eb88bee58cf46774</sha256sum>
+            </artifact>
+            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-codec-native-quic/4.2.15.Final/netty-codec-native-quic-4.2.15.Final-osx-x86_64.jar">
+              <sha256sum>10999923bf08ff5e3a75106bd8dbc5b5e4d06b5e614f8c135981ecb4377c944a</sha256sum>
+            </artifact>
+            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-codec-native-quic/4.2.15.Final/netty-codec-native-quic-4.2.15.Final-osx-aarch_64.jar">
+              <sha256sum>ce18ffeccef21adb3caca5534061c921ef750662f29028fdde62d65196d63a9d</sha256sum>
+            </artifact>
+            <artifact url="file://$MAVEN_REPOSITORY$/io/netty/netty-codec-native-quic/4.2.15.Final/netty-codec-native-quic-4.2.15.Final-windows-x86_64.jar">
+              <sha256sum>40adba6df605302bf98a4a462bb002c4697f60958cea7cfec38f0fab6331eb7a</sha256sum>
             </artifact>
           </verification>
           <exclude>
             <dependency maven-id="io.netty:netty-codec-dns" />
             <dependency maven-id="io.netty:netty-codec-haproxy" />
             <dependency maven-id="io.netty:netty-codec-compression" />
+            <dependency maven-id="io.netty:netty-codec-http3" />
             <dependency maven-id="io.netty:netty-codec-memcache" />
             <dependency maven-id="io.netty:netty-codec-mqtt" />
             <dependency maven-id="io.netty:netty-codec-redis" />
@@ -298,10 +314,7 @@
             <dependency maven-id="io.netty:netty-codec-stomp" />
             <dependency maven-id="io.netty:netty-codec-xml" />
             <dependency maven-id="io.netty:netty-codec-protobuf" />
-            <dependency maven-id="com.google.protobuf:protobuf-java" />
-            <dependency maven-id="com.google.protobuf.nano:protobuf-javanano" />
             <dependency maven-id="io.netty:netty-codec-marshalling" />
-            <dependency maven-id="org.jboss.marshalling:jboss-marshalling" />
             <dependency maven-id="io.netty:netty-handler-proxy" />
             <dependency maven-id="io.netty:netty-resolver-dns" />
             <dependency maven-id="io.netty:netty-transport-rxtx" />
@@ -314,72 +327,78 @@
           </exclude>
         </properties>
         <CLASSES>
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-all/4.2.0.RC2/netty-all-4.2.0.RC2.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-buffer/4.2.0.RC2/netty-buffer-4.2.0.RC2.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-codec-base/4.2.0.RC2/netty-codec-base-4.2.0.RC2.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-codec/4.2.0.RC2/netty-codec-4.2.0.RC2.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-codec-http/4.2.0.RC2/netty-codec-http-4.2.0.RC2.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-codec-http2/4.2.0.RC2/netty-codec-http2-4.2.0.RC2.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-common/4.2.0.RC2/netty-common-4.2.0.RC2.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-handler/4.2.0.RC2/netty-handler-4.2.0.RC2.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-unix-common/4.2.0.RC2/netty-transport-native-unix-common-4.2.0.RC2.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-handler-ssl-ocsp/4.2.0.RC2/netty-handler-ssl-ocsp-4.2.0.RC2.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-resolver/4.2.0.RC2/netty-resolver-4.2.0.RC2.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport/4.2.0.RC2/netty-transport-4.2.0.RC2.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-pkitesting/4.2.0.RC2/netty-pkitesting-4.2.0.RC2.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/org/bouncycastle/bcpkix-jdk18on/1.79/bcpkix-jdk18on-1.79.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/org/bouncycastle/bcutil-jdk18on/1.79/bcutil-jdk18on-1.79.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/org/bouncycastle/bcprov-jdk18on/1.79/bcprov-jdk18on-1.79.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport-classes-epoll/4.2.0.RC2/netty-transport-classes-epoll-4.2.0.RC2.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport-classes-kqueue/4.2.0.RC2/netty-transport-classes-kqueue-4.2.0.RC2.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-epoll/4.2.0.RC2/netty-transport-native-epoll-4.2.0.RC2-linux-x86_64.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-epoll/4.2.0.RC2/netty-transport-native-epoll-4.2.0.RC2-linux-aarch_64.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-epoll/4.2.0.RC2/netty-transport-native-epoll-4.2.0.RC2-linux-riscv64.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-kqueue/4.2.0.RC2/netty-transport-native-kqueue-4.2.0.RC2-osx-x86_64.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-kqueue/4.2.0.RC2/netty-transport-native-kqueue-4.2.0.RC2-osx-aarch_64.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-all/4.2.15.Final/netty-all-4.2.15.Final.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-buffer/4.2.15.Final/netty-buffer-4.2.15.Final.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-codec-base/4.2.15.Final/netty-codec-base-4.2.15.Final.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-codec/4.2.15.Final/netty-codec-4.2.15.Final.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-codec-http/4.2.15.Final/netty-codec-http-4.2.15.Final.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-codec-http2/4.2.15.Final/netty-codec-http2-4.2.15.Final.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/org/jctools/jctools-core/4.0.6/jctools-core-4.0.6.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-unix-common/4.2.15.Final/netty-transport-native-unix-common-4.2.15.Final.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-common/4.2.15.Final/netty-common-4.2.15.Final.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-handler/4.2.15.Final/netty-handler-4.2.15.Final.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-handler-ssl-ocsp/4.2.15.Final/netty-handler-ssl-ocsp-4.2.15.Final.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-resolver/4.2.15.Final/netty-resolver-4.2.15.Final.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport/4.2.15.Final/netty-transport-4.2.15.Final.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport-classes-epoll/4.2.15.Final/netty-transport-classes-epoll-4.2.15.Final.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport-classes-kqueue/4.2.15.Final/netty-transport-classes-kqueue-4.2.15.Final.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-codec-classes-quic/4.2.15.Final/netty-codec-classes-quic-4.2.15.Final.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-epoll/4.2.15.Final/netty-transport-native-epoll-4.2.15.Final-linux-x86_64.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-epoll/4.2.15.Final/netty-transport-native-epoll-4.2.15.Final-linux-aarch_64.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-epoll/4.2.15.Final/netty-transport-native-epoll-4.2.15.Final-linux-riscv64.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-kqueue/4.2.15.Final/netty-transport-native-kqueue-4.2.15.Final-osx-x86_64.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-kqueue/4.2.15.Final/netty-transport-native-kqueue-4.2.15.Final-osx-aarch_64.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-codec-native-quic/4.2.15.Final/netty-codec-native-quic-4.2.15.Final-linux-x86_64.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-codec-native-quic/4.2.15.Final/netty-codec-native-quic-4.2.15.Final-linux-aarch_64.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-codec-native-quic/4.2.15.Final/netty-codec-native-quic-4.2.15.Final-osx-x86_64.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-codec-native-quic/4.2.15.Final/netty-codec-native-quic-4.2.15.Final-osx-aarch_64.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-codec-native-quic/4.2.15.Final/netty-codec-native-quic-4.2.15.Final-windows-x86_64.jar!/" />
         </CLASSES>
         <JAVADOC />
         <SOURCES>
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-buffer/4.2.0.RC2/netty-buffer-4.2.0.RC2-sources.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-codec-base/4.2.0.RC2/netty-codec-base-4.2.0.RC2-sources.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-codec/4.2.0.RC2/netty-codec-4.2.0.RC2-sources.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-codec-http/4.2.0.RC2/netty-codec-http-4.2.0.RC2-sources.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-codec-http2/4.2.0.RC2/netty-codec-http2-4.2.0.RC2-sources.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-common/4.2.0.RC2/netty-common-4.2.0.RC2-sources.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-handler/4.2.0.RC2/netty-handler-4.2.0.RC2-sources.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-unix-common/4.2.0.RC2/netty-transport-native-unix-common-4.2.0.RC2-sources.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-handler-ssl-ocsp/4.2.0.RC2/netty-handler-ssl-ocsp-4.2.0.RC2-sources.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-resolver/4.2.0.RC2/netty-resolver-4.2.0.RC2-sources.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport/4.2.0.RC2/netty-transport-4.2.0.RC2-sources.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-pkitesting/4.2.0.RC2/netty-pkitesting-4.2.0.RC2-sources.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/org/bouncycastle/bcpkix-jdk18on/1.79/bcpkix-jdk18on-1.79-sources.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/org/bouncycastle/bcutil-jdk18on/1.79/bcutil-jdk18on-1.79-sources.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/org/bouncycastle/bcprov-jdk18on/1.79/bcprov-jdk18on-1.79-sources.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport-classes-epoll/4.2.0.RC2/netty-transport-classes-epoll-4.2.0.RC2-sources.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport-classes-kqueue/4.2.0.RC2/netty-transport-classes-kqueue-4.2.0.RC2-sources.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-epoll/4.2.0.RC2/netty-transport-native-epoll-4.2.0.RC2-sources.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-epoll/4.2.0.RC2/netty-transport-native-epoll-4.2.0.RC2-sources.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-epoll/4.2.0.RC2/netty-transport-native-epoll-4.2.0.RC2-sources.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-kqueue/4.2.0.RC2/netty-transport-native-kqueue-4.2.0.RC2-sources.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-kqueue/4.2.0.RC2/netty-transport-native-kqueue-4.2.0.RC2-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-buffer/4.2.15.Final/netty-buffer-4.2.15.Final-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-codec-base/4.2.15.Final/netty-codec-base-4.2.15.Final-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-codec/4.2.15.Final/netty-codec-4.2.15.Final-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-codec-http/4.2.15.Final/netty-codec-http-4.2.15.Final-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-codec-http2/4.2.15.Final/netty-codec-http2-4.2.15.Final-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/org/jctools/jctools-core/4.0.6/jctools-core-4.0.6-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-unix-common/4.2.15.Final/netty-transport-native-unix-common-4.2.15.Final-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-common/4.2.15.Final/netty-common-4.2.15.Final-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-handler/4.2.15.Final/netty-handler-4.2.15.Final-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-handler-ssl-ocsp/4.2.15.Final/netty-handler-ssl-ocsp-4.2.15.Final-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-resolver/4.2.15.Final/netty-resolver-4.2.15.Final-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport/4.2.15.Final/netty-transport-4.2.15.Final-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport-classes-epoll/4.2.15.Final/netty-transport-classes-epoll-4.2.15.Final-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport-classes-kqueue/4.2.15.Final/netty-transport-classes-kqueue-4.2.15.Final-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-codec-classes-quic/4.2.15.Final/netty-codec-classes-quic-4.2.15.Final-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-epoll/4.2.15.Final/netty-transport-native-epoll-4.2.15.Final-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-epoll/4.2.15.Final/netty-transport-native-epoll-4.2.15.Final-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-epoll/4.2.15.Final/netty-transport-native-epoll-4.2.15.Final-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-kqueue/4.2.15.Final/netty-transport-native-kqueue-4.2.15.Final-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-transport-native-kqueue/4.2.15.Final/netty-transport-native-kqueue-4.2.15.Final-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-codec-native-quic/4.2.15.Final/netty-codec-native-quic-4.2.15.Final-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-codec-native-quic/4.2.15.Final/netty-codec-native-quic-4.2.15.Final-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-codec-native-quic/4.2.15.Final/netty-codec-native-quic-4.2.15.Final-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-codec-native-quic/4.2.15.Final/netty-codec-native-quic-4.2.15.Final-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/io/netty/netty-codec-native-quic/4.2.15.Final/netty-codec-native-quic-4.2.15.Final-sources.jar!/" />
         </SOURCES>
       </library>
     </orderEntry>
     <orderEntry type="module-library">
       <library name="jetbrains.intellij.deps.coverage.reporter" type="repository">
-        <properties maven-id="org.jetbrains.intellij.deps:intellij-coverage-reporter:1.0.766">
+        <properties maven-id="org.jetbrains.intellij.deps:intellij-coverage-reporter:1.0.776">
           <verification>
-            <artifact url="file://$MAVEN_REPOSITORY$/org/jetbrains/intellij/deps/intellij-coverage-reporter/1.0.766/intellij-coverage-reporter-1.0.766.jar">
-              <sha256sum>25393a60c2f7552955e7f5719a73b044cec83e05a62a3b0b1c75ad3e6953275b</sha256sum>
+            <artifact url="file://$MAVEN_REPOSITORY$/org/jetbrains/intellij/deps/intellij-coverage-reporter/1.0.776/intellij-coverage-reporter-1.0.776.jar">
+              <sha256sum>9df0cb585bc7f223a9ac9940c01aef08b2a857844709c0057b52abd2b047956d</sha256sum>
             </artifact>
-            <artifact url="file://$MAVEN_REPOSITORY$/org/jetbrains/intellij/deps/coverage-report/1.0.25/coverage-report-1.0.25.jar">
-              <sha256sum>8627281c15b1b5347ca618d0dbc2090aa92a096a867c1d030198a51efcc33bfe</sha256sum>
+            <artifact url="file://$MAVEN_REPOSITORY$/org/jetbrains/intellij/deps/coverage-report/1.0.27/coverage-report-1.0.27.jar">
+              <sha256sum>8a29a130ab4fa9a23fd390ff535afb52fb55e5f61448423c16472be88609c03a</sha256sum>
             </artifact>
             <artifact url="file://$MAVEN_REPOSITORY$/org/freemarker/freemarker/2.3.32/freemarker-2.3.32.jar">
               <sha256sum>04d65ec1bde6cea20e3495d5e78ef96ab774d9936434861d3254bd88e7e94f92</sha256sum>
             </artifact>
-            <artifact url="file://$MAVEN_REPOSITORY$/org/jetbrains/intellij/deps/intellij-coverage-agent/1.0.766/intellij-coverage-agent-1.0.766.jar">
-              <sha256sum>52f66c83318dcacb879f2a07fe448eccd1313b077809190810c83aa4b875611c</sha256sum>
+            <artifact url="file://$MAVEN_REPOSITORY$/org/jetbrains/intellij/deps/intellij-coverage-agent/1.0.776/intellij-coverage-agent-1.0.776.jar">
+              <sha256sum>477944945187911ce656c6fa804c9f4c65a90dab7ad6717abae2ce0234b7e527</sha256sum>
             </artifact>
           </verification>
           <exclude>
@@ -387,25 +406,27 @@
           </exclude>
         </properties>
         <CLASSES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/intellij/deps/intellij-coverage-reporter/1.0.766/intellij-coverage-reporter-1.0.766.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/intellij/deps/coverage-report/1.0.25/coverage-report-1.0.25.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/intellij/deps/intellij-coverage-reporter/1.0.776/intellij-coverage-reporter-1.0.776.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/intellij/deps/coverage-report/1.0.27/coverage-report-1.0.27.jar!/" />
           <root url="jar://$MAVEN_REPOSITORY$/org/freemarker/freemarker/2.3.32/freemarker-2.3.32.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/intellij/deps/intellij-coverage-agent/1.0.766/intellij-coverage-agent-1.0.766.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/intellij/deps/intellij-coverage-agent/1.0.776/intellij-coverage-agent-1.0.776.jar!/" />
         </CLASSES>
         <JAVADOC />
         <SOURCES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/intellij/deps/intellij-coverage-reporter/1.0.766/intellij-coverage-reporter-1.0.766-sources.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/intellij/deps/coverage-report/1.0.25/coverage-report-1.0.25-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/intellij/deps/intellij-coverage-reporter/1.0.776/intellij-coverage-reporter-1.0.776-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/intellij/deps/coverage-report/1.0.27/coverage-report-1.0.27-sources.jar!/" />
           <root url="jar://$MAVEN_REPOSITORY$/org/freemarker/freemarker/2.3.32/freemarker-2.3.32-sources.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/intellij/deps/intellij-coverage-agent/1.0.766/intellij-coverage-agent-1.0.766-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/intellij/deps/intellij-coverage-agent/1.0.776/intellij-coverage-agent-1.0.776-sources.jar!/" />
         </SOURCES>
       </library>
     </orderEntry>
     <orderEntry type="module" module-name="intellij.libraries.ktor.client" />
     <orderEntry type="module" module-name="intellij.platform.pluginSystem.parser.impl" />
     <orderEntry type="module" module-name="intellij.libraries.maven.resolver.provider" />
+    <orderEntry type="module" module-name="intellij.libraries.jackson.module.kotlin" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.platform.pluginGraph" />
     <orderEntry type="module" module-name="intellij.platform.buildScripts.api" exported="" />
     <orderEntry type="module" module-name="intellij.platform.buildScripts.productDsl" exported="" />
+    <orderEntry type="module" module-name="intellij.platform.buildScripts.licenses" />
   </component>
 </module>

@@ -13,6 +13,7 @@ import com.intellij.usageView.UsageViewBundle;
 import com.intellij.usages.ChunkExtractor;
 import com.intellij.usages.TextChunk;
 import com.intellij.usages.UsageInfo2UsageAdapter;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.JTree;
@@ -20,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
+@ApiStatus.Internal
 public class SliceLeafValueRootNode extends SliceNode implements MyColoredTreeCellRenderer {
   public final List<SliceNode> myCachedChildren;
 
@@ -81,7 +83,7 @@ public class SliceLeafValueRootNode extends SliceNode implements MyColoredTreeCe
     renderer.append(LangBundle.message("node.slice.value"), SimpleTextAttributes.REGULAR_ATTRIBUTES);
 
     if (usage != null) {
-      ReadAction.run(() -> {
+      ReadAction.runBlocking(() -> {
         PsiElement element = usage.getElement();
         if (element == null) {
           renderer.append(UsageViewBundle.message("node.invalid") + " ", UsageTreeColors.INVALID_ATTRIBUTES);

@@ -1,34 +1,32 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
-@file:Suppress("unused", "ForEachParameterNotUsed")
-
 package com.intellij.notebooks.visualization.ui
 
 import com.intellij.notebooks.visualization.NotebookCellInlayManager
-import com.intellij.notebooks.visualization.ui.providers.bounds.JupyterBoundsChangeHandler
-import com.intellij.notebooks.visualization.ui.providers.bounds.JupyterBoundsChangeListener
+import com.intellij.notebooks.visualization.ui.providers.bounds.JupyterBoundsChangeNotifier
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.editor.LogicalPosition
+import com.intellij.openapi.editor.ex.util.EditorUtil
 import com.intellij.openapi.editor.impl.EditorImpl
 import com.intellij.openapi.util.Key
-import kotlinx.coroutines.FlowPreview
+import org.jetbrains.annotations.ApiStatus
 import java.awt.Point
 import java.awt.Rectangle
 
 /**
- * We do not use this code now but it can be used for optimization so we keep it
+ * Tracks which cells are currently visible in the editor viewport
+ * and updates only those cells
  */
-@OptIn(FlowPreview::class)
+@ApiStatus.Experimental
 class NotebookVisibleCellsBatchUpdater(
   private val editor: EditorImpl,
 ) : Disposable.Default {
   private var prevVisibleCells = listOf<EditorCell>()
 
   init {
-    JupyterBoundsChangeHandler.get(editor).subscribe(this, object : JupyterBoundsChangeListener {
-      override fun boundsChanged() {
-        updateVisibleCells()
-      }
-    })
+    JupyterBoundsChangeNotifier.get(editor).subscribe(this) {
+      updateVisibleCells()
+    }
+
     editor.scrollingModel.addVisibleAreaListener(
       {
         if (it.newRectangle == it.oldRectangle)
@@ -53,7 +51,6 @@ class NotebookVisibleCellsBatchUpdater(
   private fun getCellRectangle(cell: EditorCell): Rectangle? {
     val interval = cell.intervalOrNull ?: return null
 
-
     val firstLineWithOverlap = maxOf(interval.firstContentLine - 1, 0)
     val lastLineWithOverlap = minOf(interval.lastContentLine + 1, editor.document.lineCount)
 
@@ -70,7 +67,7 @@ class NotebookVisibleCellsBatchUpdater(
     val visibleArea = editor.scrollingModel.visibleArea
 
     if (visibleArea.height == 0 || visibleArea.width == 0) {
-      prevVisibleCells.forEach {
+      prevVisibleCells.forEach { _ ->
         //it.isInViewportRectangle.set(false)
       }
       prevVisibleCells = emptyList()
@@ -93,16 +90,20 @@ class NotebookVisibleCellsBatchUpdater(
       visibleCells.add(cell)
     }
 
-    if (visibleCells == prevVisibleCells) return
-    val newInvisible = prevVisibleCells - visibleCells
-    val newVisible = visibleCells - prevVisibleCells
-    newInvisible.forEach {
-      //it.isInViewportRectangle.set(false)
-    }
-    newVisible.forEach {
-      //it.isInViewportRectangle.set(true)
+    if (visibleCells != prevVisibleCells) {
+      val newInvisible = prevVisibleCells - visibleCells.toSet()
+      val newVisible = visibleCells - prevVisibleCells.toSet()
+      newInvisible.forEach { _ ->
+        //it.isInViewportRectangle.set(false)
+      }
+      newVisible.forEach { _ ->
+        //it.isInViewportRectangle.set(true)
+      }
     }
 
+    // Output visibility can change while the visible cell set stays the same, for example, when a lazy image output is first
+    // represented by a 1px placeholder in an already-visible cell.
+    visibleCells.forEach { it.updateIfInVisibleRect() }
     prevVisibleCells = visibleCells
   }
 
@@ -110,9 +111,11 @@ class NotebookVisibleCellsBatchUpdater(
     private val INSTANCE_KEY = Key.create<NotebookVisibleCellsBatchUpdater>("EDITOR_CELL_FRAME_UPDATER_KEY")
 
     fun install(editor: EditorImpl) {
-      //val updater = NotebookVisibleCellsBatchUpdater(editor)
-      //editor.putUserData(INSTANCE_KEY, updater)
-      //Disposer.register(editor.disposable, updater)
+      val updater = NotebookVisibleCellsBatchUpdater(editor)
+      editor.putUserData(INSTANCE_KEY, updater)
+      EditorUtil.disposeWithEditor(editor, updater)
     }
+
+    fun get(editor: EditorImpl): NotebookVisibleCellsBatchUpdater? = INSTANCE_KEY.get(editor)
   }
 }

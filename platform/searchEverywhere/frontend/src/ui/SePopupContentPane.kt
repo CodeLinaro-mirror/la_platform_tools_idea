@@ -9,8 +9,12 @@ import com.intellij.ide.actions.searcheverywhere.SEResultsListFactory
 import com.intellij.ide.actions.searcheverywhere.SearchEverywhereUI
 import com.intellij.ide.actions.searcheverywhere.footer.ExtendedInfoComponent
 import com.intellij.ide.actions.searcheverywhere.statistics.SearchEverywhereUsageTriggerCollector
+import com.intellij.ide.rpc.ThrottledAccumulatedItems
+import com.intellij.ide.rpc.ThrottledItems
+import com.intellij.ide.rpc.ThrottledOneItem
 import com.intellij.ide.ui.laf.darcula.ui.TextFieldWithPopupHandlerUI
 import com.intellij.ide.util.gotoByName.QuickSearchComponent
+import com.intellij.internal.inspector.PropertyBean
 import com.intellij.internal.statistic.eventLog.events.EventFields
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionManager
@@ -40,16 +44,21 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.NlsContexts
 import com.intellij.openapi.util.SystemInfoRt
 import com.intellij.openapi.util.registry.Registry
+import com.intellij.platform.searchEverywhere.SeClosePopupRequester
 import com.intellij.platform.searchEverywhere.SeItemData
 import com.intellij.platform.searchEverywhere.SeProviderId
+import com.intellij.platform.searchEverywhere.SeResultAddedEvent
+import com.intellij.platform.searchEverywhere.SeResultEvent
+import com.intellij.platform.searchEverywhere.SeResultReplacedEvent
+import com.intellij.platform.searchEverywhere.SeUiInspectorInfo
 import com.intellij.platform.searchEverywhere.data.SeDataKeys
-import com.intellij.platform.searchEverywhere.frontend.AutoToggleAction
 import com.intellij.platform.searchEverywhere.frontend.SeSearchStatePublisher
 import com.intellij.platform.searchEverywhere.frontend.SeSelectionListener
 import com.intellij.platform.searchEverywhere.frontend.SeSelectionResultClose
 import com.intellij.platform.searchEverywhere.frontend.SeSelectionResultText
 import com.intellij.platform.searchEverywhere.frontend.SeSelectionState
 import com.intellij.platform.searchEverywhere.frontend.SearchEverywhereFrontendBundle
+import com.intellij.platform.searchEverywhere.frontend.ml.SeMlService
 import com.intellij.platform.searchEverywhere.frontend.tabs.actions.SeActionItemPresentationRenderer
 import com.intellij.platform.searchEverywhere.frontend.tabs.all.SeAllTab
 import com.intellij.platform.searchEverywhere.frontend.tabs.files.SeTargetItemPresentationRenderer
@@ -85,7 +94,10 @@ import com.intellij.ui.render.RenderingUtil
 import com.intellij.ui.scale.JBUIScale.scale
 import com.intellij.usages.UsageViewPresentation
 import com.intellij.usages.impl.UsagePreviewPanel
+import com.intellij.util.concurrency.ThreadingAssertions
+import com.intellij.util.concurrency.annotations.RequiresEdt
 import com.intellij.util.containers.ContainerUtil
+import com.intellij.util.ui.EDT
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.StartupUiUtil.isWaylandToolkit
 import com.intellij.util.ui.UIUtil
@@ -93,6 +105,7 @@ import com.intellij.util.ui.accessibility.ScreenReader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.Runnable
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -263,33 +276,44 @@ class SePopupContentPane(
   }
 
   fun setVm(vm: SePopupVm) {
+    SeLog.log(SeLog.CARET) { "SePopupContentPane.setVm: connecting vm, edt=${EDT.isCurrentThreadEdt()}" }
     vmState.value = vm
   }
 
   private suspend fun connectTo(vm: SePopupVm) = coroutineScope {
-    DumbAwareAction.create { vm.getHistoryItem(true).let { textField.text = it; textField.selectAll() } }
+    DumbAwareAction.create { vm.getHistoryItem(true).let { textField.setText(it, selectAll = true, reason = "history-prev") } }
       .registerCustomShortcutSet(SearchTextField.SHOW_HISTORY_SHORTCUT, contentPane)
-    DumbAwareAction.create { vm.getHistoryItem(false).let { textField.text = it; textField.selectAll() } }
+    DumbAwareAction.create { vm.getHistoryItem(false).let { textField.setText(it, selectAll = true, reason = "history-next") } }
       .registerCustomShortcutSet(SearchTextField.ALT_SHOW_HISTORY_SHORTCUT, contentPane)
 
     launch {
       vm.tabsModelFlow.map {
-        SePopupHeaderPane.Configuration(it.sortedTabVms.map { tabVm -> SePopupHeaderPane.Tab(tabVm) }, it.selectedTabIndexFlow)
+        SePopupHeaderPane.Configuration(it.sortedTabVms.map { tabVm -> SePopupHeaderPane.Tab(tabVm) }, it.selectedTabIdFlow)
       }.collectLatest {
         tabConfigurationState.value = it
       }
     }
 
     withContext(Dispatchers.UI) {
-      textField.configure(vm.searchPattern.value) { newText ->
+      val pattern = vm.searchPattern.value
+      SeLog.log(SeLog.CARET) { "SePopupContentPane.connectTo will configure: pattern='${pattern}' - ${textField.stateLogMessage()}" }
+
+      textField.configure(pattern) { newText ->
         vm.setSearchText(newText)
       }
+
+      SeLog.log(SeLog.CARET) { "SePopupContentPane.connectTo did configure - ${textField.stateLogMessage()}" }
     }
 
     launch {
       vm.currentTabFlow.flatMapLatest {
         withContext(Dispatchers.EDT) {
-          resultListModel.reset()
+          // If there was a previous search that didn't complete, report its results to ML
+          if (!isSearchCompleted.load() && resultListModel.size > 0) {
+            SeMlService.getInstanceIfEnabled()?.onStateFinished(currentResultsInList.toList())
+          }
+
+          resultList.withProgrammaticSelectionChange { resultListModel.reset() }
           semanticWarning.value = resultListModel.isValidAndHasOnlySemantic
         }
         it.searchResults.filterNotNull()
@@ -323,15 +347,17 @@ class SePopupContentPane(
             withContext(Dispatchers.EDT) {
               SeLog.log(SeLog.THROTTLING) { "Throttled flow completed" }
               isSearchCompleted.store(true)
-              resultListModel.removeLoadingItem()
+              resultList.withProgrammaticSelectionChange { resultListModel.removeLoadingItem() }
               searchStatePublisher.searchStoppedProducingResults(searchId, resultListModel.size, true)
+
+              SeMlService.getInstanceIfEnabled()?.onStateFinished(currentResultsInList.toList())
 
               if (!resultListModel.isValid || resultListModel.isEmpty) {
                 if (!textField.text.isEmpty()) {
                   val currentTab = vm.currentTab
                   if (currentTab.tabId == searchContext.tabId) {
 
-                    if ((currentTab.getSearchEverywhereToggleAction() as? AutoToggleAction)?.autoToggle(true) ?: false) {
+                    if (currentTab.getAutoToggleAction()?.autoToggle(true) ?: false) {
                       currentTab.lastNotFoundString = textField.text
                       headerPane.updateActionsAsync()
                       return@withContext
@@ -341,12 +367,14 @@ class SePopupContentPane(
                 }
               }
 
-              if (!resultListModel.isValid) resultListModel.reset()
+              if (!resultListModel.isValid) resultList.withProgrammaticSelectionChange { resultListModel.reset() }
 
               if (resultListModel.isEmpty) {
                 hintHelper.setSearchInProgress(false)
                 updateEmptyStatus()
-                hideQuickDocPopup()
+                withContext(NonCancellable) {
+                  cancelQuickDocPopup()
+                }
               }
 
               semanticWarning.value = resultListModel.isValidAndHasOnlySemantic
@@ -358,7 +386,10 @@ class SePopupContentPane(
               hintHelper.setSearchInProgress(false)
               val wasFrozen = resultListModel.freezer.isEnabled
 
-              resultListModel.addFromThrottledEvent(searchContext, event)
+              resultList.withProgrammaticSelectionChange { resultListModel.addFromThrottledEvent(searchContext, event) }
+              if (event.hasResultsUpdates()) {
+                SeMlService.getInstanceIfEnabled()?.notifySearchResultsUpdated()
+              }
               semanticWarning.value = resultListModel.isValidAndHasOnlySemantic
 
               // Freeze back if it was frozen before
@@ -590,7 +621,9 @@ class SePopupContentPane(
     }
   }
 
+  @RequiresEdt
   private suspend fun elementsSelected(indexes: IntArray, modifiers: Int) {
+    ThreadingAssertions.assertEventDispatchThread()
     var nonItemDataCount = 0
 
     // Calculate items with indexes considering some non-item rows on top (for example, notification row).
@@ -607,12 +640,17 @@ class SePopupContentPane(
       }
     }
 
-    val selectedItems = vmState.value?.itemsSelected(itemDataList, nonItemDataCount == 0, modifiers)
+    val closeRequester = SeClosePopupRequester { issueClosePopup() }
+    val selectedItems = withContext(closeRequester) {
+      vmState.value?.itemsSelected(itemDataList, nonItemDataCount == 0, modifiers)
+    }
     if (selectedItems?.any { it is SeSelectionResultClose } == true) {
-      closePopup()
+      withContext(NonCancellable) { issueClosePopup() }
     }
     else {
-      (selectedItems?.filterIsInstance<SeSelectionResultText>()?.firstOrNull())?.let { textField.text = it.searchText + " " }
+      (selectedItems?.filterIsInstance<SeSelectionResultText>()?.firstOrNull())?.let {
+        textField.setText(it.searchText + " ", selectAll = false, reason = "selection-result-text")
+      }
 
       resultList.repaint()
       refreshPresentations()
@@ -641,7 +679,7 @@ class SePopupContentPane(
 
             withContext(Dispatchers.EDT) {
               val index = resultListModel.indexOf(itemRow).takeIf { it != -1 } ?: return@withContext
-              resultListModel.set(index, newItemRow)
+              resultList.withProgrammaticSelectionChange { resultListModel.set(index, newItemRow) }
             }
           }
         }
@@ -680,7 +718,7 @@ class SePopupContentPane(
     }
 
     resultList.addListSelectionListener { _: ListSelectionEvent ->
-      if (!resultList.isAutoSelectionChange) {
+      if (!resultList.isProgrammaticSelectionChange) {
         selectionListener.saveSelectionState(textField.text)
       }
     }
@@ -749,8 +787,10 @@ class SePopupContentPane(
     }
 
     val escape = ActionManager.getInstance().getAction("EditorEscape")
-    DumbAwareAction.create { closePopup() }
-      .registerCustomShortcutSet(escape?.shortcutSet ?: CommonShortcuts.ESCAPE, this)
+    DumbAwareAction.create {
+      ThreadingAssertions.assertEventDispatchThread()
+      issueClosePopup()
+    }.registerCustomShortcutSet(escape?.shortcutSet ?: CommonShortcuts.ESCAPE, this)
 
     textField.addFocusListener(object : FocusAdapter() {
       override fun focusLost(e: FocusEvent) {
@@ -819,7 +859,9 @@ class SePopupContentPane(
     })
   }
 
+  @RequiresEdt
   private fun onFocusLost(e: FocusEvent) {
+    ThreadingAssertions.assertEventDispatchThread()
     if (isWaylandToolkit()) {
       // In Wayland focus is always lost when the window is being moved.
       return
@@ -830,7 +872,7 @@ class SePopupContentPane(
 
     val oppositeComponent = e.oppositeComponent
     if (!UIUtil.haveCommonOwner(this, oppositeComponent)) {
-      closePopup()
+      issueClosePopup()
     }
   }
 
@@ -869,8 +911,7 @@ class SePopupContentPane(
       .setMovable(false)
       .setRequestFocus(true)
       .setItemChosenCallback { text: String ->
-        textField.setText(text)
-        textField.selectAll()
+        textField.setText(text, selectAll = true, reason = "history-popup-pick")
       }
       .setRenderer(GroupedItemsListRenderer(
         object : ListItemDescriptorAdapter<String>() {
@@ -900,9 +941,7 @@ class SePopupContentPane(
           override fun actionPerformed(e: AnActionEvent) {
             coroutineScope.launch {
               if (vmState.value?.currentTab?.performExtendedAction(item) == true) {
-                withContext(Dispatchers.EDT) {
-                  closePopup()
-                }
+                withContext(Dispatchers.EDT + NonCancellable) { issueClosePopup() }
               }
             }
           }
@@ -925,10 +964,9 @@ class SePopupContentPane(
     extendedInfoComponent?.let { extendedInfoContainer.add(it.component) }
   }
 
-  private fun closePopup() {
-    coroutineScope.launch(Dispatchers.EDT) {
-      hideQuickDocPopup()
-    }
+  // Requires a non-cancellable or blocking context since it calls into dispose stacks
+  private fun issueClosePopup() {
+    cancelQuickDocPopup()
     vmState.value?.closePopup()
   }
 
@@ -1149,13 +1187,14 @@ class SePopupContentPane(
   private fun updateQuickDocPopup(itemData: SeItemData?) {
     val quickDocPopup = quickDocPopup ?: return
     if (!quickDocPopup.isVisible()) return
-    val rawObject = itemData?.fetchItemIfExists()?.rawObject ?: hideQuickDocPopup()
+    val rawObject = itemData?.fetchItemIfExists()?.rawObject ?: cancelQuickDocPopup()
 
     val updateProcessor = quickDocPopup.getUserData(PopupUpdateProcessorBase::class.java)
     updateProcessor?.updatePopup(rawObject)
   }
 
-  private fun hideQuickDocPopup() {
+  // Requires a non-cancellable or blocking context since it calls into dispose stacks
+  private fun cancelQuickDocPopup() {
     quickDocPopup?.takeIf { it.isVisible }?.cancel()
   }
 
@@ -1167,4 +1206,15 @@ class SePopupContentPane(
     const val DEFAULT_FROZEN_VISIBLE_PART: Double = 1.1
     const val DEFAULT_FREEZING_DELAY_MS: Long = 800
   }
+}
+
+private fun ThrottledItems<SeResultEvent>.hasResultsUpdates(): Boolean =
+  when (this) {
+    is ThrottledOneItem<SeResultEvent> -> item is SeResultAddedEvent || item is SeResultReplacedEvent
+    is ThrottledAccumulatedItems<SeResultEvent> -> items.any { it is SeResultAddedEvent || it is SeResultReplacedEvent }
+  }
+
+internal fun SeUiInspectorInfo?.asPropertyBeans(): List<PropertyBean> {
+  if (this == null) return emptyList()
+  return properties.map { PropertyBean(it.propertyName, it.propertyValue, it.isChanged) }
 }

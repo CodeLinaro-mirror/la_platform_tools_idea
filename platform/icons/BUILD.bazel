@@ -1,25 +1,48 @@
-### auto-generated section `build intellij.platform.icons` start
 load("@rules_jvm//:jvm.bzl", "jvm_library", "resourcegroup")
 
-resourcegroup(
-  name = "icons_resources",
-  srcs = glob(["compatibilityResources/**/*"]),
-  strip_prefix = "compatibilityResources"
-)
+### auto-generated section `build intellij.platform.icons` start
 
 resourcegroup(
-  name = "icons_resources_1",
-  srcs = glob(["src/**/*"]),
-  strip_prefix = "src"
+    name = "icons_resources",
+    srcs = glob(
+        ["src/**/*"],
+    ),
+    strip_prefix = "src",
 )
 
 jvm_library(
-  name = "icons",
-  visibility = ["//visibility:public"],
-  srcs = glob([], allow_empty = True),
-  resources = [
-    ":icons_resources",
-    ":icons_resources_1",
-  ]
+    name = "icons",
+    srcs = glob(
+        [],
+        allow_empty = True,
+    ),
+    module_name = "intellij.platform.icons",
+    resource_jars = [":icons_resources"],
+    resource_strip_prefix = "compatibilityResources",
+    resources = glob(
+        ["compatibilityResources/**/*"],
+    ),
+    visibility = ["//visibility:public"],
+)
+
+jvm_library(
+    name = "icons_test_lib",
+    testonly = True,
+    srcs = glob(
+        [],
+        allow_empty = True,
+    ),
+    module_name = "intellij.platform.icons",
+    visibility = ["//visibility:public"],
+    runtime_deps = [":icons"],
 )
 ### auto-generated section `build intellij.platform.icons` end
+
+### auto-generated section `iml intellij.platform.icons` start
+exports_files(
+    [
+        "intellij.platform.icons.iml",
+    ],
+    visibility = ["//visibility:public"],
+)
+### auto-generated section `iml intellij.platform.icons` end

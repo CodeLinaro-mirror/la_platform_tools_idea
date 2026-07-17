@@ -1,23 +1,25 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.agent.workbench.prompt.ui
 
-import com.intellij.agent.workbench.common.session.AgentSessionLaunchMode
-import com.intellij.agent.workbench.common.session.AgentSessionProvider
+import com.intellij.platform.ai.agent.core.session.AgentSessionLaunchMode
+import com.intellij.platform.ai.agent.core.session.AgentSessionProvider
 import com.intellij.agent.workbench.prompt.core.AgentPromptInitialMessageRequest
-import com.intellij.agent.workbench.sessions.core.providers.AgentInitialMessagePlan
-import com.intellij.agent.workbench.sessions.core.providers.AgentSessionLaunchSpec
-import com.intellij.agent.workbench.sessions.core.providers.AgentSessionProviderDescriptor
-import com.intellij.agent.workbench.sessions.core.providers.AgentSessionSource
-import com.intellij.agent.workbench.sessions.core.providers.AgentSessionTerminalLaunchSpec
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentInitialMessagePlan
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentSessionProviderDescriptor
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentSessionSource
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentSessionTerminalLaunchSpec
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
+import java.util.concurrent.TimeUnit
 import javax.swing.Icon
 
+@Timeout(value = 2, unit = TimeUnit.MINUTES)
 class AgentPromptFooterHintDecisionsTest {
   @Test
   fun codexExistingModeUsesCodexFooterHint() {
     val selectedProvider = testPromptProviderBridge(
-      provider = AgentSessionProvider.CODEX,
+      provider = AgentSessionProvider.from("codex"),
       supportsTabQueueShortcut = true,
     )
     assertThat(
@@ -31,7 +33,7 @@ class AgentPromptFooterHintDecisionsTest {
   @Test
   fun existingTaskWithNextPromptTabUsesDefaultFooterHintEvenForCodex() {
     val selectedProvider = testPromptProviderBridge(
-      provider = AgentSessionProvider.CODEX,
+      provider = AgentSessionProvider.from("codex"),
       supportsTabQueueShortcut = true,
     )
     assertThat(
@@ -46,10 +48,10 @@ class AgentPromptFooterHintDecisionsTest {
   @Test
   fun nonCodexOrNonExistingModeUsesDefaultFooterHint() {
     val codexProvider = testPromptProviderBridge(
-      provider = AgentSessionProvider.CODEX,
+      provider = AgentSessionProvider.from("codex"),
       supportsTabQueueShortcut = true,
     )
-    val claudeProvider = testPromptProviderBridge(provider = AgentSessionProvider.CLAUDE)
+    val claudeProvider = testPromptProviderBridge(provider = AgentSessionProvider.from("claude"))
     assertThat(
       resolveDefaultFooterHintMessageKey(
         targetMode = PromptTargetMode.NEW_TASK,
@@ -75,7 +77,7 @@ class AgentPromptFooterHintDecisionsTest {
   @Test
   fun existingTaskSelectionHintIsHiddenForCodexExistingMode() {
     val selectedProvider = testPromptProviderBridge(
-      provider = AgentSessionProvider.CODEX,
+      provider = AgentSessionProvider.from("codex"),
       suppressExistingTaskSelectionHint = true,
     )
     assertThat(
@@ -89,7 +91,7 @@ class AgentPromptFooterHintDecisionsTest {
 
   @Test
   fun existingTaskSelectionHintRequiresNoSelectionInExistingNonCodexMode() {
-    val selectedProvider = testPromptProviderBridge(provider = AgentSessionProvider.CLAUDE)
+    val selectedProvider = testPromptProviderBridge(provider = AgentSessionProvider.from("claude"))
     assertThat(
       shouldShowExistingTaskSelectionHint(
         targetMode = PromptTargetMode.EXISTING_TASK,
@@ -133,7 +135,7 @@ private fun testPromptProviderBridge(
     override val supportsPromptTabQueueShortcut: Boolean = supportsTabQueueShortcut
     override val suppressPromptExistingTaskSelectionHint: Boolean = suppressExistingTaskSelectionHint
 
-    override fun isCliAvailable(): Boolean = true
+    override suspend fun isCliAvailable(): Boolean = true
 
     override suspend fun buildResumeLaunchSpec(sessionId: String): AgentSessionTerminalLaunchSpec {
       return AgentSessionTerminalLaunchSpec(command = emptyList())
@@ -141,14 +143,6 @@ private fun testPromptProviderBridge(
 
     override suspend fun buildNewSessionLaunchSpec(mode: AgentSessionLaunchMode): AgentSessionTerminalLaunchSpec {
       return AgentSessionTerminalLaunchSpec(command = emptyList())
-    }
-
-    override fun buildNewEntryLaunchSpec(): AgentSessionTerminalLaunchSpec {
-      return AgentSessionTerminalLaunchSpec(command = emptyList())
-    }
-
-    override suspend fun createNewSession(path: String, mode: AgentSessionLaunchMode): AgentSessionLaunchSpec {
-      return AgentSessionLaunchSpec(sessionId = null, launchSpec = AgentSessionTerminalLaunchSpec(command = emptyList()))
     }
 
     override fun buildInitialMessagePlan(request: AgentPromptInitialMessageRequest): AgentInitialMessagePlan {

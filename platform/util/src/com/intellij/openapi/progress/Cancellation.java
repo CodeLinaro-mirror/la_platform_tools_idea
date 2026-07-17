@@ -11,34 +11,31 @@ import kotlinx.coroutines.Job;
 import kotlinx.coroutines.JobKt;
 import kotlinx.coroutines.NonCancellable;
 import org.jetbrains.annotations.ApiStatus;
-import org.jetbrains.annotations.ApiStatus.Internal;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.annotations.VisibleForTesting;
 
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
-
-@Internal
+@ApiStatus.Internal
 public final class Cancellation {
 
   private Cancellation() { }
 
-  @VisibleForTesting
   public static @Nullable Job currentJob() {
     return ThreadContext.currentThreadContext().get(Job.Key);
   }
 
   public static void checkCancelled() {
-    if (isInNonCancelableSection()) {
+    Job job = currentJob();
+    if (isInNonCancelableSection(job)) {
       JfrCancellationEventsCallbackHolder.nonCancellableSectionInvoked();
       return;
     }
 
     try {
-      ensureActive();
+      ensureActive(job);
       JfrCancellationEventsCallbackHolder.cancellableSectionInvoked(false);
     }
     catch (ProcessCanceledException e) {
@@ -54,16 +51,22 @@ public final class Cancellation {
    * It is <b>internal method</b>, it is made public to be called from different legacy variants of checkCancelled()
    * (from ProgressIndicator, etc.) without duplicating isInNonCancelableSection() call.
    */
-  @Internal
+  @ApiStatus.Internal
   public static void ensureActive() {
-    ThreadContext.warnAccidentalCancellation();
+    ensureActive(currentJob());
+  }
 
-    Job currentJob = currentJob();
+  /**
+   * {@link #ensureActive()} for an already-resolved {@link Job}, sparing the caller a second thread-context walk.
+   */
+  @ApiStatus.Internal
+  public static void ensureActive(@Nullable Job job) {
+    ThreadContext.warnAccidentalCancellation();
     // sometimes it is possible to violate structured concurrency and obtain the successfully completed Job in the context, like in the completion handler of `Job`s.
     // We shall not check cancellation in this case
-    if (currentJob != null && !(isJobCompletedSuccessfully(currentJob))) {
+    if (job != null && !isJobCompletedSuccessfully(job)) {
       try {
-        JobKt.ensureActive(currentJob);
+        JobKt.ensureActive(job);
       }
       catch (ProcessCanceledException pce) {
         throw pce;
@@ -103,7 +106,15 @@ public final class Cancellation {
    */
   @ApiStatus.Obsolete
   public static boolean isInNonCancelableSection() {
-    if (isInNonCancelableSectionInternal()) return true;
+    return isInNonCancelableSection(currentJob());
+  }
+
+  /**
+   * {@link #isInNonCancelableSection()} for an already-resolved {@link Job}, sparing the caller a second thread-context walk.
+   */
+  @ApiStatus.Internal
+  public static boolean isInNonCancelableSection(@Nullable Job job) {
+    if (job != null && checkIfCurrentJobIsNonCancellable(job)) return true;
     // Avoid thread-local access when the debugger is not enabled.
     if (!DebugNonCancellableState.isDebugEnabled) return false;
     // Check whether is still attached in case debugger connection is lost before cleanup
@@ -192,7 +203,7 @@ public final class Cancellation {
    * This method will throw an error in coming releases.
    * <a href="https://youtrack.jetbrains.com/issue/IJPL-1045">YouTrack issue.</a>
    */
-  @Internal
+  @ApiStatus.Internal
   @Deprecated
   public static <T> T forceNonCancellableSectionInClassInitializer(@NotNull Supplier<T> computable) {
     return computeInNonCancelableSection(computable::get);

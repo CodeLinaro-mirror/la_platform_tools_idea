@@ -15,8 +15,11 @@ import com.intellij.testFramework.junit5.TestApplication
 import com.intellij.testFramework.runInEdtAndWait
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
+import java.util.concurrent.TimeUnit
 
 @TestApplication
+@Timeout(value = 2, unit = TimeUnit.MINUTES)
 class AgentWorkbenchPromptActionPromoterTest {
   private val promoter = AgentWorkbenchPromptShortcutActionPromoter()
 
@@ -40,6 +43,26 @@ class AgentWorkbenchPromptActionPromoterTest {
     }
     finally {
       aiAction.dispose()
+      promptAction.dispose()
+    }
+  }
+
+  @Test
+  fun promotesGlobalPromptAheadOfRunAnythingWithoutEditorContext() {
+    val promptAction = registerActionIfNeeded(AgentWorkbenchPromptShortcutActionPromoter.PROMPT_ACTION_ID)
+    val runAnythingAction = registerActionIfNeeded(AgentWorkbenchPromptShortcutActionPromoter.RUN_ANYTHING_ACTION_ID)
+
+    try {
+      val result = rearrangeByPromotersImpl(
+        listOf(runAnythingAction.action, promptAction.action),
+        DataContext.EMPTY_CONTEXT,
+        listOf(promoter),
+      )
+
+      assertThat(result).containsExactly(promptAction.action, runAnythingAction.action)
+    }
+    finally {
+      runAnythingAction.dispose()
       promptAction.dispose()
     }
   }

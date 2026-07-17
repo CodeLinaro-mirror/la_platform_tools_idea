@@ -12,6 +12,7 @@ import com.intellij.platform.eel.EelDescriptor
 import com.intellij.platform.eel.EelExecApi
 import com.intellij.platform.eel.EelExecPosixApi
 import com.intellij.platform.eel.EelExecWindowsApi
+import com.intellij.platform.eel.EelPlatform
 import com.intellij.platform.eel.EelProcess
 import com.intellij.platform.eel.ExecuteProcessException
 import com.intellij.platform.eel.environmentVariables
@@ -27,20 +28,21 @@ import com.intellij.platform.eel.provider.utils.awaitProcessResult
 import com.intellij.platform.eel.provider.utils.stderrString
 import com.intellij.platform.eel.provider.utils.stdoutString
 import com.intellij.platform.eel.spawnProcess
+import com.intellij.platform.ide.productMode.IdeProductMode
 import com.intellij.util.EnvironmentUtil
 import com.intellij.util.io.awaitExit
+import com.intellij.util.system.LowLevelLocalMachineAccess
 import com.intellij.util.system.OS
 import com.jediterm.core.util.TermSize
 import com.jediterm.terminal.TtyConnector
 import com.pty4j.PtyProcess
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.jetbrains.plugins.terminal.startup.ShellExecCommand
 import org.jetbrains.plugins.terminal.startup.ShellExecCommandImpl
 import org.jetbrains.plugins.terminal.startup.WslShellExecCommand
 import org.jetbrains.plugins.terminal.util.ShellNameUtil
-import org.jetbrains.plugins.terminal.util.terminalApplicationScope
 import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
@@ -88,7 +90,11 @@ internal fun startProcess(
 
 internal fun buildStartupEelContext(workingDir: Path, shellCommand: List<String>): TerminalStartupEelContext {
   if (!shouldUseEelApi()) {
-    return TerminalStartupEelContext(workingDir.asEelPath(LocalEelDescriptor), ShellExecCommandImpl(shellCommand))
+    return TerminalStartupEelContext(
+      workingDirectory = workingDir.asEelPath(LocalEelDescriptor),
+      shellCommand = ShellExecCommandImpl(shellCommand),
+      platform = localEel.platform,
+    )
   }
   return runBlockingMaybeCancellable {
     try {
@@ -96,16 +102,25 @@ internal fun buildStartupEelContext(workingDir: Path, shellCommand: List<String>
     }
     catch (e: Exception) {
       log.warn("Cannot find EelDescriptor", e)
-      TerminalStartupEelContext(workingDir.asEelPath(LocalEelDescriptor), ShellExecCommandImpl(shellCommand))
+      TerminalStartupEelContext(
+        workingDirectory = workingDir.asEelPath(LocalEelDescriptor),
+        shellCommand = ShellExecCommandImpl(shellCommand),
+        platform = localEel.platform,
+      )
     }
   }
 }
 
+@OptIn(LowLevelLocalMachineAccess::class)
 @Throws(EelPathException::class)
 private suspend fun doBuildStartupEelContext(workingDirectory: Path, shellCommand: List<String>): TerminalStartupEelContext {
   val executable = shellCommand.firstOrNull()
-  if (OS.CURRENT == OS.Windows && executable != null &&
-      (ShellNameUtil.isPowerShell(executable) || OSAgnosticPathUtil.isAbsoluteDosPath(executable))) {
+  // TODO: this check is very fragile and should be replaced with a more robust solution.
+  //  For example, delegating choosing the correct working directory / shell pair to the clients of this API.
+  if (!IdeProductMode.isFrontend  // This check targets only local Windows case
+      && OS.CURRENT == OS.Windows
+      && executable != null
+      && (ShellNameUtil.isPowerShell(executable) || OSAgnosticPathUtil.isAbsoluteDosPath(executable))) {
     // Enforce running a Windows shell locally even if the project is opened in WSL.
     //
     // Although WSL can run Windows processes, it's best to avoid it:
@@ -116,8 +131,9 @@ private suspend fun doBuildStartupEelContext(workingDirectory: Path, shellComman
     //    e.g. 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'.
     // 4. Using two interoperability layers to run a local Windows process is generally unnecessary.
     return TerminalStartupEelContext(
-      EelPath.parse(workingDirectory.toString(), LocalEelDescriptor),
-      ShellExecCommandImpl(shellCommand)
+      workingDirectory = EelPath.parse(workingDirectory.toString(), LocalEelDescriptor),
+      shellCommand = ShellExecCommandImpl(shellCommand),
+      platform = localEel.platform,
     )
   }
 
@@ -131,14 +147,16 @@ private suspend fun doBuildStartupEelContext(workingDirectory: Path, shellComman
 
   val workingDirectoryEelPath = workingDirectory.asEelPath()
   return TerminalStartupEelContext(
-    workingDirectoryEelPath,
-    ShellExecCommandImpl(shellCommand)
+    workingDirectory = workingDirectoryEelPath,
+    shellCommand = ShellExecCommandImpl(shellCommand),
+    platform = workingDirectoryEelPath.descriptor.toEelApi().platform
   )
 }
 
 internal class TerminalStartupEelContext(
   val workingDirectory: EelPath,
   val shellCommand: ShellExecCommand,
+  val platform: EelPlatform,
 ) {
   val eelDescriptor: EelDescriptor
     get() = workingDirectory.descriptor
@@ -236,60 +254,8 @@ internal class ShellProcessHolder(
   val isPosix: Boolean get() = eelApi.platform.isPosix
 
   val ptyProcess: PtyProcess = eelProcess.convertToJavaProcess() as PtyProcess
-  private val shellPid: EelApi.Pid = eelProcess.pid
 
   val descriptor: EelDescriptor get() = eelApi.descriptor
-
-  fun terminatePosixShell() {
-    terminalApplicationScope().launch(Dispatchers.IO) {
-      if (!ptyProcess.isAlive) {
-        log.debug { "Shell process ${processInfo(ptyProcess)} is already terminated" }
-        return@launch
-      }
-      log.debug { "Sending SIGHUP to shell process ${processInfo(ptyProcess)}" }
-      val killProcess = try {
-        eelApi.exec.spawnProcess("kill").args("-HUP", shellPid.value.toString()).eelIt()
-      }
-      catch (e: ExecuteProcessException) {
-        log.warn("Unable to send SIGHUP to ${processInfo(ptyProcess)}", e)
-        return@launch
-      }
-      if (ptyProcess.awaitExit(5.seconds) == null) {
-        val killProcessResult = withTimeoutOrNull(1.seconds) {
-          killProcess.awaitProcessResult()
-        }
-        if (ptyProcess.isAlive) {
-          log.info("Shell process ${processInfo(ptyProcess)} hasn't been terminated by SIGHUP, performing forceful termination. " +
-                   "\"kill -HUP $shellPid\" => ${killProcessResult?.stringify()}")
-          ptyProcess.destroyForcibly()
-        }
-      }
-      val exitCode = ptyProcess.awaitExit(2.seconds)
-      if (exitCode != null) {
-        log.debug { "Shell process ${processInfo(ptyProcess)} has been terminated with exit code $exitCode" }
-      }
-      else {
-        log.warn("Shell process ${processInfo(ptyProcess)} has not been terminated!")
-      }
-    }
-  }
-
-  /**
-   * @return The exit value of the process if it exits within the timeout or null otherwise.
-   */
-  private suspend fun Process.awaitExit(timeout: kotlin.time.Duration): Int? {
-    return withTimeoutOrNull(timeout) {
-      this@awaitExit.awaitExit()
-    }
-  }
-
-  private fun processInfo(process: PtyProcess): String {
-    return "${process::class.java.name}($shellPid)"
-  }
-
-  private fun EelProcessExecutionResult.stringify(): String {
-    return "(exitCode=$exitCode, stdout=$stdoutString, stderr=$stderrString)"
-  }
 }
 
 private val log: Logger = logger<AbstractTerminalRunner<*>>()

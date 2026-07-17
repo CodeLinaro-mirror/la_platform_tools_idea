@@ -15,13 +15,14 @@ import org.jetbrains.plugins.gradle.importing.BuildViewMessagesImportingTestCase
 import org.jetbrains.plugins.gradle.jvmcompat.GradleJvmSupportMatrix
 import org.jetbrains.plugins.gradle.testFramework.GradleExecutionTestCase
 import org.jetbrains.plugins.gradle.testFramework.annotations.AllGradleVersionsSource
+import org.jetbrains.plugins.gradle.tooling.annotation.TargetVersions
 import org.junit.jupiter.params.ParameterizedTest
-import org.junit.jupiter.params.provider.ValueSource
 
 class GradleLatestMinorVersionBuildIssueTaskExecutionTest : GradleExecutionTestCase() {
 
   @ParameterizedTest
   @AllGradleVersionsSource
+  @TargetVersions("8.0.x")
   fun testTaskExecution(gradleVersion: GradleVersion) {
     testEmptyProject(gradleVersion) {
       enableGradleLatestMinorVersionInspection(project)
@@ -50,7 +51,8 @@ class GradleLatestMinorVersionBuildIssueTaskExecutionTest : GradleExecutionTestC
   }
 
   @ParameterizedTest
-  @ValueSource(strings = ["8.0"])
+  @AllGradleVersionsSource
+  @TargetVersions("8.0.x")
   fun testTaskExecutionDisabledInspection(gradleVersion: GradleVersion) {
     testEmptyProject(gradleVersion) {
       writeText("build.gradle", buildScript(gradleVersion, GradleDsl.GROOVY) {
@@ -84,11 +86,11 @@ class GradleLatestMinorVersionBuildIssueTaskExecutionTest : GradleExecutionTestC
 
     internal fun shouldShowMinorGradleVersionWarning(gradleVersion: GradleVersion) =
       !GradleJvmSupportMatrix.isGradleDeprecatedByIdea(gradleVersion) &&
-      gradleVersion < GradleJvmSupportMatrix.getLatestMinorGradleVersion(gradleVersion.majorVersion)
+      gradleVersion < GradleJvmSupportMatrix.suggestLatestMinorGradleVersion(gradleVersion.majorVersion)
 
     internal fun assertNewMinorGradleVersionNodeConsoleText(gradleVersion: GradleVersion, consoleText: String) {
       val oldVersion = gradleVersion.version
-      val newVersion = GradleJvmSupportMatrix.getLatestMinorGradleVersion(gradleVersion.majorVersion).version
+      val newVersion = GradleJvmSupportMatrix.suggestLatestMinorGradleVersion(gradleVersion.majorVersion).version
       Assertions.assertThat(consoleText)
         .isEqualToIgnoringNewLines("""
           Gradle $oldVersion is not the latest minor version.

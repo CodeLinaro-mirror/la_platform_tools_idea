@@ -1,10 +1,11 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.plugins.javaFX.fxml;
 
 import com.intellij.codeInsight.completion.LightFixtureCompletionTestCase;
 import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.openapi.application.PluginPathManager;
 import com.intellij.testFramework.LightProjectDescriptor;
+import com.intellij.testFramework.TestDataPath;
 import com.intellij.util.ArrayUtilRt;
 import org.jetbrains.annotations.NotNull;
 
@@ -12,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+@TestDataPath("$CONTENT_ROOT/../../testData/completion")
 public class JavaFxCompletionTest extends LightFixtureCompletionTestCase {
 
   @NotNull
@@ -85,6 +87,18 @@ public class JavaFxCompletionTest extends LightFixtureCompletionTestCase {
   }
 
   public void testExpressionBinding() {
+    doTest("text");
+  }
+
+  public void testExpressionBindingIncomplete() {
+    doTest("text");
+  }
+
+  public void testExpressionBindingInArithmetic() {
+    doTest("text");
+  }
+
+  public void testExpressionBindingAfterOperator() {
     doTest("text");
   }
 

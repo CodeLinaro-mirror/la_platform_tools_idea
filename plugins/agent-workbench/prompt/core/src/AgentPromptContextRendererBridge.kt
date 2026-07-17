@@ -1,8 +1,8 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.agent.workbench.prompt.core
 
-import com.intellij.agent.workbench.common.extensions.OverridableValue
-import com.intellij.agent.workbench.common.extensions.SnapshotExtensionPointCache
+import com.intellij.platform.ai.agent.core.extensions.OverridableValue
+import com.intellij.platform.ai.agent.core.extensions.SnapshotExtensionPointCache
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.extensions.ExtensionPointName
 
@@ -119,11 +119,6 @@ class InMemoryAgentPromptContextRendererRegistry(
 object AgentPromptContextRenderers {
   private val epRegistry: AgentPromptContextRendererRegistry = EpBackedAgentPromptContextRendererRegistry()
   private val registryOverride = OverridableValue { epRegistry }
-
-  @Suppress("unused")
-  fun allBridges(): List<AgentPromptContextRendererBridge> {
-    return registryOverride.value().allBridges()
-  }
 
   fun find(rendererId: String): AgentPromptContextRendererBridge? {
     return registryOverride.value().find(rendererId)

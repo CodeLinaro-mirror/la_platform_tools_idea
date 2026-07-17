@@ -2,11 +2,12 @@
 package com.jetbrains.python.packaging.management
 
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.text.StringUtil
+import com.intellij.util.concurrency.annotations.RequiresBackgroundThread
 import com.jetbrains.python.errorProcessing.PyResult
 import com.jetbrains.python.packaging.PyPackageName
 import com.jetbrains.python.packaging.PyPackageVersion
 import com.jetbrains.python.packaging.PyRequirement
+import com.jetbrains.python.packaging.cache.PythonPackageSearchResult
 import com.jetbrains.python.packaging.common.PythonPackageDetails
 import com.jetbrains.python.packaging.common.PythonRepositoryPackageSpecification
 import com.jetbrains.python.packaging.repository.PyPackageRepository
@@ -14,11 +15,9 @@ import org.jetbrains.annotations.ApiStatus
 import java.io.IOException
 
 @ApiStatus.Internal
-interface PythonRepositoryManager {
+internal interface PythonRepositoryManager {
   val project: Project
   val repositories: List<PyPackageRepository>
-
-  fun allPackages(): Set<String>
 
   suspend fun getPackageDetails(packageName: String, repository: PyPackageRepository?): PyResult<PythonPackageDetails>
   suspend fun getLatestVersion(packageName: String, repository: PyPackageRepository?): PyPackageVersion?
@@ -30,25 +29,26 @@ interface PythonRepositoryManager {
   @Throws(IOException::class)
   suspend fun initCaches()
 
-  fun searchPackages(query: String, repository: PyPackageRepository): List<String> {
-    val normalizedQuery = PyPackageName.normalizePackageName(query)
-    return repository.getPackages().filter { StringUtil.containsIgnoreCase(PyPackageName.normalizePackageName(it), normalizedQuery) }
+  @RequiresBackgroundThread
+  fun searchPackages(repository: PyPackageRepository, needle: String, pageSize: Int = 100): PythonPackageSearchResult {
+    val normalizedNeedle = PyPackageName.normalizePackageName(needle)
+    return repository.search(normalizedNeedle, pageSize)
   }
 
+  @RequiresBackgroundThread
+  fun searchPackages(needle: String, pageSize: Int = 100): Map<PyPackageRepository, PythonPackageSearchResult> {
+    return repositories.associateWith { searchPackages(it, needle, pageSize) }
+  }
 
+  @RequiresBackgroundThread
   fun hasPackageSnapshot(packageName: String): Boolean {
-    return repositories.any { packageName in it.getPackages() }
+    return repositories.any { it.hasPackage(packageName) }
   }
 
   suspend fun findPackageSpecification(
     requirement: PyRequirement,
     repository: PyPackageRepository? = null,
   ): PythonRepositoryPackageSpecification?
-
-
-  fun searchPackages(query: String): Map<PyPackageRepository, List<String>> {
-    return repositories.associateWith { searchPackages(query, it) }
-  }
 
   @ApiStatus.Internal
   suspend fun matchRequirement(requirement: PyRequirement): Boolean {

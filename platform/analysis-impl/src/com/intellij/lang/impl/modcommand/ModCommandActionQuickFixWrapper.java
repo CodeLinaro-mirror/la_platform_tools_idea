@@ -10,30 +10,22 @@ import com.intellij.modcommand.ModCommandAction;
 import com.intellij.modcommand.ModCommandQuickFix;
 import com.intellij.openapi.diagnostic.ReportingClassSubstitutor;
 import com.intellij.openapi.project.Project;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 /// Wraps [ModCommandAction] so old APIs can consume it as [LocalQuickFix].
-@ApiStatus.Internal
-public final class ModCommandActionQuickFixWrapper extends ModCommandQuickFix implements ReportingClassSubstitutor {
+final class ModCommandActionQuickFixWrapper extends ModCommandQuickFix implements ReportingClassSubstitutor {
   private final ModCommandAction myAction;
-  private final boolean myAvailableInBatchMode;
 
   ModCommandActionQuickFixWrapper(@NotNull ModCommandAction action) {
-    this(action, true);
-  }
-
-  ModCommandActionQuickFixWrapper(@NotNull ModCommandAction action, boolean availableInBatchMode) {
     myAction = action;
-    myAvailableInBatchMode = availableInBatchMode;
   }
 
   @Override
   public boolean availableInBatchMode() {
-    return myAvailableInBatchMode;
+    return myAction.availableInBatchMode();
   }
 
-  public ModCommandAction getAction() {
+  ModCommandAction getAction() {
     return myAction;
   }
 

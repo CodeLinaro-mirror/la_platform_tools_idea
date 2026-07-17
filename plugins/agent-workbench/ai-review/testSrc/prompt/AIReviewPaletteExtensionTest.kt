@@ -2,6 +2,7 @@
 package com.intellij.agent.workbench.ai.review.prompt
 
 import com.intellij.agent.workbench.prompt.core.AgentPromptContextItem
+import com.intellij.agent.workbench.prompt.core.AgentPromptContextItemIds
 import com.intellij.agent.workbench.prompt.core.AgentPromptContextRendererIds
 import com.intellij.agent.workbench.prompt.core.AgentPromptContextTruncation
 import com.intellij.agent.workbench.prompt.core.AgentPromptPaletteExtensionContext
@@ -12,8 +13,12 @@ import com.intellij.openapi.extensions.ExtensionPoint
 import com.intellij.testFramework.RunAll
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.util.ThrowableRunnable
+import org.junit.Rule
+import org.junit.rules.Timeout
 
 class AIReviewPaletteExtensionTest : BasePlatformTestCase() {
+  @get:Rule
+  val timeout: Timeout = Timeout.seconds(120)
 
   private lateinit var extension: AIReviewPaletteExtension
   private var promptProviderExtensionPointRegistered: Boolean = false
@@ -41,6 +46,18 @@ class AIReviewPaletteExtensionTest : BasePlatformTestCase() {
     }
 
     assertEquals(renderedIssueBlock("https://tracker.example.test/issue/CASE-101"), prompt)
+  }
+
+  fun `test ai review matches changes selection context`() {
+    assertTrue(extension.matches(listOf(changesSelectionContextItem())))
+  }
+
+  fun `test ai review keeps provider selector visible so the review provider can be chosen`() {
+    assertTrue(extension.showsProviderSelector())
+  }
+
+  fun `test ai review shows generation controls so model and effort can be adjusted`() {
+    assertTrue(extension.showsGenerationControls())
   }
 
   fun `test ai review uses default draft kind when commit issues are absent`() {
@@ -209,7 +226,7 @@ class AIReviewPaletteExtensionTest : BasePlatformTestCase() {
   private fun vcsCommitsContextItem(vararg issueUrls: String): AgentPromptContextItem {
     return AgentPromptContextItem(
       rendererId = AgentPromptContextRendererIds.VCS_COMMITS,
-      title = "Picked Commits",
+      title = "Commits",
       body = "abcdef12",
       payload = AgentPromptPayloadValue.Obj(
         mapOf(
@@ -227,6 +244,18 @@ class AIReviewPaletteExtensionTest : BasePlatformTestCase() {
       itemId = "vcsCommits",
       source = "manualVcs",
       truncation = AgentPromptContextTruncation.none(8),
+    )
+  }
+
+  private fun changesSelectionContextItem(): AgentPromptContextItem {
+    val body = "Selected changes:\n- modified: src/Foo.kt"
+    return AgentPromptContextItem(
+      rendererId = AgentPromptContextRendererIds.SNIPPET,
+      title = "Selected Changes",
+      body = body,
+      itemId = AgentPromptContextItemIds.CHANGES_SELECTION,
+      source = "changes",
+      truncation = AgentPromptContextTruncation.none(body.length),
     )
   }
 

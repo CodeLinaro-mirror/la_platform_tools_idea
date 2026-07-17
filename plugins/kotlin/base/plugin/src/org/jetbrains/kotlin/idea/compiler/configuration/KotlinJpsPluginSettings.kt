@@ -22,6 +22,7 @@ import com.intellij.openapi.util.NlsSafe
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.util.xmlb.XmlSerializer
 import org.jdom.Element
+import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.Nls
 import org.jetbrains.kotlin.config.JpsPluginSettings
 import org.jetbrains.kotlin.config.LanguageVersion
@@ -29,10 +30,7 @@ import org.jetbrains.kotlin.config.SettingConstants
 import org.jetbrains.kotlin.config.SettingConstants.KOTLIN_JPS_PLUGIN_SETTINGS_SECTION
 import org.jetbrains.kotlin.config.toKotlinVersion
 import org.jetbrains.kotlin.idea.base.plugin.KotlinBasePluginBundle
-import org.jetbrains.kotlin.idea.base.plugin.KotlinCompilerVersionProvider
 import org.jetbrains.kotlin.idea.base.util.sdk
-import org.jetbrains.kotlin.idea.compiler.configuration.KotlinJpsPluginSettings.Companion.getInstance
-import org.jetbrains.kotlin.idea.compiler.configuration.KotlinJpsPluginSettings.Companion.readFromKotlincXmlOrIpr
 import java.nio.file.Path
 
 @Service(Service.Level.PROJECT)
@@ -157,21 +155,17 @@ class KotlinJpsPluginSettings(project: Project) : BaseKotlinCompilerSettings<Jps
             // larger versions.
             // The K1 compiler (and up to Kotlin 2.1.10) uses this enum and will throw a compilation error if used with JDK 25+.
             // See: KTIJ-34861
-            for (module in project.modules) {
-                // We check each module independently here because different modules can use different Kotlin versions and JDK versions
-                // i.e. there could be a case of a project that uses JDK 25 in some module but only old Kotlin version in others.
-                val jdkVersion = module.sdk?.let { sdk -> JavaSdk.getInstance().getVersion(sdk) } ?: continue
-                val moduleKotlinVersion = KotlinCompilerVersionProvider.getVersion(module)?.kotlinVersion ?: parsedKotlinVersion
-
-                if (jdkVersion.isAtLeast(JavaSdkVersion.JDK_25) && moduleKotlinVersion < MIN_KOTLIN_VERSION_JDK_25) {
-                    return IncompatibleJdkVersion(
-                        KotlinBasePluginBundle.message(
-                            "kotlin.jps.jdk.unsupported.message",
-                            moduleKotlinVersion,
-                            MIN_KOTLIN_VERSION_JDK_25.toString(),
-                        )
+            if (parsedKotlinVersion < MIN_KOTLIN_VERSION_JDK_25 && project.modules.any { module ->
+                    val jdkVersion = module.sdk?.let { sdk -> JavaSdk.getInstance().getVersion(sdk) } ?: return@any false
+                    jdkVersion.isAtLeast(JavaSdkVersion.JDK_25)
+                }) {
+                return IncompatibleJdkVersion(
+                    KotlinBasePluginBundle.message(
+                        "kotlin.jps.jdk.unsupported.message",
+                        parsedKotlinVersion,
+                        MIN_KOTLIN_VERSION_JDK_25.toString(),
                     )
-                }
+                )
             }
 
             return null
@@ -317,7 +311,8 @@ class KotlinJpsPluginSettings(project: Project) : BaseKotlinCompilerSettings<Jps
             )
         }
 
-        internal fun shouldImportKotlinJpsPluginVersionFromExternalBuildSystem(version: IdeKotlinVersion): Boolean {
+        @ApiStatus.Internal
+        fun shouldImportKotlinJpsPluginVersionFromExternalBuildSystem(version: IdeKotlinVersion): Boolean {
             check(jpsMinimumSupportedVersion < IdeKotlinVersion.get("1.7.10").kotlinVersion) {
                 "${::shouldImportKotlinJpsPluginVersionFromExternalBuildSystem.name} makes sense when minimum supported version is lower " +
                         "than 1.7.20. If minimum supported version is already 1.7.20 then you can drop this function."

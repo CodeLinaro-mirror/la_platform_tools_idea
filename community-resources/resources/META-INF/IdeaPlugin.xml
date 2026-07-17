@@ -6,30 +6,23 @@
   <module value="com.intellij.modules.idea"/>
   <module value="com.intellij.modules.idea.community"/>
   <module value="com.intellij.modules.java-capable"/>
-  <module value="com.intellij.modules.jcef"/>
   <module value="com.intellij.modules.jsp.base"/>
   <module value="com.intellij.modules.python-core-capable"/>
   <module value="com.intellij.modules.python-in-non-pycharm-ide-capable"/>
   <module value="com.intellij.platform.ide.provisioner"/>
 
   <xi:include href="/META-INF/PlatformLangPlugin.xml"/>
-  <xi:include href="intellij.platform.remoteServers.impl.xml">
-    <xi:fallback/>
-  </xi:include>
   <xi:include href="/META-INF/DesignerCorePlugin.xml">
     <xi:fallback/>
   </xi:include>
   <xi:include href="/META-INF/JavaIdePlugin.xml"/>
   <xi:include href="/META-INF/tips-intellij-idea-community.xml"/>
   <xi:include href="/META-INF/community-customization.xml"/>
-  <xi:include href="/META-INF/community-extensions.xml">
-    <xi:fallback/>
-  </xi:include>
-  <xi:include href="/META-INF/intellij.moduleSets.debugger.streams.xml"/>
   <xi:include href="/META-INF/intellij.moduleSets.ide.common.xml"/>
   <xi:include href="/META-INF/intellij.moduleSets.rd.common.xml"/>
   <!-- region additional -->
   <content namespace="jetbrains">
+    <module name="intellij.platform.remoteServers.impl" loading="embedded"/>
     <module name="intellij.platform.coverage"/>
     <module name="intellij.platform.coverage.agent"/>
     <module name="intellij.xml.xmlbeans"/>

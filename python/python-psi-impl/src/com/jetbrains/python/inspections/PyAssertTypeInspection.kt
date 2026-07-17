@@ -12,6 +12,7 @@ import com.jetbrains.python.psi.PyFunction
 import com.jetbrains.python.psi.types.PyCallableParameter
 import com.jetbrains.python.psi.types.PyCallableType
 import com.jetbrains.python.psi.types.PyClassLikeType
+import com.jetbrains.python.psi.types.PyNumericTowerUtil
 import com.jetbrains.python.psi.types.PyType
 import com.jetbrains.python.psi.types.TypeEvalContext
 
@@ -27,13 +28,13 @@ class PyAssertTypeInspection : PyInspection() {
         if (callable is PyFunction && PyTypingTypeProvider.ASSERT_TYPE == callable.qualifiedName) {
           val arguments = callExpression.getArguments()
           if (arguments.size == 2) {
-            val actualType = myTypeEvalContext.getType(arguments[0])
+            val actualType = myTypeEvalContext.getType(arguments[0]).let { PyNumericTowerUtil.enrich(it) }
             val expectedType = Ref.deref(PyTypingTypeProvider.getType(arguments[1], myTypeEvalContext))
             if (!isSame(actualType, expectedType, myTypeEvalContext)) {
               val expectedName = PythonDocumentationProvider.getVerboseTypeName(expectedType, myTypeEvalContext)
               val actualName = PythonDocumentationProvider.getTypeName(actualType, myTypeEvalContext)
               registerProblem(arguments[0],
-                              PyPsiBundle.message("INSP.assert.type.expected.type.got.type.instead", expectedName, actualName))
+                              PyPsiBundle.problemMessage("INSP.assert.type.expected.type.got.type.instead", expectedName, actualName))
             }
           }
         }

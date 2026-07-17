@@ -3,7 +3,6 @@
 package org.jetbrains.kotlin.idea.fir.codeInsight
 
 import org.jetbrains.kotlin.idea.base.analysis.api.utils.allowAnalysisFromWriteActionInEdt
-import org.jetbrains.kotlin.idea.base.plugin.KotlinPluginMode
 import org.jetbrains.kotlin.idea.codeInsight.OverrideImplementTest
 import org.jetbrains.kotlin.idea.core.overrideImplement.AbstractGenerateMembersHandler
 import org.jetbrains.kotlin.idea.core.overrideImplement.KtClassMember
@@ -19,9 +18,6 @@ import org.junit.runner.RunWith
 @Suppress("RedundantOverride") // overrides are for easier test debugging
 @RunWith(JUnit38ClassRunner::class)
 internal class FirOverrideImplementTest : OverrideImplementTest<KtClassMember>(), FirOverrideImplementTestMixIn {
-
-    override val pluginMode: KotlinPluginMode
-        get() = KotlinPluginMode.K2
 
     override fun collectAndCheckChooserObjectsByClasses(
         fileNameWithoutExtension: String,
@@ -64,6 +60,14 @@ internal class FirOverrideImplementTest : OverrideImplementTest<KtClassMember>()
 
     fun testImplementDeprecatedFunction() {
         doImplementFileTest()
+    }
+
+    fun testSubstitutionOverrideOutProjection() {
+        doImplementFileTest()
+    }
+
+    fun testImplementFromMultipleSupers() {
+        doMultiImplementFileTest()
     }
 
     // Shared with K1

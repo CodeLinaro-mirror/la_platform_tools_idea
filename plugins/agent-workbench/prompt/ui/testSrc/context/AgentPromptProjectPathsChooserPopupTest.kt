@@ -1,13 +1,17 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.agent.workbench.prompt.ui.context
 
+import com.intellij.agent.workbench.prompt.context.ManualPathSelectionEntry
+import com.intellij.agent.workbench.prompt.context.ManualPathSelectionState
 import com.intellij.ide.projectView.PresentationData
 import com.intellij.ide.projectView.ProjectViewNode
 import com.intellij.ide.projectView.ViewSettings
 import com.intellij.ide.projectView.impl.AbstractProjectViewPane
 import com.intellij.ide.scratch.ScratchRootType
 import com.intellij.ide.scratch.ScratchesNamedScope
+import com.intellij.ide.util.TreeFileChooserSupport
 import com.intellij.ide.util.treeView.AbstractTreeNode
+import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VfsUtilCore
@@ -19,6 +23,8 @@ import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.concurrency.AppExecutorUtil
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
+import java.util.concurrent.TimeUnit
 import java.awt.event.ActionEvent
 import java.awt.event.KeyEvent
 import java.nio.file.Files
@@ -29,6 +35,7 @@ import javax.swing.tree.DefaultTreeModel
 import javax.swing.tree.TreePath
 
 @TestApplication
+@Timeout(value = 2, unit = TimeUnit.MINUTES)
 class AgentPromptProjectPathsChooserPopupTest {
   @Test
   fun collectConfirmedSelectionUsesTreeSelectionWhenProjectTabIsActive() {
@@ -131,6 +138,75 @@ class AgentPromptProjectPathsChooserPopupTest {
   }
 
   @Test
+  fun resolveTreeSelectionToRestoreUsesInitialTreePreselectionWhenManualSelectionIsEmpty() {
+    val initialTreePreselection = ManualPathSelectionEntry(path = "/repo/project/src", isDirectory = true)
+
+    val restoredSelection = resolveTreeSelectionToRestore(emptyList(), initialTreePreselection)
+
+    assertThat(restoredSelection).containsExactly(initialTreePreselection)
+  }
+
+  @Test
+  fun resolveTreeSelectionToRestorePrefersManualSelectionOverInitialTreePreselection() {
+    val existing = ManualPathSelectionEntry(path = "/repo/project/src/Main.java", isDirectory = false)
+    val initialTreePreselection = ManualPathSelectionEntry(path = "/repo/project/src", isDirectory = true)
+
+    val restoredSelection = resolveTreeSelectionToRestore(listOf(existing), initialTreePreselection)
+
+    assertThat(restoredSelection).containsExactly(existing)
+  }
+
+  @Test
+  fun resolveSelectableVirtualFileFallsBackToNearestAttachableFileAncestor() {
+    val rootNioDir = Files.createTempDirectory("agent-prompt-tree-select-file")
+    val fileNioPath = Files.writeString(rootNioDir.resolve("Sample.kt"), "class Sample")
+    val fileSystem = LocalFileSystem.getInstance()
+    val rootDir = checkNotNull(fileSystem.refreshAndFindFileByNioFile(rootNioDir))
+    val file = checkNotNull(fileSystem.refreshAndFindFileByNioFile(fileNioPath))
+    val rootPath = treePathOf(
+      node(
+        TestProjectViewNode(rootDir) { candidate -> VfsUtilCore.isAncestor(rootDir, candidate, false) || rootDir == candidate },
+        node(
+          TestProjectViewNode(file) { candidate -> file == candidate },
+          node(TestProjectViewValueNode("Sample")),
+        ),
+      ),
+    )
+    val filePath = rootPath.pathByAddingChild((rootPath.lastPathComponent as DefaultMutableTreeNode).firstChild)
+    val memberPath = filePath.pathByAddingChild((filePath.lastPathComponent as DefaultMutableTreeNode).firstChild)
+    val treeSupport = TreeFileChooserSupport(ProjectManager.getInstance().defaultProject)
+
+    val resolved = resolveSelectableVirtualFile(memberPath, treeSupport, listOf(rootDir.path))
+
+    assertThat(resolved).isEqualTo(file)
+  }
+
+  @Test
+  fun resolveSelectableVirtualFileFallsBackToNearestAttachableDirectoryAncestor() {
+    val rootNioDir = Files.createTempDirectory("agent-prompt-tree-select-dir")
+    val nestedNioDir = Files.createDirectories(rootNioDir.resolve("src/com/example"))
+    val fileSystem = LocalFileSystem.getInstance()
+    val rootDir = checkNotNull(fileSystem.refreshAndFindFileByNioFile(rootNioDir))
+    val nestedDir = checkNotNull(fileSystem.refreshAndFindFileByNioFile(nestedNioDir))
+    val rootPath = treePathOf(
+      node(
+        TestProjectViewNode(rootDir) { candidate -> VfsUtilCore.isAncestor(rootDir, candidate, false) || rootDir == candidate },
+        node(
+          TestProjectViewNode(nestedDir) { candidate -> VfsUtilCore.isAncestor(nestedDir, candidate, false) || nestedDir == candidate },
+          node(TestProjectViewValueNode("example")),
+        ),
+      ),
+    )
+    val nestedPath = rootPath.pathByAddingChild((rootPath.lastPathComponent as DefaultMutableTreeNode).firstChild)
+    val packagePath = nestedPath.pathByAddingChild((nestedPath.lastPathComponent as DefaultMutableTreeNode).firstChild)
+    val treeSupport = TreeFileChooserSupport(ProjectManager.getInstance().defaultProject)
+
+    val resolved = resolveSelectableVirtualFile(packagePath, treeSupport, listOf(rootDir.path))
+
+    assertThat(resolved).isEqualTo(nestedDir)
+  }
+
+  @Test
   fun installConfirmSelectionOnEnterDelegatesToFallbackWhenConfirmationIsNotHandled() {
     runInEdtAndWait {
       val tree = createTree()
@@ -185,7 +261,11 @@ class AgentPromptProjectPathsChooserPopupTest {
       node(
         TestProjectViewNode(root) { file -> VfsUtilCore.isAncestor(root, file, false) || root == file },
         node(
-          TestProjectViewNode(scratchDirectory) { file -> VfsUtilCore.isAncestor(scratchDirectory, file, false) || scratchDirectory == file },
+          TestProjectViewNode(scratchDirectory) { file ->
+            VfsUtilCore.isAncestor(scratchDirectory,
+                                   file,
+                                   false) || scratchDirectory == file
+          },
           node(TestProjectViewNode(selectedFile) { file -> selectedFile == file }),
         ),
       ),

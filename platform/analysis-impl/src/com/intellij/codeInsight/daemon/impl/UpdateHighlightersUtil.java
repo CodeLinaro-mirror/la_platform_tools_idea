@@ -5,7 +5,6 @@ import com.intellij.codeHighlighting.HighlightingPass;
 import com.intellij.codeInsight.daemon.GutterMark;
 import com.intellij.codeInsight.multiverse.CodeInsightContext;
 import com.intellij.codeInsight.multiverse.CodeInsightContextHighlightingUtil;
-import com.intellij.codeInsight.multiverse.CodeInsightContextUtil;
 import com.intellij.lang.annotation.HighlightSeverity;
 import com.intellij.openapi.application.AccessToken;
 import com.intellij.openapi.diagnostic.Logger;
@@ -191,9 +190,9 @@ public final class UpdateHighlightersUtil {
     }
     if (psiFile != null) {
       DaemonCodeAnalyzerEx.getInstanceEx(project).cleanFileLevelHighlights(group, psiFile);
-      HighlightingSessionImpl.runInsideHighlightingSessionInEDT(psiFile, CodeInsightContextUtil.getCodeInsightContext(psiFile), colorsScheme, ProperTextRange.create(startOffset, endOffset), false, session ->
-        setHighlightersInRange(document, range, new ArrayList<>(infos), markup, group, session)
-      );
+      DaemonCodeAnalyzerEx.getInstanceEx(project).runInsideAdditionalHighlightingSession(psiFile, colorsScheme, ProperTextRange.create(startOffset, endOffset), false, session -> {
+        setHighlightersInRange(document, range, new ArrayList<>(infos), markup, group, session);
+      });
     }
   }
 
@@ -226,7 +225,7 @@ public final class UpdateHighlightersUtil {
       Long2ObjectMap<RangeMarker> range2markerCache = new Long2ObjectOpenHashMap<>(10);
       DaemonCodeAnalyzerEx codeAnalyzer = DaemonCodeAnalyzerEx.getInstanceEx(project);
       SweepProcessor.Generator<HighlightInfo> generator = processor -> ContainerUtil.process(filteredInfos, processor);
-      SweepProcessor.sweep(generator, (__, info, atStart, overlappingIntervals) -> {
+      SweepProcessor.sweep(generator, (_, info, atStart, overlappingIntervals) -> {
         if (!atStart) {
           return true;
         }
@@ -327,7 +326,7 @@ public final class UpdateHighlightersUtil {
       info.updateQuickFixFields(document, range2markerCache, finalInfoRange);
     };
 
-    RangeHighlighterEx highlighter = infosToRemove == null ? null : (RangeHighlighterEx)infosToRemove.pickupHighlighterFromGarbageBin(infoStartOffset, infoEndOffset, layer, info.getDescription());
+    RangeHighlighterEx highlighter = infosToRemove == null ? null : infosToRemove.pickupHighlighterFromGarbageBin(infoStartOffset, infoEndOffset, layer, info.getDescription());
     if (highlighter == null) {
       highlighter = markup.addRangeHighlighterAndChangeAttributes(null, infoStartOffset, infoEndOffset, layer,
                                                                   HighlighterTargetArea.EXACT_RANGE, false, changeAttributes);
@@ -409,6 +408,7 @@ public final class UpdateHighlightersUtil {
     document.putUserData(TYPING_INSIDE_HIGHLIGHTER_OCCURRED, null);
   }
 
+  @RequiresEdt
   @ApiStatus.Internal
   public static void updateHighlightersByTyping(@NotNull Project project, @NotNull DocumentEvent e) {
     ThreadingAssertions.assertEventDispatchThread();
@@ -463,39 +463,41 @@ public final class UpdateHighlightersUtil {
   }
   // disposes highlighter, and schedules removal from the file-level component if this highlighter happened to be file-level
   static void disposeWithFileLevelIgnoreErrors(@NotNull HighlightInfo info, @NotNull HighlightingSession session) {
-    if (info.isFileLevelAnnotation()) {
-      ((HighlightingSessionImpl)session).removeFileLevelHighlight(info);
-    }
-    RangeHighlighter highlighter = info.getHighlighter();
-    try {
-      if (highlighter != null) {
-        highlighter.dispose();
+    synchronized (info) {
+      if (info.isFileLevelAnnotation()) {
+        session.removeFileLevelHighlight(info);
       }
-    }
-    catch (ProcessCanceledException e) {
-      throw e;
-    }
-    catch (Exception e) {
-      // in theory, rogue plugin might register a listener on range marker 'dispose', which can do nasty things, including throwing exceptions,
-      // but in highlighting, range highlighters must be removed no matter what, to avoid sticky highlighters, so ignore these exceptions
-      LOG.warn(e);
-    }
-    if (LOG.isTraceEnabled()) {
-      MarkupModel model = highlighter == null ? null : DocumentMarkupModel.forDocument(highlighter.getDocument(), session.getProject(), false);
-      List<RangeHighlighterEx> dups = new ArrayList<>();
-      if (model != null) {
-        ((MarkupModelEx)model).processRangeHighlightersOverlappingWith(highlighter.getStartOffset(), highlighter.getEndOffset(), new CommonProcessors.CollectProcessor<>(dups));
-        dups.removeIf(h-> {
-          HighlightInfo hi;
-          return !h.getTextRange().equals(highlighter.getTextRange()) ||
-                 h.getTextAttributesKey() != highlighter.getTextAttributesKey() ||
-                 (hi=HighlightInfo.fromRangeHighlighter(h)) == null ||
-                 !Objects.equals(hi.getDescription(), info.getDescription()) ||
-                 !Objects.equals(hi.getToolId(), info.getToolId())
-            ;
-        });
+      RangeHighlighter highlighter = info.getHighlighter();
+      try {
+        if (highlighter != null) {
+          highlighter.dispose();
+        }
       }
-      LOG.trace("disposeWithFileLevelIgnoreErrors: " + info +(highlighter == null ? " (highlighter is null)":"")+(dups.isEmpty() ? "" : "; same range highlighters remain: "+dups));
+      catch (ProcessCanceledException e) {
+        throw e;
+      }
+      catch (Exception e) {
+        // in theory, rogue plugin might register a listener on range marker 'dispose', which can do nasty things, including throwing exceptions,
+        // but in highlighting, range highlighters must be removed no matter what, to avoid sticky highlighters, so ignore these exceptions
+        LOG.warn(e);
+      }
+      if (LOG.isTraceEnabled()) {
+        MarkupModel model = highlighter == null ? null : DocumentMarkupModel.forDocument(highlighter.getDocument(), session.getProject(), false);
+        List<RangeHighlighterEx> dups = new ArrayList<>();
+        if (model != null) {
+          ((MarkupModelEx)model).processRangeHighlightersOverlappingWith(highlighter.getStartOffset(), highlighter.getEndOffset(), new CommonProcessors.CollectProcessor<>(dups));
+          dups.removeIf(h-> {
+            HighlightInfo hi;
+            return !h.getTextRange().equals(highlighter.getTextRange()) ||
+                   h.getTextAttributesKey() != highlighter.getTextAttributesKey() ||
+                   (hi=HighlightInfo.fromRangeHighlighter(h)) == null ||
+                   !Objects.equals(hi.getDescription(), info.getDescription()) ||
+                   !Objects.equals(hi.getToolId(), info.getToolId())
+              ;
+          });
+        }
+        LOG.trace("disposeWithFileLevelIgnoreErrors: " + info +(highlighter == null ? " (highlighter is null)":"")+(dups.isEmpty() ? "" : "; same range highlighters remain: "+dups));
+      }
     }
   }
 }

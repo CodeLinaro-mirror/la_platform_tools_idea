@@ -71,6 +71,7 @@ agent uninstall-shell-integration
 aggregate
 aglio
 agrippa
+agy
 aider
 aircrack-ng
 airflow
@@ -109,6 +110,7 @@ ansible-pull
 ansible-vault
 ant
 antibody
+antigravity
 antlr
 anyenv
 apachectl
@@ -389,6 +391,7 @@ cargo ndk
 cargo ndk-env
 cargo ndk-test
 cargo new
+cargo nextest
 cargo owner
 cargo package
 cargo pkgid
@@ -814,6 +817,7 @@ derek
 deta
 devcontainer-cli
 devd
+devin
 devspace
 dex
 df
@@ -1592,6 +1596,7 @@ grep -r
 grex
 grip
 groff
+grok
 gron
 groot
 groovy
@@ -2385,6 +2390,7 @@ open
 open-vm-tools
 openapi
 openapi-generator-cli
+openclaw
 opencode
 opencode --continue
 opencode --fork

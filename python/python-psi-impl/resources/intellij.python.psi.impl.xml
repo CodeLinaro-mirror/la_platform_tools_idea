@@ -1,14 +1,17 @@
 <idea-plugin visibility="public">
   <dependencies>
-    <module name="intellij.python.psi"/>
-    <module name="intellij.python.sdk"/>
+    <!-- region Generated dependencies - run `Generate Product Layouts` to regenerate -->
+    <plugin id="org.toml.lang"/>
     <module name="intellij.python.community"/>
     <module name="intellij.python.community.helpersLocator"/>
+    <module name="intellij.python.psi"/>
+    <module name="intellij.python.requirements"/>
+    <module name="intellij.python.sdk"/>
+    <module name="intellij.toml.core"/>
+    <!-- endregion -->
   </dependencies>
 
   <extensionPoints>
-    <extensionPoint qualifiedName="Pythonid.pyAnnotator" interface="com.jetbrains.python.validation.PyAnnotator" dynamic="true"/>
-
     <extensionPoint qualifiedName="Pythonid.documentationLinkProvider"
                     interface="com.jetbrains.python.documentation.PythonDocumentationLinkProvider"
                     dynamic="true"/>
@@ -17,8 +20,6 @@
                     dynamic="true"/>
 
     <extensionPoint qualifiedName="Pythonid.typeHintProvider" interface="com.jetbrains.python.codeInsight.typing.PyTypeHintProvider" dynamic="true"/>
-
-
   </extensionPoints>
 
   <extensions defaultExtensionNs="com.intellij">
@@ -102,16 +103,12 @@
     <lang.parserDefinition language="PyTypeHint"
                            implementationClass="com.jetbrains.python.codeInsight.typeHints.PyTypeHintParserDefinition"/>
 
-    <moduleService serviceInterface="com.jetbrains.python.psi.resolve.PythonPathCache"
-                   serviceImplementation="com.jetbrains.python.psi.resolve.PythonModulePathCache"/>
-
     <lang.documentationProvider language="Python" implementationClass="com.jetbrains.python.documentation.PythonDocumentationProvider" id="pythonDocumentationProvider"/>
 
     <applicationService serviceImplementation="com.jetbrains.python.documentation.PythonDocumentationMap"/>
 
     <applicationService serviceInterface="com.jetbrains.python.codeInsight.imports.ImportLocationHelper"
-                        serviceImplementation="com.jetbrains.python.codeInsight.imports.PyImportLocationHelper"
-                        open="true"/>
+                        serviceImplementation="com.jetbrains.python.codeInsight.imports.PyImportLocationHelper"/>
 
     <psi.referenceContributor implementation="com.jetbrains.python.codeInsight.PyStdReferenceContributor" language="Python"/>
     <psi.referenceContributor implementation="com.jetbrains.python.documentation.docstrings.DocStringReferenceContributor"
@@ -159,6 +156,8 @@
                             implementationClass="com.jetbrains.python.codeInsight.completion.PyStructuralTypeAttributesCompletionContributor"/>
     <completion.contributor language="Python"
                             implementationClass="com.jetbrains.python.codeInsight.completion.PyDataclassCompletionContributor"/>
+    <completion.contributor language="Python"
+                            implementationClass="com.jetbrains.python.codeInsight.completion.PyClassFormCompletionContributor"/>
 
     <completion.contributor language="Python"
                             implementationClass="com.jetbrains.python.codeInsight.completion.PyStringFormatCompletionContributor" />
@@ -173,6 +172,9 @@
                             implementationClass="com.jetbrains.python.codeInsight.completion.PyMultipleArgumentsCompletionContributor"/>
     <completion.contributor language="Python"
                             implementationClass="com.jetbrains.python.codeInsight.completion.PyLiteralTypeCompletionContributor"/>
+
+    <completion.contributor language="Python" order="first" id="pyPyCodeInsightTestCaseOnlyCompletionContributor"
+                            implementationClass="com.jetbrains.python.codeInsight.completion.PyCodeInsightTestCaseOnlyCompletionContributor"/>
 
     <lang.tokenSeparatorGenerator language="Python" implementationClass="com.jetbrains.python.PyTokenSeparatorGenerator"/>
 
@@ -194,11 +196,14 @@
 
     <daemon.changeLocalityDetector implementation="com.jetbrains.python.inspections.PyChangeLocalityDetector"/>
 
-    <applicationService serviceInterface="com.jetbrains.python.psi.types.PyTypeEvaluationStatisticsService"
-                        serviceImplementation="com.jetbrains.python.psi.types.PyTypeEvaluationStatisticsServiceImpl"/>
     <statistics.applicationUsagesCollector implementation="com.jetbrains.python.psi.types.PyTypeEvaluationAggregatesCollector"/>
 
-    <localInspection language="Python" shortName="PyUnusedLocalInspection" suppressId="PyUnusedLocal" bundle="messages.PyPsiBundle" key="INSP.NAME.unused" groupKey="INSP.GROUP.python" enabledByDefault="true" level="WEAK WARNING" implementationClass="com.jetbrains.python.inspections.unusedLocal.PyUnusedLocalInspection"/>
+    <localInspection language="Python" shortName="PyUnusedLocalVariableInspection" suppressId="PyUnusedLocal" bundle="messages.PyPsiBundle" key="INSP.NAME.unused" groupKey="INSP.GROUP.python" enabledByDefault="true" level="WEAK WARNING" implementationClass="com.jetbrains.python.inspections.unusedLocal.PyUnusedLocalVariableInspection"/>
+    <localInspection language="Python" shortName="PyUnusedParameterInspection" suppressId="PyUnusedParameter" bundle="messages.PyPsiBundle" key="INSP.NAME.unused.parameter" groupKey="INSP.GROUP.python" enabledByDefault="true" level="WEAK WARNING" implementationClass="com.jetbrains.python.inspections.unusedLocal.PyUnusedParameterInspection"/>
+    <localInspection language="Python" shortName="PyUnusedFunctionInspection" suppressId="PyUnusedFunction" bundle="messages.PyPsiBundle" key="INSP.NAME.unused.function" groupKey="INSP.GROUP.python" enabledByDefault="true" level="WEAK WARNING" implementationClass="com.jetbrains.python.inspections.unusedLocal.PyUnusedFunctionInspection"/>
+    <inspectionElementsMerger implementation="com.jetbrains.python.inspections.unusedLocal.PyUnusedLocalVariableInspectionMerger"/>
+    <inspectionElementsMerger implementation="com.jetbrains.python.inspections.unusedLocal.PyUnusedParameterInspectionMerger"/>
+    <inspectionElementsMerger implementation="com.jetbrains.python.inspections.unusedLocal.PyUnusedFunctionInspectionMerger"/>
     <localInspection language="Python" shortName="PyRedundantParenthesesInspection" suppressId="PyRedundantParentheses" bundle="messages.PyPsiBundle" key="INSP.NAME.redundant.parentheses" groupKey="INSP.GROUP.python" enabledByDefault="true" level="WEAK WARNING" implementationClass="com.jetbrains.python.inspections.PyRedundantParenthesesInspection"/>
     <localInspection language="Python" shortName="PySimplifyBooleanCheckInspection" suppressId="PySimplifyBooleanCheck" bundle="messages.PyPsiBundle" key="INSP.NAME.check.can.be.simplified" groupKey="INSP.GROUP.python" enabledByDefault="true" level="WEAK WARNING" implementationClass="com.jetbrains.python.inspections.PySimplifyBooleanCheckInspection"/>
     <localInspection language="Python" shortName="PyDefaultArgumentInspection" suppressId="PyDefaultArgument" bundle="messages.PyPsiBundle" key="INSP.NAME.default.argument" groupKey="INSP.GROUP.python" enabledByDefault="true" level="WARNING" implementationClass="com.jetbrains.python.inspections.PyDefaultArgumentInspection"/>
@@ -223,8 +228,10 @@
     <localInspection language="Python" shortName="PyDunderSlotsInspection" suppressId="PyDunderSlots" bundle="messages.PyPsiBundle" key="INSP.NAME.dunder.slots" groupKey="INSP.GROUP.python" enabledByDefault="true" level="WARNING" implementationClass="com.jetbrains.python.inspections.PyDunderSlotsInspection"/>
     <localInspection language="Python" shortName="PyExceptClausesOrderInspection" suppressId="PyExceptClausesOrder" bundle="messages.PyPsiBundle" key="INSP.NAME.bad.except.clauses.order" groupKey="INSP.GROUP.python" enabledByDefault="true" level="WARNING" implementationClass="com.jetbrains.python.inspections.PyExceptClausesOrderInspection"/>
     <localInspection language="Python" shortName="PyFinalInspection" suppressId="PyFinal" bundle="messages.PyPsiBundle" key="INSP.NAME.final.classes.methods.and.variables" groupKey="INSP.GROUP.python" enabledByDefault="true" level="WARNING" implementationClass="com.jetbrains.python.inspections.PyFinalInspection"/>
+    <localInspection language="Python" shortName="PyDisjointBaseInspection" suppressId="PyDisjointBase" bundle="messages.PyPsiBundle" key="INSP.NAME.disjoint.base.class.inheritance" groupKey="INSP.GROUP.python" enabledByDefault="true" level="WARNING" implementationClass="com.jetbrains.python.inspections.PyDisjointBaseInspection"/>
     <localInspection language="Python" shortName="PyClassVarInspection" suppressId="PyClassVar" bundle="messages.PyPsiBundle" key="INSP.NAME.class.var.variables" groupKey="INSP.GROUP.python" enabledByDefault="true" level="WARNING" implementationClass="com.jetbrains.python.inspections.PyClassVarInspection"/>
     <localInspection language="Python" shortName="PyFromFutureImportInspection" suppressId="PyFromFutureImport" bundle="messages.PyPsiBundle" key="INSP.NAME.from.future.import" groupKey="INSP.GROUP.python" enabledByDefault="true" level="WARNING" implementationClass="com.jetbrains.python.inspections.PyFromFutureImportInspection"/>
+    <localInspection language="Python" shortName="PyLazyImportInspection" suppressId="PyLazyImport" bundle="messages.PyPsiBundle" key="INSP.NAME.lazy.import" groupKey="INSP.GROUP.python" enabledByDefault="true" level="ERROR" implementationClass="com.jetbrains.python.inspections.PyLazyImportInspection"/>
     <localInspection language="Python" shortName="PyGlobalUndefinedInspection" suppressId="PyGlobalUndefined" bundle="messages.PyPsiBundle" key="INSP.NAME.global.undefined" groupKey="INSP.GROUP.python" enabledByDefault="true" level="WEAK WARNING" implementationClass="com.jetbrains.python.inspections.PyGlobalUndefinedInspection"/>
     <localInspection language="Python" shortName="PyInconsistentIndentationInspection" suppressId="PyInconsistentIndentation" bundle="messages.PyPsiBundle" key="INSP.NAME.inconsistent.indentation" groupKey="INSP.GROUP.python" enabledByDefault="true" level="WARNING" implementationClass="com.jetbrains.python.inspections.PyInconsistentIndentationInspection"/>
     <localInspection language="Python" shortName="PyInconsistentReturnsInspection" suppressId="PyInconsistentReturns" bundle="messages.PyPsiBundle" key="INSP.NAME.inconsistent.returns" groupKey="INSP.GROUP.python" enabledByDefault="true" level="WEAK WARNING" implementationClass="com.jetbrains.python.inspections.PyInconsistentReturnsInspection"/>
@@ -233,6 +240,7 @@
     <localInspection language="Python" shortName="PyNamedTupleInspection" suppressId="PyNamedTuple" bundle="messages.PyPsiBundle" key="INSP.named.tuple" groupKey="INSP.GROUP.python" enabledByDefault="true"  level="WARNING" implementationClass="com.jetbrains.python.inspections.PyNamedTupleInspection"/>
     <localInspection language="Python" shortName="PyArgumentListInspection" suppressId="PyArgumentList" bundle="messages.PyPsiBundle" key="INSP.NAME.incorrect.call.arguments" groupKey="INSP.GROUP.python" enabledByDefault="true" level="WARNING" implementationClass="com.jetbrains.python.inspections.PyArgumentListInspection"/>
     <localInspection language="Python" shortName="PyRedeclarationInspection" suppressId="PyRedeclaration" bundle="messages.PyPsiBundle" key="INSP.NAME.redeclaration" groupKey="INSP.GROUP.python" enabledByDefault="true" level="WARNING" implementationClass="com.jetbrains.python.inspections.PyRedeclarationInspection"/>
+    <localInspection language="Python" shortName="PyGlobalVariableRedeclarationInNotebookInspection" suppressId="PyGlobalVariableRedeclarationInNotebook" bundle="messages.PyPsiBundle" key="INSP.NAME.global.variable.redeclaration.in.notebook" groupKey="INSP.GROUP.python" enabledByDefault="false" level="WEAK WARNING" implementationClass="com.jetbrains.python.inspections.PyGlobalVariableRedeclarationInNotebookInspection"/>
     <localInspection language="Python" shortName="PyTypeAliasRedeclarationInspection" suppressId="PyTypeAliasRedeclaration" bundle="messages.PyPsiBundle" key="INSP.NAME.type.alias.redeclaration" groupKey="INSP.GROUP.python" enabledByDefault="true" level="WARNING" implementationClass="com.jetbrains.python.inspections.PyTypeAliasRedeclarationInspection"/>
     <localInspection language="Python" shortName="PyMethodParametersInspection" suppressId="PyMethodParameters" bundle="messages.PyPsiBundle" key="INSP.NAME.problematic.first.parameter" groupKey="INSP.GROUP.python" enabledByDefault="true" level="WEAK WARNING" implementationClass="com.jetbrains.python.inspections.PyMethodParametersInspection"/>
     <localInspection language="Python" shortName="PyUnreachableCodeInspection" suppressId="PyUnreachableCode" bundle="messages.PyPsiBundle" key="INSP.NAME.unreachable.code" groupKey="INSP.GROUP.python" enabledByDefault="true" level="WARNING" editorAttributes="NOT_USED_ELEMENT_ATTRIBUTES" implementationClass="com.jetbrains.python.inspections.PyUnreachableCodeInspection"/>
@@ -242,7 +250,6 @@
     <localInspection language="Python" shortName="PyInitNewSignatureInspection" suppressId="PyInitNewSignature" bundle="messages.PyPsiBundle" key="INSP.NAME.new.init.signature" groupKey="INSP.GROUP.python" enabledByDefault="true" level="WARNING" implementationClass="com.jetbrains.python.inspections.PyInitNewSignatureInspection"/>
     <localInspection language="Python" shortName="PyTrailingSemicolonInspection" suppressId="PyTrailingSemicolon" bundle="messages.PyPsiBundle" key="INSP.NAME.trailing.semicolon" groupKey="INSP.GROUP.python" enabledByDefault="true" level="WARNING" implementationClass="com.jetbrains.python.inspections.PyTrailingSemicolonInspection"/>
     <localInspection language="Python" shortName="PyReturnFromInitInspection" suppressId="PyReturnFromInit" bundle="messages.PyPsiBundle" key="INSP.NAME.init.return" groupKey="INSP.GROUP.python" enabledByDefault="true" level="WARNING" implementationClass="com.jetbrains.python.inspections.PyReturnFromInitInspection"/>
-    <localInspection language="Python" shortName="PyTupleAssignmentBalanceInspection" suppressId="PyTupleAssignmentBalance" bundle="messages.PyPsiBundle" key="INSP.NAME.tuple.assignment.balance" groupKey="INSP.GROUP.python" enabledByDefault="true" level="WARNING" implementationClass="com.jetbrains.python.inspections.PyTupleAssignmentBalanceInspection"/>
     <localInspection language="Python" shortName="PyClassicStyleClassInspection" suppressId="PyClassicStyleClass" bundle="messages.PyPsiBundle" key="INSP.NAME.classic.class.usage" groupKey="INSP.GROUP.python" enabledByDefault="false" level="WARNING" implementationClass="com.jetbrains.python.inspections.PyClassicStyleClassInspection"/>
     <localInspection language="Python" shortName="PyExceptionInheritInspection" suppressId="PyExceptionInherit" bundle="messages.PyPsiBundle" key="INSP.NAME.exception.not.inherit" groupKey="INSP.GROUP.python" enabledByDefault="true" level="WARNING" implementationClass="com.jetbrains.python.inspections.PyExceptionInheritInspection"/>
     <localInspection language="Python" shortName="PyUnboundLocalVariableInspection" suppressId="PyUnboundLocalVariable" bundle="messages.PyPsiBundle" key="INSP.NAME.unbound" groupKey="INSP.GROUP.python" enabledByDefault="true" level="WARNING" implementationClass="com.jetbrains.python.inspections.PyUnboundLocalVariableInspection"/>
@@ -526,6 +533,13 @@
 
     <intentionAction>
       <language>Python</language>
+      <className>com.jetbrains.python.codeInsight.intentions.PyCopyStringLiteralToClipboardIntention</className>
+      <bundleName>messages.PyPsiBundle</bundleName>
+      <categoryKey>INTN.category.python</categoryKey>
+    </intentionAction>
+
+    <intentionAction>
+      <language>Python</language>
       <className>com.jetbrains.python.codeInsight.intentions.convertToFString.PyConvertToFStringIntention</className>
       <bundleName>messages.PyPsiBundle</bundleName>
       <categoryKey>INTN.category.python</categoryKey>
@@ -552,7 +566,21 @@
       <categoryKey>INTN.category.python</categoryKey>
     </intentionAction>
 
-    <registryKey defaultValue="false"
+    <intentionAction>
+      <language>Python</language>
+      <className>com.jetbrains.python.codeInsight.intentions.PyAddKeywordArgumentNamesIntention</className>
+      <bundleName>messages.PyPsiBundle</bundleName>
+      <categoryKey>INTN.category.python</categoryKey>
+    </intentionAction>
+
+    <intentionAction>
+      <language>Python</language>
+      <className>com.jetbrains.python.codeInsight.intentions.PyRemoveKeywordArgumentNamesIntention</className>
+      <bundleName>messages.PyPsiBundle</bundleName>
+      <categoryKey>INTN.category.python</categoryKey>
+    </intentionAction>
+
+    <registryKey defaultValue="true"
                  description="Enable experimental better handling of recursive cases in type inference"
                  key="python.use.better.control.flow.type.inference"/>
     <registryKey defaultValue="true"
@@ -569,18 +597,36 @@
                  description="It optimises cache usage for storing calculated types."/>
     <registryKey key="python.use.separated.libraries.type.cache" defaultValue="true"
                  description="It enables the use of a library-level cache for PSI elements from packages."/>
-    <registryKey key="python.statement.lists.incremental.reparse" defaultValue="false"
+    <registryKey key="python.statement.lists.incremental.reparse" defaultValue="true"
                  description="Enables incremental reparse for statement lists"/>
+    <registryKey key="python.statement.lists.incremental.reparse.min.file.chars" defaultValue="20000"
+                 description="Minimum file size (chars) below which incremental reparse of Python statement lists is skipped."/>
+    <registryKey key="python.statement.lists.incremental.reparse.max.list.chars" defaultValue="10000"
+                 description="Hard cap on the statement list size (chars) for incremental reparse."/>
+    <registryKey key="python.statement.lists.incremental.reparse.max.ratio.percent" defaultValue="10"
+                 description="Maximum statement list size as a percentage of the containing file for incremental reparse."/>
     <registryKey key="python.strict.type.narrow" defaultValue="false"
                  description="Allows narrowing types exhaustively to Never"/>
+    <registryKey key="python.typing.literal.types.for.literals" defaultValue="true"
+                 description="Infer literal types (e.g. Literal[42]) for integer, boolean and string literal expressions"/>
     <registryKey key="python.typing.soft.keys.type.eval.context" defaultValue="false"
                  description="Enable soft-key caching for TypeEvalContext"/>
     <registryKey key="python.typing.weak.keys.type.eval.context" defaultValue="true"
                  description="Enable weak-key caching for TypeEvalContext"/>
+    <registryKey key="python.numeric.tower.type" defaultValue="true"
+                 description="Enable specialized class type representing Python's numeric tower (int -> float -> complex)"/>
     <registryKey key="python.type.any" defaultValue="false"
                  description="Enable Any and Unknown support"/>
+    <registryKey key="python.use.csp.type.inference" defaultValue="true"
+                 description="Enable CSP engine for type inference"/>
+    <registryKey key="python.subtypechecks.respect.variance" defaultValue="false"
+                 description="Enable variance in subtype checks"/>
+    <registryKey key="python.skeleton.generator.use.process.pool" defaultValue="true"
+                 description="Use a process worker pool for skeleton generation to avoid process creation overhead"/>
 
     <virtualFileCustomDataProvider implementation="com.jetbrains.python.formatter.PyCodeStyleSettingsProvider"/>
+    <projectSettings service="com.jetbrains.python.findUsages.PyFindUsagesOptions"/>
+    <applicationSettings service="com.jetbrains.python.documentation.PythonDocumentationMap"/>
   </extensions>
 
   <extensionPoints>
@@ -668,7 +714,7 @@
 
     <!-- NumPy -->
     <typeProvider implementation="com.jetbrains.python.numpy.codeInsight.NumpyDocStringTypeProvider"
-                  order="before pythonDocstringTypeProvider"/>
+                  order="before pythonDocstringTypeProvider, after pyTypingTypeProvider"/>
     <pyClassMembersProvider implementation="com.jetbrains.python.numpy.codeInsight.NumpyClassMembersProvider"/>
     <resolveResultRater implementation="com.jetbrains.python.numpy.codeInsight.NumpyResolveRater"/>
     <pyiStubSuppressor implementation="com.jetbrains.python.numpy.codeInsight.NumpyPyiStubsSuppressor"/>
@@ -690,6 +736,7 @@
     <pyClassMembersProvider implementation="com.jetbrains.python.codeInsight.stdlib.PyStdlibClassMembersProvider"/>
     <pyModuleMembersProvider implementation="com.jetbrains.python.codeInsight.stdlib.PyStdlibOverridingModuleMembersProvider"/>
     <typeCheckerExtension implementation="com.jetbrains.python.codeInsight.stdlib.PyDataclassInstanceProtocolTypeCheckerExtension"/>
+    <typeCheckerExtension implementation="com.jetbrains.python.codeInsight.stdlib.PyDataclassInitVarTypeCheckerExtension"/>
 
     <implicitAsyncContext implementation="com.jetbrains.python.validation.PyDevConsoleAsyncContextProvider"/>
 
@@ -698,6 +745,16 @@
     <pyModuleMembersProvider implementation="com.jetbrains.python.tensorFlow.PyTensorFlowModuleMembersProvider"/>
     <pyiStubSuppressor implementation="com.jetbrains.python.tensorFlow.TensorflowPyiStubsSuppressor"/>
   </extensions>
+  <extensions defaultExtensionNs="com.intellij">
+    <notificationGroup id="Python.Internal" displayType="BALLOON" isLogByDefault="true" hideFromSettings="true"/>
+  </extensions>
 
-
+  <actions resource-bundle="messages.PyPsiBundle">
+    <group id="PythonPsiInternalGroup" internal="true" popup="true">
+      <add-to-group group-id="Internal" anchor="last"/>
+      <action id="PyTypeBenchmarkAction"
+              class="com.jetbrains.python.actions.internal.PyTypeBenchmarkAction"
+              internal="true"/>
+    </group>
+  </actions>
 </idea-plugin>

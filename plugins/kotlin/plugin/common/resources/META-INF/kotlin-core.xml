@@ -124,6 +124,10 @@
     <extensionPoint qualifiedName="org.jetbrains.kotlin.idea.codeInsight.lineMarkers.kotlinRunLineMarkerHider"
                     interface="org.jetbrains.kotlin.idea.codeInsight.KotlinRunLineMarkerHider"
                     dynamic="true"/>
+    <extensionPoint
+            qualifiedName="org.jetbrains.kotlin.classImportFilter"
+            interface="org.jetbrains.kotlin.idea.util.ClassImportFilter"
+            dynamic="true"/>
   </extensionPoints>
 
   <extensions defaultExtensionNs="com.intellij">
@@ -131,8 +135,9 @@
 
     <applicationService serviceInterface="org.jetbrains.kotlin.analysis.decompiler.psi.BuiltinsVirtualFileProvider"
                         serviceImplementation="org.jetbrains.kotlin.idea.base.analysis.builtins.IdeBuiltInsVirtualFileProviderImpl"/>
+    <applicationService serviceInterface="org.jetbrains.kotlin.psi.KtPsiMutationService"
+                        serviceImplementation="org.jetbrains.kotlin.idea.base.psi.KtPsiMutationServiceImpl"/>
 
-    <aboutPopupDescriptionProvider implementation="org.jetbrains.kotlin.idea.base.plugin.KotlinPluginKindAboutPopupDescriptionProvider"/>
     <aboutPopupDescriptionProvider implementation="org.jetbrains.kotlin.idea.base.plugin.KotlinAnalyzerVersionAboutPopupDescriptionProvider"/>
     <applicationService serviceImplementation="org.jetbrains.kotlin.idea.codeInsight.KotlinCodeInsightSettings"/>
     <applicationService serviceImplementation="org.jetbrains.kotlin.idea.editor.KotlinEditorOptions"/>
@@ -260,6 +265,11 @@
             id="KotlinDumbCompletionContributor"
             order="first, after KotlinCompletionContributor"
             implementationClass="org.jetbrains.kotlin.idea.completion.implCommon.KotlinDumbCompletionContributor"/>
+
+    <completion.plainTextSymbol
+            language="kotlin"
+            implementationClass="org.jetbrains.kotlin.idea.completion.KotlinPlainTextSymbolCompletionContributor"/>
+
     <codeInsight.wordCompletionFilter language="kotlin"
                                       implementationClass="org.jetbrains.kotlin.idea.completion.implCommon.KotlinWordCompletionFilter"/>
 
@@ -278,6 +288,8 @@
 
     <pluginSuggestionProvider order="first" implementation="org.jetbrains.kotlin.idea.suggestions.JupyterNotebookSuggestionProvider"/>
     <pluginSuggestionProvider implementation="org.jetbrains.kotlin.idea.suggestions.AmperPluginSuggestionProvider"/>
+    <applicationSettings service="org.jetbrains.kotlin.idea.codeInsight.KotlinCodeInsightSettings"/>
+    <applicationSettings service="org.jetbrains.kotlin.idea.editor.KotlinEditorOptions"/>
   </extensions>
 
   <!-- Templates -->
@@ -290,9 +302,7 @@
 
   <!-- Line markers -->
   <extensions defaultExtensionNs="com.intellij">
-    <runLineMarkerContributor
-            language="kotlin"
-            implementationClass="org.jetbrains.kotlin.idea.codeInsight.lineMarkers.shared.KotlinRunLineMarkerContributor"/>
+
   </extensions>
 
   <projectListeners>
@@ -347,7 +357,12 @@
             language="kotlin"
             implementationClass="org.jetbrains.kotlin.idea.highlighter.KotlinTestRunLineMarkerContributor"/>
 
+    <java.class.action.suppressor implementation="org.jetbrains.kotlin.idea.core.KotlinJavaClassActionSuppressor"/>
+
     <lang.inspectionSuppressor language="kotlin" implementationClass="org.jetbrains.kotlin.idea.inspections.suppress.KotlinInspectionSuppressor"/>
+    <optionController implementation="org.jetbrains.kotlin.idea.configuration.KotlinCompilerPluginProvider"/>
+    <optionController implementation="org.jetbrains.kotlin.idea.configuration.KotlinDependencyProvider"/>
+    <optionController implementation="org.jetbrains.kotlin.idea.configuration.JpsDependencyProvider"/>
   </extensions>
 
   <!-- Editing -->
@@ -362,6 +377,8 @@
     <lang.surroundDescriptor
             language="kotlin"
             implementationClass="org.jetbrains.kotlin.idea.codeInsight.surroundWith.statement.KotlinStatementSurroundDescriptor"/>
+    <codeInsight.surroundWithRangeAdjuster
+            implementation="org.jetbrains.kotlin.idea.codeInsight.surroundWith.KotlinSurroundWithRangeAdjuster"/>
     <lang.unwrapDescriptor
             language="kotlin"
             implementationClass="org.jetbrains.kotlin.idea.codeInsight.unwrap.KotlinUnwrapDescriptor"/>
@@ -448,6 +465,10 @@
     <registryKey key="kotlin.copy.paste.allow.import.of.nested.declarations"
                  description="Allows the copy-paste processor to import nested declarations (enum values, static Java members, etc.) if they were imported in the original source."
                  defaultValue="true" />
+
+    <registryKey key="kotlin.shorten.context.sensitive.resolution.qualifiers.by.default"
+                 description="Allows reference shortener to remove explicit qualifiers on references which could be resolved by context-sensitive resolution (when the corresponding language feature is enabled)"
+                 defaultValue="true" />
   </extensions>
 
   <!-- Tips and Tricks -->
@@ -498,12 +519,6 @@
             key="configure.kotlin"
             bundle="messages.KotlinProjectConfigurationBundle"
     />
-    <notificationGroup
-            id="Configure K2"
-            displayType="STICKY_BALLOON"
-            key="enable.k2"
-            bundle="messages.FeedbackBundle"
-    />
   </extensions>
 
   <!-- Declaration search and Find Usages -->
@@ -542,7 +557,7 @@
     <intentionAction>
       <!--TODO move to intentions-shared after NestedLambdaShadowedImplicitParameterInspection is migrated -->
       <language>kotlin</language>
-      <className>org.jetbrains.kotlin.idea.codeInsight.intentions.fake.ReplaceItWithExplicitFunctionLiteralParamIntention</className>
+      <className>org.jetbrains.kotlin.idea.codeinsight.intentions.fake.ReplaceItWithExplicitFunctionLiteralParamIntention</className>
       <bundleName>messages.KotlinBundle</bundleName>
       <categoryKey>group.names.kotlin</categoryKey>
     </intentionAction>

@@ -14,11 +14,11 @@ import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import org.jetbrains.idea.devkit.kotlin.DevKitKotlinBundle
+import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.analyze
 import org.jetbrains.kotlin.analysis.api.permissions.KaAllowAnalysisOnEdt
 import org.jetbrains.kotlin.analysis.api.permissions.allowAnalysisOnEdt
 import org.jetbrains.kotlin.analysis.api.types.KaClassType
-import org.jetbrains.kotlin.analysis.api.types.KaTypeNullability
 import org.jetbrains.kotlin.idea.base.codeInsight.KotlinNameSuggester
 import org.jetbrains.kotlin.idea.base.codeInsight.KotlinNameSuggestionProvider
 import org.jetbrains.kotlin.idea.base.codeInsight.KotlinNameValidatorProvider
@@ -57,10 +57,11 @@ abstract class CompanionObjectInExtensionInspectionSupport {
   private fun isLoggerInstance(property: KtProperty): Boolean {
     return allowAnalysisOnEdt {
       analyze(property) {
-        val propertyReturnType = property.returnType.withNullability(KaTypeNullability.NON_NULLABLE)
+        val propertyReturnType = property.returnType.withNullability(isMarkedNullable = false)
 
-        // FIXME: buildClassType(LOGGER_CLASS_ID) should also work, does not work in tests for some reason
-        val loggerType = findClass(LOGGER_CLASS_ID)?.let(::buildClassType)
+        // FIXME: typeCreator.classType(LOGGER_CLASS_ID) should also work, does not work in tests for some reason
+        @OptIn(KaExperimentalApi::class)
+        val loggerType = typeCreator.classType(LOGGER_CLASS_ID)
 
         if (propertyReturnType !is KaClassType || loggerType !is KaClassType) return false
 

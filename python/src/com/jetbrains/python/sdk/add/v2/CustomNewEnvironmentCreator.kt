@@ -5,6 +5,7 @@ import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.openapi.ui.validation.DialogValidationRequestor
 import com.intellij.platform.ide.progress.ModalTaskOwner
 import com.intellij.platform.ide.progress.runWithModalProgressBlocking
+import com.intellij.python.pytools.Version
 import com.intellij.ui.components.ActionLink
 import com.intellij.ui.dsl.builder.Panel
 import com.intellij.util.concurrency.annotations.RequiresEdt
@@ -18,7 +19,6 @@ import com.jetbrains.python.sdk.ModuleOrProject
 import com.jetbrains.python.sdk.baseDir
 import com.jetbrains.python.sdk.flavors.PythonSdkFlavor
 import com.jetbrains.python.sdk.installExecutableViaPythonScript
-import com.jetbrains.python.sdk.persist
 import com.jetbrains.python.sdk.setAssociationToModule
 import com.jetbrains.python.statistics.InterpreterCreationMode
 import com.jetbrains.python.statistics.InterpreterType
@@ -79,7 +79,6 @@ internal abstract class CustomNewEnvironmentCreator<P : PathHolder>(
 
     val newSdk = setupEnvSdk(moduleBasePath).getOr { return it }
 
-    newSdk.persist()
     if (module != null) {
       newSdk.setAssociationToModule(module)
       module.baseDir?.refresh(true, false)
@@ -135,7 +134,7 @@ internal abstract class CustomNewEnvironmentCreator<P : PathHolder>(
     val baseInterpreter = model.state.baseInterpreter.get()
 
     val installedSdk = when (baseInterpreter) {
-      is InstallableSelectableInterpreter -> installBaseSdk(baseInterpreter.sdk, model.existingSdks)
+      is InstallableSelectableInterpreter -> installBaseSdk(baseInterpreter.installableSdk)
         ?.let {
           val sdkWrapper =
             runWithModalProgressBlocking(ModalTaskOwner.guess(), message("sdk.create.custom.venv.progress.title.detect.executable")) {
@@ -182,10 +181,12 @@ internal suspend fun <P : PathHolder> PythonMutableTargetAddInterpreterModel<P>.
   val interpreter = requireNotNull(state.baseInterpreter.get()) { "wrong state: base interpreter is not selected" }
 
   // todo use target config
-  val path = if (interpreter is InstallableSelectableInterpreter<P>) {
-    installBaseSdk(interpreter.sdk, existingSdks)?.let { fileSystem.wrapSdk(it) }?.homePath
+  val path = when (interpreter) {
+    is InstallableSelectableInterpreter<P> -> {
+      installBaseSdk(interpreter.installableSdk)?.let { fileSystem.wrapSdk(it) }?.homePath
+    }
+    is DetectedSelectableInterpreter, is ExistingSelectableInterpreter, is ManuallyAddedSelectableInterpreter -> interpreter.homePath
   }
-  else interpreter.homePath
 
   return path
 }

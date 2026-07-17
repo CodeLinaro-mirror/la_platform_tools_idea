@@ -199,7 +199,9 @@ private class DiffEditorModel(
   override fun canCreateComment(lineRange: LineRange): Boolean {
     if (!diffReviewVm.canAddMultilinePositionalNotes) return false
     if (!diffReviewVm.isCumulativeChange) return false
-    return true
+    val gutterControls = gutterControlsState.value ?: return false
+    return gutterControls.isLineCommentable(lineRange.start) &&
+           gutterControls.isLineCommentable(lineRange.end)
   }
 
   override fun toggleComments(lineIdx: Int) {

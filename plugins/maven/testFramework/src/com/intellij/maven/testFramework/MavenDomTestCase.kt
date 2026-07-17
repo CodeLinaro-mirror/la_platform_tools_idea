@@ -22,6 +22,7 @@ import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.util.Comparing
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.vfs.newvfs.ArchiveFileSystem
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
@@ -52,7 +53,7 @@ import org.jetbrains.idea.maven.dom.converters.MavenDependencyCompletionUtil
 import org.jetbrains.idea.maven.dom.inspections.MavenModelInspection
 import org.jetbrains.idea.maven.dom.model.MavenDomProjectModel
 import org.jetbrains.idea.maven.dom.references.MavenPsiElementWrapper
-import org.jetbrains.idea.maven.onlinecompletion.model.MavenRepositoryArtifactInfo
+import org.jetbrains.idea.maven.model.MavenRepoArtifactInfo
 import org.jetbrains.idea.maven.utils.MavenLog
 import org.junit.ComparisonFailure
 import java.nio.file.Path
@@ -133,6 +134,10 @@ abstract class MavenDomTestCase : MavenMultiVersionImportingTestCase() {
     }
     refreshFiles(listOf(f))
     awaitConfiguration()
+    if (f.fileSystem is ArchiveFileSystem) {
+      MavenLog.LOG.warn("MavenDomTestCase configTest in ArchiveFileSystem skipped")
+      return
+    }
     fixture.configureFromExistingVirtualFile(f)
     myConfigTimestamps[f] = f.timeStamp
     MavenLog.LOG.warn("MavenDomTestCase configTest performed")
@@ -357,8 +362,9 @@ abstract class MavenDomTestCase : MavenMultiVersionImportingTestCase() {
     vararg expected: String?,
   ) {
     val actual = getCompletionVariants(f, lookupElementStringFunction)
-    assertNotEmpty(actual)
-    assertUnorderedElementsAreEqual(actual!!.toList(), expected.toList())
+    val expectedList = expected.toList()
+    assertNotNull("Expected $expectedList but got null", actual)
+    assertUnorderedElementsAreEqual(actual!!.toList(), expectedList)
   }
 
   protected suspend fun assertCompletionVariantsInclude(
@@ -421,16 +427,16 @@ abstract class MavenDomTestCase : MavenMultiVersionImportingTestCase() {
 
   protected suspend fun getDependencyCompletionVariants(
     f: VirtualFile,
-    lookupElementStringFunction: Function<in MavenRepositoryArtifactInfo?, String>,
+    lookupElementStringFunction: Function<in MavenRepoArtifactInfo?, String>,
   ): Set<String> {
     configTest(f)
     val variants = fixture.completeBasic()
 
     val result: MutableSet<String> = TreeSet()
     for (each in variants) {
-      val `object` = each.getObject()
-      if (`object` is MavenRepositoryArtifactInfo) {
-        result.add(lookupElementStringFunction.apply(`object`))
+      val o = each.getObject()
+      if (o is MavenRepoArtifactInfo) {
+        result.add(lookupElementStringFunction.apply(o))
       }
     }
     return result

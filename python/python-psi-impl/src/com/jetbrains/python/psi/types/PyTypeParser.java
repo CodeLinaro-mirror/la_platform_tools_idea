@@ -85,6 +85,9 @@ public final class PyTypeParser {
     }
 
     public @Nullable PyType getType() {
+      if (this == EMPTY_RESULT) {
+        return PyAnyType.getUnknown();
+      }
       return myType;
     }
 
@@ -221,7 +224,7 @@ public final class PyTypeParser {
             final ParseResult result = new ParseResult(type1, range);
             return result.merge(boundResult).withType(type1);
           }
-          return new ParseResult(new PyTypeVarTypeImpl(name, null), range);
+          return new ParseResult(new PyTypeVarTypeImpl(name, PyAnyType.getUnknown()), range);
         })
         .named("type-parameter");
 
@@ -576,6 +579,16 @@ public final class PyTypeParser {
       else if ("boolean".equals(name)) {
         final PyClassType type = builtinCache.getBoolType();
         return type != null ? new ParseResult(type, range) : EMPTY_RESULT;
+      }
+      else if (PyNames.TYPE_FLOAT.equals(name)) {
+        final PyClassType type = builtinCache.getFloatType();
+        PyType enriched = PyNumericTowerUtil.enrich(type);
+        return enriched != null ? new ParseResult(enriched, range) : EMPTY_RESULT;
+      }
+      else if (PyNames.TYPE_COMPLEX.equals(name)) {
+        final PyClassType type = builtinCache.getComplexType();
+        PyType enriched = PyNumericTowerUtil.enrich(type);
+        return enriched != null ? new ParseResult(enriched, range) : EMPTY_RESULT;
       }
       else if ("dictionary".equals(name)) {
         final PyClassType type = builtinCache.getDictType();

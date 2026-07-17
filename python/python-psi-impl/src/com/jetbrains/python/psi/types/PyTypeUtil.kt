@@ -21,11 +21,15 @@ import com.intellij.openapi.util.UserDataHolder
 import com.intellij.psi.PsiElement
 import com.jetbrains.python.psi.PyExpression
 import com.jetbrains.python.psi.PyPsiFacade
+import com.jetbrains.python.psi.PyUtil.isObjectClass
 import com.jetbrains.python.psi.impl.PyBuiltinCache
 import com.jetbrains.python.psi.types.PyRecursiveTypeVisitor.PyTypeTraverser
 import com.jetbrains.python.psi.types.PyTypeChecker.convertToType
 import com.jetbrains.python.psi.types.PyTypeChecker.findGenericDefinitionType
 import com.jetbrains.python.psi.types.PyTypeChecker.match
+import com.jetbrains.python.psi.types.PyTypeUtil.createTupleOfLiteralStringsType
+import com.jetbrains.python.psi.types.PyTypeUtil.extractStringLiteralsFromTupleType
+import com.jetbrains.python.psi.types.PyTypeUtil.widenLiteralAndNumeric
 import one.util.streamex.StreamEx
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.Contract
@@ -63,10 +67,10 @@ object PyTypeUtil {
    * pair of members.
    */
   fun PyType?.isOverlappingWith(type2: PyType?, context: TypeEvalContext): Boolean {
-    if (this is PyUnionLikeType) {
+    if (this is PyUnionType || this is PyUnsafeUnionType) {
       return this.members.any { it.isOverlappingWith(type2, context) }
     }
-    if (type2 is PyUnionLikeType) {
+    if (type2 is PyUnionType || type2 is PyUnsafeUnionType) {
       return type2.members.any { this.isOverlappingWith(it, context) }
     }
     return match(this, type2, context)
@@ -163,7 +167,7 @@ object PyTypeUtil {
    */
   @JvmStatic
   fun PyType?.toStream(): StreamEx<PyType?> =
-    if (this is PyCompoundType)
+    if (this is PyCompositeType)
       StreamEx.of(this.members)
     else
       StreamEx.of(this)
@@ -187,7 +191,7 @@ object PyTypeUtil {
   @ApiStatus.Experimental
   fun Ref<out PyType?>?.derefOrUnknown(): PyType? =
     if (this == null) PyAnyType.unknown
-    else this.get()
+    else this.get().also { PyAnyType.validate(it) }
 
   /**
    * Returns a collector that combines a stream of `Ref<PyType>` back into a single `Ref<PyType>`
@@ -218,7 +222,7 @@ object PyTypeUtil {
   }
 
   private fun toUnionFromRef(unionReduction: (PyType?, PyType?) -> PyType?): Collector<Ref<PyType?>?, *, Ref<PyType?>?> {
-    return Collectors.reducing(null) { accType, hintType ->
+    return Collectors.reducing<Ref<PyType?>?>(null) { accType, hintType ->
       when {
         hintType == null -> accType
         accType == null -> hintType
@@ -265,7 +269,7 @@ object PyTypeUtil {
   @JvmStatic
   fun toUnion(streamSource: PyType?): Collector<PyType?, *, PyType?> {
     return if (streamSource is PyUnsafeUnionType)
-      toUnion { PyUnsafeUnionType.unsafeUnion() }
+      toUnion { PyUnsafeUnionType.unsafeUnion(it) }
     else toUnion { members ->
       PyUnionType.union(members)
     }
@@ -273,11 +277,11 @@ object PyTypeUtil {
 
   val PyType?.components: List<PyType?>
     @ApiStatus.Experimental
-    get() = if (this is PyCompoundType) members.toList() else listOf(this)
+    get() = if (this is PyCompositeType) members.toList() else listOf(this)
 
   val PyType?.componentSequence: Sequence<PyType?>
     @ApiStatus.Experimental
-    get() = if (this is PyCompoundType) members.asSequence() else sequenceOf(this)
+    get() = if (this is PyCompositeType) members.asSequence() else sequenceOf(this)
 
   private fun toUnion(unionFactory: (List<PyType?>) -> PyType?): Collector<PyType?, *, PyType?> {
     return Collectors.collectingAndThen(Collectors.toList(), unionFactory)
@@ -301,7 +305,7 @@ object PyTypeUtil {
   }
 
   @JvmStatic
-  fun PyType.inheritsAny(context: TypeEvalContext): Boolean {
+  fun PyType?.inheritsAny(context: TypeEvalContext): Boolean {
     return this is PyClassLikeType && this.getAncestorTypes(context).contains(null)
   }
 
@@ -338,21 +342,62 @@ object PyTypeUtil {
 
     return Collections.unmodifiableSet(result)
   }
+
+  /**
+   * Extracts string literal values from a `tuple[Literal["a"], Literal["b"], ...]` type.
+   * Returns `null` if the type is not a non-homogeneous tuple of string literals.
+   * 
+   * @see createTupleOfLiteralStringsType
+   */
+  @JvmStatic
+  @ApiStatus.Internal
+  fun extractStringLiteralsFromTupleType(type: PyType?): List<String>? {
+    if (type !is PyTupleType || type.isHomogeneous) return null
+    return buildList {
+      for (elementType in type.elementTypes) {
+        if (elementType !is PyLiteralType) return null
+        val str = elementType.stringValue ?: return null
+        add(str)
+      }
+    }
+  }
+
+  /**
+   * Creates a `tuple[Literal["name1"], Literal["name2"], ...]` type from a list of strings.
+   * Useful for creating types for synthetic members (e.g. `__match_args__`, `__slots__` in a dataclasses).
+   * 
+   * @see extractStringLiteralsFromTupleType
+   */
+  @ApiStatus.Internal
+  fun createTupleOfLiteralStringsType(anchor: PsiElement, fieldNames: List<String>): PyTupleType? {
+    val literalTypes = fieldNames.mapNotNull { PyLiteralType.stringLiteral(anchor, it) }
+    return PyTupleType.create(anchor, literalTypes)
+  }
+
+  @JvmStatic
+  fun widenLiteralAndNumeric(type: PyType?): PyType? {
+    return type.widenTupleLiterals()
+      .let { PyLiteralType.upcastLiteralToClass(it) }
+      .let { PyNumericTowerUtil.enrich(it) }
+  }
 }
 
 @OptIn(ExperimentalContracts::class)
 val PyType?.isAnyOrUnknown: Boolean
+  @Contract("null -> true")
   get() {
-    contract {
-      returns(true) implies (this@isAnyOrUnknown is PyAnyType?)
-      returns(false) implies (this@isAnyOrUnknown is PyType)
-    }
-
-    return if (PyAnyType.isEnabled) this is PyAnyType else this == null
+  contract {
+    returns(true) implies (this@isAnyOrUnknown is PyAnyType?)
+    returns(false) implies (this@isAnyOrUnknown is PyType)
   }
+
+  PyAnyType.validate(this)
+  return if (PyAnyType.isEnabled) this is PyAnyType else this == null
+}
 
 @OptIn(ExperimentalContracts::class)
 val PyType?.isAny: Boolean
+  @Contract("null -> true")
   get() {
     contract {
       returns(true) implies (this@isAny is PyAnyType.Any?)
@@ -364,6 +409,7 @@ val PyType?.isAny: Boolean
 
 @OptIn(ExperimentalContracts::class)
 val PyType?.isUnknown: Boolean
+  @Contract("null -> true")
   get() {
     contract {
       returns(true) implies (this@isUnknown is PyAnyType.Unknown?)
@@ -372,7 +418,17 @@ val PyType?.isUnknown: Boolean
 
     PyAnyType.validate(this)
     return if (PyAnyType.isEnabled) this is PyAnyType.Unknown else this == null
-}
+  }
+
+@OptIn(ExperimentalContracts::class)
+val PyType?.isObject: Boolean
+  get() {
+    contract {
+      returns(true) implies (this@isObject is PyClassType)
+    }
+
+    return this is PyClassType && isObjectClass(this.pyClass)
+  }
 
 @ApiStatus.Internal
 fun PyExpression.getLiteralType(context: TypeEvalContext): PyType? =
@@ -386,6 +442,6 @@ fun PyExpression.getLiteralType(context: TypeEvalContext): PyType? =
 @ApiStatus.Experimental
 fun PyType?.widenTupleLiterals(): PyType? {
   if (this !is PyTupleType || this is PyNamedTupleType) return this
-  val widenedElements = this.elementTypes.map { PyLiteralType.upcastLiteralToClass(it.widenTupleLiterals()) }
+  val widenedElements = this.elementTypes.map { widenLiteralAndNumeric(it) }
   return PyTupleType(this.pyClass, widenedElements, this.isHomogeneous)
 }

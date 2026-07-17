@@ -3,7 +3,6 @@
 package org.jetbrains.kotlin.idea.fir.navigation;
 
 import com.intellij.testFramework.TestDataPath;
-import org.jetbrains.kotlin.idea.base.plugin.KotlinPluginMode;
 import org.jetbrains.kotlin.idea.base.test.TestRoot;
 import org.jetbrains.kotlin.idea.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils;
@@ -20,12 +19,6 @@ import org.junit.runner.RunWith;
 @RunWith(JUnit3RunnerWithInners.class)
 @TestMetadata("../../idea/tests/testData/navigation/gotoDeclaration")
 public class FirGotoDeclarationTestGenerated extends AbstractFirGotoDeclarationTest {
-    @java.lang.Override
-    @org.jetbrains.annotations.NotNull
-    public final KotlinPluginMode getPluginMode() {
-        return KotlinPluginMode.K2;
-    }
-
     private void runTest(String testDataFilePath) throws Exception {
         KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
     }
@@ -150,6 +143,11 @@ public class FirGotoDeclarationTestGenerated extends AbstractFirGotoDeclarationT
         runTest("../../idea/tests/testData/navigation/gotoDeclaration/destructuringDeclarationInitializer.test");
     }
 
+    @TestMetadata("destructuringDeclarationInitializerShortForm.test")
+    public void testDestructuringDeclarationInitializerShortForm() throws Exception {
+        runTest("../../idea/tests/testData/navigation/gotoDeclaration/destructuringDeclarationInitializerShortForm.test");
+    }
+
     @TestMetadata("enumEntries.test")
     public void testEnumEntries() throws Exception {
         runTest("../../idea/tests/testData/navigation/gotoDeclaration/enumEntries.test");
@@ -208,6 +206,31 @@ public class FirGotoDeclarationTestGenerated extends AbstractFirGotoDeclarationT
     @TestMetadata("navigationToLibrary.test")
     public void testNavigationToLibrary() throws Exception {
         runTest("../../idea/tests/testData/navigation/gotoDeclaration/navigationToLibrary.test");
+    }
+
+    @TestMetadata("returnLabelToFunction.test")
+    public void testReturnLabelToFunction() throws Exception {
+        runTest("../../idea/tests/testData/navigation/gotoDeclaration/returnLabelToFunction.test");
+    }
+
+    @TestMetadata("returnLabeled.test")
+    public void testReturnLabeled() throws Exception {
+        runTest("../../idea/tests/testData/navigation/gotoDeclaration/returnLabeled.test");
+    }
+
+    @TestMetadata("returnNested.test")
+    public void testReturnNested() throws Exception {
+        runTest("../../idea/tests/testData/navigation/gotoDeclaration/returnNested.test");
+    }
+
+    @TestMetadata("returnNestedFunction.test")
+    public void testReturnNestedFunction() throws Exception {
+        runTest("../../idea/tests/testData/navigation/gotoDeclaration/returnNestedFunction.test");
+    }
+
+    @TestMetadata("returnUnlabeled.test")
+    public void testReturnUnlabeled() throws Exception {
+        runTest("../../idea/tests/testData/navigation/gotoDeclaration/returnUnlabeled.test");
     }
 
     @TestMetadata("thisExtensionFunction.test")

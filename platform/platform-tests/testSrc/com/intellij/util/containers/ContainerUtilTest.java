@@ -344,8 +344,8 @@ public class ContainerUtilTest {
   @Test
   public void testLockFreeCOWReplaceAll_Stress() {
     int N = 500 * ForkJoinPool.getCommonPoolParallelism();
-    List<Integer> list = ContainerUtil.createLockFreeCopyOnWriteList(IntStream.range(0, N).mapToObj(__->0).toList());
-    list.stream().parallel().forEach(__->list.replaceAll(i-> i + 1));
+    List<Integer> list = ContainerUtil.createLockFreeCopyOnWriteList(IntStream.range(0, N).mapToObj(_->0).toList());
+    list.stream().parallel().forEach(_->list.replaceAll(i-> i + 1));
     assertEquals(N*N, list.stream().mapToInt(i -> i).sum());
   }
 
@@ -560,6 +560,9 @@ public class ContainerUtilTest {
     assertUnmodifiable(ContainerUtil.unmodifiableOrEmptyList(new ArrayList<>(Arrays.asList("a", "b"))));
     assertUnmodifiable(ContainerUtil.unmodifiableOrEmptySet(new HashSet<>(Arrays.asList("a", "b"))));
     assertUnmodifiable(ContainerUtil.unmodifiableOrEmptyMap(new HashMap<>(Map.of("a", "b"))));
+    assertUnmodifiable(ContainerUtil.remove(List.of("x","y"), 0));
+    assertUnmodifiable(ContainerUtil.remove(List.of("x","y"), "x"));
+    assertUnmodifiable(ContainerUtil.remove(List.of("x","y"), "z"));
   }
 
   private static <K, V> void assertUnmodifiable(Map<K, V> map) {
@@ -570,17 +573,17 @@ public class ContainerUtilTest {
     assertThrowsUOE(map, ()->map.putAll(new HashMap<>(map)));
     assertThrowsUOE(map, ()->map.remove(null));
     assertThrowsUOE(map, ()->map.remove(null, null));
-    assertThrowsUOE(map, ()->map.computeIfAbsent(null, __->null));
-    assertThrowsUOE(map, ()->map.compute(null, (__, ___)->null));
-    assertThrowsUOE(map, ()->map.computeIfPresent(null, (__, ___)->null));
-    assertThrowsUOE(map, ()->map.computeIfAbsent(null, __->null));
-    assertThrowsUOE(map, ()->map.replaceAll((__, ___)->null));
+    assertThrowsUOE(map, ()->map.computeIfAbsent(null, _->null));
+    assertThrowsUOE(map, ()->map.compute(null, (_, _)->null));
+    assertThrowsUOE(map, ()->map.computeIfPresent(null, (_, _)->null));
+    assertThrowsUOE(map, ()->map.computeIfAbsent(null, _->null));
+    assertThrowsUOE(map, ()->map.replaceAll((_, _)->null));
     assertThrowsUOE(map, ()->map.replace(null, null));
     assertThrowsUOE(map, ()->map.replace(null, null, null));
     //noinspection DataFlowIssue
-    assertThrowsUOE(map, ()->map.merge(null, null, (__, ___)->null));
-    assertThrowsUOE(map, ()->map.merge(null, map.values().iterator().next(), (__, ___)->null));
-    assertThrowsUOE(map, ()->map.merge(map.keySet().iterator().next(), map.values().iterator().next(), (__, ___)->null));
+    assertThrowsUOE(map, ()->map.merge(null, null, (_, _)->null));
+    assertThrowsUOE(map, ()->map.merge(null, map.values().iterator().next(), (_, _)->null));
+    assertThrowsUOE(map, ()->map.merge(map.keySet().iterator().next(), map.values().iterator().next(), (_, _)->null));
     //noinspection RedundantCollectionOperation
     assertThrowsUOE(map, ()-> map.keySet().clear());
     //noinspection RedundantCollectionOperation
@@ -625,7 +628,7 @@ public class ContainerUtilTest {
     }
     assertThrowsUOE(collection, ()->collection.remove(collection.isEmpty() ? null : collection.iterator().next()));
     assertThrowsUOE(collection, ()->collection.removeAll(new ArrayList<>(collection)));
-    assertThrowsUOE(collection, ()->collection.removeIf(__->true));
+    assertThrowsUOE(collection, ()->collection.removeIf(_->true));
     assertThrowsUOE(collection, ()->collection.retainAll(Collections.<T>emptyList()));
     assertThrowsUOE(collection, ()->collection.retainAll(Arrays.<T>asList(null, null)));
     if (collection instanceof List<T> list) {
@@ -647,5 +650,16 @@ public class ContainerUtilTest {
       assertThrowsUOE(collection, ()->list.replaceAll(t->t));
       assertThrowsUOE(collection, ()->list.set(0, null));
     }
+  }
+
+  @Test
+  public void testRemove() {
+    assertEquals(List.of("y"), ContainerUtil.remove(List.of("x","y"), 0));
+    assertEquals(List.of("y"), ContainerUtil.remove(List.of("x","y"), "x"));
+    assertEquals(List.of("x","y"), ContainerUtil.remove(List.of("x","y"), "z"));
+    assertEquals(List.of(), ContainerUtil.remove(List.of(), "z"));
+    assertEquals(List.of("x","z"), ContainerUtil.remove(List.of("x","y", "z"), "y"));
+    assertEquals(List.of("y","z"), ContainerUtil.remove(List.of("x","y", "z"), "x"));
+    assertEquals(List.of("x","y"), ContainerUtil.remove(List.of("x","y", "z"), "z"));
   }
 }

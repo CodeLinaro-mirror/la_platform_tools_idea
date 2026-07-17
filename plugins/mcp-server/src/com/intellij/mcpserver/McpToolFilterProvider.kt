@@ -1,76 +1,54 @@
 package com.intellij.mcpserver
 
+import com.intellij.mcpserver.McpToolFilterProvider.McpToolFilterContext
 import com.intellij.mcpserver.impl.McpServerService
+import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.extensions.ExtensionPointName
-import com.intellij.util.PatternUtil
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 
+fun applyMaskFilter(context: McpToolFilterContext, maskList: String) {
+  if (maskList.isBlank()) return
+  val masks = MaskList(maskList)
+  context.updateState(enabled = false) { tool -> !masks.matches(tool.descriptor.fullyQualifiedName) }
+}
+
 interface McpToolFilterProvider {
-  data class McpToolFilterContext(
-    val disallowedTools: Set<McpTool>,
-    val allowedTools: Set<McpTool>
+  data class McpToolState(
+    val enabled: Boolean = true,
+    val routerOnly: Boolean = true
   )
 
-  enum class McpToolFilterAction {
-    ALLOW,
-    DISALLOW
-  }
+  class McpToolFilterContext(tools: Collection<McpTool>) {
+    private val toolStates: MutableMap<McpTool, McpToolState> = tools.associateWith { McpToolState() }.toMutableMap()
 
-  interface McpToolFilterModification {
-    fun apply(context: McpToolFilterContext): McpToolFilterContext
-  }
-  class AllowMcpTools(
-    val toolList: Set<McpTool>,
-  ) : McpToolFilterModification {
-    override fun apply(context: McpToolFilterContext): McpToolFilterContext = context.copy(
-      disallowedTools = context.disallowedTools - toolList,
-      allowedTools = context.allowedTools + toolList
-    )
-  }
-  class DisallowMcpTools(
-    val toolList: Set<McpTool>,
-  ) : McpToolFilterModification {
-    override fun apply(context: McpToolFilterContext): McpToolFilterContext = context.copy(
-      disallowedTools = context.disallowedTools + toolList,
-      allowedTools = context.allowedTools - toolList
-    )
-  }
+    val onTools: Set<McpTool> get() = toolStates.filterValues { it.enabled && !it.routerOnly }.keys
+    val routerOnlyTools: Set<McpTool> get() = toolStates.filterValues { it.enabled && it.routerOnly }.keys
 
-  interface McpToolFilter {
-    fun modify(context: McpToolFilterContext): McpToolFilterModification
-  }
-
-  class MaskBasedMcpToolFilter(mask: String, val action: McpToolFilterAction) : McpToolFilter {
-    private val matcher = PatternUtil.fromMask(mask)
-
-    override fun modify(context: McpToolFilterContext): McpToolFilterModification {
-      return if (action == McpToolFilterAction.ALLOW)
-        AllowMcpTools(context.disallowedTools.filter { matcher.matcher(it.descriptor.fullyQualifiedName).matches() }.toSet())
-      else
-        DisallowMcpTools(context.allowedTools.filter { matcher.matcher(it.descriptor.fullyQualifiedName).matches() }.toSet())
+    fun updateState(state: McpToolState, predicate: (McpTool) -> Boolean) {
+      updateState(state.enabled, state.routerOnly, predicate)
     }
 
-    companion object {
-      fun getMaskFilters(maskList: String): List<McpToolFilter> =
-        maskList
-          .split(",")
-          .map { it.trim() }
-          .map {
-            if (it.startsWith("-")) it.substring(1) to McpToolFilterAction.DISALLOW
-            else if (it.startsWith("+")) it.substring(1) to McpToolFilterAction.ALLOW
-            else it to McpToolFilterAction.ALLOW
-          }
-          .map { MaskBasedMcpToolFilter(it.first, it.second) }
+    fun updateState(enabled: Boolean? = null, routerOnly: Boolean? = null, predicate: (McpTool) -> Boolean) {
+      if (enabled == null && routerOnly == null) {
+        thisLogger().warn("MCP tool update states were not defined, skipping state update")
+        return
+      }
+      for ((tool, state) in toolStates) {
+        if (predicate(tool)) {
+          if ((enabled == null || state.enabled == enabled) && (routerOnly == null || state.routerOnly == routerOnly)) continue
+          toolStates[tool] = state.copy(enabled = enabled ?: state.enabled, routerOnly = routerOnly ?: state.routerOnly)
+        }
+      }
     }
   }
 
   companion object {
-    val EP: ExtensionPointName<McpToolFilterProvider> = ExtensionPointName.create<McpToolFilterProvider>("com.intellij.mcpServer.mcpToolFilterProvider")
+    val EP: ExtensionPointName<McpToolFilterProvider> = ExtensionPointName.create("com.intellij.mcpServer.mcpToolFilterProvider")
   }
 
-  fun getFilters(clientInfo: Implementation?, sessionOptions: McpServerService.McpSessionOptions? = null): List<McpToolFilter>
+  fun applyFilters(context: McpToolFilterContext, clientInfo: Implementation?, sessionOptions: McpServerService.McpSessionOptions? = null, invocationMode: McpToolInvocationMode = McpToolInvocationMode.DIRECT)
 
-  fun getUpdates(clientInfo: Implementation?, scope: CoroutineScope, sessionOptions: McpServerService.McpSessionOptions? = null): Flow<Unit>
+  fun getUpdates(clientInfo: Implementation?, scope: CoroutineScope, sessionOptions: McpServerService.McpSessionOptions? = null, invocationMode: McpToolInvocationMode = McpToolInvocationMode.DIRECT): Flow<Unit>
 }

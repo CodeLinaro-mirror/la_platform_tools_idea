@@ -194,6 +194,32 @@ class HighlightingTest : BaseTestCase() {
           """)
   }
 
+  @NeedsCloud
+  @Test
+  fun `test problems are correctly mapped to sentences in javadoc`() {
+    val text = """
+      public class A {
+          /**
+           * This is the first sentence.
+           * 1. <STYLE_SUGGESTION descr="Grazie.RuleEngine.En.Style.SENTENCE_CAPITALIZATION">re</STYLE_SUGGESTION>ad all enabled bundles
+           * 2. <STYLE_SUGGESTION descr="Grazie.RuleEngine.En.Style.SENTENCE_CAPITALIZATION">pr</STYLE_SUGGESTION>epare a syntax table of supported languages
+           * 3. <STYLE_SUGGESTION descr="Grazie.RuleEngine.En.Style.SENTENCE_CAPITALIZATION">pr</STYLE_SUGGESTION>epare a preference table of enabled bundles
+           * 4. <STYLE_SUGGESTION descr="Grazie.RuleEngine.En.Style.SENTENCE_CAPITALIZATION">fi</STYLE_SUGGESTION>ll the extensions mapping for {@link A}
+           */
+          public void reloadEnabledBundles() {
+          }
+
+          /**
+           * <STYLE_SUGGESTION descr="Grazie.RuleEngine.En.Style.SENTENCE_CAPITALIZATION">cu</STYLE_SUGGESTION>stom highlighting colors defined inside bundles (not in themes).
+           * Note that background color in text attributes is stored in raw format and isn't merged with the default background.
+           */
+          public void getCustomHighlightingColors() {}
+      }
+    """.trimIndent()
+    myFixture.configureByText("A.java", text)
+    myFixture.checkHighlighting()
+  }
+
   @Test
   fun `test allow subject absence in comments`() {
     checkCloudAndLocal("a.kt",
@@ -387,12 +413,13 @@ class HighlightingTest : BaseTestCase() {
   @NeedsCloud
   @Test
   fun `test treating markup as quotes`() {
-    configureByText("a.md", """
+    val text = """
       From the toolbar, click _Add link_, then select **is duplicated by**.
-      **This** is still <GRAMMAR_ERROR>an </GRAMMAR_ERROR>mistake.
+      **This** is still <GRAMMAR_ERROR descr="Grazie.RuleEngine.En.Grammar.ARTICLE_ISSUES">an </GRAMMAR_ERROR>mistake.
       This happened in *Tuesday*.
       Import a *Workflow*
-    """.trimIndent())
+    """.trimIndent()
+    configureByText("a.md", text)
     myFixture.checkHighlighting()
 
     Registry.get("grazie.html.concatenate.inline.tag.contents").setValue(true, testRootDisposable)
@@ -404,6 +431,11 @@ class HighlightingTest : BaseTestCase() {
       <p><b>This</b> is still <GRAMMAR_ERROR>an </GRAMMAR_ERROR>mistake.</p>
       </body>
     """.trimIndent())
+    myFixture.checkHighlighting()
+
+    // sentence tokenizer should respect exclusions
+    Registry.get("grazie.correct.text.enabled").setValue(false, testRootDisposable)
+    configureByText("a.md", text)
     myFixture.checkHighlighting()
   }
 
@@ -472,10 +504,22 @@ class HighlightingTest : BaseTestCase() {
   @Test
   fun `test LT Oxford spelling rules are synchronized with our setting`() {
     enableLanguages(setOf(Lang.BRITISH_ENGLISH), testRootDisposable)
-    assertFalse(GrazieConfig.get().useOxfordSpelling)
-    assertNotEmpty(GrazieConfig.get().userDisabledRules.filter { it.contains("OXFORD_SPELLING") })
+    val nonOtherDomains = TextStyleDomain.entries.filterNot { it == TextStyleDomain.Other }
 
-    myFixture.configureByText("a.txt", "Summarising a text is great!")
+    assertFalse(GrazieConfig.get().useOxfordSpelling)
+    assertEmpty(GrazieConfig.get().userEnabledRules.filter { it.contains("OXFORD_SPELLING") })
+    nonOtherDomains.forEach { domain ->
+      assertEmpty(GrazieConfig.get().domainEnabledRules[domain].orEmpty().filter { it.contains("OXFORD_SPELLING") })
+    }
+
+    myFixture.configureByText("Test.java", """
+      // Summarising a text is great! This sentence is required for language detection.
+
+      /**
+       * Summarising a text is great! This sentence is required for language detection.
+       */
+      public class Test {}
+    """.trimIndent())
     myFixture.checkHighlighting()
 
     GrazieConfig.update { it.withOxfordSpelling(true) }
@@ -483,8 +527,19 @@ class HighlightingTest : BaseTestCase() {
       PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
     }
 
-    assertEmpty(GrazieConfig.get().userDisabledRules.filter { it.contains("OXFORD_SPELLING") })
-    assertNotEmpty(myFixture.doHighlighting())
+    assertNotEmpty(GrazieConfig.get().userEnabledRules.filter { it.contains("OXFORD_SPELLING") })
+    nonOtherDomains.forEach { domain ->
+      assertNotEmpty(GrazieConfig.get().domainEnabledRules[domain].orEmpty().filter { it.contains("OXFORD_SPELLING") })
+    }
+    myFixture.configureByText("Test.java", """
+      // <STYLE_SUGGESTION descr="Grazie.RuleEngine.En.Style.VARIANT_LEXICAL_DIFFERENCES">Summarising</STYLE_SUGGESTION> a text is great! This sentence is required for language detection.
+
+      /**
+       * <STYLE_SUGGESTION descr="Grazie.RuleEngine.En.Style.VARIANT_LEXICAL_DIFFERENCES">Summarising</STYLE_SUGGESTION> a text is great! This sentence is required for language detection.
+       */
+      public class Test {}
+    """.trimIndent())
+    myFixture.checkHighlighting()
   }
 
   @Test
@@ -492,6 +547,27 @@ class HighlightingTest : BaseTestCase() {
     myFixture.configureByText("a.txt", "The future development would <GRAMMAR_ERROR>be <caret>tends</GRAMMAR_ERROR> to increase the horsepower.")
     myFixture.checkHighlighting()
     myFixture.findSingleIntention("tend")
+  }
+
+  @Test
+  fun `test closeMlecMerging MLEC client ability`() {
+    myFixture.configureByText(
+      "a.txt",
+      "One can <GRAMMAR_ERROR descr=\"MD_BASEFORM\">li<caret>stened</GRAMMAR_ERROR> <GRAMMAR_ERROR descr=\"Grazie.RuleEngine.En.Grammar.PREPOSITION_ISSUES\">music</GRAMMAR_ERROR> or <GRAMMAR_ERROR descr=\"Grazie.MLEC.En.All: Incorrect verb tense form\">watched</GRAMMAR_ERROR> some funny videos."
+    )
+    myFixture.checkHighlighting()
+    val listenIntention = myFixture.findSingleIntention("listen")
+    myFixture.launchAction(listenIntention)
+    myFixture.checkResult("One can listen music or watched some funny videos.")
+
+    myFixture.configureByText(
+      "a.txt",
+      "One can listen <GRAMMAR_ERROR descr=\"Grazie.RuleEngine.En.Grammar.PREPOSITION_ISSUES\"><caret>music</GRAMMAR_ERROR> or <GRAMMAR_ERROR descr=\"Grazie.MLEC.En.All: Incorrect verb tense form\">watched</GRAMMAR_ERROR> some funny videos."
+    )
+    myFixture.checkHighlighting()
+    val musicIntention = myFixture.findSingleIntention("to music")
+    myFixture.launchAction(musicIntention)
+    myFixture.checkResult("One can listen to music or watched some funny videos.")
   }
 
   @NeedsCloud
@@ -552,8 +628,8 @@ class HighlightingTest : BaseTestCase() {
 
     // Suggestions are reordered by [TextProblemAggregator] starting with the most meaningful ones
     val intentions = availableIntentions
-    assertEquals(intentions[1].text, "Jim, get")
-    assertEquals(intentions[2].text, "Jim gets")
+    assertEquals("Jim, get", intentions[1].text)
+    assertEquals("Jim gets", intentions[2].text)
   }
 
   @NeedsCloud
@@ -566,6 +642,23 @@ class HighlightingTest : BaseTestCase() {
         // If we know that @currentToken is an url, we will strictly use it (--url).
       """.trimIndent()
     )
+  }
+
+  @NeedsCloud
+  @Test
+  fun `test disable oxford spelling`() {
+    GrazieConfig.update { it.copy(useOxfordSpelling = true) }
+    enableLanguages(setOf(Lang.BRITISH_ENGLISH), testRootDisposable)
+    configureByText("a.txt", "// The detailed field <STYLE_SUGGESTION><caret>summarises</STYLE_SUGGESTION>")
+    myFixture.checkHighlighting()
+
+    val intention = myFixture.findSingleIntention("Disable Oxford Spelling")
+    EdtInvocationManager.invokeAndWaitIfNeeded {
+      myFixture.launchAction(intention)
+      UIUtil.dispatchAllInvocationEvents()
+    }
+    assertFalse(GrazieConfig.get().useOxfordSpelling, "Disable Oxford Spelling should've updated GrazieConfig")
+    assertEquals(setOf(Lang.BRITISH_ENGLISH), GrazieConfig.get().availableLanguages, "Disable Oxford Spelling should have not updated available languages")
   }
 
   companion object {
@@ -583,4 +676,5 @@ class HighlightingTest : BaseTestCase() {
       GrazieConfig.update { it.copy(userEnabledRules = it.userEnabledRules + setOf(*ids)) }
     }
   }
+
 }

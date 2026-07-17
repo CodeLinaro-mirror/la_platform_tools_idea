@@ -13,10 +13,10 @@ import com.intellij.psi.util.CachedValue
 import com.intellij.psi.util.CachedValueProvider
 import com.intellij.psi.util.CachedValuesManager
 import org.jetbrains.annotations.ApiStatus
+import org.jetbrains.kotlin.cli.common.arguments.CommonCompilerArgumentsConfigurator
 import org.jetbrains.kotlin.cli.common.arguments.K2JVMCompilerArguments
 import org.jetbrains.kotlin.cli.common.arguments.parseCommandLineArguments
 import org.jetbrains.kotlin.cli.common.arguments.toLanguageVersionSettings
-import org.jetbrains.kotlin.cli.common.messages.MessageCollector
 import org.jetbrains.kotlin.config.AnalysisFlags
 import org.jetbrains.kotlin.config.JvmTarget
 import org.jetbrains.kotlin.config.LanguageFeature
@@ -124,7 +124,7 @@ private fun getScriptSettings(project: Project, virtualFile: VirtualFile, defini
             scriptingDebugLog(virtualFile) { "compiler options: $compilerOptions" }
 
             val languageVersionSettings = compilerArguments.toLanguageVersionSettings(
-              MessageCollector.NONE,
+                CommonCompilerArgumentsConfigurator.Reporter.DoNothing,
               mapOf(AnalysisFlags.ideMode to true)
             )
             val scriptModule = getScriptModule(project, virtualFile)?.takeIf { !it.isDisposed }
@@ -160,7 +160,7 @@ private fun Iterable<String>.addGradleSpecificsIfNeeded(definition: ScriptDefini
 }
 
 private fun getScriptModule(project: Project, virtualFile: VirtualFile): Module? {
-    val scriptModuleName = ScriptRelatedModuleNameFile.Companion[project, virtualFile]
+    val scriptModuleName = ScratchFileOptionsByFile[project, virtualFile]?.selectedModule
     return if (scriptModuleName != null) {
         ModuleManager.getInstance(project).findModuleByName(scriptModuleName)
     } else {

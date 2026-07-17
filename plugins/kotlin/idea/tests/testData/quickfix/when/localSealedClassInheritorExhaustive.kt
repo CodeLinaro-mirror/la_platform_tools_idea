@@ -1,5 +1,6 @@
 // "Add else branch" "false"
 // KT-63795
+// K2_ERROR: Local class cannot extend a sealed class.
 // K2_AFTER_ERROR: Local class cannot extend a sealed class.
 
 sealed class SealedClass
@@ -16,5 +17,5 @@ fun test(sealedClass: SealedClass): String {
     }
 }
 
-// IGNORE_K1
+
 // K1 analysis runs into a lazy value recursion exception.

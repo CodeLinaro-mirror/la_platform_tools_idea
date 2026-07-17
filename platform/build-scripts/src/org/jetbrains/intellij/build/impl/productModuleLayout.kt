@@ -1,5 +1,5 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
-@file:Suppress("ReplaceGetOrSet")
+@file:Suppress("ReplaceGetOrSet", "DestructuringForParameter")
 
 package org.jetbrains.intellij.build.impl
 
@@ -11,25 +11,14 @@ import org.jdom.Element
 import org.jetbrains.intellij.build.BuildContext
 import org.jetbrains.intellij.build.CompilationContext
 import org.jetbrains.intellij.build.ContentModuleFilter
-import org.jetbrains.intellij.build.FrontendModuleFilter
 import org.jetbrains.intellij.build.PLUGIN_XML_RELATIVE_PATH
 import org.jetbrains.intellij.build.classPath.DescriptorSearchScope
 import org.jetbrains.intellij.build.classPath.XIncludeElementResolverImpl
 import org.jetbrains.intellij.build.classPath.resolveAndEmbedContentModuleDescriptor
 import org.jetbrains.intellij.build.classPath.resolveIncludes
-import org.jetbrains.intellij.build.impl.PlatformJarNames.PRODUCT_BACKEND_JAR
-import org.jetbrains.intellij.build.impl.PlatformJarNames.PRODUCT_JAR
-import org.jetbrains.intellij.build.isOptionalLoadingRule
 import org.jetbrains.intellij.build.productLayout.LIB_MODULE_PREFIX
 import org.jetbrains.intellij.build.productLayout.buildProductContentXml
 import org.jetbrains.jps.model.java.JavaSourceRootType
-
-internal fun getProductModuleJarName(moduleName: String, context: BuildContext, frontendModuleFilter: FrontendModuleFilter): String {
-  return when {
-    isModuleCloseSource(moduleName = moduleName, context = context) -> if (frontendModuleFilter.isBackendModule(moduleName)) PRODUCT_BACKEND_JAR else PRODUCT_JAR
-    else -> PlatformJarNames.getPlatformModuleJarName(moduleName, frontendModuleFilter)
-  }
-}
 
 // result _must be_ consistent, do not use Set.of or HashSet here
 internal suspend fun processAndGetProductPluginContentModules(
@@ -47,11 +36,13 @@ internal suspend fun processAndGetProductPluginContentModules(
   val element: Element
   val moduleToSetChainMapping: Map<String, List<String>>?
   val moduleToIncludeDependenciesMapping: Map<String, Boolean>?
+  val descriptorResolverModules: Collection<String>
   val programmaticModulesSpec = context.productProperties.getProductContentDescriptor()
   if (programmaticModulesSpec == null) {
     element = JDOMUtil.load(file)
     moduleToSetChainMapping = null
     moduleToIncludeDependenciesMapping = null
+    descriptorResolverModules = includedPlatformModulesPartialList
   }
   else {
     val buildResult = buildProductContentXml(
@@ -62,13 +53,20 @@ internal suspend fun processAndGetProductPluginContentModules(
       metadataBuilder = { sb ->
         sb.append("  <id>com.intellij</id>\n")
       },
-      isUltimateBuild = context.paths.projectHome != context.paths.communityHomeDir
     )
     Span.current().addEvent("Generated ${buildResult.contentBlocks.size} content blocks with ${buildResult.contentBlocks.sumOf { it.modules.size }} total modules")
 
     element = JDOMUtil.load(buildResult.xml)
     moduleToSetChainMapping = buildResult.moduleToSetChainMapping.mapKeys { it.key.value }
     moduleToIncludeDependenciesMapping = buildResult.moduleToIncludeDependenciesMapping.mapKeys { it.key.value }
+    descriptorResolverModules = LinkedHashSet<String>().apply {
+      addAll(includedPlatformModulesPartialList)
+      for ((_, modules) in buildResult.contentBlocks) {
+        for ((name) in modules) {
+          add(name.name)
+        }
+      }
+    }
   }
 
   // Scrambling isn’t an issue: the scrambler can modify XML.
@@ -77,17 +75,16 @@ internal suspend fun processAndGetProductPluginContentModules(
   // We must resolve includes to collect all content modules, since the <content> tag may
   // be specified in an included file. This is done not only for performance but for correctness.
   val xIncludeResolver = XIncludeElementResolverImpl(
-    searchPath = listOf(DescriptorSearchScope(includedPlatformModulesPartialList, descriptorCache)),
+    searchPath = listOf(DescriptorSearchScope(descriptorResolverModules, descriptorCache)),
     context = context,
   )
   resolveIncludes(element = element, elementResolver = xIncludeResolver)
 
-  val frontendModuleFilter = context.getFrontendModuleFilter()
   val moduleItems = LinkedHashSet<ModuleItem>()
   filterAndProcessContentModules(rootElement = element, pluginMainModuleName = null, context = context) { moduleElement, moduleName, loadingRule ->
     processProductModule(
       moduleElement = moduleElement,
-      frontendModuleFilter = frontendModuleFilter,
+      layout = layout,
       result = moduleItems,
       moduleToSetChainOverride = moduleToSetChainMapping,
       moduleToIncludeDependenciesOverride = moduleToIncludeDependenciesMapping,
@@ -190,7 +187,7 @@ internal suspend fun filterAndProcessContentModules(
 
 private suspend fun processProductModule(
   moduleElement: Element,
-  frontendModuleFilter: FrontendModuleFilter,
+  layout: PlatformLayout,
   result: LinkedHashSet<ModuleItem>,
   moduleToSetChainOverride: Map<String, List<String>>? = null,
   moduleToIncludeDependenciesOverride: Map<String, Boolean>? = null,
@@ -198,15 +195,10 @@ private suspend fun processProductModule(
   xIncludeResolver: XIncludeElementResolverImpl,
   moduleName: String,
   isEmbedded: Boolean,
-  context: CompilationContext,
+  context: BuildContext,
 ) {
-  val isInScrambledFile = isEmbedded && isModuleCloseSource(moduleName = moduleName, context = context)
-  val relativeOutFile = if (isInScrambledFile) {
-    if (frontendModuleFilter.isBackendModule(moduleName)) PRODUCT_BACKEND_JAR else PRODUCT_JAR
-  }
-  else {
-    "$moduleName.jar"
-  }
+  val willBeScrambled = markContentModuleToScrambleIfNeeded(moduleName = moduleName, context = context, isEmbedded = isEmbedded)
+  val relativeOutputFile = layout.getProductModuleOutputFile(moduleName) ?: "$moduleName.jar"
 
   // extract module set from override mapping (for programmatic spec)
   val moduleSet = moduleToSetChainOverride?.get(moduleName)
@@ -214,22 +206,22 @@ private suspend fun processProductModule(
   result.add(
     ModuleItem(
       moduleName = moduleName,
-      relativeOutputFile = relativeOutFile,
+      relativeOutputFile = relativeOutputFile,
       reason = if (isEmbedded) ModuleIncludeReasons.PRODUCT_EMBEDDED_MODULES else ModuleIncludeReasons.PRODUCT_MODULES,
       moduleSet = moduleSet,
       includeDependencies = includeDependencies,
     )
   )
 
-  // We do not embed the module descriptor because scrambling can rename classes.
+  // We do not embed the module descriptor into scrambled modules because scrambling can rename classes.
   //
   // However, we cannot rely solely on the `PLUGIN_CLASSPATH` descriptor: for non-embedded modules,
   // xi:included files (e.g., META-INF/VcsExtensionPoints.xml) are not resolvable from the core classpath, since a non-embedded module uses a separate classloader.
   //
-  // Because scrambling applies only (by policy) to embedded modules, we embed the module descriptor for non-embedded modules to address this.
+  // For non-scrambled modules, we embed the module descriptor to address this.
   //
   // Note: We could implement runtime loading via the module's classloader, but that would significantly complicate the runtime code.
-  if (!isInScrambledFile) {
+  if (!willBeScrambled) {
     resolveAndEmbedContentModuleDescriptor(
       moduleElement = moduleElement,
       descriptorCache = descriptorCache,
@@ -243,24 +235,49 @@ private suspend fun processProductModule(
   // We prefer not to increase code complexity without a strong reason.
 }
 
-private fun isModuleCloseSource(moduleName: String, context: CompilationContext): Boolean {
+// todo will be removed on the next stage
+private val excludedFromScrambling = hashSetOf(
+  "fleet.protocol",
+  "intellij.platform.lsp",
+  "intellij.platform.lsp.impl",
+  "intellij.platform.lsp.impl.structureView",
+  "intellij.platform.webide",
+  "intellij.platform.webide.impl",
+  "intellij.rml.dfa",
+  "intellij.platform.commercial.dependencies",
+  "intellij.rd.platform",
+)
+
+internal fun markContentModuleToScrambleIfNeeded(moduleName: String, context: BuildContext, isEmbedded: Boolean): Boolean {
+  if (context.productProperties.contentModulesToScramble.contains(moduleName)) {
+    return true
+  }
+
+  if (!isEmbedded || !isModuleCloseSource(moduleName = moduleName, context = context)) {
+    return false
+  }
+
+  Span.current().addEvent("implicit content module to scramble: $moduleName")
+  context.productProperties.contentModulesToScramble += moduleName
+  return true
+}
+
+internal fun isModuleCloseSource(moduleName: String, context: CompilationContext): Boolean {
   if (moduleName.endsWith(".resources") || moduleName.endsWith(".icons") || moduleName.startsWith(LIB_MODULE_PREFIX)) {
     return false
   }
 
   // todo will be removed on the next stage
-  if (moduleName == "fleet.protocol" || moduleName.startsWith("fleet.rpc.")) {
+  if (excludedFromScrambling.contains(moduleName) || moduleName.startsWith("fleet.rpc.")) {
     return false
   }
 
   val sourceRoots = context.outputProvider.findRequiredModule(moduleName).sourceRoots.filter { it.rootType == JavaSourceRootType.SOURCE }
-  if (sourceRoots.isEmpty()) {
-    return false
-  }
-
-  return sourceRoots.any {
+  return sourceRoots.isNotEmpty() && sourceRoots.any {
     !it.path.startsWith(context.paths.communityHomeDir)
   }
 }
 
 internal fun contentModuleNameToDescriptorFileName(moduleName: String): String = "${moduleName.replace('/', '.')}.xml"
+
+internal fun isOptionalLoadingRule(loadingRule: String?): Boolean = loadingRule != "required" && loadingRule != "embedded"

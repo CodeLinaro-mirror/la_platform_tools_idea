@@ -1,9 +1,9 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.agent.workbench.sessions
 
-import com.intellij.agent.workbench.common.normalizeAgentWorkbenchPath
+import com.intellij.platform.ai.agent.core.normalizeAgentWorkbenchPath
 import com.intellij.agent.workbench.sessions.actions.AgentSessionsGoToSourceProjectFromToolbarAction
-import com.intellij.agent.workbench.sessions.core.statistics.AgentWorkbenchEntryPoint
+import com.intellij.agent.workbench.sessions.statistics.AgentWorkbenchEntryPoint
 import com.intellij.agent.workbench.sessions.frame.AgentWorkbenchDedicatedFrameProjectManager
 import com.intellij.ide.ui.ProductIcons
 import com.intellij.openapi.actionSystem.AnAction
@@ -18,8 +18,11 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
+import java.util.concurrent.TimeUnit
 
 @TestApplication
+@Timeout(value = 2, unit = TimeUnit.MINUTES)
 class AgentSessionsGoToSourceProjectFromToolbarActionTest {
   @BeforeEach
   fun setUp() {
@@ -54,7 +57,7 @@ class AgentSessionsGoToSourceProjectFromToolbarActionTest {
     assertThat(event.presentation.isEnabled).isTrue()
     assertThat(event.presentation.text).isEqualTo("source-project")
     assertThat(event.presentation.description)
-      .isEqualTo(AgentSessionsBundle.message("action.AgentWorkbenchSessions.GoToSourceProjectFromToolbar.description.with.path", normalizeAgentWorkbenchPath(sourcePath)))
+      .isEqualTo(AgentSessionsBundle.message("action.AgentWorkbenchSessions.GoToSourceProjectFromToolbar.description", normalizeAgentWorkbenchPath(sourcePath)))
     assertThat(event.presentation.icon).isEqualTo(ProductIcons.getInstance().getProjectNodeIcon())
 
     action.actionPerformed(event)

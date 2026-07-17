@@ -3,14 +3,15 @@
 import {deepStrictEqual, strictEqual} from 'node:assert/strict'
 import {describe, it} from 'bun:test'
 import {
-  resolveRoute,
-  resolveIdeForPath,
-  rewriteArgsForTarget,
+  createPathPrefixTransformer,
+  extractPathArg,
   isMergeTool,
   isRiderPath,
-  extractPathArg,
+  resolveIdeForPath,
+  resolveRoute,
+  rewriteArgsForTarget,
   riderItemTransformer,
-  createPathPrefixTransformer
+  splitPathListArgsByIde
 } from './routing'
 
 const PROJECT_ROOT = '/repo'
@@ -88,6 +89,11 @@ describe('ij MCP proxy routing', () => {
       strictEqual(resolveRoute('search_symbol', {}, PROJECT_ROOT), 'merge')
     })
 
+    it('returns split-merge for batched path tools', () => {
+      strictEqual(resolveRoute('lint_files', {}, PROJECT_ROOT), 'split-merge')
+      strictEqual(resolveRoute('reformat_file', {}, PROJECT_ROOT), 'split-merge')
+    })
+
     it('returns target-rider for dotnet file ops', () => {
       strictEqual(resolveRoute('get_file_problems', {pathInProject: 'dotnet/Foo.cs'}, PROJECT_ROOT), 'target-rider')
     })
@@ -160,18 +166,52 @@ describe('ij MCP proxy routing', () => {
     })
   })
 
+  describe('splitPathListArgsByIde', () => {
+    it('splits mixed batches across IDEs', () => {
+      const result = splitPathListArgsByIde({
+        files: ['src/Main.java', 'dotnet/Foo.cs', 'dotnet/sub/Bar.cs']
+      }, PROJECT_ROOT)
+
+      deepStrictEqual(result.ideaArgs, {files: ['src/Main.java']})
+      deepStrictEqual(result.riderArgs, {files: ['Foo.cs', 'sub/Bar.cs']})
+    })
+
+    it('preserves sibling arguments', () => {
+      const result = splitPathListArgsByIde({
+        files: ['dotnet/Foo.cs'],
+        min_severity: 'warning',
+        timeout: 1000
+      }, PROJECT_ROOT)
+
+      deepStrictEqual(result.riderArgs, {
+        files: ['Foo.cs'],
+        min_severity: 'warning',
+        timeout: 1000
+      })
+    })
+
+    it('splits custom path-list arguments across IDEs', () => {
+      const result = splitPathListArgsByIde({
+        paths: ['src/Main.java', 'dotnet/Foo.cs']
+      }, PROJECT_ROOT, 'paths')
+
+      deepStrictEqual(result.ideaArgs, {paths: ['src/Main.java']})
+      deepStrictEqual(result.riderArgs, {paths: ['Foo.cs']})
+    })
+  })
+
   describe('riderItemTransformer', () => {
     it('prefixes filePath with dotnet/', () => {
-      const items = [{filePath: 'Psi.Features/Foo.cs', lineNumber: 1}]
+      const items = [{filePath: 'Psi.Features/Foo.cs', startLine: 1}]
       const result = riderItemTransformer(items)
       strictEqual(result[0].filePath, 'dotnet/Psi.Features/Foo.cs')
     })
 
     it('preserves other fields', () => {
-      const items = [{filePath: 'Foo.cs', lineNumber: 42, lineText: 'hello'}]
+      const items = [{filePath: 'Foo.cs', startLine: 42, startColumn: 5}]
       const result = riderItemTransformer(items)
-      strictEqual(result[0].lineNumber, 42)
-      strictEqual(result[0].lineText, 'hello')
+      strictEqual(result[0].startLine, 42)
+      strictEqual(result[0].startColumn, 5)
     })
 
     it('handles empty array', () => {

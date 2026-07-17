@@ -9,43 +9,93 @@ import com.intellij.ide.IdeBundle
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.MouseShortcut
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ModalityState
+import com.intellij.openapi.application.UI
+import com.intellij.openapi.application.WriteIntentReadAction
+import com.intellij.openapi.application.asContextElement
+import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.diagnostic.debug
+import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.event.EditorMouseEvent
 import com.intellij.openapi.editor.event.EditorMouseListener
 import com.intellij.openapi.editor.ex.RangeHighlighterEx
 import com.intellij.openapi.editor.markup.RangeHighlighter
 import com.intellij.openapi.keymap.KeymapUtil
+import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.util.text.HtmlBuilder
 import com.intellij.openapi.util.text.HtmlChunk
+import com.intellij.platform.eel.isMac
+import com.intellij.platform.eel.provider.localEel
+import com.intellij.platform.ide.CoreUiCoroutineScopeHolder
+import com.intellij.platform.util.coroutines.childScope
 import com.intellij.ui.HintHint
 import com.intellij.ui.HyperlinkAdapter
 import com.intellij.ui.LightweightHint
 import com.intellij.ui.awt.RelativePoint
-import com.intellij.util.system.OS
+import com.intellij.util.cancelOnDispose
 import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
+import com.intellij.util.ui.launchOnShow
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.jetbrains.annotations.Nls
 import java.awt.Point
 import java.awt.Rectangle
 import java.awt.event.InputEvent
 import java.awt.event.MouseEvent
+import java.util.concurrent.CancellationException
 import javax.swing.JComponent
 import javax.swing.event.HyperlinkEvent
 import javax.swing.event.HyperlinkListener
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 
 internal class InvisibleHyperlinkHintManager(private val editor: Editor, parentDisposable: Disposable) {
 
-  private var hintInfo: HintInfo? = null
+  private val coroutineScope: CoroutineScope = createCoroutineScope(editor, parentDisposable)
 
-  // As the editor is focused on mousePressed and popup is shown on mouseReleased,
-  // we need to capture the editor focus state.
+  private var hintInfoDeferred: Deferred<HintInfo>? = null
+
   private var wasEditorFocusedBeforePopupShown: Boolean = false
+  private var hadTextSelection: Boolean = false
+
+  @Volatile
+  private var lastMousePressTime: Long = 0
 
   init {
-    editor.addEditorMouseListener(object: EditorMouseListener {
+    editor.addEditorMouseListener(object : EditorMouseListener {
       override fun mousePressed(event: EditorMouseEvent) {
-        wasEditorFocusedBeforePopupShown = editor.contentComponent.isFocusOwner
+        cancelPopup()
+        if (event.mouseEvent.clickCount == 1) {
+          // Capture editor focus state before editor's mousePressed grabs focus.
+          // The popup is shown later on mouseReleased.
+          wasEditorFocusedBeforePopupShown = editor.contentComponent.isFocusOwner
+          // Capture editor selection state before editor's mousePressed removes it.
+          hadTextSelection = editor.selectionModel.hasSelection()
+          lastMousePressTime = event.mouseEvent.`when`
+        }
       }
     }, parentDisposable)
+    coroutineScope.launch(Dispatchers.UI + ModalityState.any().asContextElement()) {
+      editor.contentComponent.launchOnShow(InvisibleHyperlinkHintManager::class.simpleName + ": cancel popup on hiding") {
+        try {
+          awaitCancellation()
+        }
+        finally {
+          cancelPopup()
+        }
+      }
+    }
   }
 
   fun isInsideHint(e: EditorMouseEvent): Boolean {
@@ -57,7 +107,7 @@ internal class InvisibleHyperlinkHintManager(private val editor: Editor, parentD
     val hintInfo = getHintInfoIfVisible()
     if (hintInfo != null && hintInfo.link !== hoveredLink && !isInsideHintOrBetweenHintAndLink(e)) {
       // hide the popup if the mouse is outside the link, the popup, and the area between them
-      hideIfVisible() 
+      cancelPopup()
     }
   }
 
@@ -79,26 +129,59 @@ internal class InvisibleHyperlinkHintManager(private val editor: Editor, parentD
     if (ApplicationManager.getApplication().isUnitTestMode) {
       return
     }
-    hideIfVisible()
+    cancelPopup()
+    if (e.mouseEvent.clickCount == 1 && !hadTextSelection) {
+      hintInfoDeferred = coroutineScope.async {
+        val delay = getMultiClickDetectionDelay()
+        LOG.debug { "Awaiting $delay before showing the popup" }
+        // A mousePressed during this delay cancels this coroutine.
+        delay(delay)
+        // Single click confirmed (not part of a multi-click) => show the popup.
+        withContext(Dispatchers.UI + ModalityState.any().asContextElement()) {
+          if (!link.isValid) {
+            throw CancellationException("Invalid link")
+          }
+          LOG.debug { "Showing the popup" }
+          showHintImmediately(link, e, action)
+        }
+      }
+      e.consume()
+    }
+  }
+
+  /**
+   * Returns how long to wait before confirming a single click.
+   */
+  private fun getMultiClickDetectionDelay(): Duration {
+    val delayIntervalMs = Registry.intValue("editor.invisible.hyperlink.popup.delay.ms", 180)
+      .coerceIn(0, UIUtil.getMultiClickInterval())
+    val delayMs = lastMousePressTime + delayIntervalMs - System.currentTimeMillis()
+    return delayMs.coerceAtLeast(0).milliseconds
+  }
+
+  private fun showHintImmediately(link: RangeHighlighterEx, e: EditorMouseEvent, action: () -> Unit): HintInfo {
     var linkFollowed = false
     val component = createHintLabel(object : HyperlinkAdapter() {
       override fun hyperlinkActivated(e: HyperlinkEvent) {
         linkFollowed = true
-        action()
-        hideIfVisible()
+        // Use Write Intent Lock like EditorImpl.MyMouseAdapter.mouseReleased does.
+        // This ensures consistent threading regardless of how the action is triggered.
+        WriteIntentReadAction.run(action)
+        cancelPopup()
         EditorHyperlinkUsageCollector.logInvisibleHyperlinkFollowed(HyperlinkFollowedPlace.POPUP_LINK_CLICKED)
       }
     })
-    val hint = showHint(editor, e.offset, component)
-    hintInfo = HintInfo(hint, link, e)
+    val hint = showHintComponent(editor, e.offset, component)
+    val hintInfo = HintInfo(hint, link, e)
     val copyWasEditorFocusedBeforePopupShown = wasEditorFocusedBeforePopupShown
     hint.addHintListener {
-      if (hintInfo?.hint == hint) {
-        hintInfo = null
+      if (hintInfoDeferred?.getNow() == hintInfo) {
+        hintInfoDeferred = null
         EditorHyperlinkUsageCollector.logInvisibleHyperlinkPopupHidden(copyWasEditorFocusedBeforePopupShown, linkFollowed)
       }
     }
     EditorHyperlinkUsageCollector.logInvisibleHyperlinkPopupShown(wasEditorFocusedBeforePopupShown)
+    return hintInfo
   }
 
   private fun createHintLabel(listener: HyperlinkListener): JComponent {
@@ -118,17 +201,18 @@ internal class InvisibleHyperlinkHintManager(private val editor: Editor, parentD
   }
 
   private fun getMouseShortcutText(): @Nls String {
-    val modifiersEx = if (OS.CURRENT == OS.macOS) InputEvent.META_DOWN_MASK else InputEvent.CTRL_DOWN_MASK
+    val modifiersEx = if (localEel.platform.isMac) InputEvent.META_DOWN_MASK else InputEvent.CTRL_DOWN_MASK
     val shortcut = MouseShortcut(MouseEvent.BUTTON1, modifiersEx, 1)
     return KeymapUtil.getShortcutText(shortcut)
   }
 
-  private fun hideIfVisible() {
+  private fun cancelPopup() {
     getHintInfoIfVisible()?.hint?.hide()
-    hintInfo = null
+    hintInfoDeferred?.cancel()
+    hintInfoDeferred = null
   }
 
-  private fun showHint(editor: Editor, offset: Int, component: JComponent): LightweightHint {
+  private fun showHintComponent(editor: Editor, offset: Int, component: JComponent): LightweightHint {
     val hint = LightweightHint(component)
     val position = editor.offsetToLogicalPosition(offset)
     val constraint = HintManager.ABOVE
@@ -138,14 +222,19 @@ internal class InvisibleHyperlinkHintManager(private val editor: Editor, parentD
       .setShowImmediately(true)
     HintManagerImpl.getInstanceImpl().showEditorHint(
       hint, editor, p,
-      HintManager.HIDE_BY_ANY_KEY or HintManager.HIDE_BY_TEXT_CHANGE or HintManager.HIDE_BY_SCROLLING,
+      HintManager.HIDE_BY_ANY_KEY or HintManager.HIDE_BY_SCROLLING,
       0, false, hintHint
     )
     return hint
   }
 
   private fun getHintInfoIfVisible(): HintInfo? {
-    return hintInfo?.takeIf { it.hint.isVisible }
+    return hintInfoDeferred?.getNow()?.takeIf { it.hint.isVisible }
+  }
+
+  @OptIn(ExperimentalCoroutinesApi::class)
+  private fun <T : Any> Deferred<T>.getNow(): T? {
+    return if (isCompleted && getCompletionExceptionOrNull() == null) getCompleted() else null
   }
 
   private data class HintInfo(
@@ -153,4 +242,16 @@ internal class InvisibleHyperlinkHintManager(private val editor: Editor, parentD
     val link: RangeHighlighterEx,
     val initialEvent: EditorMouseEvent,
   )
+
+  companion object {
+    private val LOG: Logger = logger<InvisibleHyperlinkHintManager>()
+
+    private fun createCoroutineScope(editor: Editor, parentDisposable: Disposable): CoroutineScope {
+      val baseScope = editor.project?.service<CoreUiCoroutineScopeHolder>()?.coroutineScope
+                      ?: service<CoreUiCoroutineScopeHolder>().coroutineScope
+      return baseScope.childScope(InvisibleHyperlinkHintManager::class.java.name).also {
+        it.coroutineContext.job.cancelOnDispose(parentDisposable)
+      }
+    }
+  }
 }

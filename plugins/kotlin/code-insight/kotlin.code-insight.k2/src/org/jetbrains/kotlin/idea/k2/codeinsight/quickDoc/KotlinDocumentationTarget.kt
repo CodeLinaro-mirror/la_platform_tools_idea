@@ -46,15 +46,15 @@ import org.jetbrains.kotlin.asJava.elements.KtLightMethod
 import org.jetbrains.kotlin.builtins.StandardNames
 import org.jetbrains.kotlin.idea.KotlinLanguage
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
-import org.jetbrains.kotlin.idea.kdoc.KDocContent
-import org.jetbrains.kotlin.idea.kdoc.KDocRenderer
-import org.jetbrains.kotlin.idea.kdoc.KDocRenderer.appendHighlighted
-import org.jetbrains.kotlin.idea.kdoc.KDocRenderer.createHighlightingManager
-import org.jetbrains.kotlin.idea.kdoc.KDocRenderer.generateJavadoc
-import org.jetbrains.kotlin.idea.kdoc.KDocRenderer.renderKDoc
-import org.jetbrains.kotlin.idea.kdoc.KDocTemplate
-import org.jetbrains.kotlin.idea.kdoc.findKDocByPsi
-import org.jetbrains.kotlin.idea.kdoc.insert
+import org.jetbrains.kotlin.idea.highlighting.kdoc.KDocContent
+import org.jetbrains.kotlin.idea.highlighting.kdoc.KDocRenderer
+import org.jetbrains.kotlin.idea.highlighting.kdoc.KDocRenderer.appendHighlighted
+import org.jetbrains.kotlin.idea.highlighting.kdoc.KDocRenderer.createHighlightingManager
+import org.jetbrains.kotlin.idea.highlighting.kdoc.KDocRenderer.generateJavadoc
+import org.jetbrains.kotlin.idea.highlighting.kdoc.KDocRenderer.renderKDoc
+import org.jetbrains.kotlin.idea.highlighting.kdoc.KDocTemplate
+import org.jetbrains.kotlin.idea.highlighting.kdoc.findKDocByPsi
+import org.jetbrains.kotlin.idea.highlighting.kdoc.insert
 import org.jetbrains.kotlin.idea.references.mainReference
 import org.jetbrains.kotlin.kdoc.psi.api.KDoc
 import org.jetbrains.kotlin.kdoc.psi.impl.KDocSection
@@ -393,8 +393,8 @@ private fun renderKDoc(
     }
 }
 
-context(_: KaSession)
 @OptIn(KaExperimentalApi::class)
+context(_: KaSession)
 private fun findKDoc(symbol: KaSymbol): KDocContent? {
     val ktElement = symbol.psi?.navigationElement as? KtElement
     ktElement?.findKDocByPsi()?.let {
@@ -422,8 +422,8 @@ private fun findKDoc(symbol: KaSymbol): KDocContent? {
     return (symbol as? KaDeclarationSymbol)?.getExpectsForActual()?.mapNotNull { declarationSymbol -> findKDoc(declarationSymbol) }?.firstOrNull()
 }
 
-context(_: KaSession)
 @OptIn(KaExperimentalApi::class)
+context(_: KaSession)
 private fun @receiver:Nls StringBuilder.renderKotlinSymbol(symbol: KaDeclarationSymbol,
                                                            declaration: KtDeclaration,
                                                            onlyDefinition: Boolean,

@@ -1,6 +1,7 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.agent.workbench.prompt.vcs.context
 
+import com.intellij.agent.workbench.prompt.core.AGENT_PROMPT_INVOCATION_DATA_CONTEXT_KEY
 import com.intellij.agent.workbench.prompt.core.AgentPromptInvocationData
 import com.intellij.agent.workbench.prompt.core.AgentPromptPayloadValue
 import com.intellij.agent.workbench.prompt.core.array
@@ -25,9 +26,12 @@ import com.intellij.vcs.log.util.VcsUserUtil
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
+import java.util.concurrent.TimeUnit
 import java.util.function.Consumer
 
 @TestApplication
+@Timeout(value = 2, unit = TimeUnit.MINUTES)
 class AgentPromptVcsLogSelectionContextContributorIssueNavigationTest {
   private val contributor = AgentPromptVcsLogSelectionContextContributor()
 
@@ -91,7 +95,7 @@ class AgentPromptVcsLogSelectionContextContributorIssueNavigationTest {
       emptyMap()
     }
     else {
-      mapOf(AGENT_PROMPT_VCS_INVOCATION_DATA_CONTEXT_KEY to dataContext)
+      mapOf(AGENT_PROMPT_INVOCATION_DATA_CONTEXT_KEY to dataContext)
     }
     return AgentPromptInvocationData(
       project = project,

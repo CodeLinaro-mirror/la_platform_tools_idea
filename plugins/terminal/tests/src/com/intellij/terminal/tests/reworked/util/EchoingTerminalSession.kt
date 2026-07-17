@@ -6,6 +6,8 @@ import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.impl.DocumentImpl
 import com.intellij.openapi.util.Disposer
+import com.intellij.platform.eel.EelDescriptor
+import com.intellij.platform.eel.provider.LocalEelDescriptor
 import com.intellij.terminal.frontend.view.completion.PowerShellCompletionContributor
 import com.intellij.util.containers.DisposableWrapperList
 import kotlinx.coroutines.CancellationException
@@ -28,7 +30,6 @@ import org.jetbrains.plugins.terminal.session.impl.TerminalBeepEvent
 import org.jetbrains.plugins.terminal.session.impl.TerminalCloseEvent
 import org.jetbrains.plugins.terminal.session.impl.TerminalCompletionFinishedEvent
 import org.jetbrains.plugins.terminal.session.impl.TerminalContentUpdatedEvent
-import org.jetbrains.plugins.terminal.session.impl.TerminalCursorPositionChangedEvent
 import org.jetbrains.plugins.terminal.session.impl.TerminalInitialStateEvent
 import org.jetbrains.plugins.terminal.session.impl.TerminalInputEvent
 import org.jetbrains.plugins.terminal.session.impl.TerminalOutputEvent
@@ -36,7 +37,6 @@ import org.jetbrains.plugins.terminal.session.impl.TerminalSession
 import org.jetbrains.plugins.terminal.session.impl.TerminalWriteBytesEvent
 import org.jetbrains.plugins.terminal.session.impl.dto.TerminalBlocksModelStateDto
 import org.jetbrains.plugins.terminal.session.impl.dto.TerminalCommandBlockDto
-import org.jetbrains.plugins.terminal.session.impl.dto.TerminalHyperlinksModelStateDto
 import org.jetbrains.plugins.terminal.session.impl.dto.TerminalOutputModelStateDto
 import org.jetbrains.plugins.terminal.session.impl.dto.toDto
 import org.jetbrains.plugins.terminal.view.shellIntegration.TerminalBlockIdImpl
@@ -60,7 +60,7 @@ import kotlin.concurrent.withLock
  */
 internal class EchoingTerminalSession(
   private val startupOptions: TerminalStartupOptions,
-  coroutineScope: CoroutineScope,
+  override val coroutineScope: CoroutineScope,
 ) : TerminalSession {
   private val inputChannel = Channel<TerminalInputEvent>(Channel.UNLIMITED)
 
@@ -147,6 +147,11 @@ internal class EchoingTerminalSession(
     }
   }
 
+  override val eelDescriptor: EelDescriptor = LocalEelDescriptor
+
+  override val processId: Long
+    get() = throw UnsupportedOperationException("This session doesn't run a real shell process")
+
   override suspend fun getInputChannel(): SendChannel<TerminalInputEvent> {
     return inputChannel
   }
@@ -162,9 +167,8 @@ internal class EchoingTerminalSession(
 
         screenState.addListener(listenerDisposable) {
           val screen = screenState.getSnapshot()
-          val contentChangeEvent = TerminalContentUpdatedEvent(screen.text, emptyList(), 0)
-          val cursorChangeEvent = TerminalCursorPositionChangedEvent(screen.cursorLine.toLong(), screen.cursorColumn)
-          trySend(listOf(contentChangeEvent, cursorChangeEvent))
+          val contentChangeEvent = TerminalContentUpdatedEvent(screen.text, emptyList(), 0, screen.cursorLine.toLong(), screen.cursorColumn)
+          trySend(listOf(contentChangeEvent))
         }
       }
 
@@ -208,8 +212,6 @@ internal class EchoingTerminalSession(
       outputModelState = outputModelState,
       alternateBufferState = TerminalOutputModelStateDto("", 0, 0, 0, 0, emptyList()),
       blocksModelState = TerminalBlocksModelStateDto(listOf(commandBlock), 1),
-      outputHyperlinksState = TerminalHyperlinksModelStateDto(emptyList()),
-      alternateBufferHyperlinksState = TerminalHyperlinksModelStateDto(emptyList()),
     )
   }
 

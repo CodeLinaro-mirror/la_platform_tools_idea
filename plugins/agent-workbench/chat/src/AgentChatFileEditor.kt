@@ -1,113 +1,188 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.agent.workbench.chat
 
-// @spec community/plugins/agent-workbench/spec/agent-chat-editor.spec.md
+// @spec community/plugins/agent-workbench/spec/chat/agent-chat-editor.spec.md
 
-import com.intellij.agent.workbench.common.AgentWorkbenchActionIds
-import com.intellij.agent.workbench.common.session.AgentSessionProvider
-import com.intellij.agent.workbench.sessions.core.providers.AgentInitialMessageDispatchCompletionPolicy
-import com.intellij.agent.workbench.sessions.core.providers.AgentSessionProviders
+import com.intellij.CommonBundle
+import com.intellij.agent.workbench.ui.AgentWorkbenchActionIds
+import com.intellij.platform.ai.agent.core.session.AgentSessionProvider
+import com.intellij.platform.ai.agent.core.session.AgentSessionThread
+import com.intellij.agent.workbench.prompt.core.AgentPromptContextEnvelopeFormatter
+import com.intellij.agent.workbench.prompt.core.AgentPromptContextEnvelopeSummary
+import com.intellij.agent.workbench.prompt.core.AgentPromptContextItem
+import com.intellij.platform.ai.agent.sessions.core.AgentSessionThreadRebindPolicy
+import com.intellij.platform.ai.agent.sessions.core.launch.AgentSessionLaunchIntent
+import com.intellij.platform.ai.agent.sessions.core.launch.AgentSessionLaunchOperation
+import com.intellij.platform.ai.agent.sessions.core.launch.AgentSessionLaunchPlanner
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentInitialPromptDeliveryChannel
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentSessionArchivedSource
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentSessionLaunchProfileResolver
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentSessionProviderDescriptor
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentSessionProviders
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentSessionResolvedLaunchProfile
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentSessionTerminalLaunchSpec
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.ActionManager
+import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.DefaultActionGroup
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.components.serviceAsync
+import com.intellij.openapi.components.serviceOrNull
 import com.intellij.openapi.fileEditor.FileEditor
+import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.FileEditorState
+import com.intellij.openapi.fileEditor.FileEditorStateLevel
+import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.ui.Messages
+import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.UserDataHolderBase
-import com.intellij.terminal.frontend.toolwindow.TerminalToolWindowTab
-import com.intellij.terminal.frontend.toolwindow.TerminalToolWindowTabsManager
-import com.intellij.terminal.frontend.view.TerminalKeyEvent
-import com.intellij.terminal.frontend.view.TerminalView
-import com.intellij.terminal.frontend.view.TerminalViewSessionState
-import com.intellij.util.asDisposable
+import com.intellij.openapi.wm.StatusBar
+import com.intellij.terminal.frontend.view.TerminalInputInterceptor
+import com.intellij.util.ui.AsyncProcessIcon
+import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.merge
-import kotlinx.coroutines.isActive
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.coroutines.yield
-import org.jetbrains.plugins.terminal.startup.TerminalProcessType
-import org.jetbrains.plugins.terminal.view.TerminalContentChangeEvent
-import org.jetbrains.plugins.terminal.view.TerminalOffset
-import org.jetbrains.plugins.terminal.view.TerminalOutputModel
-import org.jetbrains.plugins.terminal.view.TerminalOutputModelListener
+import org.jetbrains.annotations.Nls
+import org.jetbrains.annotations.TestOnly
 import java.awt.BorderLayout
+import java.awt.Component
+import java.awt.Container
+import java.awt.Dimension
+import java.awt.GridBagLayout
+import java.awt.event.HierarchyEvent
+import java.awt.event.HierarchyListener
 import java.awt.event.KeyEvent
 import java.beans.PropertyChangeListener
-import java.util.concurrent.CancellationException
+import javax.swing.Box
+import javax.swing.BoxLayout
 import javax.swing.JComponent
 import javax.swing.JPanel
-import kotlin.time.Duration.Companion.milliseconds
+import javax.swing.JProgressBar
+import javax.swing.JTextArea
+import javax.swing.Timer
+import kotlin.coroutines.resume
+
+private const val DEFERRED_START_PROGRESS_DELAY_MS = 300
+private const val DEFERRED_START_PROGRESS_NAME = "Agent Chat Start Progress"
+private const val DEFERRED_START_PROGRESS_TIMER_PROPERTY = "AgentChatFileEditor.deferredStartProgressTimer"
 
 internal class AgentChatFileEditor(
   private val project: Project,
   private val file: AgentChatVirtualFile,
   private val terminalTabs: AgentChatTerminalTabs = ToolWindowAgentChatTerminalTabs,
+  private val liveTerminalRegistry: AgentChatLiveTerminalRegistry? = null,
   private val tabSnapshotWriter: AgentChatTabSnapshotWriter = ApplicationAgentChatTabSnapshotWriter,
+  private val archivedRestoreHandler: AgentChatArchivedRestoreHandler = ApplicationAgentChatArchivedRestoreHandler,
+  private val currentTimeProvider: () -> Long = System::currentTimeMillis,
+  private val pendingScopedRefreshRetryIntervalMs: Long = AgentSessionThreadRebindPolicy.PENDING_THREAD_REFRESH_RETRY_INTERVAL_MS,
+  editorCoroutineScope: CoroutineScope? = null,
+  private val providerDescriptorResolver: (AgentSessionProvider) -> AgentSessionProviderDescriptor? = AgentSessionProviders::find,
+  private val behaviorResolver: (AgentSessionProvider?) -> AgentChatProviderBehavior = ::resolveAgentChatProviderBehavior,
 ) : UserDataHolderBase(), FileEditor {
-  private val component = JPanel(BorderLayout())
-  private val editorTabActions: ActionGroup? by lazy {
+  private val ownedTerminalStartupJob = if (editorCoroutineScope == null) SupervisorJob() else null
+
+  @Suppress("RAW_SCOPE_CREATION")
+  private val terminalStartupScope = editorCoroutineScope ?: CoroutineScope(checkNotNull(ownedTerminalStartupJob) + Dispatchers.Default)
+  private val component = AgentChatFileEditorComponent()
+
+  private fun buildEditorTabActions(): ActionGroup? {
     val actionManager = ActionManager.getInstance()
-    val providerActionIds = file.provider
-      ?.let { provider -> AgentSessionProviders.find(provider)?.editorTabActionIds }
-      .orEmpty()
-    val actions = buildList {
-      listOf(
-        NEW_THREAD_QUICK_FROM_EDITOR_TAB_ACTION_ID,
-        NEW_THREAD_POPUP_FROM_EDITOR_TAB_ACTION_ID,
-      ).forEach { actionId ->
-        actionManager.getAction(actionId)?.let(::add)
+    val providerActionIds = buildList {
+      if (providerDescriptor?.supportsPendingEditorTabRebind == true) {
+        add(AgentWorkbenchActionIds.Sessions.BIND_PENDING_AGENT_THREAD_FROM_EDITOR_TAB)
       }
+    }
+    val actions = buildList {
       providerActionIds.forEach { actionId ->
         actionManager.getAction(actionId)?.let(::add)
       }
     }
-    if (actions.isEmpty()) {
-      return@lazy null
-    }
-    if (actions.size == 1) {
-      val singleAction = actions.single()
-      return@lazy singleAction as? ActionGroup ?: DefaultActionGroup(singleAction)
-    }
-    DefaultActionGroup(actions)
+    return buildAgentChatEditorTabActionGroup(actions)
   }
-  private var tab: AgentChatTerminalTab? = null
-  private var initializationStarted: Boolean = false
-  private var disposed: Boolean = false
-  private var pendingInitialMessageJob: Job? = null
-  private var codexTuiPatchFoldController: CodexTuiPatchFoldController? = null
 
-  private val providerBehavior
-    get() = file.provider?.let(AgentSessionProviders::find)
+  private var cachedTabActionsProvider: AgentSessionProvider? = null
+  private var cachedTabActions: ActionGroup? = null
+  private var cachedTabActionsInitialized: Boolean = false
+  private var tab: AgentChatTerminalTab? = null
+  private var pendingContextPanel: AgentChatPendingContextPanel? = null
+  private var pendingContextPanelInstalled: Boolean = false
+  private var initializationStarted: Boolean = false
+  private var initializationRequested: Boolean = false
+  private var focusTerminalAfterInitialization: Boolean = false
+  private var stateApplied: Boolean = file.projectPath.isNotBlank() || file.threadIdentity.isNotBlank()
+  private var initializationJob: Job? = null
+  private var disposed: Boolean = false
+  private var pendingThreadRefreshController: AgentChatPendingThreadRefreshController? = null
+  private var terminalTitleThreadRebindController: AgentChatDisposableController? = null
+  private var concreteThreadRebindController: AgentChatConcreteThreadRebindController? = null
+  private var initialMessageDispatcher: AgentChatInitialMessageDispatcher? = null
+  private var scopedTerminalRefreshController: AgentChatDisposableController? = null
+  private var terminalRestoreContextController: AgentChatDisposableController? = null
+  private var crossProjectDockTargetRegistration: Disposable? = null
+
+  private val providerDescriptor
+    get() = file.provider?.let(providerDescriptorResolver)
 
   override fun getComponent(): JComponent = component
 
   override fun getPreferredFocusedComponent(): JComponent {
+    file.deferredStartContent()?.preferredFocusedComponent?.let { return it }
     return tab?.preferredFocusableComponent ?: component
   }
 
-  override fun getName(): String = file.threadTitle
+  override fun getName(): String = AgentChatBundle.message("chat.filetype.name")
 
-  override fun getTabActions(): ActionGroup? = editorTabActions
+  override fun getTabActions(): ActionGroup? {
+    val provider = file.provider
+    if (!cachedTabActionsInitialized || cachedTabActionsProvider != provider) {
+      cachedTabActionsProvider = provider
+      cachedTabActions = buildEditorTabActions()
+      cachedTabActionsInitialized = true
+    }
+    return cachedTabActions
+  }
 
-  override fun setState(state: FileEditorState) = Unit
+  override fun getState(level: FileEditorStateLevel): FileEditorState {
+    if (!file.shouldRestoreOnRestart() || file.projectPath.isBlank() || file.threadIdentity.isBlank()) {
+      return AgentChatFileEditorState(snapshot = null)
+    }
+    return AgentChatFileEditorState(snapshot = file.toSnapshot(), startupIntent = file.startupIntent())
+  }
+
+  override fun setState(state: FileEditorState) {
+    val chatState = state as? AgentChatFileEditorState ?: return
+    stateApplied = true
+    val providerBeforeUpdate = file.provider
+    val snapshot = chatState.snapshot
+    if (snapshot != null) {
+      file.updateRestoreOnRestart(true)
+      file.updateFromResolution(AgentChatTabResolution.Resolved(snapshot))
+      file.updateStartupIntent(chatState.startupIntent)
+      ensureCrossProjectDockTargetRegistration()
+      FileEditorManager.getInstance(project).updateFilePresentation(file)
+    }
+    else {
+      file.updateRestoreOnRestart(false)
+      file.updateStartupIntent(null)
+    }
+    if (file.provider != providerBeforeUpdate) {
+      invalidateTabActionsCache()
+    }
+    if (initializationRequested) {
+      ensureInitialized()
+    }
+  }
 
   override fun isModified(): Boolean = false
 
@@ -120,209 +195,706 @@ internal class AgentChatFileEditor(
   override fun getFile(): AgentChatVirtualFile = file
 
   override fun selectNotify() {
+    if (tab == null) {
+      focusTerminalAfterInitialization = true
+    }
     ensureInitialized()
+  }
+
+  override fun deselectNotify() {
+    focusTerminalAfterInitialization = false
   }
 
   override fun dispose() {
     disposed = true
-    codexTuiPatchFoldController?.dispose()
-    codexTuiPatchFoldController = null
-    pendingInitialMessageJob?.cancel()
-    pendingInitialMessageJob = null
-    tab?.let { terminalTab ->
-      terminalTabs.closeTab(project, terminalTab)
-    }
-    tab = null
+    focusTerminalAfterInitialization = false
+    initializationJob?.cancel()
+    initializationJob = null
+    ownedTerminalStartupJob?.cancel()
+    component.cancelAwaitShowing()
+    crossProjectDockTargetRegistration?.let(Disposer::dispose)
+    crossProjectDockTargetRegistration = null
+    disposeTerminalAttachments(clearPendingContextPanel = true)
+    pendingContextPanel = null
+    pendingContextPanelInstalled = false
+    file.clearDeferredStartContent()
+    disposeDeferredStartProgressTimers(component)
     component.removeAll()
   }
 
   private fun ensureInitialized() {
-    if (initializationStarted || disposed) {
+    initializationRequested = true
+    if (disposed) {
+      return
+    }
+    if (!stateApplied && file.projectPath.isBlank() && file.threadIdentity.isBlank()) {
+      return
+    }
+    val deferredStartState = file.deferredStartState
+    if (shouldBlockTerminalInitialization(deferredStartState)) {
+      renderDeferredStartState(checkNotNull(deferredStartState))
+      return
+    }
+    if (initializationStarted) {
+      return
+    }
+    val validationError = validateAgentChatFile(file)
+    if (validationError != null) {
+      handleRestoreValidationError(validationError)
       return
     }
     initializationStarted = true
-    try {
-      val createdTab = terminalTabs.createTab(project, file)
-      tab = createdTab
-      subscribePendingFirstInput(createdTab)
-      subscribeConcreteCodexNewThreadRebind(createdTab)
-      scheduleInitialMessageSend(createdTab)
-      codexTuiPatchFoldController = createdTab.terminalView
-        ?.takeIf { shouldInstallCodexTuiPatchFolding(file.provider) }
-        ?.let { terminalView ->
-          CodexTuiPatchFoldController(
-            terminalView = terminalView,
-            sessionState = createdTab.sessionState,
-            parentScope = createdTab.coroutineScope,
-          )
+    val startupLaunchSpecOverride = file.consumeStartupLaunchSpecOverride()
+    val suppressInitialMessageDispatch = startupLaunchSpecOverride != null && file.consumeSuppressInitialMessageDispatchOnStartup()
+    val startupIntent = file.startupIntent()
+    if (startupLaunchSpecOverride == null && file.isPendingThread && startupIntent == null) {
+      handleRestoreValidationError(AgentChatBundle.message("chat.restore.validation.pending.thread"))
+      return
+    }
+    initializationJob = terminalStartupScope.launch {
+      try {
+        awaitEditorComponentShowing()
+        if (startupLaunchSpecOverride == null && startupIntent == null && isRestoredArchivedThread(providerDescriptor)) {
+          file.updateRestoreOnRestart(false)
+          archivedRestoreHandler.closeAndForget(file)
+          return@launch
         }
-      component.removeAll()
-      component.add(createdTab.component, BorderLayout.CENTER)
-      component.revalidate()
-      component.repaint()
+        val startupLaunchSpec = startupLaunchSpecOverride ?: resolveStartupLaunchSpec(startupIntent)
+        val resolvedRegistry = resolveLiveTerminalRegistry()
+        attachTerminal(resolvedRegistry, startupLaunchSpec, suppressInitialMessageDispatch)
+      }
+      catch (e: CancellationException) {
+        throw e
+      }
+      catch (e: Throwable) {
+        AgentChatRestoreNotificationService.reportTerminalInitializationFailure(project, file, e)
+      }
+    }
+  }
+
+  private suspend fun isRestoredArchivedThread(descriptor: AgentSessionProviderDescriptor?): Boolean {
+    val source = descriptor?.sessionSource as? AgentSessionArchivedSource ?: return false
+    val archivedThreads = try {
+      source.listArchivedThreads(path = file.projectPath, openProject = project)
     }
     catch (e: CancellationException) {
       throw e
     }
-    catch (e: Throwable) {
-      AgentChatRestoreNotificationService.reportTerminalInitializationFailure(project, file, e)
+    catch (_: Throwable) {
+      return false
+    }
+    return archivedThreads.any { thread -> thread.matchesRestoredAgentChatFile(file) }
+  }
+
+  private suspend fun awaitEditorComponentShowing() {
+    if (liveTerminalRegistry == null) {
+      withContext(Dispatchers.EDT) {
+        component.awaitShowing()
+      }
+    }
+    else {
+      component.awaitShowing()
     }
   }
 
-  private fun subscribeConcreteCodexNewThreadRebind(createdTab: AgentChatTerminalTab) {
-    val provider = file.provider
-    if (provider == null || providerBehavior?.supportsNewThreadRebind != true || file.isPendingThread || file.subAgentId != null) {
+  private suspend fun resolveLiveTerminalRegistry(): AgentChatLiveTerminalRegistry {
+    return liveTerminalRegistry ?: project.serviceAsync<AgentChatLiveTerminalRegistryService>()
+  }
+
+  private suspend fun resolveStartupLaunchSpec(startupIntent: AgentChatStartupIntent?): AgentSessionTerminalLaunchSpec {
+    return when (startupIntent) {
+      is AgentChatStartupIntent.NewSession -> resolveNewSessionLaunchSpec(startupIntent)
+      null -> resolveResumeLaunchSpec()
+    }
+  }
+
+  private suspend fun resolveNewSessionLaunchSpec(startupIntent: AgentChatStartupIntent.NewSession): AgentSessionTerminalLaunchSpec {
+    val resolvedLaunchProfile = resolveLaunchProfile(
+      launchProfileId = startupIntent.launchProfileId,
+      requiredProvider = startupIntent.provider,
+    )
+    val provider = resolvedLaunchProfile?.provider ?: startupIntent.provider
+    val launchMode = resolvedLaunchProfile?.launchMode ?: startupIntent.launchMode
+    val generationSettings = resolvedLaunchProfile?.generationSettings ?: file.generationSettings
+    val descriptor = AgentSessionProviders.find(provider)
+                     ?: throw IllegalStateException("Missing Agent Chat provider for ${provider.value}")
+    if (launchMode !in descriptor.supportedLaunchModes) {
+      throw IllegalStateException("Unsupported Agent Chat launch mode $launchMode for ${provider.value}")
+    }
+    return AgentSessionLaunchPlanner.plan(
+      intent = AgentSessionLaunchIntent(
+        projectPath = file.projectPath,
+        projectDirectory = file.projectDirectory,
+        provider = provider,
+        operation = AgentSessionLaunchOperation.NEW,
+        launchMode = launchMode,
+        generationSettings = generationSettings,
+      ),
+      project = project,
+    ).launchSpec
+  }
+
+  private suspend fun resolveResumeLaunchSpec(): AgentSessionTerminalLaunchSpec {
+    val provider = file.provider ?: throw IllegalStateException("Missing Agent Chat provider for ${file.url}")
+    val resolvedLaunchProfile = resolveLaunchProfile(
+      launchProfileId = file.launchProfileId,
+      requiredProvider = provider,
+    )
+    return AgentSessionLaunchPlanner.plan(
+      intent = AgentSessionLaunchIntent(
+        projectPath = file.projectPath,
+        projectDirectory = file.projectDirectory,
+        provider = provider,
+        operation = AgentSessionLaunchOperation.RESUME,
+        sessionId = file.threadId.ifBlank { file.sessionId },
+        launchMode = resolvedLaunchProfile?.launchMode ?: parseAgentChatLaunchMode(file.launchMode),
+        generationSettings = resolvedLaunchProfile?.generationSettings ?: file.generationSettings,
+      ),
+      project = project,
+    ).launchSpec
+  }
+
+  private fun resolveLaunchProfile(
+    launchProfileId: String?,
+    requiredProvider: AgentSessionProvider,
+  ): AgentSessionResolvedLaunchProfile? {
+    return serviceOrNull<AgentSessionLaunchProfileResolver>()?.resolveLaunchProfile(
+      launchProfileId = launchProfileId,
+      requiredProvider = requiredProvider,
+    )
+  }
+
+  private suspend fun attachTerminal(
+    liveTerminalRegistry: AgentChatLiveTerminalRegistry,
+    startupLaunchSpec: AgentSessionTerminalLaunchSpec,
+    suppressInitialMessageDispatch: Boolean,
+  ) {
+    if (this.liveTerminalRegistry == null) {
+      withContext(Dispatchers.EDT) {
+        attachTerminalOnEdt(liveTerminalRegistry, startupLaunchSpec, suppressInitialMessageDispatch)
+      }
+    }
+    else {
+      attachTerminalOnEdt(liveTerminalRegistry, startupLaunchSpec, suppressInitialMessageDispatch)
+    }
+  }
+
+  private fun attachTerminalOnEdt(
+    liveTerminalRegistry: AgentChatLiveTerminalRegistry,
+    startupLaunchSpec: AgentSessionTerminalLaunchSpec,
+    suppressInitialMessageDispatch: Boolean = false,
+  ) {
+    if (disposed || tab != null) {
       return
     }
-    createdTab.coroutineScope.launch {
-      val commandTracker = AgentChatTerminalCommandTracker()
-      createdTab.keyEventsFlow.collectLatest { event ->
-        val executedCommand = commandTracker.record(event.awtEvent) ?: return@collectLatest
-        if (executedCommand != "/new") {
-          return@collectLatest
-        }
-        if (!file.updateNewThreadRebindRequestedAtMs(System.currentTimeMillis())) {
-          return@collectLatest
-        }
-        tabSnapshotWriter.upsert(file.toSnapshot())
-        notifyAgentChatTerminalOutputForRefresh(provider = provider, projectPath = file.projectPath)
+    ensureCrossProjectDockTargetRegistration()
+    val deferredStartState = file.deferredStartState
+    if (deferredStartState?.phase == AgentChatDeferredStartPhase.READY_TO_START) {
+      file.updateDeferredStartState(null)
+    }
+    file.clearDeferredStartContent()
+    val behavior = behaviorResolver(file.provider)
+    val createdTab = liveTerminalRegistry.acquireOrCreate(
+      file = file,
+      terminalTabs = terminalTabs,
+      startupLaunchSpec = startupLaunchSpec,
+    )
+    tab = createdTab
+    file.updateStartupIntent(null)
+    if (suppressInitialMessageDispatch) {
+      file.markInitialPromptDelivered(AgentInitialPromptDeliveryChannel.STARTUP_COMMAND)
+    }
+    if (file.isPendingThread) {
+      file.updateRestoreOnRestart(false)
+    }
+    val pendingController = AgentChatPendingThreadRefreshController(
+      file = file,
+      behavior = behavior,
+      tabSnapshotWriter = tabSnapshotWriter,
+      currentTimeProvider = currentTimeProvider,
+      retryIntervalMs = pendingScopedRefreshRetryIntervalMs,
+    )
+    pendingThreadRefreshController = pendingController
+    val concreteController = AgentChatConcreteThreadRebindController(
+      file = file,
+      behavior = behavior,
+      tabSnapshotWriter = tabSnapshotWriter,
+      currentTimeProvider = currentTimeProvider,
+    )
+    concreteThreadRebindController = concreteController
+    val messageDispatcher = AgentChatInitialMessageDispatcher(
+      project = project,
+      file = file,
+      behavior = behavior,
+      descriptor = providerDescriptor,
+      tabSnapshotWriter = tabSnapshotWriter,
+    )
+    initialMessageDispatcher = messageDispatcher
+    pendingController.attach(createdTab)
+    concreteController.attach(createdTab, providerDescriptor)
+    if (!suppressInitialMessageDispatch) {
+      messageDispatcher.schedule(createdTab)
+    }
+    scopedTerminalRefreshController = createAgentChatScopedTerminalRefreshController(file, createdTab, providerDescriptor)
+    val restoreContextController = AgentChatTerminalRestoreContextController(
+      file = file,
+      descriptor = providerDescriptor,
+      parentDisposable = this,
+    )
+    terminalRestoreContextController = restoreContextController
+    restoreContextController.attach(createdTab)
+    terminalTitleThreadRebindController = createAgentChatTerminalTitleThreadRebindController(
+      file = file,
+      tab = createdTab,
+      tabSnapshotWriter = tabSnapshotWriter,
+    )
+    installPendingContextInterceptor(createdTab)
+    disposeDeferredStartProgressTimers(component)
+    component.removeAll()
+    pendingContextPanelInstalled = false
+    component.add(createdTab.component, BorderLayout.CENTER)
+    installAgentChatTerminalFileDropSupport(createdTab.component, createdTab, this)
+    pendingContextPanel?.let(::ensurePendingContextPanelInstalled)
+    component.revalidate()
+    component.repaint()
+    focusTerminalIfRequested(createdTab)
+  }
+
+  private fun focusTerminalIfRequested(createdTab: AgentChatTerminalTab) {
+    if (!focusTerminalAfterInitialization) {
+      return
+    }
+    focusTerminalAfterInitialization = false
+    createdTab.preferredFocusableComponent.requestFocusInWindow()
+  }
+
+  private fun getOrCreatePendingContextPanel(): AgentChatPendingContextPanel {
+    pendingContextPanel?.let {
+      return it
+    }
+    return AgentChatPendingContextPanel(file.projectPath).also { panel ->
+      pendingContextPanel = panel
+    }
+  }
+
+  private fun ensurePendingContextPanelInstalled(panel: AgentChatPendingContextPanel) {
+    if (pendingContextPanelInstalled) {
+      return
+    }
+    component.add(panel.component, BorderLayout.SOUTH)
+    installAgentChatContextFileDropSupport(panel.component, ::addPendingContextItems, this)
+    pendingContextPanelInstalled = true
+    component.revalidate()
+    component.repaint()
+  }
+
+  private fun ensureCrossProjectDockTargetRegistration() {
+    if (crossProjectDockTargetRegistration == null && file.projectPath.isNotBlank()) {
+      crossProjectDockTargetRegistration = AgentChatCrossProjectDockTargetRegistrar().register(project, file)
+    }
+  }
+
+  private fun handleRestoreValidationError(validationError: String) {
+    if (file.projectPath.isBlank() && file.threadIdentity.isBlank()) {
+      if (!project.isDisposed) {
+        FileEditorManager.getInstance(project).closeFile(file)
       }
+      return
+    }
+    forgetAgentChatTabMetadata(file.tabKey)
+    AgentChatRestoreNotificationService.reportRestoreFailure(project, file, validationError)
+    if (!project.isDisposed) {
+      FileEditorManager.getInstance(project).closeFile(file)
+    }
+  }
+
+  internal fun refreshForFileStateChange() {
+    if (disposed) {
+      return
+    }
+    val deferredStartState = file.deferredStartState
+    if (tab == null && shouldBlockTerminalInitialization(deferredStartState)) {
+      renderDeferredStartState(checkNotNull(deferredStartState))
+      return
+    }
+    ensureInitialized()
+  }
+
+  internal suspend fun restartForFileStateChange(
+    startupLaunchSpec: AgentSessionTerminalLaunchSpec,
+    replaceRetainedTerminal: Boolean,
+  ): Boolean {
+    if (disposed) {
+      return false
+    }
+    val initializedTab = tab
+    if (initializedTab == null) {
+      file.setStartupLaunchSpecOverride(startupLaunchSpec)
+      refreshForFileStateChange()
+      return false
+    }
+    val resolvedRegistry = resolveLiveTerminalRegistry()
+    return if (this.liveTerminalRegistry == null) {
+      withContext(Dispatchers.EDT) {
+        restartTerminalOnEdt(resolvedRegistry, startupLaunchSpec, replaceRetainedTerminal)
+      }
+    }
+    else {
+      restartTerminalOnEdt(resolvedRegistry, startupLaunchSpec, replaceRetainedTerminal)
     }
   }
 
   internal fun flushPendingInitialMessageIfInitialized() {
     val initializedTab = tab ?: return
-    scheduleInitialMessageSend(initializedTab)
+    initialMessageDispatcher?.schedule(initializedTab)
   }
 
-  private fun subscribePendingFirstInput(createdTab: AgentChatTerminalTab) {
-    if (!file.isPendingThread || providerBehavior?.supportsPendingEditorTabRebind != true) {
-      return
+  internal fun addPendingContextItems(items: List<AgentPromptContextItem>): Boolean {
+    ensureInitialized()
+    val panel = getOrCreatePendingContextPanel()
+    val added = panel.addItems(items)
+    val initializedTab = tab
+    if (added && initializedTab != null) {
+      ensurePendingContextPanelInstalled(panel)
+      initializedTab.preferredFocusableComponent.requestFocusInWindow()
     }
-    createdTab.coroutineScope.launch {
-      createdTab.keyEventsFlow.collectLatest {
-        if (!file.markPendingFirstInputAtMsIfAbsent(System.currentTimeMillis())) {
-          return@collectLatest
-        }
-        tabSnapshotWriter.upsert(file.toSnapshot())
-      }
-    }
+    return added
   }
 
-  private fun scheduleInitialMessageSend(createdTab: AgentChatTerminalTab) {
-    if (!file.hasPendingInitialMessageForDispatch()) {
-      return
-    }
-    if (createdTab.sessionState.value == TerminalViewSessionState.Terminated) {
-      return
-    }
-    if (pendingInitialMessageJob?.isActive == true) {
-      return
-    }
-    pendingInitialMessageJob = createdTab.coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
-      val state = createdTab.sessionState.first { it != TerminalViewSessionState.NotStarted }
-      if (state != TerminalViewSessionState.Running) {
-        return@launch
-      }
-      var readinessCheckpoint: AgentChatTerminalOutputCheckpoint? = null
-      while (true) {
-        when (createdTab.awaitInitialMessageReadiness(
-          timeoutMs = INITIAL_MESSAGE_READINESS_TIMEOUT_MS,
-          idleMs = INITIAL_MESSAGE_OUTPUT_IDLE_MS,
-          checkpoint = readinessCheckpoint,
-        )) {
-          AgentChatTerminalInputReadiness.READY -> Unit
-          AgentChatTerminalInputReadiness.TIMEOUT -> {
-            if (file.shouldDelayInitialMessageOnReadinessTimeout()) {
-              yield()
-              continue
-            }
-          }
-          AgentChatTerminalInputReadiness.TERMINATED -> return@launch
-        }
+  internal fun pendingContextItemsForTests(): List<AgentPromptContextItem> = pendingContextPanel?.pendingItemsForTests().orEmpty()
 
-        val sendResult = sendInitialMessageIfReady(createdTab)
-        if (sendResult.nextReadinessCheckpoint != null) {
-          readinessCheckpoint = sendResult.nextReadinessCheckpoint
-        }
-        if (!sendResult.progressed) {
-          if (createdTab.sessionState.value != TerminalViewSessionState.Running || !file.hasPendingInitialMessageForDispatch()) {
-            return@launch
-          }
-          yield()
-          continue
-        }
-        if (!file.hasPendingInitialMessageForDispatch()) {
-          return@launch
-        }
-        yield()
-      }
-    }.also { job ->
-      job.invokeOnCompletion {
-        if (pendingInitialMessageJob === job) {
-          pendingInitialMessageJob = null
-        }
-      }
-    }
+  @TestOnly
+  internal fun showComponentForTests() {
+    component.showForTests()
   }
 
-  private suspend fun sendInitialMessageIfReady(createdTab: AgentChatTerminalTab): AgentChatInitialMessageSendResult {
-    if (createdTab.sessionState.value != TerminalViewSessionState.Running) {
-      return AgentChatInitialMessageSendResult.NO_PROGRESS
+  private fun renderDeferredStartState(state: AgentChatDeferredStartState) {
+    val deferredContent = if (state.phase == AgentChatDeferredStartPhase.WAITING) file.deferredStartContent() else null
+    if (deferredContent == null) {
+      file.clearDeferredStartContent()
     }
-    val dispatch = file.acquireInitialMessageDispatch() ?: return AgentChatInitialMessageSendResult.NO_PROGRESS
-    val readinessCheckpoint = createdTab.captureOutputCheckpoint()
-    try {
-      createdTab.sendText(dispatch.message, shouldExecute = true)
+    disposeDeferredStartProgressTimers(component)
+    component.removeAll()
+    component.add(deferredContent?.component ?: createDeferredStartComponent(state), BorderLayout.CENTER)
+    component.revalidate()
+    component.repaint()
+  }
+
+  private fun restartTerminalOnEdt(
+    liveTerminalRegistry: AgentChatLiveTerminalRegistry,
+    startupLaunchSpec: AgentSessionTerminalLaunchSpec,
+    replaceRetainedTerminal: Boolean,
+  ): Boolean {
+    if (disposed || tab == null) {
+      return false
     }
-    catch (e: CancellationException) {
-      file.cancelInitialMessageDispatch(dispatch)
-      throw e
-    }
-    catch (_: Throwable) {
-      file.cancelInitialMessageDispatch(dispatch)
-      return AgentChatInitialMessageSendResult.NO_PROGRESS
-    }
-    if (dispatch.completionPolicy == AgentInitialMessageDispatchCompletionPolicy.RETRY_ON_CODEX_PLAN_BUSY) {
-      val observation = createdTab.awaitOutputObservation(
-        checkpoint = readinessCheckpoint,
-        timeoutMs = INITIAL_MESSAGE_POST_SEND_OBSERVATION_TIMEOUT_MS,
-        idleMs = INITIAL_MESSAGE_POST_SEND_OUTPUT_IDLE_MS,
+    disposeTerminalAttachments(clearPendingContextPanel = false)
+    val replaced = if (replaceRetainedTerminal) {
+      liveTerminalRegistry.replace(
+        file = file,
+        terminalTabs = terminalTabs,
+        startupLaunchSpec = startupLaunchSpec,
       )
-      if (observation.readiness == AgentChatTerminalInputReadiness.TERMINATED) {
-        file.cancelInitialMessageDispatch(dispatch)
-        return AgentChatInitialMessageSendResult.NO_PROGRESS
+      true
+    }
+    else {
+      false
+    }
+    attachTerminalOnEdt(liveTerminalRegistry, startupLaunchSpec)
+    return replaced
+  }
+
+  private fun disposeTerminalAttachments(clearPendingContextPanel: Boolean) {
+    initialMessageDispatcher?.dispose()
+    initialMessageDispatcher = null
+    pendingThreadRefreshController?.dispose()
+    pendingThreadRefreshController = null
+    terminalTitleThreadRebindController?.dispose()
+    terminalTitleThreadRebindController = null
+    concreteThreadRebindController?.dispose()
+    concreteThreadRebindController = null
+    scopedTerminalRefreshController?.dispose()
+    scopedTerminalRefreshController = null
+    terminalRestoreContextController?.dispose()
+    terminalRestoreContextController = null
+    tab = null
+    disposeDeferredStartProgressTimers(component)
+    component.removeAll()
+    pendingContextPanelInstalled = false
+    if (clearPendingContextPanel) {
+      pendingContextPanel = null
+    }
+  }
+
+  private fun installPendingContextInterceptor(tab: AgentChatTerminalTab) {
+    tab.addInputInterceptor(this, TerminalInputInterceptor { event -> handlePendingContextInput(tab, event) })
+  }
+
+  private fun handlePendingContextInput(tab: AgentChatTerminalTab, event: KeyEvent): Boolean {
+    val panel = pendingContextPanel
+    if (panel == null || !panel.hasItems() || !isPlainEnter(event)) {
+      return false
+    }
+
+    val promptSuffix = resolvePendingContextPromptSuffix(panel) ?: return true
+    when (tab.sendPendingContextAndExecute(promptSuffix)) {
+      AgentChatPendingContextSubmissionResult.SUBMITTED -> panel.clear()
+      AgentChatPendingContextSubmissionResult.UNAVAILABLE -> {
+        StatusBar.Info.set(AgentChatBundle.message("chat.pending.context.terminal.unavailable"), project)
       }
-      if (observation.text.contains(CODEX_PLAN_MODE_BUSY_MESSAGE)) {
-        file.cancelInitialMessageDispatch(dispatch)
-        delay(CODEX_PLAN_MODE_RETRY_BACKOFF_MS.milliseconds)
-        return AgentChatInitialMessageSendResult(
-          progressed = false,
-          nextReadinessCheckpoint = createdTab.captureOutputCheckpoint(),
+    }
+    return true
+  }
+
+  private fun resolvePendingContextPromptSuffix(panel: AgentChatPendingContextPanel): String? {
+    val items = panel.pendingItemsSnapshot()
+    if (items.isEmpty()) {
+      return null
+    }
+
+    val softCapChars = AgentPromptContextEnvelopeFormatter.DEFAULT_SOFT_CAP_CHARS
+    val serializedChars = panel.measureContextBlockChars(items)
+    if (serializedChars <= softCapChars) {
+      return panel.buildPromptSuffix(
+        items = items,
+        summary = AgentPromptContextEnvelopeSummary(
+          softCapChars = softCapChars,
+          softCapExceeded = false,
+          autoTrimApplied = false,
+        ),
+      )
+    }
+
+    val choice = Messages.showDialog(
+      project,
+      AgentChatBundle.message("chat.pending.context.softcap.message", serializedChars, softCapChars),
+      AgentChatBundle.message("chat.pending.context.softcap.title"),
+      arrayOf(
+        AgentChatBundle.message("chat.pending.context.softcap.action.send.full"),
+        AgentChatBundle.message("chat.pending.context.softcap.action.auto.trim"),
+        CommonBundle.getCancelButtonText(),
+      ),
+      0,
+      Messages.getWarningIcon(),
+    )
+
+    return when (choice) {
+      0 -> panel.buildPromptSuffix(
+        items = items,
+        summary = AgentPromptContextEnvelopeSummary(
+          softCapChars = softCapChars,
+          softCapExceeded = true,
+          autoTrimApplied = false,
+        ),
+      )
+      1 -> {
+        val trimResult = AgentPromptContextEnvelopeFormatter.applySoftCap(
+          items = items,
+          softCapChars = softCapChars,
+          projectPath = file.projectPath,
+        )
+        panel.buildPromptSuffix(
+          items = trimResult.items,
+          summary = AgentPromptContextEnvelopeSummary(
+            softCapChars = softCapChars,
+            softCapExceeded = true,
+            autoTrimApplied = true,
+          ),
         )
       }
+      else -> null
     }
-    if (!file.completeInitialMessageDispatch(dispatch)) {
-      return AgentChatInitialMessageSendResult(
-        progressed = false,
-        nextReadinessCheckpoint = readinessCheckpoint.takeIf { file.hasPendingInitialMessageForDispatch() },
-      )
+  }
+
+  private fun invalidateTabActionsCache() {
+    cachedTabActionsProvider = null
+    cachedTabActions = null
+    cachedTabActionsInitialized = false
+  }
+
+  private fun createDeferredStartComponent(state: AgentChatDeferredStartState): JComponent {
+    val rootPanel = JPanel(GridBagLayout())
+    val content = JPanel().apply {
+      layout = BoxLayout(this, BoxLayout.Y_AXIS)
+      border = JBUI.Borders.empty(16)
+      isOpaque = false
     }
-    tabSnapshotWriter.upsert(file.toSnapshot())
-    return AgentChatInitialMessageSendResult(
-      progressed = true,
-      nextReadinessCheckpoint = readinessCheckpoint.takeIf { file.hasPendingInitialMessageForDispatch() },
-    )
+    if (state.phase == AgentChatDeferredStartPhase.WAITING) {
+      content.add(createDelayedDeferredStartProgressIcon())
+      content.add(Box.createVerticalStrut(JBUI.scale(8)))
+    }
+    content.add(createMessageArea(state.title).apply {
+      alignmentX = Component.CENTER_ALIGNMENT
+    })
+    val stateMessage = state.message
+    if (!stateMessage.isNullOrBlank()) {
+      content.add(Box.createVerticalStrut(JBUI.scale(4)))
+      content.add(createMessageArea(stateMessage, secondary = true).apply {
+        alignmentX = Component.CENTER_ALIGNMENT
+      })
+    }
+    rootPanel.accessibleContext.accessibleName = buildDeferredStartAccessibleName(state)
+    rootPanel.add(content)
+    return rootPanel
+  }
+
+  private fun createDelayedDeferredStartProgressIcon(): JComponent {
+    val icon = createDeferredStartProgressComponent().apply {
+      name = DEFERRED_START_PROGRESS_NAME
+      isVisible = false
+      suspendDeferredStartProgress()
+    }
+    val iconSize = icon.preferredSize
+    val iconPanel = JPanel(BorderLayout()).apply {
+      alignmentX = Component.CENTER_ALIGNMENT
+      isOpaque = false
+      preferredSize = iconSize
+      minimumSize = iconSize
+      maximumSize = Dimension(iconSize.width, iconSize.height)
+      add(icon, BorderLayout.CENTER)
+    }
+    val timer = Timer(DEFERRED_START_PROGRESS_DELAY_MS) {
+      iconPanel.putClientProperty(DEFERRED_START_PROGRESS_TIMER_PROPERTY, null)
+      if (iconPanel.parent != null) {
+        icon.isVisible = true
+        icon.resumeDeferredStartProgress()
+        iconPanel.revalidate()
+        iconPanel.repaint()
+      }
+    }.apply {
+      isRepeats = false
+      start()
+    }
+    iconPanel.putClientProperty(DEFERRED_START_PROGRESS_TIMER_PROPERTY, timer)
+    return iconPanel
   }
 }
 
-private data class AgentChatInitialMessageSendResult(
-  @JvmField val progressed: Boolean,
-  @JvmField val nextReadinessCheckpoint: AgentChatTerminalOutputCheckpoint? = null,
-) {
-  companion object {
-    val NO_PROGRESS: AgentChatInitialMessageSendResult = AgentChatInitialMessageSendResult(progressed = false)
+private fun disposeDeferredStartProgressTimers(component: Component) {
+  if (component is JComponent) {
+    (component.getClientProperty(DEFERRED_START_PROGRESS_TIMER_PROPERTY) as? Timer)?.stop()
+    component.putClientProperty(DEFERRED_START_PROGRESS_TIMER_PROPERTY, null)
   }
+  if (component is Container) {
+    component.components.forEach(::disposeDeferredStartProgressTimers)
+  }
+}
+
+private fun createDeferredStartProgressComponent(): JComponent {
+  if (ApplicationManager.getApplication() == null) {
+    return JProgressBar().apply {
+      isIndeterminate = true
+      isBorderPainted = false
+    }
+  }
+  return AsyncProcessIcon(DEFERRED_START_PROGRESS_NAME)
+}
+
+private fun JComponent.suspendDeferredStartProgress() {
+  (this as? AsyncProcessIcon)?.suspend()
+}
+
+private fun JComponent.resumeDeferredStartProgress() {
+  (this as? AsyncProcessIcon)?.resume()
+}
+
+private fun buildDeferredStartAccessibleName(state: AgentChatDeferredStartState): @Nls String {
+  val stateMessage = state.message?.takeIf { it.isNotBlank() } ?: return state.title
+  return "${state.title}. $stateMessage"
+}
+
+private fun createMessageArea(text: @Nls String, secondary: Boolean = false): JComponent {
+  return JTextArea(text).apply {
+    isEditable = false
+    isFocusable = false
+    lineWrap = true
+    wrapStyleWord = true
+    isOpaque = false
+    border = null
+    if (secondary) {
+      foreground = UIUtil.getContextHelpForeground()
+    }
+  }
+}
+
+
+private fun isPlainEnter(event: KeyEvent): Boolean {
+  return event.id == KeyEvent.KEY_PRESSED && event.keyCode == KeyEvent.VK_ENTER && event.modifiersEx == 0
+}
+
+private fun shouldBlockTerminalInitialization(state: AgentChatDeferredStartState?): Boolean {
+  return when (state?.phase) {
+    AgentChatDeferredStartPhase.WAITING,
+    AgentChatDeferredStartPhase.SUCCESS_NO_START,
+    AgentChatDeferredStartPhase.FAILURE_NO_START,
+      -> true
+
+    else -> false
+  }
+}
+
+private class AgentChatFileEditorComponent : JPanel(BorderLayout()) {
+  private var showingForTests: Boolean = false
+  private var showingContinuation: CancellableContinuation<Unit>? = null
+  private var showingListener: HierarchyListener? = null
+
+  init {
+    isFocusable = true
+  }
+
+  suspend fun awaitShowing() {
+    if (isShowing || showingForTests) {
+      return
+    }
+    suspendCancellableCoroutine { continuation ->
+      showingContinuation?.cancel(CancellationException("Superseded by a new Agent Chat editor showing waiter"))
+      removeShowingListener()
+      showingContinuation = continuation
+      val listener = HierarchyListener { event ->
+        if (event.changeFlags and HierarchyEvent.SHOWING_CHANGED.toLong() != 0L && isShowing) {
+          resumeShowingContinuation()
+        }
+      }
+      showingListener = listener
+      addHierarchyListener(listener)
+      continuation.invokeOnCancellation {
+        if (showingContinuation === continuation) {
+          showingContinuation = null
+          removeShowingListener()
+        }
+      }
+      if (isShowing || showingForTests) {
+        resumeShowingContinuation()
+      }
+    }
+  }
+
+  fun cancelAwaitShowing() {
+    showingContinuation?.cancel(CancellationException("Agent Chat editor disposed before it was shown"))
+    showingContinuation = null
+    removeShowingListener()
+  }
+
+  @TestOnly
+  fun showForTests() {
+    showingForTests = true
+    resumeShowingContinuation()
+  }
+
+  private fun resumeShowingContinuation() {
+    val continuation = showingContinuation ?: return
+    showingContinuation = null
+    removeShowingListener()
+    if (continuation.isActive) {
+      continuation.resume(Unit)
+    }
+  }
+
+  private fun removeShowingListener() {
+    showingListener?.let(::removeHierarchyListener)
+    showingListener = null
+  }
+
 }
 
 internal fun interface AgentChatTabSnapshotWriter {
@@ -330,413 +902,48 @@ internal fun interface AgentChatTabSnapshotWriter {
 }
 
 private object ApplicationAgentChatTabSnapshotWriter : AgentChatTabSnapshotWriter {
-  override suspend fun upsert(snapshot: AgentChatTabSnapshot) {
-    serviceAsync<AgentChatTabsService>().upsert(snapshot)
-  }
+  @Suppress("UNUSED_PARAMETER")
+  override suspend fun upsert(snapshot: AgentChatTabSnapshot) = Unit
 }
 
-private const val NEW_THREAD_QUICK_FROM_EDITOR_TAB_ACTION_ID: String = AgentWorkbenchActionIds.Sessions.EditorTab.NEW_THREAD_QUICK
-private const val NEW_THREAD_POPUP_FROM_EDITOR_TAB_ACTION_ID: String = AgentWorkbenchActionIds.Sessions.EditorTab.NEW_THREAD_POPUP
-
-internal interface AgentChatTerminalTab {
-  val component: JComponent
-  val preferredFocusableComponent: JComponent
-  val coroutineScope: CoroutineScope
-  val sessionState: StateFlow<TerminalViewSessionState>
-  val keyEventsFlow: Flow<TerminalKeyEvent>
-  val terminalView: TerminalView?
-    get() = null
-
-  suspend fun captureOutputCheckpoint(): AgentChatTerminalOutputCheckpoint
-
-  suspend fun awaitOutputObservation(
-    checkpoint: AgentChatTerminalOutputCheckpoint,
-    timeoutMs: Long,
-    idleMs: Long,
-  ): AgentChatTerminalOutputObservation
-
-  suspend fun awaitInitialMessageReadiness(
-    timeoutMs: Long,
-    idleMs: Long,
-    checkpoint: AgentChatTerminalOutputCheckpoint? = null,
-  ): AgentChatTerminalInputReadiness
-
-  fun sendText(text: String, shouldExecute: Boolean)
+internal fun interface AgentChatArchivedRestoreHandler {
+  suspend fun closeAndForget(file: AgentChatVirtualFile)
 }
 
-internal data class AgentChatTerminalOutputCheckpoint(
-  @JvmField val regularEndOffset: Long,
-  @JvmField val alternativeEndOffset: Long,
-)
-
-internal data class AgentChatTerminalOutputObservation(
-  @JvmField val readiness: AgentChatTerminalInputReadiness,
-  @JvmField val text: String,
-)
-
-internal enum class AgentChatTerminalInputReadiness {
-  READY,
-  TIMEOUT,
-  TERMINATED,
-}
-
-internal interface AgentChatTerminalTabs {
-  fun createTab(project: Project, file: AgentChatVirtualFile): AgentChatTerminalTab
-
-  fun closeTab(project: Project, tab: AgentChatTerminalTab)
-}
-
-private object ToolWindowAgentChatTerminalTabs : AgentChatTerminalTabs {
-  override fun createTab(project: Project, file: AgentChatVirtualFile): AgentChatTerminalTab {
-    val startupLaunchSpec = file.consumeStartupLaunchSpec()
-    val terminalTab = TerminalToolWindowTabsManager.getInstance(project)
-      .createTabBuilder()
-      .shouldAddToToolWindow(false)
-      .deferSessionStartUntilUiShown(true)
-      .workingDirectory(file.projectPath)
-      .processType(TerminalProcessType.NON_SHELL)
-      .tabName(file.threadTitle)
-      .shellCommand(startupLaunchSpec.command)
-      .envVariables(startupLaunchSpec.envVariables)
-      .createTab()
-    return ToolWindowAgentChatTerminalTab(
-      delegate = terminalTab,
+private object ApplicationAgentChatArchivedRestoreHandler : AgentChatArchivedRestoreHandler {
+  override suspend fun closeAndForget(file: AgentChatVirtualFile) {
+    closeAndForgetAgentChatsForThread(
       projectPath = file.projectPath,
-      provider = file.provider,
+      threadIdentity = file.threadIdentity,
+      subAgentId = file.subAgentId,
     )
   }
-
-  override fun closeTab(project: Project, tab: AgentChatTerminalTab) {
-    val toolWindowTab = (tab as? ToolWindowAgentChatTerminalTab)?.delegate ?: return
-    closeTerminalToolWindowTab(project, toolWindowTab)
-  }
 }
 
-internal fun closeTerminalToolWindowTab(
-  project: Project,
-  tab: TerminalToolWindowTab,
-  managerProvider: (Project) -> TerminalToolWindowTabsManager = TerminalToolWindowTabsManager::getInstance,
-) {
-  val content = tab.content
-  if (content.manager != null) {
-    managerProvider(project).closeTab(tab)
-  }
-  else {
-    content.release()
-  }
-}
-
-private class ToolWindowAgentChatTerminalTab(
-  val delegate: TerminalToolWindowTab,
-  private val projectPath: String,
-  private val provider: AgentSessionProvider?,
-) : AgentChatTerminalTab {
-  override val component: JComponent
-    get() = delegate.content.component
-
-  override val preferredFocusableComponent: JComponent
-    get() = delegate.view.preferredFocusableComponent
-
-  override val coroutineScope: CoroutineScope
-    get() = delegate.view.coroutineScope
-
-  override val sessionState: StateFlow<TerminalViewSessionState>
-    get() = delegate.view.sessionState
-
-  override val keyEventsFlow: Flow<TerminalKeyEvent>
-    get() = delegate.view.keyEventsFlow
-
-  override val terminalView: TerminalView
-    get() = delegate.view
-
-  override suspend fun awaitInitialMessageReadiness(
-    timeoutMs: Long,
-    idleMs: Long,
-    checkpoint: AgentChatTerminalOutputCheckpoint?,
-  ): AgentChatTerminalInputReadiness {
-    val outputModels = delegate.view.outputModels
-    return awaitTerminalInitialMessageReadiness(
-      sessionState = delegate.view.sessionState,
-      regularOutputModel = outputModels.regular,
-      alternativeOutputModel = outputModels.alternative,
-      timeoutMs = timeoutMs,
-      idleMs = idleMs,
-      checkpoint = checkpoint,
-      onMeaningfulOutput = {
-        if (provider != null && AgentSessionProviders.find(provider)?.emitsScopedRefreshSignals == true) {
-          notifyAgentChatTerminalOutputForRefresh(provider = provider, projectPath = projectPath)
-        }
-      },
-    )
-  }
-
-  override suspend fun captureOutputCheckpoint(): AgentChatTerminalOutputCheckpoint {
-    val outputModels = delegate.view.outputModels
-    return withContext(Dispatchers.EDT) {
-      AgentChatTerminalOutputCheckpoint(
-        regularEndOffset = outputModels.regular.endOffset.toAbsolute(),
-        alternativeEndOffset = outputModels.alternative.endOffset.toAbsolute(),
-      )
-    }
-  }
-
-  override suspend fun awaitOutputObservation(
-    checkpoint: AgentChatTerminalOutputCheckpoint,
-    timeoutMs: Long,
-    idleMs: Long,
-  ): AgentChatTerminalOutputObservation {
-    val outputModels = delegate.view.outputModels
-    return awaitTerminalOutputObservation(
-      sessionState = delegate.view.sessionState,
-      regularOutputModel = outputModels.regular,
-      alternativeOutputModel = outputModels.alternative,
-      checkpoint = checkpoint,
-      timeoutMs = timeoutMs,
-      idleMs = idleMs,
-      onMeaningfulOutput = {
-        if (provider != null && AgentSessionProviders.find(provider)?.emitsScopedRefreshSignals == true) {
-          notifyAgentChatTerminalOutputForRefresh(provider = provider, projectPath = projectPath)
-        }
-      },
-    )
-  }
-
-  override fun sendText(text: String, shouldExecute: Boolean) {
-    val normalizedText = text.trim()
-    if (normalizedText.isEmpty()) {
-      return
-    }
-    val sendTextBuilder = delegate.view.createSendTextBuilder().useBracketedPasteMode()
-    if (shouldExecute) {
-      sendTextBuilder.shouldExecute()
-    }
-    sendTextBuilder.send(normalizedText)
-  }
-}
-
-internal class AgentChatTerminalCommandTracker {
-  private val lineBuffer = StringBuilder()
-
-  fun record(event: KeyEvent): String? {
-    return when (event.id) {
-      KeyEvent.KEY_TYPED -> {
-        val typedChar = event.keyChar
-        if (!typedChar.isISOControl() && typedChar != KeyEvent.CHAR_UNDEFINED) {
-          lineBuffer.append(typedChar)
-        }
-        null
-      }
-
-      KeyEvent.KEY_PRESSED -> when (event.keyCode) {
-        KeyEvent.VK_BACK_SPACE, KeyEvent.VK_DELETE -> {
-          if (lineBuffer.isNotEmpty()) {
-            lineBuffer.deleteCharAt(lineBuffer.lastIndex)
-          }
-          null
-        }
-
-        KeyEvent.VK_ESCAPE -> {
-          lineBuffer.setLength(0)
-          null
-        }
-
-        KeyEvent.VK_ENTER -> {
-          val command = lineBuffer.toString().trim()
-          lineBuffer.setLength(0)
-          command
-        }
-
-        else -> null
-      }
-
-      else -> null
-    }
-  }
-}
-
-@OptIn(FlowPreview::class)
-internal suspend fun awaitTerminalInitialMessageReadiness(
-  sessionState: StateFlow<TerminalViewSessionState>,
-  regularOutputModel: TerminalOutputModel,
-  alternativeOutputModel: TerminalOutputModel,
-  timeoutMs: Long,
-  idleMs: Long,
-  checkpoint: AgentChatTerminalOutputCheckpoint? = null,
-  onMeaningfulOutput: () -> Unit = {},
-): AgentChatTerminalInputReadiness {
-  return awaitTerminalOutputReadiness(
-    sessionState = sessionState,
-    regularOutputModel = regularOutputModel,
-    alternativeOutputModel = alternativeOutputModel,
-    timeoutMs = timeoutMs,
-    idleMs = idleMs,
-    onMeaningfulOutput = onMeaningfulOutput,
-    checkpoint = checkpoint,
-  )
-}
-
-internal suspend fun awaitTerminalOutputObservation(
-  sessionState: StateFlow<TerminalViewSessionState>,
-  regularOutputModel: TerminalOutputModel,
-  alternativeOutputModel: TerminalOutputModel,
-  checkpoint: AgentChatTerminalOutputCheckpoint,
-  timeoutMs: Long,
-  idleMs: Long,
-  onMeaningfulOutput: () -> Unit = {},
-): AgentChatTerminalOutputObservation {
-  val readiness = awaitTerminalOutputReadiness(
-    sessionState = sessionState,
-    regularOutputModel = regularOutputModel,
-    alternativeOutputModel = alternativeOutputModel,
-    timeoutMs = timeoutMs,
-    idleMs = idleMs,
-    onMeaningfulOutput = onMeaningfulOutput,
-    checkpoint = checkpoint,
-  )
-  val text = withContext(Dispatchers.EDT) {
-    readTerminalOutputSince(
-      regularOutputModel = regularOutputModel,
-      alternativeOutputModel = alternativeOutputModel,
-      checkpoint = checkpoint,
-    )
-  }
-  return AgentChatTerminalOutputObservation(readiness = readiness, text = text)
-}
-
-@OptIn(FlowPreview::class)
-private suspend fun awaitTerminalOutputReadiness(
-  sessionState: StateFlow<TerminalViewSessionState>,
-  regularOutputModel: TerminalOutputModel,
-  alternativeOutputModel: TerminalOutputModel,
-  timeoutMs: Long,
-  idleMs: Long,
-  onMeaningfulOutput: () -> Unit,
-  checkpoint: AgentChatTerminalOutputCheckpoint? = null,
-): AgentChatTerminalInputReadiness {
-  if (sessionState.value == TerminalViewSessionState.Terminated) {
-    return AgentChatTerminalInputReadiness.TERMINATED
-  }
-
-  val readinessFlow = merge(
-    meaningfulTerminalOutputFlow(
-      regularOutputModel = regularOutputModel,
-      alternativeOutputModel = alternativeOutputModel,
-      onMeaningfulOutput = onMeaningfulOutput,
-      checkpoint = checkpoint,
-    )
-      .debounce(idleMs.milliseconds)
-      .map { AgentChatTerminalInputReadiness.READY },
-    sessionState
-      .filter { it == TerminalViewSessionState.Terminated }
-      .map { AgentChatTerminalInputReadiness.TERMINATED },
-  )
-
-  return withTimeoutOrNull(timeoutMs.milliseconds) {
-    readinessFlow.first()
-  } ?: AgentChatTerminalInputReadiness.TIMEOUT
-}
-
-private fun meaningfulTerminalOutputFlow(
-  regularOutputModel: TerminalOutputModel,
-  alternativeOutputModel: TerminalOutputModel,
-  onMeaningfulOutput: () -> Unit,
-  checkpoint: AgentChatTerminalOutputCheckpoint? = null,
-): Flow<Unit> = callbackFlow {
-  val scope = this
-  val outputModels = listOf(regularOutputModel, alternativeOutputModel)
-
-  withContext(Dispatchers.EDT) {
-    val listenerDisposable = scope.asDisposable()
-    val listener = object : TerminalOutputModelListener {
-      override fun afterContentChanged(event: TerminalContentChangeEvent) {
-        if (!scope.isActive || !isMeaningfulTerminalOutputChange(event)) {
-          return
-        }
-
-        onMeaningfulOutput()
-        scope.trySend(Unit)
-      }
-    }
-
-    outputModels.forEach { model ->
-      model.addListener(listenerDisposable, listener)
-    }
-
-    if (
-      scope.isActive && outputModels.any { model ->
-        hasMeaningfulTerminalOutput(
-          model = model,
-          checkpointOffset = when (model) {
-            regularOutputModel -> checkpoint?.regularEndOffset
-            alternativeOutputModel -> checkpoint?.alternativeEndOffset
-            else -> null
-          },
-        )
-      }
-    ) {
-      onMeaningfulOutput()
-      scope.trySend(Unit)
-    }
-  }
-
-  awaitClose()
-}
-
-private fun hasMeaningfulTerminalOutput(model: TerminalOutputModel, checkpointOffset: Long? = null): Boolean {
-  val end = model.endOffset
-  val availableStart = maxTerminalOffset(
-    model.startOffset,
-    checkpointOffset?.let(TerminalOffset::of) ?: model.startOffset,
-  )
-  val availableChars = end - availableStart
-  if (availableChars <= 0) {
+internal fun AgentSessionThread.matchesRestoredAgentChatFile(file: AgentChatVirtualFile): Boolean {
+  if (provider != file.provider) {
     return false
   }
-  val start = if (availableChars > READINESS_SCAN_LIMIT_CHARS) end - READINESS_SCAN_LIMIT_CHARS else availableStart
-  return model.getText(start, end).any(::isMeaningfulTerminalOutputChar)
-}
-
-private fun readTerminalOutputSince(
-  regularOutputModel: TerminalOutputModel,
-  alternativeOutputModel: TerminalOutputModel,
-  checkpoint: AgentChatTerminalOutputCheckpoint,
-): String {
-  return listOf(
-    readTerminalOutputChunk(regularOutputModel, checkpoint.regularEndOffset),
-    readTerminalOutputChunk(alternativeOutputModel, checkpoint.alternativeEndOffset),
-  )
-    .filter { it.isNotEmpty() }
-    .joinToString(separator = "\n")
-}
-
-private fun readTerminalOutputChunk(model: TerminalOutputModel, checkpointOffset: Long): String {
-  val end = model.endOffset
-  val availableStart = maxTerminalOffset(model.startOffset, TerminalOffset.of(checkpointOffset))
-  val availableChars = end - availableStart
-  if (availableChars <= 0) {
-    return ""
+  if (id == file.sessionId || id == file.threadId) {
+    return true
   }
-  val boundedStart = if (availableChars > POST_SEND_SCAN_LIMIT_CHARS) end - POST_SEND_SCAN_LIMIT_CHARS else availableStart
-  return model.getText(boundedStart, end).toString()
+  val restoredSubAgentId = file.subAgentId ?: return false
+  return subAgents.any { subAgent -> subAgent.id == restoredSubAgentId || subAgent.id == file.threadId }
 }
 
-private fun maxTerminalOffset(first: TerminalOffset, second: TerminalOffset): TerminalOffset {
-  return if (first.toAbsolute() >= second.toAbsolute()) first else second
+internal fun buildAgentChatEditorTabActionGroup(actions: List<AnAction>): ActionGroup? {
+  if (actions.isEmpty()) {
+    return null
+  }
+  if (actions.size == 1) {
+    val singleAction = actions.single()
+    return singleAction as? ActionGroup ?: DumbAwareAgentChatActionGroup(singleAction)
+  }
+  return DumbAwareAgentChatActionGroup(actions)
 }
 
-internal fun isMeaningfulTerminalOutputChange(event: TerminalContentChangeEvent): Boolean {
-  return !event.isTypeAhead && !event.isTrimming && event.newText.isNotEmpty() && event.newText.any(::isMeaningfulTerminalOutputChar)
-}
+private class DumbAwareAgentChatActionGroup : DefaultActionGroup, DumbAware {
+  constructor(vararg actions: AnAction) : super(*actions)
 
-private fun isMeaningfulTerminalOutputChar(char: Char): Boolean {
-  return !char.isWhitespace() && char != '%'
+  constructor(actions: List<AnAction>) : super(actions)
 }
-
-private const val INITIAL_MESSAGE_READINESS_TIMEOUT_MS: Long = 2_000
-private const val INITIAL_MESSAGE_OUTPUT_IDLE_MS: Long = 250
-private const val INITIAL_MESSAGE_POST_SEND_OBSERVATION_TIMEOUT_MS: Long = 750
-private const val INITIAL_MESSAGE_POST_SEND_OUTPUT_IDLE_MS: Long = 150
-private const val CODEX_PLAN_MODE_RETRY_BACKOFF_MS: Long = 250
-private const val POST_SEND_SCAN_LIMIT_CHARS: Long = 8_192
-private const val READINESS_SCAN_LIMIT_CHARS: Long = 8_192
-private const val CODEX_PLAN_MODE_BUSY_MESSAGE: String = "'/plan' is disabled while a task is in progress."

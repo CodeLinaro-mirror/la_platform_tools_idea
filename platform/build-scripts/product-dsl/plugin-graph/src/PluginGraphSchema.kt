@@ -42,8 +42,11 @@ const val NODE_MODULE_SET: Int = 3
 /** Node type for JPS/Bazel target nodes (build units) */
 const val NODE_TARGET: Int = 4
 
+/** Node type for module nodes */
+const val NODE_CONTENT_MODULE_WITH_NAMESPACE: Int = 5
+
 /** Number of node types (for array sizing) */
-internal const val NODE_TYPE_COUNT: Int = 5
+internal const val NODE_TYPE_COUNT: Int = 6
 
 // endregion
 
@@ -63,11 +66,17 @@ const val NODE_FLAG_SELF_CONTAINED: Int = 1 shl 9
 /** Flag: plugin is DSL-defined (auto-computed dependencies) */
 const val NODE_FLAG_IS_DSL_DEFINED: Int = 1 shl 10
 
+/** Flag: plugin is a module-set wrapper */
+const val NODE_FLAG_IS_MODULE_SET_WRAPPER: Int = 1 shl 11
+
 /** Flag: content module is a test descriptor (._test suffix) */
-const val NODE_FLAG_IS_TEST_DESCRIPTOR: Int = 1 shl 11
+const val NODE_FLAG_IS_TEST_DESCRIPTOR: Int = 1 shl 12
 
 /** Flag: content module has a descriptor on disk ({moduleName}.xml) */
-const val NODE_FLAG_HAS_DESCRIPTOR: Int = 1 shl 12
+const val NODE_FLAG_HAS_DESCRIPTOR: Int = 1 shl 13
+
+/** Flag: plugin node is a synthetic alias target bundled by a product */
+const val NODE_FLAG_IS_ALIAS: Int = 1 shl 14
 
 // endregion
 
@@ -120,8 +129,14 @@ const val EDGE_PLUGIN_XML_DEPENDS_ON_PLUGIN: Int = 13
 /** Edge type: Plugin depends on Content Module (from plugin.xml module deps) */
 const val EDGE_PLUGIN_XML_DEPENDS_ON_CONTENT_MODULE: Int = 14
 
+/** Edge type: Plugin/Product contains Content Module */
+const val EDGE_CONTAINS_CONTENT_WITH_NAMESPACE: Int = 15
+
+/** Edge type: Test Plugin contains Content Module */
+const val EDGE_CONTAINS_CONTENT_TEST_WITH_NAMESPACE: Int = 16
+
 /** Number of edge types (for array sizing) */
-internal const val EDGE_TYPE_COUNT: Int = 15
+internal const val EDGE_TYPE_COUNT: Int = 17
 
 // endregion
 
@@ -225,6 +240,9 @@ const val PLUGIN_DEP_LEGACY_SHIFT: Int = 25
 /** Bit position for modern format flag in packed plugin-dep entries */
 const val PLUGIN_DEP_MODERN_SHIFT: Int = 26
 
+/** Bit position for legacy config-file flag in packed plugin-dep entries */
+const val PLUGIN_DEP_CONFIG_FILE_SHIFT: Int = 27
+
 /** Mask for optional flag in packed plugin-dep entries */
 const val PLUGIN_DEP_OPTIONAL_MASK: Int = 1 shl PLUGIN_DEP_OPTIONAL_SHIFT
 
@@ -234,14 +252,18 @@ const val PLUGIN_DEP_LEGACY_MASK: Int = 1 shl PLUGIN_DEP_LEGACY_SHIFT
 /** Mask for modern format flag in packed plugin-dep entries */
 const val PLUGIN_DEP_MODERN_MASK: Int = 1 shl PLUGIN_DEP_MODERN_SHIFT
 
+/** Mask for legacy config-file flag in packed plugin-dep entries */
+const val PLUGIN_DEP_CONFIG_FILE_MASK: Int = 1 shl PLUGIN_DEP_CONFIG_FILE_SHIFT
+
 /** Mask for format flags in packed plugin-dep entries */
 const val PLUGIN_DEP_FORMAT_MASK: Int = PLUGIN_DEP_LEGACY_MASK or PLUGIN_DEP_MODERN_MASK
 
 /** Pack node ID with optional + format flags into single Int */
-fun packPluginDepEntry(nodeId: Int, isOptional: Boolean, formatMask: Int): Int {
+fun packPluginDepEntry(nodeId: Int, isOptional: Boolean, formatMask: Int, hasConfigFile: Boolean = false): Int {
   require(nodeId <= NODE_ID_MASK) { "nodeId $nodeId exceeds 24-bit limit ($NODE_ID_MASK)" }
   val optionalBit = if (isOptional) PLUGIN_DEP_OPTIONAL_MASK else 0
-  return nodeId or optionalBit or (formatMask and PLUGIN_DEP_FORMAT_MASK)
+  val configFileBit = if (hasConfigFile) PLUGIN_DEP_CONFIG_FILE_MASK else 0
+  return nodeId or optionalBit or (formatMask and PLUGIN_DEP_FORMAT_MASK) or configFileBit
 }
 
 /** Unpack optional flag from packed plugin-dep entry */
@@ -255,6 +277,9 @@ fun unpackPluginDepHasLegacy(packedEntry: Int): Boolean = (packedEntry and PLUGI
 
 /** Check if packed plugin-dep entry includes modern format */
 fun unpackPluginDepHasModern(packedEntry: Int): Boolean = (packedEntry and PLUGIN_DEP_MODERN_MASK) != 0
+
+/** Check if packed plugin-dep entry includes legacy config-file marker */
+fun unpackPluginDepHasConfigFile(packedEntry: Int): Boolean = (packedEntry and PLUGIN_DEP_CONFIG_FILE_MASK) != 0
 
 // endregion
 
@@ -307,9 +332,17 @@ value class ProductNode(override val id: Int) : TypedNode
 @JvmInline
 value class PluginNode(override val id: Int) : TypedNode
 
-/** Module node - content modules */
+/**
+ * Module node - content modules.
+ * The plugin system takes into account not only name, but also namespace of a content module, so eventually code that uses this node should migrate to use
+ * [ContentModuleWithNamespaceNode] instead. Currently both nodes are created for each content module.
+ */
 @JvmInline
 value class ContentModuleNode(override val id: Int) : TypedNode
+
+/** Module node - content modules with namespace */
+@JvmInline
+value class ContentModuleWithNamespaceNode(override val id: Int) : TypedNode
 
 /** Module set node - groups of modules */
 @JvmInline
@@ -393,6 +426,41 @@ value class ContentEdgeInvoker @PublishedApi internal constructor(
 }
 
 /**
+ * Value class for GC-free traversal of content edges with loading mode.
+ *
+ * Packs `[edgeId:16][sourceId:32]` into Long, like [EdgeInvoker], but the
+ * invoke operator exposes the per-edge loading mode packed in adjacency entries.
+ *
+ * Used for content edges:
+ * - [EDGE_CONTAINS_CONTENT_WITH_NAMESPACE]
+ * - [EDGE_CONTAINS_CONTENT_TEST_WITH_NAMESPACE]
+ */
+@JvmInline
+value class ContentWithNamespaceEdgeInvoker @PublishedApi internal constructor(
+  /** Packed value: `[edgeId:16][sourceId:32]` */
+  @PublishedApi internal val packed: Long,
+) {
+  /** Extract edge type ID from upper 16 bits */
+  @PublishedApi
+  internal val edgeId: Int get() = (packed ushr 32).toInt()
+
+  /** Extract source node ID from lower 32 bits */
+  @PublishedApi
+  internal val sourceId: Int get() = packed.toInt()
+
+  companion object {
+    /** Create ContentEdgeInvoker by packing edgeId and sourceId into Long */
+    fun create(edgeId: Int, sourceId: Int): ContentWithNamespaceEdgeInvoker {
+      require(edgeId == EDGE_CONTAINS_CONTENT_WITH_NAMESPACE || edgeId == EDGE_CONTAINS_CONTENT_TEST_WITH_NAMESPACE) {
+        "edgeId $edgeId must be a content edge"
+      }
+      require(sourceId >= 0) { "sourceId $sourceId must be non-negative" }
+      return ContentWithNamespaceEdgeInvoker((edgeId.toLong() shl 32) or (sourceId.toLong() and 0xFFFFFFFFL))
+    }
+  }
+}
+
+/**
  * Value class for GC-free reverse edge traversal (predecessors).
  *
  * Packs `[edgeId:16][targetId:32]` into Long for zero-allocation traversal.
@@ -465,7 +533,7 @@ value class TargetDependencyInvoker @PublishedApi internal constructor(
  * Zero-allocation wrapper for plugin dependency traversal with optional + format flag access.
  *
  * Packs sourceId (upper 32 bits) + packed edge entry (lower 32 bits).
- * Use [isOptional], [hasLegacyFormat], and [hasModernFormat] for flags.
+ * Use [isOptional], [hasLegacyFormat], [hasModernFormat], and [hasConfigFile] for flags.
  */
 @JvmInline
 value class PluginDependency @PublishedApi internal constructor(
@@ -482,6 +550,9 @@ value class PluginDependency @PublishedApi internal constructor(
 
   /** Whether modern <dependencies><plugin> format is present for this dependency */
   val hasModernFormat: Boolean get() = unpackPluginDepHasModern(packed.toInt())
+
+  /** Whether this dependency is declared via legacy `<depends ... config-file="...">` */
+  val hasConfigFile: Boolean get() = unpackPluginDepHasConfigFile(packed.toInt())
 
   /** Get target as PluginNode */
   fun target(): PluginNode = PluginNode(targetId)

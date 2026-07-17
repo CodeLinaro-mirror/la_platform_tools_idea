@@ -1,12 +1,14 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.agent.workbench.prompt.ui.context
 
+import com.intellij.agent.workbench.prompt.core.AGENT_PROMPT_INVOCATION_DATA_CONTEXT_KEY
 import com.intellij.agent.workbench.prompt.core.AgentPromptContextRendererIds
 import com.intellij.agent.workbench.prompt.core.AgentPromptContextTruncationReason
 import com.intellij.agent.workbench.prompt.core.AgentPromptInvocationData
 import com.intellij.agent.workbench.prompt.core.number
 import com.intellij.agent.workbench.prompt.core.objOrNull
 import com.intellij.agent.workbench.prompt.core.string
+import com.intellij.agent.workbench.prompt.context.AgentPromptTreeSelectionContextContributor
 import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.actionSystem.DataKey
 import com.intellij.openapi.actionSystem.PlatformCoreDataKeys
@@ -19,12 +21,15 @@ import com.intellij.testFramework.junit5.TestApplication
 import kotlinx.coroutines.Dispatchers
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
+import java.util.concurrent.TimeUnit
 import javax.swing.JTree
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeModel
 import javax.swing.tree.TreePath
 
 @TestApplication
+@Timeout(value = 2, unit = TimeUnit.MINUTES)
 class AgentPromptTreeSelectionContextContributorTest {
   private val contributor = AgentPromptTreeSelectionContextContributor()
 
@@ -41,7 +46,7 @@ class AgentPromptTreeSelectionContextContributorTest {
 
   @Test
   fun returnsEmptyWhenTreeHasNoSelection() {
-    val tree = createTree("Root", listOf("Child1", "Child2"))
+    val tree = createTree(listOf("Child1", "Child2"))
     tree.clearSelection()
     val dataContext = testDataContext(
       PlatformCoreDataKeys.CONTEXT_COMPONENT to tree,
@@ -54,7 +59,7 @@ class AgentPromptTreeSelectionContextContributorTest {
 
   @Test
   fun extractsSingleSelectedNodeText() {
-    val tree = createTree("Root", listOf("MyItem"))
+    val tree = createTree(listOf("MyItem"))
     selectNodes(tree, listOf("MyItem"))
     val dataContext = testDataContext(
       PlatformCoreDataKeys.CONTEXT_COMPONENT to tree,
@@ -77,7 +82,7 @@ class AgentPromptTreeSelectionContextContributorTest {
 
   @Test
   fun handlesMultiSelectionWithDeduplication() {
-    val tree = createTree("Root", listOf("Alpha", "Beta", "Alpha", "Gamma"))
+    val tree = createTree(listOf("Alpha", "Beta", "Alpha", "Gamma"))
     selectNodes(tree, listOf("Alpha", "Beta", "Alpha", "Gamma"))
     val dataContext = testDataContext(
       PlatformCoreDataKeys.CONTEXT_COMPONENT to tree,
@@ -99,7 +104,7 @@ class AgentPromptTreeSelectionContextContributorTest {
   @Test
   fun truncatesToMaxNodes() {
     val children = (1..15).map { "Node$it" }
-    val tree = createTree("Root", children)
+    val tree = createTree(children)
     selectNodes(tree, children)
     val dataContext = testDataContext(
       PlatformCoreDataKeys.CONTEXT_COMPONENT to tree,
@@ -146,7 +151,7 @@ class AgentPromptTreeSelectionContextContributorTest {
 
   @Test
   fun usesToolWindowIdAsTreeKind() {
-    val tree = createTree("Root", listOf("Item"))
+    val tree = createTree(listOf("Item"))
     selectNodes(tree, listOf("Item"))
     val toolWindow = java.lang.reflect.Proxy.newProxyInstance(
       ToolWindow::class.java.classLoader,
@@ -169,7 +174,7 @@ class AgentPromptTreeSelectionContextContributorTest {
 
   @Test
   fun fallsToToolWindowThenComponentNameThenDefault() {
-    val tree = createTree("Root", listOf("Item"))
+    val tree = createTree(listOf("Item"))
     selectNodes(tree, listOf("Item"))
     tree.accessibleContext.accessibleName = null
     val dataContext = testDataContext(
@@ -191,7 +196,7 @@ class AgentPromptTreeSelectionContextContributorTest {
 
   @Test
   fun accessibleNameTakesPrecedenceOverToolWindow() {
-    val tree = createTree("Root", listOf("Item"))
+    val tree = createTree(listOf("Item"))
     selectNodes(tree, listOf("Item"))
     tree.accessibleContext.accessibleName = "Changes tree"
     val toolWindow = java.lang.reflect.Proxy.newProxyInstance(
@@ -208,8 +213,8 @@ class AgentPromptTreeSelectionContextContributorTest {
     assertThat(result.single().body).contains("Tree: Changes tree")
   }
 
-  private fun createTree(rootName: String, children: List<String>): JTree {
-    val root = DefaultMutableTreeNode(rootName)
+  private fun createTree(children: List<String>): JTree {
+    val root = DefaultMutableTreeNode("Root")
     for (child in children) {
       root.add(DefaultMutableTreeNode(child))
     }

@@ -6,7 +6,6 @@ import com.intellij.execution.process.ProcessOutput
 import com.intellij.execution.target.TargetEnvironment
 import com.intellij.execution.target.TargetEnvironmentRequest
 import com.intellij.execution.target.TargetProgressIndicator
-import com.intellij.execution.target.VolumeCopyingRequest
 import com.intellij.execution.target.local.LocalTargetEnvironmentRequest
 import com.intellij.execution.target.value.getRelativeTargetPath
 import com.intellij.execution.target.value.getTargetDownloadPath
@@ -19,6 +18,7 @@ import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.python.community.execService.impl.processLaunchers.uploadMeasureTime
+import com.intellij.openapi.util.registry.Registry
 import com.jetbrains.python.PythonHelper
 import com.jetbrains.python.run.PythonInterpreterTargetEnvironmentFactory
 import com.jetbrains.python.run.buildTargetedCommandLine
@@ -51,6 +51,10 @@ class PyTargetsSkeletonGenerator(skeletonPath: String, pySdk: Sdk, currentFolder
 
   override fun commandBuilder(): Builder {
     val builder = TargetedBuilder(mySdk, mySkeletonsPath)
+    if (Registry.`is`("python.skeleton.generator.use.process.pool", false)) {
+      LOG.info("Using `--use-worker-process-pool` for skeleton generation")
+      builder.extraArgs("--use-worker-process-pool")
+    }
     myCurrentFolder?.let { builder.workingDir(it) }
     return builder
   }
@@ -76,7 +80,6 @@ class PyTargetsSkeletonGenerator(skeletonPath: String, pySdk: Sdk, currentFolder
         targetRootPath = TargetEnvironment.TargetPath.Temporary()
       )
       targetEnvRequest.downloadVolumes += skeletonsDownloadRoot
-      (targetEnvRequest as? VolumeCopyingRequest)?.shouldCopyVolumes = true
       generatorScriptExecution.addParameter(skeletonsDownloadRoot.getTargetDownloadPath())
       if (myExtraSysPath.isNotEmpty()) {
         generatorScriptExecution.addParameter("-s")

@@ -23,9 +23,10 @@ import com.intellij.psi.util.startOffset
 import com.intellij.util.LocalFileUrl
 import com.intellij.util.Urls
 import org.intellij.plugins.markdown.MarkdownBundle
+import org.intellij.plugins.markdown.editor.MarkdownLinkEditingUtil
 import org.intellij.plugins.markdown.lang.MarkdownElementTypes
-import org.intellij.plugins.markdown.lang.isMarkdownLanguage
 import org.intellij.plugins.markdown.lang.psi.util.hasType
+import org.intellij.plugins.markdown.lang.supportsMarkdown
 import org.intellij.plugins.markdown.ui.actions.MarkdownActionPlaces
 import org.intellij.plugins.markdown.ui.actions.MarkdownActionUtil
 import org.jetbrains.annotations.Nls
@@ -50,7 +51,8 @@ internal class MarkdownCreateLinkAction : ToggleAction(), DumbAware {
   override fun isSelected(event: AnActionEvent): Boolean {
     val editor = MarkdownActionUtil.findMarkdownEditor(event)
     val file = event.getData(CommonDataKeys.PSI_FILE)
-    if (editor == null || file == null || !file.language.isMarkdownLanguage()) {
+    val isMarkdownSupported = file?.language?.supportsMarkdown(event.dataContext) == true
+    if (editor == null || file == null || !isMarkdownSupported) {
       event.presentation.isEnabledAndVisible = false
       return false
     }
@@ -126,13 +128,23 @@ internal class MarkdownCreateLinkAction : ToggleAction(), DumbAware {
       .run<Nothing> {
         caret.removeSelection()
 
-        editor.document.replaceString(selectionStart, selectionEnd, "[$selected]()")
-        caret.moveToOffset(selectionEnd + 3)
+        val selectedLinkDestination = MarkdownLinkEditingUtil.getLinkDestination(selected)
+        val linkText = if (selectedLinkDestination == null) selected else ""
+        val linkDestination = selectedLinkDestination.orEmpty()
+        editor.document.replaceString(selectionStart, selectionEnd, MarkdownLinkEditingUtil.createInlineLink(linkText, linkDestination))
+        if (selectedLinkDestination == null) {
+          caret.moveToOffset(selectionStart + selected.length + 3)
+        }
+        else {
+          caret.moveToOffset(selectionStart + 1)
+        }
 
-        getLinkDestinationInClipboard(editor)?.let { linkDestination ->
-          val linkStartOffset = caret.offset
-          editor.document.insertString(linkStartOffset, linkDestination)
-          caret.setSelection(linkStartOffset, linkStartOffset + linkDestination.length)
+        if (selectedLinkDestination == null) {
+          getLinkDestinationInClipboard(editor)?.let { linkDestination ->
+            val linkStartOffset = caret.offset
+            editor.document.insertString(linkStartOffset, linkDestination)
+            caret.setSelection(linkStartOffset, linkStartOffset + linkDestination.length)
+          }
         }
       }
   }

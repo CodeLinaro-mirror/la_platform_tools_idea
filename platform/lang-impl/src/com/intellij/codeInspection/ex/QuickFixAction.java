@@ -48,6 +48,7 @@ import com.intellij.ui.ClickListener;
 import com.intellij.util.SequentialModalProgressTask;
 import com.intellij.util.SlowOperations;
 import com.intellij.util.ui.JBUI;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 
@@ -66,6 +67,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.Supplier;
 
+@ApiStatus.Internal
 public abstract class QuickFixAction extends AnAction implements CustomComponentAction {
   private static final Logger LOG = Logger.getInstance(QuickFixAction.class);
   private static final NotificationGroup BATCH_QUICK_FIX_MESSAGES =
@@ -139,7 +141,7 @@ public abstract class QuickFixAction extends AnAction implements CustomComponent
         descriptors.set(List.of());
       }
       else {
-        if (!ProgressManager.getInstance().runProcessWithProgressSynchronously(() -> ReadAction.run(() -> {
+        if (!ProgressManager.getInstance().runProcessWithProgressSynchronously(() -> ReadAction.runBlocking(() -> {
           final ProgressIndicator indicator = ProgressManager.getInstance().getProgressIndicator();
           indicator.setText(InspectionsBundle.message("quick.fix.action.checking.problem.progress"));
           descriptors.set(tree.getSelectedDescriptorPacks(true, readOnlyFiles, false, paths));

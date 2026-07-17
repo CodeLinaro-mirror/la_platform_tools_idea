@@ -3,6 +3,7 @@ package org.jetbrains.kotlin.idea.gradleJava.run
 
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.externalSystem.model.DataNode
+import com.intellij.openapi.externalSystem.model.project.ModuleData
 import com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil
 import com.intellij.openapi.module.Module
 import com.intellij.psi.PsiElement
@@ -35,6 +36,7 @@ import org.jetbrains.kotlin.psi.KtValueArgumentList
 import org.jetbrains.kotlin.psi.psiUtil.getCallNameExpression
 import org.jetbrains.kotlin.psi.psiUtil.getParentOfType
 import org.jetbrains.kotlin.utils.addToStdlib.safeAs
+import org.jetbrains.plugins.gradle.execution.build.CachedModuleDataFinder
 import org.jetbrains.plugins.gradle.model.GradleExtension
 import org.jetbrains.plugins.gradle.service.execution.GradleRunConfiguration
 import org.jetbrains.plugins.gradle.service.project.data.GradleExtensionsDataService
@@ -160,27 +162,34 @@ private fun KaSession.isStringParameterSignature(signature: KaVariableSignature<
 fun KtNamedFunction.getKMPGradleConfigurationName(runTask: KotlinJvmRunTaskData): String =
     "${getConfigurationName()} [${runTask.targetName}]"
 
-fun KtNamedFunction.getConfigurationName(): String? {
-    val gradleSubprojectName = ReadAction.compute<Module?, Throwable> { module }?.getSubprojectNameOfGradleRoot() ?: return name
-    val fileName =
-        ReadAction.compute<String?, Throwable> { containingKtFile.virtualFile?.nameWithoutExtension } ?: return gradleSubprojectName
+fun KtNamedFunction.getConfigurationName(): String {
+    val gradleSubprojectName = ReadAction
+        .computeBlocking<Module?, Throwable> { module }
+        ?.getSubprojectNameOfGradleRoot()
 
-    return when (fileName.equals("main", ignoreCase = true)) {
-        true -> gradleSubprojectName
-        false -> "$gradleSubprojectName.$fileName"
-    }
+    val fileName = ReadAction
+        .computeBlocking<String?, Throwable> { containingKtFile.virtualFile?.nameWithoutExtension }
+        ?.takeUnless { it.equals("main", ignoreCase = true) }
+
+    val functionName = ReadAction
+        .computeBlocking<String?, Throwable> { name }
+        ?.takeUnless { it.equals("main", ignoreCase = true) }
+
+    return listOfNotNull(gradleSubprojectName, fileName, functionName).joinToString(".")
 }
 
 @RequiresReadLock
 internal fun mainClassScriptParameter(function: KtFunction): String = "-DmainClass=${function.containingKtFile.javaFileFacadeFqName}"
 
 /**
- * Returns the name of the direct subproject of the Gradle root project in which this module is located in.
+ * Returns the qualified name of the direct subproject of the Gradle root project in which this module is located in.
  *
  * For example, for both modules "SomeKMPProject.composeApp.desktopMain" and "SomeKMPProject.composeApp.wasmJsMain"
- * the return value would be "composeApp".
+ * the return value would be "composeApp". Analogously, for "SomeKMPProject.app.desktopApp.desktopMain" the return
+ * value would be "app.desktopApp".
  */
-private fun Module.getSubprojectNameOfGradleRoot(): String? = name.split(".").getOrNull(1)
+private fun Module.getSubprojectNameOfGradleRoot(): String? =
+    name.split(".").takeIf { it.size >= 3 }?.run { subList(1, lastIndex) }?.joinToString(".")
 
 fun configureKmpJvmRunConfigurationFromMainFunction(
     configuration: GradleRunConfiguration,
@@ -192,16 +201,16 @@ fun configureKmpJvmRunConfigurationFromMainFunction(
     configuration.isDebugAllEnabled = false
     configuration.isDebugServerProcess = false
 
-    val scriptParameterList = when (runTask.gradlePluginType) {
-        KotlinGradlePluginType.Jvm -> {
-            configuration.isComposeJvm = true
-            val mainFunctionClassFqn = ReadAction.compute<String, Throwable> { function.containingKtFile.javaFileFacadeFqName.asString() }
+    configuration.isComposeGradlePluginConfigured = runTask.isComposeGradlePluginConfigured
+    val scriptParameterList = when {
+        runTask.isComposeGradlePluginConfigured -> {
+            val mainFunctionClassFqn = ReadAction.computeBlocking<String, Throwable> { function.containingKtFile.javaFileFacadeFqName.asString() }
             configuration.mainFunctionClassFqn = mainFunctionClassFqn
             listOf(quietParameter)
         }
 
-        KotlinGradlePluginType.Multiplatform ->{
-            val mainClassParameter = ReadAction.compute<String, Throwable> { mainClassScriptParameter(function) }
+        else -> {
+            val mainClassParameter = ReadAction.computeBlocking<String, Throwable> { mainClassScriptParameter(function) }
             listOf(mainClassParameter, quietParameter)
         }
     }
@@ -217,6 +226,13 @@ private const val quietParameter: String = "--quiet"
 
 fun getGradleExtensions(moduleDataNode: DataNode<*>): List<GradleExtension>? =
     ExternalSystemApiUtil.find(moduleDataNode, GradleExtensionsDataService.KEY)?.data?.extensions
+
+fun usesComposeGradlePlugin(mainModuleDataNode: DataNode<out ModuleData>): Boolean =
+    getGradleExtensions(mainModuleDataNode)?.any {
+        it.name == "compose" && it.typeFqn == "org.jetbrains.compose.ComposeExtension"
+    } == true
+
+fun Module.findMainModuleCachedData(): DataNode<out ModuleData>? = CachedModuleDataFinder.findMainModuleData(this)
 
 enum class KotlinGradlePluginType {
     Jvm,

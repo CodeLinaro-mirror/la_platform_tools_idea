@@ -16,7 +16,6 @@ import com.intellij.openapi.ui.validation.WHEN_PROPERTY_CHANGED
 import com.intellij.openapi.ui.validation.and
 import com.intellij.openapi.util.IconLoader
 import com.intellij.openapi.util.NlsSafe
-import com.intellij.platform.eel.provider.localEel
 import com.intellij.platform.ide.progress.ModalTaskOwner
 import com.intellij.platform.ide.progress.runWithModalProgressBlocking
 import com.intellij.python.community.impl.installer.CondaInstallManager
@@ -36,7 +35,6 @@ import com.intellij.util.SystemProperties
 import com.intellij.util.ui.JBUI
 import com.jetbrains.python.PyBundle
 import com.jetbrains.python.PyBundle.message
-import com.jetbrains.python.errorProcessing.ErrorSink
 import com.jetbrains.python.errorProcessing.PyResult
 import com.jetbrains.python.errorProcessing.emit
 import com.jetbrains.python.onFailure
@@ -48,7 +46,7 @@ import com.jetbrains.python.sdk.add.v2.PythonSupportedEnvironmentManagers.VIRTUA
 import com.jetbrains.python.sdk.flavors.PythonSdkFlavor
 import com.jetbrains.python.sdk.flavors.conda.PyCondaEnv
 import com.jetbrains.python.sdk.flavors.conda.PyCondaEnvIdentity
-import com.jetbrains.python.util.ShowingMessageErrorSync
+import com.jetbrains.python.errorProcessing.ErrorSink
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -184,7 +182,10 @@ class PythonNewEnvironmentDialogNavigator {
 }
 
 
-internal fun <P : PathHolder> SimpleColoredComponent.customizeForPythonInterpreter(isLoading: Boolean, interpreter: PythonSelectableInterpreter<P>?) {
+internal fun <P : PathHolder> SimpleColoredComponent.customizeForPythonInterpreter(
+  isLoading: Boolean,
+  interpreter: PythonSelectableInterpreter<P>?,
+) {
   when {
     isLoading -> {
       append(message("sdk.create.custom.hatch.environment.loading"), SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
@@ -199,10 +200,10 @@ internal fun <P : PathHolder> SimpleColoredComponent.customizeForPythonInterpret
   when (interpreter) {
     is DetectedSelectableInterpreter, is ManuallyAddedSelectableInterpreter -> {
       icon = IconLoader.getTransparentIcon(interpreter.ui?.icon ?: PythonParserIcons.PythonFile)
-      val title = interpreter.ui?.toolName ?:
-      if (interpreter.isBase) {
+      val title = interpreter.ui?.toolName ?: if (interpreter.isBase) {
         message("sdk.rendering.detected.grey.text.system")
-      }else {
+      }
+      else {
         message("sdk.rendering.detected.grey.text.venv")
       }
       append(String.format("Python %-4s", interpreter.pythonInfo.languageLevel))
@@ -210,7 +211,7 @@ internal fun <P : PathHolder> SimpleColoredComponent.customizeForPythonInterpret
     }
     is InstallableSelectableInterpreter -> {
       icon = AllIcons.Actions.Download
-      append(interpreter.sdk.name)
+      append(interpreter.installableSdk.name)
       append(" " + message("sdk.rendering.installable.grey.text"), SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES)
     }
     is ExistingSelectableInterpreter -> {
@@ -254,13 +255,26 @@ fun replaceHomePathToTilde(sdkHomePath: @NonNls String): @NlsSafe String {
 }
 
 
-class PythonSdkComboBoxListCellRenderer<P : PathHolder>(val isLoading: () -> Boolean) : ColoredListCellRenderer<PythonSelectableInterpreter<P>?>() {
+class PythonSdkComboBoxListCellRenderer<P : PathHolder>(val isLoading: () -> Boolean) :
+  ColoredListCellRenderer<PythonSelectableInterpreter<P>?>() {
 
-  override fun getListCellRendererComponent(list: JList<out PythonSelectableInterpreter<P>?>?, value: PythonSelectableInterpreter<P>?, index: Int, selected: Boolean, hasFocus: Boolean): Component {
+  override fun getListCellRendererComponent(
+    list: JList<out PythonSelectableInterpreter<P>?>?,
+    value: PythonSelectableInterpreter<P>?,
+    index: Int,
+    selected: Boolean,
+    hasFocus: Boolean,
+  ): Component {
     return super.getListCellRendererComponent(list, value, index, selected, hasFocus)
   }
 
-  override fun customizeCellRenderer(list: JList<out PythonSelectableInterpreter<P>?>, value: PythonSelectableInterpreter<P>?, index: Int, selected: Boolean, hasFocus: Boolean) {
+  override fun customizeCellRenderer(
+    list: JList<out PythonSelectableInterpreter<P>?>,
+    value: PythonSelectableInterpreter<P>?,
+    index: Int,
+    selected: Boolean,
+    hasFocus: Boolean,
+  ) {
     customizeForPythonInterpreter(isLoading.invoke(), value)
   }
 }
@@ -301,7 +315,7 @@ internal fun <P : PathHolder> Panel.pythonInterpreterComboBox(
   onPathSelected: suspend (P) -> PyResult<PythonSelectableInterpreter<P>>,
   customizer: RowsRange.() -> Unit = {},
 ): PythonInterpreterComboBox<P> {
-  val comboBox = PythonInterpreterComboBox(onPathSelected, fileSystem, ShowingMessageErrorSync)
+  val comboBox = PythonInterpreterComboBox(onPathSelected, fileSystem, ErrorSink())
     .apply {
       setBusy(true)
     }
@@ -385,7 +399,7 @@ internal class PythonInterpreterComboBox<P : PathHolder>(
   // Both these methods are abstraction leakage and should be rewritten
 
   fun setBusy(busy: Boolean) {
-    (editor as ComboBoxWithBrowseButtonEditor<*, P>).setBusy(busy)
+    (editor as ComboBoxWithBrowseButtonEditor<*>).setBusy(busy)
   }
 
 }
@@ -450,7 +464,7 @@ private fun ExtendableTextComponent.removeLoadingExtension() {
 }
 
 internal fun <P : PathHolder> createInstallCondaFix(model: PythonAddInterpreterModel<P>): ActionLink? {
-  if ((model.fileSystem as? FileSystem.Eel)?.eelApi != localEel) return null
+  if (!model.fileSystem.isLocal) return null
 
   return ActionLink(message("sdk.create.custom.venv.install.fix.title", "Miniconda")) {
     PythonSdkFlavor.clearExecutablesCache()

@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.multiverse
 
 import com.intellij.codeInsight.multiverse.CodeInsightContext
@@ -12,6 +12,8 @@ import com.intellij.openapi.roots.libraries.Library
 import com.intellij.openapi.roots.libraries.LibraryContext
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.platform.backend.workspace.WorkspaceModel
+import com.intellij.platform.backend.workspace.WorkspaceModelChangeListener
+import com.intellij.platform.backend.workspace.WorkspaceModelTopics
 import com.intellij.platform.workspace.jps.entities.ContentRootEntity
 import com.intellij.platform.workspace.jps.entities.LibraryEntity
 import com.intellij.platform.workspace.jps.entities.ModuleEntity
@@ -19,14 +21,13 @@ import com.intellij.platform.workspace.jps.entities.SdkEntity
 import com.intellij.platform.workspace.jps.entities.SourceRootEntity
 import com.intellij.platform.workspace.storage.EntityPointer
 import com.intellij.platform.workspace.storage.ImmutableEntityStorage
+import com.intellij.platform.workspace.storage.VersionedStorageChange
 import com.intellij.workspaceModel.core.fileIndex.WorkspaceFileSet
 import com.intellij.workspaceModel.core.fileIndex.impl.WorkspaceFileIndexEx
 import com.intellij.workspaceModel.core.fileIndex.impl.WorkspaceFileSetRecognizer
 import com.intellij.workspaceModel.ide.impl.legacyBridge.sdk.SdkBridgeImpl.Companion.findSdk
 import com.intellij.workspaceModel.ide.legacyBridge.findLibraryBridge
 import com.intellij.workspaceModel.ide.legacyBridge.findModule
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.mapNotNull
 import org.jetbrains.annotations.ApiStatus
 
 internal class ProjectModelEntityContextProvider : CodeInsightContextProvider {
@@ -42,9 +43,9 @@ internal class ProjectModelEntityContextProvider : CodeInsightContextProvider {
       includeContentSets = true,
       includeContentNonIndexableSets = true,
       includeExternalSets = true,
-      includeExternalSourceSets = true,
-      includeExternalNonIndexableSets = true,
-      includeCustomKindSets = true
+      includeExternalSourceSets = false,
+      includeExternalNonIndexableSets = false,
+      includeCustomKindSets = false
     )
     if (fileSets.isEmpty()) return emptyList()
 
@@ -98,11 +99,19 @@ internal class ProjectModelEntityContextProvider : CodeInsightContextProvider {
     return null
   }
 
-  override fun invalidationRequestFlow(project: Project): Flow<Unit> {
-    val eventLog = WorkspaceModel.getInstance(project).eventLog
-    return eventLog.mapNotNull { change ->
-      Unit.takeIf { change.getChanges(ModuleEntity::class.java).isNotEmpty() }
-    }
+  override fun subscribeToChanges(
+    project: Project,
+    invalidator: CodeInsightContextProvider.Invalidator,
+  ) {
+    project.messageBus.connect().subscribe(WorkspaceModelTopics.CHANGED, object : WorkspaceModelChangeListener {
+      override fun beforeChanged(event: VersionedStorageChange) {
+        invalidator.requestInvalidation()
+      }
+
+      override fun changed(event: VersionedStorageChange) {
+        invalidator.requestInvalidation()
+      }
+    })
   }
 }
 

@@ -8,6 +8,7 @@ import com.intellij.platform.workspace.storage.EntitySource
 import com.intellij.platform.workspace.storage.EntityType
 import com.intellij.platform.workspace.storage.MutableEntityStorage
 import com.intellij.platform.workspace.storage.WorkspaceEntityWithSymbolicId
+import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.ApiStatus.Internal
 import org.jetbrains.annotations.NonNls
 
@@ -16,6 +17,10 @@ data class ModuleTypeId(val name: @NonNls String)
 /**
  * Describes configuration of a [Module][com.intellij.openapi.module.Module].
  * See [package documentation](psi_element://com.intellij.platform.workspace.jps.entities) for more details.
+ *
+ * **Do not add new fields to this entity.** New fields are not serialized to the .iml file and will be
+ * lost when the project is reopened. To store additional data, declare a new entity with a
+ * [@Parent][com.intellij.platform.workspace.storage.annotations.Parent] reference to this one.
  */
 interface ModuleEntity : WorkspaceEntityWithSymbolicId {
   override val symbolicId: ModuleId
@@ -32,6 +37,7 @@ interface ModuleEntity : WorkspaceEntityWithSymbolicId {
   @Deprecated(message = "Use ModuleEntityBuilder instead")
   interface Builder : ModuleEntityBuilder
   companion object : EntityType<ModuleEntity, Builder>() {
+    @ApiStatus.ScheduledForRemoval
     @Deprecated(message = "Use new API instead")
     @JvmOverloads
     @JvmStatic
@@ -48,6 +54,7 @@ interface ModuleEntity : WorkspaceEntityWithSymbolicId {
 }
 
 //region generated code
+@ApiStatus.ScheduledForRemoval
 @Deprecated(message = "Use new API instead")
 fun MutableEntityStorage.modifyModuleEntity(
   entity: ModuleEntity,
@@ -94,7 +101,11 @@ var ModuleEntity.Builder.groupPath: ModuleGroupPathEntity.Builder?
 
 @Deprecated(message = "Use new API instead")
 var ModuleEntity.Builder.sourceRoots: List<SourceRootEntity.Builder>
+  @ApiStatus.ScheduledForRemoval
+  @Deprecated(message = "Use new API instead")
   get() = (this as ModuleEntityBuilder).sourceRoots as List<SourceRootEntity.Builder>
+  @ApiStatus.ScheduledForRemoval
+  @Deprecated(message = "Use new API instead")
   set(value) {
     (this as ModuleEntityBuilder).sourceRoots = value
   }

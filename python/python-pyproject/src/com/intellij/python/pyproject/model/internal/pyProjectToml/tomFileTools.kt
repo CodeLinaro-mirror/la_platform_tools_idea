@@ -6,6 +6,7 @@ import com.intellij.python.pyproject.PyProjectToml
 import com.intellij.python.pyproject.model.spi.ProjectDependencies
 import com.intellij.python.pyproject.model.spi.ProjectName
 import com.intellij.python.pyproject.model.spi.PyProjectTomlProject
+import com.intellij.python.pyproject.model.spi.TomlDependencySpecification
 import com.intellij.python.pyproject.safeGetArr
 import com.intellij.util.concurrency.annotations.RequiresBackgroundThread
 import com.jetbrains.python.Result
@@ -29,8 +30,11 @@ import kotlin.io.path.visitFileTree
 /**
  * Walks down the [root]. Like [walkFileSystemNoTomlContent] but with TOML files content
  */
-internal suspend fun walkFileSystemWithTomlContent(root: Directory, excludedPaths: Set<Path> = emptySet()): Result<FSWalkInfoWithToml, IOException> {
-  val rawTomlFiles = walkFileSystemNoTomlContent(root, excludedPaths).getOr { return it }.rawTomlFiles
+internal suspend fun walkFileSystemWithTomlContent(
+  roots: Set<Directory>,
+  excludedPaths: Set<Path> = emptySet(),
+): Result<FSWalkInfoWithToml, IOException> {
+  val rawTomlFiles = walkFileSystemNoTomlContent(roots, excludedPaths).getOr { return it }.rawTomlFiles
 
   // TODO: with a big number of files, use `chunk` to parse them concurrently
   val tomlFiles = rawTomlFiles.map { file ->
@@ -41,50 +45,63 @@ internal suspend fun walkFileSystemWithTomlContent(root: Directory, excludedPath
 }
 
 /**
- * Walks down [root], returns all [PY_PROJECT_TOML]  (started with dot).
- * [IOException] is returned if [root] is inaccessible
+ * Walks down [roots], returns all [PY_PROJECT_TOML]  (started with dot).
+ * [IOException] is returned if one of the [roots] is inaccessible
  */
 suspend fun walkFileSystemNoTomlContent(
-  root: Directory,
+  roots: Set<Directory>,
   excludedPaths: Set<Path> = emptySet(),
 ): Result<FsWalkInfoNoToml, IOException> {
   val rawTomlFiles = ArrayList<Path>(10)
-  try {
-    withContext(Dispatchers.IO) {
-      root.visitFileTree {
-        onVisitFile { file, _ ->
-          if (file.name == PY_PROJECT_TOML) {
-            rawTomlFiles.add(file)
-          }
-          return@onVisitFile FileVisitResult.CONTINUE
-        }
-        onPreVisitDirectory { directory, _ ->
-          val dirName = directory.name
-
-          // default name is popular enough to make a shortcut
-          if (dirName == VirtualEnvReader.DEFAULT_VIRTUALENV_DIRNAME
-              || VirtualEnvReader().findPythonInPythonRoot(directory) != null) {
-            // Venv: exclude and skip
-            FileVisitResult.SKIP_SUBTREE
-          }
-          else if (dirName.startsWith(".")) {
-            // Dot: just skip
-            FileVisitResult.SKIP_SUBTREE
-          }
-          else if (directory in excludedPaths) {
-            // Excluded folder: skip (pyproject.toml inside excluded folders should not become modules)
-            FileVisitResult.SKIP_SUBTREE
-          }
-          else {
-            FileVisitResult.CONTINUE
-          }
-        }
+  // TODO: Measure performance, parallelize if needed
+  for (root in roots) {
+    try {
+      withContext(Dispatchers.IO) {
+        walkFileSystemNoTomlContent(root, rawTomlFiles, excludedPaths)
       }
     }
-    return Result.success(FsWalkInfoNoToml(rawTomlFiles = rawTomlFiles))
+    catch (e: IOException) {
+      return Result.failure(e)
+    }
   }
-  catch (e: IOException) {
-    return Result.failure(e)
+  return Result.success(FsWalkInfoNoToml(rawTomlFiles = rawTomlFiles))
+}
+
+@Throws(IOException::class)
+@RequiresBackgroundThread
+private fun walkFileSystemNoTomlContent(
+  root: Directory,
+  rawTomlFiles: MutableList<Path>,
+  excludedPaths: Set<Path>,
+) {
+  root.visitFileTree {
+    onVisitFile { file, _ ->
+      if (file.name == PY_PROJECT_TOML) {
+        rawTomlFiles.add(file)
+      }
+      return@onVisitFile FileVisitResult.CONTINUE
+    }
+    onPreVisitDirectory { directory, _ ->
+      val dirName = directory.name
+
+      // default name is popular enough to make a shortcut
+      if (dirName == VirtualEnvReader.DEFAULT_VIRTUALENV_DIRNAME
+          || VirtualEnvReader().findPythonInPythonRoot(directory) != null) {
+        // Venv: exclude and skip
+        FileVisitResult.SKIP_SUBTREE
+      }
+      else if (dirName.startsWith(".")) {
+        // Dot: just skip
+        FileVisitResult.SKIP_SUBTREE
+      }
+      else if (directory in excludedPaths) {
+        // Excluded folder: skip (pyproject.toml inside excluded folders should not become modules)
+        FileVisitResult.SKIP_SUBTREE
+      }
+      else {
+        FileVisitResult.CONTINUE
+      }
+    }
   }
 }
 
@@ -99,7 +116,7 @@ private suspend fun readFile(file: Path): PyProjectToml? {
     return null
   }
   return withContext(Dispatchers.Default) {
-    val toml = PyProjectToml.parse(content)
+    val toml = PyProjectToml.parse(content) ?: return@withContext null
     val errors = toml.issues.joinToString(", ")
     if (errors.isNotBlank()) {
       logger.warn("Errors on $file: $errors")
@@ -108,7 +125,7 @@ private suspend fun readFile(file: Path): PyProjectToml? {
   }
 }
 
-suspend fun getDependenciesFromToml(
+internal suspend fun getDependenciesFromToml(
   entries: Map<ProjectName, PyProjectTomlProject>,
   rootIndex: Map<Directory, ProjectName>,
   tomlDependencySpecifications: List<TomlDependencySpecification>,
@@ -134,7 +151,7 @@ private fun collectAllDependencies(
   entry: PyProjectTomlProject, tomlDependencySpecifications: List<TomlDependencySpecification>,
 ): Sequence<Directory> = sequence {
   yieldAll(getDependenciesFromProject(entry.pyProjectToml))
-  yieldAll(getDependenciesFromPep735Groups(entry.pyProjectToml.toml))
+  yieldAll(getDependenciesFromPep735Groups(entry.pyProjectToml))
   yieldAll(getToolSpecificDependencies(entry.root, entry.pyProjectToml.toml, tomlDependencySpecifications))
 }
 
@@ -171,17 +188,12 @@ private fun getToolSpecificDependenciesFromTomlTable(root: Path, tomlTable: Toml
 }
 
 @RequiresBackgroundThread
-private fun getDependenciesFromPep735Groups(tomlTable: TomlTable): Sequence<Directory> {
-  val groups = tomlTable.getTable("dependency-groups") ?: return emptySequence()
-  return groups.keySet().asSequence().flatMap { group ->
-    val deps = groups.safeGetArr<String>(group).successOrNull ?: emptyList()
-    deps.asSequence().mapNotNull(::parsePep621Dependency)
-  }
-}
+private fun getDependenciesFromPep735Groups(tomlTable: PyProjectToml): Sequence<Directory> =
+  tomlTable.project.dependencies.allDepsFromGroups.asSequence().mapNotNull(::parsePep621Dependency)
 
 @RequiresBackgroundThread
 private fun getDependenciesFromProject(projectToml: PyProjectToml): Sequence<Directory> {
-  val depsFromFile = projectToml.project?.dependencies?.project ?: emptyList()
+  val depsFromFile = projectToml.project.dependencies.project
   return depsFromFile.asSequence().mapNotNull(::parsePep621Dependency)
 }
 
@@ -189,12 +201,6 @@ private fun parsePep621Dependency(depSpec: String): Path? {
   val match = PEP_621_PATH_DEPENDENCY.matchEntire(depSpec) ?: return null
   val (_, depUri) = match.destructured
   return parseDepUri(depUri)
-}
-
-sealed interface TomlDependencySpecification {
-  data class PathDependency(val tomlKey: String) : TomlDependencySpecification
-  data class Pep621Dependency(val tomlKey: String) : TomlDependencySpecification
-  data class GroupPathDependency(val tomlKeyToGroup: String, val tomlKeyFromGroupToPath: String) : TomlDependencySpecification
 }
 
 

@@ -1,11 +1,15 @@
 <idea-plugin visibility="public">
+  <!-- region Generated dependencies - run `Generate Product Layouts` to regenerate -->
   <dependencies>
     <module name="intellij.platform.externalSystem.impl"/>
-    <!-- region Generated dependencies - run `Generate Product Layouts` to regenerate -->
     <module name="intellij.gradle.toolingExtension"/>
+    <module name="intellij.gradle.toolingExtension.impl"/>
+    <module name="intellij.gradle.toolingProxy"/>
     <module name="intellij.libraries.jspecify"/>
-    <!-- endregion -->
+    <module name="intellij.platform.smRunner"/>
+    <module name="intellij.platform.testRunner"/>
   </dependencies>
+  <!-- endregion -->
 
   <resource-bundle>messages.GradleBundle</resource-bundle>
 
@@ -56,6 +60,7 @@
     <syncContributor implementation="org.jetbrains.plugins.gradle.service.syncAction.impl.contributors.GradleContentRootSyncContributor"/>
     <syncContributor implementation="org.jetbrains.plugins.gradle.service.syncAction.impl.contributors.GradleVersionCatalogSyncContributor"/>
     <syncExtension implementation="org.jetbrains.plugins.gradle.service.syncAction.impl.extensions.GradleJpsSyncExtension"/>
+    <syncExtension implementation="org.jetbrains.plugins.gradle.service.syncAction.impl.extensions.GradleDependencySyncExtension"/>
     <syncExtension implementation="org.jetbrains.plugins.gradle.service.syncAction.impl.extensions.GradleBaseSyncExtension"/>
     <syncExtension implementation="org.jetbrains.plugins.gradle.service.syncAction.impl.extensions.GradleDependencySubstitutionSyncExtension"/>
 
@@ -90,9 +95,9 @@
 
   <extensions defaultExtensionNs="com.intellij">
 
-    <externalProjectDataService implementation="org.jetbrains.plugins.gradle.service.syncAction.impl.bridge.GradleBridgeProjectDataService"/>
-    <externalWorkspaceDataService implementation="org.jetbrains.plugins.gradle.service.syncAction.impl.bridge.GradleBridgeModuleDataService"/>
-    <externalProjectDataService implementation="org.jetbrains.plugins.gradle.service.syncAction.impl.bridge.GradleBridgeFinalizerDataService"/>
+    <externalProjectData.extension implementation="org.jetbrains.plugins.gradle.service.syncAction.impl.bridge.SyncContributorCleanup"/>
+    <externalProjectData.extension implementation="org.jetbrains.plugins.gradle.service.syncAction.impl.bridge.ModuleToGradleProjectConnector"/>
+    <externalProjectData.extension implementation="org.jetbrains.plugins.gradle.service.syncAction.impl.bridge.SyntheticEntitySourceMarker"/>
 
     <postStartupActivity implementation="org.jetbrains.plugins.gradle.service.project.GradleStartupActivity"/>
     <backgroundPostStartupActivity implementation="org.jetbrains.plugins.gradle.service.project.GradleVersionUpdateStartupActivity"/>
@@ -230,14 +235,20 @@
                  description="Enable experimental support of version catalogs based on after-sync gradle models"/>
     <registryKey key="gradle.output.sync.progress.events" defaultValue="true"
                  description="Send progress information like files download during project import to `Build Output`"/>
+    <registryKey key="gradle.show.suppressed.failure.events" defaultValue="false"
+                 description="Show suppressed Gradle failure events in the build output"/>
     <registryKey key="gradle.daemon.opentelemetry.agent.enabled" defaultValue="false"
                  description="Enable performance trace collection in the Gradle daemon collected by OTLP java agent"/>
     <registryKey key="gradle.daemon.legacy.dependency.resolver" defaultValue="false"
                  description="Use ArtifactResolutionQuery instead of ArtifactView to resolve Javadoc/Sources"/>
     <registryKey key="gradle.auto.auto.jdk.fix.disabled" defaultValue="false"
                  description="Disable attempt to fix unknown JDK in Gradle configuration on project open"/>
-    <registryKey key="gradle.dependency.completion.service" defaultValue="false"
+    <registryKey key="gradle.dependency.completion.service" defaultValue="true"
                  description="Use dependency completion service for dependency completion in gradle scripts"/>
+    <registryKey key="gradle.use.resilient.model.fetch" defaultValue="true"
+                 description="Use gradle stable resilient model fetch API to resolve gradle models"/>
+    <registryKey key="gradle.use.resilient.model.fetch.unstable" defaultValue="false"
+                 description="Use gradle unstable resilient model fetch API to resolve gradle models"/>
 
     <commandLineInspectionProjectConfigurator implementation="org.jetbrains.plugins.gradle.GradleCommandLineProjectConfigurator"/>
     <warmupConfigurator implementation="org.jetbrains.plugins.gradle.GradleWarmupConfigurator"/>
@@ -253,6 +264,12 @@
         Enable Building of models in parallel during Gradle project sync.
       </description>
     </experimentalFeature>
+    <projectSettings service="org.jetbrains.plugins.gradle.settings.GradleSettingsMigration$LegacyDefaultGradleProjectSettings"/>
+    <projectSettings service="org.jetbrains.plugins.gradle.service.task.ExecuteGradleTaskHistoryService"/>
+    <applicationSettings service="org.jetbrains.plugins.gradle.settings.GradleDefaultProjectSettings$Service"/>
+    <applicationSettings service="org.jetbrains.plugins.gradle.jvmcompat.GradleJvmSupportMatrix"/>
+    <projectSettings service="org.jetbrains.plugins.gradle.settings.GradleSettings"/>
+    <applicationSettings service="org.jetbrains.plugins.gradle.settings.GradleSystemSettings"/>
   </extensions>
 
   <applicationListeners>

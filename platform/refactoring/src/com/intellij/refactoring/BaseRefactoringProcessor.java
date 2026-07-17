@@ -300,7 +300,7 @@ public abstract class BaseRefactoringProcessor implements Runnable {
 
     final Runnable findUsagesRunnable = () -> {
       try {
-        refUsages.set(ReadAction.compute(this::findUsages));
+        refUsages.set(ReadAction.computeBlocking(this::findUsages));
       }
       catch (UnknownReferenceTypeException e) {
         refErrorLanguage.set(e.getElementLanguage());
@@ -347,7 +347,7 @@ public abstract class BaseRefactoringProcessor implements Runnable {
     }
 
     if (!anyException.isNull()) {
-      //do not proceed if find usages fails
+      //do not proceed if Find Usages fails
       return;
     }
     assert !refUsages.isNull(): "Null usages from processor " + this;
@@ -399,7 +399,7 @@ public abstract class BaseRefactoringProcessor implements Runnable {
     Factory<UsageSearcher> factory = () -> new UsageInfoSearcherAdapter() {
       @Override
       public void generate(final @NotNull Processor<? super Usage> processor) {
-        ApplicationManager.getApplication().runReadAction(() -> {
+        ReadAction.runBlocking(() -> {
           for (int i = 0; i < elements.length; i++) {
             elements[i] = targets[i].getElement();
           }
@@ -530,7 +530,7 @@ public abstract class BaseRefactoringProcessor implements Runnable {
    *
    * @param project   project
    * @param conflicts map with conflict messages and locations
-   * @return true if refactoring could proceed or false if refactoring should be cancelled
+   * @return true if refactoring could proceed or false if refactoring should be canceled
    */
   public static boolean processConflicts(@NotNull Project project, @NotNull MultiMap<PsiElement, @DialogMessage String> conflicts) {
     if (conflicts.isEmpty()) return true;
@@ -553,8 +553,7 @@ public abstract class BaseRefactoringProcessor implements Runnable {
     final UsageTarget[] targets = PsiElement2UsageTargetAdapter.convert(initialElements, true);
     final Ref<Usage[]> convertUsagesRef = new Ref<>();
     if (!ProgressManager.getInstance().runProcessWithProgressSynchronously(
-      () -> ApplicationManager.getApplication().runReadAction(
-        () -> convertUsagesRef.set(UsageInfo2UsageAdapter.convert(usageInfos))),
+      () -> ReadAction.runBlocking(() -> convertUsagesRef.set(UsageInfo2UsageAdapter.convert(usageInfos))),
       RefactoringBundle.message("refactoring.preprocess.usages.progress"), true, myProject)) return;
 
     if (convertUsagesRef.isNull()) return;
@@ -634,14 +633,14 @@ public abstract class BaseRefactoringProcessor implements Runnable {
       myTransaction = listenerManager.startTransaction();
       final Map<RefactoringHelper, Object> preparedData = new LinkedHashMap<>();
       final Runnable prepareHelpersRunnable = () -> {
-        RefactoringEventData data = ReadAction.compute(() -> getBeforeData());
+        RefactoringEventData data = ReadAction.computeBlocking(() -> getBeforeData());
         PsiElement[] elements = data != null ? data.getUserData(RefactoringEventData.PSI_ELEMENT_ARRAY_KEY) : null;
         PsiElement primaryElement = data != null ? data.getUserData(RefactoringEventData.PSI_ELEMENT_KEY) : null;
         PsiElement[] allElements = elements != null ? ArrayUtil.append(elements, primaryElement) : new PsiElement[]{primaryElement};
         for (final RefactoringHelper<?> helper : RefactoringHelper.EP_NAME.getExtensionList()) {
           if (!DumbService.getInstance(myProject).isUsableInCurrentContext(helper)) continue;
 
-          Object operation = ReadAction.compute(() -> {
+          Object operation = ReadAction.computeBlocking(() -> {
             return helper.prepareOperation(writableUsageInfos, ContainerUtil.filter(allElements, e -> e != null));
           });
           preparedData.put(helper, operation);

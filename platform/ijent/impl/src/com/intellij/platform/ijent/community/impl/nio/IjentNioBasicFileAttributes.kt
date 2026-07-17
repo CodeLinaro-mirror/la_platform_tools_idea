@@ -12,6 +12,7 @@ import com.intellij.platform.eel.fs.EelPosixFileInfo.Type.Symlink
 import com.intellij.platform.eel.fs.EelWindowsFileInfo
 import com.intellij.platform.eel.provider.utils.EelPathUtils
 import java.nio.file.attribute.BasicFileAttributes
+import java.nio.file.attribute.DosFileAttributes
 import java.nio.file.attribute.FileTime
 import java.nio.file.attribute.GroupPrincipal
 import java.nio.file.attribute.PosixFileAttributes
@@ -76,12 +77,15 @@ internal class IjentNioBasicFileAttributes(private val fileInfo: EelFileInfo) : 
   override fun fileKey(): Any =
     when (fileInfo) {
       is EelPosixFileInfo -> EelUnixFileKey(dev = fileInfo.inodeDev, ino = fileInfo.inodeIno)
-      is EelWindowsFileInfo -> TODO()
+      is EelWindowsFileInfo -> EelWindowsFileKey(fileInfo.volumeSerialNumber, fileInfo.fileIndexHigh, fileInfo.fileIndexLow)
     }
 }
 
 /** Similar to `sun.nio.fs.UnixFileKey` */
 internal data class EelUnixFileKey(val dev: Long, val ino: Long)
+
+/** Similar to `sun.nio.fs.WindowsFileKey` */
+internal data class EelWindowsFileKey(val volumeSerialNumber: Int, val fileIndexHigh: Int, val fileIndexLow: Int)
 
 class IjentNioPosixFileAttributes(
   internal val fileInfo: EelPosixFileInfo,
@@ -108,6 +112,20 @@ class IjentNioPosixFileAttributes(
     }
     return if (permissions.isEmpty()) EnumSet.noneOf(PosixFilePermission::class.java) else EnumSet.copyOf(permissions)
   }
+
+  override fun getCaseSensitivity(): FileAttributes.CaseSensitivity = when (val type = fileInfo.type) {
+    is Directory -> EelPathUtils.getCaseSensitivity(type)
+    else -> throw IllegalStateException("Cannot ask for case sensitivity of $type")
+  }
+}
+
+class IjentNioWindowsFileAttributes(
+  internal val fileInfo: EelWindowsFileInfo,
+) : CaseSensitivityAttribute, DosFileAttributes, BasicFileAttributes by IjentNioBasicFileAttributes(fileInfo) {
+  override fun isReadOnly(): Boolean = fileInfo.permissions.isReadOnly
+  override fun isHidden(): Boolean = fileInfo.permissions.isHidden
+  override fun isArchive(): Boolean = fileInfo.permissions.isArchive
+  override fun isSystem(): Boolean = fileInfo.permissions.isSystem
 
   override fun getCaseSensitivity(): FileAttributes.CaseSensitivity = when (val type = fileInfo.type) {
     is Directory -> EelPathUtils.getCaseSensitivity(type)

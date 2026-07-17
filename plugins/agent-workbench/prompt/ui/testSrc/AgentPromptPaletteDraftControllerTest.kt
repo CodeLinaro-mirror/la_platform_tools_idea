@@ -10,10 +10,13 @@ import com.intellij.testFramework.runInEdtAndWait
 import com.intellij.ui.EditorTextField
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
+import java.util.concurrent.TimeUnit
 import javax.swing.JPanel
 import javax.swing.JTabbedPane
 
 @TestApplication
+@Timeout(value = 2, unit = TimeUnit.MINUTES)
 class AgentPromptPaletteDraftControllerTest {
   @Test
   fun restoreTaskDraftsRestoresExtensionInitialTextWhenSavedDraftIsMissing() {
@@ -101,6 +104,11 @@ class AgentPromptPaletteDraftControllerTest {
   }
 
   private fun createProviderSelector(project: com.intellij.openapi.project.Project): AgentPromptProviderSelector {
+    val view = createAgentPromptPaletteView(
+      promptArea = EditorTextField(),
+      contextChipsPanel = JPanel(),
+      onExistingTaskSelected = {},
+    )
     return AgentPromptProviderSelector(
       invocationData = AgentPromptInvocationData(
         project = project,
@@ -109,8 +117,7 @@ class AgentPromptPaletteDraftControllerTest {
         actionPlace = "MainMenu",
         invokedAtMs = 0L,
       ),
-      providerIconLabel = com.intellij.ui.components.JBLabel(),
-      providerOptionsPanel = JPanel(),
+      headerControls = view.headerControls,
       providersProvider = { emptyList() },
       sessionsMessageResolver = AgentPromptSessionsMessageResolver(AgentPromptPaletteDraftControllerTest::class.java.classLoader),
     )
@@ -122,7 +129,7 @@ class AgentPromptPaletteDraftControllerTest {
     return AgentPromptExistingTaskController(
       existingTaskListModel = javax.swing.DefaultListModel(),
       existingTaskList = com.intellij.ui.components.JBList(),
-      popupScope = scope,
+      sessionScope = scope,
       sessionsMessageResolver = AgentPromptSessionsMessageResolver(AgentPromptPaletteDraftControllerTest::class.java.classLoader),
       onStateChanged = {},
     )
@@ -134,7 +141,8 @@ class AgentPromptPaletteDraftControllerTest {
 
       override fun getTabTitle(): String = "Extension"
 
-      override fun getInitialPrompt(project: com.intellij.openapi.project.Project): AgentPromptPaletteInitialPrompt = AgentPromptPaletteInitialPrompt(content = "extension prompt")
+      override fun getInitialPrompt(project: com.intellij.openapi.project.Project): AgentPromptPaletteInitialPrompt =
+        AgentPromptPaletteInitialPrompt(content = "extension prompt")
 
       override fun getSubmitActionId(): String? = null
 

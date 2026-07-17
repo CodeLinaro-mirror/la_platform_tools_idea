@@ -4,6 +4,8 @@
   <!-- region Generated dependencies - run `Generate Product Layouts` to regenerate -->
   <dependencies>
     <module name="intellij.agent.workbench.prompt.core"/>
+    <module name="intellij.platform.ai.agent.core"/>
+    <module name="intellij.platform.vcs"/>
   </dependencies>
   <!-- endregion -->
 
@@ -13,6 +15,8 @@
 
     <statistics.counterUsagesCollector
         implementationClass="com.intellij.agent.workbench.ai.review.AIReviewCollector"/>
+    <statistics.validation.customValidationRule
+        implementation="com.intellij.agent.workbench.ai.review.AIReviewAgentProviderValidationRule"/>
 
     <registryKey key="ai.review.enabled"
                  defaultValue="true"

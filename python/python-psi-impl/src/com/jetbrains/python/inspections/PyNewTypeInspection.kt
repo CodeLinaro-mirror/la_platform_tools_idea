@@ -3,7 +3,6 @@ package com.jetbrains.python.inspections
 import com.intellij.codeInspection.LocalInspectionToolSession
 import com.intellij.codeInspection.ProblemHighlightType
 import com.intellij.codeInspection.ProblemsHolder
-import com.intellij.openapi.util.Ref
 import com.intellij.psi.PsiElementVisitor
 import com.jetbrains.python.PyPsiBundle
 import com.jetbrains.python.codeInsight.typing.PyTypingTypeProvider
@@ -44,23 +43,24 @@ class PyNewTypeInspection : PyInspection() {
           val targetName = node.name
           if (targetName != newTypeName) {
             registerProblem(node.nameIdentifier,
-                            PyPsiBundle.message("INSP.NAME.new.type.variable.name.does.not.match.new.type.name", targetName, newTypeName))
+                            PyPsiBundle.problemMessage("INSP.NAME.new.type.variable.name.does.not.match.new.type.name", targetName, newTypeName))
           }
 
           val typeExpr = PyPsiUtils.flattenParens(assignedValue.getArgument(1, "tp", PyExpression::class.java))
           if (typeExpr != null) {
-            val type = Ref.deref(PyTypingTypeProvider.getType(typeExpr, myTypeEvalContext))
-            if (type !is PyClassType) {
-              registerProblem(typeExpr, PyPsiBundle.message("INSP.NAME.new.type.expected.class"))
+            val type = myTypeEvalContext.getType(typeExpr)
+            if (type is PyTypingNewTypeFactoryType) return
+            if (type !is PyClassType || !type.isDefinition) {
+              registerProblem(typeExpr, PyPsiBundle.problemMessage("INSP.NAME.new.type.expected.class"))
             }
             else if (type is PyCollectionType && type.elementTypes.any { it is PyTypeVarType && it.scopeOwner == null }) {
-              registerProblem(typeExpr, PyPsiBundle.message("INSP.NAME.new.type.new.type.cannot.be.generic"))
+              registerProblem(typeExpr, PyPsiBundle.problemMessage("INSP.NAME.new.type.new.type.cannot.be.generic"))
             }
             else if (type is PyLiteralType) {
-              registerProblem(typeExpr, PyPsiBundle.message("INSP.NAME.new.type.new.type.cannot.be.used.with", type.name))
+              registerProblem(typeExpr, PyPsiBundle.problemMessage("INSP.NAME.new.type.new.type.cannot.be.used.with", type.name))
             }
             else if (type is PyTypedDictType) {
-              registerProblem(typeExpr, PyPsiBundle.message("INSP.NAME.new.type.new.type.cannot.be.used.with", "TypedDict"))
+              registerProblem(typeExpr, PyPsiBundle.problemMessage("INSP.NAME.new.type.new.type.cannot.be.used.with", "TypedDict"))
             }
           }
         }
@@ -71,7 +71,7 @@ class PyNewTypeInspection : PyInspection() {
           val superClassType = myTypeEvalContext.getType(superClassExpression)
           if (superClassType is PyTypingNewTypeFactoryType) {
             registerProblem(superClassExpression,
-                            PyPsiBundle.message("INSP.NAME.new.type.cannot.be.subclassed", superClassType.name),
+                            PyPsiBundle.problemMessage("INSP.NAME.new.type.cannot.be.subclassed", superClassType.name),
                             ProblemHighlightType.GENERIC_ERROR)
           }
         }

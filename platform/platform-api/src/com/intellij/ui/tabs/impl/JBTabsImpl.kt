@@ -5,12 +5,14 @@ package com.intellij.ui.tabs.impl
 
 import com.intellij.concurrency.ContextAwareRunnable
 import com.intellij.icons.AllIcons
+import com.intellij.ide.setToolTipText
 import com.intellij.ide.ui.UISettings
 import com.intellij.ide.ui.UISettings.Companion.getInstance
 import com.intellij.ide.ui.UISettings.Companion.setupAntialiasing
 import com.intellij.ide.ui.UISettingsListener
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionGroup
+import com.intellij.openapi.actionSystem.ActionGroupWrapper
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionPlaces
 import com.intellij.openapi.actionSystem.ActionToolbar
@@ -48,6 +50,7 @@ import com.intellij.openapi.ui.popup.LightweightWindowEvent
 import com.intellij.openapi.ui.popup.ListItemDescriptorAdapter
 import com.intellij.openapi.ui.popup.ListSeparator
 import com.intellij.openapi.ui.popup.PopupStep
+import com.intellij.openapi.ui.popup.StackingPopupDispatcher
 import com.intellij.openapi.ui.popup.util.BaseListPopupStep
 import com.intellij.openapi.ui.popup.util.PopupUtil
 import com.intellij.openapi.util.ActionCallback
@@ -734,6 +737,7 @@ open class JBTabsImpl internal constructor(
     for (tab in visibleInfos) {
       tab.revalidate()
       tab.tabLabel?.setTabActions(tab.tabLabelActions)
+      tab.tabLabel?.updateTabActions()
     }
     updateRowLayout()
   }
@@ -794,6 +798,9 @@ open class JBTabsImpl internal constructor(
   }
 
   fun isHoveredTab(label: TabLabel?): Boolean = label != null && label === tabLabelAtMouse
+
+  /** Returns true if a label is either hovered or its context menu is showing */
+  fun isHoveredOrWithPopup(label: TabLabel?): Boolean = label != null && (label === tabLabelAtMouse || popupInfo === label.info)
 
   open fun isActiveTabs(info: TabInfo?): Boolean = UIUtil.isFocusAncestor(this)
 
@@ -1469,7 +1476,7 @@ open class JBTabsImpl internal constructor(
     info.changeSupport.addPropertyChangeListener(this)
     val label = createTabLabel(info)
     label.setText(info.coloredText)
-    label.toolTipText = info.tooltipText
+    label.setToolTipText(info.tooltipHtmlText)
     label.setIcon(info.icon)
     label.setTabActions(info.tabLabelActions)
 
@@ -1499,7 +1506,7 @@ open class JBTabsImpl internal constructor(
 
       val label = createTabLabel(tab)
       label.setText(tab.coloredText)
-      label.toolTipText = tab.tooltipText
+      label.setToolTipText(tab.tooltipHtmlText)
       label.setIcon(tab.icon)
       label.setTabActions(tab.tabLabelActions)
 
@@ -1659,6 +1666,7 @@ open class JBTabsImpl internal constructor(
     finally {
       isMouseInsideTabsArea = oldValue
     }
+    updateEntryPointToolbar(tabActionGroup = tab.tabPaneActions)
   }
 
   protected open val focusOwnerToStore: JComponent?
@@ -1728,6 +1736,12 @@ open class JBTabsImpl internal constructor(
 
   private fun requestFocusLater(inWindow: Boolean): ActionCallback {
     if (!isShowing) return ActionCallback.REJECTED
+    // On Wayland, requestFocusInWindow() will steal the focus from the popup,
+    // leading to an uncomfortable state when the popup is still showing,
+    // but the editor is focused (and receives input!).
+    // Especially annoying with the Recent Files popup, when the active editor is closed from the popup (Del / Backspace)
+    // and the focus is transferred to the next editor.
+    if (StartupUiUtil.isWaylandToolkit() && StackingPopupDispatcher.getInstance().focusedPopup != null) return ActionCallback.REJECTED
 
     val result = ActionCallback()
     ApplicationManager.getApplication().invokeLater {
@@ -1915,7 +1929,7 @@ open class JBTabsImpl internal constructor(
   private fun updateText(tabInfo: TabInfo) {
     val label = tabInfo.tabLabel!!
     label.setText(tabInfo.coloredText)
-    label.toolTipText = tabInfo.tooltipText
+    label.setToolTipText(tabInfo.tooltipHtmlText)
   }
 
   private fun updateSideComponent(tabInfo: TabInfo) {
@@ -2772,14 +2786,9 @@ open class JBTabsImpl internal constructor(
 
     val group = if (tabActionGroup != null && entryPointActionGroup != null) {
       // check that more toolbar and entry point toolbar are in the same row
-      if (!moreToolbar!!.component.bounds.isEmpty &&
-          tabActionGroup.getChildren(null).isNotEmpty() &&
-          (!TabLayout.showPinnedTabsSeparately() || tabs.all { !it.isPinned })) {
-        DefaultActionGroup(FakeEmptyAction(), Separator.create(), tabActionGroup, Separator.create(), entryPointActionGroup)
-      }
-      else {
-        DefaultActionGroup(tabActionGroup, Separator.create(), entryPointActionGroup)
-      }
+      val showMoreToolbarSeparator = !moreToolbar!!.component.bounds.isEmpty &&
+                                     (!TabLayout.showPinnedTabsSeparately() || tabs.all { !it.isPinned })
+      DefaultActionGroup(TabActionGroupWrapper(tabActionGroup, showMoreToolbarSeparator), entryPointActionGroup)
     }
     else {
       tabActionGroup ?: entryPointActionGroup!!
@@ -3489,6 +3498,34 @@ private fun updateToolbarIfVisibilityChanged(toolbar: ActionToolbar?, previousBo
   val bounds = toolbar.component.bounds
   if (bounds.isEmpty != previousBounds.isEmpty) {
     toolbar.updateActionsAsync()
+  }
+}
+
+private class TabActionGroupWrapper(
+  tabActionGroup: ActionGroup,
+  private val showMoreToolbarSeparator: Boolean,
+) : ActionGroupWrapper(tabActionGroup) {
+  private val fakeEmptyAction = JBTabsImpl.FakeEmptyAction()
+
+  override fun postProcessVisibleChildren(e: AnActionEvent, visibleChildren: List<AnAction>): List<AnAction> {
+    val children = super.postProcessVisibleChildren(e, visibleChildren)
+    if (children.isEmpty()) {
+      return children
+    }
+
+    val result = ArrayList<AnAction>(children.size + if (showMoreToolbarSeparator) 3 else 1)
+    if (showMoreToolbarSeparator) {
+      addSyntheticAction(e, result, fakeEmptyAction)
+      addSyntheticAction(e, result, Separator.create())
+    }
+    result.addAll(children)
+    addSyntheticAction(e, result, Separator.create())
+    return result
+  }
+
+  private fun addSyntheticAction(e: AnActionEvent, result: MutableList<AnAction>, action: AnAction) {
+    e.updateSession.presentation(action).isEnabledAndVisible = true
+    result.add(action)
   }
 }
 

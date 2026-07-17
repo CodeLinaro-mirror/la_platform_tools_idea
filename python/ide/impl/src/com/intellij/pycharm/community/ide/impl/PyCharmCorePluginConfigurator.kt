@@ -18,7 +18,6 @@ import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.options.ex.ConfigurableGroupEP
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.pycharm.community.ide.impl.settings.PythonMainConfigurable
-import com.intellij.util.PlatformUtils
 import com.jetbrains.python.PythonLanguage
 import com.jetbrains.python.codeInsight.PyCodeInsightSettings
 import com.jetbrains.python.console.PyConsoleOptions
@@ -30,7 +29,10 @@ import kotlin.time.Duration.Companion.milliseconds
  * Initialize PyCharm.
  *
  * This class is called **only in PyCharm**.
- * It does not work in plugin
+ * It does not work in plugin.
+ *
+ * In patchConfigurables() we are rearranging applicationConfigurable, assigning Pycharm specific groups and weights.
+ * We should remember that the same work for projectConfigurables done in [PyCharmProjectConfigurableStartupActivity].
  */
 internal class PyCharmCorePluginConfigurator : ApplicationInitializedListener {
   init {
@@ -87,7 +89,7 @@ internal class PyCharmCorePluginConfigurator : ApplicationInitializedListener {
 
     if (!propertyManager.getBoolean("PyCharm.InitialConfiguration.V8")) {
       propertyManager.setValue("PyCharm.InitialConfiguration.V8", true)
-      PyConsoleOptions.getInstance(serviceAsync<ProjectManager>().getDefaultProject()).setCommandQueueEnabled(PlatformUtils.isDataSpell())
+      PyConsoleOptions.getInstance(serviceAsync<ProjectManager>().getDefaultProject()).isCommandQueueEnabled = false
     }
 
     serviceAsync<Experiments>().setFeatureEnabled("terminal.shell.command.handling", false)
@@ -97,11 +99,18 @@ internal class PyCharmCorePluginConfigurator : ApplicationInitializedListener {
 
   @Suppress("DialogTitleCapitalization")
   private fun patchConfigurables() {
+    // Only for applicationConfigurable!
     for (ep in Configurable.APPLICATION_CONFIGURABLE.extensionList) {
       when (ep.id) {
         "DSTables" -> {
           ep.groupId = PythonMainConfigurable.ID
           ep.groupWeight = 70
+        }
+        "PyPlotsConfigurable" -> {
+          ep.groupId = PythonMainConfigurable.ID
+          ep.key = "configurable.plots.pycharm.display.name"
+          ep.bundle = "messages.PyBundle"
+          ep.groupWeight = 60
         }
         "debugger.dataViews.python.type.renderers" -> {
           ep.groupId = "reference.idesettings.debugger.python"
@@ -116,11 +125,6 @@ internal class PyCharmCorePluginConfigurator : ApplicationInitializedListener {
           ep.groupWeight = 10
         }
       }
-    }
-
-    ConfigurableGroupEP.find("Jupyter Settings")?.apply {
-      parentId = "root"
-      weight = 900
     }
 
     ConfigurableGroupEP.find("project")?.apply {

@@ -7,8 +7,9 @@
 - a:getChangeFlow():kotlinx.coroutines.flow.Flow
 - a:getCodeInsightContext(com.intellij.psi.FileViewProvider):com.intellij.codeInsight.multiverse.CodeInsightContext
 - a:getCodeInsightContexts(com.intellij.openapi.vfs.VirtualFile):java.util.List
-- s:getInstance(com.intellij.openapi.project.Project):com.intellij.codeInsight.multiverse.CodeInsightContextManager
+- *s:getInstance(com.intellij.openapi.project.Project):com.intellij.codeInsight.multiverse.CodeInsightContextManager
 - a:getPreferredContext(com.intellij.openapi.vfs.VirtualFile):com.intellij.codeInsight.multiverse.CodeInsightContext
+- a:registerTestOnlyCodeInsightContextProvider(com.intellij.codeInsight.multiverse.CodeInsightContextProvider,com.intellij.openapi.Disposable):V
 *f:com.intellij.codeInsight.multiverse.CodeInsightContextManager$Companion
 - f:getInstance(com.intellij.openapi.project.Project):com.intellij.codeInsight.multiverse.CodeInsightContextManager
 - f:getInstanceAsync(com.intellij.openapi.project.Project,kotlin.coroutines.Continuation):java.lang.Object
@@ -19,9 +20,9 @@
 - a:isApplicable(com.intellij.codeInsight.multiverse.CodeInsightContext):Z
 *:com.intellij.codeInsight.multiverse.CodeInsightContextProvider
 - a:getContexts(com.intellij.openapi.vfs.VirtualFile,com.intellij.openapi.project.Project):java.util.List
-- a:invalidationRequestFlow(com.intellij.openapi.project.Project):kotlinx.coroutines.flow.Flow
+- a:subscribeToChanges(com.intellij.openapi.project.Project,com.intellij.codeInsight.multiverse.CodeInsightContextProvider$Invalidator):V
 *:com.intellij.codeInsight.multiverse.CodeInsightContextProvider$Invalidator
-- a:requestInvalidation(kotlin.coroutines.Continuation):java.lang.Object
+- a:requestInvalidation():V
 *f:com.intellij.codeInsight.multiverse.CodeInsightContexts
 - sf:anyContext():com.intellij.codeInsight.multiverse.CodeInsightContext
 - sf:defaultContext():com.intellij.codeInsight.multiverse.CodeInsightContext
@@ -86,25 +87,12 @@ com.intellij.lexer.RestartableLexer
 - hasType(I,com.intellij.psi.tree.IElementType):Z
 - hasType(I,com.intellij.psi.tree.TokenSet):Z
 - hasType(I,com.intellij.psi.tree.IElementType[]):Z
-*:com.intellij.model.Pointer
-- s:delegatingPointer(com.intellij.model.Pointer,java.util.function.Function):com.intellij.model.Pointer
-- a:dereference():java.lang.Object
-- s:fileRangePointer(com.intellij.psi.PsiFile,com.intellij.openapi.util.TextRange,java.util.function.BiFunction):com.intellij.model.Pointer
-- s:hardPointer(java.lang.Object):com.intellij.model.Pointer
-- s:uroborosPointer(com.intellij.model.Pointer,java.util.function.BiFunction):com.intellij.model.Pointer
-*f:com.intellij.model.PsiElementUsageInfo
-- com.intellij.usageView.UsageInfo
-- <init>(com.intellij.psi.PsiElement):V
-*:com.intellij.model.SideEffectGuard
-- *sf:Companion:com.intellij.model.SideEffectGuard$Companion
-- s:checkSideEffectAllowed(com.intellij.model.SideEffectGuard$EffectType):V
-- s:computeWithAllowedSideEffectsBlocking(java.util.EnumSet,kotlin.jvm.functions.Function0):java.lang.Object
-- s:computeWithoutSideEffects(kotlin.jvm.functions.Function0):java.lang.Object
-*f:com.intellij.model.SideEffectGuard$Companion
-- f:checkSideEffectAllowed(com.intellij.model.SideEffectGuard$EffectType):V
+*f:com.intellij.model.SideEffectGuard
+- sf:INSTANCE:com.intellij.model.SideEffectGuard
+- sf:checkSideEffectAllowed(com.intellij.model.SideEffectGuard$EffectType):V
 - f:computeWithAllowedSideEffects(java.util.EnumSet,kotlin.jvm.functions.Function2,kotlin.coroutines.Continuation):java.lang.Object
-- f:computeWithAllowedSideEffectsBlocking(java.util.EnumSet,kotlin.jvm.functions.Function0):java.lang.Object
-- f:computeWithoutSideEffects(kotlin.jvm.functions.Function0):java.lang.Object
+- sf:computeWithAllowedSideEffectsBlocking(java.util.EnumSet,kotlin.jvm.functions.Function0):java.lang.Object
+- sf:computeWithoutSideEffects(kotlin.jvm.functions.Function0):java.lang.Object
 *e:com.intellij.model.SideEffectGuard$EffectType
 - java.lang.Enum
 - sf:EXEC:com.intellij.model.SideEffectGuard$EffectType
@@ -118,10 +106,6 @@ com.intellij.lexer.RestartableLexer
 - java.lang.IllegalStateException
 - com.intellij.openapi.diagnostic.ControlFlowException
 - <init>(com.intellij.model.SideEffectGuard$EffectType):V
-*a:com.intellij.model.SingleTargetReference
-- <init>():V
-- f:resolveReference():java.util.Collection
-- pa:resolveSingleTarget():com.intellij.model.Symbol
 *:com.intellij.model.Symbol
 - a:createPointer():com.intellij.model.Pointer
 - a:equals(java.lang.Object):Z
@@ -214,7 +198,6 @@ f:com.intellij.openapi.application.CoroutinesKt
 - *sf:getUiImmediate(kotlinx.coroutines.Dispatchers):kotlin.coroutines.CoroutineContext
 - *sf:readAndBackgroundWriteActionUndispatched(kotlin.jvm.functions.Function1,kotlin.coroutines.Continuation):java.lang.Object
 - *sf:readAndEdtWriteActionUndispatched(kotlin.jvm.functions.Function1,kotlin.coroutines.Continuation):java.lang.Object
-- *sf:writeAction(kotlin.jvm.functions.Function0,kotlin.coroutines.Continuation):java.lang.Object
 - *sf:writeIntentReadAction(kotlin.jvm.functions.Function0,kotlin.coroutines.Continuation):java.lang.Object
 *a:com.intellij.openapi.application.WriteIntentReadAction
 - <init>():V
@@ -255,11 +238,17 @@ c:com.intellij.openapi.editor.markup.TextAttributes
 - *:hasEffects():Z
 - *:setAdditionalEffects(java.util.Map):V
 - *:withAdditionalEffect(com.intellij.openapi.editor.markup.EffectType,java.awt.Color):V
+a:com.intellij.openapi.fileEditor.FileDocumentManager
+- com.intellij.openapi.vfs.SavingRequestor
+- *:overrideConflictsSolverEnabled(Z,com.intellij.openapi.Disposable):V
 *:com.intellij.openapi.fileEditor.FileDocumentManagerListenerBackgroundable
 - com.intellij.openapi.fileEditor.FileDocumentManagerListener
 - *sf:Companion:com.intellij.openapi.fileEditor.FileDocumentManagerListenerBackgroundable$Companion
 - sf:TOPIC:com.intellij.util.messages.Topic
 *f:com.intellij.openapi.fileEditor.FileDocumentManagerListenerBackgroundable$Companion
+f:com.intellij.openapi.fileTypes.BinaryFileTypeDecompilers
+- com.intellij.openapi.fileTypes.FileTypeExtension
+- *:hasDecompiler(com.intellij.openapi.vfs.VirtualFile):Z
 com.intellij.openapi.fileTypes.ex.FileTypeIdentifiableByVirtualFile
 - com.intellij.openapi.fileTypes.FileType
 - *:isAvailableForOverride():Z
@@ -356,13 +345,10 @@ a:com.intellij.openapi.vfs.VirtualFile
 *:com.intellij.openapi.vfs.VirtualFileCustomDataSynchronizer
 - a:getDataType():kotlin.reflect.KType
 - a:getId():java.lang.String
-a:com.intellij.openapi.vfs.VirtualFileManager
-- com.intellij.openapi.util.ModificationTracker
-- *sf:VFS_CHANGES_BG:com.intellij.util.messages.Topic
-- *a:addAsyncFileListenerBackgroundable(com.intellij.openapi.vfs.AsyncFileListener,com.intellij.openapi.Disposable):V
 *:com.intellij.openapi.vfs.VirtualFilePreCloseCheck
 - *sf:Companion:com.intellij.openapi.vfs.VirtualFilePreCloseCheck$Companion
 - a:canCloseFile(com.intellij.openapi.vfs.VirtualFile):Z
+- canCloseFiles(java.util.Collection):Z
 *f:com.intellij.openapi.vfs.VirtualFilePreCloseCheck$Companion
 - f:getEP_NAME():com.intellij.openapi.extensions.ExtensionPointName
 f:com.intellij.openapi.vfs.VirtualFileUtil
@@ -372,8 +358,6 @@ f:com.intellij.openapi.vfs.VirtualFileUtil
 - com.intellij.openapi.vfs.impl.BulkVirtualFileListenerAdapter
 - com.intellij.openapi.vfs.newvfs.BulkFileListenerBackgroundable
 - <init>(com.intellij.openapi.vfs.VirtualFileListener):V
-*:com.intellij.openapi.vfs.newvfs.BulkFileListenerBackgroundable
-- com.intellij.openapi.vfs.newvfs.BulkFileListener
 com.intellij.pom.Navigatable
 - *:navigationRequest():com.intellij.platform.backend.navigation.NavigationRequest
 *f:com.intellij.psi.BasicInspectionVisitorBean
@@ -387,15 +371,13 @@ com.intellij.pom.Navigatable
 - s:registerParse(com.intellij.lang.PsiBuilder,com.intellij.lang.Language,J):V
 *:com.intellij.psi.ParsingDiagnostics$ParserDiagnosticsHandler
 - a:registerParse(com.intellij.lang.PsiBuilder,com.intellij.lang.Language,J):V
+com.intellij.psi.PsiDirectory
+- com.intellij.psi.PsiFileSystemItem
+- *:findFile(java.lang.String,com.intellij.psi.search.GlobalSearchScope):com.intellij.psi.PsiFile
 a:com.intellij.psi.PsiDocumentManager
 - *a:getCachedPsiFile(com.intellij.openapi.editor.Document,com.intellij.codeInsight.multiverse.CodeInsightContext):com.intellij.psi.PsiFile
 - *a:getPsiFile(com.intellij.openapi.editor.Document,com.intellij.codeInsight.multiverse.CodeInsightContext):com.intellij.psi.PsiFile
 - *:hasEventSystemEnabledUncommittedDocuments():Z
-com.intellij.psi.PsiElement
-- com.intellij.openapi.util.Iconable
-- com.intellij.openapi.util.UserDataHolder
-- *:getOwnDeclarations():java.util.Collection
-- *:getOwnReferences():java.util.Collection
 a:com.intellij.psi.PsiManager
 - com.intellij.openapi.util.UserDataHolderBase
 - *a:addPsiTreeChangeListenerBackgroundable(com.intellij.psi.PsiTreeChangeListener,com.intellij.openapi.Disposable):V
@@ -423,7 +405,9 @@ com.intellij.psi.SyntheticElement
 - *sf:NoContextFileInfo():com.intellij.psi.search.NoContextFileInfo
 - *sf:NoContextInformation():com.intellij.psi.search.NoContextInformation
 - *sf:contains(com.intellij.psi.search.SearchScope,com.intellij.openapi.vfs.VirtualFile,com.intellij.codeInsight.multiverse.CodeInsightContext):Z
-- *sf:createContainingContextFileInfo(java.util.Collection):com.intellij.psi.search.CodeInsightContextFileInfo
+- *sf:createContainingContextFileInfo(java.util.Collection,com.intellij.openapi.vfs.VirtualFile,com.intellij.psi.search.SearchScope):com.intellij.psi.search.CodeInsightContextFileInfo
+- *sf:createContainingContextFileInfo(java.util.Collection,kotlin.jvm.functions.Function0):com.intellij.psi.search.CodeInsightContextFileInfo
+- *sf:createContainingContextFileInfo(java.util.Collection,Z):com.intellij.psi.search.CodeInsightContextFileInfo
 - *sf:getCodeInsightContextInfo(com.intellij.psi.search.SearchScope):com.intellij.psi.search.CodeInsightContextInfo
 - *sf:getCorrespondingContexts(com.intellij.psi.search.SearchScope,com.intellij.openapi.vfs.VirtualFile):java.util.Collection
 - *sf:getFileContextInfo(com.intellij.psi.search.SearchScope,com.intellij.openapi.vfs.VirtualFile):com.intellij.psi.search.CodeInsightContextFileInfo
@@ -461,13 +445,19 @@ com.intellij.psi.templateLanguages.TemplateLanguageFileViewProvider
 f:com.intellij.psi.util.PsiTreeUtilKt
 - *sf:elementsAroundOffsetUp(com.intellij.psi.PsiFile,I):java.util.Iterator
 - *sf:elementsAtOffsetUp(com.intellij.psi.PsiFile,I):java.util.Iterator
+- *sf:getStubOrPsiParent(com.intellij.psi.PsiElement):com.intellij.psi.PsiElement
 - *sf:leavesAroundOffset(com.intellij.psi.PsiFile,I):java.lang.Iterable
 - *sf:walkUp(com.intellij.psi.PsiElement,I):java.util.Iterator
 - *sf:walkUp(com.intellij.psi.PsiElement,I,com.intellij.psi.PsiElement):java.util.Iterator
-com.intellij.testIntegration.TestFramework
-- com.intellij.openapi.project.PossiblyDumbAware
-- *:findAfterSuiteMethod(com.intellij.psi.PsiElement):com.intellij.psi.PsiElement
-- *:findBeforeSuiteMethod(com.intellij.psi.PsiElement):com.intellij.psi.PsiElement
+*:com.intellij.psi.util.PsiVersioningService
+- *sf:Companion:com.intellij.psi.util.PsiVersioningService$Companion
+- *s:createVersionedPsiElements(com.intellij.lang.ASTNode,kotlin.jvm.functions.Function0):java.lang.Object
+- *s:createVersionedPsiElements(com.intellij.psi.PsiElement,kotlin.jvm.functions.Function0):java.lang.Object
+- *s:freezePsiVersion(kotlin.jvm.functions.Function0):java.lang.Object
+*f:com.intellij.psi.util.PsiVersioningService$Companion
+- f:createVersionedPsiElements(com.intellij.lang.ASTNode,kotlin.jvm.functions.Function0):java.lang.Object
+- f:createVersionedPsiElements(com.intellij.psi.PsiElement,kotlin.jvm.functions.Function0):java.lang.Object
+- f:freezePsiVersion(kotlin.jvm.functions.Function0):java.lang.Object
 f:com.intellij.util.CoroutinesKt
 - *sf:awaitCancellationAndInvoke(kotlinx.coroutines.CoroutineScope,kotlin.coroutines.CoroutineContext,kotlin.jvm.functions.Function2):V
 - *bs:awaitCancellationAndInvoke$default(kotlinx.coroutines.CoroutineScope,kotlin.coroutines.CoroutineContext,kotlin.jvm.functions.Function2,I,java.lang.Object):V
@@ -477,7 +467,7 @@ f:com.intellij.util.ExecutorsQuery
 *a:com.intellij.util.PerformanceAssertions
 - *sf:Companion:com.intellij.util.PerformanceAssertions$Companion
 - <init>():V
-- sf:assertDoesNotAffectHighlighting():V
+- *sf:assertDoesNotAffectHighlighting():V
 - a:checkDoesNotAffectHighlighting():V
 *f:com.intellij.util.PerformanceAssertions$Companion
 - f:assertDoesNotAffectHighlighting():V
@@ -497,6 +487,7 @@ com.intellij.util.QueryExecutor
 - a:wrapExecution(com.intellij.util.Processor,com.intellij.util.Processor):Z
 *@:com.intellij.util.concurrency.annotations.RequiresBlockingContext
 - java.lang.annotation.Annotation
+- a:replaceWith():kotlin.ReplaceWith
 *@:com.intellij.util.concurrency.annotations.RequiresReadLockAbsence
 - java.lang.annotation.Annotation
 - a:generateAssertion():Z

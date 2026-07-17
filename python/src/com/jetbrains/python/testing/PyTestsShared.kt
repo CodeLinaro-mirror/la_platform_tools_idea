@@ -24,8 +24,9 @@ import com.intellij.execution.testframework.AbstractTestProxy
 import com.intellij.execution.testframework.sm.runner.SMRunnerConsolePropertiesProvider
 import com.intellij.execution.testframework.sm.runner.SMTRunnerConsoleProperties
 import com.intellij.execution.testframework.sm.runner.SMTestLocator
-import com.intellij.openapi.application.ApplicationManager
+import com.intellij.execution.util.ProgramParametersUtil
 import com.intellij.openapi.application.runReadAction
+import com.intellij.openapi.application.runReadActionBlocking
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.module.ModuleUtil
 import com.intellij.openapi.module.impl.scopes.ModuleWithDependenciesScope
@@ -369,7 +370,7 @@ data class ConfigurationTarget(
     when (targetType) {
       PyRunTargetVariant.CUSTOM -> emptyList()
       PyRunTargetVariant.PYTHON -> getArgumentsForPythonTarget(configuration)
-      PyRunTargetVariant.PATH -> listOf("--path", target.trim())
+      PyRunTargetVariant.PATH -> expandPathTarget(configuration)?.let { listOf("--path", it) } ?: emptyList()
     }
 
   fun generateArgumentsLine(
@@ -379,8 +380,16 @@ data class ConfigurationTarget(
     when (targetType) {
       PyRunTargetVariant.CUSTOM -> emptyList()
       PyRunTargetVariant.PYTHON -> getArgumentsForPythonTarget(configuration).map(::constant)
-      PyRunTargetVariant.PATH -> listOf(constant("--path"), targetPath(Path.of(target.trim())))
+      PyRunTargetVariant.PATH -> expandPathTarget(configuration)?.let { listOf(constant("--path"), targetPath(Path.of(it))) } ?: emptyList()
     }
+
+  /**
+   * Path target as entered by the user may contain path macros (e.g. `$ProjectFileDir$`), so expand them before
+   * passing the path to the test runner (PY-90680).
+   */
+  private fun expandPathTarget(configuration: PyAbstractTestConfiguration): String? =
+    target.trim().takeIf { it.isNotEmpty() }
+      ?.let { ProgramParametersUtil.expandPathAndMacros(it, configuration.module, configuration.project) }
 
   private fun getArgumentsForPythonTarget(configuration: PyAbstractTestConfiguration): List<String> = runReadAction ra@{
     val element = asPsiElement(configuration) ?: throw ExecutionException(PyBundle.message("python.testing.cant.resolve", target))
@@ -557,7 +566,7 @@ abstract class PyAbstractTestConfiguration(
       return getExpandedWorkingDir(this)
     }
 
-    return ApplicationManager.getApplication().runReadAction<String> {
+    return runReadActionBlocking {
       target.getElementDirectory(this)?.path ?: super.getWorkingDirectorySafe()
     }
   }

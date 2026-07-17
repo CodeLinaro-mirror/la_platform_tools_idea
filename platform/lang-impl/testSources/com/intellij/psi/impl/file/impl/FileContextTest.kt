@@ -9,9 +9,9 @@ import com.intellij.codeInsight.multiverse.anyContext
 import com.intellij.codeInsight.multiverse.codeInsightContext
 import com.intellij.openapi.application.edtWriteAction
 import com.intellij.openapi.application.readAction
-import com.intellij.openapi.application.writeAction
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.project.rootManager
+import com.intellij.openapi.roots.ModuleRootModificationUtil
 import com.intellij.platform.testFramework.junit5.projectStructure.fixture.withSharedSourceEnabled
 import com.intellij.psi.PsiDirectory
 import com.intellij.psi.PsiFile
@@ -127,7 +127,7 @@ internal class FileContextTest {
           break
         }
 
-        writeAction {
+        edtWriteAction {
           psiManager.fileManager.setViewProvider(virtualFile, null)
         }
       }
@@ -186,8 +186,21 @@ fun sharedSourceRootFixture(vararg moduleFixtures: TestFixture<Module>): TestFix
   }
 
   initialized(sharedSourceRoot.init()) {
-    // the root directory is deleted by the the sourceRootFixture of the first module.
-    // todo IJPL-339 do we need to remove entries from modules?
+    edtWriteAction {
+      for (fixture in moduleFixtures) {
+        if (fixture === firstFixture) continue
+
+        val module = fixture.get()
+        if (!module.isDisposed) {
+          ModuleRootModificationUtil.updateModel(module) { model ->
+            val contentRoot = model.contentEntries.firstOrNull { it.file == root }
+            if (contentRoot != null) {
+              model.removeContentEntry(contentRoot)
+            }
+          }
+        }
+      }
+    }
   }
 }
 

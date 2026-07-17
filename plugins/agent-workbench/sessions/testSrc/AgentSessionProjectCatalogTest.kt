@@ -21,8 +21,12 @@ import com.intellij.testFramework.LightVirtualFile
 import com.intellij.util.ui.EmptyIcon
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
+import java.util.concurrent.TimeUnit
+import java.nio.file.Path
 import javax.swing.Icon
 
+@Timeout(value = 2, unit = TimeUnit.MINUTES)
 class AgentSessionProjectCatalogTest {
   @Test
   fun resolveAgentSessionProjectDisplayNamePrefersRecentDisplayName() {
@@ -75,7 +79,13 @@ class AgentSessionProjectCatalogTest {
 
   @Test
   fun resolveOpenProjectPathNormalizesManagerPath() {
-    assertThat(resolveOpenProjectPath(managerProjectPath = "/work/project-a/", projectBasePath = null))
+    assertThat(resolveOpenProjectPath(managerProjectPath = Path.of("/work/project-a/"), projectBasePath = null))
+      .isEqualTo("/work/project-a")
+  }
+
+  @Test
+  fun resolveOpenProjectPathPrefersManagerPathWhenBothProvided() {
+    assertThat(resolveOpenProjectPath(managerProjectPath = Path.of("/work/project-a/"), projectBasePath = "/work/project-b/"))
       .isEqualTo("/work/project-a")
   }
 

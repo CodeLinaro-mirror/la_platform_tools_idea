@@ -3,7 +3,12 @@
 
 package com.intellij.platform.workspace.storage.testEntities.entities
 
-import com.intellij.platform.workspace.storage.*
+import com.intellij.platform.workspace.storage.EntitySource
+import com.intellij.platform.workspace.storage.EntityType
+import com.intellij.platform.workspace.storage.GeneratedCodeApiVersion
+import com.intellij.platform.workspace.storage.MutableEntityStorage
+import com.intellij.platform.workspace.storage.WorkspaceEntityBuilder
+import com.intellij.platform.workspace.storage.testEntities.entities.impl.WithSoftLinkEntityImpl
 
 @GeneratedCodeApiVersion(3)
 interface WithSoftLinkEntityBuilder : WorkspaceEntityBuilder<WithSoftLinkEntity> {
@@ -13,6 +18,7 @@ interface WithSoftLinkEntityBuilder : WorkspaceEntityBuilder<WithSoftLinkEntity>
 
 internal object WithSoftLinkEntityType : EntityType<WithSoftLinkEntity, WithSoftLinkEntityBuilder>() {
   override val entityClass: Class<WithSoftLinkEntity> get() = WithSoftLinkEntity::class.java
+  override val entityImplBuilderClass: Class<*> get() = WithSoftLinkEntityImpl.Builder::class.java
   operator fun invoke(
     link: NameId,
     entitySource: EntitySource,

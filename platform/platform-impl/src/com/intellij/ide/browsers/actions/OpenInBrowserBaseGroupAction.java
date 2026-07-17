@@ -9,17 +9,14 @@ import com.intellij.ide.browsers.WebBrowserXmlService;
 import com.intellij.ide.trustedProjects.TrustedProjects;
 import com.intellij.lang.Language;
 import com.intellij.openapi.actionSystem.ActionGroup;
+import com.intellij.openapi.actionSystem.ActionManager;
 import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
-import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.actionSystem.Presentation;
 import com.intellij.openapi.diff.impl.DiffUtil;
 import com.intellij.openapi.editor.Editor;
-import com.intellij.openapi.editor.toolbar.floating.AbstractFloatingToolbarProvider;
-import com.intellij.openapi.editor.toolbar.floating.FloatingToolbarProvider;
-import com.intellij.openapi.extensions.ExtensionPointName;
 import com.intellij.openapi.fileTypes.LanguageFileType;
 import com.intellij.openapi.fileTypes.PlainTextLanguage;
 import com.intellij.openapi.project.DumbAware;
@@ -29,15 +26,17 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.util.CachedValue;
 import com.intellij.psi.util.CachedValueProvider;
-import com.intellij.ui.jcef.JBCefApp;
 import com.intellij.util.CachedValueImpl;
-import com.intellij.util.containers.ContainerUtil;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
+@ApiStatus.Internal
 public abstract class OpenInBrowserBaseGroupAction extends ActionGroup implements DumbAware {
+  private static final String OPEN_HTML_IN_EMBEDDED_BROWSER_ACTION_ID = "OpenHtmlInEmbeddedBrowser";
+
   private CachedValue<AnAction[]> myChildren;
 
   protected OpenInBrowserBaseGroupAction(boolean popup) {
@@ -71,14 +70,15 @@ public abstract class OpenInBrowserBaseGroupAction extends ActionGroup implement
   private AnAction @NotNull [] computeChildren() {
     List<WebBrowser> browsers = WebBrowserManager.getInstance().getBrowsers();
     boolean addDefaultBrowser = isPopup();
-    boolean hasLocalBrowser = hasLocalBrowser();
+    AnAction localBrowserAction = getLocalBrowserAction();
+    boolean hasLocalBrowser = localBrowserAction != null;
     int offset = 0;
     if (addDefaultBrowser) offset++;
     if (hasLocalBrowser) offset++;
     AnAction[] actions = new AnAction[browsers.size() + offset];
 
     if (hasLocalBrowser) {
-      actions[0] = new OpenHtmlInEmbeddedBrowserAction();
+      actions[0] = localBrowserAction;
     }
 
     if (addDefaultBrowser) {
@@ -100,43 +100,23 @@ public abstract class OpenInBrowserBaseGroupAction extends ActionGroup implement
   }
 
   public static boolean hasLocalBrowser() {
-    return JBCefApp.isSupported() && Registry.is("ide.web.preview.enabled", true);
+    return getLocalBrowserAction() != null;
   }
 
+  private static @Nullable AnAction getLocalBrowserAction() {
+    return Registry.is("ide.web.preview.enabled", true)
+           ? ActionManager.getInstance().getAction(OPEN_HTML_IN_EMBEDDED_BROWSER_ACTION_ID)
+           : null;
+  }
+
+  @ApiStatus.Internal
   public static final class OpenInBrowserGroupAction extends OpenInBrowserBaseGroupAction {
     public OpenInBrowserGroupAction() {
       super(true);
     }
   }
 
-  public static class OpenInBrowserFloatingToolbarProvider extends AbstractFloatingToolbarProvider {
-    private static final String ACTION_GROUP = "OpenInBrowserEditorContextBarGroup";
-
-    public OpenInBrowserFloatingToolbarProvider() {
-      super(ACTION_GROUP);
-    }
-
-    @Override
-    public boolean isApplicable(@NotNull DataContext dataContext) {
-      boolean suppressed = ContainerUtil.exists(
-        OpenInBrowserFloatingToolbarSuppressor.EP_NAME.getExtensionList(),
-        suppressor -> suppressor.isSuppressed(this, dataContext)
-      );
-
-      return !suppressed && super.isApplicable(dataContext);
-    }
-  }
-
-  public interface OpenInBrowserFloatingToolbarSuppressor {
-    /**
-     * Determines if the floating toolbar should be suppressed.
-     */
-    boolean isSuppressed(FloatingToolbarProvider provider, DataContext dataContext);
-
-    ExtensionPointName<OpenInBrowserFloatingToolbarSuppressor> EP_NAME =
-      ExtensionPointName.create("com.intellij.openInBrowserFloatingToolbarSuppressor");
-  }
-
+  @ApiStatus.Internal
   public static class OpenInBrowserEditorContextBarGroupAction extends OpenInBrowserBaseGroupAction {
     public OpenInBrowserEditorContextBarGroupAction() {
       super(false);

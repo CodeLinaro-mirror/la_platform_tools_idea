@@ -22,7 +22,7 @@ import com.intellij.openapi.externalSystem.util.ExternalSystemUtil
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.io.FileUtil
 import org.jetbrains.annotations.ApiStatus
-import java.io.File
+import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicReference
 
 @ApiStatus.Internal
@@ -39,17 +39,17 @@ class ProjectAware(
     get() {
       val pathMacroManager = PathMacroManager.getInstance(project)
       return externalProjectFiles.map {
-        val path = FileUtil.toCanonicalPath(it.path)
+        val path = FileUtil.toCanonicalPath(it.toString())
         // The path string can be changed after serialization and deserialization inside persistent component state.
         // To avoid that we resolve the path using IDE path macros configuration.
-        val collapsedPath = pathMacroManager.collapsePath(path)
-        val expandedPath = pathMacroManager.expandPath(collapsedPath)
+        val collapsedPath = pathMacroManager.collapsePathNonNull(path)
+        val expandedPath = pathMacroManager.expandPathNonNull(collapsedPath)
         expandedPath
       }.toSet()
     }
 
-  private val externalProjectFiles: List<File>
-    get() = autoImportAware.getAffectedExternalProjectFiles(externalProjectPath, project)
+  private val externalProjectFiles: List<Path>
+    get() = autoImportAware.getAffectedExternalProjectFilePaths(externalProjectPath, project)
 
   override fun subscribe(listener: ExternalSystemProjectListener, parentDisposable: Disposable) {
     val progressManager = ExternalSystemProgressNotificationManager.getInstance()

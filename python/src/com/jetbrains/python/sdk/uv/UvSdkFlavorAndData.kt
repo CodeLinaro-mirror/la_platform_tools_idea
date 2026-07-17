@@ -4,7 +4,7 @@ package com.jetbrains.python.sdk.uv
 import com.intellij.execution.target.FullPathOnTarget
 import com.intellij.execution.target.TargetedCommandLineBuilder
 import com.intellij.openapi.projectRoots.Sdk
-import com.intellij.python.community.impl.uv.common.icons.PythonCommunityImplUVCommonIcons
+import com.intellij.python.uv.common.icons.PythonUvCommonIcons
 import com.intellij.remote.RemoteSdkPropertiesPaths
 import com.jetbrains.python.sdk.PySdkUtil
 import com.jetbrains.python.sdk.PythonSdkAdditionalData
@@ -19,10 +19,14 @@ import java.nio.file.Path
 import javax.swing.Icon
 import kotlin.io.path.pathString
 
-class UvSdkAdditionalData : PythonSdkAdditionalData {
+internal class UvSdkAdditionalData : PythonSdkAdditionalData {
   internal val flavorData: UvSdkFlavorData
 
-  constructor(uvWorkingDirectory: Path?, usePip: Boolean?, venvPath: Path?, uvPath: Path?) : this(UvSdkFlavorData(uvWorkingDirectory, usePip, venvPath?.pathString, uvPath?.pathString))
+  constructor(uvWorkingDirectory: Path?, usePip: Boolean?, venvPath: FullPathOnTarget?, uvPath: FullPathOnTarget?) : this(UvSdkFlavorData(
+    uvWorkingDirectory,
+    usePip,
+    venvPath,
+    uvPath))
 
   private constructor(flavorData: UvSdkFlavorData) : super(PyFlavorAndData(flavorData, UvSdkFlavor)) {
     this.flavorData = flavorData
@@ -68,10 +72,11 @@ class UvSdkAdditionalData : PythonSdkAdditionalData {
     fun load(element: Element): UvSdkAdditionalData? {
       return when {
         element.getAttributeValue(IS_UV) == "true" -> {
-          val uvWorkingDirectory = if (element.getAttributeValue(UV_WORKING_DIR).isNullOrEmpty()) null else Path.of(element.getAttributeValue(UV_WORKING_DIR))
+          val uvWorkingDirectory =
+            if (element.getAttributeValue(UV_WORKING_DIR).isNullOrEmpty()) null else Path.of(element.getAttributeValue(UV_WORKING_DIR))
           val usePip = element.getAttributeValue(USE_PIP)?.toBoolean()
-          val venvPath = if (element.getAttributeValue(UV_VENV_PATH).isNullOrEmpty()) null else Path.of(element.getAttributeValue(UV_VENV_PATH))
-          val uvPath = if (element.getAttributeValue(UV_TOOL_PATH).isNullOrEmpty()) null else Path.of(element.getAttributeValue(UV_TOOL_PATH))
+          val venvPath = if (element.getAttributeValue(UV_VENV_PATH).isNullOrEmpty()) null else element.getAttributeValue(UV_VENV_PATH)
+          val uvPath = if (element.getAttributeValue(UV_TOOL_PATH).isNullOrEmpty()) null else element.getAttributeValue(UV_TOOL_PATH)
           UvSdkAdditionalData(uvWorkingDirectory, usePip, venvPath, uvPath).apply {
             load(element)
           }
@@ -88,7 +93,7 @@ class UvSdkAdditionalData : PythonSdkAdditionalData {
 }
 
 // TODO PY-87712 Move to a separate storage
-data class UvSdkFlavorData(
+internal data class UvSdkFlavorData(
   val uvWorkingDirectory: Path?,
   val usePip: Boolean?,
   val venvPath: FullPathOnTarget?,
@@ -108,16 +113,18 @@ data class UvSdkFlavorData(
   }
 }
 
-object UvSdkFlavor : CPythonSdkFlavor<UvSdkFlavorData>() {
-  override fun getIcon(): Icon = PythonCommunityImplUVCommonIcons.UV
+
+internal object UvSdkFlavor : CPythonSdkFlavor<UvSdkFlavorData>() {
+  override fun getIcon(): Icon = PythonUvCommonIcons.UV
   override fun getFlavorDataClass(): Class<UvSdkFlavorData> = UvSdkFlavorData::class.java
 
-  override fun isValidSdkPath(pathStr: String): Boolean {
+  override fun isValidSdkPath(pythonBinaryPath: Path): Boolean {
     return false
   }
 }
 
-class UvSdkFlavorProvider : PythonFlavorProvider {
+
+internal class UvSdkFlavorProvider : PythonFlavorProvider {
   override fun getFlavor(): PythonSdkFlavor<*> {
     return UvSdkFlavor
   }

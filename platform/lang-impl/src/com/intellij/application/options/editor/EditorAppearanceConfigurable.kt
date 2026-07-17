@@ -1,10 +1,9 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.application.options.editor
 
 import com.intellij.codeInsight.actions.ReaderModeSettingsListener
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzerSettings
 import com.intellij.codeInsight.documentation.render.DocRenderManager
-import com.intellij.icons.AllIcons
 import com.intellij.ide.IdeBundle
 import com.intellij.ide.ui.LafManager
 import com.intellij.ide.ui.UISettings
@@ -29,7 +28,6 @@ import com.intellij.ui.dsl.builder.bindItem
 import com.intellij.ui.dsl.builder.columns
 import com.intellij.ui.dsl.builder.panel
 import com.intellij.ui.dsl.builder.selected
-import com.intellij.ui.dsl.gridLayout.UnscaledGaps
 import com.intellij.ui.dsl.listCellRenderer.textListCellRenderer
 import com.intellij.util.PlatformUtils
 import org.jetbrains.annotations.ApiStatus
@@ -82,7 +80,6 @@ class EditorAppearanceConfigurable : BoundCompositeSearchableConfigurable<Unname
       }
       row {
         checkBox(myCbSmoothBlinkCaret)
-        icon(AllIcons.General.New_badge)
       }.enabledIf(cbBlinkCaret!!.selected)
       row {
         checkBox(myCbBlockCursor)
@@ -102,8 +99,6 @@ class EditorAppearanceConfigurable : BoundCompositeSearchableConfigurable<Unname
             }
           }
         ).bindItem(model::getCaretEasing, model::setCaretEasing)
-          .customize(UnscaledGaps(right = 20))
-        icon(AllIcons.General.New_badge)
       }
       row {
         checkBox(myCbHighlightSelectionOccurrences)

@@ -315,7 +315,7 @@ public class Replacer {
           } else {
             final String scriptText = StringUtil.unquoteString(definition.getScriptCodeConstraint());
             try {
-              ScriptSupport.buildScript(definition.getName(), scriptText, options.getMatchOptions());
+              ScriptSupport.buildScript(project, definition.getName(), scriptText, options.getMatchOptions());
             } catch (MalformedPatternException e) {
               throw new MalformedPatternException(
                 SSRBundle.message("replacement.variable.is.not.valid", replacementSegmentName, e.getLocalizedMessage())
@@ -328,7 +328,7 @@ public class Replacer {
       final LanguageFileType fileType = options.getMatchOptions().getFileType();
       final StructuralSearchProfile profile = StructuralSearchUtil.getProfileByFileType(fileType);
       if (profile != null) {
-        ReadAction.run(() -> profile.checkReplacementPattern(project, options));
+        ReadAction.runBlocking(() -> profile.checkReplacementPattern(project, options));
       }
     } catch (IncorrectOperationException ex) {
       throw new MalformedPatternException(SSRBundle.message("incorrect.pattern.message"));

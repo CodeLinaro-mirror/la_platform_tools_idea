@@ -1,18 +1,43 @@
-### auto-generated section `build intellij.libraries.javax.activation` start
-load("@rules_jvm//:jvm.bzl", "jvm_library", "resourcegroup")
+load("@rules_jvm//:jvm.bzl", "jvm_library")
 
-resourcegroup(
-  name = "activation_resources",
-  srcs = glob(["resources/**/*"]),
-  strip_prefix = "resources"
+### auto-generated section `build intellij.libraries.javax.activation` start
+
+jvm_library(
+    name = "activation",
+    srcs = glob(
+        [],
+        allow_empty = True,
+    ),
+    module_name = "intellij.libraries.javax.activation",
+    resource_strip_prefix = "resources",
+    resources = glob(
+        ["resources/**/*"],
+    ),
+    visibility = ["//visibility:public"],
+    exports = ["@lib//:javax-activation"],
+    runtime_deps = ["@lib//:javax-activation"],
 )
 
 jvm_library(
-  name = "activation",
-  visibility = ["//visibility:public"],
-  srcs = glob([], allow_empty = True),
-  resources = [":activation_resources"],
-  exports = ["@lib//:javax-activation"],
-  runtime_deps = ["@lib//:javax-activation"]
+    name = "activation_test_lib",
+    testonly = True,
+    srcs = glob(
+        [],
+        allow_empty = True,
+    ),
+    kotlinc_opts = "@community//:k8",
+    module_name = "intellij.libraries.javax.activation",
+    visibility = ["//visibility:public"],
+    exports = ["@lib//:javax-activation"],
+    runtime_deps = [":activation"],
 )
 ### auto-generated section `build intellij.libraries.javax.activation` end
+
+### auto-generated section `iml intellij.libraries.javax.activation` start
+exports_files(
+    [
+        "intellij.libraries.javax.activation.iml",
+    ],
+    visibility = ["//visibility:public"],
+)
+### auto-generated section `iml intellij.libraries.javax.activation` end

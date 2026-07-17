@@ -91,6 +91,26 @@ private var ourProjectPath: String? = null
 private const val PROJECTS_DIR = "projects"
 private const val PROPERTY_PROJECT_PATH = "%s.project.path"
 
+private data class ProjectOpenOptionsImpl(
+  val originalOpenProjectTask: OpenProjectTask,
+) : ProjectOpenProcessor.ProjectOpenOptions {
+
+  override val forceOpenInNewFrame: Boolean
+    get() = originalOpenProjectTask.forceOpenInNewFrame
+
+  override val projectToClose: Project?
+    get() = originalOpenProjectTask.projectToClose
+}
+
+private fun OpenProjectTask.toProjectOpenOptions(): ProjectOpenProcessor.ProjectOpenOptions {
+  return ProjectOpenOptionsImpl(this)
+}
+
+fun ProjectOpenProcessor.ProjectOpenOptions.toOpenProjectTask(): OpenProjectTask {
+    if (this is ProjectOpenOptionsImpl) return originalOpenProjectTask
+    return OpenProjectTask(forceOpenInNewFrame, projectToClose)
+}
+
 object ProjectUtil {
   @JvmStatic
   fun updateLastProjectLocation(lastProjectLocation: Path) {
@@ -219,7 +239,11 @@ object ProjectUtil {
             val childPath = child.toString()
             if (childPath.endsWith(ProjectFileType.DOT_DEFAULT_EXTENSION)) {
               LOG.info("Opening project with IPR lookup at child path $childPath")
-              return openProject(Path.of(childPath), options)
+              val newOptions = options.copy(
+                projectRootDir = file,
+                isNewProject = false,
+              )
+              return openProject(Path.of(childPath), newOptions)
             }
           }
         }
@@ -315,13 +339,7 @@ object ProjectUtil {
     LOG.info("Using processor ${processor.name} to open the project at ${virtualFile.path}")
 
     try {
-      return if (processor is PlatformProjectOpenProcessor) {
-        // this customization is needed, because there is no way to pass original OpenOptions to the ProjectOpenProcessor
-        PlatformProjectOpenProcessor.openProjectAsync(virtualFile.toNioPath(), options)
-      }
-      else {
-        processor.openProjectAsync(virtualFile, options.projectToClose, options.forceOpenInNewFrame)
-      }
+      return processor.openProjectAsync(virtualFile, options.toProjectOpenOptions())
     }
     catch (e: UnsupportedOperationException) {
       if (e != ProjectOpenProcessor.unimplementedOpenAsync) {
@@ -613,7 +631,7 @@ object ProjectUtil {
   }
 
   private val projectsDirDefault: String
-    get() = if (PlatformUtils.isDataGrip() || PlatformUtils.isDataSpell()) getUserHomeProjectDir() else PathManager.getConfigPath() + File.separator + PROJECTS_DIR
+    get() = if (PlatformUtils.isDataGrip()) getUserHomeProjectDir() else PathManager.getConfigPath() + File.separator + PROJECTS_DIR
 
   fun getProjectPath(name: String): Path {
     return Path.of(getProjectPath(), name)
@@ -678,6 +696,7 @@ object ProjectUtil {
         createModule = false,
         useDefaultProjectAsTemplate = false,
         runConfigurators = false,
+        preventIprLookup = true,
         // suppress chooser dialog if there are other build files like Gradle or Maven
         processorChooser = { FolderProjectOpenProcessor() },
       )
@@ -758,6 +777,7 @@ private suspend fun openOrCreateProjectInner(name: String, file: Path): Project?
       runConfigurators = false //not used when passing project
       isProjectCreatedWithWizard = true
       project = newProject
+      projectRootDir = file
     })
   }
   catch (e: Throwable) {

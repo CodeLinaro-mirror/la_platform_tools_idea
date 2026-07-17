@@ -2,6 +2,7 @@ package com.intellij.driver.sdk.ui.components.common.toolwindows
 
 import com.intellij.driver.client.Remote
 import com.intellij.driver.model.OnDispatcher
+import com.intellij.driver.sdk.ideLogger
 import com.intellij.driver.sdk.invokeAction
 import com.intellij.driver.sdk.ui.QueryBuilder
 import com.intellij.driver.sdk.ui.components.ComponentData
@@ -26,11 +27,12 @@ class ToolWindowLeftToolbarUi(data: ComponentData) : ToolWindowToolbarUi(data) {
   val debugButton: StripeButtonUi = stripeButton("Debug")
   val findButton: StripeButtonUi = stripeButton("Find")
   val cmakeButton: StripeButtonUi = stripeButton("CMake")
+  val westButton: StripeButtonUi = stripeButton("West")
   val profilerButton: StripeButtonUi = stripeButton("Profiler")
   val jpaButton: StripeButtonUi = stripeButton("JPA Console")
   val persistenceButton: StripeButtonUi = stripeButton("Persistence")
   val valgrindButton: StripeButtonUi = stripeButton("Run Valgrind Memcheck")
-
+  val vcpkg: StripeButtonUi = stripeButton("Vcpkg")
   fun openMoreToolWindow() { moreButton.click() }
 }
 
@@ -57,9 +59,12 @@ class StripeButtonUi(data: ComponentData) : UiComponent(data) {
 
   fun open() {
     val toolWindow = button.getToolWindow()
+    driver.ideLogger.info("Opening tool window: id=${toolWindow.getId()}, component=${component.getClass()}, active=${toolWindow.isActive()}")
     if (!toolWindow.isActive()) {
+      val toolWindowId = toolWindow.getId()
       val activateToolWindowAction = driver.utility(ActivateToolWindowActionManager::class)
-        .getActionIdForToolWindow(toolWindow.getId())
+        .getActionIdForToolWindow(toolWindowId)
+      driver.ideLogger.info("Calling action on window: id=$toolWindowId, action=$activateToolWindowAction, component=${component.javaClass.simpleName}")
       driver.invokeAction(activateToolWindowAction, component = component)
     }
   }

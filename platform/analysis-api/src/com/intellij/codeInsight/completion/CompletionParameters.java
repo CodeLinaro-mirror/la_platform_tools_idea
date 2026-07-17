@@ -121,8 +121,15 @@ public final class CompletionParameters implements BaseCompletionParameters {
     return myEditor;
   }
 
+  @Override
   public @NotNull CompletionProcess getProcess() {
     return myProcess;
+  }
+
+  @Override
+  @ApiStatus.Internal
+  public @NotNull CompletionParameters asCompletionParameters() {
+    return this;
   }
 
   public boolean isTestingMode() {

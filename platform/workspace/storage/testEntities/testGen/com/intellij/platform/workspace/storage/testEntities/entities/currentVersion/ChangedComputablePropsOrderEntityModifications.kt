@@ -6,9 +6,10 @@ package com.intellij.platform.workspace.storage.testEntities.entities.currentVer
 import com.intellij.platform.workspace.storage.EntitySource
 import com.intellij.platform.workspace.storage.EntityType
 import com.intellij.platform.workspace.storage.GeneratedCodeApiVersion
-import com.intellij.platform.workspace.storage.WorkspaceEntityBuilder
 import com.intellij.platform.workspace.storage.MutableEntityStorage
+import com.intellij.platform.workspace.storage.WorkspaceEntityBuilder
 import com.intellij.platform.workspace.storage.impl.containers.toMutableWorkspaceList
+import com.intellij.platform.workspace.storage.testEntities.entities.currentVersion.impl.ChangedComputablePropsOrderEntityImpl
 
 @GeneratedCodeApiVersion(3)
 interface ChangedComputablePropsOrderEntityBuilder : WorkspaceEntityBuilder<ChangedComputablePropsOrderEntity> {
@@ -18,8 +19,10 @@ interface ChangedComputablePropsOrderEntityBuilder : WorkspaceEntityBuilder<Chan
   var value: Int
 }
 
-internal object ChangedComputablePropsOrderEntityType : EntityType<ChangedComputablePropsOrderEntity, ChangedComputablePropsOrderEntityBuilder>() {
+internal object ChangedComputablePropsOrderEntityType :
+  EntityType<ChangedComputablePropsOrderEntity, ChangedComputablePropsOrderEntityBuilder>() {
   override val entityClass: Class<ChangedComputablePropsOrderEntity> get() = ChangedComputablePropsOrderEntity::class.java
+  override val entityImplBuilderClass: Class<*> get() = ChangedComputablePropsOrderEntityImpl.Builder::class.java
   operator fun invoke(
     someKey: Int,
     names: List<String>,

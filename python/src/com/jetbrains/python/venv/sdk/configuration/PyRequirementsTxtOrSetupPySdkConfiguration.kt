@@ -5,7 +5,7 @@ import com.intellij.openapi.application.readAction
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.projectRoots.Sdk
-import com.intellij.python.common.tools.ToolId
+import com.intellij.python.community.common.tools.ToolId
 import com.intellij.python.venv.PY_REQ_TOOL_ID
 import com.jetbrains.python.PyBundle
 import com.jetbrains.python.PythonBinary
@@ -57,7 +57,7 @@ internal class PyRequirementsTxtOrSetupPySdkConfiguration : PyProjectSdkConfigur
       PythonRequirementTxtSdkUtils.saveRequirementsTxtPath(module.project, sdk, requirementsTxtOrSetupPyFile.toNioPath())
     }
 
-    return PythonPackageManager.forSdk(module.project, sdk).sync().mapSuccess { sdk }
+    return PythonPackageManager.forSdk(module.project, sdk).syncLocked().mapSuccess { sdk }
   }
 
   private fun getRequirementsTxtOrSetupPy(module: Module) =

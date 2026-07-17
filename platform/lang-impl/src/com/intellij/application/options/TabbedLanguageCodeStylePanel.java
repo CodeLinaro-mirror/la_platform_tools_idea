@@ -46,6 +46,7 @@ import com.intellij.util.containers.JBTreeTraverser;
 import com.intellij.util.containers.TreeTraversal;
 import com.intellij.util.ui.EmptyIcon;
 import com.intellij.util.ui.GraphicsUtil;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -170,7 +171,7 @@ public abstract class TabbedLanguageCodeStylePanel extends CodeStyleAbstractPane
       myPanel = new JPanel();
       myPanel.setLayout(new BorderLayout());
       myTabbedPane = new TabbedPaneWrapper(this);
-      myTabbedPane.addChangeListener(__ -> {
+      myTabbedPane.addChangeListener(_ -> {
         if (myListener != null) {
           String title = myTabbedPane.getSelectedTitle();
           if (title != null) {
@@ -385,7 +386,7 @@ public abstract class TabbedLanguageCodeStylePanel extends CodeStyleAbstractPane
       if (!lang.equals(getDefaultLanguage())) {
         final String langName = LanguageCodeStyleSettingsProvider.getLanguageName(lang);
         JMenuItem langItem = new JBMenuItem(langName);
-        langItem.addActionListener(__ -> applyLanguageSettings(lang));
+        langItem.addActionListener(_ -> applyLanguageSettings(lang));
         parentMenu.add(langItem);
       }
     }
@@ -395,10 +396,11 @@ public abstract class TabbedLanguageCodeStylePanel extends CodeStyleAbstractPane
     for (final PredefinedCodeStyle predefinedCodeStyle : myPredefinedCodeStyles) {
       JMenuItem predefinedItem = new JBMenuItem(predefinedCodeStyle.getName());
       parentMenu.add(predefinedItem);
-      predefinedItem.addActionListener(__ -> applyPredefinedStyle(predefinedCodeStyle.getName()));
+      predefinedItem.addActionListener(_ -> applyPredefinedStyle(predefinedCodeStyle.getName()));
     }
   }
 
+  @ApiStatus.Internal
   protected void addPredefinedCodeStyleListener(@NotNull PredefinedCodeStyleListener listener) {
     myPredefinedCodeStyleEventDispatcher.addListener(listener, this);
   }
@@ -464,6 +466,7 @@ public abstract class TabbedLanguageCodeStylePanel extends CodeStyleAbstractPane
 
 //========================================================================================================================================
 
+  @ApiStatus.Internal
   protected class MySpacesPanel extends CodeStyleSpacesPanel {
 
     public MySpacesPanel(CodeStyleSettings settings) {
@@ -706,11 +709,13 @@ public abstract class TabbedLanguageCodeStylePanel extends CodeStyleAbstractPane
 
   }
 
+  @ApiStatus.Internal
   @FunctionalInterface
   public interface TabChangeListener {
     void tabChanged(@NotNull TabbedLanguageCodeStylePanel source, @NotNull String tabTitle);
   }
 
+  @ApiStatus.Internal
   public void setListener(@Nullable TabChangeListener listener) {
     myListener = listener;
   }

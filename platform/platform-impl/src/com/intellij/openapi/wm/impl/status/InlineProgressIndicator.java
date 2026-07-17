@@ -46,6 +46,7 @@ import java.util.List;
  * not with obsolete {@link com.intellij.openapi.progress.ProgressIndicator ProgressIndicator}
  */
 @ApiStatus.Obsolete
+@ApiStatus.Internal
 public class InlineProgressIndicator extends ProgressIndicatorBase implements Disposable {
   protected final TextPanel text;
   protected final TextPanel text2;
@@ -148,7 +149,7 @@ public class InlineProgressIndicator extends ProgressIndicatorBase implements Di
       new IconButton(info.getCancelTooltipText(),
                      isCompact ? AllIcons.Process.StopSmall : AllIcons.Process.Stop,
                      isCompact ? AllIcons.Process.StopSmallHovered : AllIcons.Process.StopHovered),
-      __ -> cancelRequest()).setFillBg(false);
+      _ -> cancelRequest()).setFillBg(false);
 
     cancelButton.setVisible(info.isCancellable());
 

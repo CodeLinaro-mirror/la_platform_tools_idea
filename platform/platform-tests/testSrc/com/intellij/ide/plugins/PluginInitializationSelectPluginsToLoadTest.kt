@@ -6,9 +6,10 @@ import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.util.BuildNumber
 import com.intellij.platform.pluginSystem.parser.impl.elements.ModuleLoadingRuleValue
 import com.intellij.platform.pluginSystem.testFramework.PluginSetTestBuilder
-import com.intellij.platform.testFramework.plugins.buildDir
+import com.intellij.platform.pluginSystem.testFramework.PseudoProductTestPluginInitContext
 import com.intellij.platform.testFramework.plugins.content
 import com.intellij.platform.testFramework.plugins.depends
+import com.intellij.platform.testFramework.plugins.installAt
 import com.intellij.platform.testFramework.plugins.module
 import com.intellij.platform.testFramework.plugins.plugin
 import com.intellij.platform.testFramework.plugins.pluginAlias
@@ -52,18 +53,15 @@ class PluginInitializationSelectPluginsToLoadTest {
     explicitPluginSubsetToLoad: Set<PluginId>? = null,
     disablePluginLoadingCompletely: Boolean = false,
   ): PluginInitializationContext {
-    return PluginInitializationContext.buildForTest(
-      essentialPlugins = essentialPlugins,
-      disabledPlugins = disabledPlugins,
-      expiredPlugins = emptySet(),
-      brokenPluginVersions = emptyMap(),
-      getProductBuildNumber = { productBuildNumber },
-      requirePlatformAliasDependencyForLegacyPlugins = false,
-      checkEssentialPlugins = false,
-      explicitPluginSubsetToLoad = explicitPluginSubsetToLoad,
-      disablePluginLoadingCompletely = disablePluginLoadingCompletely,
-      currentProductModeId = "test"
-    )
+    return object : PseudoProductTestPluginInitContext() {
+      override val productBuildNumber: BuildNumber = productBuildNumber
+      override val essentialPlugins: Set<PluginId> = essentialPlugins
+      override fun isPluginDisabled(id: PluginId): Boolean = id in disabledPlugins
+      override val explicitPluginSubsetToLoad: Set<PluginId>? = explicitPluginSubsetToLoad
+      override val disablePluginLoadingCompletely: Boolean = disablePluginLoadingCompletely
+      override val currentProductModeId: String = "test"
+      override val expiredPlugins: Set<PluginId> = emptySet()
+    }
   }
 
   private fun testPluginSelection(
@@ -72,7 +70,7 @@ class PluginInitializationSelectPluginsToLoadTest {
     productBuildNumber: BuildNumber = BuildNumber.fromString("241.0")!!,
     explicitPluginSubsetToLoad: Set<PluginId>? = null,
     disablePluginLoadingCompletely: Boolean = false,
-    discoveryResult: PluginDescriptorLoadingResult,
+    discoveryResult: PluginsDiscoveryResult,
   ): Pair<UnambiguousPluginSet, MutableList<ExcludedPluginInfo>> {
     val excludedPlugins = mutableListOf<ExcludedPluginInfo>()
     val initContext = createInitContext(
@@ -84,7 +82,7 @@ class PluginInitializationSelectPluginsToLoadTest {
     )
 
     val result = initContext.selectPluginsToLoad(
-      discoveryResult.discoveredPlugins,
+      discoveryResult,
       onPluginExcluded = { plugin, reason -> excludedPlugins.add(ExcludedPluginInfo(plugin, reason)) }
     )
 
@@ -96,8 +94,8 @@ class PluginInitializationSelectPluginsToLoadTest {
 
     @Test
     fun `select newer version when multiple versions exist`() {
-      plugin("foo") { version = "1.0" }.buildDir(pluginsDirPath.resolve("foo_1-0"))
-      plugin("foo") { version = "2.0" }.buildDir(pluginsDirPath.resolve("foo_2-0"))
+      plugin("foo") { version = "1.0" }.installAt(pluginsDirPath)
+      plugin("foo") { version = "2.0" }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val (result, excludedPlugins) = testPluginSelection(discoveryResult = discoveryResult)
@@ -114,12 +112,12 @@ class PluginInitializationSelectPluginsToLoadTest {
       plugin("foo") {
         version = "1.0"
         untilBuild = "300.*"
-      }.buildDir(pluginsDirPath.resolve("foo_1-0"))
+      }.installAt(pluginsDirPath)
       
       plugin("foo") {
         version = "2.0"
         untilBuild = "200.*"
-      }.buildDir(pluginsDirPath.resolve("foo_2-0"))
+      }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val (result, excludedPlugins) = testPluginSelection(
@@ -139,8 +137,8 @@ class PluginInitializationSelectPluginsToLoadTest {
       val customPath = pluginsDirPath.resolve("custom")
       val systemPath = pluginsDirPath.resolve("system")
       
-      plugin("foo") { version = "2.0" }.buildDir(customPath.resolve("foo_2-0"))
-      plugin("foo") { version = "1.0" }.buildDir(systemPath.resolve("foo_1-0"))
+      plugin("foo") { version = "2.0" }.installAt(customPath)
+      plugin("foo") { version = "1.0" }.installAt(systemPath)
 
       val excludedPlugins = mutableListOf<ExcludedPluginInfo>()
       val initContext = createInitContext()
@@ -149,10 +147,10 @@ class PluginInitializationSelectPluginsToLoadTest {
       val systemPlugins = PluginSetTestBuilder.fromPath(systemPath).discoverPlugins().second
       
       // Manually create discovery result with different sources
-      val discoveredPlugins = listOf(
-        DiscoveredPluginsList(customPlugins.discoveredPlugins[0].plugins, PluginsSourceContext.Custom),
-        DiscoveredPluginsList(systemPlugins.discoveredPlugins[0].plugins, PluginsSourceContext.SystemPropertyProvided)
-      )
+      val discoveredPlugins = PluginsDiscoveryResult.build(listOf(
+        DiscoveredPluginsList(customPlugins.pluginLists[0].plugins, PluginsSourceContext.Custom),
+        DiscoveredPluginsList(systemPlugins.pluginLists[0].plugins, PluginsSourceContext.SystemPropertyProvided)
+      ))
       
       val result = initContext.selectPluginsToLoad(
         discoveredPlugins,
@@ -167,10 +165,39 @@ class PluginInitializationSelectPluginsToLoadTest {
     }
 
     @Test
+    fun `bundled plugin with lower version is superseded regardless of discovery order`() {
+      val bundledPath = pluginsDirPath.resolve("bundled")
+      val customPath = pluginsDirPath.resolve("custom")
+
+      plugin("foo") { version = "1.0" }.installAt(bundledPath)
+      plugin("foo") { version = "2.0" }.installAt(customPath)
+
+      val bundledPlugins = PluginSetTestBuilder.fromPath(bundledPath).discoverPlugins().second
+      val customPlugins = PluginSetTestBuilder.fromPath(customPath).discoverPlugins().second
+
+      val bundledList = DiscoveredPluginsList(bundledPlugins.pluginLists[0].plugins, PluginsSourceContext.Bundled)
+      val customList = DiscoveredPluginsList(customPlugins.pluginLists[0].plugins, PluginsSourceContext.Custom)
+
+      fun assertBundledIsSuperseded(discoveryResult: List<DiscoveredPluginsList>) {
+        val discoveryResult = PluginsDiscoveryResult.build(discoveryResult)
+        val (result, excludedPlugins) = testPluginSelection(discoveryResult = discoveryResult)
+
+        assertThat(result.plugins).hasSize(1)
+        assertThat(result.plugins[0].version).isEqualTo("2.0")
+        assertThat(excludedPlugins).hasSize(1)
+        assertThat(excludedPlugins[0].reason).isInstanceOf(PluginVersionIsSuperseded::class.java)
+        assertThat(excludedPlugins[0].plugin.version).isEqualTo("1.0")
+      }
+
+      assertBundledIsSuperseded(listOf(bundledList, customList))
+      assertBundledIsSuperseded(listOf(customList, bundledList))
+    }
+
+    @Test
     fun `three versions select newest compatible`() {
-      plugin("foo") { version = "1.0" }.buildDir(pluginsDirPath.resolve("foo_1-0"))
-      plugin("foo") { version = "2.0" }.buildDir(pluginsDirPath.resolve("foo_2-0"))
-      plugin("foo") { version = "3.0" }.buildDir(pluginsDirPath.resolve("foo_3-0"))
+      plugin("foo") { version = "1.0" }.installAt(pluginsDirPath)
+      plugin("foo") { version = "2.0" }.installAt(pluginsDirPath)
+      plugin("foo") { version = "3.0" }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val (result, excludedPlugins) = testPluginSelection(discoveryResult = discoveryResult)
@@ -186,12 +213,12 @@ class PluginInitializationSelectPluginsToLoadTest {
       plugin("foo") {
         version = "1.0"
         untilBuild = "300.*"
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
       
       plugin("bar") {
         version = "1.0"
         untilBuild = "100.*"
-      }.buildDir(pluginsDirPath.resolve("bar"))
+      }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val (result, excludedPlugins) = testPluginSelection(
@@ -211,12 +238,12 @@ class PluginInitializationSelectPluginsToLoadTest {
       plugin("foo") {
         version = "1.0"
         untilBuild = "100.*"
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
       
       plugin("bar") {
         version = "1.0"
         untilBuild = "100.*"
-      }.buildDir(pluginsDirPath.resolve("bar"))
+      }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val (result, excludedPlugins) = testPluginSelection(
@@ -235,7 +262,7 @@ class PluginInitializationSelectPluginsToLoadTest {
       val initContext = createInitContext()
       
       val result = initContext.selectPluginsToLoad(
-        emptyList(),
+        PluginsDiscoveryResult.build(emptyList()),
         onPluginExcluded = { plugin, reason -> excludedPlugins.add(ExcludedPluginInfo(plugin, reason)) }
       )
 
@@ -245,9 +272,9 @@ class PluginInitializationSelectPluginsToLoadTest {
 
     @Test
     fun `multiple plugins with different IDs all kept`() {
-      plugin("foo") { version = "1.0" }.buildDir(pluginsDirPath.resolve("foo"))
-      plugin("bar") { version = "1.0" }.buildDir(pluginsDirPath.resolve("bar"))
-      plugin("baz") { version = "1.0" }.buildDir(pluginsDirPath.resolve("baz"))
+      plugin("foo") { version = "1.0" }.installAt(pluginsDirPath)
+      plugin("bar") { version = "1.0" }.installAt(pluginsDirPath)
+      plugin("baz") { version = "1.0" }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val (result, excludedPlugins) = testPluginSelection(discoveryResult = discoveryResult)
@@ -263,17 +290,17 @@ class PluginInitializationSelectPluginsToLoadTest {
       plugin("foo") {
         version = "1.0"
         untilBuild = "300.*"
-      }.buildDir(pluginsDirPath.resolve("foo_1-0"))
+      }.installAt(pluginsDirPath)
       
       plugin("foo") {
         version = "2.0"
         untilBuild = "200.*"
-      }.buildDir(pluginsDirPath.resolve("foo_2-0"))
+      }.installAt(pluginsDirPath)
       
       plugin("foo") {
         version = "3.0"
         untilBuild = "100.*"
-      }.buildDir(pluginsDirPath.resolve("foo_3-0"))
+      }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val (result, excludedPlugins) = testPluginSelection(
@@ -296,7 +323,7 @@ class PluginInitializationSelectPluginsToLoadTest {
       plugin("foo") {
         version = "1.0"
         untilBuild = "100.*" // incompatible
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val excludedPlugins = mutableListOf<ExcludedPluginInfo>()
@@ -306,7 +333,7 @@ class PluginInitializationSelectPluginsToLoadTest {
       )
 
       val result = initContext.selectPluginsToLoad(
-        discoveryResult.discoveredPlugins,
+        discoveryResult,
         onPluginExcluded = { plugin, reason -> excludedPlugins.add(ExcludedPluginInfo(plugin, reason)) }
       )
 
@@ -326,12 +353,12 @@ class PluginInitializationSelectPluginsToLoadTest {
       plugin("foo") {
         version = "1.0"
         pluginAliases = listOf("shared")
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
       
       plugin("bar") {
         version = "1.0"
         pluginAliases = listOf("shared")
-      }.buildDir(pluginsDirPath.resolve("bar"))
+      }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val (result, excludedPlugins) = testPluginSelection(
@@ -351,12 +378,12 @@ class PluginInitializationSelectPluginsToLoadTest {
       plugin("foo") {
         version = "1.0"
         pluginAliases = listOf("shared")
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
       
       plugin("bar") {
         version = "1.0"
         pluginAliases = listOf("shared")
-      }.buildDir(pluginsDirPath.resolve("bar"))
+      }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val (result, excludedPlugins) = testPluginSelection(
@@ -376,12 +403,12 @@ class PluginInitializationSelectPluginsToLoadTest {
       plugin("foo") {
         version = "1.0"
         pluginAliases = listOf("shared")
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
       
       plugin("bar") {
         version = "1.0"
         pluginAliases = listOf("shared")
-      }.buildDir(pluginsDirPath.resolve("bar"))
+      }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val (result, excludedPlugins) = testPluginSelection(
@@ -399,12 +426,12 @@ class PluginInitializationSelectPluginsToLoadTest {
       plugin("foo") {
         version = "1.0"
         pluginAliases = listOf("shared")
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
       
       plugin("bar") {
         version = "1.0"
         pluginAliases = listOf("shared")
-      }.buildDir(pluginsDirPath.resolve("bar"))
+      }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val (result, excludedPlugins) = testPluginSelection(discoveryResult = discoveryResult)
@@ -416,11 +443,11 @@ class PluginInitializationSelectPluginsToLoadTest {
 
     @Test
     fun `plugin main ID conflicts with another plugin alias`() {
-      plugin("foo") { version = "1.0" }.buildDir(pluginsDirPath.resolve("foo"))
+      plugin("foo") { version = "1.0" }.installAt(pluginsDirPath)
       plugin("bar") {
         version = "1.0"
         pluginAliases = listOf("foo")
-      }.buildDir(pluginsDirPath.resolve("bar"))
+      }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val (result, excludedPlugins) = testPluginSelection(discoveryResult = discoveryResult)
@@ -435,7 +462,7 @@ class PluginInitializationSelectPluginsToLoadTest {
       plugin("foo") {
         version = "1.0"
         pluginAliases = listOf("alias1", "alias1")
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val (result, excludedPlugins) = testPluginSelection(discoveryResult = discoveryResult)
@@ -451,12 +478,12 @@ class PluginInitializationSelectPluginsToLoadTest {
       plugin("foo") {
         version = "1.0"
         pluginAliases = listOf("common", "foo-specific")
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
       
       plugin("bar") {
         version = "1.0"
         pluginAliases = listOf("common", "bar-specific")
-      }.buildDir(pluginsDirPath.resolve("bar"))
+      }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val (result, excludedPlugins) = testPluginSelection(discoveryResult = discoveryResult)
@@ -480,12 +507,12 @@ class PluginInitializationSelectPluginsToLoadTest {
             pluginAlias("shared-id")
           }
         }
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
       
       plugin("bar") {
         version = "1.0"
         pluginAliases = listOf("shared-id")
-      }.buildDir(pluginsDirPath.resolve("bar"))
+      }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val (result, excludedPlugins) = testPluginSelection(discoveryResult = discoveryResult)
@@ -505,9 +532,9 @@ class PluginInitializationSelectPluginsToLoadTest {
       plugin("foo") {
         version = "1.0"
         depends("bar")
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
       
-      plugin("bar") { version = "1.0" }.buildDir(pluginsDirPath.resolve("bar"))
+      plugin("bar") { version = "1.0" }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val excludedPlugins = mutableListOf<ExcludedPluginInfo>()
@@ -517,7 +544,7 @@ class PluginInitializationSelectPluginsToLoadTest {
       )
 
       val filteredResult = initContext.selectPluginsToLoad(
-        discoveryResult.discoveredPlugins,
+        discoveryResult,
         onPluginExcluded = { plugin, reason -> excludedPlugins.add(ExcludedPluginInfo(plugin, reason)) }
       )
 
@@ -529,8 +556,8 @@ class PluginInitializationSelectPluginsToLoadTest {
 
     @Test
     fun `disabled plugin excluded when not required by essential plugin`() {
-      plugin("foo") { version = "1.0" }.buildDir(pluginsDirPath.resolve("foo"))
-      plugin("bar") { version = "1.0" }.buildDir(pluginsDirPath.resolve("bar"))
+      plugin("foo") { version = "1.0" }.installAt(pluginsDirPath)
+      plugin("bar") { version = "1.0" }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val excludedPlugins = mutableListOf<ExcludedPluginInfo>()
@@ -540,7 +567,7 @@ class PluginInitializationSelectPluginsToLoadTest {
       )
 
       val filteredResult = initContext.selectPluginsToLoad(
-        discoveryResult.discoveredPlugins,
+        discoveryResult,
         onPluginExcluded = { plugin, reason -> excludedPlugins.add(ExcludedPluginInfo(plugin, reason)) }
       )
 
@@ -558,10 +585,10 @@ class PluginInitializationSelectPluginsToLoadTest {
       plugin("foo") {
         version = "1.0"
         depends("bar")
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
       
-      plugin("bar") { version = "1.0" }.buildDir(pluginsDirPath.resolve("bar"))
-      plugin("baz") { version = "1.0" }.buildDir(pluginsDirPath.resolve("baz"))
+      plugin("bar") { version = "1.0" }.installAt(pluginsDirPath)
+      plugin("baz") { version = "1.0" }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val excludedPlugins = mutableListOf<ExcludedPluginInfo>()
@@ -571,7 +598,7 @@ class PluginInitializationSelectPluginsToLoadTest {
       )
 
       val filteredResult = initContext.selectPluginsToLoad(
-        discoveryResult.discoveredPlugins,
+        discoveryResult,
         onPluginExcluded = { plugin, reason -> excludedPlugins.add(ExcludedPluginInfo(plugin, reason)) }
       )
 
@@ -593,9 +620,9 @@ class PluginInitializationSelectPluginsToLoadTest {
       plugin("foo") {
         version = "1.0"
         incompatibleWith = listOf("bar")
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
       
-      plugin("bar") { version = "1.0" }.buildDir(pluginsDirPath.resolve("bar"))
+      plugin("bar") { version = "1.0" }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val excludedPlugins = mutableListOf<ExcludedPluginInfo>()
@@ -604,7 +631,7 @@ class PluginInitializationSelectPluginsToLoadTest {
       )
 
       val filteredResult = initContext.selectPluginsToLoad(
-        discoveryResult.discoveredPlugins,
+        discoveryResult,
         onPluginExcluded = { plugin, reason -> excludedPlugins.add(ExcludedPluginInfo(plugin, reason)) }
       )
 
@@ -623,9 +650,9 @@ class PluginInitializationSelectPluginsToLoadTest {
         version = "1.0"
         depends("bar")
         incompatibleWith = listOf("bar")
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
       
-      plugin("bar") { version = "1.0" }.buildDir(pluginsDirPath.resolve("bar"))
+      plugin("bar") { version = "1.0" }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val excludedPlugins = mutableListOf<ExcludedPluginInfo>()
@@ -634,7 +661,7 @@ class PluginInitializationSelectPluginsToLoadTest {
       )
 
       val filteredResult = initContext.selectPluginsToLoad(
-        discoveryResult.discoveredPlugins,
+        discoveryResult,
         onPluginExcluded = { plugin, reason -> excludedPlugins.add(ExcludedPluginInfo(plugin, reason)) }
       )
 
@@ -649,16 +676,16 @@ class PluginInitializationSelectPluginsToLoadTest {
       plugin("foo") {
         version = "1.0"
         incompatibleWith = listOf("bar")
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
       
-      plugin("bar") { version = "1.0" }.buildDir(pluginsDirPath.resolve("bar"))
+      plugin("bar") { version = "1.0" }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val excludedPlugins = mutableListOf<ExcludedPluginInfo>()
       val initContext = createInitContext()
 
       val filteredResult = initContext.selectPluginsToLoad(
-        discoveryResult.discoveredPlugins,
+        discoveryResult,
         onPluginExcluded = { plugin, reason -> excludedPlugins.add(ExcludedPluginInfo(plugin, reason)) }
       )
 
@@ -673,12 +700,12 @@ class PluginInitializationSelectPluginsToLoadTest {
       plugin("foo") {
         version = "1.0"
         incompatibleWith = listOf("bar-alias")
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
       
       plugin("bar") {
         version = "1.0"
         pluginAliases = listOf("bar-alias")
-      }.buildDir(pluginsDirPath.resolve("bar"))
+      }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val excludedPlugins = mutableListOf<ExcludedPluginInfo>()
@@ -687,7 +714,7 @@ class PluginInitializationSelectPluginsToLoadTest {
       )
 
       val filteredResult = initContext.selectPluginsToLoad(
-        discoveryResult.discoveredPlugins,
+        discoveryResult,
         onPluginExcluded = { plugin, reason -> excludedPlugins.add(ExcludedPluginInfo(plugin, reason)) }
       )
 
@@ -708,16 +735,16 @@ class PluginInitializationSelectPluginsToLoadTest {
     fun `only explicitly configured plugins and their dependencies are loaded`() {
       plugin("foo") {
         version = "1.0"
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
 
       plugin("bar") {
         version = "1.0"
         depends("foo")
-      }.buildDir(pluginsDirPath.resolve("bar"))
+      }.installAt(pluginsDirPath)
 
       plugin("baz") {
         version = "1.0"
-      }.buildDir(pluginsDirPath.resolve("baz"))
+      }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val excludedPlugins = mutableListOf<ExcludedPluginInfo>()
@@ -726,7 +753,7 @@ class PluginInitializationSelectPluginsToLoadTest {
       )
 
       val filteredResult = initContext.selectPluginsToLoad(
-        discoveryResult.discoveredPlugins,
+        discoveryResult,
         onPluginExcluded = { plugin, reason -> excludedPlugins.add(ExcludedPluginInfo(plugin, reason)) }
       )
 
@@ -742,9 +769,9 @@ class PluginInitializationSelectPluginsToLoadTest {
 
     @Test
     fun `essential plugins are always included in subset`() {
-      plugin("foo") { version = "1.0" }.buildDir(pluginsDirPath.resolve("foo"))
-      plugin("bar") { version = "1.0" }.buildDir(pluginsDirPath.resolve("bar"))
-      plugin("baz") { version = "1.0" }.buildDir(pluginsDirPath.resolve("baz"))
+      plugin("foo") { version = "1.0" }.installAt(pluginsDirPath)
+      plugin("bar") { version = "1.0" }.installAt(pluginsDirPath)
+      plugin("baz") { version = "1.0" }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val excludedPlugins = mutableListOf<ExcludedPluginInfo>()
@@ -754,7 +781,7 @@ class PluginInitializationSelectPluginsToLoadTest {
       )
 
       val filteredResult = initContext.selectPluginsToLoad(
-        discoveryResult.discoveredPlugins,
+        discoveryResult,
         onPluginExcluded = { plugin, reason -> excludedPlugins.add(ExcludedPluginInfo(plugin, reason)) }
       )
 
@@ -770,16 +797,16 @@ class PluginInitializationSelectPluginsToLoadTest {
 
     @Test
     fun `transitive dependencies are included in subset`() {
-      plugin("a") { version = "1.0" }.buildDir(pluginsDirPath.resolve("a"))
+      plugin("a") { version = "1.0" }.installAt(pluginsDirPath)
       plugin("b") {
         version = "1.0"
         depends("a")
-      }.buildDir(pluginsDirPath.resolve("b"))
+      }.installAt(pluginsDirPath)
       plugin("c") {
         version = "1.0"
         depends("b")
-      }.buildDir(pluginsDirPath.resolve("c"))
-      plugin("d") { version = "1.0" }.buildDir(pluginsDirPath.resolve("d"))
+      }.installAt(pluginsDirPath)
+      plugin("d") { version = "1.0" }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val excludedPlugins = mutableListOf<ExcludedPluginInfo>()
@@ -788,7 +815,7 @@ class PluginInitializationSelectPluginsToLoadTest {
       )
 
       val filteredResult = initContext.selectPluginsToLoad(
-        discoveryResult.discoveredPlugins,
+        discoveryResult,
         onPluginExcluded = { plugin, reason -> excludedPlugins.add(ExcludedPluginInfo(plugin, reason)) }
       )
 
@@ -804,11 +831,11 @@ class PluginInitializationSelectPluginsToLoadTest {
 
     @Test
     fun `disabled plugins are loaded when they are dependencies in explicit subset`() {
-      plugin("foo") { version = "1.0" }.buildDir(pluginsDirPath.resolve("foo"))
+      plugin("foo") { version = "1.0" }.installAt(pluginsDirPath)
       plugin("bar") {
         version = "1.0"
         depends("foo")
-      }.buildDir(pluginsDirPath.resolve("bar"))
+      }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val excludedPlugins = mutableListOf<ExcludedPluginInfo>()
@@ -818,7 +845,7 @@ class PluginInitializationSelectPluginsToLoadTest {
       )
 
       val filteredResult = initContext.selectPluginsToLoad(
-        discoveryResult.discoveredPlugins,
+        discoveryResult,
         onPluginExcluded = { plugin, reason -> excludedPlugins.add(ExcludedPluginInfo(plugin, reason)) }
       )
 
@@ -835,8 +862,8 @@ class PluginInitializationSelectPluginsToLoadTest {
       plugin("foo") {
         version = "1.0"
         untilBuild = "100.*"
-      }.buildDir(pluginsDirPath.resolve("foo"))
-      plugin("bar") { version = "1.0" }.buildDir(pluginsDirPath.resolve("bar"))
+      }.installAt(pluginsDirPath)
+      plugin("bar") { version = "1.0" }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val excludedPlugins = mutableListOf<ExcludedPluginInfo>()
@@ -846,7 +873,7 @@ class PluginInitializationSelectPluginsToLoadTest {
       )
 
       val filteredResult = initContext.selectPluginsToLoad(
-        discoveryResult.discoveredPlugins,
+        discoveryResult,
         onPluginExcluded = { plugin, reason -> excludedPlugins.add(ExcludedPluginInfo(plugin, reason)) }
       )
 
@@ -862,9 +889,9 @@ class PluginInitializationSelectPluginsToLoadTest {
 
     @Test
     fun `version selection happens before subset filtering`() {
-      plugin("foo") { version = "1.0" }.buildDir(pluginsDirPath.resolve("foo_1-0"))
-      plugin("foo") { version = "2.0" }.buildDir(pluginsDirPath.resolve("foo_2-0"))
-      plugin("bar") { version = "1.0" }.buildDir(pluginsDirPath.resolve("bar"))
+      plugin("foo") { version = "1.0" }.installAt(pluginsDirPath)
+      plugin("foo") { version = "2.0" }.installAt(pluginsDirPath)
+      plugin("bar") { version = "1.0" }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val excludedPlugins = mutableListOf<ExcludedPluginInfo>()
@@ -873,7 +900,7 @@ class PluginInitializationSelectPluginsToLoadTest {
       )
 
       val filteredResult = initContext.selectPluginsToLoad(
-        discoveryResult.discoveredPlugins,
+        discoveryResult,
         onPluginExcluded = { plugin, reason -> excludedPlugins.add(ExcludedPluginInfo(plugin, reason)) }
       )
 
@@ -896,9 +923,9 @@ class PluginInitializationSelectPluginsToLoadTest {
 
     @Test
     fun `empty explicit subset loads only essential plugins`() {
-      plugin(PluginManagerCore.CORE_ID.idString) { version = "1.0" }.buildDir(pluginsDirPath.resolve("core"))
-      plugin("foo") { version = "1.0" }.buildDir(pluginsDirPath.resolve("foo"))
-      plugin("bar") { version = "1.0" }.buildDir(pluginsDirPath.resolve("bar"))
+      plugin(PluginManagerCore.CORE_ID.idString) { version = "1.0" }.installAt(pluginsDirPath)
+      plugin("foo") { version = "1.0" }.installAt(pluginsDirPath)
+      plugin("bar") { version = "1.0" }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val excludedPlugins = mutableListOf<ExcludedPluginInfo>()
@@ -908,7 +935,7 @@ class PluginInitializationSelectPluginsToLoadTest {
       )
 
       val filteredResult = initContext.selectPluginsToLoad(
-        discoveryResult.discoveredPlugins,
+        discoveryResult,
         onPluginExcluded = { plugin, reason -> excludedPlugins.add(ExcludedPluginInfo(plugin, reason)) }
       )
 
@@ -928,15 +955,15 @@ class PluginInitializationSelectPluginsToLoadTest {
 
     @Test
     fun `only CORE plugin is loaded when plugin loading is disabled`() {
-      plugin("foo") { version = "1.0" }.buildDir(pluginsDirPath.resolve("foo"))
-      plugin("bar") { version = "1.0" }.buildDir(pluginsDirPath.resolve("bar"))
+      plugin("foo") { version = "1.0" }.installAt(pluginsDirPath)
+      plugin("bar") { version = "1.0" }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val excludedPlugins = mutableListOf<ExcludedPluginInfo>()
       val initContext = createInitContext(disablePluginLoadingCompletely = true)
 
       val filteredResult = initContext.selectPluginsToLoad(
-        discoveryResult.discoveredPlugins,
+        discoveryResult,
         onPluginExcluded = { plugin, reason -> excludedPlugins.add(ExcludedPluginInfo(plugin, reason)) }
       )
 
@@ -951,15 +978,15 @@ class PluginInitializationSelectPluginsToLoadTest {
 
     @Test
     fun `CORE plugin is loaded when plugin loading is disabled`() {
-      plugin(PluginManagerCore.CORE_ID.idString) { version = "1.0" }.buildDir(pluginsDirPath.resolve("core"))
-      plugin("foo") { version = "1.0" }.buildDir(pluginsDirPath.resolve("foo"))
+      plugin(PluginManagerCore.CORE_ID.idString) { version = "1.0" }.installAt(pluginsDirPath)
+      plugin("foo") { version = "1.0" }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val excludedPlugins = mutableListOf<ExcludedPluginInfo>()
       val initContext = createInitContext(disablePluginLoadingCompletely = true)
 
       val filteredResult = initContext.selectPluginsToLoad(
-        discoveryResult.discoveredPlugins,
+        discoveryResult,
         onPluginExcluded = { plugin, reason -> excludedPlugins.add(ExcludedPluginInfo(plugin, reason)) }
       )
 
@@ -979,7 +1006,7 @@ class PluginInitializationSelectPluginsToLoadTest {
       val initContext = createInitContext(disablePluginLoadingCompletely = true)
 
       val filteredResult = initContext.selectPluginsToLoad(
-        emptyList(),
+        PluginsDiscoveryResult.build(emptyList()),
         onPluginExcluded = { plugin, reason -> excludedPlugins.add(ExcludedPluginInfo(plugin, reason)) }
       )
 
@@ -996,12 +1023,12 @@ class PluginInitializationSelectPluginsToLoadTest {
       plugin("foo") {
         version = "1.0"
         pluginAliases = listOf("foo-alias")
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
       
       plugin("bar") {
         version = "1.0"
         pluginAliases = listOf("bar-alias")
-      }.buildDir(pluginsDirPath.resolve("bar"))
+      }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val (result, excludedPlugins) = testPluginSelection(discoveryResult = discoveryResult)
@@ -1030,7 +1057,7 @@ class PluginInitializationSelectPluginsToLoadTest {
 
     @Test
     fun `resolvePluginId returns null for unknown ID`() {
-      plugin("foo") { version = "1.0" }.buildDir(pluginsDirPath.resolve("foo"))
+      plugin("foo") { version = "1.0" }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val (result, _) = testPluginSelection(discoveryResult = discoveryResult)
@@ -1044,19 +1071,19 @@ class PluginInitializationSelectPluginsToLoadTest {
       plugin("foo") {
         version = "1.0"
         pluginAliases = listOf("foo-alias")
-      }.buildDir(pluginsDirPath.resolve("foo_1-0"))
+      }.installAt(pluginsDirPath)
       
       plugin("foo") {
         version = "2.0"
         pluginAliases = listOf("foo-alias")
-      }.buildDir(pluginsDirPath.resolve("foo_2-0"))
+      }.installAt(pluginsDirPath)
       
       plugin("bar") {
         version = "1.0"
         pluginAliases = listOf("foo-alias")
-      }.buildDir(pluginsDirPath.resolve("bar"))
+      }.installAt(pluginsDirPath)
       
-      plugin("baz") { version = "1.0" }.buildDir(pluginsDirPath.resolve("baz"))
+      plugin("baz") { version = "1.0" }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val (result, excludedPlugins) = testPluginSelection(discoveryResult = discoveryResult)
@@ -1073,7 +1100,7 @@ class PluginInitializationSelectPluginsToLoadTest {
 
     @Test
     fun `empty plugin list produces empty result`() {
-      val discoveryResult = PluginDescriptorLoadingResult.build(emptyList())
+      val discoveryResult = PluginsDiscoveryResult.build(emptyList())
       val (result, _) = testPluginSelection(discoveryResult = discoveryResult)
 
       assertThat(result.plugins).isEmpty()
@@ -1086,7 +1113,7 @@ class PluginInitializationSelectPluginsToLoadTest {
       plugin("foo") {
         version = "1.0"
         pluginAliases = listOf("foo-alias")
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val (result, excludedPlugins) = testPluginSelection(discoveryResult = discoveryResult)
@@ -1104,9 +1131,9 @@ class PluginInitializationSelectPluginsToLoadTest {
 
     @Test
     fun `three versions select newest compatible`() {
-      plugin("foo") { version = "1.0" }.buildDir(pluginsDirPath.resolve("foo_1-0"))
-      plugin("foo") { version = "2.0" }.buildDir(pluginsDirPath.resolve("foo_2-0"))
-      plugin("foo") { version = "3.0" }.buildDir(pluginsDirPath.resolve("foo_3-0"))
+      plugin("foo") { version = "1.0" }.installAt(pluginsDirPath)
+      plugin("foo") { version = "2.0" }.installAt(pluginsDirPath)
+      plugin("foo") { version = "3.0" }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       val (result, excludedPlugins) = testPluginSelection(discoveryResult = discoveryResult)
@@ -1122,12 +1149,12 @@ class PluginInitializationSelectPluginsToLoadTest {
       plugin("foo") {
         version = "1.0"
         pluginAliases = listOf("shared")
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
       
       plugin("bar") {
         version = "1.0"
         pluginAliases = listOf("shared")
-      }.buildDir(pluginsDirPath.resolve("bar"))
+      }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       
@@ -1145,12 +1172,12 @@ class PluginInitializationSelectPluginsToLoadTest {
       plugin("foo") {
         version = "1.0"
         pluginAliases = listOf("shared")
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
       
       plugin("bar") {
         version = "1.0"
         pluginAliases = listOf("shared")
-      }.buildDir(pluginsDirPath.resolve("bar"))
+      }.installAt(pluginsDirPath)
 
       val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
       

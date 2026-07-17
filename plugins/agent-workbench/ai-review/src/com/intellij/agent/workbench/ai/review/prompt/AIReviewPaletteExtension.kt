@@ -3,6 +3,7 @@ package com.intellij.agent.workbench.ai.review.prompt
 
 import com.intellij.agent.workbench.ai.review.AIReviewBundle
 import com.intellij.agent.workbench.prompt.core.AgentPromptContextItem
+import com.intellij.agent.workbench.prompt.core.AgentPromptContextItemIds
 import com.intellij.agent.workbench.prompt.core.AgentPromptContextRendererIds
 import com.intellij.agent.workbench.prompt.core.AgentPromptPaletteExtension
 import com.intellij.agent.workbench.prompt.core.AgentPromptPaletteExtensionContext
@@ -97,10 +98,17 @@ internal class AIReviewPaletteExtension : AgentPromptPaletteExtension {
 
   override fun getSubmitActionId(): String = AIReviewPromptSupport.AI_REVIEW_EXECUTE_ACTION_ID
 
+  override fun showsProviderSelector(): Boolean = true
+
+  override fun showsGenerationControls(): Boolean = true
+
   override fun getFooterHint(): String = AIReviewBundle.message("popup.palette.footer.hint.ai.review")
 
   private fun isReviewContext(item: AgentPromptContextItem): Boolean {
     if (item.rendererId == AgentPromptContextRendererIds.VCS_COMMITS) {
+      return true
+    }
+    if (item.itemId == AgentPromptContextItemIds.CHANGES_SELECTION) {
       return true
     }
     if (item.itemId != "tree.selection") {

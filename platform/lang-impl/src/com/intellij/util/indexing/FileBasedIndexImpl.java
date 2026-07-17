@@ -10,6 +10,7 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.application.WriteIntentReadAction;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.diagnostic.ThrottledLogger;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.impl.EditorHighlighterCache;
 import com.intellij.openapi.extensions.ExtensionPointListener;
@@ -63,6 +64,7 @@ import com.intellij.psi.search.FilenameIndex;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.search.impl.VirtualFileEnumeration;
 import com.intellij.psi.stubs.SerializedStubTree;
+import com.intellij.psi.stubs.StubTreeBuilder;
 import com.intellij.psi.stubs.StubUpdatingIndex;
 import com.intellij.psi.util.CachedValueProvider;
 import com.intellij.psi.util.CachedValuesManager;
@@ -74,6 +76,7 @@ import com.intellij.util.SlowOperations;
 import com.intellij.util.SmartFMap;
 import com.intellij.util.ThrowableRunnable;
 import com.intellij.util.concurrency.AppExecutorUtil;
+import com.intellij.util.concurrency.annotations.RequiresBackgroundThread;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.FactoryMap;
 import com.intellij.util.containers.SmartHashSet;
@@ -161,6 +164,8 @@ public final class FileBasedIndexImpl extends FileBasedIndexEx {
 
   @Internal
   public static final Logger LOG = Logger.getInstance(FileBasedIndexImpl.class);
+  private static final ThrottledLogger THROTTLED_LOG = new ThrottledLogger(LOG, 1000);
+  private static final ThrottledLogger THROTTLED_LOG_FAST = new ThrottledLogger(LOG, 10 /*ms*/);
 
   /** How often, on average, flush each index to the disk */
   private static final long FLUSHING_PERIOD_MS = SECONDS.toMillis(FlushingDaemon.FLUSHING_PERIOD_IN_SECONDS);
@@ -168,7 +173,7 @@ public final class FileBasedIndexImpl extends FileBasedIndexEx {
    * If true -- track {@link FilesToUpdateCollector#modificationCount()} per project, and skip looking for
    * updates if current modCount was already processed per project
    */
-  private static final boolean USE_MOD_COUNT_TO_SKIP_REPEATING_UPDATES = getBooleanProperty("FileBasedIndexImpl.USE_MOD_COUNT_TO_SKIP_REPEATING_UPDATES", false);
+  private static final boolean USE_MOD_COUNT_TO_SKIP_REPEATING_UPDATES = getBooleanProperty("FileBasedIndexImpl.USE_MOD_COUNT_TO_SKIP_REPEATING_UPDATES", true);
 
   final CoroutineScope coroutineScope;
 
@@ -856,7 +861,7 @@ public final class FileBasedIndexImpl extends FileBasedIndexEx {
       getIndex(indexId).removeTransientDataForFile(inputId);
     }
 
-    Document document = file == null ? null : myFileDocumentManager.getCachedDocument(file);
+    Document document = (file == null || !file.isValid()) ? null : myFileDocumentManager.getCachedDocument(file);
     if (document != null) {
       myLastIndexedDocStamps.clearForDocument(document);
       document.putUserData(ourFileContentKey, null);
@@ -880,6 +885,9 @@ public final class FileBasedIndexImpl extends FileBasedIndexEx {
     }
     if (FORBID_LOOKUP_IN_NON_CANCELLABLE_SECTIONS && ProgressManager.getInstance().isInNonCancelableSection()) {
       LOG.error("Indexes should not be accessed in non-cancellable section");
+    }
+    if (StubTreeBuilder.isBuildingStub()) {
+      THROTTLED_LOG.error("Stub building must not rely on data from indexes because it introduces circular dependency indexes -> stub building -> resolve -> indexes.");
     }
 
     ProgressManager.checkCanceled();
@@ -1275,6 +1283,7 @@ public final class FileBasedIndexImpl extends FileBasedIndexEx {
   }
 
   @Override
+  @RequiresBackgroundThread(generateAssertion = false)
   public <K, V> boolean processFilesContainingAnyKey(@NotNull ID<K, V> indexId,
                                                      @NotNull Collection<? extends K> dataKeys,
                                                      @NotNull GlobalSearchScope filter,
@@ -1471,7 +1480,7 @@ public final class FileBasedIndexImpl extends FileBasedIndexEx {
         if (proj != null && !proj.equals(project)) {
           continue; // skip this set as associated with a different project
         }
-        if (ReadAction.compute(() -> set.first.isInSet(indexingRequest.getFile()))) {
+        if (ReadAction.computeBlocking(() -> set.first.isInSet(indexingRequest.getFile()))) {
           return true;
         }
       }
@@ -1547,9 +1556,17 @@ public final class FileBasedIndexImpl extends FileBasedIndexEx {
     if (isDeleteRequest || !isValid || isTooLarge(file)) {
       ProgressManager.checkCanceled();
       myIndexableFilesFilterHolder.removeFile(fileId); // in case this is not isDeleteRequest
-      fileIndexingResult = new FileIndexingResult(this, fileId, file, indexingStamp, Collections.emptyList(), Collections.emptyList(),
-                                                  true, true, applicationMode,
-                                                  cachedFileType == null ? file.getFileType() : cachedFileType, false);
+
+      FileType fileType = cachedFileType != null ? cachedFileType :
+                          //getFileType() must _not_ be called on !valid files (btw, fileType is needed for stats only)
+                          (file.isValid() ? file.getFileType() : UnknownFileType.INSTANCE);
+      fileIndexingResult = new FileIndexingResult(
+        this, fileId, file, indexingStamp,
+        Collections.emptyList(), Collections.emptyList(),
+        /*removeDataFromIndexes: */true, /*markFileAsIndexed: */ true, applicationMode,
+        fileType,
+        /*logEmptyProvidedIndexes: */false
+      );
     }
     else {
       fileIndexingResult = doIndexFileContent(project, content, cachedFileType, applicationMode, indexingStamp);
@@ -1943,7 +1960,7 @@ public final class FileBasedIndexImpl extends FileBasedIndexEx {
     long currentModCount = myFilesToUpdateCollector.modificationCount();
     if (lastProcessedModCount != null && lastProcessedModCount >= currentModCount) {
       if (LOG.isDebugEnabled()) {
-        LOG.debug("modCountCheck[last: " + lastProcessedModCount + " >= current: " + currentModCount + "] -> skip updates");
+        THROTTLED_LOG_FAST.debug(() -> "modCountCheck[last: " + lastProcessedModCount + " >= current: " + currentModCount + "] -> skip updates");
       }
       //everything is already processed
       return;

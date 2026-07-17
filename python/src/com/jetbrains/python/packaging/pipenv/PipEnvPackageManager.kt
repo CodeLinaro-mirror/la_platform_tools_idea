@@ -9,27 +9,26 @@ import com.jetbrains.python.packaging.common.PythonOutdatedPackage
 import com.jetbrains.python.packaging.common.PythonPackage
 import com.jetbrains.python.packaging.common.PythonRepositoryPackageSpecification
 import com.jetbrains.python.packaging.common.toPythonPackages
-
 import com.jetbrains.python.packaging.management.PyWorkspaceMember
 import com.jetbrains.python.packaging.management.PythonPackageInstallRequest
 import com.jetbrains.python.packaging.management.PythonPackageManager
 import com.jetbrains.python.packaging.management.PythonRepositoryManager
 import com.jetbrains.python.packaging.pip.PipRepositoryManager
 import com.jetbrains.python.sdk.associatedModulePath
-import com.jetbrains.python.sdk.pipenv.PipEnvFileHelper
+import com.jetbrains.python.sdk.pipenv.PIP_FILE_LOCK
 import com.jetbrains.python.sdk.pipenv.runPipEnv
-import com.jetbrains.python.sdk.pipenv.PipEnvParser as SdkPipEnvParser
 import org.jetbrains.annotations.ApiStatus
 import java.nio.file.Path
+import com.jetbrains.python.sdk.pipenv.PipEnvParser as SdkPipEnvParser
 
 @ApiStatus.Internal
-class PipEnvPackageManager(project: Project, sdk: Sdk) : PythonPackageManager(project, sdk) {
+internal class PipEnvPackageManager(project: Project, sdk: Sdk) : PythonPackageManager(project, sdk) {
   private val modulePath: Path?
     get() = sdk.associatedModulePath?.let { Path.of(it) }
 
   override val repositoryManager: PythonRepositoryManager = PipRepositoryManager.getInstance(project)
 
-  override suspend fun syncCommand(): PyResult<Unit> {
+  override suspend fun syncLockedCommand(): PyResult<Unit> {
     return runPipEnv(modulePath, "install", "--dev").mapSuccess { }
   }
 
@@ -80,12 +79,13 @@ class PipEnvPackageManager(project: Project, sdk: Sdk) : PythonPackageManager(pr
   }
 
   override suspend fun listDeclaredPackages(): PyResult<List<PythonPackage>>? {
-    val pipFileLock =  getDependencyFile() ?: return null
-    val requirements = SdkPipEnvParser.getPipFileLockRequirements(pipFileLock) ?: return null
+    val pipFileLock = getRootDependenciesFile() ?: return null
+    val requirements = SdkPipEnvParser.getPipFileLockRequirements(pipFileLock.virtualFile) ?: return null
     return PyResult.success(requirements.toPythonPackages())
   }
 
-  override fun getDependencyFile(): com.intellij.openapi.vfs.VirtualFile? {
-    return PipEnvFileHelper.getPipFileLock(sdk)
-  }
+  override val dependenciesFilesRelativePaths: List<Path>
+    get() = listOf(
+      Path.of(PIP_FILE_LOCK),
+    )
 }

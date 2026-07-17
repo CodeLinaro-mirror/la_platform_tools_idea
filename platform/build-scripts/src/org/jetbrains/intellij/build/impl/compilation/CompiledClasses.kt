@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.intellij.build.impl.compilation
 
 import com.intellij.openapi.application.ArchivedCompilationContextUtil
@@ -17,9 +17,7 @@ import org.jetbrains.intellij.build.impl.JpsCompilationRunner
 import org.jetbrains.intellij.build.impl.cleanOutput
 import org.jetbrains.intellij.build.impl.isBazelTestRun
 import org.jetbrains.intellij.build.impl.isRunningFromBazelOut
-import org.jetbrains.intellij.build.jpsCache.isForceDownloadJpsCache
-import org.jetbrains.intellij.build.jpsCache.isPortableCompilationCacheEnabled
-import org.jetbrains.intellij.build.jpsCache.jpsCacheRemoteGitUrl
+import org.jetbrains.intellij.build.productionClassesOutputDirectory
 import org.jetbrains.intellij.build.telemetry.TraceManager.spanBuilder
 import org.jetbrains.intellij.build.telemetry.use
 import org.jetbrains.jps.api.CanceledStatus
@@ -40,14 +38,7 @@ internal fun checkCompilationOptions(context: CompilationContext) {
       messages.logErrorAndThrow(message)
     }
   }
-  if (options.pathToCompiledClassesArchive != null && isPortableCompilationCacheEnabled) {
-    messages.logErrorAndThrow("JPS Cache is enabled so '${BuildOptions.INTELLIJ_BUILD_COMPILER_CLASSES_ARCHIVE}' cannot be used")
-  }
   val pathToCompiledClassArchiveMetadata = options.pathToCompiledClassesArchivesMetadata
-  if (pathToCompiledClassArchiveMetadata != null && isPortableCompilationCacheEnabled) {
-    messages.logErrorAndThrow("JPS Cache is enabled " +
-                              "so '${BuildOptions.INTELLIJ_BUILD_COMPILER_CLASSES_ARCHIVES_METADATA}' cannot be used to fetch compile output")
-  }
   if (options.pathToCompiledClassesArchive != null && options.incrementalCompilation) {
     messages.logErrorAndThrow("'${BuildOptions.INTELLIJ_BUILD_COMPILER_CLASSES_ARCHIVE}' is specified, so 'incremental compilation' option cannot be enabled")
   }
@@ -105,7 +96,7 @@ internal fun checkCompilationOptions(context: CompilationContext) {
 }
 
 internal fun isCompilationRequired(options: BuildOptions): Boolean {
-  // Compilation is never required with Bazel
+  // compilation is never required with Bazel
   if (isRunningFromBazelOut()) {
     return false
   }
@@ -123,8 +114,7 @@ internal fun keepCompilationState(options: BuildOptions): Boolean {
   }
 
   return !options.forceRebuild &&
-         (isPortableCompilationCacheEnabled ||
-          options.useCompiledClassesFromProjectOutput ||
+         (options.useCompiledClassesFromProjectOutput ||
           options.pathToCompiledClassesArchive == null ||
           options.pathToCompiledClassesArchivesMetadata != null ||
           options.incrementalCompilation)
@@ -147,7 +137,7 @@ internal suspend fun reuseOrCompile(
       check(isBazelTestRun() || context.classesOutputDirectory.exists() || ArchivedCompilationContextUtil.archivedCompiledClassesMapping != null || isRunningFromBazelOut()) {
         "${BuildOptions.USE_COMPILED_CLASSES_PROPERTY} is enabled but the classes output directory ${context.classesOutputDirectory} doesn't exist"
       }
-      val production = context.classesOutputDirectory.resolve("production")
+      val production = context.productionClassesOutputDirectory
       if (!production.exists()) {
         val msg = "${BuildOptions.USE_COMPILED_CLASSES_PROPERTY} is enabled but the classes output directory $production doesn't exist " +
                   "which may cause issues like 'Error: Could not find or load main class'"
@@ -180,46 +170,14 @@ internal suspend fun reuseOrCompile(
       }
     }
     else -> {
-      var doCompileWithoutJpsCache = true
-      if (isPortableCompilationCacheEnabled) {
-
-        val forceDownload = isForceDownloadJpsCache
-        val forceRebuild = context.options.forceRebuild
-
-        val isLocalCacheUsed = !forceRebuild && !forceDownload && isIncrementalCompilationDataAvailable(context)
-        val shouldBeDownloaded = !forceRebuild && !isLocalCacheUsed
-        if (shouldBeDownloaded) {
-          span.addEvent("JPS remote cache will be used for compilation")
-          doCompileWithoutJpsCache = false
-          downloadCacheAndCompileProject(
-            forceDownload = isForceDownloadJpsCache,
-            gitUrl = jpsCacheRemoteGitUrl,
-            context = context,
-          )
-        }
-        else {
-          span.addEvent(
-            "JPS remote cache will NOT be used for compilation",
-            Attributes.of(
-              AttributeKey.booleanKey("forceRebuild"), forceRebuild,
-              AttributeKey.booleanKey("forceDownload"), forceDownload,
-              AttributeKey.booleanKey("isLocalCacheUsed"), isLocalCacheUsed,
-              AttributeKey.booleanKey("isIncrementalCompilationDataAvailable"), isIncrementalCompilationDataAvailable(context),
-            ),
-          )
-        }
-      }
-
-      if (doCompileWithoutJpsCache) {
-        spanBuilder("compile modules").use {
-          doCompile(
-            moduleNames = moduleNames,
-            includingTestsInModules = includingTestsInModules,
-            availableCommitDepth = -1,
-            context = context,
-            handleCompilationFailureBeforeRetry = null,
-          )
-        }
+      spanBuilder("compile modules").use {
+        doCompile(
+          moduleNames = moduleNames,
+          includingTestsInModules = includingTestsInModules,
+          availableCommitDepth = -1,
+          context = context,
+          handleCompilationFailureBeforeRetry = null,
+        )
       }
       return
     }
@@ -250,7 +208,6 @@ internal suspend fun doCompile(
   try {
     val (status, isIncrementalCompilation) = when {
       context.options.forceRebuild -> "forced rebuild" to false
-      availableCommitDepth >= 0 -> portableJpsCacheUsageStatus(availableCommitDepth) to true
       isIncrementalCompilationDataAvailable(context) -> "compile using local cache" to true
       else -> "clean build" to false
     }
@@ -357,7 +314,7 @@ private suspend fun compile(
   canceledStatus: CanceledStatus = CanceledStatus.NULL
 ) {
   when {
-    moduleNames != null -> jpsCompilationRunner.buildModules(moduleNames.map(context::findRequiredModule), canceledStatus)
+    moduleNames != null -> jpsCompilationRunner.buildModules(moduleNames.map { context.outputProvider.findRequiredModule(it) }, canceledStatus)
     includingTestsInModules != null -> jpsCompilationRunner.buildProduction(canceledStatus)
     else -> {
       jpsCompilationRunner.buildAll(canceledStatus)

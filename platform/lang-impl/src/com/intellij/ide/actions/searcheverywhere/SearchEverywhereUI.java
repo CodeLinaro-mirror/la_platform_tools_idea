@@ -32,6 +32,7 @@ import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.actionSystem.CommonShortcuts;
 import com.intellij.openapi.actionSystem.CustomShortcutSet;
+import com.intellij.openapi.actionSystem.CustomizedDataContext;
 import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.actionSystem.DataKey;
 import com.intellij.openapi.actionSystem.DataSink;
@@ -103,7 +104,6 @@ import com.intellij.ui.popup.PopupUpdateProcessorBase;
 import com.intellij.ui.popup.list.GroupedItemsListRenderer;
 import com.intellij.ui.scale.JBUIScale;
 import com.intellij.usageView.UsageInfo;
-import com.intellij.usageView.UsageViewBundle;
 import com.intellij.usages.Usage;
 import com.intellij.usages.UsageInfo2UsageAdapter;
 import com.intellij.usages.UsageLimitUtil;
@@ -269,10 +269,6 @@ public final class SearchEverywhereUI extends BigPopupUI implements UiDataProvid
 
     myListFactory = new MixedListFactory();
 
-    if (myMlService != null) {
-      myMlService.onSessionStarted(myProject, myHeader.getSelectedTab().getID(), new SearchEverywhereMixedListInfo(myListFactory));
-    }
-
     init();
     myHintHelper = new HintHelper(mySearchField);
 
@@ -286,14 +282,6 @@ public final class SearchEverywhereUI extends BigPopupUI implements UiDataProvid
     SearchListener wrapperListener = createListenerWrapper();
 
     mySelectionTracker = new SEListSelectionTracker(myResultsList, myListModel);
-
-    if (myMlService != null) {
-      SearchListener mlListener = myMlService.buildListener(myListModel, myResultsList, mySelectionTracker);
-
-      if (mlListener != null) {
-        addSearchListener(mlListener);
-      }
-    }
 
     myExternalSearchListeners.add(topicPublisher);
     mySearcher = new MixedResultsSearcher(
@@ -374,12 +362,7 @@ public final class SearchEverywhereUI extends BigPopupUI implements UiDataProvid
       return (list, value, index, isSelected, cellHasFocus) -> new JPanel();
     }
 
-    ListCellRenderer<Object> renderer = myListFactory.createListRenderer(myListModel, myHeader);
-
-    if (myMlService != null) {
-      return myMlService.wrapRenderer(renderer, myListModel);
-    }
-    return renderer;
+    return myListFactory.createListRenderer(myListModel, myHeader);
   }
 
   @Override
@@ -388,6 +371,11 @@ public final class SearchEverywhereUI extends BigPopupUI implements UiDataProvid
     addListDataListener(myListModel);
     addPreviewDataListener(myListModel);
     return myListFactory.createList(myListModel);
+  }
+
+  @ApiStatus.Internal
+  public @NotNull SearchEverywhereMixedListInfo getMixedListInfo() {
+    return new SearchEverywhereMixedListInfo(myListFactory);
   }
 
   private void addPreviewDataListener(@NotNull AbstractListModel<Object> model) {
@@ -462,7 +450,7 @@ public final class SearchEverywhereUI extends BigPopupUI implements UiDataProvid
     if (mySearchField == null) return;
 
     List<SearchEverywhereContributor<?>> contributors = myHeader.getSelectedTab().getContributors();
-    Pair<@Nls String, @Nls String> advertisementTextAndTooltip = ReadAction.compute(() -> getLoadingTextAndTooltip(contributors));
+    Pair<@Nls String, @Nls String> advertisementTextAndTooltip = ReadAction.computeBlocking(() -> getLoadingTextAndTooltip(contributors));
     if (advertisementTextAndTooltip != null) {
       myHintHelper.setLoadingText(advertisementTextAndTooltip.first, advertisementTextAndTooltip.second);
       updateRightActions(contributors);
@@ -601,37 +589,41 @@ public final class SearchEverywhereUI extends BigPopupUI implements UiDataProvid
              ContainerUtil.map2Array(selection, Object.class, SearchEverywhereFoundElementInfo::getElement));
     sink.lazy(PlatformCoreDataKeys.PSI_ELEMENT_ARRAY, () -> {
       List<PsiElement> list =
-        ContainerUtil.mapNotNull(selection, o -> (PsiElement)getDataFromElementInfo(CommonDataKeys.PSI_ELEMENT.getName(), o));
+        ContainerUtil.mapNotNull(selection, o -> getDataFromElementInfo(CommonDataKeys.PSI_ELEMENT, o));
       return list.isEmpty() ? null : list.toArray(PsiElement.EMPTY_ARRAY);
     });
     sink.lazy(CommonDataKeys.VIRTUAL_FILE_ARRAY, () -> {
       List<VirtualFile> list =
-        ContainerUtil.mapNotNull(selection, o -> (VirtualFile)getDataFromElementInfo(CommonDataKeys.VIRTUAL_FILE.getName(), o));
+        ContainerUtil.mapNotNull(selection, o -> getDataFromElementInfo(CommonDataKeys.VIRTUAL_FILE, o));
       return list.isEmpty() ? null : list.toArray(VirtualFile.EMPTY_ARRAY);
     });
     sink.lazy(CommonDataKeys.NAVIGATABLE_ARRAY, () -> {
       List<Navigatable> list = ContainerUtil.mapNotNull(selection, o -> {
-        Navigatable navigatable = (Navigatable)getDataFromElementInfo(CommonDataKeys.NAVIGATABLE.getName(), o);
+        Navigatable navigatable = getDataFromElementInfo(CommonDataKeys.NAVIGATABLE, o);
         if (navigatable != null) return navigatable;
         // make F4 work on multi-selection
-        Object psi = getDataFromElementInfo(CommonDataKeys.PSI_ELEMENT.getName(), o);
-        return psi instanceof Navigatable ? (Navigatable)psi : null;
+        PsiElement psi = getDataFromElementInfo(CommonDataKeys.PSI_ELEMENT, o);
+        return psi instanceof Navigatable n ? n : null;
       });
       return list.isEmpty() ? null : list.toArray(Navigatable.EMPTY_NAVIGATABLE_ARRAY);
     });
     if (onlyItem != null) {
-      sink.set(PlatformCoreDataKeys.BGT_DATA_PROVIDER, dataId -> {
-        return getDataFromElementInfo(dataId, onlyItem);
-      });
+      //noinspection unchecked
+      SearchEverywhereContributor<Object> contributor = (SearchEverywhereContributor<Object>)onlyItem.getContributor();
+      if (contributor != null) {
+        SearchEverywhereDataUtilsKt.addDataForItem(contributor, onlyItem.getElement(), sink);
+      }
     }
   }
 
-  private static @Nullable Object getDataFromElementInfo(@NotNull String dataId, @NotNull SearchEverywhereFoundElementInfo info) {
+  private static <T> @Nullable T getDataFromElementInfo(@NotNull DataKey<T> key, @NotNull SearchEverywhereFoundElementInfo info) {
     //noinspection unchecked
     SearchEverywhereContributor<Object> contributor = (SearchEverywhereContributor<Object>)info.getContributor();
     if (contributor == null) return null;
 
-    return contributor.getDataForItem(info.getElement(), dataId);
+    DataContext ctx = CustomizedDataContext.withSnapshot(DataContext.EMPTY_CONTEXT, sink ->
+      SearchEverywhereDataUtilsKt.addDataForItem(contributor, info.getElement(), sink));
+    return ctx.getData(key);
   }
 
   @NotNull List<SearchEverywhereFoundElementInfo> getSelectedInfos() {
@@ -934,9 +926,20 @@ public final class SearchEverywhereUI extends BigPopupUI implements UiDataProvid
 
     Map<SearchEverywhereContributor<?>, Integer> contributorsMap = new HashMap<>();
 
-    List<SearchEverywhereContributor<?>> contributors = myHeader.getSelectedTab().getContributors();
+    SETab selectedTab = myHeader.getSelectedTab();
+    boolean isAllTab = selectedTab.getID().equals(ALL_CONTRIBUTORS_GROUP_ID);
+
+    List<SearchEverywhereContributor<?>> contributors = selectedTab.getContributors();
     int limit = contributors.size() > 1 ? MULTIPLE_CONTRIBUTORS_ELEMENTS_LIMIT : SINGLE_CONTRIBUTOR_ELEMENTS_LIMIT;
-    contributors.forEach(c -> contributorsMap.put(c, limit));
+    contributors.forEach(c -> {
+      if (!isAllTab && (FilesTabSEContributor.asMainFilesContributorOrNull(c) != null)) {
+        // Request more elements from the main Files contributor in Files tab
+        contributorsMap.put(c, SINGLE_CONTRIBUTOR_ELEMENTS_LIMIT);
+      }
+      else {
+        contributorsMap.put(c, limit);
+      }
+    });
 
     if (myProject != null) {
       contributors = DumbService.getInstance(myProject).filterByDumbAwareness(contributorsMap.keySet());
@@ -954,14 +957,6 @@ public final class SearchEverywhereUI extends BigPopupUI implements UiDataProvid
     }
 
     String tabId = myHeader.getSelectedTab().getID();
-    if (myMlService != null) {
-      myMlService.onSearchRestart(
-        tabId, reason,
-        mySearchTypingListener.mySymbolKeysTyped, mySearchTypingListener.myBackspacesTyped, namePattern,
-        myListModel.getFoundElementsInfo(),
-        getSelectedSearchScope(myHeader.getSelectedTab()), myHeader.isEverywhere()
-      );
-    }
 
     myListModel.expireResults();
     contributors.forEach(contributor -> myListModel.setHasMore(contributor, false));
@@ -984,11 +979,32 @@ public final class SearchEverywhereUI extends BigPopupUI implements UiDataProvid
         else {
           myListModel.clear();
           List<SearchEverywhereFoundElementInfo> lst = ContainerUtil.map(
-            commands, command -> new SearchEverywhereFoundElementInfo(command, 0, myStubCommandContributor));
+            commands, command -> {
+              if (myMlService == null) {
+                return new SearchEverywhereFoundElementInfo(command, 0, myStubCommandContributor);
+              }
+              else {
+                return myMlService.createFoundElementInfo(myStubCommandContributor, command, 0,
+                                                          SearchEverywhereSpellCheckResult.NoCorrection.INSTANCE);
+              }
+            });
           myListModel.addElements(lst);
           ScrollingUtil.ensureSelectionExists(myResultsList);
         }
       }
+    }
+
+    if (myMlService != null) {
+      var searchResults = myListModel.listElements
+        .stream()
+        .filter(e -> e.element != SearchListModel.MORE_ELEMENT)
+        .toList();
+      myMlService.onStateFinished(searchResults);
+      myMlService.onStateStarted(
+        tabId, reason,
+        namePattern,
+        getSelectedSearchScope(myHeader.getSelectedTab()), myHeader.isEverywhere()
+      );
     }
 
     myHintHelper.setSearchInProgress(StringUtil.isNotEmpty(getSearchPattern()));
@@ -1071,12 +1087,13 @@ public final class SearchEverywhereUI extends BigPopupUI implements UiDataProvid
     registerSelectItemAction();
 
     AnAction escape = ActionManager.getInstance().getAction("EditorEscape");
-    DumbAwareAction.create(__ -> closePopup())
+    DumbAwareAction.create(_ -> closePopup())
       .registerCustomShortcutSet(escape == null ? CommonShortcuts.ESCAPE : escape.getShortcutSet(), this);
 
     mySearchField.getDocument().addDocumentListener(new DocumentAdapter() {
       @Override
       protected void textChanged(@NotNull DocumentEvent e) {
+        myHeader.getSelectedTab().closeFilterPopup();
         String newSearchString = getSearchPattern();
         if (myNotFoundString != null) {
           boolean newPatternContainsPrevious = myNotFoundString.length() > 1 && newSearchString.contains(myNotFoundString);
@@ -1399,6 +1416,22 @@ public final class SearchEverywhereUI extends BigPopupUI implements UiDataProvid
       SearchEverywhereUsageTriggerCollector.COMMAND_USED.log(myProject);
     }
 
+    List<SearchEverywhereFoundElementInfo> foundElementsInfo = null;
+    if (myMlService != null) {
+      // We collect found elements info for ML service before calling contributor.processSelectedItem,
+      // because the popup may be closed during contributor.processSelectedItem call.
+      // See: IJPL-244597
+      foundElementsInfo = ContainerUtil.copyList(myListModel.getFoundElementsInfo());
+    }
+
+    for (int i : indexes) {
+      SearchEverywhereContributor<Object> contributor = myListModel.getContributorForIndex(i);
+      String selectedTabContributorID = myHeader.getSelectedTab().getReportableID();
+      String reportableContributorID = getReportableContributorID(contributor);
+      ContributorsLocalSummary.getInstance().updateContributorsLocalSummary(reportableContributorID,
+                                                                            selectedTabContributorID.equals(ALL_CONTRIBUTORS_GROUP_ID));
+    }
+
     boolean closePopup = false;
     List<Object> selectedItems = new ArrayList<>();
     for (int i : indexes) {
@@ -1431,19 +1464,11 @@ public final class SearchEverywhereUI extends BigPopupUI implements UiDataProvid
       closePopup |= contributor.processSelectedItem(value, modifiers, searchText);
     }
 
-    if (myMlService != null) {
+    if (myMlService != null && foundElementsInfo != null) {
       var tabId = myHeader.getSelectedTab().getID();
       var correctIndexes = hasNotificationElement ? Arrays.stream(indexes).map(i -> (i - 1)).toArray() : indexes;
       myMlService.onItemSelected(
-        tabId, correctIndexes, selectedItems, ContainerUtil.copyList(myListModel.getFoundElementsInfo()), searchText);
-    }
-
-    for (int i : indexes) {
-      SearchEverywhereContributor<Object> contributor = myListModel.getContributorForIndex(i);
-      String selectedTabContributorID = myHeader.getSelectedTab().getReportableID();
-      String reportableContributorID = getReportableContributorID(contributor);
-      ContributorsLocalSummary.getInstance().updateContributorsLocalSummary(reportableContributorID,
-                                                                            selectedTabContributorID.equals(ALL_CONTRIBUTORS_GROUP_ID));
+        tabId, correctIndexes, selectedItems, ContainerUtil.copyList(foundElementsInfo), searchText);
     }
 
     if (closePopup) {
@@ -1466,9 +1491,12 @@ public final class SearchEverywhereUI extends BigPopupUI implements UiDataProvid
       myListModel.clearMoreItems();
     }
 
+    SETab selectedTab = myHeader.getSelectedTab();
+    boolean isAllTab = selectedTab.getID().equals(ALL_CONTRIBUTORS_GROUP_ID);
+    int additionalItemsCount = selectedTab.isSingleContributor() ? SINGLE_CONTRIBUTOR_ELEMENTS_LIMIT
+                                                                 : MULTIPLE_CONTRIBUTORS_ELEMENTS_LIMIT;
+
     Map<SearchEverywhereContributor<?>, Collection<SearchEverywhereFoundElementInfo>> found = myListModel.getFoundElementsMap();
-    int additionalItemsCount = myHeader.getSelectedTab().isSingleContributor() ? SINGLE_CONTRIBUTOR_ELEMENTS_LIMIT
-                                                                               : MULTIPLE_CONTRIBUTORS_ELEMENTS_LIMIT;
 
     Stream<Map.Entry<SearchEverywhereContributor<?>, Collection<SearchEverywhereFoundElementInfo>>> stream = found.entrySet().stream();
     if (contributor != null) {
@@ -1479,7 +1507,15 @@ public final class SearchEverywhereUI extends BigPopupUI implements UiDataProvid
     }
 
     Map<? extends SearchEverywhereContributor<?>, Integer> contributorsAndLimits =
-      stream.collect(Collectors.toMap(entry -> entry.getKey(), entry -> entry.getValue().size() + additionalItemsCount));
+      stream.collect(Collectors.toMap(entry -> entry.getKey(), entry -> {
+        int fixedAdditionalItemsCount = additionalItemsCount;
+        if (!isAllTab && (FilesTabSEContributor.asMainFilesContributorOrNull(entry.getKey()) != null)) {
+          // Request more elements from the main Files contributor in Files tab
+          fixedAdditionalItemsCount = SINGLE_CONTRIBUTOR_ELEMENTS_LIMIT;
+        }
+
+        return entry.getValue().size() + fixedAdditionalItemsCount;
+      }));
 
     myHintHelper.setSearchInProgress(StringUtil.isNotEmpty(getSearchPattern()));
     mySearchProgressIndicator = mySearcher.findMoreItems(found, contributorsAndLimits, getSearchPattern());
@@ -1493,14 +1529,15 @@ public final class SearchEverywhereUI extends BigPopupUI implements UiDataProvid
 
   @Override
   public void closePopup() {
+    ActionMenu.showDescriptionInStatusBar(true, myResultsList, null);
+    stopSearching();
+
     if (isShowing() || ApplicationManager.getApplication().isUnitTestMode()) {
       if (myMlService != null) {
-        myMlService.onSearchFinished(ContainerUtil.copyList(myListModel.getFoundElementsInfo()));
+        myMlService.onSessionFinished();
       }
     }
 
-    ActionMenu.showDescriptionInStatusBar(true, myResultsList, null);
-    stopSearching();
     searchFinishedHandler.run();
   }
 
@@ -1636,11 +1673,9 @@ public final class SearchEverywhereUI extends BigPopupUI implements UiDataProvid
 
               foundElements.add(o);
               tooManyUsagesStatus.pauseProcessingIfTooManyUsages();
-              if (foundElements.size() + alreadyFoundCount >= UsageLimitUtil.USAGES_LIMIT &&
-                  tooManyUsagesStatus.switchTooManyUsagesStatus()) {
-                UsageViewManagerImpl.showTooManyUsagesWarningLater(getProject(), tooManyUsagesStatus, progressIndicator, null,
-                                                                   () -> UsageViewBundle.message("find.excessive.usage.count.prompt"),
-                                                                   null);
+              if (foundElements.size() + alreadyFoundCount >= UsageLimitUtil.getSearchResultLimit() 
+                  && tooManyUsagesStatus.switchTooManyUsagesStatus()) {
+                UsageViewManagerImpl.showTooManyUsagesWarningLater(getProject(), tooManyUsagesStatus, progressIndicator, null, null, null);
                 return !progressIndicator.isCanceled();
               }
               return true;
@@ -1683,7 +1718,7 @@ public final class SearchEverywhereUI extends BigPopupUI implements UiDataProvid
         }
       }
 
-      ReadAction.run(() -> foundElements.stream()
+      ReadAction.runBlocking(() -> foundElements.stream()
         .map(o -> toPsi(o))
         .filter(Objects::nonNull)
         .forEach(element -> {
@@ -1779,11 +1814,11 @@ public final class SearchEverywhereUI extends BigPopupUI implements UiDataProvid
 
     @Override
     public void elementsAdded(@NotNull List<? extends SearchEverywhereFoundElementInfo> list) {
-      if (mySearchProgressIndicator == null || mySearchProgressIndicator.isCanceled()) return;
-
       if (myMlService != null) {
         myMlService.notifySearchResultsUpdated();
       }
+
+      if (mySearchProgressIndicator == null || mySearchProgressIndicator.isCanceled()) return;
 
       mySelectionTracker.lock();
       myListModel.addElements(list);

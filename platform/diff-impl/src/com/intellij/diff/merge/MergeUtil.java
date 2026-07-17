@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.diff.merge;
 
 import com.intellij.CommonBundle;
@@ -65,7 +65,7 @@ public final class MergeUtil {
       }
       case LEFT -> "button.merge.resolve.accept.left";
       case RIGHT -> "button.merge.resolve.accept.right";
-      case RESOLVED -> "button.merge.resolve.apply";
+      case RESOLVED -> "button.merge.resolve.apply.changes";
     });
   }
 

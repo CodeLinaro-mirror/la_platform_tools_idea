@@ -1,11 +1,13 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.testFramework.common;
 
+import com.intellij.diagnostic.CoroutineDumperKt;
 import com.intellij.diagnostic.JVMResponsivenessMonitor;
 import com.intellij.diagnostic.PerformanceWatcher;
 import com.intellij.execution.process.ProcessIOExecutorService;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.impl.TestOnlyThreading;
+import com.intellij.openapi.diagnostic.AsyncLogKt;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.ShutDownTracker;
@@ -34,6 +36,8 @@ import java.util.concurrent.ForkJoinWorkerThread;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 import java.util.prefs.Preferences;
+
+import static com.intellij.diagnostic.CoroutineDumperKt.COROUTINE_DUMP_HEADER;
 
 @TestOnly
 @Internal
@@ -83,6 +87,7 @@ public final class ThreadLeakTracker {
       "Cleaner-0", // Thread[Cleaner-0,8,InnocuousThreadGroup], java.lang.ref.Cleaner in android layoutlib, Java9+
       "CompilerThread0",
       "Coroutines Debugger Cleaner", // kotlinx.coroutines.debug.internal.DebugProbesImpl.startWeakRefCleanerThread
+      "docker-java-stream", // com.github.dockerjava.core.DefaultInvocationBuilder.executeAndStream spawns this for every streaming command (events, logs, attach, pull, etc.)
       "dockerjava-netty",
       "embeddings-server",
       "EventQueueMonitor-ComponentEvtDispatch", // com.sun.java.accessibility.util.ComponentEvtDispatchThread
@@ -123,6 +128,7 @@ public final class ThreadLeakTracker {
       "qtp", // used in tests for mocking via WireMock in integration testing
       "rd throttler", // daemon thread created by com.jetbrains.rd.util.AdditionalApiKt.getTimer
       "Reference Handler",
+      "Rider.Backend", // ignore process + io threads because backend follows application lifecycle and can be started during the test
       "RMI GC Daemon",
       "RMI TCP ",
       "Save classpath indexes for file loader",
@@ -157,6 +163,7 @@ public final class ThreadLeakTracker {
   }
 
   public static void awaitQuiescence() {
+    AsyncLogKt.awaitLogQueueProcessed();
     NettyUtil.awaitQuiescenceOfGlobalEventExecutor(100, TimeUnit.SECONDS);
     ShutDownTracker.getInstance().waitFor(100, TimeUnit.SECONDS);
   }
@@ -223,11 +230,16 @@ public final class ThreadLeakTracker {
     Map<Thread, StackTraceElement[]> newStackTraces = new HashMap<>(stackTraces);
     newStackTraces.put(thread, stackTrace);
 
+    // null when kotlinx.coroutines DebugProbes is not installed (no coroutine info available)
+    String coroutineDump = CoroutineDumperKt.dumpCoroutines(null, true, true);
+    String coroutineSection = coroutineDump == null ? "" : "\n" + COROUTINE_DUMP_HEADER + "\n" + coroutineDump;
+
     throw new AssertionError(
       "Thread leaked: " + traceBefore + (trace.equals(traceBefore) ? "" : "(its trace after " + WAIT_SEC + " seconds wait:) " + trace) +
       internalDiagnostic +
       "\n\nLeaking threads dump:\n" + dumpThreadsToString(after, newStackTraces) +
-      "\n----\nAll other threads dump:\n" + dumpThreadsToString(all, otherStackTraces)
+      "\n----\nAll other threads dump:\n" + dumpThreadsToString(all, otherStackTraces) +
+      coroutineSection
     );
   }
 

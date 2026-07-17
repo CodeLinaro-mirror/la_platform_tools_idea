@@ -3,6 +3,12 @@
   <name>Commander</name>
   <description>Provides a two-panel view for navigating and working with the project structure</description>
   <vendor>JetBrains</vendor>
+  <!-- region Generated dependencies - run `Generate Product Layouts` to regenerate -->
+  <dependencies>
+    <module name="intellij.java.psi"/>
+    <module name="intellij.platform.structureView"/>
+  </dependencies>
+  <!-- endregion -->
   <resource-bundle>messages.CommanderBundle</resource-bundle>
 
   <depends>com.intellij.java</depends>
@@ -14,6 +20,7 @@
                 factoryClass="com.intellij.ide.commander.CommanderToolWindowFactory"/>
     <projectService serviceImplementation="com.intellij.ide.commander.Commander"/>
     <customizableActionGroupProvider implementation="com.intellij.ide.commander.actions.CommanderCustomizableActionGroupProvider"/>
+    <projectSettings service="com.intellij.ide.commander.Commander"/>
   </extensions>
 
   <actions>

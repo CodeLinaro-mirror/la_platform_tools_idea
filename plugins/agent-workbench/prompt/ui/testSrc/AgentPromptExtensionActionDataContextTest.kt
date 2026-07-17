@@ -1,19 +1,29 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.agent.workbench.prompt.ui
 
+import com.intellij.agent.workbench.prompt.core.AGENT_PROMPT_GENERATION_MODEL_CATALOG_DATA_KEY
+import com.intellij.agent.workbench.prompt.core.AGENT_PROMPT_GENERATION_SETTINGS_DATA_KEY
 import com.intellij.agent.workbench.prompt.core.AGENT_PROMPT_MESSAGE_REQUEST_DATA_KEY
+import com.intellij.agent.workbench.prompt.core.AGENT_PROMPT_SELECTED_LAUNCH_MODE_DATA_KEY
 import com.intellij.agent.workbench.prompt.core.AGENT_PROMPT_SELECTED_PROVIDER_ID_DATA_KEY
 import com.intellij.agent.workbench.prompt.core.AgentPromptContextItem
+import com.intellij.agent.workbench.prompt.core.AgentPromptGenerationModel
+import com.intellij.agent.workbench.prompt.core.AgentPromptGenerationSettings
 import com.intellij.agent.workbench.prompt.core.AgentPromptInitialMessageRequest
+import com.intellij.agent.workbench.prompt.core.AgentPromptReasoningEffort
 import com.intellij.agent.workbench.prompt.ui.context.buildExtensionActionDataContext
 import com.intellij.openapi.actionSystem.DataKey
 import com.intellij.openapi.actionSystem.impl.SimpleDataContext
+import com.intellij.platform.ai.agent.core.session.AgentSessionLaunchMode
 import com.intellij.testFramework.junit5.TestApplication
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
+import java.util.concurrent.TimeUnit
 
 @TestApplication
+@Timeout(value = 2, unit = TimeUnit.MINUTES)
 class AgentPromptExtensionActionDataContextTest {
   @Test
   fun addsSelectedProviderIdToExtensionActionDataContext() {
@@ -58,5 +68,33 @@ class AgentPromptExtensionActionDataContextTest {
 
     assertNull(AGENT_PROMPT_SELECTED_PROVIDER_ID_DATA_KEY.getData(enrichedDataContext))
     assertNull(AGENT_PROMPT_MESSAGE_REQUEST_DATA_KEY.getData(enrichedDataContext))
+    assertNull(AGENT_PROMPT_GENERATION_SETTINGS_DATA_KEY.getData(enrichedDataContext))
+  }
+
+  @Test
+  fun addsSelectedLaunchModeToExtensionActionDataContext() {
+    val enrichedDataContext = buildExtensionActionDataContext(
+      baseDataContext = SimpleDataContext.builder().build(),
+      selectedProviderId = "codex",
+      selectedLaunchMode = AgentSessionLaunchMode.YOLO,
+    )
+
+    assertEquals(AgentSessionLaunchMode.YOLO, AGENT_PROMPT_SELECTED_LAUNCH_MODE_DATA_KEY.getData(enrichedDataContext))
+  }
+
+  @Test
+  fun addsGenerationSettingsAndCatalogToExtensionActionDataContext() {
+    val generationSettings = AgentPromptGenerationSettings(modelId = "gpt-5.1-codex", reasoningEffort = AgentPromptReasoningEffort.HIGH)
+    val catalog = listOf(AgentPromptGenerationModel(id = "gpt-5.1-codex", displayName = "GPT-5.1 Codex"))
+
+    val enrichedDataContext = buildExtensionActionDataContext(
+      baseDataContext = SimpleDataContext.builder().build(),
+      selectedProviderId = "codex",
+      generationSettings = generationSettings,
+      generationModelCatalog = catalog,
+    )
+
+    assertEquals(generationSettings, AGENT_PROMPT_GENERATION_SETTINGS_DATA_KEY.getData(enrichedDataContext))
+    assertEquals(catalog, AGENT_PROMPT_GENERATION_MODEL_CATALOG_DATA_KEY.getData(enrichedDataContext))
   }
 }

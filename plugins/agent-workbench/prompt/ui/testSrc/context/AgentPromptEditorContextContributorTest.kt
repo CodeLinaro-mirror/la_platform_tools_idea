@@ -1,6 +1,7 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.agent.workbench.prompt.ui.context
 
+import com.intellij.agent.workbench.prompt.core.AGENT_PROMPT_INVOCATION_DATA_CONTEXT_KEY
 import com.intellij.agent.workbench.prompt.core.AgentPromptContextEnvelopeFormatter
 import com.intellij.agent.workbench.prompt.core.AgentPromptContextRendererIds
 import com.intellij.agent.workbench.prompt.core.AgentPromptContextTruncationReason
@@ -10,6 +11,12 @@ import com.intellij.agent.workbench.prompt.core.bool
 import com.intellij.agent.workbench.prompt.core.number
 import com.intellij.agent.workbench.prompt.core.objOrNull
 import com.intellij.agent.workbench.prompt.core.string
+import com.intellij.agent.workbench.prompt.context.AgentEditorContextSnapshot
+import com.intellij.agent.workbench.prompt.context.AgentPromptEditorContextContributor
+import com.intellij.agent.workbench.prompt.context.AgentPromptEditorContextSupport
+import com.intellij.agent.workbench.prompt.context.AgentPromptSnippet
+import com.intellij.agent.workbench.prompt.context.AgentPromptTextPosition
+import com.intellij.agent.workbench.prompt.context.AgentPromptTextRange
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.actionSystem.impl.SimpleDataContext
@@ -20,8 +27,11 @@ import com.intellij.testFramework.junit5.TestApplication
 import com.intellij.testFramework.runInEdtAndWait
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
+import java.util.concurrent.TimeUnit
 
 @TestApplication
+@Timeout(value = 2, unit = TimeUnit.MINUTES)
 class AgentPromptEditorContextContributorTest {
   private val contributor = AgentPromptEditorContextContributor()
 
@@ -145,6 +155,31 @@ class AgentPromptEditorContextContributorTest {
   }
 
   @Test
+  fun referenceSymbolNameUsesPlainReferenceText() {
+    assertThat(AgentPromptEditorContextSupport.extractReferenceSymbolName("setProjectLanguageLevel", 3))
+      .isEqualTo("setProjectLanguageLevel")
+  }
+
+  @Test
+  fun referenceSymbolNameUsesDottedSegmentAtCaret() {
+    val referenceText = "IdeaTestUtil.setProjectLanguageLevel"
+
+    assertThat(AgentPromptEditorContextSupport.extractReferenceSymbolName(referenceText, referenceText.indexOf("setProjectLanguageLevel")))
+      .isEqualTo("setProjectLanguageLevel")
+    assertThat(AgentPromptEditorContextSupport.extractReferenceSymbolName(referenceText, referenceText.indexOf("IdeaTestUtil")))
+      .isEqualTo("IdeaTestUtil")
+  }
+
+  @Test
+  fun referenceSymbolNameIgnoresBlankAndPlaceholderSegments() {
+    val incompleteReferenceText = "IdeaTestUtil."
+
+    assertThat(AgentPromptEditorContextSupport.extractReferenceSymbolName(incompleteReferenceText,
+                                                                          incompleteReferenceText.lastIndex)).isNull()
+    assertThat(AgentPromptEditorContextSupport.extractReferenceSymbolName("<anonymous>", 1)).isNull()
+  }
+
+  @Test
   fun composeInitialMessageRendersFileSymbolThenSnippet() {
     val message = AgentPromptContextEnvelopeFormatter.composeInitialMessage(
       AgentPromptInitialMessageRequest(
@@ -179,6 +214,7 @@ class AgentPromptEditorContextContributorTest {
   private fun snapshot(symbolName: String?): AgentEditorContextSnapshot {
     return AgentEditorContextSnapshot(
       filePath = "/tmp/Sample.kt",
+      virtualFile = null,
       language = "kotlin",
       snippet = AgentPromptSnippet(
         text = "val answer = 42",
@@ -191,6 +227,9 @@ class AgentPromptEditorContextContributorTest {
         truncationReason = AgentPromptContextTruncationReason.NONE,
       ),
       symbolName = symbolName,
+      selection = AgentPromptTextRange(AgentPromptTextPosition(0, 0), AgentPromptTextPosition(0, 0)),
+      selections = emptyList(),
+      activeSelectionContent = "",
     )
   }
 

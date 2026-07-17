@@ -24,14 +24,14 @@ import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.util.use
 import com.intellij.openapi.vfs.newvfs.RefreshQueue
 import com.intellij.platform.ide.progress.withBackgroundProgress
-import com.intellij.python.common.tools.ToolId
+import com.intellij.psi.PsiFile
+import com.intellij.python.community.common.tools.ToolId
 import com.intellij.python.pyproject.model.api.ModuleCreateInfo
 import com.intellij.python.pyproject.model.api.autoConfigureSdkIfNeeded
 import com.intellij.python.pyproject.model.api.getModuleInfo
+import com.intellij.python.pyproject.statistics.PyProjectTomlCollector
 import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.DropDownLink
-import com.intellij.psi.PsiFile
-import com.intellij.python.pyproject.statistics.PyProjectTomlCollector
 import com.intellij.util.PlatformUtils
 import com.jetbrains.python.PyBundle
 import com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable

@@ -11,6 +11,7 @@ import java.io.DataInputStream;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,7 +42,7 @@ final class CompactFileReaderForVersion2 {
       for (int j = 0; j < dependenciesCount; j++) {
         int dependencyIndex = in.readInt();
         if (dependencyIndex < 0 || dependencyIndex >= totalIdCount) {
-          throw new MalformedRepositoryException("Invalid dependency index '" + dependencyIndex + "' in '" + descriptorId.getPresentableName() + "'");
+          throw new MalformedRepositoryException("Invalid dependency index '" + dependencyIndex + "' in '" + descriptorId.getDisplayName() + "'");
         }
         dependencies.add(descriptorIds[dependencyIndex]);
       }
@@ -53,6 +54,6 @@ final class CompactFileReaderForVersion2 {
 
       descriptors.put(descriptorId, RawRuntimeModuleDescriptor.create(descriptorId, resourcePaths, dependencies));
     }
-    return RawRuntimeModuleRepositoryData.create(descriptors, filePath.getParent());
+    return RawRuntimeModuleRepositoryData.create(descriptors, Collections.emptyList(), filePath.getParent());
   }
 }

@@ -2,15 +2,15 @@
 <module type="JAVA_MODULE" version="4">
   <component name="FacetManager">
     <facet type="kotlin-language" name="Kotlin">
-      <configuration version="5" platform="JVM 21" allPlatforms="JVM [21]" useProjectSettings="false">
+      <configuration version="5" platform="JVM 25" allPlatforms="JVM [25]" useProjectSettings="false">
         <compilerSettings>
           <option name="additionalArguments" value="-Xjvm-default=all -XXLanguage:+AllowEagerSupertypeAccessibilityChecks -progressive" />
         </compilerSettings>
         <compilerArguments>
           <stringArguments>
-            <stringArg name="jvmTarget" arg="21" />
-            <stringArg name="apiVersion" arg="2.3" />
-            <stringArg name="languageVersion" arg="2.3" />
+            <stringArg name="jvmTarget" arg="25" />
+            <stringArg name="apiVersion" arg="2.4" />
+            <stringArg name="languageVersion" arg="2.4" />
           </stringArguments>
           <arrayArguments>
             <arrayArg name="pluginClasspaths">
@@ -37,16 +37,21 @@
     <orderEntry type="module" module-name="intellij.platform.core" />
     <orderEntry type="module" module-name="intellij.platform.core.ui" />
     <orderEntry type="module" module-name="intellij.platform.ide" />
-    <orderEntry type="module" module-name="intellij.platform.structureView.impl" />
     <orderEntry type="module" module-name="intellij.platform.ide.impl" />
     <orderEntry type="module" module-name="intellij.platform.ide.concurrency" />
+    <orderEntry type="module" module-name="intellij.platform.ide.core" />
     <orderEntry type="module" module-name="intellij.platform.lang" />
     <orderEntry type="module" module-name="intellij.platform.lang.impl" />
     <orderEntry type="module" module-name="intellij.platform.projectModel" />
     <orderEntry type="module" module-name="intellij.platform.util" />
-    <orderEntry type="module" module-name="intellij.agent.workbench.common" />
+    <orderEntry type="module" module-name="intellij.platform.ai.agent.common" />
+    <orderEntry type="module" module-name="intellij.platform.ai.agent.core" />
     <orderEntry type="module" module-name="intellij.agent.workbench.prompt.core" />
-    <orderEntry type="module" module-name="intellij.agent.workbench.sessions.core" />
+    <orderEntry type="module" module-name="intellij.agent.workbench.prompt.context" />
+    <orderEntry type="module" module-name="intellij.agent.workbench.settings" />
+    <orderEntry type="module" module-name="intellij.platform.ai.agent.sessions.core" />
+    <orderEntry type="module" module-name="intellij.agent.workbench.ui" />
+    <orderEntry type="module" module-name="intellij.agent.workbench.sessions" />
     <orderEntry type="module" module-name="intellij.markdown" />
     <orderEntry type="module" module-name="intellij.platform.markdown.utils" />
     <orderEntry type="module" module-name="intellij.agent.workbench.prompt.vcs" scope="TEST" />
@@ -54,5 +59,7 @@
     <orderEntry type="module" module-name="intellij.platform.testFramework" scope="TEST" />
     <orderEntry type="module" module-name="intellij.platform.testFramework.junit5" scope="TEST" />
     <orderEntry type="module" module-name="intellij.libraries.assertj.core" scope="TEST" />
+    <orderEntry type="module" module-name="intellij.platform.util.ui" />
+    <orderEntry type="module" module-name="intellij.platform.editor.ui" />
   </component>
 </module>

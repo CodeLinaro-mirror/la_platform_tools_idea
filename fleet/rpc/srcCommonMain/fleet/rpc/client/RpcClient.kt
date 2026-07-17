@@ -16,7 +16,6 @@ import fleet.rpc.core.InstanceId
 import fleet.rpc.core.InternalStreamDescriptor
 import fleet.rpc.core.InternalStreamMessage
 import fleet.rpc.core.PrefetchStrategy
-import fleet.rpc.core.RemoteObject
 import fleet.rpc.core.RemoteResource
 import fleet.rpc.core.RemoteResourceConsumedException
 import fleet.rpc.core.RequestCompletionHandler
@@ -76,8 +75,9 @@ import kotlin.coroutines.Continuation
 import kotlin.coroutines.coroutineContext
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.startCoroutine
+import kotlin.time.Duration.Companion.milliseconds
 
-internal const val RPC_TIMEOUT = 60_000L
+internal val RPC_TIMEOUT = 60_000.milliseconds
 
 private data class OutgoingRequest(
   val route: UID,
@@ -140,12 +140,6 @@ private class RpcClient(
 
   private val remoteObjectFactory = this.asHandlerFactory().tracing()
 
-  private fun <T : RemoteObject> remoteObject(remoteApiDescriptor: RemoteApiDescriptor<T>, path: String, route: UID): T =
-    suspendProxy(remoteApiDescriptor, remoteObjectFactory.handler(ProxyClosure(
-      route = route,
-      instanceId = InstanceId(path)
-    )))
-
   private fun <T : RemoteResource> remoteResource(remoteApiDescriptor: RemoteApiDescriptor<T>, instanceId: InstanceId, route: UID, parentService: InstanceId): T {
     val resource = suspendProxy(
       remoteApiDescriptor,
@@ -161,7 +155,7 @@ private class RpcClient(
         ))
     )
 
-    remoteResources.compute(parentService) { k, s -> s.orEmpty().toPersistentSet().add(instanceId to resource) }
+    remoteResources.compute(parentService) { k, s -> s.orEmpty().toPersistentSet().adding(instanceId to resource) }
     resourceParents.put(instanceId, parentService)
 
     return resource
@@ -354,16 +348,10 @@ private class RpcClient(
     when (message) {
       is RpcMessage.CallResult -> {
         logger.trace { "Got CallResult: requestId = ${message.requestId}" }
-        // TODO this value can contain send/receive channels that must be closed, we should not drop it on the ground
         outgoingRpc.remove(message.requestId)?.let { (rpc) ->
           try {
             val (returnResult, streams) = run {
-              if (rpc.returnType is RemoteKind.RemoteObject) {
-                val path = Json.decodeFromJsonElement(String.serializer(), message.result)
-                val remoteApiDescriptor = rpc.returnType.descriptor as RemoteApiDescriptor<RemoteObject>
-                return@run remoteObject(remoteApiDescriptor, path, rpc.route) to emptyList()
-              }
-              else if (rpc.returnType is RemoteKind.Resource) {
+              if (rpc.returnType is RemoteKind.Resource) {
                 val path = Json.decodeFromJsonElement(InstanceId.serializer(), message.result)
                 val remoteApiDescriptor = rpc.returnType.descriptor as RemoteApiDescriptor<RemoteResource>
                 val resource = resource {
@@ -437,7 +425,6 @@ private class RpcClient(
           }
         }
         else {
-          // TODO this value can contain send/receive channels that must be closed
           logger.trace { "Received StreamData for unregistered stream ${message.streamId}" }
         }
       }

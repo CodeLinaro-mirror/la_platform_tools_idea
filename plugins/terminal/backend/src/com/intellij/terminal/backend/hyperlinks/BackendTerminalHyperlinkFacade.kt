@@ -1,100 +1,92 @@
 package com.intellij.terminal.backend.hyperlinks
 
-import com.intellij.execution.filters.HyperlinkInfoBase
-import com.intellij.execution.filters.navigate
-import com.intellij.openapi.application.EDT
 import com.intellij.openapi.editor.event.EditorMouseEvent
 import com.intellij.openapi.project.Project
-import com.intellij.util.SlowOperations
+import com.intellij.platform.eel.EelDescriptor
+import com.intellij.platform.eel.annotations.NativePath
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.withContext
-import org.jetbrains.annotations.ApiStatus
-import org.jetbrains.annotations.TestOnly
-import org.jetbrains.plugins.terminal.block.hyperlinks.TerminalHyperlinkFilterContext
-import org.jetbrains.plugins.terminal.block.reworked.hyperlinks.TerminalHyperlinksModel
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import org.jetbrains.plugins.terminal.fus.ReworkedTerminalUsageCollector
-import org.jetbrains.plugins.terminal.hyperlinks.BackendHyperlinkInfo
-import org.jetbrains.plugins.terminal.hyperlinks.TerminalHyperlinkNavigationInterceptor
-import org.jetbrains.plugins.terminal.session.impl.TerminalHyperlinkId
-import org.jetbrains.plugins.terminal.session.impl.TerminalHyperlinksChangedEvent
-import org.jetbrains.plugins.terminal.session.impl.TerminalHyperlinksHeartbeatEvent
-import org.jetbrains.plugins.terminal.session.impl.TerminalHyperlinksModelState
-import org.jetbrains.plugins.terminal.session.impl.dto.toFilterResultInfo
-import org.jetbrains.plugins.terminal.view.TerminalOutputModel
+import org.jetbrains.plugins.terminal.hyperlinks.TerminalHyperlinkId
+import org.jetbrains.plugins.terminal.hyperlinks.TerminalHyperlinkNavigator
+import org.jetbrains.plugins.terminal.hyperlinks.TerminalHyperlinksModel
+import org.jetbrains.plugins.terminal.hyperlinks.TerminalOutputContentUpdate
+import org.jetbrains.plugins.terminal.hyperlinks.filter.CompositeFilterWrapper
+import org.jetbrains.plugins.terminal.hyperlinks.menu.BackendHyperlinkInfo
+import org.jetbrains.plugins.terminal.hyperlinks.session.TerminalHyperlinksOutputEvent
+import org.jetbrains.plugins.terminal.hyperlinks.session.toFilterResultInfo
+import org.jetbrains.plugins.terminal.view.TerminalOffset
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.time.Duration.Companion.milliseconds
 
-@ApiStatus.Internal
-class BackendTerminalHyperlinkFacade(
+internal class BackendTerminalHyperlinkFacade(
+  private val debugName: String,
   private val project: Project,
+  eelDescriptor: EelDescriptor,
   coroutineScope: CoroutineScope,
-  outputModel: TerminalOutputModel,
-  isInAlternateBuffer: Boolean,
-  filterContext: TerminalHyperlinkFilterContext?,
 ) {
+  private val filterContext = TerminalHyperlinkFilterContextImpl(eelDescriptor)
+  private val filterWrapper = CompositeFilterWrapper(project, coroutineScope, filterContext).also {
+    it.getFilter() // kickstart computation
+  }
+  private val highlighter = BackendTerminalHyperlinkHighlighter(filterWrapper, coroutineScope)
 
-  private val highlighter = BackendTerminalHyperlinkHighlighter(project, coroutineScope, outputModel, isInAlternateBuffer, filterContext)
-  private val model = TerminalHyperlinksModel(if (isInAlternateBuffer) "Backend AltBuf" else "Backend Output", outputModel)
+  private val trimOffset = AtomicReference(TerminalOffset.of(0))
+  private val model = TerminalHyperlinksModel(
+    debugName = debugName,
+    trimOffset = { trimOffset.get() }
+  )
 
-  val heartbeatFlow: Flow<TerminalHyperlinksHeartbeatEvent> get() = highlighter.heartbeatFlow
-  private val pendingUpdateEvents = MutableStateFlow(0)
-
-  fun collectResultsAndMaybeStartNewTask(): TerminalHyperlinksChangedEvent? {
-    // The event is immediately passed to updateModelState(),
-    // but the tests need to wait until it was actually applied, and they wait concurrently.
-    // This flow works as a latch: it's locked before we even retrieve the event,
-    // and unlocked only after it's applied (or if it's null).
-    pendingUpdateEvents.update { it + 1 }
-    val modelUpdateEvent = highlighter.collectResultsAndMaybeStartNewTask()
-    if (modelUpdateEvent == null) {
-      pendingUpdateEvents.update { it - 1 }
+  val heartbeatFlow: Flow<Unit> = flow {
+    while (true) {
+      if (highlighter.mayHaveWorkToDo()) {
+        emit(Unit)
+      }
+      delay(20.milliseconds)
     }
-    return modelUpdateEvent
   }
 
-  fun updateModelState(event: TerminalHyperlinksChangedEvent): Boolean {
+  /** Fired when [com.intellij.execution.filters.Filter]'s list is changed in [filterWrapper] */
+  val filterUpdatesFlow: Flow<Unit>
+    get() = filterWrapper.getFilterFlow().map { /*Unit*/ }
+
+  fun applyContentUpdate(update: TerminalOutputContentUpdate) {
+    trimOffset.set(update.trimStartOffset)
+    highlighter.applyUpdate(update)
+  }
+
+  /**
+   * [newDirectory] - native path inside the environment of [filterContext]'s [EelDescriptor].
+   */
+  fun updateWorkingDirectory(newDirectory: @NativePath String?) {
+    filterContext.updateCurrentDirectory(newDirectory)
+  }
+
+  fun collectResultsAndMaybeStartNewTask(): List<TerminalHyperlinksOutputEvent> {
+    return highlighter.collectResultsAndMaybeStartNewTask()
+  }
+
+  fun updateModelState(event: TerminalHyperlinksOutputEvent.HyperlinksUpdated): Boolean {
     val removedFrom = event.removeFromOffset
     if (removedFrom != null) {
       model.removeHyperlinks(removedFrom)
     }
     model.addHyperlinks(event.hyperlinks.map { it.toFilterResultInfo() })
-    pendingUpdateEvents.update { it - 1 }
     return true
+  }
+
+  fun getHyperlink(hyperlinkId: TerminalHyperlinkId): BackendHyperlinkInfo? {
+    return model.getHyperlink(hyperlinkId)?.hyperlinkInfo?.let { hyperlinkInfo ->
+      BackendHyperlinkInfo(hyperlinkInfo, highlighter.fakeMouseEvent)
+    }
   }
 
   suspend fun hyperlinkClicked(hyperlinkId: TerminalHyperlinkId, mouseEvent: EditorMouseEvent?) {
     val hyperlink = model.getHyperlink(hyperlinkId)?.hyperlinkInfo ?: return
-    if (TerminalHyperlinkNavigationInterceptor.intercept(project, hyperlink, mouseEvent)) {
-      ReworkedTerminalUsageCollector.logHyperlinkFollowed(hyperlink.javaClass)
-      return
-    }
-    withContext(Dispatchers.EDT) { // navigation might need the WIL
-      SlowOperations.startSection(SlowOperations.ACTION_PERFORM).use {
-        if (hyperlink is HyperlinkInfoBase && mouseEvent != null) {
-          hyperlink.navigate(project, mouseEvent.editor, mouseEvent.logicalPosition)
-        }
-        else {
-          hyperlink.navigate(project)
-        }
-      }
-      ReworkedTerminalUsageCollector.logHyperlinkFollowed(hyperlink.javaClass)
-    }
+    TerminalHyperlinkNavigator.navigate(project, hyperlink, mouseEvent)
+    ReworkedTerminalUsageCollector.logHyperlinkFollowed(hyperlink.javaClass)
   }
-
-  fun getHyperlink(hyperlinkId: TerminalHyperlinkId): BackendHyperlinkInfo? =
-    model.getHyperlink(hyperlinkId)?.hyperlinkInfo?.let {
-      hyperlinkInfo -> BackendHyperlinkInfo(hyperlinkInfo, highlighter.fakeMouseEvent)
-    }
-
-  fun dumpState(): TerminalHyperlinksModelState = model.dumpState()
-
-  @TestOnly
-  suspend fun awaitTaskCompletion() {
-    highlighter.awaitTaskCompletion()
-    pendingUpdateEvents.first { it == 0 } // Wait until the last event is applied.
-  }
-
 }

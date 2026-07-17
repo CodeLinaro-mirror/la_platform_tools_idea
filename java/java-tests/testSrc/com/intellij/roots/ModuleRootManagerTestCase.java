@@ -73,11 +73,12 @@ public abstract class ModuleRootManagerTestCase extends JavaModuleTestCase {
   }
 
   protected static VirtualFile getFastUtilJar() {
-    return IntelliJProjectConfiguration.getJarFromSingleJarProjectLibrary("fastutil-min");
+    return IntelliJProjectConfiguration.getVirtualFile(
+      IntelliJProjectConfiguration.getModuleLibrary("intellij.libraries.fastutil", "fastutil-min"));
   }
 
   protected static Path getLibSources() {
-    return IntelliJProjectConfiguration.getJarPathFromSingleJarProjectLibrary("gson");
+    return IntelliJProjectConfiguration.getModuleLibrary("intellij.libraries.gson", "gson").getClasses().getFirst().toPath();
   }
 
   protected VirtualFile addSourceRoot(Module module, boolean testSource) throws IOException {
@@ -112,6 +113,6 @@ public abstract class ModuleRootManagerTestCase extends JavaModuleTestCase {
   }
 
   protected VirtualFile getSampleLibJar() {
-    return IntelliJProjectConfiguration.getJarFromSingleJarProjectLibrary("byte-buddy");
+    return IntelliJProjectConfiguration.getJarFromSingleJarModuleLibrary("intellij.libraries.byte.buddy", "byte-buddy");
   }
 }

@@ -1,12 +1,13 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.agent.workbench.sessions.state
 
-import com.intellij.agent.workbench.common.normalizeAgentWorkbenchPath
-import com.intellij.agent.workbench.common.session.AgentSessionProvider
-import com.intellij.agent.workbench.common.session.AgentSessionThread
+import com.intellij.platform.ai.agent.core.normalizeAgentWorkbenchPath
+import com.intellij.platform.ai.agent.core.session.AgentSessionProvider
+import com.intellij.platform.ai.agent.core.session.AgentSessionThread
 import com.intellij.agent.workbench.sessions.model.AgentProjectSessions
 import com.intellij.agent.workbench.sessions.model.AgentSessionsState
 import com.intellij.agent.workbench.sessions.model.AgentWorktree
+import com.intellij.agent.workbench.sessions.service.failLoadingProviderLoadMetadata
 import com.intellij.openapi.components.Service
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -38,14 +39,25 @@ class AgentSessionsStateStore {
     update { state ->
       state.copy(
         projects = state.projects.map { project ->
+          val projectLoadMetadata = failLoadingProviderLoadMetadata(
+            providerLoadStates = project.providerLoadStates,
+            providersWithUnknownThreadCount = project.providersWithUnknownThreadCount,
+          )
           project.copy(
-            isLoading = false,
-            hasLoaded = true,
-            hasUnknownThreadCount = false,
             errorMessage = errorMessage,
             providerWarnings = emptyList(),
+            providerLoadStates = projectLoadMetadata.providerLoadStates,
+            providersWithUnknownThreadCount = projectLoadMetadata.providersWithUnknownThreadCount,
             worktrees = project.worktrees.map { wt ->
-              wt.copy(isLoading = false, hasUnknownThreadCount = false, providerWarnings = emptyList())
+              val worktreeLoadMetadata = failLoadingProviderLoadMetadata(
+                providerLoadStates = wt.providerLoadStates,
+                providersWithUnknownThreadCount = wt.providersWithUnknownThreadCount,
+              )
+              wt.copy(
+                providerWarnings = emptyList(),
+                providerLoadStates = worktreeLoadMetadata.providerLoadStates,
+                providersWithUnknownThreadCount = worktreeLoadMetadata.providersWithUnknownThreadCount,
+              )
             },
           )
         },
@@ -114,34 +126,42 @@ class AgentSessionsStateStore {
   }
 
   fun updateProject(path: String, transform: (AgentProjectSessions) -> AgentProjectSessions) {
-    update { state ->
-      val next = state.projects.map { project ->
-        if (project.path == path) transform(project) else project
-      }
-      state.copy(projects = next, lastUpdatedAt = System.currentTimeMillis())
+    updateProjects { project ->
+      if (project.path == path) transform(project) else project
     }
   }
 
   fun updateWorktree(projectPath: String, worktreePath: String, transform: (AgentWorktree) -> AgentWorktree) {
-    update { state ->
-      val next = state.projects.map { project ->
-        if (project.path == projectPath) {
-          project.copy(worktrees = project.worktrees.map { wt ->
-            if (wt.path == worktreePath) transform(wt) else wt
-          })
-        }
-        else {
-          project
-        }
-      }
-      state.copy(projects = next, lastUpdatedAt = System.currentTimeMillis())
+    updateProject(projectPath) { project ->
+      project.withUpdatedWorktree(worktreePath = worktreePath, transform = transform)
     }
   }
 
   fun findWorktreeBranch(path: String): String? {
+    return mutableState.value.projects
+      .asSequence()
+      .flatMap { project -> project.worktrees.asSequence() }
+      .firstOrNull { worktree -> worktree.path == path }
+      ?.branch
+  }
+
+  private fun updateProjects(transform: (AgentProjectSessions) -> AgentProjectSessions) {
+    update { state ->
+      val nextProjects = state.projects.map(transform)
+      if (nextProjects == state.projects) state else state.copy(projects = nextProjects, lastUpdatedAt = System.currentTimeMillis())
+    }
+  }
+
+  fun findProjectDirectory(path: String): String? {
+    val normalizedPath = normalizeAgentWorkbenchPath(path)
     for (project in mutableState.value.projects) {
+      if (normalizeAgentWorkbenchPath(project.path) == normalizedPath) {
+        return project.projectDirectory?.takeIf { it.isNotBlank() }?.let(::normalizeAgentWorkbenchPath)
+      }
       for (worktree in project.worktrees) {
-        if (worktree.path == path) return worktree.branch
+        if (normalizeAgentWorkbenchPath(worktree.path) == normalizedPath) {
+          return worktree.projectDirectory?.takeIf { it.isNotBlank() }?.let(::normalizeAgentWorkbenchPath)
+        }
       }
     }
     return null
@@ -171,31 +191,38 @@ private fun findThreadIndex(
   threadId: String,
 ): Int? {
   val projectThreads = projects.firstOrNull { it.path == normalizedPath }?.threads
-  if (projectThreads != null) {
-    val index = projectThreads.indexOfFirst { thread ->
-      thread.matchesProviderAndThreadOrSubAgent(provider = provider, threadId = threadId)
-    }
-    if (index >= 0) return index
+  projectThreads?.indexOfMatchingThread(provider = provider, threadId = threadId)?.let { index ->
+    return index
   }
 
-  projects.forEach { project ->
-    val worktreeThreads = project.worktrees.firstOrNull { it.path == normalizedPath }?.threads ?: return@forEach
-    val index = worktreeThreads.indexOfFirst { thread ->
-      thread.matchesProviderAndThreadOrSubAgent(provider = provider, threadId = threadId)
-    }
-    if (index >= 0) return index
-  }
-
-  return null
+  return projects
+    .asSequence()
+    .mapNotNull { project -> project.worktrees.firstOrNull { worktree -> worktree.path == normalizedPath } }
+    .firstNotNullOfOrNull { worktree -> worktree.threads.indexOfMatchingThread(provider = provider, threadId = threadId) }
 }
 
 private fun AgentSessionThread.matchesProviderAndThreadOrSubAgent(provider: AgentSessionProvider, threadId: String): Boolean {
   return this.provider == provider && (id == threadId || subAgents.any { subAgent -> subAgent.id == threadId })
 }
 
+private fun List<AgentSessionThread>.indexOfMatchingThread(provider: AgentSessionProvider, threadId: String): Int? {
+  val index = indexOfFirst { thread -> thread.matchesProviderAndThreadOrSubAgent(provider = provider, threadId = threadId) }
+  return index.takeIf { it >= 0 }
+}
+
+private fun AgentProjectSessions.withUpdatedWorktree(
+  worktreePath: String,
+  transform: (AgentWorktree) -> AgentWorktree,
+): AgentProjectSessions {
+  val nextWorktrees = worktrees.map { worktree ->
+    if (worktree.path == worktreePath) transform(worktree) else worktree
+  }
+  return if (nextWorktrees == worktrees) this else copy(worktrees = nextWorktrees)
+}
+
 private fun requiredVisibleClosedProjectCount(projects: List<AgentProjectSessions>, normalizedPath: String): Int? {
   var closedProjectCount = 0
-  for (project in projects) {
+  projects.forEach { project ->
     val isAlwaysVisible = project.isOpen || project.worktrees.any { it.isOpen }
     if (!isAlwaysVisible) {
       closedProjectCount++

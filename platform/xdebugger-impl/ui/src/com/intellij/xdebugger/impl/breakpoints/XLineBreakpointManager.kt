@@ -14,6 +14,7 @@ import com.intellij.openapi.actionSystem.IdeActions
 import com.intellij.openapi.actionSystem.ex.ActionUtil
 import com.intellij.openapi.actionSystem.impl.SimpleDataContext
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.EDT
 import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.diff.impl.DiffUtil
@@ -23,20 +24,23 @@ import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.colors.EditorColorsListener
 import com.intellij.openapi.editor.colors.EditorColorsManager
 import com.intellij.openapi.editor.colors.EditorColorsScheme
+import com.intellij.openapi.editor.event.BulkAwareDocumentListener
 import com.intellij.openapi.editor.event.DocumentEvent
-import com.intellij.openapi.editor.event.DocumentListener
 import com.intellij.openapi.editor.event.EditorMouseEvent
 import com.intellij.openapi.editor.event.EditorMouseEventArea
 import com.intellij.openapi.editor.event.EditorMouseListener
 import com.intellij.openapi.editor.event.EditorMouseMotionListener
 import com.intellij.openapi.editor.ex.EditorEx
 import com.intellij.openapi.editor.ex.util.EditorUtil
+import com.intellij.openapi.editor.impl.BreakpointArea
+import com.intellij.openapi.editor.impl.InterLineBreakpointProperties
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileDocumentManagerListener
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.TextEditor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.startup.StartupManager
+import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.util.registry.RegistryValue
@@ -65,9 +69,12 @@ import com.intellij.xdebugger.SplitDebuggerMode
 import com.intellij.xdebugger.XDebuggerUtil
 import com.intellij.xdebugger.breakpoints.XBreakpoint
 import com.intellij.xdebugger.breakpoints.XLineBreakpoint
+import com.intellij.xdebugger.breakpoints.XLineBreakpointVerticalPlacement
 import com.intellij.xdebugger.impl.actions.ToggleLineBreakpointAction
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.TestOnly
 import java.awt.event.MouseEvent
@@ -91,6 +98,7 @@ class XLineBreakpointManager(
   )
 
   private var myDragDetected = false
+  private var immediateUiUpdateOnEdtAllowed = true
 
   init {
     val disposable = cs.asDisposable()
@@ -203,6 +211,7 @@ class XLineBreakpointManager(
 
   private fun cleanUpBreakpoints(document: Document) {
     val breakpoints = getDocumentBreakpointProxies(document)
+    val file = FileDocumentManager.getInstance().getFile(document)
     val valid = mutableListOf<XLineBreakpointProxy>()
     val invalid = mutableListOf<XLineBreakpointProxy>()
     for (breakpoint in breakpoints) {
@@ -218,7 +227,7 @@ class XLineBreakpointManager(
         invalid.add(breakpoint)
       }
     }
-    removeBreakpoints(invalid)
+    removeInvalidBreakpoints(valid, invalid, document, file)
     // Check if two or more breakpoints occurred at the same position and remove duplicates.
     val areInlineBreakpoints = XDebuggerUtil.areInlineBreakpointsEnabled(FileDocumentManager.getInstance().getFile(document))
     val duplicates = valid
@@ -234,12 +243,11 @@ class XLineBreakpointManager(
                 return
               }
             }
-            Triple(b.type, b.getLine(), startOffset)
+            listOf(b.type, b.getLine(), startOffset, b.getPlacement())
           }
         }
         else {
-          // We cannot show multiple breakpoints of any type at the same line.
-          b.getLine()
+          listOf(b.getLine(), b.getPlacement())
         }
       }
       .values
@@ -248,18 +256,112 @@ class XLineBreakpointManager(
     removeBreakpoints(duplicates)
   }
 
+  private fun XLineBreakpointManager.removeInvalidBreakpoints(
+    valid: MutableList<XLineBreakpointProxy>,
+    invalid: MutableList<XLineBreakpointProxy>,
+    document: Document,
+    file: VirtualFile?,
+  ) {
+    // Inter-line breakpoints aren't, conceptually, tied to a line; they're in-between the lines,
+    // so, if a line numbered N is removed, it's natural for the inter-line breakpoint between lines N-1 and N
+    // to re-attach itself to the new line N
+    val saveCandidates = invalid.mapNotNull { it.createInterLineSaveCandidate(document, file) }
+    val possiblySaveableInterLineBreakpoints = saveCandidates.mapTo(mutableSetOf()) { it.breakpoint }
+    removeBreakpoints(invalid - possiblySaveableInterLineBreakpoints)
+    saveOrRemoveInterLineBreakpointsAsync(
+      saveCandidates = saveCandidates,
+      occupiedLines = valid
+        .filter { it.getPlacement() == XLineBreakpointVerticalPlacement.INTER_LINE }
+        .mapTo(mutableSetOf()) { it.getLine() },
+      )
+  }
+
+  private data class InterLineSaveCandidateBreakpoint(
+    val breakpoint: XLineBreakpointProxy,
+    val file: VirtualFile,
+    val line: Int,
+  )
+
+  private fun XLineBreakpointProxy.createInterLineSaveCandidate(
+    document: Document,
+    file: VirtualFile?,
+  ): InterLineSaveCandidateBreakpoint? {
+    if (file == null || getPlacement() != XLineBreakpointVerticalPlacement.INTER_LINE) {
+      return null
+    }
+
+    // For inter-line breakpoints, deleting the line under the marker shifts the next line
+    // into the same line index stored on the breakpoint.
+    val candidateLine = getLine()
+    if (candidateLine !in 0 until document.lineCount) {
+      return null
+    }
+
+    return InterLineSaveCandidateBreakpoint(this, file, candidateLine)
+  }
+
+  private fun saveOrRemoveInterLineBreakpointsAsync(
+    saveCandidates: List<InterLineSaveCandidateBreakpoint>,
+    occupiedLines: MutableSet<Int>,
+  ) {
+    if (saveCandidates.isEmpty()) {
+      return
+    }
+
+    cs.launch(Dispatchers.EDT) {
+      saveOrRemoveInterLineBreakpoints(saveCandidates, occupiedLines)
+    }
+  }
+
+  private suspend fun saveOrRemoveInterLineBreakpoints(
+    candidates: List<InterLineSaveCandidateBreakpoint>,
+    occupiedLines: MutableSet<Int>,
+  ) {
+    val toRemove = candidates.filterNot { it.shouldMoveToNextLine(occupiedLines) }.map { it.breakpoint }
+    removeBreakpoints(toRemove)
+
+    val savedBreakpoints = candidates.mapTo(mutableSetOf()) { it.breakpoint } - toRemove.toSet()
+    for (breakpoint in savedBreakpoints) {
+      updateBreakpointNow(breakpoint)
+    }
+  }
+
+  private suspend fun InterLineSaveCandidateBreakpoint.shouldMoveToNextLine(
+    occupiedLines: Set<Int>,
+  ): Boolean {
+    return line !in occupiedLines && breakpoint.type.canPutAt(file, line, project)
+  }
+
   private fun removeBreakpoints(toRemove: Collection<XBreakpointProxy>?) {
     for (breakpoint in toRemove.orEmpty()) {
       manager.removeBreakpoint(breakpoint)
     }
   }
 
+  private fun isImmediateUiUpdateAllowed(): Boolean {
+    return EDT.isCurrentThreadEdt() && immediateUiUpdateOnEdtAllowed
+  }
+
+  private inline fun withImmediateUiUpdateDisabled(block: () -> Unit) {
+    if (!EDT.isCurrentThreadEdt()) {
+      block()
+      return
+    }
+    immediateUiUpdateOnEdtAllowed = false
+    try {
+      block()
+    }
+    finally {
+      immediateUiUpdateOnEdtAllowed = true
+    }
+  }
+
   override fun breakpointChanged(breakpoint: XLightLineBreakpointProxy) {
-    if (EDT.isCurrentThreadEdt()) {
+    if (isImmediateUiUpdateAllowed()) {
       updateBreakpointNow(breakpoint)
     }
     else {
-      queueBreakpointUpdate(breakpoint, null)
+      queueBreakpointUpdate(breakpoint)
     }
   }
 
@@ -315,17 +417,33 @@ class XLineBreakpointManager(
     breakpointUpdateQueue.sendFlush()
   }
 
-  private inner class MyDocumentListener : DocumentListener {
-    override fun documentChanged(e: DocumentEvent) {
-      val document = e.document
-      val breakpoints = getDocumentBreakpointProxies(document)
-      if (!breakpoints.isEmpty()) {
-        // Update position immediately to avoid races with doUpdateUI
-        breakpoints.forEach { it.fastUpdatePosition() }
-        scheduleDocumentUpdate(document)
-
+  private inner class MyDocumentListener : BulkAwareDocumentListener {
+    override fun documentChangedNonBulk(e: DocumentEvent) {
+      if (processDocumentChange(e.document)) {
         InlineBreakpointInlayManager.getInstance(project).redrawDocument(e)
       }
+    }
+
+    override fun bulkUpdateFinished(document: Document) {
+      if (processDocumentChange(document)) {
+        InlineBreakpointInlayManager.getInstance(project).redrawDocument(document)
+      }
+    }
+
+    private fun processDocumentChange(document: Document): Boolean {
+      val breakpoints = getDocumentBreakpointProxies(document)
+      if (breakpoints.isEmpty()) return false
+
+      // fastUpdatePosition leads to the breakpointChanged call,
+      // but for the document update we do not need immediate UI update
+      withImmediateUiUpdateDisabled {
+        // Update position immediately to avoid races with doUpdateUI
+        // We must mark the range as dirty so that no other asynchronous repaint makes breakpoint presentation incorrect.
+        breakpoints.forEach { it.fastUpdatePosition() }
+      }
+
+      scheduleDocumentUpdate(document)
+      return true
     }
   }
 
@@ -363,7 +481,7 @@ class XLineBreakpointManager(
     override fun mouseClicked(e: EditorMouseEvent) {
       val editor = e.editor
       val mouseEvent = e.mouseEvent
-      if ((mouseEvent.isPopupTrigger || mouseEvent.isMetaDown || mouseEvent.isControlDown)
+      if ((mouseEvent.isPopupTrigger || mouseEvent.isControlDown)
           || mouseEvent.button != MouseEvent.BUTTON1
           || DiffUtil.isDiffEditor(editor)
           || !isInsideClickableGutterArea(e)
@@ -376,13 +494,23 @@ class XLineBreakpointManager(
 
       val document = editor.document
       PsiDocumentManager.getInstance(project).commitDocument(document)
-      val line = EditorUtil.yToLogicalLineNoCustomRenderers(editor, mouseEvent.y)
+      // Use inter-line detection for click handling; configs are calculated asynchronously by the gutter
+      val hitResult = EditorUtil.yToLogicalLineWithInterLineDetection(editor, mouseEvent)
+      val line = hitResult.line
+      val isInterLine = hitResult.isBetweenLines
       val file = FileDocumentManager.getInstance().getFile(document)
-      if (DocumentUtil.isValidLine(line, document) && file != null) {
+      if (line >= 0 && DocumentUtil.isValidLine(line, document) && file != null) {
         val action = ActionManager.getInstance().getAction(IdeActions.ACTION_TOGGLE_LINE_BREAKPOINT)
         if (action == null) throw AssertionError("'" + IdeActions.ACTION_TOGGLE_LINE_BREAKPOINT + "' action not found")
-        val dataContext = SimpleDataContext.getSimpleContext(BREAKPOINT_LINE_KEY, line,
-                                                             DataManager.getInstance().getDataContext(mouseEvent.component))
+        val baseContext = DataManager.getInstance().getDataContext(mouseEvent.component)
+        val dataContext = SimpleDataContext.builder().apply {
+          setParent(baseContext)
+          add(BREAKPOINT_LINE_KEY, line)
+          add(INTER_LINE_BREAKPOINT_KEY, isInterLine)
+          if (hitResult is BreakpointArea.InterLine) {
+            add(InterLineBreakpointProperties.KEY, hitResult.configuration.breakpointProperties)
+          }
+        }.build()
         val event = AnActionEvent.createFromAnAction(action, mouseEvent, ActionPlaces.EDITOR_GUTTER, dataContext)
         // TODO IJPL-185322 Introduce a better way to handle actions in the frontend
         // TODO We actually want to call the action directly, but dispatch it on frontend if possible
@@ -449,5 +577,9 @@ class XLineBreakpointManager(
   companion object {
     @JvmField
     val BREAKPOINT_LINE_KEY: DataKey<Int> = DataKey.create("xdebugger.breakpoint.line")
+    @JvmField
+    val INTER_LINE_BREAKPOINT_KEY: DataKey<Boolean> = DataKey.create("xdebugger.breakpoint.interline")
+    @JvmField
+    val LOG_EXPRESSION: Key<String> = Key.create("xdebugger.breakpoint.logExpression")
   }
 }

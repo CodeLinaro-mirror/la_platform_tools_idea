@@ -4,10 +4,8 @@ package com.jetbrains.python.sdk.configuration
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.module.Module
-import com.intellij.openapi.project.Project
-import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.openapi.util.Disposer
-import com.intellij.python.common.tools.ToolId
+import com.intellij.python.community.common.tools.ToolId
 import com.intellij.python.community.services.systemPython.SystemPythonService
 import com.intellij.python.pyproject.model.api.SuggestedSdk
 import com.intellij.python.pyproject.model.api.suggestSdk
@@ -19,16 +17,15 @@ import com.jetbrains.python.sdk.configuration.suppressors.PyPackageRequirementsI
 import com.jetbrains.python.sdk.configuration.suppressors.TipOfTheDaySuppressor
 import com.jetbrains.python.sdk.configurePythonSdk
 import com.jetbrains.python.sdk.installExecutableViaPythonScript
-import com.jetbrains.python.util.ShowingMessageErrorSync
+import com.jetbrains.python.errorProcessing.ErrorSink
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.jetbrains.annotations.ApiStatus
 import java.nio.file.Path
 
 object PyProjectSdkConfiguration {
   internal suspend fun installToolAndShowErrorIfNeeded(module: Module, pathPersister: (Path) -> Unit, toolToInstall: String) {
     performToolInstallation(pathPersister, toolToInstall).errorOrNull?.also {
-      ShowingMessageErrorSync.emit(it, module.project)
+      ErrorSink().emit(it, module.project)
     }
   }
 
@@ -44,7 +41,7 @@ object PyProjectSdkConfiguration {
     thisLogger().debug("Configuring sdk using ${createSdkInfoWithTool.toolId}")
 
     val sdk = createSdkInfoWithTool.createSdkInfo.getSdkCreator(module).createSdk().getOr {
-      ShowingMessageErrorSync.emit(it.error, module.project)
+      ErrorSink().emit(it.error, module.project)
       return@withContext true
     }
 
@@ -52,15 +49,6 @@ object PyProjectSdkConfiguration {
     configurePythonSdk(module.project, module, sdk)
     thisLogger().debug("Successfully configured sdk using ${createSdkInfoWithTool.toolId}")
     true
-  }
-
-  @ApiStatus.Obsolete
-  fun setReadyToUseSdk(project: Project, module: Module, sdk: Sdk) {
-    if (module.isDisposed) {
-      return
-    }
-
-    configurePythonSdk(project, module, sdk)
   }
 
   fun suppressTipAndInspectionsFor(module: Module, toolName: String): Disposable {

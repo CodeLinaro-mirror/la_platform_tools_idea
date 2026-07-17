@@ -9,12 +9,16 @@ import com.intellij.grazie.jlanguage.Lang
 import com.intellij.openapi.util.Disposer
 import com.intellij.spellchecker.SpellCheckerManager.Companion.getInstance
 import com.intellij.spellchecker.dictionary.Dictionary
+import com.intellij.spellchecker.dictionary.Dictionary.LookupStatus
+import com.intellij.spellchecker.dictionary.Dictionary.LookupStatus.Absent
+import com.intellij.spellchecker.dictionary.Dictionary.LookupStatus.Present
 
 
 class MarkdownSupportTest : GrazieTestBase() {
   override val additionalEnabledRules: Set<String> = setOf(
     "LanguageTool.EN.COMMA_COMPOUND_SENTENCE",
-    "LanguageTool.EN.EN_QUOTES"
+    "LanguageTool.EN.EN_QUOTES",
+    "LanguageTool.EN.DASH_RULE"
   )
 
   fun `test grammar check in file`() {
@@ -25,6 +29,10 @@ class MarkdownSupportTest : GrazieTestBase() {
   fun `test grazie spellchecker in file`() {
     enableProofreadingFor(setOf(Lang.GERMANY_GERMAN))
     runHighlightTestForFile("ide/language/markdown/Spellcheck.md")
+  }
+
+  fun `test no false positives in test links`() {
+    runHighlightTestForFile("ide/language/markdown/TestLink.md")
   }
 
   fun `test replacement with markup inside`() {
@@ -46,6 +54,22 @@ class MarkdownSupportTest : GrazieTestBase() {
       The most important type of such objects is services. Application-level services are automatically disposed 
       by the platform when the IDE is closed or the plugin providing the service is unloaded.
       Project-level services are disposed on project close or plugin upload events.
+    """.trimIndent())
+    myFixture.checkHighlighting()
+  }
+
+  fun `test html entity excluded before grazie checks`() {
+    myFixture.configureByText("a.md", "You&#39;re here.")
+    myFixture.checkHighlighting()
+  }
+
+  fun `test no em dash warning for list bullet in injected markdown`() {
+    myFixture.configureByText("a.md", """
+      Something
+      ```markdown
+      ## Goals
+      - Primary outcomes the feature must deliver.
+      ```
     """.trimIndent())
     myFixture.checkHighlighting()
   }
@@ -99,7 +123,7 @@ class MarkdownSupportTest : GrazieTestBase() {
     val words = setOf("foldable", "rollable", "wearable")
     getInstance(project).spellChecker!!.addDictionary(object : Dictionary {
       override fun getName(): String = name
-      override fun contains(word: String): Boolean = word in words
+      override fun lookup(word: String): LookupStatus = if (word in words) Present else Absent
       override fun getWords(): Set<String> = words
     })
     Disposer.register(testRootDisposable) { getInstance(project).spellChecker!!.removeDictionary(name) }
@@ -110,6 +134,13 @@ class MarkdownSupportTest : GrazieTestBase() {
     myFixture.configureByText("a.md", mixedText + """
 
       <!-- 将文本粘贴在此，或者检测以下文本 我和她去看了<GRAMMAR_ERROR descr="wa5">二部</GRAMMAR_ERROR>电影。-->
+    """.trimIndent())
+    myFixture.checkHighlighting()
+  }
+
+  fun `test grammar check in html comment`() {
+    myFixture.configureByText("a.md", """
+      <!-- It is <GRAMMAR_ERROR <TYPO descr="Typo: In word 'descr'">descr</TYPO>=\"EN_A_VS_AN\">an</GRAMMAR_ERROR> friend there -->
     """.trimIndent())
     myFixture.checkHighlighting()
   }

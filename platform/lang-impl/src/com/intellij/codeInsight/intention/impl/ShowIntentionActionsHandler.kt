@@ -34,6 +34,7 @@ import com.intellij.modcommand.ModCommandService
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.application.ex.ApplicationManagerEx
+import com.intellij.openapi.application.runReadActionBlocking
 import com.intellij.openapi.command.CommandProcessor
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.editor.Editor
@@ -81,9 +82,9 @@ open class ShowIntentionActionsHandler : CodeInsightActionHandler {
         val prioritizedRunnable = ThrowableComputable<CachedIntentions, RuntimeException> {
           ProgressManager.getInstance().computePrioritized(ThrowableComputable {
             DaemonCodeAnalyzerImpl.waitForLazyQuickFixesUnderCaret(project, editor)
-            ApplicationManager.getApplication().runReadAction(ThrowableComputable {
+            runReadActionBlocking {
               CachedIntentions.createAndUpdateActions(project, file, editor, ShowIntentionsPass.getActionsToShow(editor, file))
-            })
+            }
           })
         }
 
@@ -409,9 +410,11 @@ private fun invokeIntention(
   }
 
   var originalOffset: SmartPsiFileRange? = null
+  var invocationOffset: SmartPsiFileRange? = null
   if (editor != null && fixOffset >= 0) {
-    originalOffset = SmartPointerManager.getInstance(file.getProject())
-      .createSmartPsiFileRangePointer(file, TextRange.from(editor.getCaretModel().getOffset(), 0))
+    val smartPointerManager = SmartPointerManager.getInstance(file.getProject())
+    originalOffset = smartPointerManager.createSmartPsiFileRangePointer(file, TextRange.from(editor.caretModel.offset, 0))
+    invocationOffset = smartPointerManager.createSmartPsiFileRangePointer(file, TextRange.from(fixOffset, 0))
     editor.getCaretModel().moveToOffset(fixOffset)
   }
   try {
@@ -423,10 +426,13 @@ private fun invokeIntention(
     }
   }
   finally {
-    if (originalOffset?.getRange() != null &&
-        editor!!.getCaretModel().offset == fixOffset &&
+    val restoredOffset = originalOffset?.getRange()?.getStartOffset()
+    val currentInvocationOffset = invocationOffset?.getRange()?.getStartOffset()
+    if (restoredOffset != null &&
+        currentInvocationOffset != null &&
+        editor!!.getCaretModel().offset == currentInvocationOffset &&
         TemplateManager.getInstance(file.getProject()).getActiveTemplate(editor) == null) {
-      editor.getCaretModel().moveToOffset(originalOffset.getRange()!!.getStartOffset())
+      editor.getCaretModel().moveToOffset(restoredOffset)
     }
   }
 }

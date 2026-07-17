@@ -15,9 +15,8 @@ import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.util.PsiTreeUtil
+import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.kotlin.idea.codeinsight.api.classic.inspections.IntentionBasedInspection
-import org.jetbrains.kotlin.idea.util.application.isUnitTestMode
-import org.jetbrains.kotlin.psi.CREATE_BY_PATTERN_MAY_NOT_REFORMAT
 import org.jetbrains.kotlin.psi.KtBlockExpression
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.psiUtil.containsInside
@@ -46,6 +45,7 @@ abstract class SelfTargetingIntention<TElement : PsiElement>(
         ) : this(elementType, Supplier { textGetter() }, Supplier { familyNameGetter() }) {
     }
 
+    @ApiStatus.ScheduledForRemoval
     @Deprecated("Replace with the overloaded method")
     @Suppress("HardCodedStringLiteral")
     protected fun setTextGetter(textGetter: () -> @IntentionName String) {
@@ -126,18 +126,8 @@ abstract class SelfTargetingIntention<TElement : PsiElement>(
 
     protected open fun visitTargetTypeOnlyOnce(): Boolean = false
 
-    final override fun isAvailable(project: Project, editor: Editor, file: PsiFile): Boolean {
-        if (isUnitTestMode()) {
-            CREATE_BY_PATTERN_MAY_NOT_REFORMAT = true
-        }
-        try {
-            return getTarget(editor, file) != null
-        } finally {
-            if (isUnitTestMode()) { // do not trigger additional class loading outside of tests
-                CREATE_BY_PATTERN_MAY_NOT_REFORMAT = false
-            }
-        }
-    }
+    final override fun isAvailable(project: Project, editor: Editor, file: PsiFile): Boolean =
+        getTarget(editor, file) != null
 
     @FileModifier.SafeFieldForPreview // inspection should not depend on the file where the fix is applied
     var inspection: IntentionBasedInspection<TElement>? = null

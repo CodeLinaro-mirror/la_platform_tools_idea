@@ -93,7 +93,7 @@ private class MonolithSessionProxy(val session: XDebugSession) : XDebugSessionPr
   override val valueMarkers: XValueMarkers<*, *>?
     get() = sessionImplIfAvailable?.valueMarkers
   override val sessionTab: XDebugSessionTab?
-    get() = sessionImplIfAvailable?.sessionTab
+    get() = sessionImplIfAvailable?.sessionTabIfInitialized
   override val isPaused: Boolean
     get() = session.isPaused
   override val isStopped: Boolean
@@ -368,5 +368,10 @@ internal class XDebuggerMonolithAccessPointImpl : XDebuggerMonolithAccessPoint {
 
   override fun asProxy(breakpoint: XBreakpoint<*>): XBreakpointProxy? {
     return (breakpoint as? XBreakpointBase<*, *, *>)?.asProxy()
+  }
+
+  override suspend fun <T> withTemporaryXValueId(value: XValue, proxy: XDebugSessionProxy, block: suspend (XValueId) -> T): T {
+    val sessionImpl = getSession(proxy) as XDebugSessionImpl
+    return withTemporaryXValueIdImpl(value, sessionImpl, block)
   }
 }

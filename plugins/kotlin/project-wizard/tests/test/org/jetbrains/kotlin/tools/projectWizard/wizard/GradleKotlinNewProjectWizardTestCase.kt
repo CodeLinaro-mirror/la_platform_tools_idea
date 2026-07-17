@@ -4,29 +4,44 @@ package org.jetbrains.kotlin.tools.projectWizard.wizard
 import com.intellij.ide.projectWizard.NewProjectWizardConstants.BuildSystem.GRADLE
 import com.intellij.ide.wizard.NewProjectWizardBaseData.Companion.baseData
 import com.intellij.ide.wizard.NewProjectWizardStep
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.externalSystem.model.project.ProjectData
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.io.toCanonicalPath
 import com.intellij.testFramework.common.runAll
 import org.jetbrains.kotlin.idea.framework.KotlinSdkType
 import org.jetbrains.kotlin.tools.projectWizard.BuildSystemKotlinNewProjectWizardData.Companion.kotlinBuildSystemData
 import org.jetbrains.kotlin.tools.projectWizard.gradle.GradleKotlinNewProjectWizardData.Companion.kotlinGradleData
 import org.jetbrains.plugins.gradle.frameworkSupport.GradleDsl
-import org.jetbrains.plugins.gradle.frameworkSupport.buildscript.GradleBuildScriptBuilder
 import org.jetbrains.plugins.gradle.frameworkSupport.settingsScript.GradleSettingScriptBuilder
 import org.jetbrains.plugins.gradle.setup.GradleNewProjectWizardTestCase
-import org.jetbrains.plugins.gradle.testFramework.util.ModuleInfo
+import org.jetbrains.plugins.gradle.testFramework.projectInfo.GradleModuleInfoBuilder
+import org.jetbrains.plugins.gradle.testFramework.projectInfo.GradleProjectInfoBuilder
+import org.jetbrains.plugins.gradle.testFramework.projectInfo.buildFile
+import org.jetbrains.plugins.gradle.testFramework.projectInfo.settingsFile
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions
+import org.junit.jupiter.api.BeforeEach
 import java.nio.file.Path
 import kotlin.io.path.exists
 import kotlin.io.path.readText
 
 abstract class GradleKotlinNewProjectWizardTestCase : GradleNewProjectWizardTestCase() {
 
+    protected lateinit var parentDisposable: Disposable
+
+    @BeforeEach
+    open fun setUp() {
+        parentDisposable = Disposer.newDisposable()
+    }
+
     @AfterEach
-    fun tearDown() {
-        runAll({ KotlinSdkType.removeKotlinSdkInTests() })
+    open fun tearDown() {
+        runAll(
+            { KotlinSdkType.removeKotlinSdkInTests() },
+            { Disposer.dispose(parentDisposable) }
+        )
     }
 
     val Project.projectPath: String get() = basePath!!
@@ -55,34 +70,36 @@ abstract class GradleKotlinNewProjectWizardTestCase : GradleNewProjectWizardTest
         kotlinGradleData!!.version = version
     }
 
-    fun ModuleInfo.Builder.withKotlinSettingsFile(configure: GradleSettingScriptBuilder<*>.() -> Unit = {}) {
-        withSettingsFile {
+    fun GradleModuleInfoBuilder.simpleKotlinSettingsFile(configure: GradleSettingScriptBuilder<*>.() -> Unit = {}) {
+        settingsFile {
             withFoojayPlugin()
             setProjectName(name)
             configure()
         }
     }
 
-    fun ModuleInfo.Builder.withKotlinBuildFile(
-        kotlinJvmPluginVersion: String? = "2.4.0",
-        configure: GradleBuildScriptBuilder<*>.() -> Unit = {}
-    ) {
-        withBuildFile {
+    fun GradleProjectInfoBuilder.simpleKotlinRootModuleInfo(): Unit =
+        rootModuleInfo { configureSimpleKotlinModuleInfo() }
+
+    private val defaultKotlinVersion = "2.4.0"
+
+    fun GradleProjectInfoBuilder.simpleKotlinModuleInfo(
+        ideName: String,
+        relativePath: String,
+        gradleDsl: GradleDsl? = null,
+        kotlinJvmPluginVersion: String? = defaultKotlinVersion
+    ): Unit =
+        moduleInfo(ideName, relativePath, gradleDsl) { configureSimpleKotlinModuleInfo(kotlinJvmPluginVersion) }
+
+    private fun GradleModuleInfoBuilder.configureSimpleKotlinModuleInfo(kotlinJvmPluginVersion: String? = defaultKotlinVersion) {
+        sourceSetInfo("main")
+        sourceSetInfo("test")
+        buildFile {
             addGroup(groupId)
             addVersion(version)
             withKotlinJvmPlugin(kotlinJvmPluginVersion)
             withKotlinTest()
             withKotlinJvmToolchain(gradleJvmInfo.version.feature)
-            configure()
-        }
-    }
-
-    fun ModuleInfo.Builder.withJavaBuildFile() {
-        withBuildFile {
-            addGroup(groupId)
-            addVersion(version)
-            withJavaPlugin()
-            withJUnit()
         }
     }
 

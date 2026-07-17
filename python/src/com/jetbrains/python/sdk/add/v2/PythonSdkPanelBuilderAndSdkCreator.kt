@@ -10,6 +10,7 @@ import com.intellij.openapi.observable.util.or
 import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.openapi.ui.validation.WHEN_PROPERTY_CHANGED
 import com.intellij.platform.eel.provider.localEel
+import com.intellij.python.pytools.Version
 import com.intellij.ui.dsl.builder.Panel
 import com.intellij.ui.dsl.builder.bindText
 import com.intellij.util.asDisposable
@@ -32,7 +33,8 @@ import com.jetbrains.python.sdk.add.v2.venv.setupVirtualenv
 import com.jetbrains.python.statistics.InterpreterCreationMode
 import com.jetbrains.python.statistics.InterpreterTarget
 import com.jetbrains.python.statistics.InterpreterType
-import com.jetbrains.python.util.ShowingMessageErrorSync
+import com.jetbrains.python.errorProcessing.ErrorSink
+import com.jetbrains.python.errorProcessing.withProject
 import com.jetbrains.python.venvReader.VirtualEnvReader
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -100,14 +102,14 @@ internal class PythonSdkPanelBuilderAndSdkCreator(
   private lateinit var model: PythonMutableTargetAddInterpreterModel<PathHolder.Eel>
 
   override fun buildPanel(outerPanel: Panel, projectPathFlows: ProjectPathFlows) {
-    model = PythonLocalAddInterpreterModel(projectPathFlows, FileSystem.Eel(localEel))
+    model = PythonLocalAddInterpreterModel(projectPathFlows, EelFileSystem(localEel))
     model.navigator.selectionMode = selectedMode
     uvSection = UvInterpreterSection(model, module, selectedMode, propertyGraph)
 
     custom = PythonAddCustomInterpreter(
       model = model,
       module = module,
-      errorSink = module?.project?.let { ShowingMessageErrorSync.withProject(it) } ?: ShowingMessageErrorSync,
+      errorSink = module?.project?.let { ErrorSink().withProject(it) } ?: ErrorSink(),
       limitExistingEnvironments = limitExistingEnvironments,
       bestGuessCreateSdkInfo = CompletableDeferred(value = null)
     )

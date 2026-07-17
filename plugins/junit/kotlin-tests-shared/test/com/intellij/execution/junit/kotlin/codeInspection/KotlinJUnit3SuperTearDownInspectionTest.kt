@@ -2,8 +2,8 @@
 package com.intellij.execution.junit.kotlin.codeInspection
 
 import com.intellij.junit.testFramework.JUnit3SuperTearDownInspectionTestBase
-import com.intellij.junit.testFramework.JUnitLibrary
 import com.intellij.junit.testFramework.JUnitProjectDescriptor
+import com.intellij.junit.testFramework.MavenTestLib
 import com.intellij.jvm.analysis.testFramework.JvmLanguage
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.roots.ContentEntry
@@ -13,13 +13,11 @@ import com.intellij.pom.java.LanguageLevel
 import com.intellij.testFramework.LightProjectDescriptor
 import org.jetbrains.kotlin.idea.base.plugin.artifacts.KotlinArtifacts
 import org.jetbrains.kotlin.idea.test.ConfigLibraryUtil
-import org.jetbrains.kotlin.idea.test.ExpectedPluginModeProvider
 import org.jetbrains.kotlin.idea.test.addRoot
-import org.jetbrains.kotlin.idea.test.setUpWithKotlinPlugin
 
-abstract class KotlinJUnit3SuperTearDownInspectionTest : JUnit3SuperTearDownInspectionTestBase(), ExpectedPluginModeProvider {
+abstract class KotlinJUnit3SuperTearDownInspectionTest : JUnit3SuperTearDownInspectionTestBase() {
 
-  protected open class KotlinJUnitProjectDescriptor : JUnitProjectDescriptor(LanguageLevel.HIGHEST, JUnitLibrary.JUNIT3) {
+  protected open class KotlinJUnitProjectDescriptor : JUnitProjectDescriptor(LanguageLevel.HIGHEST, MavenTestLib.JUNIT3) {
     override fun configureModule(module: Module, model: ModifiableRootModel, contentEntry: ContentEntry) {
       super.configureModule(module, model, contentEntry)
       ConfigLibraryUtil.addLibrary(model, "KotlinJavaRuntime") {
@@ -29,11 +27,13 @@ abstract class KotlinJUnit3SuperTearDownInspectionTest : JUnit3SuperTearDownInsp
     }
   }
 
-  override fun getProjectDescriptor(): LightProjectDescriptor = KotlinJUnitProjectDescriptor()
-
-  override fun setUp() {
-    setUpWithKotlinPlugin(testRootDisposable) { super.setUp() }
+  companion object {
+    private val descriptor = KotlinJUnitProjectDescriptor()
   }
+
+  override fun getProjectDescriptor(): LightProjectDescriptor = descriptor
+
+  
 
   fun `test teardown in finally no highlighting`() {
     myFixture.testHighlighting(

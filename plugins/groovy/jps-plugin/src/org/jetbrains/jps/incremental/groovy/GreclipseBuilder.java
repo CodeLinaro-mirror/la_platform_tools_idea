@@ -311,10 +311,10 @@ public final class GreclipseBuilder extends ModuleLevelBuilder {
 
           @Override
           public void notifyTextAvailable(@NotNull String text, @NotNull Key outputType) {
-            if (outputType == ProcessOutputType.STDERR) {
+            if (ProcessOutputType.isStderr(outputType)) {
               err.append(text);
             }
-            if (outputType == ProcessOutputType.STDOUT) {
+            if (ProcessOutputType.isStdout(outputType)) {
               out.append(text);
             }
           }
@@ -343,6 +343,8 @@ public final class GreclipseBuilder extends ModuleLevelBuilder {
     args.add(getClasspathString(chunk));
 
     JavaBuilder.addCompilationOptions(args, context, chunk, profile);
+    // Groovy-Eclipse (ECJ-based) does not support -proc:full added by JavaBuilder for javac 23+
+    args.remove("-proc:full");
 
     args.add("-d");
     args.add(mainOutputDir);

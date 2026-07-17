@@ -1,13 +1,20 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.agent.workbench.sessions.service
 
-import com.intellij.agent.workbench.common.normalizeAgentWorkbenchPath
-import com.intellij.agent.workbench.common.session.AgentSessionProvider
-import com.intellij.agent.workbench.sessions.core.providers.AgentSessionSource
-import com.intellij.agent.workbench.sessions.core.providers.AgentSessionSourceUpdate
-import com.intellij.agent.workbench.sessions.core.providers.AgentSessionSourceUpdateEvent
-import com.intellij.agent.workbench.sessions.core.providers.describeScope
-import com.intellij.agent.workbench.sessions.core.providers.isUnscoped
+import com.intellij.platform.ai.agent.core.normalizeAgentWorkbenchPath
+import com.intellij.platform.ai.agent.core.session.AgentSessionProvider
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentSessionSource
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentSessionSourceUpdate
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentSessionSourceUpdateEvent
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentSessionThreadActivityUpdate
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentSessionThreadPresentationUpdate
+import com.intellij.platform.ai.agent.sessions.core.providers.AgentSessionUpdateSource
+import com.intellij.platform.ai.agent.sessions.core.providers.describeScope
+import com.intellij.platform.ai.agent.sessions.core.providers.isUnscoped
+import com.intellij.platform.ai.agent.sessions.core.providers.mergeAgentSessionActivityEvidence
+import com.intellij.platform.ai.agent.sessions.core.providers.mergeAgentThreadActivityReport
+import com.intellij.platform.ai.agent.sessions.core.providers.mergeAgentSessionThreadPresentationUpdates
+import com.intellij.platform.ai.agent.sessions.core.providers.toPresentationUpdate
 import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.diagnostic.logger
 import kotlinx.coroutines.CancellationException
@@ -23,15 +30,19 @@ import kotlin.time.Duration.Companion.milliseconds
 private val LOG = logger<AgentSessionRefreshScheduler>()
 private const val SOURCE_UPDATE_DEBOUNCE_MS = 350L
 private const val SOURCE_REFRESH_GATE_RETRY_MS = 500L
+private const val SOURCE_OBSERVER_RESTART_DELAY_MS = 1_000L
 
 internal class AgentSessionRefreshScheduler(
   private val serviceScope: CoroutineScope,
   private val sessionSourcesProvider: () -> List<AgentSessionSource>,
   private val scopedRefreshProvidersProvider: () -> List<AgentSessionProvider>,
-  private val scopedRefreshSignalsProvider: (AgentSessionProvider) -> Flow<Set<String>>,
+  private val scopedRefreshSignalsProvider: (AgentSessionProvider) -> Flow<AgentSessionSourceUpdateEvent>,
   private val isRefreshGateActive: suspend () -> Boolean,
   private val executeFullRefresh: suspend (RefreshLoadScope) -> Unit,
   private val executeProviderRefresh: suspend (AgentSessionProvider, Long, AgentSessionSourceUpdateEvent) -> Unit,
+  private val executeProviderHintRefresh: suspend (AgentSessionProvider, Long, AgentSessionSourceUpdateEvent) -> Unit,
+  private val applySourceUpdatePresentationHints: (AgentSessionProvider, AgentSessionSourceUpdateEvent) -> Unit = { _, _ -> },
+  private val scheduleVfsRefreshForSourceUpdate: (AgentSessionProvider, AgentSessionSourceUpdateEvent) -> Unit = { _, _ -> },
   private val onFullRefreshFailure: (Throwable) -> Unit,
 ) {
   private val refreshQueueLock = Any()
@@ -63,8 +74,7 @@ internal class AgentSessionRefreshScheduler(
   fun refreshProviderScope(provider: AgentSessionProvider, scopedPaths: Set<String>) {
     enqueueSourceRefresh(
       provider = provider,
-      updateEvent = AgentSessionSourceUpdateEvent(
-        type = AgentSessionSourceUpdate.THREADS_CHANGED,
+      updateEvent = AgentSessionSourceUpdateEvent.threadsChanged(
         scopedPaths = scopedPaths,
       ),
     )
@@ -78,27 +88,35 @@ internal class AgentSessionRefreshScheduler(
         if (existing != null && existing.isActive) {
           return@forEach
         }
-        scopedRefreshObserverJobs[provider] = serviceScope.launch(Dispatchers.IO) {
+        val job = serviceScope.launch(Dispatchers.IO) {
           try {
-            scopedRefreshSignalsProvider(provider).collect { scopedPaths ->
-              if (scopedPaths.isEmpty()) {
+            scopedRefreshSignalsProvider(provider).collect { updateEvent ->
+              val normalizedUpdateEvent = normalizeUpdateEvent(updateEvent)
+              if (normalizedUpdateEvent.isUnscoped()) {
                 return@collect
               }
               LOG.debug {
-                "Received scoped refresh signal for ${provider.value} (paths=${scopedPaths.size}); scheduling scoped provider refresh"
+                "Received scoped refresh signal for ${provider.value} (${normalizedUpdateEvent.describeScope()}); " +
+                "processing scoped source update"
               }
-              enqueueSourceRefresh(
+              scheduleSourceRefresh(
                 provider = provider,
-                updateEvent = AgentSessionSourceUpdateEvent(
-                  type = AgentSessionSourceUpdate.THREADS_CHANGED,
-                  scopedPaths = scopedPaths,
-                ),
+                updateEvent = normalizedUpdateEvent,
               )
             }
           }
           catch (e: Throwable) {
             if (e is CancellationException) throw e
             LOG.warn("Scoped refresh observer failed for ${provider.value}", e)
+            scheduleScopedRefreshObserverRestart(provider)
+          }
+        }
+        scopedRefreshObserverJobs[provider] = job
+        job.invokeOnCompletion {
+          synchronized(scopedRefreshObserverJobsLock) {
+            if (scopedRefreshObserverJobs[provider] === job) {
+              scopedRefreshObserverJobs.remove(provider)
+            }
           }
         }
       }
@@ -172,9 +190,10 @@ internal class AgentSessionRefreshScheduler(
   }
 
   private fun ensureSourceUpdateObservers() {
-    val availableSources = LinkedHashMap<AgentSessionProvider, AgentSessionSource>()
+    val availableSources = LinkedHashMap<AgentSessionProvider, AgentSessionUpdateSource>()
     for (source in sessionSourcesProvider()) {
-      if (availableSources.putIfAbsent(source.provider, source) != null) {
+      val updateSource = source as? AgentSessionUpdateSource ?: continue
+      if (availableSources.putIfAbsent(updateSource.provider, updateSource) != null) {
         LOG.warn("Duplicate session source for provider ${source.provider.value}; ignoring ${source::class.java.name}")
       }
     }
@@ -184,14 +203,13 @@ internal class AgentSessionRefreshScheduler(
       while (jobIterator.hasNext()) {
         val (provider, job) = jobIterator.next()
         val source = availableSources[provider]
-        if (source != null && source.supportsUpdates) continue
+        if (source != null) continue
         LOG.debug { "Stopping source updates observer for ${provider.value}" }
         job.cancel()
         jobIterator.remove()
       }
 
       for ((provider, source) in availableSources) {
-        if (!source.supportsUpdates) continue
         if (sourceObserverJobs.containsKey(provider)) continue
 
         LOG.debug { "Starting source updates observer for ${provider.value}" }
@@ -204,6 +222,7 @@ internal class AgentSessionRefreshScheduler(
           catch (e: Throwable) {
             if (e is CancellationException) throw e
             LOG.warn("Source updates observer failed for ${provider.value}", e)
+            scheduleSourceUpdateObserverRestart(provider)
           }
         }
         sourceObserverJobs[provider] = job
@@ -218,18 +237,46 @@ internal class AgentSessionRefreshScheduler(
     }
   }
 
+  private fun scheduleSourceUpdateObserverRestart(provider: AgentSessionProvider) {
+    serviceScope.launch(Dispatchers.IO) {
+      delay(SOURCE_OBSERVER_RESTART_DELAY_MS.milliseconds)
+      LOG.debug { "Restarting source updates observer for ${provider.value} after failure" }
+      ensureSourceUpdateObservers()
+    }
+  }
+
+  private fun scheduleScopedRefreshObserverRestart(provider: AgentSessionProvider) {
+    serviceScope.launch(Dispatchers.IO) {
+      delay(SOURCE_OBSERVER_RESTART_DELAY_MS.milliseconds)
+      LOG.debug { "Restarting scoped refresh observer for ${provider.value} after failure" }
+      ensureScopedRefreshObservers()
+    }
+  }
+
   private fun scheduleSourceRefresh(provider: AgentSessionProvider, updateEvent: AgentSessionSourceUpdateEvent) {
+    val normalizedIncoming = normalizeUpdateEvent(updateEvent)
+    applySourceUpdatePresentationHints(provider, normalizedIncoming)
+    if (!requiresQueuedProviderRefresh(normalizedIncoming)) {
+      LOG.debug {
+        "Applied source update for ${provider.value} without provider refresh " +
+        "(${normalizedIncoming.describeScope()}, sourceUpdate=${normalizedIncoming.type.name.lowercase()})"
+      }
+      return
+    }
     synchronized(sourceRefreshJobsLock) {
       val existingJob = sourceRefreshJobs.remove(provider)
       existingJob?.job?.cancel()
-      val mergedUpdate = mergeSourceUpdateEvents(existingJob?.updateEvent, updateEvent)
+      val mergedUpdate = mergeSourceUpdateEvents(existingJob?.updateEvent, normalizedIncoming)
       LOG.debug {
         "Scheduled debounced source refresh for ${provider.value} " +
         "(${mergedUpdate.describeScope()}, sourceUpdate=${mergedUpdate.type.name.lowercase()})"
       }
       val job = serviceScope.launch(Dispatchers.IO) {
         delay(SOURCE_UPDATE_DEBOUNCE_MS.milliseconds)
-        enqueueSourceRefresh(provider = provider, updateEvent = mergedUpdate)
+        if (mergedUpdate.mayHaveChangedProjectFiles) {
+          scheduleVfsRefreshFromSourceUpdate(provider, mergedUpdate)
+        }
+        enqueueSourceRefresh(provider = provider, updateEvent = mergedUpdate, applyPresentationHints = false)
       }
       sourceRefreshJobs[provider] = PendingSourceRefreshJob(job = job, updateEvent = mergedUpdate)
       job.invokeOnCompletion {
@@ -242,11 +289,25 @@ internal class AgentSessionRefreshScheduler(
     }
   }
 
+  private fun scheduleVfsRefreshFromSourceUpdate(provider: AgentSessionProvider, updateEvent: AgentSessionSourceUpdateEvent) {
+    try {
+      scheduleVfsRefreshForSourceUpdate(provider, updateEvent)
+    }
+    catch (e: Throwable) {
+      if (e is CancellationException) throw e
+      LOG.warn("Failed to schedule VFS refresh for ${provider.value} source update", e)
+    }
+  }
+
   private fun enqueueSourceRefresh(
     provider: AgentSessionProvider,
     updateEvent: AgentSessionSourceUpdateEvent,
+    applyPresentationHints: Boolean = true,
   ) {
     val normalizedUpdateEvent = normalizeUpdateEvent(updateEvent)
+    if (applyPresentationHints) {
+      applySourceUpdatePresentationHints(provider, normalizedUpdateEvent)
+    }
 
     var shouldStartProcessor = false
     var queueSize = 0
@@ -292,10 +353,18 @@ internal class AgentSessionRefreshScheduler(
   }
 
   private fun normalizeUpdateEvent(updateEvent: AgentSessionSourceUpdateEvent): AgentSessionSourceUpdateEvent {
-    return AgentSessionSourceUpdateEvent(
+    val activityUpdatesByThreadId = normalizeActivityUpdates(updateEvent.activityUpdatesByThreadId)
+    return createSourceUpdateEvent(
       type = updateEvent.type,
       scopedPaths = normalizePaths(updateEvent.scopedPaths),
       threadIds = normalizeThreadIds(updateEvent.threadIds),
+      activityUpdatesByThreadId = activityUpdatesByThreadId,
+      presentationUpdatesByThreadId = mergePresentationUpdates(
+        activityUpdatesByThreadId.mapValues { (_, update) -> update.toPresentationUpdate() },
+        normalizePresentationUpdates(updateEvent.presentationUpdatesByThreadId),
+      ),
+      mayHaveChangedProjectFiles = updateEvent.mayHaveChangedProjectFiles,
+      changedProjectFilePaths = normalizePaths(updateEvent.changedProjectFilePaths),
     )
   }
 
@@ -317,6 +386,38 @@ internal class AgentSessionRefreshScheduler(
       ?.takeIf { it.isNotEmpty() }
   }
 
+  private fun normalizeActivityUpdates(
+    activityUpdatesByThreadId: Map<String, AgentSessionThreadActivityUpdate>,
+  ): Map<String, AgentSessionThreadActivityUpdate> {
+    if (activityUpdatesByThreadId.isEmpty()) {
+      return emptyMap()
+    }
+    val normalized = LinkedHashMap<String, AgentSessionThreadActivityUpdate>(activityUpdatesByThreadId.size)
+    for ((threadId, update) in activityUpdatesByThreadId) {
+      val normalizedThreadId = threadId.trim()
+      if (normalizedThreadId.isNotEmpty()) {
+        normalized[normalizedThreadId] = update
+      }
+    }
+    return normalized
+  }
+
+  private fun normalizePresentationUpdates(
+    presentationUpdatesByThreadId: Map<String, AgentSessionThreadPresentationUpdate>,
+  ): Map<String, AgentSessionThreadPresentationUpdate> {
+    if (presentationUpdatesByThreadId.isEmpty()) {
+      return emptyMap()
+    }
+    val normalized = LinkedHashMap<String, AgentSessionThreadPresentationUpdate>(presentationUpdatesByThreadId.size)
+    for ((threadId, update) in presentationUpdatesByThreadId) {
+      val normalizedThreadId = threadId.trim()
+      if (normalizedThreadId.isNotEmpty()) {
+        normalized[normalizedThreadId] = update
+      }
+    }
+    return normalized
+  }
+
   private fun mergeSourceUpdateEvents(
     existing: AgentSessionSourceUpdateEvent?,
     incoming: AgentSessionSourceUpdateEvent,
@@ -326,18 +427,110 @@ internal class AgentSessionRefreshScheduler(
     }
 
     val mergedType = when {
-      existing.type == AgentSessionSourceUpdate.THREADS_CHANGED || incoming.type == AgentSessionSourceUpdate.THREADS_CHANGED -> AgentSessionSourceUpdate.THREADS_CHANGED
+      existing.type == AgentSessionSourceUpdate.THREADS_CHANGED ||
+      incoming.type == AgentSessionSourceUpdate.THREADS_CHANGED -> AgentSessionSourceUpdate.THREADS_CHANGED
       else -> AgentSessionSourceUpdate.HINTS_CHANGED
     }
+    val mergedActivityUpdatesByThreadId = mergeActivityUpdates(existing.activityUpdatesByThreadId, incoming.activityUpdatesByThreadId)
+    val mergedPresentationUpdatesByThreadId = mergePresentationUpdates(
+      existing.presentationUpdatesByThreadId,
+      incoming.presentationUpdatesByThreadId,
+    )
+    val mergedChangedProjectFilePaths = mergeChangedProjectFilePaths(existing, incoming)
     if (existing.isUnscoped() || incoming.isUnscoped()) {
-      return AgentSessionSourceUpdateEvent(type = mergedType)
+      return createSourceUpdateEvent(
+        type = mergedType,
+        activityUpdatesByThreadId = mergedActivityUpdatesByThreadId,
+        presentationUpdatesByThreadId = mergedPresentationUpdatesByThreadId,
+        mayHaveChangedProjectFiles = existing.mayHaveChangedProjectFiles || incoming.mayHaveChangedProjectFiles,
+        changedProjectFilePaths = mergedChangedProjectFilePaths,
+      )
     }
 
-    return AgentSessionSourceUpdateEvent(
+    return createSourceUpdateEvent(
       type = mergedType,
       scopedPaths = mergeScopeSets(existing.scopedPaths, incoming.scopedPaths),
       threadIds = mergeScopeSets(existing.threadIds, incoming.threadIds),
+      activityUpdatesByThreadId = mergedActivityUpdatesByThreadId,
+      presentationUpdatesByThreadId = mergedPresentationUpdatesByThreadId,
+      mayHaveChangedProjectFiles = existing.mayHaveChangedProjectFiles || incoming.mayHaveChangedProjectFiles,
+      changedProjectFilePaths = mergedChangedProjectFilePaths,
     )
+  }
+
+  private fun mergeChangedProjectFilePaths(
+    existing: AgentSessionSourceUpdateEvent,
+    incoming: AgentSessionSourceUpdateEvent,
+  ): Set<String>? {
+    if (!existing.mayHaveChangedProjectFiles) {
+      return incoming.changedProjectFilePaths
+    }
+    if (!incoming.mayHaveChangedProjectFiles) {
+      return existing.changedProjectFilePaths
+    }
+    if (existing.changedProjectFilePaths == null || incoming.changedProjectFilePaths == null) {
+      return null
+    }
+    return mergeScopeSets(existing.changedProjectFilePaths, incoming.changedProjectFilePaths)
+  }
+
+  private fun mergeActivityUpdates(
+    existing: Map<String, AgentSessionThreadActivityUpdate>,
+    incoming: Map<String, AgentSessionThreadActivityUpdate>,
+  ): Map<String, AgentSessionThreadActivityUpdate> {
+    if (existing.isEmpty()) return incoming
+    if (incoming.isEmpty()) return existing
+    val merged = LinkedHashMap<String, AgentSessionThreadActivityUpdate>(existing.size + incoming.size)
+    merged.putAll(existing)
+    for ((threadId, incomingUpdate) in incoming) {
+      val existingUpdate = merged[threadId]
+      merged[threadId] = if (existingUpdate == null) incomingUpdate else mergeActivityUpdate(existingUpdate, incomingUpdate)
+    }
+    return merged
+  }
+
+  private fun mergeActivityUpdate(
+    existing: AgentSessionThreadActivityUpdate,
+    incoming: AgentSessionThreadActivityUpdate,
+  ): AgentSessionThreadActivityUpdate {
+    val existingUpdatedAt = existing.updatedAt
+    val incomingUpdatedAt = incoming.updatedAt
+    if (existingUpdatedAt != null && incomingUpdatedAt != null && incomingUpdatedAt < existingUpdatedAt) {
+      return existing
+    }
+    val updatedAt = when {
+      existingUpdatedAt == null -> incomingUpdatedAt
+      incomingUpdatedAt == null -> existingUpdatedAt
+      else -> maxOf(existingUpdatedAt, incomingUpdatedAt)
+    }
+    val updatesChromeActivity = incoming.updatesChromeActivity || existing.updatesChromeActivity
+    return AgentSessionThreadActivityUpdate(
+      activityReport = mergeAgentThreadActivityReport(
+        existing = existing.activityReport,
+        incoming = incoming.activityReport,
+        incomingUpdatesChromeActivity = incoming.updatesChromeActivity,
+        incomingEvidence = incoming.evidence,
+      ),
+      updatesChromeActivity = updatesChromeActivity,
+      updatedAt = updatedAt,
+      evidence = mergeAgentSessionActivityEvidence(existing = existing.evidence, incoming = incoming.evidence),
+    )
+  }
+
+  private fun mergePresentationUpdates(
+    existing: Map<String, AgentSessionThreadPresentationUpdate>,
+    incoming: Map<String, AgentSessionThreadPresentationUpdate>,
+  ): Map<String, AgentSessionThreadPresentationUpdate> {
+    if (existing.isEmpty()) return incoming
+    if (incoming.isEmpty()) return existing
+    val merged = LinkedHashMap<String, AgentSessionThreadPresentationUpdate>(existing.size + incoming.size)
+    merged.putAll(existing)
+    for ((threadId, incomingUpdate) in incoming) {
+      val existingUpdate = merged[threadId]
+      merged[threadId] =
+        if (existingUpdate == null) incomingUpdate else mergeAgentSessionThreadPresentationUpdates(existingUpdate, incomingUpdate)
+    }
+    return merged
   }
 
   private fun <T> mergeScopeSets(existing: Set<T>?, incoming: Set<T>?): Set<T>? {
@@ -410,11 +603,18 @@ internal class AgentSessionRefreshScheduler(
       }
 
       try {
-        executeProviderRefresh(
-          provider,
-          refreshId,
-          updateEvent,
-        )
+        when (updateEvent.type) {
+          AgentSessionSourceUpdate.THREADS_CHANGED -> executeProviderRefresh(
+            provider,
+            refreshId,
+            updateEvent,
+          )
+          AgentSessionSourceUpdate.HINTS_CHANGED -> executeProviderHintRefresh(
+            provider,
+            refreshId,
+            updateEvent,
+          )
+        }
       }
       catch (e: Throwable) {
         if (e is CancellationException) throw e
@@ -427,6 +627,51 @@ internal class AgentSessionRefreshScheduler(
     CATALOG_SYNC,
     FULL_REFRESH,
   }
+}
+
+private fun createSourceUpdateEvent(
+  type: AgentSessionSourceUpdate,
+  scopedPaths: Set<String>? = null,
+  threadIds: Set<String>? = null,
+  activityUpdatesByThreadId: Map<String, AgentSessionThreadActivityUpdate> = emptyMap(),
+  presentationUpdatesByThreadId: Map<String, AgentSessionThreadPresentationUpdate> = emptyMap(),
+  mayHaveChangedProjectFiles: Boolean = false,
+  changedProjectFilePaths: Set<String>? = null,
+): AgentSessionSourceUpdateEvent {
+  return when (type) {
+    AgentSessionSourceUpdate.THREADS_CHANGED -> AgentSessionSourceUpdateEvent.threadsChanged(
+      scopedPaths = scopedPaths,
+      threadIds = threadIds,
+      activityUpdatesByThreadId = activityUpdatesByThreadId,
+      presentationUpdatesByThreadId = presentationUpdatesByThreadId,
+      mayHaveChangedProjectFiles = mayHaveChangedProjectFiles,
+      changedProjectFilePaths = changedProjectFilePaths,
+    )
+    AgentSessionSourceUpdate.HINTS_CHANGED -> AgentSessionSourceUpdateEvent.hintsChanged(
+      scopedPaths = scopedPaths,
+      threadIds = threadIds,
+      activityUpdatesByThreadId = activityUpdatesByThreadId,
+      presentationUpdatesByThreadId = presentationUpdatesByThreadId,
+      mayHaveChangedProjectFiles = mayHaveChangedProjectFiles,
+      changedProjectFilePaths = changedProjectFilePaths,
+    )
+  }
+}
+
+private fun requiresQueuedProviderRefresh(updateEvent: AgentSessionSourceUpdateEvent): Boolean {
+  if (updateEvent.mayHaveChangedProjectFiles) {
+    return true
+  }
+  if (updateEvent.type == AgentSessionSourceUpdate.THREADS_CHANGED) {
+    return true
+  }
+  if (updateEvent.isUnscoped()) {
+    return false
+  }
+  if (!updateEvent.threadIds.isNullOrEmpty()) {
+    return true
+  }
+  return updateEvent.presentationUpdatesByThreadId.isEmpty()
 }
 
 private data class PendingSourceRefreshJob(

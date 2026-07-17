@@ -54,6 +54,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import static com.intellij.openapi.diagnostic.LoggerKt.rethrowControlFlowException;
 import static com.intellij.openapi.project.DumbService.getDumbAwareExtensions;
 import static java.util.Collections.singletonList;
 
@@ -68,6 +69,10 @@ public final class InjectedLanguageManagerImpl extends InjectedLanguageManager i
   private final DumbService myDumbService;
   private final PsiDocumentManager myDocManager;
 
+  /**
+   * @deprecated use {@link InjectedLanguageManager#getInstance(Project)} directly. {@link InjectedLanguageManagerImpl} shouldn't be exposed.
+   */
+  @Deprecated
   public static InjectedLanguageManagerImpl getInstanceImpl(Project project) {
     return (InjectedLanguageManagerImpl)getInstance(project);
   }
@@ -169,6 +174,7 @@ public final class InjectedLanguageManagerImpl extends InjectedLanguageManager i
   private final Set<MultiHostInjector> myManualInjectors = Collections.synchronizedSet(new LinkedHashSet<>());
   private volatile ClassMapCachingNulls<MultiHostInjector> cachedInjectors;
 
+  @Override
   public void processInjectableElements(@NotNull Collection<? extends PsiElement> in, @NotNull Processor<? super PsiElement> processor) {
     ClassMapCachingNulls<MultiHostInjector> map = getInjectorMap();
     for (PsiElement element : in) {
@@ -533,9 +539,7 @@ public final class InjectedLanguageManagerImpl extends InjectedLanguageManager i
       catch (IndexNotReadyException ignore) {
       }
       catch (Throwable e) {
-        if (Logger.shouldRethrow(e)) {
-          throw e;
-        }
+        rethrowControlFlowException(e);
         LOG.error(e);
       }
     }

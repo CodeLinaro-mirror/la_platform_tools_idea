@@ -1,8 +1,9 @@
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.agent.workbench.sessions
 
-import com.intellij.agent.workbench.common.AgentThreadActivity
-import com.intellij.agent.workbench.common.session.AgentSessionProvider
-import com.intellij.agent.workbench.common.session.AgentSessionThread
+import com.intellij.platform.ai.agent.core.AgentThreadActivity
+import com.intellij.platform.ai.agent.core.session.AgentSessionProvider
+import com.intellij.platform.ai.agent.core.session.AgentSessionThread
 import com.intellij.agent.workbench.sessions.model.AgentProjectSessions
 import com.intellij.agent.workbench.sessions.model.AgentSessionsState
 import com.intellij.agent.workbench.sessions.model.AgentWorktree
@@ -19,7 +20,10 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
+import java.util.concurrent.TimeUnit
 
+@Timeout(value = 2, unit = TimeUnit.MINUTES)
 class AgentSessionSleepPreventionServiceTest {
   @Test
   fun acquiresImmediatelyWhenProcessingThreadAppears() {
@@ -243,6 +247,27 @@ class AgentSessionSleepPreventionServiceTest {
     assertThat(fixture.inhibitor.releaseCalls).isEqualTo(1)
     fixture.scope.cancel()
   }
+
+  @Test
+  fun failedReleaseKeepsBlockerHeldForRetry() {
+    val fixture = sleepPreventionFixture()
+    fixture.stateFlow.value = sessionsState(projectThreads = listOf(activeThread(AgentThreadActivity.PROCESSING)))
+    fixture.service.refreshState()
+    fixture.inhibitor.releaseResults.add(false)
+
+    fixture.stateFlow.value = sessionsState()
+    fixture.service.refreshState()
+    fixture.scheduler.runNext()
+    assertThat(fixture.inhibitor.releaseCalls).isEqualTo(1)
+    assertThat(fixture.inhibitor.held).isTrue()
+
+    fixture.settingFlow.value = false
+    fixture.service.refreshState()
+
+    assertThat(fixture.inhibitor.releaseCalls).isEqualTo(2)
+    assertThat(fixture.inhibitor.held).isFalse()
+    fixture.dispose()
+  }
 }
 
 private data class SleepPreventionFixture(
@@ -297,7 +322,7 @@ private fun sessionsState(
         path = PROJECT_PATH,
         name = "Project A",
         isOpen = true,
-        hasLoaded = true,
+        providerLoadStates = loadedProviderStates(AgentSessionProvider.from("codex")),
         threads = projectThreads,
         worktrees = listOf(
           AgentWorktree(
@@ -305,7 +330,7 @@ private fun sessionsState(
             name = "feature/worktree",
             branch = "feature/worktree",
             isOpen = true,
-            hasLoaded = true,
+            providerLoadStates = loadedProviderStates(AgentSessionProvider.from("codex")),
             threads = worktreeThreads,
           ),
         ),
@@ -317,14 +342,16 @@ private fun sessionsState(
 private fun activeThread(activity: AgentThreadActivity, id: String = "thread-1") = thread(
   id = id,
   updatedAt = 1,
-  provider = AgentSessionProvider.CODEX,
+  provider = AgentSessionProvider.from("codex"),
   activity = activity,
 )
 
 private class RecordingServiceSleepInhibitor : AgentSleepInhibitor {
   var acquireCalls: Int = 0
   var releaseCalls: Int = 0
-  private var held = false
+  var held: Boolean = false
+    private set
+  val releaseResults = ArrayDeque<Boolean>()
 
   override fun acquire(): Boolean {
     acquireCalls++
@@ -332,13 +359,17 @@ private class RecordingServiceSleepInhibitor : AgentSleepInhibitor {
     return true
   }
 
-  override fun release() {
+  override fun release(): Boolean {
     if (!held) {
-      return
+      return true
     }
 
-    held = false
     releaseCalls++
+    val released = releaseResults.nextOrDefault(true)
+    if (released) {
+      held = false
+    }
+    return released
   }
 }
 
@@ -380,4 +411,8 @@ private class TestAgentSleepPreventionExecutionContext : AgentSleepPreventionExe
 
   override fun close() {
   }
+}
+
+private fun ArrayDeque<Boolean>.nextOrDefault(defaultValue: Boolean): Boolean {
+  return if (isEmpty()) defaultValue else removeFirst()
 }

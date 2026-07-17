@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.debugger.engine;
 
 import com.intellij.ReviseWhenPortedToJDK;
@@ -37,6 +37,7 @@ import com.intellij.debugger.ui.overhead.OverheadTimings;
 import com.intellij.ide.BrowserUtil;
 import com.intellij.notification.NotificationAction;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.extensions.ExtensionPointListener;
 import com.intellij.openapi.extensions.PluginDescriptor;
@@ -50,11 +51,11 @@ import com.intellij.util.ConcurrencyUtil;
 import com.intellij.util.TimeoutUtil;
 import com.intellij.util.concurrency.AppExecutorUtil;
 import com.intellij.util.containers.ContainerUtil;
-import com.intellij.xdebugger.DapMode;
 import com.intellij.xdebugger.BreakpointErrorData;
+import com.intellij.xdebugger.DapMode;
+import com.intellij.xdebugger.XBreakpointBehaviorPolicy;
 import com.intellij.xdebugger.XBreakpointBehaviorPolicy.BreakpointErrorAction;
 import com.intellij.xdebugger.XDebugSession;
-import com.intellij.xdebugger.XBreakpointBehaviorPolicy;
 import com.intellij.xdebugger.XDebuggerManager;
 import com.intellij.xdebugger.breakpoints.XBreakpoint;
 import com.intellij.xdebugger.impl.XDebugSessionImpl;
@@ -128,7 +129,7 @@ public class DebugProcessEvents extends DebugProcessImpl {
       vmAttached(proxy);
       if (vm.canBeModified()) {
         DebuggerManagerThreadImpl managerThread = DebuggerManagerThreadImpl.getCurrentThread();
-        DebuggerEventThread eventThread = myEventThreads.computeIfAbsent(vm, __ -> new DebuggerEventThread(managerThread));
+        DebuggerEventThread eventThread = myEventThreads.computeIfAbsent(vm, _ -> new DebuggerEventThread(managerThread));
         ApplicationManager.getApplication().executeOnPooledThread(
           ConcurrencyUtil.underThreadNameRunnable("DebugProcessEvents", eventThread));
       }
@@ -485,11 +486,9 @@ public class DebugProcessEvents extends DebugProcessImpl {
       XDebugSessionImpl session = (XDebugSessionImpl)getSession().getXDebugSession();
 
       // breakpoints should be initialized after all processAttached listeners work
-      ApplicationManager.getApplication().runReadAction(() -> {
-        if (session != null) {
-          session.initBreakpoints();
-        }
-      });
+      if (session != null) {
+        session.initBreakpoints();
+      }
 
       if (Registry.is("debugger.track.instrumentation", true) && canBeModified) {
         trackClassRedefinitions();
@@ -802,6 +801,11 @@ public class DebugProcessEvents extends DebugProcessImpl {
             XDebuggerManagerImpl debuggerManager = (XDebuggerManagerImpl)XDebuggerManager.getInstance(xDebugSession.getProject());
             debuggerManager.getBreakpointManager().fireBreakpointError(xBreakpoint, xDebugSession, errorData);
           }
+          // TODO: may be we need to use another approach for letting the user know that the evaluation failed?
+          // TODO: probably report this message via `com.intellij.xdebugger.breakpoints.XBreakpointListener.breakpointError` in the Dap case
+          if (DapMode.isDap()) {
+            printToConsole(JavaDebuggerBundle.message("error.failed.evaluating.breakpoint.condition", displayName, exceptionMessage));
+          }
           resumePreferred = !requestHit;
         }
         catch (VMDisconnectedException e) {
@@ -825,9 +829,14 @@ public class DebugProcessEvents extends DebugProcessImpl {
           }
         }
 
-        if (requestHit && requestor instanceof Breakpoint<?> breakpoint) {
+        Requestor adjustedRequestor = requestor;
+        if (requestor instanceof InstrumentedTechnicalBreakpointHit instrumentedTechnicalBreakpointHit) {
+          adjustedRequestor = instrumentedTechnicalBreakpointHit.getOriginalRequestor();
+        }
+
+        if (requestHit && adjustedRequestor instanceof Breakpoint<?> breakpoint) {
           // if requestor is a breakpoint and this breakpoint was hit, no matter its suspend policy
-          ApplicationManager.getApplication().runReadAction(() -> {
+          ReadAction.runBlocking(() -> {
             XDebugSession session = getSession().getXDebugSession();
             if (session != null) {
               XBreakpoint<?> xBreakpoint = breakpoint.getXBreakpoint();

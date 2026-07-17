@@ -3,7 +3,7 @@ package com.intellij.openapi.projectRoots.impl
 
 import com.google.common.collect.MultimapBuilder
 import com.google.common.hash.Hashing
-import com.intellij.openapi.application.runReadAction
+import com.intellij.openapi.application.runReadActionBlocking
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.openapi.module.Module
@@ -20,6 +20,7 @@ import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.roots.ui.configuration.UnknownSdk
 import java.util.Objects
 import java.util.TreeSet
+import org.jetbrains.annotations.ApiStatus
 
 private val EP_NAME = ExtensionPointName.create<UnknownSdkContributor>("com.intellij.unknownSdkContributor")
 
@@ -74,6 +75,7 @@ private data class MissingSdkInfo(
   override fun getSdkType() = mySdkType
 }
 
+@ApiStatus.Internal
 interface UnknownSdkBlockingCollector {
   /**
    * Starts collection of SDKs blocking inside one read action.
@@ -91,7 +93,7 @@ open class UnknownSdkCollector(private val project: Project) : UnknownSdkBlockin
    * For background activities it's more recommended to use [collectSdksPromise]
    * instead to allow better concurrency
    */
-  override fun collectSdksBlocking() : UnknownSdkSnapshot = runReadAction { collectSdksUnderReadAction() }
+  override fun collectSdksBlocking() : UnknownSdkSnapshot = runReadActionBlocking { collectSdksUnderReadAction() }
 
   protected open fun checkProjectSdk(project: Project) : Boolean = true
   protected open fun collectModulesToCheckSdk(project: Project) : List<Module> = ModuleManager.getInstance(this@UnknownSdkCollector.project).modules.toList()

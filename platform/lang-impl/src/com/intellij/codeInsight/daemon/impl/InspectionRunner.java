@@ -29,7 +29,6 @@ import com.intellij.internal.statistic.utils.StatisticsUploadAssistant;
 import com.intellij.lang.Language;
 import com.intellij.lang.annotation.HighlightSeverity;
 import com.intellij.lang.injection.InjectedLanguageManager;
-import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ex.ApplicationEx;
 import com.intellij.openapi.application.ex.ApplicationManagerEx;
 import com.intellij.openapi.diagnostic.Logger;
@@ -54,6 +53,9 @@ import com.intellij.util.AstLoadingFilter;
 import com.intellij.util.CommonProcessors;
 import com.intellij.util.InjectionUtils;
 import com.intellij.util.Processor;
+import com.intellij.util.concurrency.ThreadingAssertions;
+import com.intellij.util.concurrency.annotations.RequiresBackgroundThread;
+import com.intellij.util.concurrency.annotations.RequiresReadLock;
 import com.intellij.util.containers.CollectionFactory;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.HashSetQueue;
@@ -74,6 +76,8 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
+import static com.intellij.openapi.diagnostic.LoggerKt.rethrowControlFlowException;
+
 final class InspectionRunner {
   private static final Logger LOG = Logger.getInstance(InspectionRunner.class);
   private final PsiFile myPsiFile;
@@ -82,7 +86,7 @@ final class InspectionRunner {
   private final boolean myInspectInjected;
   private final boolean myIsOnTheFly;
   private final boolean myDumbMode;
-  private final ProgressIndicator myProgress;
+  private final @NotNull ProgressIndicator myProgress;
   private final boolean myIgnoreSuppressed;
   private final InspectionProfileWrapper myInspectionProfileWrapper;
   private final Map<String, Set<PsiElement>> mySuppressedElements;
@@ -124,6 +128,8 @@ final class InspectionRunner {
     }
   }
 
+  @RequiresBackgroundThread
+  @RequiresReadLock
   @Unmodifiable
   @NotNull
   List<InspectionContext> inspect(@NotNull List<? extends LocalInspectionToolWrapper> toolWrappers,
@@ -318,19 +324,21 @@ final class InspectionRunner {
 
   private void registerSuppressedElements(@NotNull PsiElement element, @NotNull LocalInspectionToolWrapper tool) {
     String id = tool.getID();
-    mySuppressedElements.computeIfAbsent(id, __ -> new HashSet<>()).add(element);
+    mySuppressedElements.computeIfAbsent(id, _ -> new HashSet<>()).add(element);
     String alternativeID = tool.getAlternativeID();
     if (alternativeID != null && !alternativeID.equals(id)) {
-      mySuppressedElements.computeIfAbsent(alternativeID, __ -> new HashSet<>()).add(element);
+      mySuppressedElements.computeIfAbsent(alternativeID, _ -> new HashSet<>()).add(element);
     }
     InspectionElementsMerger elementsMerger = InspectionElementsMerger.getMerger(tool.getShortName());
     if (elementsMerger != null) {
       for (String suppressId : elementsMerger.getSuppressIds()) {
-        mySuppressedElements.computeIfAbsent(suppressId, __ -> new HashSet<>()).add(element);
+        mySuppressedElements.computeIfAbsent(suppressId, _ -> new HashSet<>()).add(element);
       }
     }
   }
 
+  @RequiresReadLock
+  @RequiresBackgroundThread
   private void addRedundantSuppressions(@NotNull List<? extends InspectionContext> init,
                                         @NotNull List<? extends LocalInspectionToolWrapper> toolWrappers,
                                         @NotNull List<? super InspectionContext> result,
@@ -447,7 +455,7 @@ final class InspectionRunner {
                                psiElement -> context.holder.visitElement(psiElement, context.visitor));
     }
     catch (Throwable t) {
-      if (Logger.shouldRethrow(t)) throw t;
+      rethrowControlFlowException(t);
       LOG.error(t);
     }
   }
@@ -514,7 +522,7 @@ final class InspectionRunner {
         if (isSuppressedForHost || descriptorPsiElement != null && wrapper.getTool().isSuppressedFor(descriptorPsiElement)) {
           registerSuppressedElements(host, wrapper);
           // remove descriptor at index i from applying
-          descriptors = ContainerUtil.concat(descriptors.subList(0, i), descriptors.subList(i+1, descriptors.size()));
+          descriptors = ContainerUtil.remove(descriptors, i);
           if (LOG.isTraceEnabled()) {
             LOG.trace("startInspectingInjectedPsi:applyInjectedDescriptor: suppressed " + descriptor + " for tool " + wrapper);
           }
@@ -664,9 +672,11 @@ final class InspectionRunner {
     }
   }
 
+  @RequiresBackgroundThread
+  @RequiresReadLock
   private static boolean shouldInspect(@NotNull PsiFile psiFile) {
-    ApplicationManager.getApplication().assertIsNonDispatchThread();
-    ApplicationManager.getApplication().assertReadAccessAllowed();
+    ThreadingAssertions.assertBackgroundThread();
+    ThreadingAssertions.assertReadAccess();
     HighlightingLevelManager highlightingLevelManager = HighlightingLevelManager.getInstance(psiFile.getProject());
     // for ESSENTIAL mode, it depends on the current phase: when we run regular LocalInspectionPass then don't, when we run Save All handler then run everything
     return highlightingLevelManager != null

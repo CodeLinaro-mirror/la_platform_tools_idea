@@ -5,10 +5,10 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.io.DigestUtil
 import org.intellij.markdown.MarkdownElementTypes
+import org.intellij.markdown.flavours.gfm.GFMElementTypes
 import org.intellij.markdown.html.GeneratingProvider
 import org.intellij.markdown.html.HtmlGenerator
 import org.intellij.markdown.parser.LinkMap
-import org.intellij.markdown.parser.MarkdownParser
 import org.intellij.plugins.markdown.extensions.CodeFenceGeneratingProvider
 import org.intellij.plugins.markdown.extensions.MarkdownCodeFenceCacheableProvider
 import org.intellij.plugins.markdown.lang.parser.MarkdownParserManager
@@ -33,23 +33,31 @@ object MarkdownUtil {
     val parent = file.parent
     val baseUri = if (parent != null) File(parent.path).toURI() else null
 
-    val parsedTree = MarkdownParser(MarkdownParserManager.FLAVOUR).buildMarkdownTreeFromString(text)
+    val parsedTree = MarkdownParserManager.createMarkdownParser(MarkdownParserManager.FLAVOUR).buildMarkdownTreeFromString(text)
     val cacheCollector = MarkdownCodeFencePluginCacheCollector(file)
 
     val linkMap = LinkMap.buildLinkMap(parsedTree, text)
+    val footnoteMap = FootnoteMap.build(parsedTree, text)
     val map = MarkdownParserManager.FLAVOUR.createHtmlGeneratingProviders(linkMap, baseUri).toMutableMap()
+    map[GFMElementTypes.ALERT] = MarkdownAlertGeneratingProvider(map[MarkdownElementTypes.BLOCK_QUOTE]!!)
     map[MarkdownElementTypes.CODE_FENCE] = createCodeFenceProvider(project, file, cacheCollector)
     if (project != null) {
       map[MarkdownElementTypes.IMAGE] = IntelliJImageGeneratingProvider(linkMap)
       map[MarkdownElementTypes.PARAGRAPH] = ParagraphGeneratingProvider()
       map[MarkdownElementTypes.CODE_SPAN] = CodeSpanRunnerGeneratingProvider(project, file)
     }
+    map[MarkdownElementTypes.FULL_REFERENCE_LINK] = FootnoteReferenceProvider(footnoteMap, map[MarkdownElementTypes.FULL_REFERENCE_LINK]!!)
+    map[MarkdownElementTypes.SHORT_REFERENCE_LINK] = FootnoteReferenceProvider(footnoteMap, map[MarkdownElementTypes.SHORT_REFERENCE_LINK]!!)
+    map[MarkdownElementTypes.PARAGRAPH] = FootnoteNodeSuppressor(footnoteMap, map[MarkdownElementTypes.PARAGRAPH]!!)
+    map[MarkdownElementTypes.CODE_BLOCK] = FootnoteNodeSuppressor(footnoteMap, map[MarkdownElementTypes.CODE_BLOCK]!!)
 
-    val html = HtmlGenerator(text, parsedTree, map, true).generateHtml()
+    val mainHtml = HtmlGenerator(text, parsedTree, map, true).generateHtml()
 
     MarkdownCodeFenceHtmlCache.getInstance().registerCacheProvider(cacheCollector)
 
-    return html
+    val footnoteHtml = footnoteMap.generateFootnoteHtml(baseUri)
+    return if (footnoteHtml.isEmpty()) mainHtml
+           else mainHtml.dropLast("</body>".length) + "\n" + footnoteHtml + "\n</body>"
   }
 
   @ApiStatus.Internal

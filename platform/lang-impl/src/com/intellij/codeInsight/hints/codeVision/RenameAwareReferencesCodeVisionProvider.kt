@@ -1,4 +1,4 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.hints.codeVision
 
 import com.intellij.codeInsight.CodeInsightBundle
@@ -9,6 +9,8 @@ import com.intellij.codeInsight.codeVision.CodeVisionProvider
 import com.intellij.codeInsight.codeVision.CodeVisionState
 import com.intellij.codeInsight.codeVision.settings.PlatformCodeVisionIds
 import com.intellij.codeInsight.codeVision.ui.model.ClickableTextCodeVisionEntry
+import com.intellij.codeInsight.daemon.impl.analysis.FileHighlightingSetting
+import com.intellij.codeInsight.daemon.impl.analysis.HighlightingSettingsPerFile
 import com.intellij.codeInsight.hints.InlayHintsUtils
 import com.intellij.codeInsight.multiverse.EditorContextManager
 import com.intellij.codeInsight.navigation.actions.GotoDeclarationAction
@@ -28,6 +30,7 @@ import com.intellij.refactoring.suggested.REFACTORING_DATA_KEY
 import com.intellij.refactoring.suggested.SuggestedRenameData
 import com.intellij.ui.awt.RelativePoint
 import com.intellij.util.concurrency.annotations.RequiresReadLock
+import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.Nls
 import java.awt.event.MouseEvent
 
@@ -37,6 +40,7 @@ import java.awt.event.MouseEvent
  * This [CodeVisionProvider] skips PSI elements concerned by [SuggestedRenameData]
  * (stored in the file user data, see [REFACTORING_DATA_KEY]).
  */
+@ApiStatus.Internal
 abstract class RenameAwareReferencesCodeVisionProvider : CodeVisionProvider<Nothing?> {
 
   override fun precomputeOnUiThread(editor: Editor): Nothing? = null
@@ -65,10 +69,7 @@ abstract class RenameAwareReferencesCodeVisionProvider : CodeVisionProvider<Noth
   }
 
   @RequiresReadLock
-  private fun recomputeLenses(editor: Editor,
-                              project: Project,
-                              stamp: Long?,
-                              cacheService: CodeVisionCacheService): CodeVisionState {
+  private fun recomputeLenses(editor: Editor, project: Project, stamp: Long?, cacheService: CodeVisionCacheService): CodeVisionState {
     if (DumbService.isDumb(project)) return CodeVisionState.READY_EMPTY
 
     val mainContext = EditorContextManager.getEditorContext(editor, project)
@@ -76,6 +77,8 @@ abstract class RenameAwareReferencesCodeVisionProvider : CodeVisionProvider<Noth
 
     if (file.project.isDefault) return CodeVisionState.READY_EMPTY
     if (!acceptsFile(file)) return CodeVisionState.READY_EMPTY
+    val highlightingSettingForRoot = HighlightingSettingsPerFile.getInstance(file.project).getHighlightingSettingForRoot(file)
+    if (highlightingSettingForRoot != FileHighlightingSetting.FORCE_HIGHLIGHTING) return CodeVisionState.READY_EMPTY
 
     if (ApplicationManager.getApplication().isUnitTestMode && !CodeVisionHost.isCodeLensTest()) return CodeVisionState.READY_EMPTY
 

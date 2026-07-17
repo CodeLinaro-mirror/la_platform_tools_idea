@@ -1,14 +1,11 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.vfs.newvfs
 
-import org.jetbrains.annotations.ApiStatus
-
 /**
  * A listener for VFS events, invoked inside write-action.
  *
- * The thread of execution is **implementation-defined**. It can be EDT or a background thread.
- * It is guaranteed that [before] and [after] will be invoked on the same thread, but there is no guarantee that the instance of this listener
- * will be used only on one thread.
+ * This listener is always invoked on a background thread under write action.
+ * It is not guaranteed that [before] and [after] will be invoked on the same thread.
  *
  * Please use [com.intellij.openapi.vfs.AsyncFileListener] instead, unless you absolutely sure you need to receive events synchronously.
  *
@@ -24,5 +21,4 @@ import org.jetbrains.annotations.ApiStatus
  * For filtering the events use [com.intellij.openapi.roots.ProjectRootManager.getFileIndex] with
  * [com.intellij.openapi.roots.FileIndex.isInContent]
  */
-@ApiStatus.Experimental
 interface BulkFileListenerBackgroundable : BulkFileListener

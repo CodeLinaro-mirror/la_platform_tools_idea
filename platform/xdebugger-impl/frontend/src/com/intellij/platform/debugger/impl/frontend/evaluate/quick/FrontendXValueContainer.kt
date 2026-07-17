@@ -1,6 +1,7 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.platform.debugger.impl.frontend.evaluate.quick
 
+import com.intellij.ide.ui.colors.attributes
 import com.intellij.ide.ui.icons.icon
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.project.Project
@@ -11,8 +12,8 @@ import com.intellij.platform.debugger.impl.rpc.XStackFrameId
 import com.intellij.platform.debugger.impl.rpc.XValueApi
 import com.intellij.platform.debugger.impl.rpc.XValueComputeChildrenEvent
 import com.intellij.platform.debugger.impl.rpc.XValueGroupDto
-import com.intellij.platform.debugger.impl.rpc.toSimpleTextAttributes
 import com.intellij.platform.debugger.impl.shared.XValuesPresentationBuilder
+import com.intellij.platform.util.coroutines.childScope
 import com.intellij.ui.SimpleTextAttributes
 import com.intellij.xdebugger.frame.XCompositeNode
 import com.intellij.xdebugger.frame.XDebuggerTreeNodeHyperlink
@@ -53,24 +54,26 @@ internal class FrontendXValueContainer(
   private val hasParentValue: Boolean,
   private val id: XContainerId,
 ) : XValueContainer() {
-  private fun getOrCreteChildrenManager(node: XCompositeNode): XValueChildrenManager {
+  private fun getOrCreteChildrenManager(node: XCompositeNode): Pair<CoroutineScope, XValueChildrenManager> {
     val existing = cs.coroutineContext[XValueChildrenManager]
-    if (existing != null) return existing
+    if (existing != null) return cs to existing
 
-    return if (id is XStackFrameId) {
+    val childrenManager = if (id is XStackFrameId) {
       val stateToRecover = (node as? XValueContainerNode.Root<*>)?.stateToRecover
       XValueChildrenManager(cs, id, stateToRecover)
     }
     else {
       XValueChildrenManager()
     }
+
+    // Children of this container should be tied to the container scope,
+    // not the node scope. The XValue may be reused in other nodes, e.g. inline debugger.
+    val containerScope = cs.childScope("FrontendXValueContainer#children", childrenManager)
+    return containerScope to childrenManager
   }
 
   override fun computeChildren(node: XCompositeNode) {
-    val childrenManager = getOrCreteChildrenManager(node)
-    // Children of this container should be tied to the container scope,
-    // not the node scope. The XValue may be reused in other nodes, e.g. inline debugger.
-    val containerScope = cs
+    val (containerScope, childrenManager) = getOrCreteChildrenManager(node)
     containerScope.launch(Dispatchers.EDT) {
       val flow = childrenManager.getChildrenEventsFlow(id)
       val builder = XValuesPresentationBuilder()
@@ -122,7 +125,7 @@ internal class FrontendXValueContainer(
             node.setMessage(
               event.message,
               event.icon?.icon(),
-              event.attributes.toSimpleTextAttributes(),
+              event.attributes.attributes(),
               event.link?.hyperlink(containerScope)
             )
           }

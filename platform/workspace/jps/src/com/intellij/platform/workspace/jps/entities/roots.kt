@@ -9,12 +9,17 @@ import com.intellij.platform.workspace.storage.MutableEntityStorage
 import com.intellij.platform.workspace.storage.WorkspaceEntity
 import com.intellij.platform.workspace.storage.annotations.Parent
 import com.intellij.platform.workspace.storage.url.VirtualFileUrl
+import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.ApiStatus.Internal
 import org.jetbrains.annotations.NonNls
 
 /**
  * Describes a [ContentEntry][com.intellij.openapi.roots.ContentEntry].
  * See [package documentation](psi_element://com.intellij.platform.workspace.jps.entities) for more details.
+ *
+ * **Do not add new fields to this entity.** New fields are not serialized to the .iml file and will be
+ * lost when the project is reopened. To store additional data, declare a new entity with a
+ * [@Parent][com.intellij.platform.workspace.storage.annotations.Parent] reference to this one.
  */
 interface ContentRootEntity : WorkspaceEntity {
   @EqualsBy
@@ -33,6 +38,7 @@ interface ContentRootEntity : WorkspaceEntity {
     @Deprecated(message = "Use new API instead")
     fun getModule(): ModuleEntity.Builder = module as ModuleEntity.Builder
 
+    @ApiStatus.ScheduledForRemoval
     @Deprecated(message = "Use new API instead")
     fun setModule(value: ModuleEntity.Builder) {
       module = value
@@ -40,6 +46,7 @@ interface ContentRootEntity : WorkspaceEntity {
   }
 
   companion object : EntityType<ContentRootEntity, Builder>() {
+    @ApiStatus.ScheduledForRemoval
     @Deprecated(message = "Use new API instead")
     @JvmOverloads
     @JvmStatic
@@ -56,6 +63,7 @@ interface ContentRootEntity : WorkspaceEntity {
 }
 
 //region generated code
+@ApiStatus.ScheduledForRemoval
 @Deprecated(message = "Use new API instead")
 fun MutableEntityStorage.modifyContentRootEntity(
   entity: ContentRootEntity,
@@ -96,6 +104,10 @@ data class SourceRootTypeId(val name: @NonNls String)
 /**
  * Describes a [SourceFolder][com.intellij.openapi.roots.SourceFolder].
  * See [package documentation](psi_element://com.intellij.platform.workspace.jps.entities) for more details.
+ *
+ * **Do not add new fields to this entity.** New fields are not serialized to the .iml file and will be
+ * lost when the project is reopened. To store additional data, declare a new entity with a
+ * [@Parent][com.intellij.platform.workspace.storage.annotations.Parent] reference to this one.
  */
 interface SourceRootEntity : WorkspaceEntity {
   val url: VirtualFileUrl
@@ -107,9 +119,11 @@ interface SourceRootEntity : WorkspaceEntity {
   //region generated code
   @Deprecated(message = "Use SourceRootEntityBuilder instead")
   interface Builder : SourceRootEntityBuilder {
+    @ApiStatus.ScheduledForRemoval
     @Deprecated(message = "Use new API instead")
     fun getContentRoot(): ContentRootEntity.Builder = contentRoot as ContentRootEntity.Builder
 
+    @ApiStatus.ScheduledForRemoval
     @Deprecated(message = "Use new API instead")
     fun setContentRoot(value: ContentRootEntity.Builder) {
       contentRoot = value
@@ -117,6 +131,7 @@ interface SourceRootEntity : WorkspaceEntity {
   }
 
   companion object : EntityType<SourceRootEntity, Builder>() {
+    @ApiStatus.ScheduledForRemoval
     @Deprecated(message = "Use new API instead")
     @JvmOverloads
     @JvmStatic
@@ -133,6 +148,7 @@ interface SourceRootEntity : WorkspaceEntity {
 }
 
 //region generated code
+@ApiStatus.ScheduledForRemoval
 @Deprecated(message = "Use new API instead")
 fun MutableEntityStorage.modifySourceRootEntity(
   entity: SourceRootEntity,

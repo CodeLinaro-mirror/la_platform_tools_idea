@@ -10,8 +10,11 @@ import com.intellij.agent.workbench.prompt.core.AgentPromptPayloadValue
 import com.intellij.testFramework.junit5.TestApplication
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
+import java.util.concurrent.TimeUnit
 
 @TestApplication
+@Timeout(value = 2, unit = TimeUnit.MINUTES)
 class AgentPromptVcsCommitsContextRendererBridgeTest {
   private val renderer = AgentPromptVcsCommitsContextRendererBridge()
 
@@ -58,7 +61,96 @@ class AgentPromptVcsCommitsContextRendererBridgeTest {
 
     val chip = renderer.renderChip(AgentPromptChipRenderInput(item = item, projectBasePath = null))
 
-    assertThat(chip.text).isEqualTo("Commits: abc12345")
+    assertThat(chip.text).isEqualTo("abc12345")
+  }
+
+  @Test
+  fun renderChipUsesSubjectAndCommitCountFromPayload() {
+    val item = contextItem(
+      body = "",
+      payload = AgentPromptPayload.obj(
+        "entries" to AgentPromptPayload.arr(
+          AgentPromptPayload.obj(
+            "hash" to AgentPromptPayload.str("abc12345abcdef"),
+            "subject" to AgentPromptPayload.str("Fix TEST-101 regression"),
+            "author" to AgentPromptPayload.str("Test User"),
+            "commitTimeMs" to AgentPromptPayloadValue.Num("1710000000000"),
+            "rootName" to AgentPromptPayload.str("repo"),
+          ),
+          AgentPromptPayload.obj(
+            "hash" to AgentPromptPayload.str("def67890abcdef"),
+            "subject" to AgentPromptPayload.str("Update docs"),
+          ),
+        ),
+        "selectedCount" to AgentPromptPayload.num(2),
+      )
+    )
+
+    val chip = renderer.renderChip(AgentPromptChipRenderInput(item = item, projectBasePath = null))
+
+    assertThat(chip.text).isEqualTo("Fix TEST-101 regression +1")
+    assertThat(chip.tooltipText).contains("abc12345  Fix TEST-101 regression")
+    assertThat(chip.tooltipText).contains("Test User")
+    assertThat(chip.tooltipText).contains("repo")
+  }
+
+  @Test
+  fun renderChipShortensLongSubjectButKeepsFullTooltip() {
+    val subject = "Fix VCS commit chip preview width by trimming long subjects"
+    val item = contextItem(
+      body = "",
+      payload = AgentPromptPayload.obj(
+        "entries" to AgentPromptPayload.arr(
+          AgentPromptPayload.obj(
+            "hash" to AgentPromptPayload.str("abc12345abcdef"),
+            "subject" to AgentPromptPayload.str(subject),
+          ),
+        )
+      )
+    )
+
+    val chip = renderer.renderChip(AgentPromptChipRenderInput(item = item, projectBasePath = null))
+
+    assertThat(chip.text).isEqualTo("${subject.take(40)}\u2026")
+    assertThat(chip.tooltipText).contains("abc12345  $subject")
+  }
+
+  @Test
+  fun renderEnvelopeUsesSubjectWhenPayloadHasMetadata() {
+    val item = contextItem(
+      body = "",
+      payload = AgentPromptPayload.obj(
+        "entries" to AgentPromptPayload.arr(
+          AgentPromptPayload.obj(
+            "hash" to AgentPromptPayload.str("abc12345abcdef"),
+            "subject" to AgentPromptPayload.str("Fix TEST-101 regression"),
+          ),
+        )
+      )
+    )
+
+    val rendered = renderer.renderEnvelope(AgentPromptEnvelopeRenderInput(item = item, projectPath = null))
+
+    assertThat(rendered).isEqualTo("commits:\nabc12345abcdef | Fix TEST-101 regression")
+  }
+
+  @Test
+  fun renderEnvelopePrefersBodyOverPayloadMetadata() {
+    val item = contextItem(
+      body = "abc12345abcdef | Body subject",
+      payload = AgentPromptPayload.obj(
+        "entries" to AgentPromptPayload.arr(
+          AgentPromptPayload.obj(
+            "hash" to AgentPromptPayload.str("abc12345abcdef"),
+            "subject" to AgentPromptPayload.str("Payload subject"),
+          ),
+        )
+      )
+    )
+
+    val rendered = renderer.renderEnvelope(AgentPromptEnvelopeRenderInput(item = item, projectPath = null))
+
+    assertThat(rendered).isEqualTo("commits:\nabc12345abcdef | Body subject")
   }
 
   private fun contextItem(

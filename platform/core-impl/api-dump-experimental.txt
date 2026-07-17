@@ -8,20 +8,49 @@
 - <init>(java.util.List,java.util.List):V
 - f:getModuleIds():java.util.List
 - f:getPluginIds():java.util.List
-*:com.intellij.ide.plugins.PluginEnabler
-- sf:HEADLESS:com.intellij.ide.plugins.PluginEnabler$Headless
-- a:disable(java.util.Collection):Z
-- disableById(java.util.Set):Z
-- a:enable(java.util.Collection):Z
-- enableById(java.util.Set):Z
-- s:getInstance():com.intellij.ide.plugins.PluginEnabler
-- a:isDisabled(com.intellij.openapi.extensions.PluginId):Z
-*:com.intellij.ide.plugins.PluginEnabler$Headless
-- com.intellij.ide.plugins.PluginEnabler
-- a:isIgnoredDisabledPlugins():Z
-- a:setIgnoredDisabledPlugins(Z):V
-f:com.intellij.ide.plugins.PluginManagerCore
-- *sf:isLoaded(com.intellij.openapi.extensions.PluginDescriptor):Z
+*f:com.intellij.ide.plugins.PluginDetailsService
+- *sf:Companion:com.intellij.ide.plugins.PluginDetailsService$Companion
+- <init>():V
+- f:findDetails(com.intellij.openapi.extensions.PluginId):com.intellij.ide.plugins.PluginDetailsService$PluginDetails
+- f:getActivePlugins():kotlin.sequences.Sequence
+- *sf:getInstance():com.intellij.ide.plugins.PluginDetailsService
+- f:isBuiltIn(com.intellij.openapi.extensions.PluginId):Z
+- f:isDisabled(com.intellij.openapi.extensions.PluginId):Z
+- f:isLoaded(com.intellij.openapi.extensions.PluginId):Z
+*f:com.intellij.ide.plugins.PluginDetailsService$Companion
+- f:getInstance():com.intellij.ide.plugins.PluginDetailsService
+*:com.intellij.ide.plugins.PluginDetailsService$ModuleDependencyInfo
+- a:isOptional():Z
+*f:com.intellij.ide.plugins.PluginDetailsService$ModuleDependencyInfo$OnModule
+- com.intellij.ide.plugins.PluginDetailsService$ModuleDependencyInfo
+- <init>(java.lang.String,Z):V
+- f:getName():java.lang.String
+- isOptional():Z
+*f:com.intellij.ide.plugins.PluginDetailsService$ModuleDependencyInfo$OnPlugin
+- com.intellij.ide.plugins.PluginDetailsService$ModuleDependencyInfo
+- <init>(com.intellij.openapi.extensions.PluginId,Z):V
+- f:getPluginId():com.intellij.openapi.extensions.PluginId
+- isOptional():Z
+*f:com.intellij.ide.plugins.PluginDetailsService$PluginDetails
+- <init>(com.intellij.openapi.extensions.PluginId,java.lang.String,java.lang.String,java.lang.String,java.lang.String,com.intellij.ide.plugins.PluginDetailsService$PluginVendorInfo,java.util.Collection,java.util.Collection,Z):V
+- f:getChangeNotes():java.lang.String
+- f:getDependencies():java.util.Collection
+- f:getDescription():java.lang.String
+- f:getId():com.intellij.openapi.extensions.PluginId
+- f:getModules():java.util.Collection
+- f:getName():java.lang.String
+- f:getVendor():com.intellij.ide.plugins.PluginDetailsService$PluginVendorInfo
+- f:getVersion():java.lang.String
+- f:isBuiltIn():Z
+*f:com.intellij.ide.plugins.PluginDetailsService$PluginModuleInfo
+- <init>(java.lang.String):V
+- f:getName():java.lang.String
+*f:com.intellij.ide.plugins.PluginDetailsService$PluginVendorInfo
+- <init>(java.lang.String,java.lang.String,java.lang.String,java.lang.String):V
+- f:getEmail():java.lang.String
+- f:getName():java.lang.String
+- f:getOrganization():java.lang.String
+- f:getUrl():java.lang.String
 *:com.intellij.ide.plugins.PluginNonLoadReason
 - a:getDetailedMessage():java.lang.String
 - a:getLogMessage():java.lang.String
@@ -68,6 +97,9 @@ a:com.intellij.openapi.fileEditor.impl.FileDocumentManagerBase
 - <init>():V
 - getLanguage():com.intellij.lang.Language
 - getReferences():com.intellij.psi.PsiReference[]
+c:com.intellij.psi.impl.GeneratedMarkerVisitor
+- com.intellij.psi.impl.source.tree.RecursiveTreeElementWalkingVisitor
+- *:<init>(com.intellij.lang.ASTNode):V
 a:com.intellij.psi.impl.PsiDocumentManagerBase
 - com.intellij.openapi.Disposable
 - com.intellij.openapi.editor.event.DocumentListener
@@ -107,3 +139,11 @@ c:com.intellij.psi.impl.source.resolve.ResolveCache
 - *:resolveWithCaching(com.intellij.model.psi.PsiSymbolReference,Z,com.intellij.psi.impl.source.resolve.ResolveCache$PsiSymbolReferenceResolver):java.util.Collection
 *:com.intellij.psi.impl.source.resolve.ResolveCache$PsiSymbolReferenceResolver
 - a:resolve(com.intellij.model.psi.PsiSymbolReference):java.util.Collection
+c:com.intellij.psi.impl.source.tree.AstBufferUtil$BufferVisitor
+- com.intellij.psi.impl.source.tree.RecursiveTreeElementWalkingVisitor
+- *:<init>(com.intellij.lang.ASTNode,Z,Z,I,C[]):V
+a:com.intellij.psi.impl.source.tree.RecursiveTreeElementWalkingVisitor
+- com.intellij.psi.impl.source.tree.TreeElementVisitor
+- com.intellij.psi.PsiRecursiveVisitor
+- *p:<init>(com.intellij.lang.ASTNode):V
+- *p:<init>(com.intellij.lang.ASTNode,Z):V
