@@ -27,8 +27,10 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 import static com.intellij.gradle.toolingExtension.impl.model.sourceSetDependencyModel.GradleSourceSetDependencyMerger.COMPILE_SCOPE;
 import static com.intellij.gradle.toolingExtension.impl.model.sourceSetDependencyModel.GradleSourceSetDependencyMerger.PROVIDED_SCOPE;
@@ -56,9 +58,10 @@ public final class GradleSourceSetDependencyResolver {
   }
 
   public @NotNull Collection<ExternalDependency> resolveDependencies(@NotNull SourceSet sourceSet) {
+    Set<File> sourceSetOutputFiles = getSourceSetOutputFiles(sourceSet);
     Collection<ExternalDependency> dependencies = GradleSourceSetDependencyMerger.mergeDependencies(
-      resolveSourceSetDependencies(getCompileClasspath(sourceSet), sourceSet.getCompileClasspathConfigurationName(), COMPILE_SCOPE),
-      resolveSourceSetDependencies(sourceSet.getRuntimeClasspath(), sourceSet.getRuntimeClasspathConfigurationName(), RUNTIME_SCOPE),
+      resolveSourceSetDependencies(sourceSetOutputFiles, getCompileClasspath(sourceSet), sourceSet.getCompileClasspathConfigurationName(), COMPILE_SCOPE),
+      resolveSourceSetDependencies(sourceSetOutputFiles, sourceSet.getRuntimeClasspath(), sourceSet.getRuntimeClasspathConfigurationName(), RUNTIME_SCOPE),
       resolveSourceSetProvidedDependencies(sourceSet)
     );
 
@@ -70,11 +73,12 @@ public final class GradleSourceSetDependencyResolver {
   }
 
   private @NotNull Collection<? extends ExternalDependency> resolveSourceSetDependencies(
+    @NotNull Set<File> sourceSetOutputFiles,
     @NotNull FileCollection classpath,
     @NotNull String configurationName,
     @NotNull String scope
   ) {
-    ClasspathDependencies classpathDependencies = resolveClasspathDependencies(classpath, scope);
+    ClasspathDependencies classpathDependencies = resolveClasspathDependencies(sourceSetOutputFiles, classpath, scope);
     if (!classpathDependencies.needsConfigurationEnrichment) {
       return classpathDependencies.dependencies;
     }
@@ -85,12 +89,30 @@ public final class GradleSourceSetDependencyResolver {
   }
 
   private @NotNull ClasspathDependencies resolveClasspathDependencies(
+    @NotNull Set<File> sourceSetOutputFiles,
     @NotNull FileCollection classpath,
     @NotNull String scope
   ) {
     GradleSourceSetClasspathDependencyVisitor visitor = new GradleSourceSetClasspathDependencyVisitor(scope);
-    GradleSourceSetDependencyVisitor.traverse(myContext, myProject, classpath, visitor);
+    GradleSourceSetDependencyVisitor filteringVisitor = new SourceSetOutputFilterVisitor(visitor, sourceSetOutputFiles);
+    GradleSourceSetDependencyVisitor.traverse(myContext, myProject, classpath, filteringVisitor);
     return new ClasspathDependencies(visitor.getDependencies(), visitor.needsConfigurationEnrichment());
+  }
+
+  private static @NotNull Set<File> getSourceSetOutputFiles(@NotNull SourceSet sourceSet) {
+    try {
+      SourceSetOutput sourceSetOutput = sourceSet.getOutput();
+      Set<File> files = new HashSet<>(sourceSetOutput.getClassesDirs().getFiles());
+      files.addAll(sourceSetOutput.getDirs().getFiles());
+      File resourcesDir = sourceSetOutput.getResourcesDir();
+      if (resourcesDir != null) {
+        files.add(resourcesDir);
+      }
+      return files;
+    }
+    catch (Exception ignored) {
+      return Collections.emptySet();
+    }
   }
 
   /**
