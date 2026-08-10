@@ -3,6 +3,7 @@ package com.intellij.python.hatch.impl
 
 import com.intellij.python.community.common.tools.ToolId
 import com.intellij.python.hatch.icons.PythonHatchIcons
+import com.intellij.python.hatch.impl.sdk.HatchSdkFlavor
 import com.intellij.python.pyproject.model.spi.ProjectName
 import com.intellij.python.pyproject.model.spi.ProjectStructureInfo
 import com.intellij.python.pyproject.model.spi.PyProjectTomlProject
@@ -22,6 +23,8 @@ internal class HatchPyProjectManager : PyProjectManager {
   override val id: ToolId = HATCH_TOOL_ID
   override val ui: PyToolUIInfo = HATCH_UI_INFO
 
+  override val flavorDataType: Class<HatchSdkFlavor> = HatchSdkFlavor::class.java
+
   override suspend fun getSrcRoots(toml: TomlTable, projectRoot: Directory): Set<Directory> = emptySet()
 
   override suspend fun getProjectStructure(
@@ -29,5 +32,7 @@ internal class HatchPyProjectManager : PyProjectManager {
     rootIndex: Map<Directory, ProjectName>,
   ): ProjectStructureInfo? = null
 
-  override fun getTomlDependencySpecifications(): List<TomlDependencySpecification> = emptyList()
+  override fun getTomlDependencySpecifications(): List<TomlDependencySpecification> = listOf(
+    TomlDependencySpecification.GroupPep621Dependency("tool.hatch.envs", "dependencies"),
+  )
 }

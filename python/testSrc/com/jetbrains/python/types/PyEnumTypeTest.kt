@@ -355,7 +355,7 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
       
       def f(p: Enum):
           expr = p.value
-      #   └ TYPE () -> Any FIXME Any
+      #   └ TYPE Any
       """)
 
     @Test
@@ -668,6 +668,24 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
       class MyEnum(Enum):
           OK = 1
           BAD = "string" # WARNING Expected type 'int', got 'str' instead
+      """)
+
+    @Test
+    @TestFor(issues = ["PY-88892"])
+    fun `plain enum member declared as a tuple is validated as the whole value`() = test("""
+      from enum import Enum, StrEnum, IntEnum
+
+      # Plain stdlib enums have no metaclass/constructor that consumes extra elements: the whole tuple is the value,
+      # so a str/int-based enum rejects it (runtime TypeError). Only framework enums (e.g. django Choices) relax this
+      # via PyEnumMemberDeclarationProvider; see DjangoEnumTypeTest.
+      class PlainStr(StrEnum):
+          A = "A", "A"   # WARNING Expected type 'str', got 'tuple[Literal["A"], Literal["A"]]' instead
+
+      class PlainInt(IntEnum):
+          B = 1, "label" # WARNING Expected type 'int', got 'tuple[Literal[1], Literal["label"]]' instead
+
+      class PlainEnum(Enum):
+          C = 1, 2       # OK: value type is inferred as the tuple itself
       """)
 
     @Test

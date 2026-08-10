@@ -80,7 +80,7 @@ open class IdeaCommunityProperties(private val communityHomeDir: Path) : JetBrai
       "intellij.platform.util.zip",
     )
     mavenArtifacts.validateForMavenCentralPublication = { module ->
-      JewelMavenArtifacts.isPublishedJewelModule(module)
+      JewelMavenArtifacts.isPublishedJewelModule(module) || JewelMavenArtifacts.isPublishedPlatformDependency(module)
     }
     mavenArtifacts.patchCoordinates = { module, coordinates ->
       when {
@@ -97,10 +97,12 @@ open class IdeaCommunityProperties(private val communityHomeDir: Path) : JetBrai
     mavenArtifacts.addPomMetadata = { module, model ->
       when {
         JewelMavenArtifacts.isPublishedJewelModule(module) -> JewelMavenArtifacts.addPomMetadata(module, model)
+        JewelMavenArtifacts.isPublishedPlatformDependency(module) -> JewelMavenArtifacts.addPlatformPomMetadata(module, model)
       }
     }
     mavenArtifacts.isJavadocJarRequired = {
-      JewelMavenArtifacts.isPublishedJewelModule(it) && it.name != "intellij.platform.jewel.intUi.decoratedWindow"
+      JewelMavenArtifacts.isPublishedPlatformDependency(it) ||
+      (JewelMavenArtifacts.isPublishedJewelModule(it) && it.name != "intellij.platform.jewel.intUi.decoratedWindow")
     }
     mavenArtifacts.validate = { context, artifacts ->
       JewelMavenArtifacts.validate(context, artifacts)

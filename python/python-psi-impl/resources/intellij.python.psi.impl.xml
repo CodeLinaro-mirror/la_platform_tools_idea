@@ -120,7 +120,7 @@
 
     <!-- PyDocstring -->
     <languageInjector implementation="com.jetbrains.python.documentation.doctest.PyDocstringLanguageInjector"/>
-    <lang.parserDefinition language="Doctest" implementationClass="com.jetbrains.python.documentation.doctest.PyDocstringParserDefinition"/>
+    <lang.parserDefinition language="Doctest" implementationClass="com.jetbrains.python.documentation.doctest.PyDoctestParserDefinition"/>
     <highlightErrorFilter implementation="com.jetbrains.python.documentation.doctest.PyDocstringErrorFilter"/>
     <lang.formatter language="Doctest" implementationClass="com.jetbrains.python.documentation.doctest.PyDocstringFormattingModelBuilder"/>
 
@@ -623,6 +623,8 @@
                  description="Enable variance in subtype checks"/>
     <registryKey key="python.skeleton.generator.use.process.pool" defaultValue="true"
                  description="Use a process worker pool for skeleton generation to avoid process creation overhead"/>
+    <registryKey key="python.type.checker.diff.tooltip" defaultValue="false"
+                 description="Show a structural side-by-side type diff in type-mismatch inspection tooltips (otherwise the plain message tooltip is shown)"/>
 
     <virtualFileCustomDataProvider implementation="com.jetbrains.python.formatter.PyCodeStyleSettingsProvider"/>
     <projectSettings service="com.jetbrains.python.findUsages.PyFindUsagesOptions"/>
@@ -653,6 +655,9 @@
                     dynamic="true"/>
     <extensionPoint qualifiedName="Pythonid.typeCheckerExtension"
                     interface="com.jetbrains.python.psi.types.PyTypeCheckerExtension"
+                    dynamic="true"/>
+    <extensionPoint qualifiedName="Pythonid.pyEnumMemberDeclarationProvider"
+                    interface="com.jetbrains.python.psi.types.PyEnumMemberDeclarationProvider"
                     dynamic="true"/>
     <extensionPoint qualifiedName="Pythonid.pyDataclassParametersProvider"
                     interface="com.jetbrains.python.codeInsight.PyDataclassParametersProvider"
@@ -704,7 +709,7 @@
 
     <!-- PyDocstring -->
     <typeProvider implementation="com.jetbrains.python.documentation.docstrings.PyDocStringTypeProvider" id="pythonDocstringTypeProvider"/>
-    <dialectsTokenSetContributor implementation="com.jetbrains.python.documentation.doctest.PyDocstringTokenSetContributor"/>
+    <dialectsTokenSetContributor implementation="com.jetbrains.python.documentation.doctest.PyDoctestTokenSetContributor"/>
 
     <!-- PyTypeRepresentation -->
     <dialectsTokenSetContributor implementation="com.jetbrains.python.codeInsight.typeRepresentation.PyTypeRepresentationTokenSetContributor"/>

@@ -17,7 +17,6 @@ import com.intellij.codeInsight.intention.IntentionAction
 import com.intellij.openapi.application.readAction
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
-import com.intellij.platform.ide.productMode.IdeProductMode
 import com.intellij.psi.PsiManager
 import kotlinx.coroutines.isActive
 import org.jetbrains.annotations.ApiStatus
@@ -49,8 +48,7 @@ private val LOG = Logger.getInstance("com.intellij.platform.problemsView.backend
 suspend fun buildChangelistFromEventsBatch(
   eventsBatch: List<ProblemEvent>,
   project: Project,
-  lifetime: ProblemLifetime,
-  sourceFlow: String,
+  lifetime: ProblemLifetime
 ): List<ProblemEventDto> {
   return eventsBatch.mapNotNull { event ->
     if(!lifetime.isActive()) {
@@ -66,15 +64,15 @@ suspend fun buildChangelistFromEventsBatch(
       is ProblemEvent.Disappeared -> {
         val problemId = ProblemLifetimeManager.getInstance(project).removeProblemId(event.problem)
         if (problemId == null) {
-          logMissingIdErrorWithDiagnostic(event.problem, lifetime, project, eventsBatch, eventType = "Disappeared", sourceFlow = sourceFlow)
+          logMissingIdErrorWithDiagnostic(
+            problem = event.problem,
+            lifetime = lifetime
+          )
           return@mapNotNull null
         }
         ProblemEventDto.Disappeared(problemId)
       }
       is ProblemEvent.Updated -> {
-        if (!ProblemLifetimeManager.getInstance(project).hasIdFor(event.problem)) {
-          logMissingIdErrorWithDiagnostic(event.problem, lifetime, project, eventsBatch, eventType = "Updated", sourceFlow = sourceFlow)
-        }
         val problemDto = buildProblemDto(event.problem, lifetime, project)
         ProblemEventDto.Updated(problemDto)
       }
@@ -156,23 +154,9 @@ private suspend fun getQuickFixesOfProblem(problem: HighlightingProblem): List<I
   return@readAction intentionActionsWithOptions
 }
 
-private fun logMissingIdErrorWithDiagnostic(problem: Problem,
-                                            lifetime: ProblemLifetime,
-                                            project: Project,
-                                            eventsBatch: List<ProblemEvent>,
-                                            eventType: String,
-                                            sourceFlow: String){
-  val mgr = ProblemLifetimeManager.getInstance(project)
-  val history = mgr.getProblemHistory(problem)
-
-  val productMode = when {
-    IdeProductMode.isBackend -> "backend"
-    IdeProductMode.isMonolith -> "monolith"
-    else -> "should be backend/monolith"
-  }
-
+private fun logMissingIdErrorWithDiagnostic(problem: Problem, lifetime: ProblemLifetime){
   val message = buildString {
-    appendLine("Problem ID not found for $eventType event (sourceFlow=$sourceFlow, productMode=$productMode).")
+    appendLine("Problem ID not found for Disappeared event.")
 
     appendLine("Problem:")
     appendLine("  type=${problem.javaClass.name}")
@@ -186,22 +170,8 @@ private fun logMissingIdErrorWithDiagnostic(problem: Problem,
       appendLine("  highlighterHash=${problem.highlighter.hashCode()}, highlighterValid=${problem.highlighter.isValid}")
       appendLine("  infoPresent=${info != null}, descriptionNull=${info?.description == null}, severity=${problem.severity}")
     }
-
-    appendLine("History:")
-    if (history != null) {
-      val now = System.currentTimeMillis()
-      val createdAgo = if (history.lastCreatedTsMs >= 0) "${now - history.lastCreatedTsMs}ms ago" else "never"
-      val removedAgo = if (history.lastRemovedTsMs >= 0) "${now - history.lastRemovedTsMs}ms ago" else "never"
-      appendLine("  everSeen=true, idsCreated=${history.timesIdCreated}, idsRemoved=${history.timesIdRemoved}")
-      appendLine("  lastCreated=$createdAgo, lastRemoved=$removedAgo")
-    } else {
-      appendLine("  everSeen=false")
-    }
-
-    appendLine("Store: size=${mgr.problemIdStoreSize()}, batchSize=${eventsBatch.size}")
-
     appendLine("Lifetime: active=${lifetime.coroutineScope.isActive}, scope=${lifetime.coroutineScope}")
   }
 
-  MissingProblemIdErrorAccumulator.getInstance(project).record(message)
+  LOG.debug(message)
 }

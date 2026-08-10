@@ -234,7 +234,7 @@ public class Py3TypeCheckerInspectionTest extends PyInspectionTestCase {
                    class StrMixin(str, Enum):
                        C = "c"
                    s2: str = StrMixin.C.value
-                   s3: int = <warning descr="Expected type 'int', got 'str' instead">StrMixin.C.value</warning>
+                   s3: int = <warning descr="Expected type 'int', got 'Literal[\\"c\\"]' instead">StrMixin.C.value</warning>
 
                    # Empty str mixin should also infer str
                    class EmptyStrMixin(str, Enum):
@@ -532,6 +532,16 @@ public class Py3TypeCheckerInspectionTest extends PyInspectionTestCase {
         def f() -> int:
             # noinspection bad-return, bad-argument-type
             return 'hello'
+        """);
+  }
+
+  // an incomplete augmented assignment (no right-hand side) must not throw an NPE.
+  @TestFor(issues = "PY-90019")
+  public void testIncompleteAugAssignmentDoesNotThrow() {
+    doTestByText(
+      """
+        def f(n: int):
+            n +=<EOLError descr="Expression expected"></EOLError>
         """);
   }
 }

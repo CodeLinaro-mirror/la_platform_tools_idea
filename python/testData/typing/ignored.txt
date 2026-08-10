@@ -8,9 +8,9 @@ constructors_callable.py
 dataclasses_hash.py
 dataclasses_transform_converter.py
 dataclasses_usage.py
-directives_deprecated.py
 directives_disjoint_base.py
 directives_version_platform.py
+generics_basic.py
 generics_paramspec_semantics.py
 generics_syntax_infer_variance.py
 generics_typevartuple_args.py

@@ -4,7 +4,10 @@ package com.jetbrains.python.inspections
 import com.google.common.collect.Sets
 import com.intellij.codeInspection.ProblemHighlightType
 import com.intellij.codeInspection.ProblemsHolder
-import com.intellij.openapi.util.NlsSafe
+import com.intellij.codeInspection.util.InspectionMessage
+import com.intellij.openapi.util.NlsContexts
+import com.intellij.openapi.util.text.HtmlBuilder
+import com.intellij.openapi.util.text.StringUtil
 import com.intellij.psi.PsiElement
 import com.jetbrains.python.PyPsiBundle
 import com.jetbrains.python.PyTokenTypes
@@ -12,17 +15,20 @@ import com.jetbrains.python.codeInsight.typing.matchingProtocolDefinitions
 import com.jetbrains.python.documentation.PythonDocumentationProvider
 import com.jetbrains.python.inspections.PyTypeCheckerInspection.AnalyzeArgumentResult
 import com.jetbrains.python.inspections.PyTypeCheckerInspection.AnalyzeCalleeResults
+import com.jetbrains.python.inspections.PyTypeCheckerInspectionProblemRegistrar.breakdownTooltip
+import com.jetbrains.python.inspections.PyTypeCheckerInspectionProblemRegistrar.breakdownTooltipFromFragment
 import com.jetbrains.python.psi.PyAugAssignmentStatement
 import com.jetbrains.python.psi.PyBinaryExpression
 import com.jetbrains.python.psi.PyCallExpression
 import com.jetbrains.python.psi.PyCallSiteOwner
 import com.jetbrains.python.psi.PyExpression
-import com.jetbrains.python.psi.PyKeywordArgument
 import com.jetbrains.python.psi.PySubscriptionExpression
 import com.jetbrains.python.psi.impl.PyPsiUtils.getFirstChildOfType
 import com.jetbrains.python.psi.types.PyClassLikeType
 import com.jetbrains.python.psi.types.PyStructuralType
 import com.jetbrains.python.psi.types.PyType
+import com.jetbrains.python.psi.types.PyTypeChecker
+import com.jetbrains.python.psi.types.PyTypeMismatchExplanation
 import com.jetbrains.python.psi.types.TypeEvalContext
 import java.util.Optional
 
@@ -71,13 +77,18 @@ internal object PyTypeCheckerInspectionProblemRegistrar {
     for (argumentResult in calleeResults.results) {
       if (argumentResult.isMatched) continue
 
-      registerWithOverride(
-        holder,
-        code,
-        argumentResult.argument,
-        getSingleCalleeProblemMessage(argumentResult, context),
-        highlightOverride
-      )
+      val argument = argumentResult.argument
+      val message = getSingleCalleeProblemMessage(argumentResult, context)
+      val type = highlightOverride ?: ProblemHighlightType.GENERIC_ERROR_OR_WARNING
+      // The breakdown tooltip re-runs the match, so reportWithTooltip invokes the supplier only on-the-fly.
+      val expected = argumentResult.expectedTypeAfterSubstitution ?: argumentResult.expectedType
+      PyTypeCheckerProblemReporter.reportWithTooltip(holder, code, argument, message, type) {
+        breakdownTooltip(message,
+                         expected,
+                         argumentResult.actualType,
+                         context,
+                         argument)
+      }
     }
 
     for (unexpectedArgumentForParamSpec in calleeResults.unmatchedArguments) {
@@ -110,9 +121,9 @@ internal object PyTypeCheckerInspectionProblemRegistrar {
 
           for (unfilledParameterFromParamSpec in calleeResults.unfilledPositionalVarargs) {
             val varargName = unfilledParameterFromParamSpec.varargName
-            val expectedTypes = unfilledParameterFromParamSpec.expectedTypes
+            val expectedType = PyInspectionMessages.CodifiedParam.ofType(unfilledParameterFromParamSpec.expectedType, rpar, context)
             registerWithOverride(
-              holder, code, rpar, PyPsiBundle.problemMessage("INSP.type.checker.unfilled.vararg", varargName, expectedTypes),
+              holder, code, rpar, PyPsiBundle.problemMessage("INSP.type.checker.unfilled.vararg", varargName, expectedType),
               highlightOverride
             )
           }
@@ -158,11 +169,11 @@ internal object PyTypeCheckerInspectionProblemRegistrar {
   ) {
     val header = PyMismatchTooltips.header(calleesResults.map { it.callable })
     val argumentSlots = getReferenceResults(calleesResults).map { argumentResult ->
-      PyMismatchTooltips.Slot(getActualArgumentRepresentation(argumentResult, context),
-                              !argumentMatchesNoCallee(argumentResult.argument, calleesResults))
+      PyMismatchTooltips.argumentSlot(argumentResult.argument, argumentResult.actualType, context,
+                                      !argumentMatchesNoCallee(argumentResult.argument, calleesResults))
     }
     val expectedRows = calleesResults.map { calleeResults ->
-      calleeResults.results.map { PyMismatchTooltips.Slot(getExpectedParameterRepresentation(it, context), it.isMatched) }
+      calleeResults.results.map { getExpectedParameterSlot(it, context, it.isMatched) }
     }
 
     val description = PyMismatchTooltips.description(header, argumentSlots, expectedRows)
@@ -220,14 +231,35 @@ internal object PyTypeCheckerInspectionProblemRegistrar {
     }
 
     if (expectedSubstitutedParam != null) {
-      return PyPsiBundle.problemMessage(
-        "INSP.type.checker.expected.matched.type.got.type.instead", expectedSubstitutedParam, expectedTypeParam,
-        actualTypeParam
+      return enrichWithCallableDiff(
+        PyPsiBundle.problemMessage(
+          "INSP.type.checker.expected.matched.type.got.type.instead", expectedSubstitutedParam, expectedTypeParam,
+          actualTypeParam
+        ),
+        expectedTypeAfterSubstitution, actualType, context
       )
     }
     else {
-      return PyPsiBundle.problemMessage("INSP.type.checker.expected.type.got.type.instead", expectedTypeParam, actualTypeParam)
+      return enrichWithCallableDiff(
+        PyPsiBundle.problemMessage("INSP.type.checker.expected.type.got.type.instead", expectedTypeParam, actualTypeParam),
+        expectedType, actualType, context
+      )
     }
+  }
+
+  /**
+   * Replaces the tooltip of [base] with an aligned callable type diff (see [PyTypeDiff]) when both
+   * [expected] and [actual] are callables; otherwise returns [base] unchanged. The plain-text description is
+   * always preserved for the Problems view.
+   */
+  private fun enrichWithCallableDiff(
+    base: PyInspectionMessages.ProblemMessage,
+    expected: PyType?,
+    actual: PyType?,
+    context: TypeEvalContext,
+  ): PyInspectionMessages.ProblemMessage {
+    val diff = PyTypeDiff.diffTooltip(expected, actual, context)
+    return if (diff != null) base.copy(tooltip = diff) else base
   }
 
   private fun registerMultiCalleeProblemForBinaryExpression(
@@ -312,32 +344,70 @@ internal object PyTypeCheckerInspectionProblemRegistrar {
     return null
   }
 
-  @NlsSafe
-  private fun getActualArgumentRepresentation(
+  private fun getExpectedParameterSlot(
     argumentResult: AnalyzeArgumentResult,
     context: TypeEvalContext,
-  ): @NlsSafe String {
-    val typeName = PythonDocumentationProvider.getTypeName(argumentResult.actualType, context)
-    val argument = argumentResult.argument
-    if (argument is PyKeywordArgument) {
-      val keyword = argument.keyword
-      if (keyword != null) {
-        return "$keyword=$typeName"
-      }
-    }
-    return typeName
-  }
-
-  @NlsSafe
-  private fun getExpectedParameterRepresentation(
-    argumentResult: AnalyzeArgumentResult,
-    context: TypeEvalContext,
-  ): @NlsSafe String {
+    matched: Boolean,
+  ): PyMismatchTooltips.Slot {
     val type = argumentResult.expectedTypeAfterSubstitution ?: argumentResult.expectedType
     val typeName = PythonDocumentationProvider.getTypeName(type, context)
-    val parameter = argumentResult.parameter
-    val parameterName = parameter?.name ?: return typeName
-    val prefix = if (parameter.isPositionalContainer) "*" else if (parameter.isKeywordContainer) "**" else ""
-    return "$prefix$parameterName: $typeName"
+    val parameter = argumentResult.parameter ?: return PyMismatchTooltips.Slot("", typeName, matched)
+    return PyMismatchTooltips.parameterSlot(parameter, typeName, matched)
+  }
+
+  /**
+   * Renders [headlineFragment] (already an HTML fragment, with any `<code>` spans) followed by the
+   * [explanation] tree as an HTML tooltip (on-the-fly only). Each level is indented; a node's message marks
+   * code-like spans with backticks, which become `<code>` blocks while the surrounding text is escaped. The
+   * result is used as the problem's tooltip, not its description, so batch results stay one line.
+   */
+  @NlsContexts.Tooltip
+  private fun breakdownTooltipFromFragment(
+    @NlsContexts.Tooltip headlineFragment: String,
+    explanation: PyTypeMismatchExplanation,
+  ): @NlsContexts.Tooltip String {
+    val builder = HtmlBuilder().appendRaw(headlineFragment)
+    appendBreakdownNodes(builder, listOf(explanation), 1)
+    return builder.wrapWith("html").toString()
+  }
+
+  /** [breakdownTooltipFromFragment] with an enriched headline; its `<code>` spans (and any links) are kept. */
+  @NlsContexts.Tooltip
+  @JvmStatic
+  fun breakdownTooltip(
+    headline: PyInspectionMessages.ProblemMessage,
+    explanation: PyTypeMismatchExplanation,
+  ): @NlsContexts.Tooltip String =
+    breakdownTooltipFromFragment(PyInspectionMessages.tooltipFragment(headline), explanation)
+
+  /**
+   * The breakdown tooltip explaining why [actual] doesn't match [expected], or null when the failure category
+   * isn't instrumented (no [PyTypeChecker.explainMismatch] result). Pass as the on-the-fly tooltip supplier to
+   * [PyInspectionVisitor.registerProblem]; it re-runs the match, so it must be invoked only on-the-fly.
+   *
+   * [anchor] is the element the problem is reported on; it is used to resolve type and class names in the
+   * breakdown to their declarations so they render as clickable links (as in the enriched headline).
+   */
+  @NlsContexts.Tooltip
+  @JvmStatic
+  fun breakdownTooltip(
+    headline: PyInspectionMessages.ProblemMessage,
+    expected: PyType?,
+    actual: PyType?,
+    context: TypeEvalContext,
+    anchor: PsiElement?,
+  ): @NlsContexts.Tooltip String? =
+    PyTypeChecker.explainMismatch(expected, actual, context, anchor)?.let { breakdownTooltip(headline, it) }
+
+  private fun appendBreakdownNodes(
+    builder: HtmlBuilder,
+    nodes: List<PyTypeMismatchExplanation>,
+    depth: Int,
+  ) {
+    for (node in nodes) {
+      builder.br().appendRaw(StringUtil.repeat("&nbsp;", depth * 2))
+        .appendRaw(PyInspectionMessages.tooltipFragment(node.message))
+      appendBreakdownNodes(builder, node.children, depth + 1)
+    }
   }
 }

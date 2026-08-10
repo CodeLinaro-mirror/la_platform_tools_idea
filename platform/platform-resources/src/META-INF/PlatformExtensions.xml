@@ -635,7 +635,7 @@ Android Studio: don't register IntelliJ fork -->
                  description="Pause dumb queue (including indexing) while scanning is in progress."/>
     <registryKey defaultValue="true" key="vfs.refresh.should.pause.dumb.queue" restartRequired="true"
                  description="Pause dumb queue (including indexing) while bulk VFS update is in progress."/>
-    <registryKey defaultValue="true" key="vfs.windows.use.buffered.directory.stream"
+    <registryKey defaultValue="false" key="vfs.windows.use.buffered.directory.stream"
                  description="Use the native buffered WindowsBufferedDirectoryStream for directory enumeration on Windows. When disabled, falls back to the standard java.nio directory stream."/>
     <initProjectActivity id="dumbServiceStartup" implementation="com.intellij.openapi.project.DumbServiceStartupActivity" order="last"/>
 
@@ -1914,13 +1914,16 @@ Android Studio: b/285867050 -->
                  description="Report UI freezes to JetBrains"/>
     <registryKey key="freeze.reporter.maxDumpDuration.ms" defaultValue="40000"
                  description="Maximum duration of the 'report.txt' performance snapshot in ms"/>
+    <registryKey key="freeze.reporter.duration.threshold.seconds" defaultValue="10"
+                 description="Report UI freezes longer than the specified duration in seconds"/>
+    <registryKey key="ide.errors.deduplicate" defaultValue="true"
+                 description="Group error reports with identical stack traces in the error dialog"/>
     <registryKey key="freeze.reporter.profiling" defaultValue="true"
                  description="Start CPU profiling when the IDE is frozen"/>
     <registryKey key="freeze.reporter.profiling.all.threads" defaultValue="true"
                  description="Capture all threads including sleeping and blocked (wall-clock mode)"/>
 
     <applicationActivity implementation="com.intellij.internal.DumpPluginDescriptorsOnAppStartTrigger"/>
-    <applicationActivity implementation="com.intellij.ide.plugins.PluginInitializationErrorReporterStartupActivity"/>
 
     <registryKey key="search.everywhere.footer.extended.info"
                  defaultValue="true"
@@ -2193,6 +2196,8 @@ Android Studio: b/285867050 -->
   <applicationListeners>
     <listener class="com.intellij.ide.plugins.DynamicPluginsFrameStateListener"
               topic="com.intellij.openapi.application.ApplicationActivationListener"/>
+    <listener class="com.intellij.ide.plugins.PluginInitializationErrorStartupReporter"
+              topic="com.intellij.ide.AppLifecycleListener"/>
     <listener class="com.intellij.openapi.updateSettings.impl.UpdateCheckerService$MyAppLifecycleListener"
               topic="com.intellij.ide.AppLifecycleListener"/>
     <listener class="com.intellij.openapi.updateSettings.impl.PluginAutoUpdateService$PluginAutoUpdateAppLifecycleListener"

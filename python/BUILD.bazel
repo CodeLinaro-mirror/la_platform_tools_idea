@@ -513,6 +513,7 @@ jvm_library(
         "//python/python-uv/backend",
         "//platform/testIntegration",
         "//platform/testIntegration-ui",
+        "//python/python-poetry/backend",
     ],
 )
 
@@ -669,6 +670,7 @@ jvm_library(
         "//python/python-uv/backend:backend_test_lib",
         "//platform/testIntegration:testIntegration_test_lib",
         "//platform/testIntegration-ui:testIntegration-ui_test_lib",
+        "//python/python-poetry/backend:backend_test_lib",
     ],
 )
 ### auto-generated section `build intellij.python.community.impl` end
@@ -1403,6 +1405,12 @@ jvm_library(
         "//platform/testIntegration-ui:testIntegration-ui_test_lib",
         "//libraries/junit4",
         "//libraries/junit4:junit4_test_lib",
+        "//plugins/toml/core",
+        "//plugins/toml/core:core_test_lib",
+        "//python/python-poetry/backend",
+        "//python/python-poetry/backend:backend_test_lib",
+        "//python/python-lsp-core:lsp-core",
+        "//python/python-lsp-core:lsp-core_test_lib",
     ],
 )
 ### auto-generated section `build intellij.python.community.tests` end

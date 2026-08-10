@@ -35,7 +35,5 @@ class IdValueStore<T : Any> {
     return valueToId.remove(value)
   }
 
-  fun hasKey(value: T): Boolean = valueToId.containsKey(value)
-
   fun getSize(): Int = valueToId.size
 }
