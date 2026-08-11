@@ -136,10 +136,6 @@ class AndroidStudioProperties : ProductProperties() {
       // For precedent, see IntelliJ commit https://github.com/JetBrains/intellij-community/commit/bb6d3cf0ac.
       layout.withProjectLibrary("kotlinx-coroutines-guava")
 
-      // b/376902207: JetBrains apparently converted rml.dfa into a product module in CIDR commit 0f8319e82a.
-      // Note that there is an associated V2 module rml.dfa.impl referenced from AndroidStudioPlugin.xml.
-      layout.withModule("intellij.rml.dfa")
-
       layout.withPatch { patcher, context ->
         // Patch AndroidStudioProperties.xml: set the platform API version to match the 3-component
         // IntelliJ IDEA build number. At runtime, it will be used by ApplicationInfo.getApiVersion()
@@ -221,7 +217,9 @@ class AndroidStudioProperties : ProductProperties() {
     module("intellij.platform.coverage.agent")
     module("intellij.platform.customization.min")
 
-    module("intellij.rml.dfa.impl") // For CIDR.
+    // For CIDR.
+    module("intellij.rml.dfa")
+    module("intellij.rml.dfa.impl")
   }
 
   private fun copyCidrLicense(spec: PluginLayout.PluginLayoutBuilder) {

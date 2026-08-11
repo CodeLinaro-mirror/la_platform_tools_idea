@@ -22,6 +22,7 @@ optional dependency on the module 'com.intellij.modules.androidstudio' declared 
     <module name="intellij.platform.coverage"/>
     <module name="intellij.platform.coverage.agent"/>
     <!-- From CLionPlugin.xml: -->
+    <module name="intellij.rml.dfa"/>
     <module name="intellij.rml.dfa.impl"/>
   </content>
   <xi:include href="/META-INF/intellij.moduleSets.ide.common.xml"/>
