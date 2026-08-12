@@ -74,6 +74,7 @@ class AndroidStudioProperties : ProductProperties() {
     platformPrefix = "AndroidStudio"
     mainClassName = "com.android.tools.idea.MainWrapper"
     applicationInfoModule = "intellij.android.adt.branding"
+    imagesDirectoryPath = BuildPaths.COMMUNITY_ROOT.communityRoot.resolve("adt-branding/images")
     useSplash = true
     scrambleMainJar = false
     buildSourcesArchive = true
@@ -257,11 +258,8 @@ class AndroidStudioProperties : ProductProperties() {
     return object : WindowsDistributionCustomizer() {
       init {
         includeConsoleLauncher = false // Not yet shipping the Windows console launcher in Studio (b/536093713).
-        icoPath = projectHome.resolve("adt-branding/resources/artwork/androidstudio.ico")
-        icoPathForEAP = projectHome.resolve("adt-branding/resources/artwork/preview/androidstudio.ico")
         buildZipArchiveWithBundledJre = false
         buildZipArchiveWithoutBundledJre = true
-        installerImagesPath = projectHome.resolve("build/idea-community-images/win")
       }
 
       override val fileAssociations: List<String> = listOf(".java", ".groovy", ".kt")
@@ -288,8 +286,6 @@ class AndroidStudioProperties : ProductProperties() {
     return object : LinuxDistributionCustomizer() {
       init {
         buildArtifactWithoutRuntime = true
-        iconPngPath = projectHome.resolve("adt-branding/resources/artwork/icon_AS_128.png")
-        iconPngPathForEAP = projectHome.resolve("adt-branding/resources/artwork/preview/icon_AS_128.png")
       }
 
       override fun getRootDirectoryName(appInfo: ApplicationInfoProperties, buildNumber: String): String = "android-studio"
@@ -310,17 +306,11 @@ class AndroidStudioProperties : ProductProperties() {
     }
   }
 
-  inner class StudioMacDistributionCustomizer(projectHome: Path) : MacDistributionCustomizer() {
+  inner class StudioMacDistributionCustomizer : MacDistributionCustomizer() {
     init {
       urlSchemes = listOf("idea")
       associateIpr = true
       bundleIdentifier = "com.google.android.studio"
-      dmgImagePath = projectHome.resolve("build/conf/ideaCE/mac/images/dmg_background.tiff")
-      // For now we have all 3 platform icons checked in and we change
-      // the icons manually. Fix this when the other platforms have the
-      // same mechanisms for our .ico and .svg files
-      icnsPath = projectHome.resolve("adt-branding/resources/artwork/AndroidStudio.icns")
-      icnsPathForEAP = projectHome.resolve("adt-branding/resources/artwork/preview/AndroidStudio.icns")
     }
 
     override fun getRootDirectoryName(appInfo: ApplicationInfoProperties, buildNumber: String): String = "android-studio"
@@ -342,9 +332,7 @@ class AndroidStudioProperties : ProductProperties() {
     }
   }
 
-  override fun createMacCustomizer(projectHome: Path): MacDistributionCustomizer {
-    return StudioMacDistributionCustomizer(projectHome)
-  }
+  override fun createMacCustomizer(projectHome: Path): MacDistributionCustomizer = StudioMacDistributionCustomizer()
 
   override fun getSystemSelector(appInfo: ApplicationInfoProperties, buildNumber: String): String =
     "_ANDROID_STUDIO_SYSTEM_SELECTOR_"
