@@ -1,13 +1,17 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.sdk.poetry
 
+import com.intellij.execution.Platform
+import com.intellij.openapi.components.service
 import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.platform.eel.EelApi
-import com.intellij.platform.eel.provider.asNioPath
 import com.intellij.platform.eel.provider.localEel
+import com.intellij.python.community.execService.DownloadConfig
+import com.intellij.python.community.execService.UploadConfig
 import com.intellij.python.community.execService.python.validatePythonAndGetInfo
 import com.intellij.python.community.impl.poetry.common.poetryPath
+import com.intellij.python.pyproject.PY_PROJECT_TOML
 import com.jetbrains.python.PyBundle
 import com.jetbrains.python.PythonBinary
 import com.jetbrains.python.PythonHomePath
@@ -24,50 +28,105 @@ import com.jetbrains.python.packaging.PyRequirementParser
 import com.jetbrains.python.packaging.common.PythonOutdatedPackage
 import com.jetbrains.python.packaging.common.PythonPackage
 import com.jetbrains.python.sdk.ToolCommandExecutor
-import com.jetbrains.python.sdk.associatedModulePath
+import com.jetbrains.python.sdk.ToolSearchPath
+import com.jetbrains.python.sdk.add.v2.EelFileSystem
+import com.jetbrains.python.sdk.add.v2.FileSystem
+import com.jetbrains.python.sdk.add.v2.PathHolder
+import com.jetbrains.python.sdk.add.v2.TargetFileSystemCache
+import com.jetbrains.python.sdk.add.v2.toEelFileSystem
+import com.jetbrains.python.sdk.impl.PySdkBundle
+import com.jetbrains.python.sdk.pySdkAdditionalData
 import com.jetbrains.python.sdk.runTool
-import com.jetbrains.python.venvReader.VirtualEnvReader
+import com.jetbrains.python.target.PyTargetAwareAdditionalData
+import com.jetbrains.python.target.PythonLanguageRuntimeConfiguration
 import io.github.z4kn4fein.semver.Version
 import io.github.z4kn4fein.semver.toVersion
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import org.apache.tuweni.toml.Toml
 import org.jetbrains.annotations.ApiStatus.Internal
-import org.jetbrains.annotations.Nls
 import java.nio.file.Path
+import kotlin.io.path.isRegularFile
 import kotlin.io.path.name
-import kotlin.io.path.pathString
 
 /**
  *  This source code is edited by @koxudaxi Koudai Aono <koxudaxi@gmail.com>
  */
-private val poetryNotFoundException: @Nls String = PyBundle.message("python.sdk.poetry.execution.exception.no.poetry.message")
 private val VERSION_2 = "2.0.0".toVersion()
 
+@Internal
+const val POETRY_TOML = "poetry.toml"
 
-private val POETRY_TOOL: ToolCommandExecutor = ToolCommandExecutor(
+internal val POETRY_TOOL: ToolCommandExecutor = ToolCommandExecutor(
   "poetry",
-  getAdditionalSearchPaths = {
-    // TODO: Poetry from store isn't detected because local eel doesn't obey appx binaries. We need to fix it on eel side
-    listOf(userInfo.home.asNioPath().resolve(Path.of(".poetry", ".bin")))
-  },
-  getToolPathFromSettings = {
-    poetryPath
-  })
+  // TODO: Poetry from store isn't detected because local eel doesn't obey appx binaries. We need to fix it on eel side
+  additionalSearchPaths = listOf(ToolSearchPath.RelativePathFromHome(listOf(".poetry", ".bin"), Platform.WINDOWS)),
+  getToolPathFromSettings = { poetryPath }
+)
 
 private val POETRY_EXCLUDE_NON_DIGITS_REGEX = Regex("""\D+$""")
+private const val POETRY_LOCK = "poetry.lock"
+private val POETRY_PROJECT_FILES = listOf(PY_PROJECT_TOML, POETRY_LOCK, POETRY_TOML)
+private val POETRY_PROJECT_DOWNLOAD_CONFIG = DownloadConfig(relativePaths = POETRY_PROJECT_FILES)
+private val POETRY_PROJECT_MUTATING_COMMANDS = setOf("add", "config", "init", "install", "lock", "new", "remove", "update")
+
+private fun <P : PathHolder> Path.createPoetryMetadataUploadConfig(fileSystem: FileSystem<P>): UploadConfig? =
+  if (fileSystem.isLocal) null
+  else UploadConfig(relativePaths = POETRY_PROJECT_FILES.filter { resolve(it).isRegularFile() })
 
 @Internal
-suspend fun runPoetry(projectPath: Path?, vararg args: String, inProjectEnv: Boolean? = null): PyResult<String> {
-  val env = if (inProjectEnv != null) mapOf("POETRY_VIRTUALENVS_IN_PROJECT" to inProjectEnv.toString()) else emptyMap()
-  return POETRY_TOOL.runTool(projectPath, *args, env = env)
+internal suspend fun <P : PathHolder> runPoetry(
+  fileSystem: FileSystem<P>,
+  projectPath: Path?,
+  vararg args: String,
+  poetryExecutable: P? = null,
+  inProjectEnv: Boolean? = null,
+  baseEnv: Map<String, String> = emptyMap(),
+  uploadConfig: UploadConfig? = null,
+  downloadConfig: DownloadConfig? = null,
+): PyResult<String> {
+  val env = baseEnv.toMutableMap().apply {
+    if (inProjectEnv != null) put("POETRY_VIRTUALENVS_IN_PROJECT", inProjectEnv.toString())
+  }
+  return POETRY_TOOL.runTool(
+    fileSystem = fileSystem,
+    pathFromSdk = poetryExecutable?.toString(),
+    dirPath = projectPath,
+    args = args,
+    env = env,
+    uploadConfig = uploadConfig,
+    downloadConfig = downloadConfig,
+  )
 }
 
+@Internal
+internal suspend fun runPoetry(
+  projectPath: Path?,
+  vararg args: String,
+  inProjectEnv: Boolean? = null,
+  baseEnv: Map<String, String> = emptyMap(),
+): PyResult<String> {
+  return runPoetry(
+    fileSystem = projectPath.toEelFileSystem(),
+    projectPath = projectPath,
+    args = args,
+    inProjectEnv = inProjectEnv,
+    baseEnv = baseEnv,
+  )
+}
+
+
+/**
+ * Returns the configured poetry executable or detects it automatically on the given [fileSystem].
+ */
+@Internal
+internal suspend fun <P : PathHolder> getPoetryExecutable(fileSystem: FileSystem<P>): P? =
+  POETRY_TOOL.getToolExecutable(fileSystem, pathFromSdk = null)
 
 /**
  * Returns the configured poetry executable or detects it automatically.
  */
 @Internal
-suspend fun getPoetryExecutable(eel: EelApi = localEel): Path? = POETRY_TOOL.getToolExecutable(eel)
+internal suspend fun getPoetryExecutable(eel: EelApi = localEel): Path? =
+  getPoetryExecutable(EelFileSystem(eel))?.path
 
 /**
  * Runs poetry command for the specified Poetry SDK.
@@ -76,11 +135,54 @@ suspend fun getPoetryExecutable(eel: EelApi = localEel): Path? = POETRY_TOOL.get
  * 2. `poetry [args]`
  */
 @Internal
-suspend fun runPoetryWithSdk(sdk: Sdk, vararg args: String): PyResult<String> {
-  val projectPath = sdk.associatedModulePath?.let { Path.of(it) }
-                    ?: return PyResult.localizedError(poetryNotFoundException) // Choose a correct sdk
-  runPoetry(projectPath, "env", "use", sdk.homePath!!)
-  return runPoetry(projectPath, *args)
+internal suspend fun runPoetryWithSdk(sdk: Sdk, vararg args: String): PyResult<String> {
+  val data = sdk.pySdkAdditionalData
+  val projectPath = data.workingDirectory.takeIf { data.hasValidWorkingDirectory() }
+                    ?: return PyResult.localizedError(PyBundle.message("python.sdk.project.working.directory.not.found"))
+  val sdkHomePath = sdk.homePath
+                    ?: return PyResult.localizedError(PySdkBundle.message("python.sdk.broken.configuration", sdk.name))
+
+  return when (data) {
+    is PyTargetAwareAdditionalData -> {
+      val targetConfig = data.targetEnvironmentConfiguration
+                         ?: return PyResult.localizedError(PySdkBundle.message("python.sdk.broken.configuration", sdk.name))
+      val targetFileSystemCache = service<TargetFileSystemCache>()
+      runPoetryWithSdk(
+        fileSystem = targetFileSystemCache.getOrCreate(targetConfig, PythonLanguageRuntimeConfiguration()),
+        projectPath = projectPath,
+        sdkHomePath = sdkHomePath,
+        args = args,
+      )
+    }
+    else -> runPoetryWithSdk(
+      fileSystem = projectPath.toEelFileSystem(),
+      projectPath = projectPath,
+      sdkHomePath = sdkHomePath,
+      args = args,
+    )
+  }
+}
+
+private suspend fun <P : PathHolder> runPoetryWithSdk(
+  fileSystem: FileSystem<P>,
+  projectPath: Path,
+  sdkHomePath: String,
+  vararg args: String,
+): PyResult<String> {
+  val pythonPath = fileSystem.parsePath(sdkHomePath).getOr { return it }
+  val pythonHomePath = fileSystem.resolvePythonHome(pythonPath)
+  val env = buildMap {
+    put("POETRY_VIRTUALENVS_IN_PROJECT", "false")
+    put("POETRY_VIRTUALENVS_PREFER_ACTIVE_PYTHON", "true")
+    put("VIRTUAL_ENV", pythonHomePath.toString())
+  }
+  return runPoetry(
+    fileSystem = fileSystem,
+    projectPath = projectPath,
+    args = args,
+    baseEnv = env,
+    downloadConfig = POETRY_PROJECT_DOWNLOAD_CONFIG.takeIf { args.firstOrNull() in POETRY_PROJECT_MUTATING_COMMANDS },
+  )
 }
 
 
@@ -90,14 +192,16 @@ suspend fun runPoetryWithSdk(sdk: Sdk, vararg args: String): PyResult<String> {
  * @return the path to the poetry environment.
  */
 @Internal
-suspend fun setupPoetry(
+internal suspend fun <P : PathHolder> setupPoetry(
   projectPath: Path,
-  basePythonBinaryPath: PythonBinary,
+  fileSystem: FileSystem<P>,
+  poetryExecutable: P?,
+  basePythonBinaryPath: P,
   installPackages: Boolean,
   init: Boolean,
   errorSink: ErrorSink,
   inProjectEnv: Boolean = false,
-): PyResult<PythonHomePath> {
+): PyResult<P> {
   if (init) {
     // Build poetry init command with Python version constraint if available
     val initArgs = mutableListOf("init", "-n")
@@ -109,37 +213,87 @@ suspend fun setupPoetry(
     }
 
     // Validate Python and get version info
-    val pythonInfo = basePythonBinaryPath.validatePythonAndGetInfo().getOr { return it }
+    val pythonInfo = fileSystem.getBinaryToExec(basePythonBinaryPath).validatePythonAndGetInfo().getOr { return it }
     val major = pythonInfo.languageLevel.majorVersion
     val minor = pythonInfo.languageLevel.minorVersion
     // Add --python flag with caret constraint (e.g., "^3.10")
     initArgs.add("--python")
     initArgs.add("^$major.$minor")
 
-    runPoetry(projectPath, *initArgs.toTypedArray(), inProjectEnv = inProjectEnv).getOr { return it }
+    runPoetry(
+      fileSystem = fileSystem,
+      projectPath = projectPath,
+      args = initArgs.toTypedArray(),
+      poetryExecutable = poetryExecutable,
+      inProjectEnv = inProjectEnv,
+      downloadConfig = POETRY_PROJECT_DOWNLOAD_CONFIG,
+    ).getOr { return it }
   }
 
-  runPoetry(projectPath, "env", "use", basePythonBinaryPath.pathString, inProjectEnv = inProjectEnv).getOr { return it }
+  runPoetry(
+    fileSystem = fileSystem,
+    projectPath = projectPath,
+    "env", "use", basePythonBinaryPath.toString(),
+    poetryExecutable = poetryExecutable,
+    inProjectEnv = inProjectEnv,
+  ).getOr { return it }
 
   if (installPackages) {
-    runPoetry(projectPath, "install", "--no-root", inProjectEnv = inProjectEnv).onFailure { errorSink.emit(it) }
+    runPoetry(
+      fileSystem = fileSystem,
+      projectPath = projectPath,
+      "install", "--no-root",
+      poetryExecutable = poetryExecutable,
+      inProjectEnv = inProjectEnv,
+      downloadConfig = POETRY_PROJECT_DOWNLOAD_CONFIG,
+    ).onFailure { errorSink.emit(it) }
   }
 
-  return runPoetry(projectPath, "env", "info", "-p", inProjectEnv = inProjectEnv).mapSuccess { Path.of(it) }
+  val pythonHomePath = runPoetry(
+    fileSystem = fileSystem,
+    projectPath = projectPath,
+    "env", "info", "-p",
+    poetryExecutable = poetryExecutable,
+    inProjectEnv = inProjectEnv,
+  ).getOr { return it }
+  return fileSystem.parsePath(pythonHomePath.trim())
 }
 
-internal suspend fun detectPoetryEnvs(searchPath: Path): List<PythonBinary> = getPoetryEnvs(searchPath).mapNotNull { getPythonExecutable(it) }
-
-internal suspend fun getPoetryVersion(): String? =
-  runPoetry(null, "--version")
-    .getOrNull()
-    ?.split(' ')
-    ?.lastOrNull()
-    ?.replace(POETRY_EXCLUDE_NON_DIGITS_REGEX, "") // strip all non-numeric characters after the version
-
-private suspend fun getPythonExecutable(homePathString: String): PythonBinary? = withContext(Dispatchers.IO) {
-  VirtualEnvReader().findPythonInPythonRoot(Path.of(homePathString))
+@Internal
+internal suspend fun setupPoetry(
+  projectPath: Path,
+  basePythonBinaryPath: PythonBinary,
+  installPackages: Boolean,
+  init: Boolean,
+  errorSink: ErrorSink,
+  inProjectEnv: Boolean = false,
+): PyResult<PythonHomePath> {
+  val fileSystem = projectPath.toEelFileSystem()
+  return setupPoetry(
+    projectPath = projectPath,
+    fileSystem = fileSystem,
+    poetryExecutable = null,
+    basePythonBinaryPath = PathHolder.Eel(basePythonBinaryPath),
+    installPackages = installPackages,
+    init = init,
+    errorSink = errorSink,
+    inProjectEnv = inProjectEnv,
+  ).mapSuccess { it.path }
 }
+
+internal suspend fun <P : PathHolder> detectPoetryEnvs(
+  searchPath: Path,
+  fileSystem: FileSystem<P>,
+  poetryExecutable: P? = null,
+): List<P> = getPoetryEnvs(searchPath, fileSystem, poetryExecutable).mapNotNull { homePath ->
+  fileSystem.parsePath(homePath).successOrNull?.let { fileSystem.resolvePythonBinary(it) }
+}
+
+private suspend fun getPoetryVersion(sdk: Sdk): String? =
+  runPoetryWithSdk(sdk, "--version").getOrNull()?.parsePoetryVersion()
+
+private fun String.parsePoetryVersion(): String? =
+  split(' ').lastOrNull()?.replace(POETRY_EXCLUDE_NON_DIGITS_REGEX, "")
 
 /**
  * Installs a Python package using Poetry.
@@ -149,13 +303,13 @@ private suspend fun getPythonExecutable(homePathString: String): PythonBinary? =
  * @param [extraArgs] Additional arguments to pass to the Poetry add command.
  */
 @Internal
-suspend fun poetryInstallPackage(sdk: Sdk, packages: List<String>, extraArgs: List<String>): PyResult<String> {
+internal suspend fun poetryInstallPackage(sdk: Sdk, packages: List<String>, extraArgs: List<String>): PyResult<String> {
   val args = listOf("add") + packages + extraArgs
   return runPoetryWithSdk(sdk, *args.toTypedArray())
 }
 
 @Internal
-suspend fun poetryInstallPackageDetached(sdk: Sdk, packages: List<String>, extraArgs: List<String>): PyResult<String> {
+internal suspend fun poetryInstallPackageDetached(sdk: Sdk, packages: List<String>, extraArgs: List<String>): PyResult<String> {
   val args = listOf("run", "pip", "install") + packages + extraArgs
   return runPoetryWithSdk(sdk, *args.toTypedArray())
 }
@@ -167,7 +321,7 @@ suspend fun poetryInstallPackageDetached(sdk: Sdk, packages: List<String>, extra
  * @param [packages] The name of the package to be uninstalled.
  */
 @Internal
-suspend fun poetryRemovePackage(sdk: Sdk, vararg packages: String): PyResult<String> = runPoetryWithSdk(sdk, "remove", *packages)
+internal suspend fun poetryRemovePackage(sdk: Sdk, vararg packages: String): PyResult<String> = runPoetryWithSdk(sdk, "remove", *packages)
 
 @Internal
 suspend fun poetryUninstallPackage(sdk: Sdk, vararg packages: String): PyResult<String> {
@@ -176,7 +330,7 @@ suspend fun poetryUninstallPackage(sdk: Sdk, vararg packages: String): PyResult<
 }
 
 @Internal
-fun parsePoetryShow(input: String): List<PythonPackage> {
+internal fun parsePoetryShow(input: String): List<PythonPackage> {
   val result = mutableListOf<PythonPackage>()
   input.split("\n").forEach { line ->
     if (line.isNotBlank()) {
@@ -189,15 +343,15 @@ fun parsePoetryShow(input: String): List<PythonPackage> {
 }
 
 @Internal
-suspend fun poetryShowOutdated(sdk: Sdk): PyResult<Map<String, PythonOutdatedPackage>> {
+internal suspend fun poetryShowOutdated(sdk: Sdk): PyResult<Map<String, PythonOutdatedPackage>> {
   val output = runPoetryWithSdk(sdk, "show", "--all", "--outdated").getOr { return it }
 
   return parsePoetryShowOutdated(output).let { PyResult.success(it) }
 }
 
 @Internal
-suspend fun poetryListPackages(sdk: Sdk): PyResult<Pair<List<PyPackage>, List<PyRequirement>>> {
-  val version = getPoetryVersion()?.toVersion()
+internal suspend fun poetryListPackages(sdk: Sdk): PyResult<Pair<List<PyPackage>, List<PyRequirement>>> {
+  val version = getPoetryVersion(sdk)?.toVersion()
 
   // Ensure that the lock file is up to date.
   if (!Registry.get("python.poetry.list.packages.without.lock").asBoolean() && !checkLock(sdk, version)) {
@@ -212,7 +366,7 @@ suspend fun poetryListPackages(sdk: Sdk): PyResult<Pair<List<PyPackage>, List<Py
 }
 
 @Internal
-suspend fun checkLock(sdk: Sdk, version: Version?): Boolean {
+internal suspend fun checkLock(sdk: Sdk, version: Version?): Boolean {
   // From Poetry 1.6.0 and forward, `poetry check --lock` should be used to figure out the validity of the lock file.
   // However, this command fails whenever a README file (as described in pyproject.toml) is absent, without even checking the lock file.
   // The old command, albeit deprecated, doesn't check for the README; instead, it only checks for the validity of the lock file.
@@ -225,7 +379,7 @@ suspend fun checkLock(sdk: Sdk, version: Version?): Boolean {
 }
 
 @Internal
-suspend fun fixLock(sdk: Sdk, version: Version?): PyResult<String> {
+internal suspend fun fixLock(sdk: Sdk, version: Version?): PyResult<String> {
   if (version == null || version >= VERSION_2) {
     return runPoetryWithSdk(sdk, "lock")
   }
@@ -234,7 +388,7 @@ suspend fun fixLock(sdk: Sdk, version: Version?): PyResult<String> {
 }
 
 @Internal
-fun parsePoetryInstallDryRun(input: String): Pair<List<PyPackage>, List<PyRequirement>> {
+internal fun parsePoetryInstallDryRun(input: String): Pair<List<PyPackage>, List<PyRequirement>> {
   val installedLines = listOf("Already installed", "Skipping", "Updating", "Downgrading")
 
   fun getNameAndVersion(line: String): Triple<String, String, String> {
@@ -273,6 +427,23 @@ fun parsePoetryInstallDryRun(input: String): Pair<List<PyPackage>, List<PyRequir
 }
 
 /**
+ * Parses `poetry.lock` and returns a map of editable package names to their source URLs.
+ * A package is editable when `develop = true` in its `[[package]]` entry.
+ */
+internal fun parsePoetryLockEditablePackages(lockContent: String): Map<String, String?> {
+  val packages = Toml.parse(lockContent).getArray("package") ?: return emptyMap()
+  return buildMap {
+    for (i in 0 until packages.size()) {
+      val pkg = packages.getTable(i)
+      if (pkg.getBoolean("develop") == true) {
+        val name = pkg.getString("name") ?: continue
+        put(name, pkg.getTable("source")?.getString("url"))
+      }
+    }
+  }
+}
+
+/**
  * Configures the Poetry environment for the specified module path with the given arguments.
  * Runs command: GeneralCommandLine("poetry config [args]").withWorkingDirectory([modulePath])
  *
@@ -281,11 +452,36 @@ fun parsePoetryInstallDryRun(input: String): Pair<List<PyPackage>, List<PyRequir
  * @param [args] A vararg array of String arguments to pass to the Poetry configuration command.
  */
 @Internal
-suspend fun configurePoetryEnvironment(modulePath: Path?, vararg args: String) {
-  runPoetry(modulePath, "config", *args)
+internal suspend fun <P : PathHolder> configurePoetryEnvironment(
+  modulePath: Path?,
+  fileSystem: FileSystem<P>,
+  poetryExecutable: P? = null,
+  vararg args: String,
+) {
+  runPoetry(
+    fileSystem = fileSystem,
+    projectPath = modulePath,
+    "config", *args,
+    poetryExecutable = poetryExecutable,
+    downloadConfig = POETRY_PROJECT_DOWNLOAD_CONFIG,
+  )
 }
 
-private suspend fun getPoetryEnvs(projectPath: Path): List<String> {
-  val executionResult = runPoetry(projectPath, "env", "list", "--full-path")
+internal suspend fun configurePoetryEnvironment(modulePath: Path?, vararg args: String) {
+  configurePoetryEnvironment(modulePath, modulePath.toEelFileSystem(), args = args)
+}
+
+private suspend fun <P : PathHolder> getPoetryEnvs(
+  projectPath: Path,
+  fileSystem: FileSystem<P>,
+  poetryExecutable: P?,
+): List<String> {
+  val executionResult = runPoetry(
+    fileSystem = fileSystem,
+    projectPath = projectPath,
+    "env", "list", "--full-path",
+    poetryExecutable = poetryExecutable,
+    uploadConfig = projectPath.createPoetryMetadataUploadConfig(fileSystem),
+  )
   return executionResult.getOrNull()?.lineSequence()?.map { it.split(" ")[0] }?.filterNot { it.isEmpty() }?.toList() ?: emptyList()
 }

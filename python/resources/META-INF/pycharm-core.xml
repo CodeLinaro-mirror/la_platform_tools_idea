@@ -7,10 +7,6 @@
        CommunityProductFragments.pycharmCoreFragment() in product definitions. -->
 
   <extensions defaultExtensionNs="com.intellij">
-    <applicationActivity implementation="com.intellij.internal.statistic.updater.StatisticsJobsScheduler"/>
-    <applicationActivity implementation="com.intellij.internal.statistic.updater.StatisticsStateCollectorsScheduler"/>
-    <postStartupActivity implementation="com.intellij.internal.statistic.updater.StatisticsStateCollectorsScheduler$MyStartupActivity"/>
-
     <projectViewPane implementation="com.intellij.ide.projectView.impl.ProjectViewPane"/>
 
     <projectAttachProcessor implementation="com.intellij.platform.ModuleAttachProcessor"/>
@@ -39,8 +35,6 @@
       <add-to-group group-id="ProjectWidget.Actions" anchor="after" relative-to-action="OpenFile"/>
     </action>
 
-    <action id="RerunFailedTests" class="com.intellij.execution.testframework.actions.RerunFailedTestsAction"
-            icon="AllIcons.RunConfigurations.RerunFailedTests"/>
 
     <group id="PyCharm.MarkRootGroup">
       <action id="MarkSourceRoot" class="com.intellij.ide.projectView.actions.MarkJavaSourceRootAction"/>

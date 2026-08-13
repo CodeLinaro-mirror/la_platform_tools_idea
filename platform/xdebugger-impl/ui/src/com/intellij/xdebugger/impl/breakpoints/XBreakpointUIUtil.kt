@@ -4,6 +4,7 @@ package com.intellij.xdebugger.impl.breakpoints
 import com.intellij.CommonBundle
 import com.intellij.codeInsight.folding.impl.FoldingUtil
 import com.intellij.codeInsight.folding.impl.actions.ExpandRegionAction
+import com.intellij.icons.AllIcons
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.readAction
@@ -21,14 +22,20 @@ import com.intellij.openapi.util.Pair
 import com.intellij.openapi.util.component1
 import com.intellij.openapi.util.component2
 import com.intellij.openapi.util.text.StringUtil
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.platform.debugger.impl.shared.proxy.XBreakpointProxy
 import com.intellij.platform.debugger.impl.shared.proxy.XDebugManagerProxy
 import com.intellij.platform.debugger.impl.shared.proxy.XLineBreakpointInstallationInfo
 import com.intellij.platform.debugger.impl.shared.proxy.XLineBreakpointProxy
 import com.intellij.platform.debugger.impl.shared.proxy.XLineBreakpointTypeProxy
+import com.intellij.xdebugger.breakpoints.XLineBreakpointVerticalPlacement
+import com.intellij.ui.ExperimentalUI
+import com.intellij.ui.LayeredIcon
+import com.intellij.ui.scale.JBUIScale
 import com.intellij.util.SmartList
 import com.intellij.xdebugger.XDebuggerBundle
 import com.intellij.xdebugger.XSourcePosition
+import com.intellij.xdebugger.breakpoints.SuspendPolicy
 import com.intellij.xdebugger.impl.XSourcePositionImpl
 import com.intellij.xdebugger.impl.ui.DebuggerUIUtil
 import com.intellij.xdebugger.settings.XDebuggerSettingsManager
@@ -38,12 +45,17 @@ import kotlinx.coroutines.future.await
 import kotlinx.coroutines.launch
 import org.jetbrains.annotations.ApiStatus
 import java.util.concurrent.CompletableFuture
+import javax.swing.Icon
 import kotlin.math.max
 
 @ApiStatus.Internal
 object XBreakpointUIUtil {
   @JvmStatic
-  fun findSelectedBreakpointProxy(project: Project, editor: Editor): Pair<GutterIconRenderer?, XBreakpointProxy?> {
+  @JvmOverloads
+  fun findSelectedBreakpointProxy(
+    project: Project, editor: Editor,
+    placement: XLineBreakpointVerticalPlacement = XLineBreakpointVerticalPlacement.ON_LINE,
+  ): Pair<GutterIconRenderer?, XBreakpointProxy?> {
     var offset = editor.caretModel.offset
     val editorDocument = editor.document
 
@@ -52,7 +64,7 @@ object XBreakpointUIUtil {
       offset = textLength
     }
 
-    val breakpoint = findBreakpoint(project, editorDocument, offset)
+    val breakpoint = findBreakpoint(project, editorDocument, editorDocument.getLineNumber(offset), placement)
     if (breakpoint != null) {
       return Pair.create(breakpoint.getGutterIconRenderer(), breakpoint)
     }
@@ -75,18 +87,35 @@ object XBreakpointUIUtil {
     return Pair.create(null, null)
   }
 
-  private fun findBreakpoint(project: Project, document: Document, offset: Int): XLineBreakpointProxy? {
+  fun findBreakpoint(
+    project: Project,
+    file: VirtualFile,
+    line: Int,
+    placement: XLineBreakpointVerticalPlacement = XLineBreakpointVerticalPlacement.ON_LINE,
+  ): XLineBreakpointProxy? {
     val breakpointManager = XDebugManagerProxy.getInstance().getBreakpointManagerProxy(project)
-    val line = document.getLineNumber(offset)
-    val file = FileDocumentManager.getInstance().getFile(document) ?: return null
     for (type in breakpointManager.getLineBreakpointTypes()) {
-      val breakpoint = breakpointManager.findBreakpointAtLine(type, file, line)
+      val breakpoint = breakpointManager.findBreakpointAtLine(type, file, line, placement)
       if (breakpoint != null) {
         return breakpoint
       }
     }
-
     return null
+  }
+
+  fun findBreakpoint(
+    project: Project,
+    document: Document,
+    line: Int,
+    placement: XLineBreakpointVerticalPlacement = XLineBreakpointVerticalPlacement.ON_LINE,
+  ): XLineBreakpointProxy? {
+    val file = FileDocumentManager.getInstance().getFile(document) ?: return null
+    return findBreakpoint(project, file, line, placement)
+  }
+
+  @JvmStatic
+  fun supportsPlacement(type: XLineBreakpointTypeProxy, placement: XLineBreakpointVerticalPlacement): Boolean {
+    return placement != XLineBreakpointVerticalPlacement.INTER_LINE || type.supportsInterLinePlacement()
   }
 
   /**
@@ -106,12 +135,17 @@ object XBreakpointUIUtil {
     canRemove: Boolean,
     isLogging: Boolean = false,
     logExpression: String? = null,
+    placement: XLineBreakpointVerticalPlacement = XLineBreakpointVerticalPlacement.ON_LINE,
   ): CompletableFuture<XLineBreakpointProxy?> {
     // TODO: Replace with `coroutineScope.future` after IJPL-184112 is fixed
     val future = CompletableFuture<XLineBreakpointProxy?>()
     project.service<XBreakpointUtilProjectCoroutineScope>().cs.launch(Dispatchers.EDT) {
       try {
-        val (typeWinner, lineWinner) = getAvailableLineBreakpointInfoProxy(project, position, selectVariantByPositionColumn, editor)
+        val (typeWinner, lineWinner) = getAvailableLineBreakpointInfoProxy(project,
+                                                                           position,
+                                                                           selectVariantByPositionColumn,
+                                                                           editor,
+                                                                           placement)
         if (typeWinner.isEmpty()) {
           fileLogger().warn("Cannot find appropriate type for line breakpoint at $position: ${position.file.url} ${position.line}")
           future.completeExceptionally(RuntimeException("Cannot find appropriate type"))
@@ -119,9 +153,9 @@ object XBreakpointUIUtil {
         }
         val lineStart = position.line
         val winPosition = if (lineStart == lineWinner) position else XSourcePositionImpl.create(position.file, lineWinner)
-
-        val res = XBreakpointInstallUtils.toggleAndReturnLineBreakpointProxy(
-          project, typeWinner, winPosition, selectVariantByPositionColumn, temporary, editor, canRemove, isLogging, logExpression)
+        val breakpointInfo =
+          XLineBreakpointInstallationInfo(typeWinner, winPosition, placement, temporary, isLogging, logExpression, canRemove)
+        val res = XBreakpointInstallUtils.toggleAndReturnLineBreakpointProxy(project, editor, breakpointInfo, selectVariantByPositionColumn)
         if (lineStart != lineWinner) {
           val offset = editor.document.getLineStartOffset(lineWinner)
           ExpandRegionAction.expandRegionAtOffset(editor, offset)
@@ -144,14 +178,15 @@ object XBreakpointUIUtil {
     position: XSourcePosition,
     selectTypeByPositionColumn: Boolean,
     editor: Editor,
+    placement: XLineBreakpointVerticalPlacement,
   ): Pair<List<XLineBreakpointTypeProxy>, Int> {
     val breakpointManager = XDebugManagerProxy.getInstance().getBreakpointManagerProxy(project)
     val lineTypes = breakpointManager.getLineBreakpointTypes()
     return getAvailableLineBreakpointInfo(position, selectTypeByPositionColumn, editor, lineTypes,
-                                          { type, line -> breakpointManager.findBreakpointAtLine(type, position.file, line) },
+                                          { type, line -> breakpointManager.findBreakpointAtLine(type, position.file, line, placement) },
                                           { type -> type.priority },
                                           { callback -> readAction { callback() } },
-                                          { type, line -> type.canPutAt(editor, line, project) })
+                                          { type, line -> supportsPlacement(type, placement) && type.canPutAt(editor, line, project) })
   }
 
   inline fun <T, B> getAvailableLineBreakpointInfo(
@@ -227,24 +262,20 @@ object XBreakpointUIUtil {
     val file = breakpointInfo.position.file
     val line = breakpointInfo.position.line
     return breakpointInfo.types
-      .flatMap { t -> breakpointManager.findBreakpointsAtLine(t, file, line) }
+      .flatMap { t -> breakpointManager.findBreakpointsAtLine(t, file, line, breakpointInfo.placement) }
       .toList()
   }
 
   @JvmStatic
   fun <T : XBreakpointProxy> removeBreakpointIfPossible(
-    project: Project,
     info: XLineBreakpointInstallationInfo,
     vararg breakpoints: T,
-  ) {
-    if (info.canRemoveBreakpoint()) {
-      removeBreakpointsWithConfirmation(project, *breakpoints)
+  ): CompletableFuture<Void?> {
+    if (!info.canRemoveBreakpoint()) {
+      return CompletableFuture.completedFuture(null)
     }
-  }
 
-  @JvmStatic
-  fun removeBreakpointWithConfirmation(breakpoint: XBreakpointProxy): Boolean {
-    return removeBreakpointWithConfirmation(breakpoint.project, breakpoint)
+    return removeBreakpointsWithConfirmation(*breakpoints)
   }
 
   /**
@@ -252,7 +283,8 @@ object XBreakpointUIUtil {
    * Returns whether breakpoint was really deleted.
    */
   @JvmStatic
-  fun removeBreakpointWithConfirmation(project: Project, breakpoint: XBreakpointProxy): Boolean {
+  fun removeBreakpointWithConfirmation(breakpoint: XBreakpointProxy): CompletableFuture<Boolean> {
+    val project = breakpoint.project
     if ((!DebuggerUIUtil.isEmptyExpression(breakpoint.getConditionExpression()) || !DebuggerUIUtil.isEmptyExpression(breakpoint.getLogExpressionObject())) &&
         !ApplicationManager.getApplication().isHeadlessEnvironment &&
         !ApplicationManager.getApplication().isUnitTestMode &&
@@ -290,29 +322,86 @@ object XBreakpointUIUtil {
             }
           }
         ) != Messages.OK) {
-        return false
+        return CompletableFuture.completedFuture(false)
       }
     }
     val breakpointManager = XDebugManagerProxy.getInstance().getBreakpointManagerProxy(project)
     breakpointManager.rememberRemovedBreakpoint(breakpoint)
-    breakpointManager.removeBreakpoint(breakpoint)
-    return true
+    return breakpointManager.removeBreakpoint(breakpoint).thenApply { true }
   }
 
   @JvmStatic
-  fun removeBreakpointsWithConfirmation(breakpoints: List<XBreakpointProxy>) {
-    if (breakpoints.isEmpty()) return
-    val project = breakpoints[0].project
+  fun removeBreakpointsWithConfirmation(breakpoints: List<XBreakpointProxy>): CompletableFuture<Void?> {
+    if (breakpoints.isEmpty()) return CompletableFuture.completedFuture(null)
     // FIXME[inline-bp]: support multiple breakpoints restore
     // FIXME[inline-bp]: Reconsider this, maybe we should have single confirmation for all breakpoints.
-    removeBreakpointsWithConfirmation(project, *breakpoints.toTypedArray())
+    return removeBreakpointsWithConfirmation(*breakpoints.toTypedArray())
+  }
+
+  private fun <T : XBreakpointProxy> removeBreakpointsWithConfirmation(vararg breakpoints: T): CompletableFuture<Void?> {
+    val futures = breakpoints.map { removeBreakpointWithConfirmation(it) }
+    return CompletableFuture.allOf(*futures.toTypedArray())
   }
 
   @JvmStatic
-  fun <T : XBreakpointProxy> removeBreakpointsWithConfirmation(project: Project, vararg breakpoints: T) {
-    for (b in breakpoints) {
-      removeBreakpointWithConfirmation(project, b)
+  fun calculateIcon(breakpoint: XBreakpointProxy): Icon {
+    val specialIcon = calculateSpecialIcon(breakpoint)
+    val icon = specialIcon ?: breakpoint.type.enabledIcon
+    return withQuestionBadgeIfNeeded(icon, breakpoint)
+  }
+
+  private fun withQuestionBadgeIfNeeded(icon: Icon, breakpoint: XBreakpointProxy): Icon {
+    if (DebuggerUIUtil.isEmptyExpression(breakpoint.getConditionExpression()) && !breakpoint.hasCustomCondition()) {
+      return icon
     }
+    val newIcon = LayeredIcon(2)
+    newIcon.setIcon(icon, 0)
+    val hShift = if (ExperimentalUI.isNewUI()) 7 else 10
+    newIcon.setIcon(AllIcons.Debugger.Question_badge, 1, hShift, 6)
+    return JBUIScale.scaleIcon(newIcon)
+  }
+
+  private fun calculateSpecialIcon(breakpoint: XBreakpointProxy): Icon? {
+    val type = breakpoint.type
+    val debugManager = XDebugManagerProxy.getInstance()
+    val session = debugManager.getCurrentSessionProxy(breakpoint.project)
+    val breakpointManager = debugManager.getBreakpointManagerProxy(breakpoint.project)
+
+    if (!breakpoint.isEnabled()) {
+      return if (session != null && session.areBreakpointsMuted()) {
+        type.mutedDisabledIcon
+      }
+      else {
+        type.disabledIcon
+      }
+    }
+
+    if (session == null) {
+      if (breakpointManager.dependentBreakpointManager.getMasterBreakpoint(breakpoint) != null) {
+        return type.inactiveDependentIcon
+      }
+    }
+    else {
+      if (session.areBreakpointsMuted()) {
+        return type.mutedEnabledIcon
+      }
+      if (session.isInactiveSlaveBreakpoint(breakpoint)) {
+        return type.inactiveDependentIcon
+      }
+      breakpoint.getCustomizedPresentationForCurrentSession()?.icon?.let { return it }
+    }
+
+    if (breakpoint.getSuspendPolicy() == SuspendPolicy.NONE) {
+      return type.suspendNoneIcon
+    }
+
+    breakpoint.getCustomizedPresentation()?.icon?.let { return it }
+
+    if (breakpoint is XLineBreakpointProxy && breakpoint.isTemporary() && breakpoint.type.temporaryIcon != null) {
+      return breakpoint.type.temporaryIcon
+    }
+
+    return null
   }
 }
 

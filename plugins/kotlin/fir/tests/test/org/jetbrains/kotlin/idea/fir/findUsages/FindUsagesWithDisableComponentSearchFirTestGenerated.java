@@ -1,9 +1,8 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package org.jetbrains.kotlin.idea.fir.findUsages;
 
 import com.intellij.testFramework.TestDataPath;
-import org.jetbrains.kotlin.idea.base.plugin.KotlinPluginMode;
 import org.jetbrains.kotlin.idea.base.test.TestRoot;
 import org.jetbrains.kotlin.idea.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils;
@@ -20,12 +19,6 @@ import org.junit.runner.RunWith;
 @RunWith(JUnit3RunnerWithInners.class)
 @TestMetadata("../../idea/tests/testData/findUsages/kotlin/conventions/components")
 public class FindUsagesWithDisableComponentSearchFirTestGenerated extends AbstractFindUsagesWithDisableComponentSearchFirTest {
-    @java.lang.Override
-    @org.jetbrains.annotations.NotNull
-    public final KotlinPluginMode getPluginMode() {
-        return KotlinPluginMode.K2;
-    }
-
     private void runTest(String testDataFilePath) throws Exception {
         KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
     }
@@ -105,9 +98,29 @@ public class FindUsagesWithDisableComponentSearchFirTestGenerated extends Abstra
         runTest("../../idea/tests/testData/findUsages/kotlin/conventions/components/memberComponentFun.0.kt");
     }
 
+    @TestMetadata("nameBasedDestructuringFull.0.kt")
+    public void testNameBasedDestructuringFull() throws Exception {
+        runTest("../../idea/tests/testData/findUsages/kotlin/conventions/components/nameBasedDestructuringFull.0.kt");
+    }
+
+    @TestMetadata("nameBasedDestructuringShort.0.kt")
+    public void testNameBasedDestructuringShort() throws Exception {
+        runTest("../../idea/tests/testData/findUsages/kotlin/conventions/components/nameBasedDestructuringShort.0.kt");
+    }
+
     @TestMetadata("operators.0.kt")
     public void testOperators() throws Exception {
         runTest("../../idea/tests/testData/findUsages/kotlin/conventions/components/operators.0.kt");
+    }
+
+    @TestMetadata("positionBasedDestructuring.0.kt")
+    public void testPositionBasedDestructuring() throws Exception {
+        runTest("../../idea/tests/testData/findUsages/kotlin/conventions/components/positionBasedDestructuring.0.kt");
+    }
+
+    @TestMetadata("positionBasedDestructuringNew.0.kt")
+    public void testPositionBasedDestructuringNew() throws Exception {
+        runTest("../../idea/tests/testData/findUsages/kotlin/conventions/components/positionBasedDestructuringNew.0.kt");
     }
 
     @TestMetadata("propertyDelegate.0.kt")

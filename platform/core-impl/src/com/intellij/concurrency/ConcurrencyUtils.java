@@ -29,7 +29,6 @@ public final class ConcurrencyUtils {
     @NotNull Function<? super @NotNull ProgressIndicator, ? extends T> action
   ) {
     ProgressIndicator progressIndicator = ProgressIndicatorProvider.getGlobalProgressIndicator();
-    //noinspection TestOnlyProblems
     if (progressIndicator == null && Cancellation.currentJob() != null) {
       return CoroutinesKt.blockingContextToIndicator(() -> action.apply(ProgressIndicatorProvider.getGlobalProgressIndicator()));
     }

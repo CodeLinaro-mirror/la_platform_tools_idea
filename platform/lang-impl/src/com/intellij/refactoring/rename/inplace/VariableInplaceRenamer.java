@@ -385,19 +385,21 @@ public class VariableInplaceRenamer extends InplaceRefactoring {
             if (highlighter != null) {
               highlighter.dispose();
             }
-            startDumbIfPossible();
-            int offsetBefore = myEditor.getCaretModel().getOffset();
-            try {
-              tryRollback();
-              PsiNamedElement var = getVariable();
-              if (var != null) {
-                createInplaceRenamerToRestart(var, myEditor, myInsertedName).performInplaceRefactoring(myNameSuggestions);
-                myEditor.getCaretModel().moveToOffset(offsetBefore);
+            WriteIntentReadAction.run(() -> {
+              startDumbIfPossible();
+              int offsetBefore = myEditor.getCaretModel().getOffset();
+              try {
+                tryRollback();
+                PsiNamedElement var = getVariable();
+                if (var != null) {
+                  createInplaceRenamerToRestart(var, myEditor, myInsertedName).performInplaceRefactoring(myNameSuggestions);
+                  myEditor.getCaretModel().moveToOffset(offsetBefore);
+                }
               }
-            }
-            finally {
-              stopDumbLaterIfPossible();
-            }
+              finally {
+                stopDumbLaterIfPossible();
+              }
+            });
           },
           0)
         .showInBestPositionFor(myEditor);
@@ -478,7 +480,7 @@ public class VariableInplaceRenamer extends InplaceRefactoring {
               }
             }
 
-            final Runnable runnable = () -> ApplicationManager.getApplication().runReadAction(() -> renamer.findUsages(usages, false, false));
+            Runnable runnable = () -> ReadAction.runBlocking(() -> renamer.findUsages(usages, false, false));
 
             if (!ProgressManager.getInstance()
               .runProcessWithProgressSynchronously(runnable, RefactoringBundle.message("searching.for.variables"), true, myProject)) {

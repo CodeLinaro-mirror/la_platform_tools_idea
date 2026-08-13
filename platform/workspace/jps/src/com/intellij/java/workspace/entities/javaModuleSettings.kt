@@ -10,8 +10,14 @@ import com.intellij.platform.workspace.storage.WorkspaceEntity
 import com.intellij.platform.workspace.storage.annotations.Default
 import com.intellij.platform.workspace.storage.annotations.Parent
 import com.intellij.platform.workspace.storage.url.VirtualFileUrl
+import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.NonNls
 
+/**
+ * **Do not add new fields to this entity.** New fields are not serialized to the .iml file and will be
+ * lost when the project is reopened. To store additional data, declare a new entity with a
+ * [@Parent][com.intellij.platform.workspace.storage.annotations.Parent] reference to this one.
+ */
 interface JavaModuleSettingsEntity: WorkspaceEntity {
   @Parent
   val module: ModuleEntity
@@ -21,7 +27,7 @@ interface JavaModuleSettingsEntity: WorkspaceEntity {
   val compilerOutput: VirtualFileUrl?
   val compilerOutputForTests: VirtualFileUrl?
   val languageLevelId: @NonNls String?
-  val manifestAttributes: Map<String, String>
+  val manifestAttributes: Map<String, String> // todo: this property is lost on restart. It has to be moved to a separate entity IDEA-386090
   @Default get() = emptyMap()
 
   //region generated code
@@ -30,6 +36,7 @@ interface JavaModuleSettingsEntity: WorkspaceEntity {
     @Deprecated(message = "Use new API instead")
     fun getModule(): ModuleEntity.Builder = module as ModuleEntity.Builder
 
+    @ApiStatus.ScheduledForRemoval
     @Deprecated(message = "Use new API instead")
     fun setModule(value: ModuleEntity.Builder) {
       module = value
@@ -37,6 +44,7 @@ interface JavaModuleSettingsEntity: WorkspaceEntity {
   }
 
   companion object : EntityType<JavaModuleSettingsEntity, Builder>() {
+    @ApiStatus.ScheduledForRemoval
     @Deprecated(message = "Use new API instead")
     @JvmOverloads
     @JvmStatic
@@ -63,7 +71,11 @@ fun MutableEntityStorage.modifyJavaModuleSettingsEntity(
 
 @Deprecated(message = "Use new API instead")
 var ModuleEntity.Builder.javaSettings: JavaModuleSettingsEntity.Builder?
+  @ApiStatus.ScheduledForRemoval
+  @Deprecated(message = "Use new API instead")
   get() = (this as ModuleEntityBuilder).javaSettings as JavaModuleSettingsEntity.Builder?
+  @ApiStatus.ScheduledForRemoval
+  @Deprecated(message = "Use new API instead")
   set(value) {
     (this as ModuleEntityBuilder).javaSettings = value
   }

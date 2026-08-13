@@ -28,6 +28,12 @@
       "key": "Banner.successBorderColor"
     },
     {
+      "key": "Banner.aiBackground"
+    },
+    {
+      "key": "Banner.aiBorderColor"
+    },
+    {
       "key": "Banner.warningBackground",
       "description": "The background of banners (experimental UI only)"
     },
@@ -330,6 +336,16 @@
       "key": "Code.Block.borderRadius",
       "description": "Block code elements border radius in pixels",
       "since": "2024.1"
+    },
+    {
+      "key": "Diff.ContentTitle.gap",
+      "description": "A gap between individual diff viewer title in case they are stacked on top of each other",
+      "since": "2026.2"
+    },
+    {
+      "key": "Diff.ContentTitle.insets",
+      "description": "An empty space around the diff viewer title",
+      "since": "2026.2"
     },
     {
       "key": "CombinedDiff.mainToolbarInsets",
@@ -692,7 +708,7 @@
       "description": "Editor inplace search/replace fields background color"
     },
     {
-      "key": "Editor.SearchField.bordercolor",
+      "key": "Editor.SearchField.borderColor",
       "description": "Editor inplace search/replace fields border color",
       "since": "2024.1"
     },
@@ -1441,21 +1457,6 @@
       "since": "2026.1"
     },
     {
-      "key": "Island.inactiveAlphaInStatusBar.os.linux",
-      "description": "The transparency of islands in the status bar when it is inactive on Linux",
-      "since": "2026.1"
-    },
-    {
-      "key": "Island.inactiveAlphaInStatusBar.os.mac",
-      "description": "The transparency of islands in the status bar when it is inactive on macOS",
-      "since": "2026.1"
-    },
-    {
-      "key": "Island.inactiveAlphaInStatusBar.os.windows",
-      "description": "The transparency of islands in the status bar when it is inactive on Windows",
-      "since": "2026.1"
-    },
-    {
       "key": "Islands",
       "description": "Enables or disables islands UI mode",
       "since": "2026.1"
@@ -1724,6 +1725,14 @@
     },
     {
       "key": "NotificationsToolwindow.Notification.hoverBackground"
+    },
+    {
+      "key": "NuGet.section.background",
+      "description": "Background color of a section of the NuGet package listing"
+    },
+    {
+      "key": "NuGet.section.hoverBackground",
+      "description": "Hover background color of a section of the NuGet package listing"
     },
     {
       "key": "OnePixelDivider.background",
@@ -3688,6 +3697,22 @@
       "key": "RecentProject.ColorN.Avatar.End",
       "description": "Avatar gradient end color of recent project",
       "since": "2025.3"
+    },
+    {
+      "key": "VersionControl.Merge.Badge.infoForeground",
+      "description": "Foreground color for the conflicts badge when there are no conflicts resolved"
+    },
+    {
+      "key": "VersionControl.Merge.Badge.infoBackground",
+      "description": "Background color for the conflicts badge when there are no conflicts resolved"
+    },
+    {
+      "key": "VersionControl.Merge.Badge.modifiedItemForeground",
+      "description": "Foreground color for the conflicts badge when there are some conflicts resolved"
+    },
+    {
+      "key": "VersionControl.Merge.Badge.modifiedItemBackground",
+      "description": "Background color for the conflicts badge when there are some conflicts resolved"
     }
   ]
 }

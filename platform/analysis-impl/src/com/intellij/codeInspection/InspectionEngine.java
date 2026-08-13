@@ -6,6 +6,7 @@ import com.intellij.codeInsight.daemon.impl.Divider;
 import com.intellij.codeInsight.daemon.impl.InspectionVisitorOptimizer;
 import com.intellij.codeInsight.daemon.impl.ProblemDescriptorWithReporterName;
 import com.intellij.codeInsight.daemon.impl.analysis.HighlightingLevelManager;
+import com.intellij.codeInsight.util.InspectionScopeKt;
 import com.intellij.codeInspection.ex.DynamicGroupTool;
 import com.intellij.codeInspection.ex.GlobalInspectionContextEx;
 import com.intellij.codeInspection.ex.GlobalInspectionToolWrapper;
@@ -32,6 +33,9 @@ import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.Predicates;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.util.UserDataHolderBase;
+import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.platform.diagnostic.telemetry.TracerLevel;
+import com.intellij.platform.diagnostic.telemetry.helpers.TraceKt;
 import com.intellij.psi.FileViewProvider;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiElementVisitor;
@@ -62,6 +66,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
+import static com.intellij.openapi.diagnostic.LoggerKt.rethrowControlFlowException;
+
 public final class InspectionEngine {
   private static final Logger LOG = Logger.getInstance(InspectionEngine.class);
 
@@ -77,9 +83,7 @@ public final class InspectionEngine {
       visitor = tool.buildVisitor(holder, isOnTheFly, session);
     }
     catch (Throwable e) {
-      if (Logger.shouldRethrow(e)) {
-        throw e;
-      }
+      rethrowControlFlowException(e);
       Throwable t = PluginException.createByClass("Inspection tool '"+tool.getShortName()+"' ("+tool.getClass()+") thrown exception from its buildVisitor()", e, tool.getClass());
       LOG.error(t);
       return PsiElementVisitor.EMPTY_VISITOR;
@@ -97,7 +101,7 @@ public final class InspectionEngine {
   /**
    * @deprecated use {@link #inspectEx(List, PsiFile, TextRange, TextRange, boolean, boolean, boolean, ProgressIndicator, PairProcessor)}
    */
-  @Deprecated
+  @Deprecated(forRemoval = true)
   // returns map (toolName -> problem descriptors)
   public static @NotNull Map<String, List<ProblemDescriptor>> inspectEx(@NotNull List<? extends LocalInspectionToolWrapper> toolWrappers,
                                                                         @NotNull PsiFile psiFile,
@@ -348,7 +352,17 @@ public final class InspectionEngine {
           else {
             inspectionWasRun = true;
             tool.inspectionStarted(session, isOnTheFly);
-            inspectionVisitorsOptimizer.acceptElements(elements, visitor);
+            TraceKt.use(InspectionScopeKt.InspectionTracer.spanBuilder("inspectionRun", TracerLevel.DETAILED), span -> {
+              if (span.isRecording()) {
+                span.setAttribute("inspectionId", toolWrapper.getShortName());
+                VirtualFile file = psiFile.getVirtualFile();
+                if (file != null) {
+                  span.setAttribute("file", file.getPath());
+                }
+              }
+              inspectionVisitorsOptimizer.acceptElements(elements, visitor);
+              return null;
+            });
             tool.inspectionFinished(session, holder);
           }
 
@@ -517,7 +531,7 @@ public final class InspectionEngine {
 
       boolean applyToDialects = tool.applyToDialects();
       Map<String, Boolean> map = applyToDialects ? resultsWithDialects : resultsNoDialects;
-      return map.computeIfAbsent(toolLanguageId, __ ->
+      return map.computeIfAbsent(toolLanguageId, _ ->
         ToolLanguageUtil.isToolLanguageOneOf(tool.runForWholeFile() ? elementDialectIdsForWholeFileTool : elementDialectIdsForRegularTool, toolLanguageId, applyToDialects));
     });
   }

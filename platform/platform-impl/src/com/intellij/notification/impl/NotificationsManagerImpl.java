@@ -42,7 +42,6 @@ import com.intellij.openapi.ui.popup.JBPopupFactory;
 import com.intellij.openapi.ui.popup.JBPopupListener;
 import com.intellij.openapi.ui.popup.LightweightWindowEvent;
 import com.intellij.openapi.util.Disposer;
-import com.intellij.openapi.util.IntellijInternalApi;
 import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.Ref;
@@ -236,7 +235,6 @@ public final class NotificationsManagerImpl extends NotificationsManager {
 
   @RequiresEdt
   @ApiStatus.Internal
-  @IntellijInternalApi
   public void pauseNotifications() {
     if (myPostponedNotifications == null) {
       myPostponedNotifications = new ArrayList<>();
@@ -245,7 +243,6 @@ public final class NotificationsManagerImpl extends NotificationsManager {
 
   @RequiresEdt
   @ApiStatus.Internal
-  @IntellijInternalApi
   public void resumeNotifications() {
     if (myPostponedNotifications != null) {
       List<Pair<Notification, @Nullable Project>> postponedNotifications = myPostponedNotifications;
@@ -387,7 +384,7 @@ public final class NotificationsManagerImpl extends NotificationsManager {
   private void showNotificationWithSpan(Notification notification, @Nullable Project project) {
     TraceKt.use(myTracer.spanBuilder("show notification")
                   .setAttribute("project", project == null ? null : project.toString())
-                  .setAttribute("notification", notification.toString()), __ -> {
+                  .setAttribute("notification", notification.toString()), _ -> {
       showNotificationInner(notification, project);
       return null;
     });
@@ -1033,7 +1030,7 @@ public final class NotificationsManagerImpl extends NotificationsManager {
     }
 
     DropDownAction dropDownAction = new DropDownAction(IdeCoreBundle.message("notifications.action.more"),
-                                                       (link, _1) -> showPopup(notification, link, group, actionPanel.popupAlarm));
+                                                       (link, _) -> showPopup(notification, link, group, actionPanel.popupAlarm));
     actionPanel.addAction(dropDownAction);
   }
 
@@ -1285,6 +1282,7 @@ public final class NotificationsManagerImpl extends NotificationsManager {
     }
   }
 
+  @ApiStatus.Internal
   public static class DropDownAction extends LinkLabel<Void> {
     public DropDownAction(@NlsContexts.LinkLabel String text, @Nullable LinkListener<Void> listener) {
       super(text, null, listener);

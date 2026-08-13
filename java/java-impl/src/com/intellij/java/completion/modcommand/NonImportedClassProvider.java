@@ -8,13 +8,12 @@ import com.intellij.codeInsight.completion.JavaClassNameCompletionContributor;
 import com.intellij.codeInsight.completion.JavaClassReferenceCompletionContributor;
 import com.intellij.codeInsight.completion.JavaCompletionContributor;
 import com.intellij.codeInsight.completion.JavaCompletionUtil;
-import com.intellij.codeInsight.completion.JavaKeywordCompletion;
 import com.intellij.codeInsight.completion.JavaMemberNameCompletionContributor;
 import com.intellij.codeInsight.completion.JavaPatternCompletionUtil;
 import com.intellij.codeInsight.completion.LimitedAccessibleClassPreprocessor;
 import com.intellij.codeInsight.completion.PrefixMatcher;
 import com.intellij.java.syntax.parser.JavaKeywords;
-import com.intellij.modcompletion.ModCompletionItem;
+import com.intellij.modcompletion.ModCompletionResult;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.patterns.ElementPattern;
@@ -25,7 +24,6 @@ import com.intellij.psi.PsiAnonymousClass;
 import com.intellij.psi.PsiCaseLabelElementList;
 import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiElement;
-import com.intellij.psi.PsiEnumConstant;
 import com.intellij.psi.PsiErrorElement;
 import com.intellij.psi.PsiExpression;
 import com.intellij.psi.PsiExpressionList;
@@ -54,6 +52,7 @@ import com.intellij.psi.util.PsiUtil;
 import com.intellij.util.Processor;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.MultiMap;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
@@ -62,7 +61,6 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 import static com.intellij.codeInsight.completion.JavaClassNameCompletionContributor.getAllAnnotationClasses;
@@ -71,8 +69,9 @@ import static com.intellij.patterns.PsiJavaPatterns.psiExpressionStatement;
 import static com.intellij.patterns.StandardPatterns.or;
 import static com.intellij.patterns.StandardPatterns.string;
 
+@ApiStatus.Internal
 @NotNullByDefault
-final class NonImportedClassProvider extends JavaModCompletionItemProvider {
+public final class NonImportedClassProvider extends JavaModCompletionItemProvider {
   private static final PsiJavaElementPattern.Capture<PsiElement> AFTER_NEW = psiElement().afterLeaf(JavaKeywords.NEW);
   private static final ElementPattern<PsiElement> IN_PERMITS_LIST = psiElement().afterLeaf(
     psiElement()
@@ -107,15 +106,12 @@ final class NonImportedClassProvider extends JavaModCompletionItemProvider {
     // dot after primitive type `int.<caret>` or dot after dot `Object..<caret>`
     psiElement().afterLeaf(psiElement(JavaTokenType.DOT).withParent(
       psiElement(PsiErrorElement.class).afterSibling(psiElement(PsiErrorElement.class)))));
-  private static final ElementPattern<PsiElement> AFTER_ENUM_CONSTANT =
-    psiElement().inside(PsiTypeElement.class).afterLeaf(
-      psiElement().inside(true, psiElement(PsiEnumConstant.class), psiElement(PsiClass.class, PsiExpressionList.class)));
   private static final ElementPattern<PsiElement> IN_SWITCH_LABEL =
     psiElement().withSuperParent(2, psiElement(PsiCaseLabelElementList.class)
       .withParent(psiElement(PsiSwitchLabelStatementBase.class).withSuperParent(2, PsiSwitchBlock.class)));
 
   @Override
-  public void provideItems(CompletionContext context, Consumer<ModCompletionItem> sink) {
+  public void provideItems(CompletionContext context, ModCompletionResult sink) {
     if (!isClassNamePossible(context) || context.matcher().getPrefix().isEmpty()) {
       return;
     }
@@ -123,7 +119,7 @@ final class NonImportedClassProvider extends JavaModCompletionItemProvider {
   }
 
   private static void suggestNonImportedClasses(CompletionContext parameters,
-                                                Consumer<ModCompletionItem> sink) {
+                                                ModCompletionResult sink) {
     if (UNEXPECTED_REFERENCE_AFTER_DOT.accepts(parameters.getPosition())) return;
     addAllClasses(parameters, parameters.invocationCount() <= 2, parameters.matcher(), sink);
   }
@@ -131,7 +127,7 @@ final class NonImportedClassProvider extends JavaModCompletionItemProvider {
   public static void addAllClasses(CompletionContext parameters,
                                    boolean filterByScope,
                                    PrefixMatcher matcher,
-                                   Consumer<ModCompletionItem> sink) {
+                                   ModCompletionResult sink) {
     final PsiElement insertedElement = parameters.getPosition();
     final PsiFile psiFile = insertedElement.getContainingFile();
 
@@ -242,9 +238,9 @@ final class NonImportedClassProvider extends JavaModCompletionItemProvider {
     boolean isSecondCompletion = context.invocationCount() >= 2;
 
     PsiElement position = context.getPosition();
-    if (JavaKeywordCompletion.isInstanceofPlace(position) ||
+    if (JavaCompletionUtil.isInstanceofPlace(position) ||
         JavaMemberNameCompletionContributor.INSIDE_TYPE_PARAMS_PATTERN.accepts(position) ||
-        AFTER_ENUM_CONSTANT.accepts(position)) {
+        JavaCompletionUtil.isAfterEnumConstant(position)) {
       return false;
     }
 
@@ -273,7 +269,7 @@ final class NonImportedClassProvider extends JavaModCompletionItemProvider {
       return false;
     }
 
-    return !JavaKeywordCompletion.isAfterPrimitiveOrArrayType(position);
+    return !JavaCompletionUtil.isAfterPrimitiveOrArrayType(position);
   }
 
   static List<ClassReferenceCompletionItem> createClassLookupItems(final PsiClass psiClass,

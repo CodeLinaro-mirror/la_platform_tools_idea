@@ -21,6 +21,7 @@ import com.intellij.util.containers.ContainerUtil;
 import com.jetbrains.python.PyNames;
 import com.jetbrains.python.psi.AccessDirection;
 import com.jetbrains.python.psi.LanguageLevel;
+import com.jetbrains.python.psi.PyAugAssignmentStatement;
 import com.jetbrains.python.psi.PyBinaryExpression;
 import com.jetbrains.python.psi.PyCallSiteExpression;
 import com.jetbrains.python.psi.PyClass;
@@ -30,6 +31,7 @@ import com.jetbrains.python.psi.PyPrefixExpression;
 import com.jetbrains.python.psi.PyQualifiedExpression;
 import com.jetbrains.python.psi.PySubscriptionExpression;
 import com.jetbrains.python.psi.PyTargetExpression;
+import com.jetbrains.python.psi.impl.PyBuiltinCache;
 import com.jetbrains.python.psi.resolve.PyResolveContext;
 import com.jetbrains.python.psi.resolve.RatedResolveResult;
 import com.jetbrains.python.psi.types.PyClassLikeType;
@@ -37,12 +39,17 @@ import com.jetbrains.python.psi.types.PyClassType;
 import com.jetbrains.python.psi.types.PyType;
 import com.jetbrains.python.psi.types.PyTypeUtil;
 import com.jetbrains.python.psi.types.TypeEvalContext;
+import kotlin.Unit;
+import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+
+import static com.jetbrains.python.psi.types.PyTypeUtilKt.isAnyOrUnknown;
+import static com.jetbrains.python.psi.types.PyTypeUtilKt.isUnknown;
 
 public class PyOperatorReference extends PyReferenceImpl {
   public PyOperatorReference(PyQualifiedExpression element, @NotNull PyResolveContext context) {
@@ -51,9 +58,12 @@ public class PyOperatorReference extends PyReferenceImpl {
 
   @Override
   protected @NotNull List<RatedResolveResult> resolveInner() {
-    if (myElement instanceof PyBinaryExpression expr) {
+    if (myElement instanceof PyAugAssignmentStatement stmt) {
+      return resolveInlineAndLeftAndRightOperators(stmt, stmt.getReferencedName());
+    }
+    else if (myElement instanceof PyBinaryExpression expr) {
       final String name = expr.getReferencedName();
-      if (PyNames.CONTAINS.equals(name)) {
+      if (PyNames.STANDALONE_RIGHT_OPERATORS.contains(name)) {
         return resolveMember(expr.getRightExpression(), name);
       }
       else {
@@ -103,24 +113,56 @@ public class PyOperatorReference extends PyReferenceImpl {
     final List<RatedResolveResult> result = new ArrayList<>();
 
     final TypeEvalContext typeEvalContext = myContext.getTypeEvalContext();
-    typeEvalContext.trace("Trying to resolve left operator");
-    typeEvalContext.traceIndent();
-    try {
+    typeEvalContext.traceWithIndent("Trying to resolve left operator", () -> {
       result.addAll(resolveMember(expr.getReceiver(null), name));
-    }
-    finally {
-      typeEvalContext.traceUnindent();
-    }
-    typeEvalContext.trace("Trying to resolve right operator");
-    typeEvalContext.traceIndent();
-    try {
-      result.addAll(resolveMember(expr.getRightExpression(), PyNames.leftToRightOperatorName(name)));
-    }
-    finally {
-      typeEvalContext.traceUnindent();
+      return Unit.INSTANCE;
+    });
+
+    // A user-defined metaclass override of the operator never lets Python fall back to the
+    // reflected operator on the right; skipping it here keeps inherited typeshed signatures
+    // out of the inferred type. Instance-receiver paths still need both candidates (e.g. for
+    // stub-defined numpy operators).
+    if (isMetaclassDispatch(expr.getReceiver(null)) && hasUserDefinedResolution(result)) {
+      return result;
     }
 
+    typeEvalContext.traceWithIndent("Trying to resolve right operator", () -> {
+      result.addAll(resolveMember(expr.getRightExpression(), PyNames.leftToRightOperatorName(name)));
+      return Unit.INSTANCE;
+    });
     return result;
+  }
+
+  private @NotNull List<RatedResolveResult> resolveInlineAndLeftAndRightOperators(@NotNull PyAugAssignmentStatement stmt, @Nullable String name) {
+    final List<RatedResolveResult> result = new ArrayList<>();
+
+    final TypeEvalContext typeEvalContext = myContext.getTypeEvalContext();
+    typeEvalContext.traceWithIndent("Trying to resolve inplace operator", () -> {
+      result.addAll(resolveMember(stmt.getReceiver(null), name));
+      return Unit.INSTANCE;
+    });
+    typeEvalContext.traceWithIndent("Trying to resolve left operator", () -> {
+      result.addAll(resolveMember(stmt.getReceiver(null), PyNames.inplaceToLeftOperatorName(name)));
+      return Unit.INSTANCE;
+    });
+    typeEvalContext.traceWithIndent("Trying to resolve right operator", () -> {
+      result.addAll(resolveMember(stmt.getValue(), PyNames.inplaceToRightOperatorName(name)));
+      return Unit.INSTANCE;
+    });
+    return result;
+  }
+
+  private static boolean hasUserDefinedResolution(@NotNull List<? extends RatedResolveResult> results) {
+    return StreamEx.of(results)
+      .map(res -> res.getElement())
+      .nonNull()
+      .anyMatch(element -> !PyBuiltinCache.getInstance(element).isBuiltin(element));
+  }
+
+  private boolean isMetaclassDispatch(@Nullable PyExpression receiver) {
+    if (receiver == null) return false;
+    final PyType type = myContext.getTypeEvalContext().getType(receiver);
+    return type instanceof PyClassLikeType classLikeType && classLikeType.isDefinition();
   }
 
   private @NotNull List<RatedResolveResult> resolveMember(@Nullable PyExpression object, @Nullable String name) {
@@ -129,11 +171,11 @@ public class PyOperatorReference extends PyReferenceImpl {
       final TypeEvalContext typeEvalContext = myContext.getTypeEvalContext();
       final PyType type = typeEvalContext.getType(object);
       typeEvalContext.trace("Side text is %s, type is %s", object.getText(), type);
-      if (type != null) {
+      if (!isAnyOrUnknown(type)) {
         final List<? extends RatedResolveResult> res =
           PyTypeUtil
             .toStream(type)
-            .nonNull()
+            .filter( it -> !isUnknown(it) )
             .flatCollection(
               it -> it instanceof PyClassLikeType && ((PyClassLikeType)it).isDefinition()
                     ? resolveDefinitionMember((PyClassLikeType)it, object, name)

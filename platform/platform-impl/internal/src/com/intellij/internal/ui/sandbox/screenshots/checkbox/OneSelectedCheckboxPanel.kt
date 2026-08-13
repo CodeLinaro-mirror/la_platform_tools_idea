@@ -4,15 +4,16 @@ package com.intellij.internal.ui.sandbox.screenshots.checkbox
 import com.intellij.internal.ui.sandbox.UISandboxScreenshotPanel
 import com.intellij.openapi.Disposable
 import com.intellij.ui.dsl.builder.panel
+import java.awt.Dimension
 import javax.swing.JComponent
 
 /**
  * @author Konstantin Bulenkov
  */
-internal open class OneSelectedCheckboxPanel(val correct: Boolean, val text: String) : UISandboxScreenshotPanel() {
+internal open class OneSelectedCheckboxPanel(val correct: Boolean, val text: String, val size: Dimension? = null, val relativePath: String? = null) : UISandboxScreenshotPanel() {
   override val title: String = if (correct) "Correct" else "Incorrect"
-  override val screenshotSize = null
-  override val sreenshotRelativePath = null
+  override val screenshotSize: Dimension? = size
+  override val sreenshotRelativePath: String? = relativePath
 
   override fun createContentForScreenshot(disposable: Disposable): JComponent {
     return panel {

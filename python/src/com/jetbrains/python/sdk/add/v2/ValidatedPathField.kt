@@ -10,7 +10,6 @@ import com.intellij.openapi.actionSystem.CustomShortcutSet
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.fileChooser.FileChooserDescriptor
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
-import com.intellij.openapi.observable.properties.AtomicProperty
 import com.intellij.openapi.observable.properties.ObservableMutableProperty
 import com.intellij.openapi.observable.properties.ObservableProperty
 import com.intellij.openapi.observable.util.and
@@ -106,6 +105,7 @@ private object ValidationInProgressExtension : ExtendableTextComponent.Extension
 internal class ValidatedPathField<T, P : PathHolder, VP : ValidatedPath<T, P>>(
   val fileSystem: FileSystem<P>,
   val pathValidator: PathValidator<T, P, VP>,
+  val canBeEdited: Boolean,
   browseFolderDialogTitle: @Nls String,
   isFileSelectionMode: Boolean,
 ) : TextFieldWithBrowseButton() {
@@ -146,6 +146,7 @@ internal class ValidatedPathField<T, P : PathHolder, VP : ValidatedPath<T, P>>(
   }
 
   init {
+    setButtonVisible(canBeEdited)
     addDocumentListener(object : DocumentAdapter() {
       override fun textChanged(e: DocumentEvent) {
         textInputFlow.value = text
@@ -191,7 +192,7 @@ internal class ValidatedPathField<T, P : PathHolder, VP : ValidatedPath<T, P>>(
         }
         else {
           editorMode.store(false)
-          isEnabled = true
+          isEnabled = canBeEdited
 
           pathValidator.backProperty.get()?.validationResult?.let { validationResult ->
             validationResult
@@ -262,7 +263,7 @@ internal class ValidatedPathField<T, P : PathHolder, VP : ValidatedPath<T, P>>(
   private fun createBrowseFolderListener(browseFolderDialogTitle: @Nls String, isFileSelectionMode: Boolean): ActionListener? {
     val descriptor = getFileChooserDescriptor(browseFolderDialogTitle, isFileSelectionMode)
     val targetBrowserHints = TargetBrowserHints(showLocalFsInBrowser = true, descriptor)
-    val targetEnvironmentConfiguration = (fileSystem as? FileSystem.Target)?.targetEnvironmentConfiguration
+    val targetEnvironmentConfiguration = (fileSystem as? TargetFileSystem)?.targetEnvironmentConfiguration
 
     val listener = if (targetEnvironmentConfiguration == null) {
       BrowseFolderActionListener(this, null, descriptor, fieldAccessor)
@@ -294,14 +295,14 @@ private fun <T, P : PathHolder, V : ValidatedPath<T, P>> Panel.installToolRow(
   installAction: ActionLink,
   validatedPathField: ValidatedPathField<T, P, V>,
 ): Row {
-  val selectExecutableLink = if (fileSystem.isBrowseable) ActionLink(message("sdk.create.custom.select.executable.link")) {
+  val selectExecutableLink = if (fileSystem.isBrowsable && fileSystem.toolPathCanBePersisted) ActionLink(message("sdk.create.custom.select.executable.link")) {
     validatedPathField.button.doClick()
   }
   else null
 
   return row("") {
     validationTooltip(missingExecutableText,
-                      installAction,
+                      if (fileSystem.toolPathCanBePersisted) installAction else null,
                       selectExecutableLink,
                       validationType = ValidationType.WARNING,
                       inline = true)
@@ -319,6 +320,7 @@ internal fun <T, P : PathHolder, VP : ValidatedPath<T, P>> Panel.validatablePath
   installAction: ActionLink? = null,
   isFileSelectionMode: Boolean = true,
   venvExistenceValidationState: ObservableProperty<VenvExistenceValidationState>? = null,
+  canBeEdited: Boolean = true,
 ): ValidatedPathField<T, P, VP> {
 
   val validatedPathField = ValidatedPathField(
@@ -326,6 +328,7 @@ internal fun <T, P : PathHolder, VP : ValidatedPath<T, P>> Panel.validatablePath
     pathValidator = pathValidator,
     browseFolderDialogTitle = labelText,
     isFileSelectionMode = isFileSelectionMode,
+    canBeEdited = canBeEdited,
   )
 
   if (missingExecutableText != null && installAction != null && !fileSystem.isReadOnly) {

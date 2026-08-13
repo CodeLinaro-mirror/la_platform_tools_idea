@@ -371,6 +371,7 @@ class ActionMenu constructor(
     }
   }
 
+  @Throws(MenuCancelledControlFlowException::class)
   override fun setPopupMenuVisible(value: Boolean) {
     isTryingToShowPopupMenu = value
     if (value && !(MacMenuSettings.isSystemMenu && ActionPlaces.MAIN_MENU == place)) {
@@ -453,6 +454,7 @@ class ActionMenu constructor(
     return context
   }
 
+  @Throws(MenuCancelledControlFlowException::class)
   fun fillMenu() {
     val context = getDataContext()
     Utils.fillMenu(uiKind = ActualActionUiKind.Menu(this, isMainMenuPlace),

@@ -15,9 +15,7 @@ import com.jetbrains.python.codeInsight.typing.PyTypingTypeProvider
 import com.jetbrains.python.psi.PyAssignmentExpression
 import com.jetbrains.python.psi.PyClass
 import com.jetbrains.python.psi.PyElement
-import com.jetbrains.python.psi.PyExpression
 import com.jetbrains.python.psi.PyFunction
-import com.jetbrains.python.psi.PyListLiteralExpression
 import com.jetbrains.python.psi.PyNamedParameter
 import com.jetbrains.python.psi.PyParenthesizedExpression
 import com.jetbrains.python.psi.PyRecursiveElementVisitor
@@ -57,23 +55,12 @@ class PyNewStyleGenericSyntaxInspection : PyInspection() {
         override fun visitPyElement(node: PyElement) {
           if (!(node is PyParenthesizedExpression && node === boundExpression) &&
               !(node is PyTupleExpression && node.parent === boundExpression) &&
-              !(node is PyListLiteralExpression && node === boundExpression &&
-                node.parent !is PyTypeParameter && (node.parent as PyTypeParameter).kind != PyAstTypeParameter.Kind.TypeVar)
+              node is PyReferenceExpression
           ) {
-            if (node is PyExpression) {
-              if (!PyTypeHintsInspection.Helper.isValidTypeHint(node, myTypeEvalContext)) {
-                registerProblem(
-                  node,
-                  PyPsiBundle.message("INSP.type.hints.invalid.type.expression"),
-                )
-              }
-              if (node is PyReferenceExpression) {
-                node.getTypeParameterType()?.let {
-                  registerProblem(node,
-                                  PyPsiBundle.message("INSP.new.style.generics.are.not.allowed.inside.type.param.bounds"),
-                                  ProblemHighlightType.GENERIC_ERROR)
-                }
-              }
+            node.getTypeParameterType()?.let {
+              registerProblem(node,
+                              PyPsiBundle.message("INSP.new.style.generics.are.not.allowed.inside.type.param.bounds"),
+                              ProblemHighlightType.GENERIC_ERROR)
             }
           }
           super.visitPyElement(node)
@@ -89,7 +76,7 @@ class PyNewStyleGenericSyntaxInspection : PyInspection() {
             node.getTypeParameterType()?.let {
               if (scopeOwner != it.scopeOwner || it.declarationElement is PyTargetExpression) {
                 registerProblem(node,
-                                PyPsiBundle.message("INSP.new.style.type.parameter.out.of.scope", node.name),
+                                PyPsiBundle.problemMessage("INSP.new.style.type.parameter.out.of.scope", node.name),
                                 ProblemHighlightType.WARNING)
               }
             }

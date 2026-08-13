@@ -1,6 +1,7 @@
 // Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.packaging.common
 
+import com.intellij.openapi.util.NlsSafe
 import com.jetbrains.python.packaging.PyPackage
 import com.jetbrains.python.packaging.PyPackageName
 import com.jetbrains.python.packaging.PyRequirement
@@ -11,16 +12,17 @@ import com.jetbrains.python.packaging.repository.PyPackageRepository
 import com.jetbrains.python.packaging.requirement.PyRequirementRelation
 import com.jetbrains.python.packaging.requirement.PyRequirementVersionSpec
 import org.jetbrains.annotations.ApiStatus
-import org.jetbrains.annotations.Nls
-import javax.swing.Icon
+import java.net.URI
 import kotlin.collections.emptyList
 
-@ApiStatus.Internal
+@ApiStatus.Experimental
 @JvmInline
 value class PyDependencyGroupName(val name: String)
 
-@ApiStatus.Internal
+@ApiStatus.Experimental
 open class PythonPackage @JvmOverloads constructor(name: String, val version: String, val isEditableMode: Boolean, val dependencyGroup: PyDependencyGroupName? = null) {
+  @ApiStatus.Internal
+  var editableLocation: URI? = null
   companion object {
     private const val HASH_MULTIPLIER = 31
   }
@@ -30,9 +32,6 @@ open class PythonPackage @JvmOverloads constructor(name: String, val version: St
 
   val name: String = normalizedName.name
   val presentableName: String = name
-
-  @ApiStatus.Internal
-  open val sourceRepoIcon: Icon? = null
 
   override fun toString(): String {
     return "PythonPackage(name='${this@PythonPackage.name}', version='$version')"
@@ -127,7 +126,7 @@ interface PythonPackageDetails {
   val availableVersions: List<String>
   val repository: PyPackageRepository
   val summary: String?
-  val description: String?
+  val description: @NlsSafe String?
   val descriptionContentType: String?
   val documentationUrl: String?
   fun toPackageSpecification(version: String? = null): PythonRepositoryPackageSpecification? =
@@ -140,7 +139,7 @@ data class PythonSimplePackageDetails(
   override val availableVersions: List<String> = emptyList(),
   override val repository: PyPackageRepository,
   override val summary: String? = null,
-  override val description: @Nls String? = null,
+  override val description: @NlsSafe String? = null,
   override val descriptionContentType: String? = null,
   override val documentationUrl: String? = null,
   val author: String? = null,
@@ -158,7 +157,7 @@ data class PythonSimplePackageDetails(
  * 2) [PyPackageRepository.findPackageSpecification]
  *    Use this method if you already have a specific repository instance and want to look up within it only.
  *    The following well-known public repositories are also available for direct access:
- *   - PyPI (https://pypi.org):  [com.jetbrains.python.packaging.repository.PyPIPackageRepository.findPackageSpecification]
+ *   - PyPI (https://pypi.org):  [com.jetbrains.python.packaging.repository.PyPiPackageRepository.findPackageSpecification]
  *   - Conda: [com.jetbrains.python.packaging.conda.CondaPackageRepository.findPackageSpecification]
  */
 @ApiStatus.Internal

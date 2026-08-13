@@ -18,11 +18,8 @@ import com.intellij.testFramework.assertEqualsToFile
 import junit.framework.TestCase
 import org.jetbrains.kotlin.diagnostics.Severity
 import org.jetbrains.kotlin.idea.KotlinLanguage
-import org.jetbrains.kotlin.idea.base.plugin.KotlinPluginMode
 import org.jetbrains.kotlin.idea.base.test.InTextDirectivesUtils
 import org.jetbrains.kotlin.idea.codeinsight.api.classic.inspections.AbstractKotlinInspection
-import org.jetbrains.kotlin.idea.test.DirectiveBasedActionUtils.K1_ACTIONS_LIST_DIRECTIVE
-import org.jetbrains.kotlin.idea.test.DirectiveBasedActionUtils.K2_ACTIONS_LIST_DIRECTIVE
 import org.jetbrains.kotlin.psi.KtFile
 import java.io.File
 import kotlin.test.assertTrue
@@ -44,7 +41,8 @@ object DirectiveBasedActionUtils {
      * - all other quickfixes with names not mentioned in "//ACTION" are not available.
      * When no "// ACTION" directives are present in the file, quickfixes are not checked.
      */
-    const val K1_ACTIONS_LIST_DIRECTIVE: String = "// ACTION:"
+    const val ACTION_DIRECTIVE: String = "// ACTION:"
+    const val K1_ACTIONS_LIST_DIRECTIVE: String = ACTION_DIRECTIVE
     const val K2_ACTIONS_LIST_DIRECTIVE: String = "// K2_ACTIONS_LIST:"
     const val IGNORE_IRRELEVANT_ACTIONS_DIRECTIVE: String = "// IGNORE_IRRELEVANT_ACTIONS"
 
@@ -332,9 +330,3 @@ object DirectiveBasedActionUtils {
     )
 }
 
-val KotlinPluginMode.actionsListDirectives: Array<String>
-    get() = if (this == KotlinPluginMode.K1) {
-        arrayOf(K1_ACTIONS_LIST_DIRECTIVE)
-    } else {
-        arrayOf(K2_ACTIONS_LIST_DIRECTIVE, K1_ACTIONS_LIST_DIRECTIVE)
-    }

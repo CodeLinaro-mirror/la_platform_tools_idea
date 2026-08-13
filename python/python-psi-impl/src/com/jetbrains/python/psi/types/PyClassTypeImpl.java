@@ -10,6 +10,7 @@ import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.util.RecursionManager;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.UserDataHolderBase;
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiInvalidElementAccessException;
@@ -33,6 +34,7 @@ import com.jetbrains.python.psi.Property;
 import com.jetbrains.python.psi.PyAnnotationOwner;
 import com.jetbrains.python.psi.PyCallExpression;
 import com.jetbrains.python.psi.PyCallSiteExpression;
+import com.jetbrains.python.psi.PyCallSiteOwner;
 import com.jetbrains.python.psi.PyCallable;
 import com.jetbrains.python.psi.PyClass;
 import com.jetbrains.python.psi.PyElsePart;
@@ -71,7 +73,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -86,6 +87,8 @@ public class PyClassTypeImpl extends UserDataHolderBase implements PyClassType {
 
   protected final @NotNull PyClass myClass;
   protected final boolean myIsDefinition;
+  protected final @NotNull List<PyType> myTypeArguments;
+  private final @NotNull Ref<Integer> myHashCode = new Ref<>();
 
   /**
    * Describes a class-based type. Since everything in Python is an instance of some class, this type pretty much completes
@@ -97,9 +100,52 @@ public class PyClassTypeImpl extends UserDataHolderBase implements PyClassType {
    * @param isDefinition whether this type describes an instance or a definition of the class.
    */
   public PyClassTypeImpl(@NotNull PyClass source, boolean isDefinition) {
+    this(source, isDefinition, Collections.emptyList());
+  }
+
+  /**
+   * @param source        PyClass which defines this type. For builtin or external classes, skeleton files contain the definitions.
+   * @param isDefinition  whether this type describes an instance or a definition of the class.
+   * @param typeArguments concrete type arguments of this class instance, e.g. {@code [int]} for {@code list[int]}.
+   */
+  public PyClassTypeImpl(@NotNull PyClass source, boolean isDefinition, @NotNull List<? extends PyType> typeArguments) {
     PyClass originalElement = CompletionUtilCoreImpl.getOriginalElement(source);
     myClass = originalElement != null ? originalElement : source;
     myIsDefinition = isDefinition;
+    for (var argument : typeArguments) {
+      PyAnyType.validate(argument);
+    }
+    myTypeArguments = new ArrayList<>(typeArguments);
+  }
+
+  /**
+   * Creates a new instance of the same runtime type as this one. Subclasses (e.g. {@link PyCollectionTypeImpl}) override
+   * this so that derived types produced by {@link #toInstance()}, {@link #toClass()} and call resolution preserve their
+   * concrete class.
+   */
+  protected @NotNull PyClassTypeImpl createInstance(@NotNull PyClass source,
+                                                    boolean isDefinition,
+                                                    @NotNull List<? extends PyType> typeArguments) {
+    return new PyClassTypeImpl(source, isDefinition, typeArguments);
+  }
+
+  @Override
+  public @NotNull List<PyType> getTypeArguments() {
+    return Collections.unmodifiableList(myTypeArguments);
+  }
+
+  @Override
+  public @Nullable PyType getIteratedItemType() {
+    if (myTypeArguments.size() >= 2) {
+      if (!PyTypingTypeProvider.ITERABLE.equals(getClassQName())) {
+        TypeEvalContext context = TypeEvalContext.codeInsightFallback(getPyClass().getProject());
+        PyType asIterable = PyTypeUtil.convertToType(this, PyTypingTypeProvider.ITERABLE, getPyClass(), context);
+        if (asIterable instanceof PyClassType classType && classType.isParameterized()) {
+          return classType.getIteratedItemType();
+        }
+      }
+    }
+    return ContainerUtil.getFirstItem(myTypeArguments);
   }
 
   public <T> PyClassTypeImpl withUserData(Key<T> key, T value) {
@@ -131,12 +177,12 @@ public class PyClassTypeImpl extends UserDataHolderBase implements PyClassType {
 
   @Override
   public @NotNull PyClassType toInstance() {
-    return myIsDefinition ? withUserDataCopy(new PyClassTypeImpl(myClass, false)) : this;
+    return myIsDefinition ? withUserDataCopy(createInstance(myClass, false, myTypeArguments)) : this;
   }
 
   @Override
   public @NotNull PyClassType toClass() {
-    return myIsDefinition ? this : new PyClassTypeImpl(myClass, true);
+    return myIsDefinition ? this : createInstance(myClass, true, myTypeArguments);
   }
 
   /**
@@ -197,24 +243,6 @@ public class PyClassTypeImpl extends UserDataHolderBase implements PyClassType {
       final Ref<ResolveResultList> resultRef = findProperty(name, direction, false, resolveContext.getTypeEvalContext());
       if (resultRef != null) {
         return resultRef.get();
-      }
-    }
-
-    if ("super".equals(getClassQName()) && isBuiltin() && location instanceof PyCallExpression) {
-      // methods of super() call are not of class super!
-      PyExpression first_arg = ((PyCallExpression)location).getArgument(0, PyExpression.class);
-      if (first_arg != null) { // the usual case: first arg is the derived class that super() is proxying for
-        PyType first_arg_type = context.getType(first_arg);
-        if (first_arg_type instanceof PyClassType) {
-          PyClass derived_class = ((PyClassType)first_arg_type).getPyClass();
-          final Iterator<PyClass> base_it = derived_class.getAncestorClasses(context).iterator();
-          if (base_it.hasNext()) {
-            return new PyClassTypeImpl(base_it.next(), true).resolveMember(name, location, direction, resolveContext);
-          }
-          else {
-            return null; // no base classes = super() cannot proxy anything meaningful from a base class
-          }
-        }
       }
     }
 
@@ -416,16 +444,16 @@ public class PyClassTypeImpl extends UserDataHolderBase implements PyClassType {
   }
 
   @Override
-  public @Nullable PyType getCallType(@NotNull TypeEvalContext context, @NotNull PyCallSiteExpression callSite) {
+  public @Nullable PyType getCallType(@NotNull TypeEvalContext context, @NotNull PyCallSiteOwner callSite) {
     return getPossibleCallType(context, callSite);
   }
 
-  private @Nullable PyType getPossibleCallType(@NotNull TypeEvalContext context, @Nullable PyCallSiteExpression callSite) {
+  private @Nullable PyType getPossibleCallType(@NotNull TypeEvalContext context, @Nullable PyCallSiteOwner callSite) {
     if (!isDefinition()) {
-      return PyUtil.getReturnTypeOfMember(this, PyNames.CALL, callSite, context);
+      return PyUtil.getReturnTypeOfMember(this, PyNames.CALL, callSite instanceof PyCallSiteExpression callSiteExpression ? callSiteExpression : null , context);
     }
     else {
-      return withUserDataCopy(new PyClassTypeImpl(getPyClass(), false));
+      return withUserDataCopy(createInstance(getPyClass(), false, myTypeArguments));
     }
   }
 
@@ -859,20 +887,31 @@ public class PyClassTypeImpl extends UserDataHolderBase implements PyClassType {
 
     if (myIsDefinition != classType.myIsDefinition) return false;
     if (!myClass.equals(classType.myClass)) return false;
+    if (!myTypeArguments.equals(classType.myTypeArguments)) return false;
 
     return true;
   }
 
   @Override
   public int hashCode() {
-    int result = myClass.hashCode();
-    result = 31 * result + (myIsDefinition ? 1 : 0);
-    return result;
+    if (myHashCode.isNull()) {
+      int result = myClass.hashCode();
+      result = 31 * result + (myIsDefinition ? 1 : 0);
+      if (!myTypeArguments.isEmpty()) {
+        result = 31 * result + myTypeArguments.hashCode();
+      }
+      myHashCode.set(result);
+    }
+    return myHashCode.get();
   }
 
   @Override
   public String toString() {
-    return (isValid() ? "" : "[INVALID] ") + "PyClassType: " + getClassQName();
+    String result = (isValid() ? "" : "[INVALID] ") + "PyClassType: " + getClassQName();
+    if (!myTypeArguments.isEmpty()) {
+      result += "[" + StringUtil.join(myTypeArguments, String::valueOf, ", ") + "]";
+    }
+    return result;
   }
 
   @Override

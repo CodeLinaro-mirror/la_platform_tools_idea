@@ -11,6 +11,7 @@ interface GeneralSettingsRef {
   fun setConfirmOpenNewProject(mode: Int)
   fun setConfirmExit(value: Boolean)
   fun setProcessCloseConfirmation(value: ProcessCloseConfirmationRef)
+  fun setSupportScreenReaders(value: Boolean)
 }
 
 @Remote("com.intellij.ide.ProcessCloseConfirmation")
@@ -23,6 +24,9 @@ interface AdvancedSettingsRef {
   fun getBoolean(id: String): Boolean
   fun setBoolean(id: String, value: Boolean)
   fun getDefaultBoolean(id: String): Boolean
+
+  fun getInt(id: String): Int
+  fun setInt(id: String, value: Int)
 }
 
 @Remote("com.intellij.openapi.updateSettings.impl.UpdateSettings")
@@ -31,11 +35,11 @@ interface UpdateSettings {
 }
 
 fun Driver.setOpenNewProjectsInSameWindow() {
-  service<GeneralSettingsRef>(RdTarget.BACKEND).setConfirmOpenNewProject(1)
+  updateGeneralSettings(RdTarget.BACKEND) { setConfirmOpenNewProject(1) }
 }
 
 fun Driver.setOpenNewProjectsInNewWindow() {
-  service<GeneralSettingsRef>(RdTarget.BACKEND).setConfirmOpenNewProject(0)
+  updateGeneralSettings(RdTarget.BACKEND) { setConfirmOpenNewProject(0) }
 }
 
 fun Driver.advancedSettings(rdTarget: RdTarget = RdTarget.DEFAULT): AdvancedSettingsRef {
@@ -46,12 +50,21 @@ fun Driver.setAdvancedSetting(id: String, value: Boolean, rdTarget: RdTarget = R
   advancedSettings(rdTarget).setBoolean(id, value)
 }
 
+fun Driver.setAdvancedSetting(id: String, value: Int, rdTarget: RdTarget = RdTarget.DEFAULT) {
+  advancedSettings(rdTarget).setInt(id, value)
+}
+
 fun Driver.setThirdPartyPluginsAllowed(allowed: Boolean) {
   service<UpdateSettings>().setThirdPartyPluginsAllowed(allowed)
 }
 
 fun Driver.turnOffConfirmExit() {
-  val settings = service<GeneralSettingsRef>(RdTarget.BACKEND)
-  settings.setConfirmExit(false)
-  settings.setProcessCloseConfirmation(utility<ProcessCloseConfirmationRef>(RdTarget.BACKEND).valueOf("TERMINATE"))
+  updateGeneralSettings {
+    setConfirmExit(false)
+    setProcessCloseConfirmation(utility<ProcessCloseConfirmationRef>(RdTarget.BACKEND).valueOf("TERMINATE"))
+  }
+}
+
+fun Driver.updateGeneralSettings(rdTarget: RdTarget = RdTarget.DEFAULT, settingToChange: GeneralSettingsRef.() -> Unit) {
+  service(GeneralSettingsRef::class, rdTarget).apply { settingToChange() }
 }

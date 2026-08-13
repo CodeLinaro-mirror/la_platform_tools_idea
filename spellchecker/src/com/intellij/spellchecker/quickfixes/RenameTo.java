@@ -32,6 +32,7 @@ import com.intellij.refactoring.rename.RenameUtil;
 import com.intellij.spellchecker.SpellCheckerManager;
 import com.intellij.spellchecker.statistics.SpellcheckerActionStatistics;
 import com.intellij.spellchecker.statistics.SpellcheckerRateTracker;
+import com.intellij.spellchecker.tokenizer.SpellcheckingStrategy;
 import com.intellij.spellchecker.util.SpellCheckerBundle;
 import icons.SpellcheckerIcons;
 import org.jetbrains.annotations.Nls;
@@ -66,9 +67,8 @@ public class RenameTo extends IntentionAndQuickFixAction implements Iconable, Ev
     if (element == null) return false;
     var presentationName = getPresentationName(element);
     if (presentationName == null) return false;
-    generateSuggestions(presentationName.getSecond(), presentationName.getFirst());
+    generateSuggestions(presentationName.getFirst(), presentationName.getSecond());
     this.namedPointer = SmartPointerManager.getInstance(project).createSmartPsiElementPointer(presentationName.getFirst());
-    if (suggestions == null || suggestions.isEmpty()) return false;
     return true;
   }
 
@@ -145,10 +145,13 @@ public class RenameTo extends IntentionAndQuickFixAction implements Iconable, Ev
     return handler;
   }
 
-  private void generateSuggestions(String name, PsiNamedElement namedElement) {
+  private void generateSuggestions(PsiNamedElement namedElement, String name) {
     if (suggestions == null) {
-      TextRange range = getNameRelativeRange(namedElement);
-      if (range == null) return;
+      TextRange range = getNameRelativeRange(namedElement, name);
+      if (range == null) {
+        this.suggestions = new ArrayList<>();
+        return;
+      }
       this.suggestions = SpellCheckerManager.getInstance(pointer.getProject()).getSuggestions(typo)
         .stream()
         .map(suggestion -> range.replace(name, suggestion))
@@ -158,17 +161,28 @@ public class RenameTo extends IntentionAndQuickFixAction implements Iconable, Ev
     }
   }
 
-  private @Nullable TextRange getNameRelativeRange(PsiNamedElement namedElement) {
+  private @Nullable TextRange getNameRelativeRange(PsiNamedElement namedElement, String name) {
     Segment rangeRelativeToFile = this.rangeRelativeToFile.getRange();
     if (rangeRelativeToFile == null) return null;
 
-    return namedElement instanceof PsiNameIdentifierOwner owner ?
-           adjustRangeRelativeToElement(owner.getNameIdentifier(), rangeRelativeToFile) :
-           adjustRangeRelativeToElement(pointer.getElement(), rangeRelativeToFile);
+    PsiElement element = namedElement instanceof PsiNameIdentifierOwner owner ? owner.getNameIdentifier() : pointer.getElement();
+    if (element == null) return null;
+
+    TextRange range = getNameRelativeTypoRange(element, rangeRelativeToFile);
+    if (range == null || range.getEndOffset() > name.length()) return null;
+    return range.substring(name).equals(typo) ? range : null;
   }
 
-  private static @Nullable TextRange adjustRangeRelativeToElement(PsiElement element, Segment rangeRelativeToFile) {
-    return element != null ? TextRange.create(rangeRelativeToFile).shiftLeft(element.getTextRange().getStartOffset()) : null;
+  private static @Nullable TextRange getNameRelativeTypoRange(PsiElement element, Segment rangeRelativeToFile) {
+    SpellcheckingStrategy strategy = SpellcheckingStrategy.getSpellcheckingStrategy(element);
+    if (strategy == null) return TextRange.create(rangeRelativeToFile).shiftLeft(element.getTextRange().getStartOffset());
+    TextRange range = strategy.getRenameIdentifierRange(element);
+
+    // This range can be incorrect in the case of programming language syntax errors.
+    // For example, if someone types something before the `import` statement in Java.
+    if (rangeRelativeToFile.getStartOffset() < element.getTextRange().getStartOffset()) return null;
+    return range == null ? TextRange.create(rangeRelativeToFile).shiftLeft(element.getTextRange().getStartOffset())
+                         : TextRange.create(rangeRelativeToFile).shiftLeft(range.getStartOffset());
   }
 
   private void runRenamer(PsiElement element, String suggestion) {

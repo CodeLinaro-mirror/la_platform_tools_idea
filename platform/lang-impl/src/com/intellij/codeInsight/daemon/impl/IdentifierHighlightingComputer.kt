@@ -14,7 +14,6 @@ import com.intellij.lang.injection.InjectedLanguageManager
 import com.intellij.model.Symbol
 import com.intellij.model.psi.PsiSymbolService
 import com.intellij.model.psi.impl.targetSymbols
-import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.progress.ProgressManager
@@ -33,6 +32,7 @@ import com.intellij.psi.search.LocalSearchScope
 import com.intellij.psi.search.searches.ReferencesSearch
 import com.intellij.util.AstLoadingFilter
 import com.intellij.util.ThrowableRunnable
+import com.intellij.util.concurrency.ThreadingAssertions
 import com.intellij.util.concurrency.annotations.RequiresBackgroundThread
 import com.intellij.util.concurrency.annotations.RequiresReadLock
 import org.jetbrains.annotations.ApiStatus
@@ -61,8 +61,8 @@ class IdentifierHighlightingComputer(
   @RequiresBackgroundThread
   @ApiStatus.Internal
   fun computeRanges(): IdentifierHighlightingResult {
-    ApplicationManager.getApplication().assertIsNonDispatchThread()
-    ApplicationManager.getApplication().assertReadAccessAllowed()
+    ThreadingAssertions.assertBackgroundThread()
+    ThreadingAssertions.assertReadAccess()
     if (myCaretOffset < 0 || !myEnabled || isInlinePromptShown(myEditor)) {
       if (LOG.isDebugEnabled) {
         LOG.debug("IdentifierHighlightingComputer.computeRanges empty $myCaretOffset $myEnabled ${isInlinePromptShown(myEditor)}")
@@ -160,15 +160,15 @@ class IdentifierHighlightingComputer(
   private fun isCacheableTarget(contextElement: PsiElement): Boolean {
     val textRange = contextElement.textRange
     var reference: PsiReference? = null
-    var symbols:Collection<Symbol>? = null
+    var objs: Collection<Any>? = null
 
     for (offset in textRange.startOffset..< textRange.endOffset) {
       ProgressManager.checkCanceled()
-      val smb = targetSymbols(myPsiFile, offset)
-      if (symbols != null && symbols.map{ PsiSymbolService.getInstance().extractElementFromSymbol(it) } != smb.map{ PsiSymbolService.getInstance().extractElementFromSymbol(it) }) {
+      val other = targetSymbols(myPsiFile, offset).map { PsiSymbolService.getInstance().extractElementFromSymbol(it) ?: it }
+      if (objs != null && objs != other) {
         return false
       }
-      symbols = smb
+      objs = other
       val ref = TargetElementUtil.findReference(myEditor, offset)
       if (reference != null && (ref == null || !referencesEqual(ref, reference))) {
         return false

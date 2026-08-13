@@ -18,20 +18,28 @@ import kotlin.script.experimental.host.ScriptingHostConfiguration
 import kotlin.script.experimental.host.getScriptingClass
 import kotlin.script.experimental.jvm.JvmGetScriptingClass
 
+@Suppress("unused")
+@KotlinScript(
+    displayName = "KotlinScratchExplainScript",
+    fileExtension = "kts",
+    compilationConfiguration = KotlinScratchExplainCompilationConfiguration::class,
+    hostConfiguration = KotlinScratchHostConfiguration::class,
+    evaluationConfiguration = KotlinScratchExplainEvaluationConfiguration::class,
+)
+abstract class KotlinScratchExplainScript(vararg args: String)
 
 @Suppress("unused")
 @KotlinScript(
-    displayName = "KotlinScratchScript",
+    displayName = "KotlinScratchPlainScript",
     fileExtension = "kts",
     compilationConfiguration = KotlinScratchCompilationConfiguration::class,
     hostConfiguration = KotlinScratchHostConfiguration::class,
-    evaluationConfiguration = KotlinScratchEvaluationConfiguration::class,
 )
-abstract class KotlinScratchScript(vararg args: String)
+abstract class KotlinScratchPlainScript(vararg args: String)
 
 const val KOTLIN_SCRATCH_EXPLAIN_FILE: String = "kotlin.scratch.explain.file"
 
-private class KotlinScratchEvaluationConfiguration : ScriptEvaluationConfiguration(
+private class KotlinScratchExplainEvaluationConfiguration : ScriptEvaluationConfiguration(
     {
         refineConfigurationBeforeEvaluate { (_, config, _) ->
             config.with {
@@ -44,7 +52,9 @@ private class KotlinScratchEvaluationConfiguration : ScriptEvaluationConfigurati
                         System.getProperty(KOTLIN_SCRATCH_EXPLAIN_FILE)?.let { location ->
                             val path = Path(location)
                             Files.createDirectories(path.parent)
-                            path.writeText(explainMap.entries.joinToString(separator = "\n") { entry -> "${entry.key}=${entry.value}" })
+                            path.writeText(explainMap.entries.joinToString(separator = "\n") { entry ->
+                                "${entry.key}=${entry.value?.toString()?.escapedExplainValue()}"
+                            })
                         }
                     }
                 }
@@ -53,16 +63,20 @@ private class KotlinScratchEvaluationConfiguration : ScriptEvaluationConfigurati
     }
 )
 
-private class KotlinScratchCompilationConfiguration : ScriptCompilationConfiguration(
-    {
-        displayName("Kotlin Scratch")
-        explainField(SCRATCH_EXPLAIN_VARIABLE_NAME)
-    })
+object KotlinScratchCompilationConfiguration : ScriptCompilationConfiguration({
+    displayName("Kotlin Scratch")
+})
 
-private class KotlinScratchHostConfiguration : ScriptingHostConfiguration(
-    {
-        getScriptingClass(JvmGetScriptingClass())
-    })
+object KotlinScratchExplainCompilationConfiguration : ScriptCompilationConfiguration(listOf(KotlinScratchCompilationConfiguration), {
+    explainField(SCRATCH_EXPLAIN_VARIABLE_NAME)
+})
 
+private class KotlinScratchHostConfiguration : ScriptingHostConfiguration({
+    getScriptingClass(JvmGetScriptingClass())
+})
 
 private const val SCRATCH_EXPLAIN_VARIABLE_NAME: String = $$$"$$explain"
+
+private fun String.escapedExplainValue(): String = replace("\\", "\\\\")
+    .replace("\n", "\\n")
+    .replace("\r", "\\r")

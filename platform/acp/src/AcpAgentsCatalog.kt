@@ -1,10 +1,11 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.platform.acp
 
-import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
+import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.openapi.project.Project
 import kotlinx.coroutines.flow.StateFlow
+import org.jetbrains.annotations.ApiStatus
 
 /**
  * Read-only view of process-launchable ACP agents currently known to the IDE.
@@ -37,6 +38,16 @@ interface AcpAgentsCatalog {
   }
 }
 
+@ApiStatus.Internal
+interface AcpAgentsCatalogProvider {
+  companion object {
+    val EP_NAME: ExtensionPointName<AcpAgentsCatalogProvider> =
+      ExtensionPointName.create("com.intellij.platform.acp.agentsCatalogProvider")
+  }
+
+  val agentsFlow: StateFlow<List<AcpCatalogEntry>>
+}
+
 /**
  * A single agent in the [AcpAgentsCatalog]. Resolving the start config may
  * trigger lazy binary or managed-runtime downloads for external agents.
@@ -47,6 +58,50 @@ interface AcpCatalogEntry {
   val origin: AcpAgentOrigin
 
   suspend fun resolveStartConfig(project: Project): AcpAgentStartConfig
+}
+
+/**
+ * Project-provided replacement for a managed ACP package runner such as `npx` or `uvx`.
+ * [argsPrefix] is inserted before the package name or the entry's existing runner arguments.
+ */
+@ApiStatus.Internal
+data class AcpRuntimeCommandOverride(
+  val command: String,
+  val argsPrefix: List<String> = emptyList(),
+)
+
+@ApiStatus.Internal
+data class AcpRuntimeOverrides(
+  val commands: Map<String, AcpRuntimeCommandOverride>,
+) {
+  operator fun get(command: String): AcpRuntimeCommandOverride? = commands[command]
+
+  fun applyTo(config: AcpAgentStartConfig): AcpAgentStartConfig {
+    val override = commands[config.command] ?: return config
+    return AcpAgentStartConfig.create(
+      command = override.command,
+      baseArgs = override.argsPrefix + config.baseArgs,
+      acpArgs = config.acpArgs,
+      env = config.env,
+      workingDir = config.workingDir,
+    )
+  }
+
+  companion object {
+    val EMPTY: AcpRuntimeOverrides = AcpRuntimeOverrides(emptyMap())
+  }
+}
+
+/**
+ * Optional catalog-entry contract used when a runtime override must be considered before lazy
+ * package installation. Callers fall back to [AcpRuntimeOverrides.applyTo] for other entries.
+ */
+@ApiStatus.Internal
+interface AcpRuntimeOverrideAwareCatalogEntry : AcpCatalogEntry {
+  suspend fun resolveStartConfig(project: Project, runtimeOverrides: AcpRuntimeOverrides): AcpAgentStartConfig
+
+  override suspend fun resolveStartConfig(project: Project): AcpAgentStartConfig =
+    resolveStartConfig(project, AcpRuntimeOverrides.EMPTY)
 }
 
 enum class AcpAgentOrigin {

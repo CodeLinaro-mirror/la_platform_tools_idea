@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.updateSettings.impl
 
 import com.intellij.ide.IdeBundle
@@ -43,10 +43,8 @@ import com.intellij.openapi.progress.Task
 import com.intellij.openapi.progress.runBlockingCancellable
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
-import com.intellij.openapi.updateSettings.impl.PluginDownloader.compareVersionsSkipBrokenAndIncompatible
 import com.intellij.openapi.util.ActionCallback
 import com.intellij.openapi.util.BuildNumber
-import com.intellij.openapi.util.IntellijInternalApi
 import com.intellij.openapi.util.JDOMUtil
 import com.intellij.openapi.util.NlsContexts
 import com.intellij.openapi.util.text.HtmlBuilder
@@ -207,7 +205,6 @@ object UpdateChecker {
   fun updateAndShowResult(): ActionCallback = service<UpdateCheckerHelper>().updateAndShowResult(showResults = true)
 
   @ApiStatus.Internal
-  @IntellijInternalApi
   fun getUpdates(): ActionCallback = service<UpdateCheckerHelper>().updateAndShowResult(showResults = false)
 
   /**
@@ -246,7 +243,6 @@ object UpdateChecker {
   @JvmStatic
   @JvmName("getPlatformUpdates")
   @ApiStatus.Internal
-  @IntellijInternalApi
   internal fun getPlatformUpdates(
     settings: UpdateSettings = UpdateSettings.getInstance(),
     indicator: ProgressIndicator? = null,
@@ -329,7 +325,6 @@ object UpdateChecker {
 
   @RequiresBackgroundThread
   @RequiresReadLockAbsence
-  @IntellijInternalApi
   @ApiStatus.Internal
   @JvmStatic
   @JvmOverloads
@@ -461,7 +456,6 @@ object UpdateChecker {
 
   @JvmOverloads
   @JvmStatic
-  @IntellijInternalApi
   @ApiStatus.Internal
   fun getExternalPluginUpdates(
     updateSettings: UpdateSettings,
@@ -505,9 +499,9 @@ object UpdateChecker {
     val installedPlugin = UpdateCheckerPluginsFacade.getInstance().getPlugin(pluginId)
     if (installedPlugin == null
         || pluginVersion == null
-        || (compareVersionsSkipBrokenAndIncompatible(pluginVersion, installedPlugin, buildNumber) > 0
+        || (PluginDownloader.compareVersionsSkipBrokenAndIncompatible(pluginVersion, installedPlugin, buildNumber) > 0
             && allowedUpgrade(installedPlugin, originalDownloader.descriptor))
-        || (compareVersionsSkipBrokenAndIncompatible(pluginVersion, installedPlugin, buildNumber) < 0
+        || (PluginDownloader.compareVersionsSkipBrokenAndIncompatible(pluginVersion, installedPlugin, buildNumber) < 0
             && allowedDowngrade(installedPlugin, originalDownloader.descriptor))) {
       val oldDownloader = ourUpdatedPlugins[pluginId]
       val downloader = if (UpdateCheckerPluginsFacade.getInstance().isDisabled(pluginId)) {
@@ -577,7 +571,6 @@ object UpdateChecker {
 
   /** A helper method for manually testing platform updates (see com.intellij.internal.ShowUpdateInfoDialogAction). */
   @ApiStatus.Internal
-  @IntellijInternalApi
   fun testPlatformUpdate(
     project: Project?,
     updateDataText: String,
@@ -604,10 +597,8 @@ object UpdateChecker {
       PlatformUpdates.Loaded(newBuild, channel, patches)
     }
     else {
-      UpdateStrategy(
-        currentBuild,
-        parseUpdateData(updateDataText, productCode),
-      ).checkForUpdates()
+      UpdateStrategy(currentBuild, product = parseUpdateData(updateDataText, productCode), UpdateSettings.getInstance())
+        .checkForUpdates()
     }
 
     val dialog = when (checkForUpdateResult) {
@@ -642,7 +633,6 @@ object UpdateChecker {
   @Suppress("unused")
   @JvmOverloads
   @JvmStatic
-  @IntellijInternalApi
   @ApiStatus.Internal
   @Deprecated(message = "Use PluginUpdateCheckService instead", replaceWith = ReplaceWith("PluginUpdateCheckService.getInstance().getPluginUpdate(pluginId, indicator)"))
   fun getInternalPluginUpdates(
@@ -662,7 +652,6 @@ object UpdateChecker {
     return result
   }
 
-  @IntellijInternalApi
   @ApiStatus.Internal
   @Deprecated("Must not be used by plugins, only IDE itself. To remove without replacement!")
   @ApiStatus.ScheduledForRemoval
@@ -949,6 +938,9 @@ private fun showUpdatePluginsNotification(
       NotificationAction.createExpiring(IdeBundle.message("updates.all.plugins.action", updatesForPlugins.size)) { e, _ ->
         coroutineScope.launch {
           val component = e.getData(PlatformCoreDataKeys.CONTEXT_COMPONENT) as JComponent?
+          updatesForPlugins.forEach {
+            PluginUpdateSourceService.getInstance().setPluginUpdateSourceId(it)
+          }
           PluginUpdateHandler.getInstance().installUpdates(sessionId, updatesForPlugins, component, null)
         }
       },

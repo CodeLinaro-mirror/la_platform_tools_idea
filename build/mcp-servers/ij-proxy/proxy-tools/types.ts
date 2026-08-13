@@ -28,8 +28,10 @@ export interface SearchEntry {
 
 export interface SearchItem {
   filePath: string
-  lineNumber?: number
-  lineText?: string
+  startLine?: number
+  startColumn?: number
+  endLine?: number
+  endColumn?: number
   [key: string]: unknown
 }
 
@@ -46,7 +48,16 @@ export interface SearchCapabilities {
 
 export interface AnalysisCapabilities {
   hasLintFiles: boolean
+  hasLintFilesFiles: boolean
+  hasLintFilesFilePaths: boolean
   supportsLintFiles: boolean
+}
+
+export interface FormattingCapabilities {
+  hasReformatFile: boolean
+  hasReformatFileFiles: boolean
+  hasReformatFilePaths: boolean
+  supportsReformatFile: boolean
 }
 
 export interface ReadCapabilities {

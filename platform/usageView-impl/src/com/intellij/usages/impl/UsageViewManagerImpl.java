@@ -1,4 +1,4 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.usages.impl;
 
 import com.intellij.find.SearchInBackgroundOption;
@@ -193,7 +193,7 @@ public class UsageViewManagerImpl extends UsageViewManagerWithUsageViewFactoryCa
     Task.Backgroundable task = new Task.Backgroundable(project, getProgressTitle(presentation), true, new SearchInBackgroundOption()) {
       @Override
       public void run(@NotNull ProgressIndicator indicator) {
-        SearchScope searchScopeToWarnOfFallingOutOf = ReadAction.compute(() -> scopeSupplier.get());
+        SearchScope searchScopeToWarnOfFallingOutOf = ReadAction.computeBlocking(() -> scopeSupplier.get());
         new SearchForUsagesRunnable(UsageViewManagerImpl.this, UsageViewManagerImpl.this.project, usageViewRef, presentation, searchFor, searcherFactory,
                                     processPresentation, searchScopeToWarnOfFallingOutOf, listener, firstItemFoundTS, tooManyUsages).run();
       }
@@ -223,7 +223,7 @@ public class UsageViewManagerImpl extends UsageViewManagerWithUsageViewFactoryCa
         PsiElement element = SearchForUsagesRunnable.getPsiElement(searchFor);
         UsageViewEx view = usageViewRef.get();
         Class<? extends PsiElement> targetClass = element != null ? element.getClass() : null;
-        Language language = element != null ? ReadAction.compute(element::getLanguage) : null;
+        Language language = element != null ? ReadAction.computeBlocking(element::getLanguage) : null;
         SearchScope scope = null;
         if (element instanceof DataProvider provider) {
           scope = UsageView.USAGE_SCOPE.getData(provider);
@@ -327,13 +327,13 @@ public class UsageViewManagerImpl extends UsageViewManagerWithUsageViewFactoryCa
                                                    @NotNull TooManyUsagesStatus tooManyUsagesStatus,
                                                    @NotNull ProgressIndicator indicator,
                                                    @Nullable UsageViewEx usageView,
-                                                   @NotNull Supplier<@NlsContexts.DialogMessage String> messageSupplier,
+                                                   @Nullable Supplier<@NlsContexts.DialogMessage String> messageSupplier,
                                                    @Nullable Consumer<? super UsageLimitUtil.Result> onUserClicked) {
     UIUtil.invokeLaterIfNeeded(() -> {
       if (usageView != null && usageView.searchHasBeenCancelled() || indicator.isCanceled()) {
         return;
       }
-      UsageLimitUtil.Result ret = UsageLimitUtil.showTooManyUsagesWarning(project, messageSupplier.get());
+      UsageLimitUtil.Result ret = UsageLimitUtil.showTooManyUsagesWarning(project, messageSupplier == null ? null : messageSupplier.get());
       if (ret == UsageLimitUtil.Result.ABORT) {
         if (usageView != null) {
           usageView.cancelCurrentSearch();
@@ -350,7 +350,7 @@ public class UsageViewManagerImpl extends UsageViewManagerWithUsageViewFactoryCa
 
   @ApiStatus.Internal
   public static long getFileLength(@NotNull VirtualFile virtualFile) {
-    return ReadAction.compute(() -> virtualFile.isValid() ? virtualFile.getLength() : -1L);
+    return ReadAction.computeBlocking(() -> virtualFile.isValid() ? virtualFile.getLength() : -1L);
   }
 
   @ApiStatus.Internal
@@ -362,7 +362,7 @@ public class UsageViewManagerImpl extends UsageViewManagerWithUsageViewFactoryCa
   @ApiStatus.Internal
   public static boolean isInScope(@NotNull Usage usage, @NotNull SearchScope searchScope, @NotNull SearchScope everythingScope) {
     if (searchScope.equals(everythingScope)) return true;
-    return ReadAction.compute(() -> {
+    return ReadAction.computeBlocking(() -> {
       VirtualFile file;
       if (usage instanceof PsiElementUsage psiElementUsage) {
         PsiElement element = psiElementUsage.getElement();

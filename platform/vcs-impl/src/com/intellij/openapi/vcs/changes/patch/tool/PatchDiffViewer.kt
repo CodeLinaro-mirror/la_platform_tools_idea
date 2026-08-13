@@ -1,11 +1,11 @@
-// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.vcs.changes.patch.tool
 
 import com.intellij.diff.DiffContext
 import com.intellij.diff.DiffViewerEx
 import com.intellij.diff.EditorDiffViewer
 import com.intellij.diff.FrameDiffTool
-import com.intellij.diff.actions.impl.SetEditorSettingsAction
+import com.intellij.diff.actions.impl.SetEditorSettingsActionGroup
 import com.intellij.diff.tools.holders.EditorHolder
 import com.intellij.diff.tools.holders.TextEditorHolder
 import com.intellij.diff.tools.util.DiffDataKeys
@@ -21,7 +21,6 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.DataSink
 import com.intellij.openapi.actionSystem.IdeActions
-import com.intellij.openapi.actionSystem.Separator
 import com.intellij.openapi.application.runWriteAction
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.Editor
@@ -47,7 +46,7 @@ internal class PatchDiffViewer(
   private val editorHolder: EditorHolder
 
   private val prevNextDifferenceIterable: MyPrevNextDifferenceIterable
-  private val editorSettingsAction: SetEditorSettingsAction
+  private val editorSettingsAction: SetEditorSettingsActionGroup
 
   private var hunks: List<Hunk> = mutableListOf()
 
@@ -62,7 +61,7 @@ internal class PatchDiffViewer(
                                                 diffRequest,
                                                 listOf(diffRequest.contentTitle1, diffRequest.contentTitle2))
       .filterNotNull()
-    val titlePanel = if (titles.isNotEmpty()) DiffUtil.createStackedComponents(titles, DiffUtil.TITLE_GAP) else null
+    val titlePanel = if (titles.isNotEmpty()) DiffUtil.createStackedTitleComponents(titles) else null
 
     val contentPanel = OnesideContentPanel.createFromHolder(editorHolder)
     contentPanel.setTitle(titlePanel)
@@ -78,8 +77,10 @@ internal class PatchDiffViewer(
         sink[DiffDataKeys.CURRENT_CHANGE_RANGE] = prevNextDifferenceIterable.currentLineRange
       }
     }
-    editorSettingsAction = SetEditorSettingsAction(TextDiffViewerUtil.getTextSettings(diffContext), editors)
+    editorSettingsAction = SetEditorSettingsActionGroup(TextDiffViewerUtil.getTextSettings(diffContext), editors)
     editorSettingsAction.applyDefaults()
+    val gutterActionGroup = TextDiffViewerUtil.createEditorGutterActionGroup(editorSettingsAction)
+    TextDiffViewerUtil.installGutterPopup(editors, gutterActionGroup)
 
     listenTypingAttempts(diffContext, editor)
   }
@@ -88,7 +89,7 @@ internal class PatchDiffViewer(
 
   override fun getPreferredFocusedComponent(): JComponent = editor.getContentComponent()
 
-  override fun getEditors(): List<Editor?> = listOf(editor)
+  override fun getEditors(): List<Editor> = listOf(editor)
 
   override fun getDifferenceIterable(): PrevNextDifferenceIterable = prevNextDifferenceIterable
 
@@ -98,6 +99,7 @@ internal class PatchDiffViewer(
 
     val toolbarComponents = FrameDiffTool.ToolbarComponents()
     toolbarComponents.toolbarActions = createToolbarActions()
+    toolbarComponents.rightToolbarActions = listOf(editorSettingsAction)
     return toolbarComponents
   }
 
@@ -131,11 +133,9 @@ internal class PatchDiffViewer(
 
   @RequiresEdt
   private fun createToolbarActions(): List<AnAction> {
-    val group = mutableListOf<AnAction>()
-    group.add(editorSettingsAction)
-    group.add(Separator.getInstance())
-    group.add(ActionManager.getInstance().getAction(IdeActions.DIFF_VIEWER_TOOLBAR))
-    return group
+    return buildList {
+      add(ActionManager.getInstance().getAction(IdeActions.DIFF_VIEWER_TOOLBAR))
+    }
   }
 
   private inner class MyPrevNextDifferenceIterable : PrevNextDifferenceIterableBase<Hunk>() {

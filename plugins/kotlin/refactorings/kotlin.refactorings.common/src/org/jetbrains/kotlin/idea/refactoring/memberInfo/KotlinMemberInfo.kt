@@ -11,6 +11,9 @@ import com.intellij.psi.PsiNamedElement
 import com.intellij.refactoring.RefactoringBundle
 import com.intellij.refactoring.classMembers.MemberInfoBase
 import com.intellij.refactoring.util.classMembers.MemberInfo
+import org.jetbrains.kotlin.analysis.api.permissions.KaAllowAnalysisOnEdt
+import org.jetbrains.kotlin.analysis.api.permissions.allowAnalysisOnEdt
+import org.jetbrains.kotlin.asJava.LightClassUtil
 import org.jetbrains.kotlin.asJava.getRepresentativeLightMethod
 import org.jetbrains.kotlin.asJava.toLightClass
 import org.jetbrains.kotlin.asJava.toLightElements
@@ -29,6 +32,7 @@ import org.jetbrains.kotlin.psi.psiUtil.allChildren
 import org.jetbrains.kotlin.psi.psiUtil.getElementTextWithContext
 import org.jetbrains.kotlin.utils.addToStdlib.firstIsInstanceOrNull
 
+@OptIn(KaAllowAnalysisOnEdt::class)
 class KotlinMemberInfo @JvmOverloads constructor(
     member: KtNamedDeclaration,
     val isSuperClass: Boolean = false,
@@ -45,11 +49,11 @@ class KotlinMemberInfo @JvmOverloads constructor(
                 overrides = true
             }
         } else {
-            displayName = KotlinMemberInfoSupport.getInstance().renderMemberInfo(member)
+            displayName = allowAnalysisOnEdt { KotlinMemberInfoSupport.getInstance().renderMemberInfo(member) }
             if (isCompanionMember) {
                 displayName = KotlinBundle.message("member.info.companion.0", displayName)
             }
-            overrides = KotlinMemberInfoSupport.getInstance().getOverrides(member)
+            overrides = allowAnalysisOnEdt { KotlinMemberInfoSupport.getInstance().getOverrides(member) }
         }
     }
 }
@@ -57,8 +61,14 @@ class KotlinMemberInfo @JvmOverloads constructor(
 fun lightElementForMemberInfo(declaration: KtNamedDeclaration?): PsiMember? {
     return when (declaration) {
         is KtNamedFunction -> declaration.getRepresentativeLightMethod()
-        is KtProperty, is KtParameter -> declaration.toLightElements().let {
-            it.firstIsInstanceOrNull<PsiMethod>() ?: it.firstIsInstanceOrNull<PsiField>()
+        is KtProperty, is KtParameter -> declaration.toLightElements().let { lightElements ->
+            lightElements.firstIsInstanceOrNull<PsiMethod>()
+                ?: lightElements.firstIsInstanceOrNull<PsiField>()
+                // Fallback for value class properties: their accessors are not generated as regular
+                // PsiMethods, so toLightElements() returns neither a PsiMethod nor a PsiField for them.
+                // Without this, such properties resolve to null and are silently dropped from
+                // refactorings like Extract Interface/Superclass.
+                ?: LightClassUtil.getLightClassBackingField(declaration)
         }
         is KtClassOrObject -> declaration.toLightClass()
         is KtPsiClassWrapper -> declaration.psiClass

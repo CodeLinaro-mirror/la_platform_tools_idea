@@ -121,11 +121,6 @@
 
     <extensionPoint name="lang.structureViewExtension" interface="com.intellij.ide.structureView.StructureViewExtension" dynamic="true"/>
 
-    <extensionPoint name="lang.logicalStructureElementsProvider" beanClass="com.intellij.openapi.util.ClassExtensionPoint" dynamic="true">
-      <with attribute="implementationClass" implements="com.intellij.ide.structureView.logical.LogicalStructureElementsProvider"/>
-    </extensionPoint>
-    <extensionPoint name="lang.logicalStructureTreeElementProvider" interface="com.intellij.ide.structureView.logical.LogicalStructureTreeElementProvider" dynamic="true"/>
-
     <extensionPoint name="lang.surroundDescriptor" beanClass="com.intellij.lang.LanguageExtensionPoint" dynamic="true">
       <with attribute="implementationClass" implements="com.intellij.lang.surroundWith.SurroundDescriptor"/>
     </extensionPoint>
@@ -224,14 +219,10 @@
     <extensionPoint name="bookmarkProvider" interface="com.intellij.ide.bookmark.BookmarkProvider" area="IDEA_PROJECT" dynamic="true"/>
     <extensionPoint name="bookmarksListProvider" interface="com.intellij.ide.bookmark.BookmarksListProvider" area="IDEA_PROJECT" dynamic="true"/>
     <extensionPoint name="favoriteNodeProvider" interface="com.intellij.ide.favoritesTreeView.FavoriteNodeProvider" area="IDEA_PROJECT" dynamic="true"/>
-    <extensionPoint name="favoritesListProvider" interface="com.intellij.ide.favoritesTreeView.FavoritesListProvider" area="IDEA_PROJECT" dynamic="true"/>
 
     <!-- File-Based Index-->
     <extensionPoint name="include.provider" interface="com.intellij.psi.impl.include.FileIncludeProvider" dynamic="true"/>
     <extensionPoint name="globalIndexFilter" interface="com.intellij.util.indexing.GlobalIndexFilter" dynamic="true"/>
-
-    <extensionPoint name="indexableEntityProvider" interface="com.intellij.util.indexing.roots.IndexableEntityProvider" dynamic="true"/>
-    <extensionPoint name="indexableIteratorBuilderHandler" interface="com.intellij.util.indexing.roots.builders.IndexableIteratorBuilderHandler" dynamic="true"/>
 
     <extensionPoint name="symbolNavigation" dynamic="true" beanClass="com.intellij.openapi.util.ClassExtensionPoint">
       <with attribute="forClass" implements="com.intellij.model.Symbol"/>
@@ -393,6 +384,9 @@
                     dynamic="true">
       <with attribute="implementationClass" implements="com.intellij.codeInsight.hints.declarative.InlayActionHandler"/>
     </extensionPoint>
+    <extensionPoint name="codeInsight.inlayInteractionHandler"
+                    interface="com.intellij.codeInsight.hints.declarative.impl.interaction.InlayInteractionHandler"
+                    dynamic="true"/>
 
     <extensionPoint qualifiedName="com.intellij.codeInsight.inlayProviderFactory"
                     interface="com.intellij.codeInsight.hints.InlayHintsProviderFactory"
@@ -425,6 +419,10 @@
     <extensionPoint qualifiedName="com.intellij.codeInsight.daemonBoundCodeVisionProvider"
                     interface="com.intellij.codeInsight.hints.codeVision.DaemonBoundCodeVisionProvider"
                     dynamic="true" />
+
+    <extensionPoint qualifiedName="com.intellij.codeVisionContextExtensionProvider"
+                    interface="com.intellij.codeInsight.codeVision.CodeVisionContextExtensionProvider"
+                    dynamic="true"/>
 
     <extensionPoint name="codeVisionPainterProvider" beanClass="com.intellij.openapi.util.ClassExtensionPoint">
       <with attribute="implementationClass" implements="com.intellij.codeInsight.codeVision.ui.renderers.painters.ICodeVisionEntryBasePainter"/>
@@ -538,11 +536,7 @@
 
     <extensionPoint name="filePasteProvider" interface="com.intellij.ide.PasteProvider" dynamic="true"/>
 
-    <extensionPoint name="testFinder" interface="com.intellij.testIntegration.TestFinder" dynamic="true"/>
     <extensionPoint name="testSrcLocator" interface="com.intellij.testIntegration.TestLocationProvider" dynamic="true"/>
-    <extensionPoint name="testCreator" beanClass="com.intellij.lang.LanguageExtensionPoint" dynamic="true">
-      <with attribute="implementationClass" implements="com.intellij.testIntegration.TestCreator"/>
-    </extensionPoint>
 
     <extensionPoint name="moduleConfigurationEditorProvider" beanClass="com.intellij.openapi.roots.ui.configuration.impl.ModuleConfigurationEditorProviderEp"
                     dynamic="true">
@@ -610,12 +604,6 @@
 
     <extensionPoint name="elementPreviewProvider" interface="com.intellij.codeInsight.preview.ElementPreviewProvider" dynamic="true"/>
 
-    <extensionPoint name="testActionProvider" interface="com.intellij.execution.testframework.ToggleModelActionProvider" dynamic="true"/>
-
-     <extensionPoint name="testDiffProvider" beanClass="com.intellij.lang.LanguageExtensionPoint" dynamic="true">
-      <with attribute="implementationClass" implements="com.intellij.execution.testframework.actions.TestDiffProvider"/>
-    </extensionPoint>
-
     <extensionPoint name="diffPreviewProvider" interface="com.intellij.openapi.diff.impl.settings.DiffPreviewProvider"/>
 
     <extensionPoint name="semContributor" beanClass="com.intellij.semantic.SemContributorEP" dynamic="true">
@@ -658,6 +646,9 @@
     <extensionPoint name="goto.nonProjectScopeDisabler" beanClass="com.intellij.ide.actions.NonProjectScopeDisablerEP" dynamic="true"/>
     <extensionPoint name="searchEverywhereClassifier" interface="com.intellij.ide.actions.SearchEverywhereClassifier" dynamic="true"/>
     <extensionPoint name="gotoFileCustomizer" interface="com.intellij.ide.util.gotoByName.GotoFileCustomizer" dynamic="true"/>
+    <extensionPoint name="gotoFileFuzzyMatcherFactory"
+                    interface="com.intellij.util.fuzzyMatching.GotoFileFuzzyMatcherFactory"
+                    dynamic="true"/>
 
     <extensionPoint name="scratch.rootType" interface="com.intellij.ide.scratch.RootType" dynamic="true"/>
     <extensionPoint name="scratch.creationHelper" beanClass="com.intellij.lang.LanguageExtensionPoint" dynamic="true">
@@ -725,8 +716,6 @@
     <extensionPoint name="safeDeleteTargetProvider" interface="com.intellij.refactoring.safeDelete.api.SafeDeleteTargetProvider" dynamic="true"/>
     <extensionPoint qualifiedName="com.intellij.codeInsight.daemon.impl.injectedLanguageHighlightingRangeReducer"
                     interface="com.intellij.codeInsight.daemon.impl.InjectedLanguageHighlightingRangeReducer"/>
-    <extensionPoint qualifiedName="com.intellij.platform.ijent.ijentExecFileProvider" dynamic="true"
-                    interface="com.intellij.platform.ijent.IjentExecFileProvider"/>
     <extensionPoint qualifiedName="com.intellij.platform.lang.lsWidget.itemsProvider" dynamic="true"
                     interface="com.intellij.platform.lang.lsWidget.LanguageServiceWidgetItemsProvider"/>
     <extensionPoint name="editorSearchAreaProvider" interface="com.intellij.find.impl.livePreview.EditorSearchAreaProvider" dynamic="true"/>
@@ -772,7 +761,9 @@
     <extensionPoint qualifiedName="com.intellij.codeInsight.highlightingProjectOrWorkspaceFileOverride"
                     interface="com.intellij.codeInsight.daemon.impl.analysis.HighlightingProjectOrWorkspaceFileOverride"
                     dynamic="true"/>
-
+    <extensionPoint qualifiedName="com.intellij.codeInsight.documentation.render.itemUpdateProvider"
+                    interface="com.intellij.codeInsight.documentation.render.DocRenderItemUpdateProvider"
+                    dynamic="true"/>
     <extensionPoint name="saveAndSyncHandlerListener" interface="com.intellij.ide.SaveAndSyncHandlerListener" dynamic="true"/>
   </extensionPoints>
 

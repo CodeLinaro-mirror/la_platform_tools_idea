@@ -510,7 +510,7 @@ final class EditorWindowImpl extends UserDataHolderBase implements EditorWindow,
   }
 
   private @NotNull EditorMouseEvent convertEvent(@NotNull EditorMouseEvent originalEvent) {
-    return ReadAction.compute(() -> {
+    return ReadAction.computeBlocking(() -> {
       LogicalPosition logicalPosition = hostToInjected(originalEvent.getLogicalPosition());
       int offset = logicalPositionToOffset(logicalPosition);
       VisualPosition visualPosition = logicalToVisualPosition(logicalPosition);
@@ -519,7 +519,7 @@ final class EditorWindowImpl extends UserDataHolderBase implements EditorWindow,
                                   offset, logicalPosition, visualPosition, true,
                                   hostFoldRegion == null ? null : FoldingRegionWindow.getInjectedRegion(hostFoldRegion), null, null);
     });
-    }
+  }
 
   @Override
   public boolean isDisposed() {
@@ -819,7 +819,7 @@ final class EditorWindowImpl extends UserDataHolderBase implements EditorWindow,
 
   @Override
   public String toString() {
-    return super.toString() + "[disposed=" + myDisposed + "; valid=" + ReadAction.compute(() -> isValid()) + "]";
+    return super.toString() + "[disposed=" + myDisposed + "; valid=" + ReadAction.computeBlocking(() -> isValid()) + "]";
   }
 
   @Override

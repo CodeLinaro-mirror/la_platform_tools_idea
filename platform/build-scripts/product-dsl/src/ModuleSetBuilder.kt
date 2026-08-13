@@ -38,6 +38,8 @@ package org.jetbrains.intellij.build.productLayout
 
 import com.intellij.platform.pluginGraph.ContentModuleName
 import com.intellij.platform.pluginGraph.PluginId
+import com.intellij.platform.pluginGraph.PluginModuleId
+import com.intellij.platform.pluginGraph.contentName
 import com.intellij.platform.pluginSystem.parser.impl.elements.ModuleLoadingRuleValue
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -60,16 +62,18 @@ import java.nio.file.Path
 /**
  * Represents a content module with optional loading attribute.
  *
- * @param name JPS module name (e.g., "intellij.platform.vcs.impl")
+ * @param moduleId Plugin module id (e.g., "intellij.platform.vcs.impl" in the "jetbrains" namespace)
  * @param loading Optional loading mode (e.g., ModuleLoadingRule.EMBEDDED)
  */
 @Serializable
 data class ContentModule(
-  val name: ContentModuleName,
+  @JvmField val moduleId: PluginModuleId,
   @JvmField val loading: ModuleLoadingRuleValue = ModuleLoadingRuleValue.OPTIONAL,
   @JvmField val includeDependencies: Boolean = false,
   @Transient @JvmField val allowedMissingPluginIds: List<PluginId> = emptyList(),
 )
+
+internal fun ContentModule.contentName(): ContentModuleName = moduleId.contentName()
 
 /**
  * Represents a named collection of content modules.
@@ -89,7 +93,7 @@ data class ModuleSet(
   @JvmField val modules: List<ContentModule>,
   @JvmField val nestedSets: List<ModuleSet> = emptyList(),
   val alias: PluginId? = null,
-  @kotlinx.serialization.Transient val outputModule: ContentModuleName? = null,
+  @Transient val outputModule: ContentModuleName? = null,
   @JvmField val selfContained: Boolean = false,
 )
 
@@ -106,14 +110,15 @@ class ModuleSetBuilder(private val defaultIncludeDependencies: Boolean = false) 
    */
   fun module(
     name: String,
+    namespace: String? = PluginModuleId.DEFAULT_NAMESPACE,
     loading: ModuleLoadingRuleValue = ModuleLoadingRuleValue.OPTIONAL,
     allowedMissingPluginIds: List<String> = emptyList(),
   ) {
     modules.add(
       ContentModule(
-        ContentModuleName(name),
-        loading,
-        defaultIncludeDependencies,
+        moduleId = PluginModuleId(name, namespace),
+        loading = loading,
+        includeDependencies = defaultIncludeDependencies,
         allowedMissingPluginIds = allowedMissingPluginIds.map { PluginId(it) },
       )
     )
@@ -122,12 +127,12 @@ class ModuleSetBuilder(private val defaultIncludeDependencies: Boolean = false) 
   /**
    * Add a single module with EMBEDDED loading.
    */
-  fun embeddedModule(name: String, allowedMissingPluginIds: List<String> = emptyList()) {
+  fun embeddedModule(name: String, namespace: String? = PluginModuleId.DEFAULT_NAMESPACE, allowedMissingPluginIds: List<String> = emptyList()) {
     modules.add(
       ContentModule(
-        ContentModuleName(name),
-        ModuleLoadingRuleValue.EMBEDDED,
-        defaultIncludeDependencies,
+        moduleId = PluginModuleId(name, namespace),
+        loading = ModuleLoadingRuleValue.EMBEDDED,
+        includeDependencies = defaultIncludeDependencies,
         allowedMissingPluginIds = allowedMissingPluginIds.map { PluginId(it) },
       )
     )
@@ -136,12 +141,12 @@ class ModuleSetBuilder(private val defaultIncludeDependencies: Boolean = false) 
   /**
    * Add a single module with REQUIRED loading.
    */
-  fun requiredModule(name: String, allowedMissingPluginIds: List<String> = emptyList()) {
+  fun requiredModule(name: String, namespace: String? = PluginModuleId.DEFAULT_NAMESPACE, allowedMissingPluginIds: List<String> = emptyList()) {
     modules.add(
       ContentModule(
-        ContentModuleName(name),
-        ModuleLoadingRuleValue.REQUIRED,
-        defaultIncludeDependencies,
+        moduleId = PluginModuleId(name, namespace),
+        loading = ModuleLoadingRuleValue.REQUIRED,
+        includeDependencies = defaultIncludeDependencies,
         allowedMissingPluginIds = allowedMissingPluginIds.map { PluginId(it) },
       )
     )
@@ -155,7 +160,12 @@ class ModuleSetBuilder(private val defaultIncludeDependencies: Boolean = false) 
   }
 
   @PublishedApi
-  internal fun build(): Pair<List<ContentModule>, List<ModuleSet>> = Pair(java.util.List.copyOf(modules), java.util.List.copyOf(nestedSets))
+  internal fun build(): Pair<List<ContentModule>, List<ModuleSet>> {
+    return Pair(
+      java.util.List.copyOf(modules),
+      java.util.List.copyOf(nestedSets),
+    )
+  }
 }
 
 /**
@@ -163,10 +173,10 @@ class ModuleSetBuilder(private val defaultIncludeDependencies: Boolean = false) 
  *
  * Example:
  * ```
- * fun ssh() = moduleSet("ssh") {
- *   embeddedModule("intellij.platform.ssh.core")
- *   embeddedModule("intellij.platform.ssh")
- *   module("intellij.platform.ssh.ui")
+ * fun lsp() = moduleSet("lsp") {
+ *   embeddedModule("intellij.platform.lsp")
+ *   embeddedModule("intellij.platform.lsp.impl")
+ *   module("intellij.platform.lsp.impl.structureView")
  * }
  *
  * // With module alias:
@@ -216,7 +226,7 @@ inline fun moduleSet(
  * Appends a single module XML element to the StringBuilder.
  */
 private fun appendModuleXml(sb: StringBuilder, module: ContentModule) {
-  sb.append("    <module name=\"${module.name.value}\"")
+  sb.append("    <module name=\"${module.moduleId.name}\"")
   if (module.loading == ModuleLoadingRuleValue.EMBEDDED) {
     sb.append(" loading=\"embedded\"")
   }
@@ -228,12 +238,18 @@ private fun appendModuleXml(sb: StringBuilder, module: ContentModule) {
  * Recursively appends modules from a module set, including nested sets.
  * Handles nested sets at any depth with breadcrumb trail showing full hierarchy.
  */
-private fun appendModuleSetContent(sb: StringBuilder, moduleSet: ModuleSet, indent: String = "    ", breadcrumb: String = "") {
+private fun appendModuleSetContent(
+  sb: StringBuilder,
+  moduleSet: ModuleSet,
+  indent: String = "    ",
+  breadcrumb: String = "",
+) {
   // Get direct modules (not from nested sets)
   val directModules = moduleSet.modules
+  val nestedSets = moduleSet.nestedSets
 
   // Recursively append nested sets first
-  for (nestedSet in moduleSet.nestedSets) {
+  for (nestedSet in nestedSets) {
     // Build breadcrumb path
     val nestedBreadcrumb = if (breadcrumb.isEmpty()) {
       nestedSet.name
@@ -243,14 +259,19 @@ private fun appendModuleSetContent(sb: StringBuilder, moduleSet: ModuleSet, inde
     }
 
     withEditorFold(sb, indent, "nested: $nestedBreadcrumb") {
-      appendModuleSetContent(sb = sb, moduleSet = nestedSet, indent = indent, breadcrumb = nestedBreadcrumb) // RECURSIVE CALL with breadcrumb
+      appendModuleSetContent(
+        sb = sb,
+        moduleSet = nestedSet,
+        indent = indent,
+        breadcrumb = nestedBreadcrumb,
+      )
     }
     sb.append("\n")
   }
 
   // Then append direct modules
   if (directModules.isNotEmpty()) {
-    if (moduleSet.nestedSets.isNotEmpty()) {
+    if (nestedSets.isNotEmpty()) {
       withEditorFold(sb, indent, "direct modules") {
         for (module in directModules) {
           appendModuleXml(sb, module)
@@ -398,10 +419,10 @@ internal suspend fun doGenerateAllModuleSetsInternal(
   return coroutineScope {
     Files.createDirectories(outputDir)
 
-    val moduleSets = discoverModuleSets(obj)
+    val moduleSetsToGenerate = discoverModuleSets(obj)
 
     // Generate all module set XML files first (in parallel)
-    val fileResults = moduleSets.map { moduleSet ->
+    val fileResults = moduleSetsToGenerate.map { moduleSet ->
       async {
         val targetOutputDir = resolveOutputDir(moduleSet, outputDir, outputProvider)
         generateModuleSetXml(moduleSet = moduleSet, outputDir = targetOutputDir, label = label, strategy = strategy)
@@ -410,7 +431,7 @@ internal suspend fun doGenerateAllModuleSetsInternal(
 
     // Build map of output directory -> generated file names (for cleanup aggregation)
     val outputDirToGeneratedFiles = HashMap<Path, MutableSet<String>>()
-    for ((moduleSet, fileResult) in moduleSets.zip(fileResults)) {
+    for ((moduleSet, fileResult) in moduleSetsToGenerate.zip(fileResults)) {
       val targetOutputDir = resolveOutputDir(moduleSet, outputDir, outputProvider)
       outputDirToGeneratedFiles.computeIfAbsent(targetOutputDir) { HashSet() }.add(fileResult.fileName)
     }

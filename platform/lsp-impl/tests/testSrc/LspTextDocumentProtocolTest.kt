@@ -2,6 +2,7 @@ package com.intellij.platform.lsp
 
 import com.intellij.codeInsight.hints.InlayDumpUtil
 import com.intellij.core.CoreBundle
+import com.intellij.find.usages.impl.DefaultUsageSearchParameters
 import com.intellij.lang.documentation.ide.IdeDocumentationTargetProvider
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.readAction
@@ -13,14 +14,20 @@ import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.platform.backend.documentation.DocumentationData
+import com.intellij.platform.lsp.api.LspServerManager
 import com.intellij.platform.lsp.api.customization.LspCustomization
 import com.intellij.platform.lsp.api.customization.LspFormattingSupport
 import com.intellij.platform.lsp.api.customization.LspOnTypeFormattingSupport
+import com.intellij.platform.lsp.common.FakeLspServerSupportProvider
 import com.intellij.platform.lsp.common.configureServerSession
 import com.intellij.platform.lsp.common.fakeLspServerProviderFixture
+import com.intellij.platform.lsp.impl.features.usages.LspSearchTarget
+import com.intellij.platform.lsp.impl.features.usages.LspUsageSearcher
 import com.intellij.platform.lsp.testFramework.checkHighlightingRetrying
+import com.intellij.platform.lsp.util.getLsp4jPosition
 import com.intellij.platform.testFramework.junit5.codeInsight.fixture.codeInsightFixture
 import com.intellij.psi.codeStyle.CodeStyleManager
+import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.testFramework.common.timeoutRunBlocking
 import com.intellij.testFramework.common.waitUntilAssertSucceeds
 import com.intellij.testFramework.fixtures.impl.CodeInsightTestFixtureImpl
@@ -512,6 +519,31 @@ internal class LspTextDocumentProtocolTest {
       withContext(Dispatchers.EDT) {
         codeInsightFixture.type(";")
       }
+
+      serverSession.awaitExpected()
+    }
+  }
+
+  @Nested
+  inner class ReferencesProtocol {
+    @Test
+    fun `textDocument references -- references requested`(): Unit = timeoutRunBlocking {
+      val virtualFile = codeInsightFixture.configureByText("refs.txt", "hello <caret>world").virtualFile
+      val serverSession = configureServerSession(project, virtualFile)
+      val fileUri = serverSession.fileUri(virtualFile)
+
+      serverSession.expectRequest(serverSession.REFERENCES, { it.textDocument.uri == fileUri }) {
+        emptyList()
+      }
+
+      val lspServers = LspServerManager.getInstance(project).getServersForProvider(FakeLspServerSupportProvider::class.java)
+      val document = readAction { FileDocumentManager.getInstance().getDocument(virtualFile)!! }
+      val offset = withContext(Dispatchers.EDT) { codeInsightFixture.caretOffset }
+      val position = readAction { getLsp4jPosition(document, offset) }
+
+      val searchTarget = LspSearchTarget(lspServers, virtualFile, position)
+      val params = DefaultUsageSearchParameters(project, searchTarget, GlobalSearchScope.projectScope(project))
+      LspUsageSearcher().collectSearchRequest(params)?.forEach { }
 
       serverSession.awaitExpected()
     }

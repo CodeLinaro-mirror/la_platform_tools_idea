@@ -4,14 +4,16 @@ package org.jetbrains.kotlin.idea.codeInsight.postfix
 import com.intellij.codeInsight.template.impl.TemplateManagerImpl
 import com.intellij.codeInsight.template.postfix.templates.LanguagePostfixTemplate
 import com.intellij.codeInsight.template.postfix.templates.PostfixTemplate
+import com.intellij.codeInsight.template.postfix.templates.PostfixTemplateProvider
+import com.intellij.codeInsight.template.postfix.templates.PostfixTemplatesUtils
 import com.intellij.openapi.application.impl.NonBlockingReadActionImpl
 import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.util.TextRange
 import com.intellij.testFramework.LightProjectDescriptor
-import com.intellij.testFramework.PlatformTestUtil
+import com.intellij.testFramework.common.waitForAllDocumentsCommitted
 import org.jetbrains.kotlin.idea.KotlinLanguage
+import org.jetbrains.kotlin.idea.artifacts.KotlinJvmLightProjectDescriptor
 import org.jetbrains.kotlin.idea.base.test.IgnoreTests
-import org.jetbrains.kotlin.idea.base.test.KotlinJvmLightProjectDescriptor
 import org.jetbrains.kotlin.idea.base.test.KotlinTestHelpers
 import org.jetbrains.kotlin.idea.base.test.NewLightKotlinCodeInsightFixtureTestCase
 import org.jetbrains.kotlin.idea.base.util.isInDumbMode
@@ -29,12 +31,13 @@ abstract class AbstractKotlinPostfixTemplateTestBase : NewLightKotlinCodeInsight
     }
 
     override fun getProjectDescriptor(): LightProjectDescriptor {
-        return KotlinJvmLightProjectDescriptor.Companion.DEFAULT
+        return KotlinJvmLightProjectDescriptor.DEFAULT
     }
 
     protected fun performTest() {
-        val disableDirective = IgnoreTests.DIRECTIVES.of(pluginMode)
+        val disableDirective = IgnoreTests.DIRECTIVES.IGNORE_K2
         myFixture.configureByDefaultFile()
+        registerAdditionalTemplates(file.text)
         templateName?.let { myFixture.type(".$it") }
 
         val fileText = file.text
@@ -46,8 +49,8 @@ abstract class AbstractKotlinPostfixTemplateTestBase : NewLightKotlinCodeInsight
         }
         val projectInDumbMode = project.isInDumbMode
         val postfixTemplate: PostfixTemplate? =
-            LanguagePostfixTemplate.LANG_EP.forLanguage(KotlinLanguage.INSTANCE)
-                .templates.firstOrNull { it.key == ".$templateKey" }
+            PostfixTemplatesUtils.getAvailableTemplates(kotlinPostfixTemplateProvider)
+                .firstOrNull { it.key == ".$templateKey" }
         val postfixTemplateDumbAware = DumbService.Companion.isDumbAware(postfixTemplate)
         try {
             IgnoreTests.runTestIfNotDisabledByFileDirective(testRootPath.resolve(testMethodPath), disableDirective, "after") {
@@ -61,7 +64,7 @@ abstract class AbstractKotlinPostfixTemplateTestBase : NewLightKotlinCodeInsight
                     myFixture.type("\t")
                 }
                 NonBlockingReadActionImpl.waitForAsyncTaskCompletion()
-                PlatformTestUtil.waitForAllDocumentsCommitted(10, TimeUnit.SECONDS)
+                waitForAllDocumentsCommitted(10, TimeUnit.SECONDS)
 
                 val allowMultipleExpressions = InTextDirectivesUtils.isDirectiveDefined(fileText, ALLOW_MULTIPLE_EXPRESSIONS)
                 val suggestedExpressions = with(KotlinPostfixTemplateInfo) { file.suggestedExpressions }
@@ -94,6 +97,15 @@ abstract class AbstractKotlinPostfixTemplateTestBase : NewLightKotlinCodeInsight
 
     private val templateName: String?
         get() = if (!isOldTestData) Paths.get(testDataPath).name else null
+
+    protected val kotlinPostfixTemplateProvider: PostfixTemplateProvider
+        get() = LanguagePostfixTemplate.LANG_EP.forLanguage(KotlinLanguage.INSTANCE)
+
+    /**
+     * Hook for subclasses to register additional (e.g. custom/editable) postfix templates before the
+     * template under test is looked up and expanded. Called after the file is configured. Default: no-op.
+     */
+    protected open fun registerAdditionalTemplates(fileText: String) {}
 
     private val isOldTestData: Boolean
         get() = Paths.get(testDataPath)

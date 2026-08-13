@@ -35,7 +35,7 @@ import com.jetbrains.python.psi.PyTupleExpression
 import com.jetbrains.python.psi.PyTypedElement
 import com.jetbrains.python.psi.PyYieldExpression
 import com.jetbrains.python.psi.impl.PyBuiltinCache
-import com.jetbrains.python.psi.impl.mapArguments
+import com.jetbrains.python.psi.impl.PyCallExpressionHelper
 import com.jetbrains.python.psi.resolve.PyResolveContext
 import com.jetbrains.python.psi.types.PyTypeChecker.hasGenerics
 import com.jetbrains.python.psi.types.PyTypeChecker.substitute
@@ -102,7 +102,7 @@ object PyExpectedTypeJudgement {
           if (PyNames.ITERABLE == typeOfStarParent?.name) {
             return typeOfStarParent
           }
-          if (typeOfStarParent is PyCollectionType) {
+          if (typeOfStarParent is PyClassType && typeOfStarParent.isParameterized) {
             // upcast to Iterable
             return createIterableType(expr, typeOfStarParent.iteratedItemType)
           }
@@ -116,9 +116,9 @@ object PyExpectedTypeJudgement {
           if (PyNames.MAPPING == typeOfDoubleStarParent?.name) {
             return typeOfDoubleStarParent
           }
-          if (typeOfDoubleStarParent is PyCollectionType) {
+          if (typeOfDoubleStarParent is PyClassType && typeOfDoubleStarParent.isParameterized) {
             // upcast to Map
-            return PyCollectionTypeImpl.createTypeByQName(expr, "typing." + PyNames.MAPPING, false, typeOfDoubleStarParent.elementTypes)
+            return PyCollectionTypeImpl.createTypeByQName(expr, "typing." + PyNames.MAPPING, false, typeOfDoubleStarParent.typeArguments)
           }
         }
         return null
@@ -137,7 +137,7 @@ object PyExpectedTypeJudgement {
         if (typeOfParentTuple is PyTupleType && typeOfParentTuple.elementTypes.isNotEmpty()) {
           return getElementTypeAtTupleIndex(parent, typeOfParentTuple, indexOfExpr)
         }
-        if (typeOfParentTuple is PyCollectionType) {
+        if (typeOfParentTuple is PyClassType && typeOfParentTuple.isParameterized) {
           return typeOfParentTuple.iteratedItemType
         }
         return null
@@ -147,7 +147,7 @@ object PyExpectedTypeJudgement {
       is PyListLiteralExpression,
         -> {
         val typeOfParentList = getExpectedType(parent, ctx)
-        if (typeOfParentList is PyCollectionType) {
+        if (typeOfParentList is PyClassType && typeOfParentList.isParameterized) {
           return typeOfParentList.iteratedItemType
         }
         return null
@@ -157,13 +157,13 @@ object PyExpectedTypeJudgement {
         if (parent.parent is PyDictLiteralExpression) {
           val parentDict = parent.parent as PyDictLiteralExpression
           val typeOfParentDict = getExpectedType(parentDict, ctx)
-          if (typeOfParentDict is PyCollectionType && typeOfParentDict.elementTypes.size == 2) {
+          if (typeOfParentDict is PyClassType && typeOfParentDict.typeArguments.size == 2) {
             val index = if (parent.key == expr) 0 else 1
-            return typeOfParentDict.elementTypes[index]
+            return typeOfParentDict.typeArguments[index]
           }
-          if (typeOfParentDict is PyTypedDictType && parent.key is PyStringLiteralExpression) {
+          if (typeOfParentDict is PyUnpackedTypedDictType && parent.key is PyStringLiteralExpression) {
             val argName = (parent.key as PyStringLiteralExpression).stringValue
-            return typeOfParentDict.getElementType(argName)
+            return typeOfParentDict.typedDictType.getElementType(argName)
           }
         }
         return null
@@ -210,7 +210,7 @@ object PyExpectedTypeJudgement {
                    ?: callArgument.parent as? PySubscriptionExpression
                    ?: return null
 
-    val argMappings = callSite.mapArguments(PyResolveContext.defaultContext(ctx))
+    val argMappings = PyCallExpressionHelper.mapArguments(callSite, PyResolveContext.defaultContext(ctx))
     val argTypes = LinkedHashSet<PyType?>()
 
     for (mapping in argMappings) {
@@ -248,48 +248,52 @@ object PyExpectedTypeJudgement {
   private fun fromStarArgument(callArgument: PyStarArgument, mapping: PyCallExpression.PyArgumentsMapping, ctx: TypeEvalContext): PyType? {
     val mappedParameters = mapping.mappedParameters
     if (callArgument.isKeyword) {
-      val param = mappedParameters.values.firstOrNull { cp -> cp.isKeywordContainer }
-      if (param == null) {
-        // The function declares no kwargs, but the caller passed a starred expression:
-        // E.g.: def f(s: str, n: int) gets called f(**{"s": "foo", "n": 123}).
+      val kwargsContainer = mappedParameters.values.firstOrNull { cp -> cp.isKeywordContainer }
+      val kwargsContainerType = kwargsContainer?.getType(ctx)
 
-        val dictClass = PyBuiltinCache.getInstance(callArgument).getClass("dict") ?: return null
-        val fields = mutableMapOf<String, PyTypedDictType.FieldTypeAndTotality>()
-        for (parameter in mapping.parametersMappedToVariadicKeywordArguments) {
-          val name = parameter.name
-          if (name == null || parameter.isSelf || parameter.isPositionalContainer || parameter.isKeywordContainer) {
-            continue
-          }
-          fields[name] = PyTypedDictType.FieldTypeAndTotality(
-            value = null, // We define a schema, not a specific instance value
-            type = parameter.getType(ctx),
-            qualifiers = PyTypedDictType.TypedDictFieldQualifiers(isRequired = !parameter.hasDefaultValue())
-          )
-        }
+      val extraParams = mapping.parametersMappedToVariadicKeywordArguments.filter { parameter ->
+        val name = parameter.name
+        name != null && !parameter.isSelf && !parameter.isPositionalContainer && !parameter.isKeywordContainer
+      }
 
-        return PyTypedDictType(
-          name = "Parameters",
-          fields = fields,
-          dictClass = dictClass,
-          isDefinition = false,
-          // TODO: This is incorrect:
-          // `PyTypedDict` declaration is either a `PyClass` node:
-          // ```
-          // class TD(typing.TypedDict):
-          //   ...
-          // ```
-          //
-          // or a `PyTargetExpression` node:
-          // ```
-          // TD = typing.TypedDict("TD", {})
-          // ```
-          declaration = mapping.callableType?.callable ?: return null
+      if (extraParams.isEmpty() && kwargsContainer != null) {
+        return kwargsContainerType
+      }
+
+      // TODO For non-variadic types of **kwargs requires supporting extra_items in PyTypedDictType PY-85421
+      val baseFields = (kwargsContainerType as? PyUnpackedTypedDictType)?.typedDictType?.fields.orEmpty()
+      val fields = mutableMapOf<String, PyTypedDictType.FieldTypeAndTotality>()
+      fields.putAll(baseFields)
+      for (parameter in extraParams) {
+        val name = parameter.name ?: continue
+        if (fields.containsKey(name)) continue
+        fields[name] = PyTypedDictType.FieldTypeAndTotality(
+          value = null, // We define a schema, not a specific instance value
+          type = parameter.getType(ctx),
+          qualifiers = PyTypedDictType.TypedDictFieldQualifiers(isRequired = !parameter.hasDefaultValue())
         )
       }
-      // TODO merge the type of `**kwargs` with the types of other mapped parameters here
-      else {
-        return param.getType(ctx)
-      }
+
+      val dictClass = PyBuiltinCache.getInstance(callArgument).getClass("dict") ?: return null
+      val typedDictType = PyTypedDictType(
+        name = "Parameters",
+        fields = fields,
+        dictClass = dictClass,
+        isDefinition = false,
+        // TODO: This is incorrect:
+        // `PyTypedDict` declaration is either a `PyClass` node:
+        // ```
+        // class TD(typing.TypedDict):
+        //   ...
+        // ```
+        //
+        // or a `PyTargetExpression` node:
+        // ```
+        // TD = typing.TypedDict("TD", {})
+        // ```
+        declaration = mapping.callableType?.callable ?: return null
+      )
+      return PyUnpackedTypedDictTypeImpl(typedDictType)
     }
     else {
       val param = mappedParameters.values.firstOrNull { cp -> cp.isPositionalContainer }
@@ -394,7 +398,7 @@ object PyExpectedTypeJudgement {
 
       is PySubscriptionExpression -> {
         val operandType = ctx.getType(lhs.operand)
-        val iterableType = if (operandType is PyCollectionType) operandType.iteratedItemType else null
+        val iterableType = if (operandType is PyClassType && operandType.isParameterized) operandType.iteratedItemType else null
         if (lhs.indexExpression is PySliceItem) {
           return createIterableType(lhs, iterableType)
         }
@@ -447,7 +451,7 @@ object PyExpectedTypeJudgement {
 
     val returnType = ctx.getReturnType(funScope)
     val generatorDescriptor = PyTypingTypeProvider.GeneratorTypeDescriptor.fromGenerator(returnType)
-    val yieldType = generatorDescriptor?.yieldType
+    val yieldType = generatorDescriptor?.yieldType ?: PyAnyType.unknown
     if (parent.isDelegating) {
       return createIterableType(expr, yieldType)
     }
@@ -503,7 +507,7 @@ object PyExpectedTypeJudgement {
     return null
   }
 
-  private fun createIterableType(anchor: PsiElement, elementType: PyType?): PyCollectionTypeImpl? {
+  private fun createIterableType(anchor: PsiElement, elementType: PyType?): PyClassTypeImpl? {
     return PyCollectionTypeImpl.createTypeByQName(anchor, "typing." + PyNames.ITERABLE, false, listOf(elementType))
   }
 }

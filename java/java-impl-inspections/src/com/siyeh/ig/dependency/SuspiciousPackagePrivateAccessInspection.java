@@ -109,7 +109,11 @@ public final class SuspiciousPackagePrivateAccessInspection extends AbstractBase
     @Override
     public void processReference(@NotNull UElement sourceNode, @NotNull PsiModifierListOwner target, @Nullable UExpression qualifier) {
       PsiClass accessObjectType = getAccessObjectType(target, qualifier);
-      if (target instanceof PsiJvmMember) {
+      if (target instanceof PsiJvmMember &&
+          // For package-private members: skip super-references to avoid duplicate warnings
+          // already reported on the inheritance list (e.g. `object : Foo()` supertype).
+          // For protected members: super-access from a subclass is always legitimate.
+          !(sourceNode.getUastParent() instanceof USuperExpression)) {
         checkAccess(sourceNode, (PsiJvmMember)target, accessObjectType);
         if (!(target instanceof PsiClass)) {
           if (accessObjectType != null) {
@@ -269,9 +273,18 @@ public final class SuspiciousPackagePrivateAccessInspection extends AbstractBase
   }
 
   private static boolean isJvmStatic(@NotNull PsiModifierListOwner member) {
-    UAnnotated annotated = UastContextKt.toUElement(member.getNavigationElement(), UAnnotated.class);
-    return annotated != null &&
-           UVariableKt.findSourceAnnotation(annotated, JvmStatic.class.getCanonicalName()) != null;
+    UElement uElement = UastContextKt.toUElement(member);
+    if (uElement == null) return false;
+
+    // Re-convert via sourcePsi to correctly resolve @JvmStatic on Kotlin properties,
+    // since their generated accessor methods don't carry the annotation directly.
+    PsiElement sourcePsi = uElement.getSourcePsi();
+    if (sourcePsi == null) return false;
+
+    UAnnotated annotated = UastContextKt.toUElement(sourcePsi, UAnnotated.class);
+    if (annotated == null) return false;
+
+    return UVariableKt.findSourceAnnotation(annotated, JvmStatic.class.getCanonicalName()) != null;
   }
 
   /**

@@ -2,9 +2,11 @@
 package com.intellij.internal.statistic.eventLog
 
 import com.intellij.internal.statistic.config.StatisticsStringUtil
+import org.jetbrains.annotations.ApiStatus
 import java.io.File
 import java.nio.file.Path
 
+@ApiStatus.Internal
 interface EventLogSendConfig {
   fun getRecorderId(): String
 
@@ -26,12 +28,13 @@ interface EventLogFilesProvider {
   fun getLogFilesExceptActive(): List<File>
 }
 
+@ApiStatus.Internal
 class DefaultEventLogFilesProvider(
   private val dir: Path,
   private val activeFileProvider: () -> String?,
 ) : EventLogFilesProvider {
   override fun getLogFiles(): List<File> {
-    return dir.toFile().listFiles()?.toList().orEmpty()
+    return dir.toFile().listFiles()?.sortedBy { it.lastModified() }?.toList().orEmpty()
   }
 
   override fun getLogFilesExceptActive(): List<File> {
@@ -40,6 +43,7 @@ class DefaultEventLogFilesProvider(
   }
 }
 
+@ApiStatus.Internal
 interface FilesToSendProvider {
   fun getFilesToSend(): List<EventLogFile>
 }

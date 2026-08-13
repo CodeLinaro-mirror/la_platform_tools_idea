@@ -19,7 +19,6 @@ import com.intellij.openapi.editor.impl.EditorHeaderComponent
 import com.intellij.openapi.editor.impl.SearchReplaceFacade
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.impl.EditorCompositePanel
-import com.intellij.openapi.fileEditor.impl.EditorEmptyTextPainter
 import com.intellij.openapi.fileEditor.impl.EditorTopPanel
 import com.intellij.openapi.fileEditor.impl.EditorsSplitters
 import com.intellij.openapi.fileEditor.impl.createTopBottomSideBorder
@@ -68,8 +67,10 @@ import com.intellij.ui.WindowRoundedCornersManager
 import com.intellij.ui.components.panels.Wrapper
 import com.intellij.ui.mac.WindowTabsComponent
 import com.intellij.ui.paint.LinePainter2D
+import com.intellij.ui.paint.PaintUtil
 import com.intellij.ui.paint.RectanglePainter2D
 import com.intellij.ui.scale.JBUIScale
+import com.intellij.ui.scale.ScaleContext
 import com.intellij.ui.tabs.JBTabPainter
 import com.intellij.ui.tabs.JBTabsPosition
 import com.intellij.ui.tabs.impl.JBEditorTabs
@@ -83,7 +84,6 @@ import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.StartupUiUtil
 import com.intellij.util.ui.UIUtil
 import java.awt.AWTEvent
-import java.awt.BasicStroke
 import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.Component
@@ -92,14 +92,16 @@ import java.awt.Graphics2D
 import java.awt.Insets
 import java.awt.Rectangle
 import java.awt.RenderingHints
+import java.awt.Shape
 import java.awt.Toolkit
 import java.awt.event.AWTEventListener
 import java.awt.event.HierarchyEvent
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
-import java.awt.geom.Area
+import java.awt.geom.AffineTransform
 import java.awt.geom.Path2D
-import java.awt.geom.RoundRectangle2D
+import java.awt.geom.PathIterator
+import java.awt.geom.Rectangle2D
 import java.util.function.Predicate
 import java.util.function.Supplier
 import javax.swing.JComponent
@@ -853,7 +855,7 @@ internal class IslandsUICustomization : InternalUICustomization() {
   }
 
   private fun createToolWindowBorderPainter(toolwindow: ToolWindow, component: XNextIslandHolder) {
-    component.border = JBEmptyBorder(JBUI.insets("Island.ToolWindow.border", JBUI.insets(3)))
+    component.border = JBEmptyBorder(JBUI.insets("Island.ToolWindow.insets", JBUI.insets(3)))
 
     component.borderPainter = object : AbstractBorderPainter() {
       override fun paintAfterChildren(component: JComponent, g: Graphics) {
@@ -865,28 +867,25 @@ internal class IslandsUICustomization : InternalUICustomization() {
   }
 
   private fun createEditorBorderPainter(component: EditorsSplitters) {
-    component.border = JBEmptyBorder(JBUI.insets("Island.Editor.border", JBUI.insets(2)))
+    component.border = JBEmptyBorder(JBUI.insets("Island.Editor.insets", JBUI.insets(2)))
 
     configureBackgroundPainting(component, recursive = true)
 
     component.borderPainter = object : AbstractBorderPainter() {
-      override fun paintAfterChildren(component: JComponent, g: Graphics) {
+      override fun paintBeforeChildren(component: JComponent, g: Graphics) {
         val project = ProjectUtil.getProjectForComponent(component)
         val fileEditorManager = project?.getServiceIfCreated(FileEditorManager::class.java)
 
-        // A bit special handling of the "empty frame" background.
-        // The editor empty text consists of the editor itself and the surrounding island.
-        // Both are technically parts of the same component (EditorsSplitters),
-        // but must use different backgrounds because the border is visually a part of the "editor and tools" background,
-        // and the empty text must use the "empty frame" background.
-        val frameBG = IdeBackgroundUtil.withFrameBackground(g, component)
-        val editorBG = IdeBackgroundUtil.withEditorBackground(g, component)
+        // Paint the "empty frame" background behind the editor children so that an
+        // interactive empty-state component (e.g. the inline Agent prompt) stays visible.
         if (fileEditorManager?.openFiles?.isEmpty() == true) {
+          val frameBG = IdeBackgroundUtil.withFrameBackground(g, component)
           paintBeforeEditorEmptyText(component, frameBG, editorTabPainterAdapter)
-
-          val editorEmptyTextPainter = ApplicationManager.getApplication().getService(EditorEmptyTextPainter::class.java)
-          editorEmptyTextPainter.doPaintEmptyText(component, frameBG)
         }
+      }
+
+      override fun paintAfterChildren(component: JComponent, g: Graphics) {
+        val editorBG = IdeBackgroundUtil.withEditorBackground(g, component)
 
         paintIslandBorder(component, editorBG, true)
       }
@@ -921,58 +920,38 @@ internal class IslandsUICustomization : InternalUICustomization() {
     }
   }
 
-  private fun paintIslandArea(component: JComponent, g: Graphics2D) {
-    val width = component.width
-    val height = component.height
-
-    val shape = Area(Rectangle(0, 0, width, height))
-    val cornerRadius = JBUIScale.scale(JBUI.getInt("Island.arc", 10).toFloat())
-    val borderWith = JBUI.scale(JBUI.getInt("Island.borderWidth", 4))
-    val offset = borderWith / 2f
-    val offsetWidth = borderWith + 0.5f
-    val border = Area(RoundRectangle2D.Float(offset, offset,
-                                             width.toFloat() - offsetWidth, height.toFloat() - offsetWidth,
-                                             cornerRadius, cornerRadius))
-
-    shape.subtract(border)
-
-    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-
-    paintIslandBackground(g, shape)
-
-    if (isIslandBorderLineNeeded(component)) {
-      paintIslandBorderLine(g, border)
-    }
-  }
-
-  private fun paintIslandBackground(gg: Graphics2D, shape: Area) {
-    gg.color = getMainBackgroundColor()
-    gg.fill(shape)
-  }
-
   private fun isIslandBorderLineNeeded(component: JComponent): Boolean {
     if (isIslandsGradientEnabled) return true
     val project = ProjectUtil.getProjectForComponent(component)
     return !IdeBackgroundUtil.isEditorBackgroundImageSet(project) // the border looks ugly with a background image
   }
 
-  private fun paintIslandBorderLine(gg: Graphics2D, border: Area) {
-    gg.color = JBColor.namedColor("Island.borderColor", getMainBackgroundColor())
-    gg.stroke = BasicStroke(JBUIScale.scale(1f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
-    gg.draw(border)
-  }
+  private val sharedPath = Path2D.Float()
+  private val cachedShape = CachedBoundsShape(sharedPath)
 
   private fun paintIslandAreaRaw(component: JComponent, g: Graphics2D) {
-    val offset = JBUI.scale(JBUI.getInt("Island.borderWidth", 6) / 2)
+    val ctx = ScaleContext.create(g)
+
+    val width = PaintUtil.alignIntToInt(component.width, ctx, PaintUtil.RoundingMode.CEIL, null)
+    val height = PaintUtil.alignIntToInt(component.height, ctx, PaintUtil.RoundingMode.CEIL, null)
+    val arcValue = JBUI.getInt("Island.arc", 20)
+
+    if (arcValue == 0) {
+      if (isIslandBorderLineNeeded(component)) {
+        g.color = JBColor.namedColor("Island.borderColor", getMainBackgroundColor())
+        g.drawRect(0, 0, width, height)
+      }
+      return
+    }
+
+    val offset = PaintUtil.alignIntToInt(JBUI.scale(JBUI.getInt("Island.borderWidth", 6) / 2), ctx, PaintUtil.RoundingMode.CEIL, null)
     val offset2 = offset * 2
     val offsetF = offset.toFloat()
 
-    val width = component.width
-    val height = component.height
     val widthF = width.toFloat()
     val heightF = height.toFloat()
 
-    val arc = JBUI.getInt("Island.arc", 20)
+    val arc = PaintUtil.alignIntToInt(arcValue, ctx, PaintUtil.RoundingMode.CEIL, null)
     val arcSizeF = JBUIScale.scale(arc / 2f)
 
     g.color = getMainBackgroundColor()
@@ -982,42 +961,46 @@ internal class IslandsUICustomization : InternalUICustomization() {
     g.fillRect(0, offset, offset, height - offset2)
     g.fillRect(width - offset, offset, offset, height - offset2)
 
-    val topLeft = Path2D.Float()
-    topLeft.moveTo(offsetF, offsetF)
-    topLeft.lineTo(arcSizeF + offsetF, offsetF)
-    topLeft.quadTo(offsetF, offsetF, offsetF, arcSizeF + offsetF)
-    topLeft.closePath()
-
-    val topRight = Path2D.Float()
-    topRight.moveTo(widthF - arcSizeF - offsetF, offsetF)
-    topRight.quadTo(widthF - offsetF, offsetF, widthF - offsetF, arcSizeF + offsetF)
-    topRight.lineTo(widthF - offsetF, offsetF)
-    topRight.closePath()
-
-    val bottomLeft = Path2D.Float()
-    bottomLeft.moveTo(offsetF, heightF - arcSizeF - offsetF)
-    bottomLeft.quadTo(offsetF, heightF - offsetF, arcSizeF + offsetF, heightF - offsetF)
-    bottomLeft.lineTo(offsetF, heightF - offsetF)
-    bottomLeft.closePath()
-
-    val bottomRight = Path2D.Float()
-    bottomRight.moveTo(widthF - arcSizeF - offsetF, heightF - offsetF)
-    bottomRight.quadTo(widthF - offsetF, heightF - offsetF, widthF - offsetF, heightF - arcSizeF - offsetF)
-    bottomRight.lineTo(widthF - offsetF, heightF - offsetF)
-    bottomRight.closePath()
-
     g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
     g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC)
     g.setRenderingHint(RenderingHints.KEY_ALPHA_INTERPOLATION, RenderingHints.VALUE_ALPHA_INTERPOLATION_QUALITY)
 
-    g.fill(topLeft)
-    g.fill(topRight)
-    g.fill(bottomLeft)
-    g.fill(bottomRight)
+    sharedPath.reset()
+    sharedPath.moveTo(offsetF, offsetF)
+    sharedPath.lineTo(arcSizeF + offsetF, offsetF)
+    sharedPath.quadTo(offsetF, offsetF, offsetF, arcSizeF + offsetF)
+    sharedPath.closePath()
+    cachedShape.updateBounds(offsetF, offsetF, arcSizeF, arcSizeF)
+    g.fill(cachedShape)
+
+    sharedPath.reset()
+    sharedPath.moveTo(widthF - arcSizeF - offsetF, offsetF)
+    sharedPath.quadTo(widthF - offsetF, offsetF, widthF - offsetF, arcSizeF + offsetF)
+    sharedPath.lineTo(widthF - offsetF, offsetF)
+    sharedPath.closePath()
+    cachedShape.updateBounds(widthF - arcSizeF - offsetF, offsetF, arcSizeF, arcSizeF)
+    g.fill(cachedShape)
+
+    sharedPath.reset()
+    sharedPath.moveTo(offsetF, heightF - arcSizeF - offsetF)
+    sharedPath.quadTo(offsetF, heightF - offsetF, arcSizeF + offsetF, heightF - offsetF)
+    sharedPath.lineTo(offsetF, heightF - offsetF)
+    sharedPath.closePath()
+    cachedShape.updateBounds(offsetF, heightF - arcSizeF - offsetF, arcSizeF, arcSizeF)
+    g.fill(cachedShape)
+
+    sharedPath.reset()
+    sharedPath.moveTo(widthF - arcSizeF - offsetF, heightF - offsetF)
+    sharedPath.quadTo(widthF - offsetF, heightF - offsetF, widthF - offsetF, heightF - arcSizeF - offsetF)
+    sharedPath.lineTo(widthF - offsetF, heightF - offsetF)
+    sharedPath.closePath()
+    cachedShape.updateBounds(widthF - arcSizeF - offsetF, heightF - offsetF, arcSizeF, arcSizeF)
+    g.fill(cachedShape)
 
     if (isIslandBorderLineNeeded(component)) {
       val arcSize = JBUI.scale(arc)
-      val halfArcSize = JBUI.scale(JBUI.getInt("Island.borderArcLength", 14))
+      val halfArcSize =
+        PaintUtil.alignIntToInt(JBUI.scale(JBUI.getInt("Island.borderArcLength", 14)), ctx, PaintUtil.RoundingMode.CEIL, null)
 
       g.color = JBColor.namedColor("Island.borderColor", getMainBackgroundColor())
 
@@ -1239,7 +1222,7 @@ internal class IslandsUICustomization : InternalUICustomization() {
       }
     }
 
-    val hovered = tabs.isHoveredTab(label)
+    val hovered = tabs.isHoveredOrWithPopup(label)
     val isGradient = isIslandsGradientEnabled && !CustomWindowHeaderUtil.isCompactHeader() && isColorfulToolbar(frame)
     val rect = Rectangle(label.width, label.height)
 
@@ -1261,7 +1244,7 @@ internal class IslandsUICustomization : InternalUICustomization() {
     else if (lastIndex > 1 && index < lastIndex) {
       val nextTab = tabs.getTabAt(index + 1)
 
-      if (nextTab != tabs.selectedInfo && !tabs.isHoveredTab(tabs.getTabLabel(nextTab))) {
+      if (nextTab != tabs.selectedInfo && !tabs.isHoveredOrWithPopup(tabs.getTabLabel(nextTab))) {
         val gg = if (isGradient) IdeBackgroundUtil.getOriginalGraphics(g) else g
         val border = JBUI.scale(1).toDouble()
         val width = label.width - border
@@ -1330,4 +1313,34 @@ private class ManyIslandDivider(isVertical: Boolean, splitter: Splittable) : One
       super.paint(g)
     }
   }
+}
+
+private class CachedBoundsShape(private val delegate: Shape) : Shape {
+  private val cachedBounds2D = Rectangle2D.Float()
+  private val cachedBounds = Rectangle()
+
+  fun updateBounds(x: Float, y: Float, w: Float, h: Float) {
+    cachedBounds2D.setRect(x, y, w, h)
+    cachedBounds.setRect(x.toDouble(), y.toDouble(), w.toDouble(), h.toDouble())
+  }
+
+  override fun getBounds(): Rectangle = cachedBounds
+
+  override fun getBounds2D(): Rectangle2D = cachedBounds2D
+
+  override fun contains(x: Double, y: Double): Boolean = delegate.contains(x, y)
+
+  override fun contains(p: java.awt.geom.Point2D): Boolean = delegate.contains(p)
+
+  override fun intersects(x: Double, y: Double, w: Double, h: Double): Boolean = delegate.intersects(x, y, w, h)
+
+  override fun intersects(r: Rectangle2D): Boolean = delegate.intersects(r)
+
+  override fun contains(x: Double, y: Double, w: Double, h: Double): Boolean = delegate.contains(x, y, w, h)
+
+  override fun contains(r: Rectangle2D): Boolean = delegate.contains(r)
+
+  override fun getPathIterator(at: AffineTransform?): PathIterator = delegate.getPathIterator(at)
+
+  override fun getPathIterator(at: AffineTransform?, flatness: Double): PathIterator = delegate.getPathIterator(at, flatness)
 }

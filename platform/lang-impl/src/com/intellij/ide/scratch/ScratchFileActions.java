@@ -48,7 +48,6 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.Condition;
 import com.intellij.openapi.util.Conditions;
-import com.intellij.openapi.util.IntellijInternalApi;
 import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.util.NotNullLazyValue;
 import com.intellij.openapi.util.io.FileUtil;
@@ -80,6 +79,7 @@ import com.intellij.util.concurrency.SynchronizedClearableLazy;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.JBIterable;
 import com.intellij.util.ui.EmptyIcon;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -96,6 +96,7 @@ import java.util.Set;
 
 import static com.intellij.openapi.util.Conditions.not;
 
+@ApiStatus.Internal
 public final class ScratchFileActions {
   private static int ourCurrentBuffer = 0;
 
@@ -273,6 +274,7 @@ public final class ScratchFileActions {
                                                                   @NotNull DataContext dataContext) {
     ScratchFileCreationHelper.Context context = new ScratchFileCreationHelper.Context();
     context.text = StringUtil.notNullize(getSelectionText(editor));
+    context.sourceFile = file;
     if (StringUtil.isNotEmpty(context.text)) {
       initLanguageFromCaret(project, editor, file, context, dataContext);
     }
@@ -280,12 +282,12 @@ public final class ScratchFileActions {
     return context;
   }
 
-  @IntellijInternalApi
+  @ApiStatus.Internal
   public static @Nullable PsiFile doCreateNewScratch(@NotNull Project project, @NotNull ScratchFileCreationHelper.Context context) {
     return doCreateNewScratch(project, context, DataContext.EMPTY_CONTEXT);
   }
 
-  @IntellijInternalApi
+  @ApiStatus.Internal
   public static @Nullable PsiFile doCreateNewScratch(
     @NotNull Project project,
     @NotNull ScratchFileCreationHelper.Context context,
@@ -322,6 +324,12 @@ public final class ScratchFileActions {
     Navigatable navigatable = PsiNavigationSupport.getInstance().createNavigatable(project, file, context.caretOffset);
     navigatable.navigate(!LaterInvocator.isInModalContextForProject(project));
     PsiFile psiFile = PsiManager.getInstance(project).findFile(file);
+
+    if (context.language != null) {
+      ScratchFileCreationHelper.EXTENSION.forLanguage(context.language)
+        .afterCreate(project, context, psiFile);
+    }
+
     if (context.ideView != null && psiFile != null) {
       context.ideView.selectElement(psiFile);
     }
@@ -386,6 +394,7 @@ public final class ScratchFileActions {
                                             @NotNull DataContext dataContext) {
     if (editor == null || psiFile == null) return;
     Caret caret = editor.getCaretModel().getPrimaryCaret();
+    context.selectionRange = caret.getSelectionRange();
     int offset = caret.getOffset();
     PsiElement element = InjectedLanguageManager.getInstance(project).findInjectedElementAt(psiFile, offset);
     PsiFile file = element != null ? element.getContainingFile() : psiFile;
@@ -401,6 +410,7 @@ public final class ScratchFileActions {
     checkLanguageAndTryToFixText(project, context, dataContext);
   }
 
+  @ApiStatus.Internal
   public static class ChangeLanguageAction extends DumbAwareAction {
     @Override
     public @NotNull ActionUpdateThread getActionUpdateThread() {

@@ -8,14 +8,12 @@ import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.ex.ActionManagerEx;
-import com.intellij.openapi.application.ApplicationInfo;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.PathManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.Cancellation;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.SystemInfo;
-import com.intellij.openapi.util.SystemInfoRt;
 import com.intellij.openapi.util.Version;
 import com.intellij.openapi.util.io.NioFiles;
 import com.intellij.openapi.util.registry.RegistryManager;
@@ -81,6 +79,14 @@ public final class JBCefApp {
   private static final Logger LOG = Logger.getInstance(JBCefApp.class);
   private static final boolean SKIP_VERSION_CHECK = Boolean.getBoolean("ide.browser.jcef.skip_version_check");
   private static final String REGISTRY_REMOTE_KEY = "ide.browser.jcef.out-of-process.enabled";
+  private static final String FRAMEWORK_DIR_PATH_ARG = "--framework-dir-path=";
+  private static final String BROWSER_SUBPROCESS_PATH_ARG = "--browser-subprocess-path=";
+  private static final String MAIN_BUNDLE_PATH_ARG = "--main-bundle-path=";
+  private static final String MAC_APP_BUNDLE_SUFFIX = ".app";
+  private static final String MAC_APP_CONTENTS_DIR = "Contents";
+  private static final String MAC_APP_EXECUTABLES_DIR = "MacOS";
+  private static final String JCEF_HELPER_NAME = "jcef Helper";
+  private static final String JCEF_HELPER_APP_NAME = JCEF_HELPER_NAME + MAC_APP_BUNDLE_SUFFIX;
 
   private static JCefVersionDetails VERSION_DETAILS = null;
   private static final int MIN_SUPPORTED_CEF_MAJOR_VERSION = 119;
@@ -90,7 +96,7 @@ public final class JBCefApp {
   private static final int    SETTINGS_CEF_VERSION_DEFAULT_VAL = 137;  // NOTE: this check is appeared when CEF 137 is used.
   private static final String SETTINGS_CEF_VERSION_KEY = "cef_version_last_used";
   private static final String SETTINGS_CEF_TEMP_CACHE_KEY = "cef_cleanup_temporary_cache_folder";
-  private static final String SETTINGS_IS_CLEARED_2026_1_2 = "cef_is_cleared_caches_2026_1_2";
+
   private static final String MIN_SUPPORTED_GLIBC_DEFAULT = "2.28.0";
 
   private static final AtomicInteger CEFAPP_INSTANCE_COUNT = new AtomicInteger(0);
@@ -160,6 +166,26 @@ public final class JBCefApp {
     }
     else {
       CefApp.setIsRemoteEnabled(myIsRemoteEnabled);
+      String cefFrameworkPathOSX = config.getCefFrameworkPathOSX();
+      if (cefFrameworkPathOSX == null && OS.isMacintosh() && !myIsRemoteEnabled) {
+        List<String> appArgs = config.getAppArgsAsList();
+        for (String appArg : config.getAppArgsAsList()) {
+          if (appArg.startsWith(FRAMEWORK_DIR_PATH_ARG)) {
+            cefFrameworkPathOSX = appArg.substring(FRAMEWORK_DIR_PATH_ARG.length());
+            break;
+          }
+        }
+        if (cefFrameworkPathOSX != null) {
+          Path helperPath = Path.of(cefFrameworkPathOSX).getParent().resolve(JCEF_HELPER_APP_NAME);
+          Path browserSubprocessPath = helperPath.resolve(MAC_APP_CONTENTS_DIR).resolve(MAC_APP_EXECUTABLES_DIR).resolve(JCEF_HELPER_NAME);
+          if (Files.isRegularFile(browserSubprocessPath)) {
+            appArgs.removeIf(arg -> arg.startsWith(BROWSER_SUBPROCESS_PATH_ARG) || arg.startsWith(MAIN_BUNDLE_PATH_ARG));
+            appArgs.add(BROWSER_SUBPROCESS_PATH_ARG + browserSubprocessPath);
+            appArgs.add(MAIN_BUNDLE_PATH_ARG + helperPath);
+          }
+        }
+      }
+      final String macCefFrameworkPathOSX = cefFrameworkPathOSX;
       if (myIsRemoteEnabled) {
         final Supplier<CefRendering> defaultRenderingFactory = () -> {
           JBCefOSRHandlerFactory osrHandlerFactory = JBCefOSRHandlerFactory.getInstance();
@@ -175,9 +201,10 @@ public final class JBCefApp {
       CefLog.init(logPath, settings.log_severity);
 
       JBCefHealthMonitor.getInstance().performHealthCheckAsync(settings, () -> {
-        if (OS.isMacintosh() && config.getCefFrameworkPathOSX() != null) {
-          CefApp.startupAsync(config.getCefFrameworkPathOSX());
-        } else {
+        if (OS.isMacintosh() && macCefFrameworkPathOSX != null) {
+          CefApp.startupAsync(macCefFrameworkPathOSX);
+        }
+        else {
           CefApp.startup(ArrayUtil.EMPTY_STRING_ARRAY);
         }
       });
@@ -250,28 +277,19 @@ public final class JBCefApp {
     final PropertiesComponent props = PropertiesComponent.getInstance();
     final int cefVersionLast = props.getInt(SETTINGS_CEF_VERSION_KEY, SETTINGS_CEF_VERSION_DEFAULT_VAL);
     final int cefVersionCurrent = version.cefVersion.major;
-    final boolean isCleared2026_1_2 = props.getBoolean(SETTINGS_IS_CLEARED_2026_1_2);
-    final ApplicationInfo appInfo = ApplicationInfo.getInstance();
-    final boolean doClearCacheFor2026_1_2 = SystemInfoRt.isMac && appInfo.getFullVersion().startsWith("2026.1.2") && !isCleared2026_1_2;
-    final boolean isVersionChanged = cefVersionCurrent != cefVersionLast;
-    if (isVersionChanged || doClearCacheFor2026_1_2) {
+    if (cefVersionCurrent != cefVersionLast) {
       // NOTE: settings.cache_path is always not null
       Path cache_path = Path.of(settings.cache_path);
       Path tmp_cache_path = cache_path.getParent().resolve("jcef_cache_temp");
       settings.cache_path = tmp_cache_path.toString();
-      if (isVersionChanged)
-        LOG.info(String.format(
-          "JCEF: CEF version has been updated from %d to %d. Cache folder '%s' will be cleared in bg thread, CEF will be started with temporary cache folder '%s'",
-          cefVersionLast, cefVersionCurrent, cache_path, tmp_cache_path));
-      else
-        LOG.info(String.format(
-          "JCEF: CEF cache folder '%s' will be cleared in bg thread (since ide version 2026.1.2), CEF will be started with temporary cache folder '%s'", cache_path, tmp_cache_path));
+      LOG.info(String.format(
+        "JCEF: CEF version has been updated from %d to %d. Cache folder '%s' will be cleared in bg thread, CEF will be started with temporary cache folder '%s'",
+        cefVersionLast, cefVersionCurrent, cache_path, tmp_cache_path));
 
       ApplicationManager.getApplication().executeOnPooledThread(() -> {
         props.setValue(SETTINGS_CEF_VERSION_KEY, cefVersionCurrent, SETTINGS_CEF_VERSION_DEFAULT_VAL);
         props.setValue(SETTINGS_CEF_TEMP_CACHE_KEY, tmp_cache_path.toString());
-        if (doClearCacheFor2026_1_2)
-          props.setValue(SETTINGS_IS_CLEARED_2026_1_2, true);
+
         try {
           NioFiles.deleteRecursively(cache_path);
         } catch (IOException e) {
@@ -328,7 +346,6 @@ public final class JBCefApp {
     final String logPath = PathManager.getLogPath() + Platform.current().fileSeparator + "jcef_" + ProcessHandle.current().pid() + "_i" + CEFAPP_INSTANCE_COUNT.get() + ".log";
     CefLog.init(logPath, myCefSettings.log_severity);
 
-    CefApp.addAppHandler(new MyCefAppHandler(myCefArgs, true));
     final CefApp newInstance = CefApp.getInstance(myCefArgs, myCefSettings, myServerExe);
     if (newInstance == null) {
       LOG.error("JCEF wasn't restarted (new instance is null).");
@@ -742,6 +759,7 @@ public final class JBCefApp {
   private static @Nullable String getNativeBundlePath() {
     // the native bundle provider is used only if there is no JCEF in JBR
     if (isJcefFromJbr()) {
+      LOG.info("JCEF is loaded from JBR, using default native bundle path");
       return null;
     }
 
@@ -753,7 +771,12 @@ public final class JBCefApp {
       return null;
     }
 
-    return provider.getNativeBundlePath();
+    String providerNativeBundlePath = provider.getNativeBundlePath();
+    if (providerNativeBundlePath != null) {
+      LOG.info("Using bundle path from: " + provider.getClass() + " path:" + providerNativeBundlePath);
+    }
+
+    return providerNativeBundlePath;
   }
 
   private static boolean isLinuxLibcSupported() {

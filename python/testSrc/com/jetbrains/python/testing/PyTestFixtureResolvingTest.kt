@@ -333,7 +333,7 @@ class PyTestFixtureResolvingTest : PyTestCase() {
   }
 
   fun testGenerator() {
-    assertCorrectType(ITERATED_DIR, TEST_GENERATOR, STR_TYPE_NAME)
+    assertCorrectType(ITERATED_DIR, TEST_GENERATOR, "Literal[\"Hello World\"]")
   }
 
   fun testIterable() {
@@ -345,7 +345,7 @@ class PyTestFixtureResolvingTest : PyTestCase() {
   }
 
   fun testAsyncGenerator() {
-    assertCorrectType(ASYNC_DIR, TEST_ASYNC_GENERATOR, STR_TYPE_NAME)
+    assertCorrectType(ASYNC_DIR, TEST_ASYNC_GENERATOR, "Literal[\"Hello World\"]")
   }
 
   fun testAsyncIterable() {

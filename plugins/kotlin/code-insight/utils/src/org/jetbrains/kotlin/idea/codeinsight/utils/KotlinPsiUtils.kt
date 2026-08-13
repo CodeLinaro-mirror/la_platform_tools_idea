@@ -12,11 +12,13 @@ import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.kotlin.KtNodeTypes
 import org.jetbrains.kotlin.analysis.api.KaContextParameterApi
 import org.jetbrains.kotlin.analysis.api.KaSession
+import org.jetbrains.kotlin.analysis.api.analyze
 import org.jetbrains.kotlin.analysis.api.components.isUsedAsExpression
 import org.jetbrains.kotlin.analysis.api.components.resolveToCall
 import org.jetbrains.kotlin.analysis.api.components.resolveToSymbol
 import org.jetbrains.kotlin.analysis.api.resolution.singleFunctionCallOrNull
 import org.jetbrains.kotlin.analysis.api.resolution.symbol
+import org.jetbrains.kotlin.analysis.api.symbols.KaPropertySymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbolOrigin
 import org.jetbrains.kotlin.idea.base.psi.copied
 import org.jetbrains.kotlin.idea.base.psi.deleteBody
@@ -69,6 +71,7 @@ import org.jetbrains.kotlin.psi.KtWhileExpression
 import org.jetbrains.kotlin.psi.createExpressionByPattern
 import org.jetbrains.kotlin.psi.psiUtil.allChildren
 import org.jetbrains.kotlin.psi.psiUtil.anyDescendantOfType
+import org.jetbrains.kotlin.psi.psiUtil.collectDescendantsOfType
 import org.jetbrains.kotlin.psi.psiUtil.containingClassOrObject
 import org.jetbrains.kotlin.psi.psiUtil.getLastParentOfTypeInRow
 import org.jetbrains.kotlin.psi.psiUtil.getParentOfTypes
@@ -94,6 +97,21 @@ fun KtContainerNode.getControlFlowElementDescription(): String? {
     }
     return null
 }
+
+/**
+ * Returns this expression or the topmost directly enclosing parenthesized expression.
+ *
+ * For `foo()` as the receiver expression:
+ * ```
+ * foo() + bar      -> foo()
+ * (foo()) + bar    -> (foo())
+ * ((foo())) + bar  -> ((foo()))
+ * (1 + foo())      -> foo()
+ * (1 + (foo()))    -> (foo())
+ * ```
+ */
+fun KtExpression.getTopmostParenthesizedExpressionOrSelf(): KtExpression =
+    generateSequence(this) { it.parent as? KtParenthesizedExpression }.last()
 
 /**
  * Returns whether the property accessor is a redundant getter or not.
@@ -138,17 +156,6 @@ fun removeRedundantGetter(getter: KtPropertyAccessor) {
     }
 }
 
-fun removeProperty(ktProperty: KtProperty) {
-    val initializer = ktProperty.initializer
-    if (initializer != null && initializer !is KtConstantExpression) {
-        val commentSaver = CommentSaver(ktProperty)
-        val replaced = ktProperty.replace(initializer)
-        commentSaver.restore(replaced)
-    } else {
-        ktProperty.delete()
-    }
-}
-
 fun renameToUnderscore(declaration: KtCallableDeclaration) {
     declaration.nameIdentifier?.replace(KtPsiFactory(declaration.project).createIdentifier("_"))
 }
@@ -163,10 +170,10 @@ fun renameToUnderscore(declaration: KtCallableDeclaration) {
 val KtParameter.isSetterParameter: Boolean
     get() = (parent.parent as? KtPropertyAccessor)?.isSetter == true
 
-fun KtPropertyAccessor.isRedundantSetter(respectComments: Boolean = true): Boolean {
+fun KtPropertyAccessor.isRedundantSetter(respectComments: Boolean = true, canBeCompletelyDeleted: Boolean = canBeCompletelyDeleted()): Boolean {
     if (!isSetter) return false
     if (respectComments && anyDescendantOfType<PsiComment>()) return false
-    val expression = bodyExpression ?: return canBeCompletelyDeleted()
+    val expression = bodyExpression ?: return canBeCompletelyDeleted
     if (expression is KtBlockExpression) {
         val statement = expression.statements.singleOrNull() ?: return false
         val parameter = valueParameters.singleOrNull() ?: return false
@@ -178,8 +185,8 @@ fun KtPropertyAccessor.isRedundantSetter(respectComments: Boolean = true): Boole
     return false
 }
 
-fun removeRedundantSetter(setter: KtPropertyAccessor) {
-    if (setter.canBeCompletelyDeleted()) {
+fun removeRedundantSetter(setter: KtPropertyAccessor, canBeCompletelyDeleted: Boolean = setter.canBeCompletelyDeleted()) {
+    if (canBeCompletelyDeleted) {
         setter.delete()
     } else {
         setter.deleteBody()
@@ -519,3 +526,22 @@ fun KtParenthesizedExpression.removeUnnecessaryParentheses() {
 }
 
 fun KtProperty.hasExplicitBackingField(): Boolean = this.allChildren.find { it is KtBackingField } != null
+
+fun KtProperty.getOverriddenProperty(): KtProperty? {
+    analyze(this) {
+        val propertySymbol = symbol as? KaPropertySymbol ?: return null
+        val directlyOverriddenSymbol = propertySymbol.directlyOverriddenSymbols.firstOrNull() as? KaPropertySymbol ?: return null
+
+        val overriddenProperty = directlyOverriddenSymbol.psi as? KtProperty
+        return overriddenProperty
+    }
+}
+
+@ApiStatus.Internal
+fun KtProperty.isInitializedByLazy(): Boolean = analyze(this) {
+    return initializer?.expressionType?.isSubtypeOf(StandardKotlinNames.Lazy.lazyClassId) == true
+}
+
+@ApiStatus.Internal
+fun KtProperty.collectReferencesInFile(): List<KtNameReferenceExpression> =
+    containingKtFile.collectDescendantsOfType<KtNameReferenceExpression> { name == it.getReferencedName() && it.mainReference.resolve() == this }

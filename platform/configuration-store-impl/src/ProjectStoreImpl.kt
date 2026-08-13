@@ -31,6 +31,7 @@ import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.vfs.ReadonlyStatusHandler
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.platform.eel.EelDescriptorWithIsolatedWorkspace
 import com.intellij.platform.eel.provider.asEelPath
 import com.intellij.platform.settings.SettingsController
 import com.intellij.serviceContainer.ComponentManagerImpl
@@ -302,9 +303,9 @@ open class ProjectStoreImpl(final override val project: Project) : ComponentStor
 
   private fun getMachineWorkspacePath(storeDescriptor: ProjectStoreDescriptor): Path? {
     val projectPath = storeDescriptor.historicalProjectBasePath
-    if (projectPath.fileSystem != FileSystems.getDefault()) return null
+    if (projectPath.fileSystem != FileSystems.getDefault() || !projectPath.isAbsolute) return null
     val descriptor = projectPath.asEelPath().descriptor
-    if (descriptor::class.simpleName != "DockerEelDescriptor") return null
+    if (descriptor !is EelDescriptorWithIsolatedWorkspace) return null
     val pathHash = FileUtilRt.pathHashCode(projectBasePath.invariantSeparatorsPathString)
     return PathManager.getOriginalConfigDir().resolve("$CONFIG_WORKSPACE_DIR/${sanitizeFileName(descriptor.name)}.${pathHash.toHexString()}.xml")
   }

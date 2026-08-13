@@ -93,14 +93,14 @@ public class PtyCommandLine extends GeneralCommandLine implements CommandLineWit
    * @deprecated do not use it
    */
   @SuppressWarnings("unused")
-  @Deprecated
+  @Deprecated(forRemoval = true)
   public @NotNull PtyCommandLine withUnixOpenTtyToPreserveOutputAfterTermination(boolean unixOpenTtyToPreserveOutputAfterTermination) {
     return this;
   }
 
   @Override
   protected @NotNull Process createProcess(@NotNull ProcessBuilder processBuilder) throws IOException {
-    if (getInputFile() == null && !isProcessCreatorSet() && tryGetEel() == null) {
+    if (getInputFile() == null && !isProcessCreatorSet() && getNonLocalEelDescriptor() == null) {
       try {
         return startProcessWithPty(processBuilder.command());
       }

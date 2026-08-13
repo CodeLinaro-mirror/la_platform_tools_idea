@@ -35,6 +35,7 @@ import kotlinx.coroutines.sync.withLock
 import org.jdom.Content
 import org.jdom.Element
 import org.jetbrains.annotations.ApiStatus.Internal
+import org.jetbrains.idea.maven.buildtool.MavenSyncSession
 import org.jetbrains.idea.maven.importing.MavenProjectImporter
 import org.jetbrains.idea.maven.model.MavenArtifact
 import org.jetbrains.idea.maven.model.MavenConstants
@@ -71,6 +72,7 @@ class MavenProjectStaticImporter(val project: Project, val coroutineScope: Corou
   private val localRepo = MavenProjectsManager.getInstance(project).repositoryPath
 
   suspend fun syncStatic(
+    syncSession: MavenSyncSession,
     rootProjectFiles: List<VirtualFile>,
     optionalModelsProvider: IdeModifiableModelsProvider?,
     importingSettings: MavenImportingSettings,
@@ -100,7 +102,8 @@ class MavenProjectStaticImporter(val project: Project, val coroutineScope: Corou
       val allProjects = forest.flatMap { it.projects() }.toList()
       visitor.map(allProjects)
       val projectChanges = mutableListOf<MavenProject>()
-      val existingTree = if (!commit) null else MavenProjectsManager.getInstance(project).let { if (it.isMavenizedProject) it.projectsTree else null }
+      val existingTree =
+        if (!commit) null else MavenProjectsManager.getInstance(project).let { if (it.isMavenizedProject) it.projectsTree else null }
 
       forest.forEach { tree ->
         mavenProjectMappings.putAll(tree.mavenProjectMappings())
@@ -125,7 +128,6 @@ class MavenProjectStaticImporter(val project: Project, val coroutineScope: Corou
 
       projectTree.updater()
         .setRootProjects(roots)
-        .setManagedFiles(roots.map { it.file.path })
         .setAggregatorMappings(mavenProjectMappings)
         .setMavenIdMappings(allProjects)
 
@@ -133,8 +135,8 @@ class MavenProjectStaticImporter(val project: Project, val coroutineScope: Corou
       // MavenProjectsManager.getInstance(project).projectsTree = projectTree
       return PreimportResult(withBackgroundProgress(project, MavenProjectBundle.message("maven.project.importing"), false) {
         tracer.spanBuilder("importProject").useWithScope {
-          val importer = MavenProjectImporter.createStaticImporter(project,
-                                                                   projectTree,
+          val importer = MavenProjectImporter.createStaticImporter(
+                                                                   syncSession.copy(projectsTree = projectTree),
                                                                    projectChanges,
                                                                    modelsProvider,
                                                                    importingSettings,
@@ -279,8 +281,19 @@ class MavenProjectStaticImporter(val project: Project, val coroutineScope: Corou
         null
       }
 
-      MavenArtifact(it.id.groupId, it.id.artifactId, it.id.version, it.id.version, MavenConstants.TYPE_JAR, it.classifier, it.scope, false, MavenConstants.TYPE_JAR,
-                    file?.toFile(), localRepo.toFile(), true, false)
+      MavenArtifact(it.id.groupId,
+                    it.id.artifactId,
+                    it.id.version,
+                    it.id.version,
+                    MavenConstants.TYPE_JAR,
+                    it.classifier,
+                    it.scope,
+                    false,
+                    MavenConstants.TYPE_JAR,
+                    file?.toFile(),
+                    localRepo.toFile(),
+                    true,
+                    false)
 
 
     }
@@ -357,7 +370,8 @@ class MavenProjectStaticImporter(val project: Project, val coroutineScope: Corou
         if (version.startsWith("$")) {
           val versionResolved = resolveProperty(project, version)
           if (!versionResolved.isNullOrBlank()) {
-            project.resolvedDependencyManagement[trimVersion(it)] = DependencyData(it.groupId, it.artifactId, versionResolved, it.scope, it.classifier)
+            project.resolvedDependencyManagement[trimVersion(it)] =
+              DependencyData(it.groupId, it.artifactId, versionResolved, it.scope, it.classifier)
           }
         }
         else {
@@ -428,7 +442,7 @@ class MavenProjectStaticImporter(val project: Project, val coroutineScope: Corou
    */
   private fun resolveProperty(project: MavenProjectData, propertyValue: String): String? {
 
-   return MavenProjectModelReadHelper.resolveProperty(propertyValue, project.properties)
+    return MavenProjectModelReadHelper.resolveProperty(propertyValue, project.properties)
   }
 
   private fun CoroutineScope.readRecursively(
@@ -564,7 +578,7 @@ class MavenProjectStaticImporter(val project: Project, val coroutineScope: Corou
     modelMap["build.testOutputDirectory"] = mavenModel.build.testOutputDirectory
     //modelMap["build.finalName"] = mavenModel.build.finalName
     modelMap["build.directory"] = mavenModel.build.directory
-    val result = MavenProjectReaderResult(mavenModel, modelMap, MavenExplicitProfiles.NONE, mutableListOf())
+    val result = MavenProjectReaderResult(mavenModel, modelMap, mutableListOf())
     mavenProject.updateFromReaderResult(result, MavenSettingsCache.getInstance(project).getEffectiveUserLocalRepo(), false)
   }
 
@@ -791,7 +805,11 @@ private class MavenProjectData(val mavenProject: MavenProject, val mavenModel: M
 
 private data class DependencyData(val id: MavenId, val scope: String?, val classifier: String?) {
 
-  constructor(groupId: String?, artifactId: String?, version: String?, scope: String?, classifier: String?) : this(MavenId(groupId, artifactId, version), scope, classifier)
+  constructor(groupId: String?, artifactId: String?, version: String?, scope: String?, classifier: String?) : this(MavenId(groupId,
+                                                                                                                           artifactId,
+                                                                                                                           version),
+                                                                                                                   scope,
+                                                                                                                   classifier)
 
   val groupId = id.groupId
   val artifactId = id.artifactId

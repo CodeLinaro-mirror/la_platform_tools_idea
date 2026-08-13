@@ -260,6 +260,7 @@ c:com.intellij.usages.UsageInfoToUsageConverter$TargetElementsDescriptor
 f:com.intellij.usages.UsageLimitUtil
 - sf:USAGES_LIMIT:I
 - <init>():V
+- s:getSearchResultLimit():I
 - s:showTooManyUsagesWarning(com.intellij.openapi.project.Project,java.lang.String):com.intellij.usages.UsageLimitUtil$Result
 e:com.intellij.usages.UsageLimitUtil$Result
 - java.lang.Enum
@@ -292,7 +293,6 @@ com.intellij.usages.UsageTargetProvider
 - getTargets(com.intellij.psi.PsiElement):com.intellij.usages.UsageTarget[]
 f:com.intellij.usages.UsageTargetUtil
 - <init>():V
-- s:findUsageTargets(com.intellij.openapi.actionSystem.DataProvider):com.intellij.usages.UsageTarget[]
 - s:findUsageTargets(com.intellij.openapi.editor.Editor,com.intellij.psi.PsiFile):com.intellij.usages.UsageTarget[]
 - s:findUsageTargets(com.intellij.openapi.editor.Editor,com.intellij.psi.PsiFile,com.intellij.psi.PsiElement):com.intellij.usages.UsageTarget[]
 - s:findUsageTargets(com.intellij.psi.PsiElement):com.intellij.usages.UsageTarget[]
@@ -320,6 +320,7 @@ com.intellij.usages.UsageView
 - addPerformOperationAction(java.lang.Runnable,java.lang.String,java.lang.String,java.lang.String,Z,Z):V
 - a:appendUsage(com.intellij.usages.Usage):V
 - a:close():V
+- a:dispose():V
 - a:excludeUsages(com.intellij.usages.Usage[]):V
 - a:getComponent():javax.swing.JComponent
 - a:getExcludedUsages():java.util.Set

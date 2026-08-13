@@ -16,6 +16,7 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.Processor
 import com.intellij.util.concurrency.annotations.RequiresEdt
 import com.intellij.util.messages.Topic
+import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.Nls
 import org.jetbrains.annotations.NonNls
 import org.jetbrains.annotations.TestOnly
@@ -132,6 +133,7 @@ abstract class ProjectLevelVcsManager {
 
   abstract fun setDirectoryMappings(mappings: List<VcsDirectoryMapping>)
 
+  @ApiStatus.ScheduledForRemoval
   @Deprecated("Use just #setDirectoryMappings(List).")
   fun updateActiveVcss(): Unit = Unit
 
@@ -167,9 +169,29 @@ abstract class ProjectLevelVcsManager {
 
   abstract fun isFileInContent(vf: VirtualFile?): Boolean
 
+  /**
+   * Checks if VCS shall not work with a file. It is not related to the '.ignore' status in the VCS.
+   *
+   * Prefer using [isIgnoredUnderRoot] if the VCS root is known.
+   */
   abstract fun isIgnored(vf: VirtualFile): Boolean
 
+  /**
+   * Checks if VCS shall not work with a file. It is not related to the '.ignore' status in the VCS.
+   *
+   * Prefer using [isIgnoredUnderRoot] if the VCS root is known.
+   */
   abstract fun isIgnored(filePath: FilePath): Boolean
+
+  /**
+   * Checks if VCS shall not work with a file. It is not related to the '.ignore' status in the VCS.
+   */
+  abstract fun isIgnoredUnderRoot(vcsRoot: VirtualFile, file: VirtualFile): Boolean
+
+  /**
+   * Checks if VCS shall not work with a file. It is not related to the '.ignore' status in the VCS.
+   */
+  abstract fun isIgnoredUnderRoot(vcsRoot: VirtualFile, filePath: FilePath): Boolean
 
   /**
    * Checks if a background VCS operation (commit or update) is currently in progress.
@@ -197,13 +219,16 @@ abstract class ProjectLevelVcsManager {
   abstract fun addMessageToConsoleWindow(line: VcsConsoleLine?)
 
   @RequiresEdt
+  @ApiStatus.ScheduledForRemoval
   @Deprecated("Use {@link com.intellij.vcs.console.VcsConsoleTabService}")
   abstract fun showConsole(then: Runnable?)
 
   @RequiresEdt
+  @ApiStatus.ScheduledForRemoval
   @Deprecated("Use {@link com.intellij.vcs.console.VcsConsoleTabService}")
   abstract fun scrollConsoleToTheEnd()
 
+  @ApiStatus.ScheduledForRemoval
   @Deprecated("use {@link #addMessageToConsoleWindow(String, ConsoleViewContentType)}")
   abstract fun addMessageToConsoleWindow(@Nls message: @Nls String?, attributes: TextAttributes?)
 

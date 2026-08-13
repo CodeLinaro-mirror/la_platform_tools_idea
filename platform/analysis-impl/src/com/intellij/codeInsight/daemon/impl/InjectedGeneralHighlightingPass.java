@@ -8,7 +8,6 @@ import com.intellij.concurrency.JobLauncher;
 import com.intellij.injected.editor.DocumentWindow;
 import com.intellij.lang.annotation.AnnotationSession;
 import com.intellij.lang.injection.InjectedLanguageManager;
-import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
@@ -33,6 +32,8 @@ import com.intellij.psi.impl.source.tree.injected.InjectedLanguageManagerImpl;
 import com.intellij.psi.impl.source.tree.injected.InjectedLanguageUtil;
 import com.intellij.util.CommonProcessors;
 import com.intellij.util.Processor;
+import com.intellij.util.concurrency.ThreadingAssertions;
+import com.intellij.util.concurrency.annotations.RequiresReadLock;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
@@ -43,6 +44,8 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+
+import static com.intellij.openapi.diagnostic.LoggerKt.rethrowControlFlowException;
 
 /**
  * Perform injections, run highlight visitors and annotators on discovered injected files
@@ -56,6 +59,7 @@ final class InjectedGeneralHighlightingPass extends ProgressableTextEditorHighli
   private final @NotNull EditorColorsScheme myGlobalScheme;
   private final List<HighlightInfo> myHighlights = new ArrayList<>(); // guarded by myHighlights
   private final boolean myRunAnnotators;
+  private final boolean myBatchMode;
   private final boolean myRunVisitors;
   private final boolean myHighlightErrorElements;
   private final HighlightInfoUpdater myHighlightInfoUpdater;
@@ -71,6 +75,7 @@ final class InjectedGeneralHighlightingPass extends ProgressableTextEditorHighli
                                   boolean runAnnotators,
                                   boolean runVisitors,
                                   boolean highlightErrorElements,
+                                  boolean batchMode,
                                   @NotNull HighlightInfoUpdater highlightInfoUpdater) {
     super(psiFile.getProject(), document, AnalysisBundle.message("highlighting.pass.injected.presentable.name"), psiFile, editor, TextRange.create(startOffset, endOffset), true, HighlightInfoProcessor.getEmpty());
     myReducedRanges = reducedRanges;
@@ -78,6 +83,7 @@ final class InjectedGeneralHighlightingPass extends ProgressableTextEditorHighli
     myPriorityRange = priorityRange;
     myGlobalScheme = editor != null ? editor.getColorsScheme() : EditorColorsManager.getInstance().getGlobalScheme();
     myRunAnnotators = runAnnotators;
+    myBatchMode = batchMode;
     myRunVisitors = runVisitors;
     myHighlightErrorElements = highlightErrorElements;
     myHighlightInfoUpdater = highlightInfoUpdater;
@@ -96,7 +102,7 @@ final class InjectedGeneralHighlightingPass extends ProgressableTextEditorHighli
     InjectedLanguageManager injectedLanguageManager = InjectedLanguageManager.getInstance(myProject);
     TextAttributesKey fragmentKey = EditorColors.createInjectedLanguageFragmentKey(myFile.getLanguage());
     Set<@NotNull FileViewProvider> injected = ConcurrentCollectionFactory.createConcurrentSet();  // in case of concatenation, multiple hosts can return the same injected fragment. have to visit it only once
-    ManagedHighlighterRecycler.runWithRecycler(getHighlightingSession(), recycler -> {
+    ManagedHighlighterRecycler.runWithRecycler(getHighlightingSession(), "IGHP", recycler -> {
       processInjectedPsiFiles(allInsideElements, allOutsideElements, progress, injected,
                               (injectedPsi, places) ->
         runAnnotatorsAndVisitorsOnInjectedPsi(injectedLanguageManager, injectedPsi, places, fragmentKey, (toolId, psiElement, infos) -> {
@@ -116,14 +122,16 @@ final class InjectedGeneralHighlightingPass extends ProgressableTextEditorHighli
     }
   }
 
+  @RequiresReadLock
   private void processInjectedPsiFiles(@NotNull List<? extends PsiElement> elements1,
                                        @NotNull List<? extends PsiElement> elements2,
                                        @NotNull ProgressIndicator progress,
                                        @NotNull Set<? super FileViewProvider> visitedInjected,
                                        @NotNull PsiLanguageInjectionHost.InjectedPsiVisitor visitor) {
-    ApplicationManager.getApplication().assertReadAccessAllowed();
+    ThreadingAssertions.assertReadAccess();
 
-    InjectedLanguageManagerImpl injectedLanguageManager = InjectedLanguageManagerImpl.getInstanceImpl(myProject);
+    InjectedLanguageManager injectedLanguageManager = InjectedLanguageManager.getInstance(myProject);
+    if (injectedLanguageManager == null) return;
     List<DocumentWindow> cachedInjected = injectedLanguageManager.getCachedInjectedDocumentsInRange(myFile, myFile.getTextRange());
     Collection<PsiElement> hosts = new HashSet<>(elements1.size() + elements2.size() + cachedInjected.size());
 
@@ -165,7 +173,7 @@ final class InjectedGeneralHighlightingPass extends ProgressableTextEditorHighli
     setProgressLimit(hosts.size());
 
     if (!JobLauncher.getInstance().invokeConcurrentlyUnderProgress(new ArrayList<>(hosts), progress, element -> {
-        ApplicationManager.getApplication().assertReadAccessAllowed();
+      ThreadingAssertions.assertReadAccess();
       try {
         injectedLanguageManager.enumerateEx(element, myFile, false, (injectedPsi, places) -> {
           if (visitedInjected.add(injectedPsi.getViewProvider())) {
@@ -174,7 +182,7 @@ final class InjectedGeneralHighlightingPass extends ProgressableTextEditorHighli
         });
       }
       catch (Exception e) {
-        if (Logger.shouldRethrow(e)) throw e;
+        rethrowControlFlowException(e);
         LOG.error(e);
       }
       advanceProgress(1);
@@ -206,9 +214,9 @@ final class InjectedGeneralHighlightingPass extends ProgressableTextEditorHighli
 
     AnnotationSession session = AnnotationSessionImpl.create(injectedPsi);
     GeneralHighlightingPass.setupAnnotationSession(session, myPriorityRange, myRestrictRange,
-                                                   ((HighlightingSessionImpl)getHighlightingSession()).getMinimumSeverity());
+                                                   getHighlightingSession().getMinimumSeverity());
 
-    AnnotatorRunner annotatorRunner = myRunAnnotators ? new AnnotatorRunner(session, false) : null;
+    AnnotatorRunner annotatorRunner = myRunAnnotators ? new AnnotatorRunner(session, myBatchMode) : null;
     Divider.divideInsideAndOutsideAllRoots(injectedPsi, injectedPsi.getTextRange(), injectedPsi.getTextRange(), GeneralHighlightingPass.SHOULD_HIGHLIGHT_FILTER, dividedElements -> {
       List<? extends @NotNull PsiElement> inside = dividedElements.inside();
       Runnable runnable = () -> {

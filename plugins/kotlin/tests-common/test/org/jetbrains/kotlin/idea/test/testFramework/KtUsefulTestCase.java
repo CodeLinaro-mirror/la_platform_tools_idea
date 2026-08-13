@@ -23,8 +23,6 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileVisitor;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.codeStyle.CodeStyleSettings;
-import com.intellij.psi.impl.DocumentCommitProcessor;
-import com.intellij.psi.impl.DocumentCommitThread;
 import com.intellij.psi.impl.source.PostprocessReformattingAspect;
 import com.intellij.testFramework.EdtTestUtil;
 import com.intellij.testFramework.EdtTestUtilKt;
@@ -34,6 +32,7 @@ import com.intellij.testFramework.TestFrameworkUtil;
 import com.intellij.testFramework.TestLoggerFactory;
 import com.intellij.testFramework.Timings;
 import com.intellij.testFramework.UITestUtil;
+import com.intellij.testFramework.common.TestApplicationKt;
 import com.intellij.testFramework.exceptionCases.AbstractExceptionCase;
 import com.intellij.testFramework.fixtures.IdeaTestExecutionPolicy;
 import com.intellij.util.DocumentUtil;
@@ -182,14 +181,12 @@ public abstract class KtUsefulTestCase extends TestCase {
 
         super.setUp();
 
-        boolean isStressTest = isStressTest();
-        ApplicationManagerEx.setInStressTest(isStressTest);
         if (isPerformanceTest()) {
             Timings.getStatistics();
         }
 
         // turn off Disposer debugging for performance tests
-        Disposer.setDebugMode(!isStressTest);
+        Disposer.setDebugMode(!isStressTest());
 
         if (isIconRequired()) {
             // ensure that IconLoader will use fake empty icon
@@ -324,7 +321,7 @@ public abstract class KtUsefulTestCase extends TestCase {
         Runnable runnable = () -> {
             try {
                 TestLoggerFactory.onTestStarted();
-                super.runTest();
+                ApplicationManagerEx.runInStressTest(isStressTest(), ()->super.runTest());
                 TestLoggerFactory.onTestFinished(true, testDescription);
             } catch (InvocationTargetException e) {
                 TestLoggerFactory.logTestFailure(e);
@@ -769,10 +766,7 @@ public abstract class KtUsefulTestCase extends TestCase {
                         });
                     }
 
-                    DocumentCommitThread commitThread = (DocumentCommitThread)app.getServiceIfCreated(DocumentCommitProcessor.class);
-                    if (commitThread != null) {
-                        commitThread.waitForAllCommits(timeout, timeUnit);
-                    }
+                    TestApplicationKt.waitForAllDocumentsCommitted(timeout, timeUnit);
                 }
             });
         } catch (Exception e) {

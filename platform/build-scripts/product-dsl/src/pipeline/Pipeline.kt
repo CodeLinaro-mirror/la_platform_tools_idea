@@ -33,6 +33,8 @@ import org.jetbrains.intellij.build.productLayout.stats.TestPluginGenerationResu
 import org.jetbrains.intellij.build.productLayout.validator.ContentModuleBackingValidator
 import org.jetbrains.intellij.build.productLayout.validator.ContentModuleDependencyValidator
 import org.jetbrains.intellij.build.productLayout.validator.ContentModulePluginDependencyValidator
+import org.jetbrains.intellij.build.productLayout.validator.EmbeddedContentModuleDependencyValidator
+import org.jetbrains.intellij.build.productLayout.validator.ImplicitEmbeddedContentModuleValidator
 import org.jetbrains.intellij.build.productLayout.validator.LibraryModuleValidator
 import org.jetbrains.intellij.build.productLayout.validator.PluginContentDependencyValidator
 import org.jetbrains.intellij.build.productLayout.validator.PluginContentDuplicatesValidator
@@ -163,10 +165,10 @@ internal class GenerationPipeline(
       val aggregated = aggregate(ctx, model, modelBuildingErrorSink)
 
       // Stage 5: OUTPUT - Cleanup orphans and commit or return diffs
-      val deletedFiles = output(aggregated.errors, model, commitChanges, aggregated.trackingMaps)
+      val outputResult = output(aggregated.errors, model, commitChanges, aggregated.trackingMaps)
 
       // Build final stats including deleted files (after cleanup)
-      val stats = buildStats(ctx, System.currentTimeMillis() - startTime, deletedFiles, model.fileUpdater.getDiffs())
+      val stats = buildStats(ctx, System.currentTimeMillis() - startTime, outputResult.deletedModuleSetFiles, model.fileUpdater.getDiffs())
 
       GenerationResult(errors = aggregated.errors, diffs = aggregated.diffs, stats = stats)
     }
@@ -334,6 +336,10 @@ internal class GenerationPipeline(
     val trackingMaps: Map<Path, Set<String>>,
   )
 
+  private data class OutputStageResult(
+    val deletedModuleSetFiles: List<ModuleSetFileResult>,
+  )
+
   /**
    * Stage 4: Aggregates results from context.
    *
@@ -394,12 +400,12 @@ internal class GenerationPipeline(
    *
    * @param ctx The compute context with slot values
    * @param durationMs Total duration in milliseconds
-   * @param deletedFiles Files deleted during orphan cleanup (added to module set results)
+   * @param deletedModuleSetFiles Files deleted during orphan cleanup (added to module set results)
    */
   private fun buildStats(
     ctx: ComputeContextImpl,
     durationMs: Long,
-    deletedFiles: List<ModuleSetFileResult> = emptyList(),
+    deletedModuleSetFiles: List<ModuleSetFileResult> = emptyList(),
     fileUpdaterDiffs: List<FileDiff> = emptyList(),
   ): GenerationStats {
     // Read from slots
@@ -425,7 +431,7 @@ internal class GenerationPipeline(
         ModuleSetGenerationResult(
           label = labelResult.label,
           outputDir = labelResult.outputDir,
-          files = labelResult.files + deletedFiles.filter { it.fileName.startsWith("intellij.moduleSets") },
+          files = labelResult.files + deletedModuleSetFiles.filter { it.fileName.startsWith("intellij.moduleSets") },
           trackingMap = labelResult.trackingMap,
         )
       }
@@ -475,27 +481,28 @@ internal class GenerationPipeline(
     model: GenerationModel,
     commitChanges: Boolean,
     trackingMaps: Map<Path, Set<String>>,
-  ): List<ModuleSetFileResult> {
-    // In --update-suppressions mode we intentionally skip XML writes via XmlWritePolicy,
+  ): OutputStageResult {
+    // In --update-suppressions mode we intentionally skip generated artifact writes,
     // but still must persist suppressions.json even when commitChanges=false.
     if (model.updateSuppressions) {
       model.fileUpdater.commit()
-      return emptyList()
+      return OutputStageResult(emptyList())
     }
 
+    val deletedModuleSetFiles = cleanupOrphanedModuleSetFiles(trackingMaps, model.generatedArtifactWritePolicy)
+
     if (errors.isEmpty() && commitChanges) {
-      // Clean up orphaned module set files before commit
-      val deletedFiles = cleanupOrphanedModuleSetFiles(trackingMaps, model.xmlWritePolicy)
-      if (deletedFiles.isNotEmpty()) {
-        println("\nDeleted ${deletedFiles.size} orphaned files")
+      val deletedFiles = deletedModuleSetFiles.size
+      if (deletedFiles > 0) {
+        println("\nDeleted $deletedFiles orphaned files")
       }
 
       // Commit all deferred writes atomically
       model.fileUpdater.commit()
 
-      return deletedFiles
+      return OutputStageResult(deletedModuleSetFiles)
     }
-    return emptyList()
+    return OutputStageResult(deletedModuleSetFiles)
   }
 
   companion object {
@@ -529,11 +536,13 @@ internal class GenerationPipeline(
           TestLibraryScopeValidator,
           SelfContainedModuleSetValidator,
           ContentModuleBackingValidator,
+          EmbeddedContentModuleDependencyValidator,
           ProductModuleSetValidator,
           PluginContentDuplicatesValidator,
           PluginDescriptorIdConflictValidator,
           ContentModuleDependencyValidator,
           LibraryModuleValidator,
+          ImplicitEmbeddedContentModuleValidator,
         )
       )
     }

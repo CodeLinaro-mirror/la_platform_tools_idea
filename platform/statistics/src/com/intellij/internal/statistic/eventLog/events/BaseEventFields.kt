@@ -120,6 +120,29 @@ abstract class StringEventField(override val name: String) : PrimitiveEventField
     override val validationRule: List<String>
       get() = listOf("{dictionary#$dictionaryName}")
   }
+
+  /**
+   * String event field validated against a dictionary,
+   * with optional support for required and default value validation rules.
+   *
+   * @param name name of the field
+   * @param dictionaryName name of the dictionary
+   * @param description optional description of the field
+   * @param required whether the field is required
+   * @param defaultValue optional default value applied when the field is missing or invalid
+   */
+  data class ValidatedByDictionaryExtended @JvmOverloads constructor(@NonNls @EventFieldName override val name: String,
+                                            @NonNls val dictionaryName: String,
+                                            @NonNls override val description: String? = null,
+                                            override val required: Boolean? = null,
+                                            override val defaultValue: String? = null) : StringEventField(name) {
+    override val validationRule: List<String>
+      get() = buildList {
+        add("{dictionary#$dictionaryName}")
+        required?.let { value -> add("{required:$value}") }
+        defaultValue?.let { value -> add("{default_value:$value}") }
+      }
+  }
 }
 
 // region Numeric fields
@@ -484,6 +507,29 @@ abstract class StringListEventField(@NonNls @EventFieldName override val name: S
     override val validationRule: List<String>
       get() = listOf("{dictionary#$dictionaryName}")
   }
+
+  /**
+   * String list event field validated against a dictionary,
+   * with optional support for required and default value validation rules.
+   *
+   * @param name name of the field
+   * @param dictionaryName name of the dictionary
+   * @param description optional description of the field
+   * @param required whether the field is required
+   * @param defaultValue optional default value applied when the field is missing or invalid
+   */
+  data class ValidatedByDictionaryExtended @JvmOverloads constructor(@NonNls @EventFieldName override val name: String,
+                                            @NonNls val dictionaryName: String,
+                                            @NonNls override val description: String? = null,
+                                            override val required: Boolean? = null,
+                                            override val defaultValue: String? = null) : StringListEventField(name) {
+    override val validationRule: List<String>
+      get() = buildList {
+        add("{dictionary#$dictionaryName}")
+        required?.let { value -> add("{required:$value}") }
+        defaultValue?.let { value -> add("{default_value:$value}") }
+      }
+  }
 }
 
 private val classCheckAndTransform: (Class<*>) -> String = {
@@ -630,5 +676,23 @@ class ObjectListEventField @JvmOverloads constructor(@NonNls @EventFieldName ove
 
   override fun addData(fuData: FeatureUsageData, value: List<ObjectEventData>) {
     fuData.addListObjectData(name, value.map { it.buildObjectData(fuData.recorderId, fields) })
+  }
+}
+
+/**
+ * Field carrying a [JcpData] payload that is delivered to the JCP listener only.
+ *
+ * It is intentionally **not** a [PrimitiveEventField] or [ListEventField]: it has no validation rule, is excluded
+ * from the generated events scheme and must never be validated or sent to the FUS server. Use [EventFields.Jcp].
+ */
+class JcpDataEventField : EventField<JcpData>() {
+  override val name: String
+    get() = FeatureUsageData.JCP_DATA_KEY
+
+  override val description: String?
+    get() = null
+
+  override fun addData(fuData: FeatureUsageData, value: JcpData) {
+    fuData.addJcpData(value)
   }
 }

@@ -25,6 +25,8 @@ import com.intellij.util.ObjectUtils;
 import com.intellij.util.Processor;
 import com.intellij.util.containers.ContainerUtil;
 import com.jetbrains.python.PyQuickFixTestCase;
+import com.jetbrains.python.allure.Layers;
+import com.jetbrains.python.allure.Subsystems;
 import com.jetbrains.python.codeInsight.PyCodeInsightSettings;
 import com.jetbrains.python.codeInsight.imports.AutoImportQuickFix;
 import com.jetbrains.python.codeInsight.imports.ImportCandidateHolder;
@@ -45,6 +47,8 @@ import static com.jetbrains.python.psi.PyUtil.as;
 /**
  * @author Mikhail Golubev
  */
+@Subsystems.QuickFixes
+@Layers.Functional
 public class PyAddImportQuickFixTest extends PyQuickFixTestCase {
   @NotNull
   private PyCodeStyleSettings getPythonCodeStyleSettings() {
@@ -171,7 +175,7 @@ public class PyAddImportQuickFixTest extends PyQuickFixTestCase {
     runWithAdditionalFileInLibDir(
       "re.py",
       "",
-      (__) ->
+      (_) ->
         runWithAdditionalFileInSkeletonDir(
           "sys.py",
           """
@@ -180,7 +184,7 @@ public class PyAddImportQuickFixTest extends PyQuickFixTestCase {
             # from (built-in)
             # by generator 1.138
             path = 10""",
-          (___) -> doMultiFileAutoImportTest("Import 'sys'")
+          (_) -> doMultiFileAutoImportTest("Import 'sys'")
         )
     );
   }
@@ -245,11 +249,11 @@ public class PyAddImportQuickFixTest extends PyQuickFixTestCase {
     runWithAdditionalFileInLibDir(
       "os/__init__.py",
       "",
-      (__) ->
+      (_) ->
         runWithAdditionalFileInLibDir(
           "os/path.py",
           "",
-          (___) -> doTestProposedImportsOrdering(
+          (_) -> doTestProposedImportsOrdering(
             "path from sys", "first.path", "first.second.path", "os.path", "first._third.path")
         )
     );
@@ -260,7 +264,7 @@ public class PyAddImportQuickFixTest extends PyQuickFixTestCase {
     runWithAdditionalFileInLibDir(
       "sys.py",
       "path = 10",
-      (__) -> doTestProposedImportsOrdering("pkg.path", "sys.path")
+      (_) -> doTestProposedImportsOrdering("pkg.path", "sys.path")
     );
   }
 
@@ -269,7 +273,7 @@ public class PyAddImportQuickFixTest extends PyQuickFixTestCase {
     runWithAdditionalFileInLibDir(
       "sys.py",
       "path = 10",
-      (__) -> doTestProposedImportsOrdering("first.second.path", "sys.path", "_private.path")
+      (_) -> doTestProposedImportsOrdering("first.second.path", "sys.path", "_private.path")
     );
   }
 
@@ -293,11 +297,11 @@ public class PyAddImportQuickFixTest extends PyQuickFixTestCase {
     runWithAdditionalFileInLibDir(
       "os/__init__.py",
       "",
-      (__) ->
+      (_) ->
         runWithAdditionalFileInLibDir(
           "os/path.py",
           "",
-          (___) -> doTestProposedImportsOrdering("path from sys", "src.path", "os.path")
+          (_) -> doTestProposedImportsOrdering("path from sys", "src.path", "os.path")
         )
     );
   }
@@ -417,6 +421,36 @@ public class PyAddImportQuickFixTest extends PyQuickFixTestCase {
   // PY-75291
   public void testTypeAliasStatement() {
     doMultiFileAutoImportTest("Import 'lib.ExampleType'");
+  }
+
+  // PY-87970
+  public void testNestedClassAutoImport() {
+    doMultiFileAutoImportTest("Import 'Outer.Inner from mod'");
+  }
+
+  // PY-87971
+  public void testNestedClassQualifiedAutoImport() {
+    doMultiFileAutoImportTest("Import 'Outer.Inner from mod'");
+  }
+
+  // PY-87972
+  public void testQualifyWithAlreadyImportedModule() {
+    doMultiFileAutoImportTest("Import 'src.MyClass from pkg'");
+  }
+
+  // PY-87972
+  public void testQualifyNestedClassWithAlreadyImportedModule() {
+    doMultiFileAutoImportTest("Import 'src.Outer.Inner from pkg'");
+  }
+
+  // PY-88009
+  public void testQualifyWithRegularImport() {
+    doMultiFileAutoImportTest("Import 'pkg.src.MyClass'");
+  }
+
+  // PY-88009
+  public void testQualifyNestedClassWithRegularImport() {
+    doMultiFileAutoImportTest("Import 'pkg.src.Outer.Inner'");
   }
 
   private void doTestProposedImportsOrdering(String @NotNull ... expected) {

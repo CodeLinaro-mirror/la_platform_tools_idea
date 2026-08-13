@@ -17,7 +17,6 @@ import com.intellij.platform.lsp.api.LspClientManagerListener
 import com.intellij.platform.lsp.api.LspIntegrationProvider
 import com.intellij.platform.lsp.api.LspCommunicationChannel
 import com.intellij.platform.lsp.api.LspCommunicationChannel.StdIO
-import com.intellij.platform.lsp.api.LspServerNotificationsHandler
 import com.intellij.platform.lsp.api.LspServerState
 import com.intellij.platform.lsp.impl.connector.Lsp4jServerConnector
 import com.intellij.platform.lsp.impl.connector.Lsp4jServerConnectorSocket
@@ -28,6 +27,7 @@ import com.intellij.platform.lsp.impl.features.LspFeaturesRefreshing
 import com.intellij.platform.lsp.impl.features.highlighting.DiagnosticAndQuickFixes
 import com.intellij.platform.lsp.impl.features.highlighting.LspDocumentLink
 import com.intellij.platform.lsp.impl.features.highlighting.LspHighlightingApplier
+import com.intellij.platform.lsp.impl.features.inlayCommon.LspInlayApplier
 import com.intellij.platform.lsp.impl.features.highlighting.LspSemanticToken
 import com.intellij.platform.lsp.impl.features.highlightingCommon.LspCachedHighlighting
 import com.intellij.platform.lsp.impl.features.highlightingCommon.LspHighlightingCacheRegistry
@@ -86,7 +86,7 @@ class LspClientImpl internal constructor(
   val requestExecutor: LspRequestExecutor = LspRequestExecutor(this, documentMapping)
   internal val globMatcher: LspGlobMatcher = LspGlobMatcher()
   internal val dynamicCapabilities: LspDynamicCapabilities = LspDynamicCapabilities()
-  internal val serverNotificationsHandler: LspServerNotificationsHandler = LspServerNotificationsHandlerImpl(this)
+  internal val serverNotificationsHandler: LspServerNotificationsHandlerImpl = LspServerNotificationsHandlerImpl(this)
 
   internal val documentSyncManager = LspDocumentSyncManager(this)
   internal val watchedFiles = LspWatchedFiles(this)
@@ -164,6 +164,18 @@ class LspClientImpl internal constructor(
     }
   }
 
+  /**
+   * Handles a server-forced `workspace/inlayHint/refresh`: re-requests inlay hints for every opened file even without
+   * a document edit, then re-applies out-of-band. Invalidating the cache keeps the current hints on screen (no
+   * flicker); [LspInlayApplier.scheduleRefresh] kicks the re-request and diffs in the fresh hints once they land.
+   */
+  internal fun refreshInlayHints() {
+    forEachOpenedFile { file ->
+      highlightingCacheRegistry.inlayHintsCache.invalidate(file)
+      LspInlayApplier.getInstance(project).scheduleRefresh(file)
+    }
+  }
+
   @RequiresBackgroundThread
   @RequiresReadLock
   internal fun getSemanticTokens(file: VirtualFile): List<LspCachedHighlighting<LspSemanticToken>> =
@@ -238,8 +250,8 @@ class LspClientImpl internal constructor(
           }
         }
         documentSyncManager.openForOpenedOrUnsavedFiles()
-        LspFeaturesRefreshing.restartStructureView()
-        LspFeaturesRefreshing.refreshInlayHints(project)
+        LspFeaturesRefreshing.refreshBreadcrumbs()
+        forEachOpenedFile { LspInlayApplier.getInstance(project).scheduleRefresh(it) }
         LspFeaturesRefreshing.refreshCodeLenses(project)
       }
       catch (e: Exception) {
@@ -275,16 +287,19 @@ class LspClientImpl internal constructor(
       logInfo("Stopping LSP server ${if (explicitStop) "normally" else "unexpectedly"}")
       state = if (explicitStop) LspServerState.ShutdownNormally else LspServerState.ShutdownUnexpectedly
 
-      forEachOpenedFile { file ->
-        LspHighlightingApplier.getInstance(project).scheduleHighlightingRefresh(file)
+      if (!project.isDisposed) {
+        forEachOpenedFile { file ->
+          LspHighlightingApplier.getInstance(project).scheduleHighlightingRefresh(file)
+          LspInlayApplier.getInstance(project).scheduleRefresh(file)
+        }
       }
       documentSyncManager.clearOpenedFiles()
       requestExecutor.shutdownNow()
+      serverNotificationsHandler.cancelAllProgress()
 
       highlightingCacheRegistry.clearCache()
 
       if (!project.isDisposed) {
-        LspFeaturesRefreshing.refreshInlayHints(project)
         LspFeaturesRefreshing.refreshCodeLenses(project)
       }
     }

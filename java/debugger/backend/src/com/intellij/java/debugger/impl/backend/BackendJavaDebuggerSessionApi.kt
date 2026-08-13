@@ -27,7 +27,6 @@ import com.intellij.openapi.application.EDT
 import com.intellij.platform.debugger.impl.rpc.XDebugSessionId
 import com.intellij.platform.debugger.impl.rpc.XExecutionStackId
 import com.intellij.platform.debugger.impl.rpc.XValueId
-import com.intellij.platform.debugger.impl.rpc.toRpc
 import com.intellij.unscramble.CompoundDumpItem
 import com.intellij.unscramble.DumpItem
 import com.intellij.unscramble.splitFirstLineAndBody
@@ -215,7 +214,7 @@ private fun dumpItemDtos(allDumpItems: List<DumpItem>, maxItems: Int): ThreadDum
 
   return ThreadDumpWithAwaitingDependencies(items = items,
                                             icons = icons.map { it.rpcId() },
-                                            attributes = attributes.map { it.toRpc() },
+                                            attributes = attributes.map { it.rpcId() },
                                             stackTraceBodies = stackTraceBodies,
                                             exportedStackTraceBodies = exportedStackTraceBodies,
                                             awaitingDependencies = awaiting,

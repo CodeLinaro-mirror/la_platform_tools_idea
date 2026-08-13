@@ -123,6 +123,13 @@ fun ideCommon() = moduleSet("ide.common") {
 }
 ```
 
+### Module-Set Wrapper Plugins
+
+The Product DSL no longer creates module-set wrapper plugins. Existing wrappers under
+`community/module-set-plugins/generated/` and `module-set-plugins/generated/` are checked-in plugin modules and stay in place until they are migrated to hand-written wrappers.
+
+For new wrapper plugins, create a normal plugin module with `plugin.xml` and `plugin-content.yaml`, then add the plugin module to the product layout.
+
 ## Parameters Reference
 
 ### `alias` - Module Alias
@@ -305,7 +312,7 @@ To find available module sets and understand their contents:
 
 Create a new module set when:
 - **Multiple products** need the same group of modules
-- The modules form a **cohesive functional unit** (e.g., VCS support, XML support, SSH support)
+- The modules form a **cohesive functional unit** (e.g., VCS support, XML support, coverage support)
 - You want to **enforce consistency** across products using these modules
 - The group is likely to be **reused or evolved** over time
 

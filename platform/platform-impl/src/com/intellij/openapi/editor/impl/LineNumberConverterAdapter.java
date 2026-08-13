@@ -1,9 +1,10 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2026 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.editor.impl;
 
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.EditorGutter;
 import com.intellij.openapi.editor.LineNumberConverter;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.function.IntUnaryOperator;
@@ -14,6 +15,7 @@ import java.util.function.IntUnaryOperator;
  * {@link EditorGutter#setLineNumberConverter(LineNumberConverter)} and
  * {@link EditorGutter#setLineNumberConverter(LineNumberConverter, LineNumberConverter)}
  */
+@ApiStatus.Internal
 public final class LineNumberConverterAdapter implements LineNumberConverter {
   private final IntUnaryOperator myFunction;
 
@@ -29,7 +31,7 @@ public final class LineNumberConverterAdapter implements LineNumberConverter {
 
   @Override
   public Integer getMaxLineNumber(@NotNull Editor editor) {
-    for (int i = editor.getDocument().getLineCount(); i > 0; i--) {
+    for (int i = editor.getElfDocument().getLineCount(); i > 0; i--) {
       int number = myFunction.applyAsInt(i - 1);
       if (number >= 0) {
         return number + 1;

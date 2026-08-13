@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.java.codeInsight.daemon
 
 import com.intellij.JavaTestUtil
@@ -939,6 +939,42 @@ class ModuleHighlightingTest : LightJava9ModulesCodeInsightFixtureTestCase() {
         """.trimIndent())
   }
 
+  fun testAutoModuleNameChangesOnManifestRemoval() {
+    val manifest = addResourceFile(JarFile.MANIFEST_NAME, "Automatic-Module-Name: m6.bar\n", module = M6)
+    highlight("module-info.java", "module M { requires m6.bar; requires  <error descr=\"Module not found: light.idea.test.m6\">light.idea.test.m6</error>; }")
+
+    runWriteActionAndWait { manifest.delete(this) }
+
+    highlight("module-info.java", "module M { requires <error descr=\"Module not found: m6.bar\">m6.bar</error>; requires light.idea.test.m6; }")
+  }
+
+  fun testAutoModuleNameChangesOnManifestAddition() {
+    highlight("module-info.java", "module M { requires light.idea.test.m6; requires  <error descr=\"Module not found: m6.bar\">m6.bar</error>; }")
+
+    addResourceFile(JarFile.MANIFEST_NAME, "Automatic-Module-Name: m6.bar\n", module = M6)
+
+    highlight("module-info.java", "module M { requires <error descr=\"Module not found: light.idea.test.m6\">light.idea.test.m6</error>; requires m6.bar; }")
+  }
+
+  fun testAutoModuleNameChangesOnAutoModuleNameRemoval() {
+    val manifest = addResourceFile(JarFile.MANIFEST_NAME, "Automatic-Module-Name: m6.bar\n", module = M6)
+    highlight("module-info.java", "module M { requires m6.bar; requires  <error descr=\"Module not found: light.idea.test.m6\">light.idea.test.m6</error>; }")
+
+    runWriteActionAndWait { manifest.setBinaryContent("Manifest-Version: 1.0\n\n".toByteArray()) }
+
+    // Automatic-Module-Name removed; module name is now derived from the resource root name ("res_m6" -> "res.m6")
+    highlight("module-info.java", "module M { requires <error descr=\"Module not found: m6.bar\">m6.bar</error>; requires res.m6; }")
+  }
+
+  fun testAutoModuleNameChangesOnAutoModuleNameChanged() {
+    val manifest = addResourceFile(JarFile.MANIFEST_NAME, "Automatic-Module-Name: m6.bar\n", module = M6)
+    highlight("module-info.java", "module M { requires m6.bar; requires  <error descr=\"Module not found: m61.bar\">m61.bar</error>; }")
+
+    runWriteActionAndWait { manifest.setBinaryContent("Automatic-Module-Name: m61.bar\n".toByteArray()) }
+
+    highlight("module-info.java", "module M { requires <error descr=\"Module not found: m6.bar\">m6.bar</error>; requires m61.bar; }")
+  }
+
   fun testBrokenImportModuleStatement() {
     IdeaTestUtil.withLevel(module, JavaFeature.MODULE_IMPORT_DECLARATIONS.minimumLevel) {
       highlight("A.java", """
@@ -1234,7 +1270,7 @@ class ModuleHighlightingTest : LightJava9ModulesCodeInsightFixtureTestCase() {
     val module = ModuleManager.getInstance(project).findModuleByName(moduleDescriptor.moduleName)!!
     try {
 
-      WriteAction.runAndWait<RuntimeException?>(ThrowableRunnable {
+      WriteAction.runAndWait<RuntimeException?> {
         var path = JavaAwareProjectJdkTableImpl.getInstanceEx().getInternalJdk().getHomePath()!!
         if (caseInsensitive) path = breakPath(path)
         val jdk = ProjectJdkTable.getInstance(project).findJdk(name)
@@ -1242,7 +1278,7 @@ class ModuleHighlightingTest : LightJava9ModulesCodeInsightFixtureTestCase() {
 
         ProjectJdkTable.getInstance(project).addJdk(jdk, project)
         ModuleRootModificationUtil.setModuleSdk(module, jdk)
-      })
+      }
 
       IdeaTestUtil.withLevel(module, level) {
         block()
@@ -1250,13 +1286,13 @@ class ModuleHighlightingTest : LightJava9ModulesCodeInsightFixtureTestCase() {
 
     }
     finally {
-      WriteAction.runAndWait<RuntimeException?>(ThrowableRunnable {
+      WriteAction.runAndWait<RuntimeException?> {
         ModuleRootModificationUtil.setModuleSdk(module, projectDescriptor.sdk)
         val jdkTable = ProjectJdkTable.getInstance(project)
         jdkTable.findJdk(name)?.also { jdk ->
           jdkTable.removeJdk(jdk)
         }
-      })
+      }
     }
   }
 

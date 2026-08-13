@@ -77,7 +77,7 @@ public abstract class JavaHomeFinder {
    * and the SDK should be local to the project, not to the IDE.
    */
   @Deprecated
-  public static @NotNull List<String> suggestHomePaths() {
+  public static @NotNull @Unmodifiable List<String> suggestHomePaths() {
     return suggestHomePaths(false);
   }
 
@@ -86,7 +86,7 @@ public abstract class JavaHomeFinder {
    * for using in tests that are performed when the registry is not properly initialized
    * or that need the embedded JetBrains Runtime.
    */
-  public static @NotNull List<String> suggestHomePaths(boolean forceEmbeddedJava) {
+  public static @NotNull @Unmodifiable List<String> suggestHomePaths(boolean forceEmbeddedJava) {
     return suggestHomePaths(LocalEelDescriptor.INSTANCE, forceEmbeddedJava);
   }
 
@@ -96,7 +96,7 @@ public abstract class JavaHomeFinder {
    *
    * @return suggested sdk home paths (sorted)
    */
-  public static @NotNull List<@NotNull String> suggestHomePaths(@Nullable Project project) {
+  public static @NotNull @Unmodifiable List<@NotNull String> suggestHomePaths(@Nullable Project project) {
     return suggestHomePaths(project == null ? LocalEelDescriptor.INSTANCE : getEelDescriptor(project), false);
   }
 
@@ -152,21 +152,11 @@ public abstract class JavaHomeFinder {
 
   @ApiStatus.Internal
   public static @NotNull JavaHomeFinderBasic getFinder(@NotNull EelDescriptor descriptor) {
-    if (Registry.is("java.home.finder.use.eel")) {
-      return javaHomeFinderEel(descriptor);
-    }
-
-    var systemInfoProvider = new SystemInfoProvider();
-    return switch (OS.CURRENT) {
-      case Windows -> new JavaHomeFinderWindows(true, true, systemInfoProvider);
-      case macOS -> new JavaHomeFinderMac(systemInfoProvider);
-      case Linux -> new JavaHomeFinderBasic(systemInfoProvider).checkSpecifiedPaths(DEFAULT_JAVA_LINUX_PATHS);
-      default -> new JavaHomeFinderBasic(systemInfoProvider);
-    };
+    return javaHomeFinderEel(descriptor);
   }
 
   public static @Nullable String defaultJavaLocation(@Nullable Path path) {
-    if (path != null && Registry.is("java.home.finder.use.eel")) {
+    if (path != null) {
       var location = defaultJavaLocationUsingEel(path);
       return location != null ? location.toString() : null;
     }

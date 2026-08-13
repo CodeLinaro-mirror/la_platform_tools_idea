@@ -130,7 +130,7 @@ public final class GotoActionModel implements ChooseByNameModel, Comparator<Obje
 
       Map<@NonNls String, @NlsContexts.ConfigurableName String> map = new HashMap<>();
       for (Configurable configurable : ShowSettingsUtilImpl.getConfigurables(getProject(), true, true)) {
-        if (configurable instanceof SearchableConfigurable) {
+        if (configurable instanceof SearchableConfigurable && ((SearchableConfigurable)configurable).isSearchableInActions()) {
           map.put(((SearchableConfigurable)configurable).getId(), configurable.getDisplayName());
         }
       }
@@ -226,6 +226,7 @@ public final class GotoActionModel implements ChooseByNameModel, Comparator<Obje
     myUpdateSession = newUpdateSession();
   }
 
+  @ApiStatus.Internal
   public enum MatchedValueType {ABBREVIATION, INTENTION, TOP_HIT, OPTION, ACTION, SEMANTIC}
 
   public static class MatchedValue implements MergeableElement, UiInspectorContextProvider {
@@ -237,6 +238,7 @@ public final class GotoActionModel implements ChooseByNameModel, Comparator<Obje
 
     public @Nullable Double similarityScore = null;
 
+    @ApiStatus.Internal
     public MatchedValue(@NotNull Object value, @NotNull String pattern, @NotNull MatchedValueType type) {
       LOG.assertTrue(value instanceof OptionDescription || value instanceof ActionWrapper, "Not expected: " + value.getClass());
       this.value = value;
@@ -245,6 +247,7 @@ public final class GotoActionModel implements ChooseByNameModel, Comparator<Obje
       this.type = type;
     }
 
+    @ApiStatus.Internal
     public MatchedValue(@NotNull Object value, @NotNull String pattern, @NotNull MatchedValueType type, double similarityScore) {
       this(value, pattern, type);
       this.similarityScore = similarityScore;
@@ -258,6 +261,7 @@ public final class GotoActionModel implements ChooseByNameModel, Comparator<Obje
       this.type = type;
     }
 
+    @ApiStatus.Internal
     @Override
     public MergeableElement mergeWith(MergeableElement other) {
       MatchedValue mergedValue = new MatchedValue(value, pattern, matchingDegree, type);
@@ -299,6 +303,7 @@ public final class GotoActionModel implements ChooseByNameModel, Comparator<Obje
       return matchingDegree;
     }
 
+    @ApiStatus.Internal
     public @NotNull MatchedValueType getType() {
       return type;
     }
@@ -471,7 +476,7 @@ public final class GotoActionModel implements ChooseByNameModel, Comparator<Obje
 
     boolean hasRegisteredChild = ContainerUtil.exists(actions, action -> myActionManager.getId(action) != null);
     if (!hasRegisteredChild) {
-      GroupMapping mapping = actionGroups.computeIfAbsent(group, __ -> new GroupMapping(showNonPopupGroups));
+      GroupMapping mapping = actionGroups.computeIfAbsent(group, _ -> new GroupMapping(showNonPopupGroups));
       mapping.addPath(path);
     }
 
@@ -482,12 +487,13 @@ public final class GotoActionModel implements ChooseByNameModel, Comparator<Obje
         collectActions(actionGroups, (ActionGroup)action, newPath, showNonPopupGroups);
       }
       else {
-        GroupMapping mapping = actionGroups.computeIfAbsent(action, __ -> new GroupMapping(showNonPopupGroups));
+        GroupMapping mapping = actionGroups.computeIfAbsent(action, _ -> new GroupMapping(showNonPopupGroups));
         mapping.addPath(newPath);
       }
     }
   }
 
+  @ApiStatus.Internal
   public @Nullable GroupMapping getGroupMapping(@NotNull AnAction action) {
     return myActionGroups.get(action);
   }
@@ -596,6 +602,7 @@ public final class GotoActionModel implements ChooseByNameModel, Comparator<Obje
     private final Presentation myPresentation;
     private final String myActionText;
 
+    @ApiStatus.Internal
     public ActionWrapper(@NotNull AnAction action,
                          @Nullable GroupMapping groupMapping,
                          @NotNull MatchMode mode,
@@ -619,6 +626,7 @@ public final class GotoActionModel implements ChooseByNameModel, Comparator<Obje
       return myMode;
     }
 
+    @ApiStatus.Internal
     public @Nullable GroupMapping getGroupMapping() {
       return myGroupMapping;
     }
@@ -682,6 +690,7 @@ public final class GotoActionModel implements ChooseByNameModel, Comparator<Obje
     }
   }
 
+  @ApiStatus.Internal
   @DirtyUI
   public static final class GotoActionListCellRenderer extends DefaultListCellRenderer {
     public static final Border TOGGLE_BUTTON_BORDER = JBUI.Borders.empty(0, 2);

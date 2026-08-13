@@ -1,4 +1,4 @@
-<idea-plugin visibility="internal" package="com.intellij.terminal.backend">
+<idea-plugin visibility="public">
   <dependencies>
     <module name="intellij.platform.backend"/>
     <module name="intellij.platform.kernel.backend"/>
@@ -7,15 +7,9 @@
 
   <extensions defaultExtensionNs="com.intellij">
     <platform.rpc.backend.remoteApiProvider implementation="com.intellij.terminal.backend.rpc.TerminalRemoteApiProvider"/>
-
-    <projectService serviceInterface="com.intellij.terminal.backend.TerminalPortForwardingManager" open="true"
-                    serviceImplementation="com.intellij.terminal.backend.TerminalNoPortForwardingManager"/>
-    <applicationService serviceInterface="org.jetbrains.plugins.terminal.hyperlinks.BackendHyperlinkInfoService"
-      serviceImplementation="com.intellij.terminal.backend.hyperlinks.BackendHyperlinkInfoServiceImpl" />
-    <applicationService serviceImplementation="com.intellij.terminal.backend.rpc.TerminalInputChannelsManager"
-                        client="remote"/>
-    <applicationService serviceInterface="com.intellij.terminal.backend.TerminalActivityTracker" open="true"
-                        serviceImplementation="com.intellij.terminal.backend.TerminalNoOpActivityTracker"/>
+    <applicationService
+      serviceInterface="org.jetbrains.plugins.terminal.hyperlinks.menu.BackendHyperlinkInfoService"
+      serviceImplementation="com.intellij.terminal.backend.hyperlinks.BackendHyperlinkInfoServiceImpl"/>
   </extensions>
 
   <extensions defaultExtensionNs="org.jetbrains.plugins.terminal">

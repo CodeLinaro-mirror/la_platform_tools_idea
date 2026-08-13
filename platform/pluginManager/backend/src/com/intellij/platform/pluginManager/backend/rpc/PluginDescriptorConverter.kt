@@ -9,14 +9,12 @@ import com.intellij.ide.plugins.getTags
 import com.intellij.ide.plugins.newui.DefaultUiPluginManagerController
 import com.intellij.ide.plugins.newui.PluginSource
 import com.intellij.openapi.application.ApplicationInfo
-import com.intellij.openapi.util.IntellijInternalApi
 import org.jetbrains.annotations.ApiStatus
 
 /**
  * Converts [com.intellij.ide.plugins.IdeaPluginDescriptor] to [PluginDto] for compatibility purposes
  */
 @ApiStatus.Internal
-@IntellijInternalApi
 object PluginDescriptorConverter {
 
   fun toPluginDto(descriptor: IdeaPluginDescriptor, ignoreDescriptionForNotLoadedPluigns: Boolean = false): PluginDto {
@@ -28,9 +26,9 @@ object PluginDescriptorConverter {
     with(pluginDto) {
       version = descriptor.version
       isBundled = descriptor.isBundled
-      isBundledUpdate = DefaultUiPluginManagerController.isBundledUpdate(descriptor)
       isImplementationDetail = descriptor.isImplementationDetail
       isEssential = ApplicationInfo.getInstance().isEssentialPlugin(descriptor.pluginId)
+      isBundledUpdate = DefaultUiPluginManagerController.isBundledUpdate(descriptor)
       isDeleted = (descriptor as? IdeaPluginDescriptorImpl)?.isDeleted ?: false
       category = descriptor.category
       if (!ignoreDescriptionForNotLoadedPluigns || PluginManagerCore.isLoaded(descriptor.pluginId)) {

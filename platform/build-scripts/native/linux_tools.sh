@@ -78,9 +78,9 @@ declare failed_builds=""
     mkdir $out_dir/WslTools && cd $out_dir/WslTools
     cp -r $top/tools/idea/native/WslTools/. ./
 
-    # Prepare musl
-    cp /home/builder/musl-1.2.2.tar.gz ./
-    tar xfz${verbose:+v} musl-1.2.2.tar.gz && mv musl-1.2.2 musl
+    # Prepare musl for WSL tools build
+    cp /home/builder/musl-1.2.6.tar.gz ./
+    tar xfz${verbose:+v} musl-1.2.6.tar.gz && mv musl-1.2.6 musl
 
     # ubuntu:14.04 have too old GCC version that use -std=c90 by default
     # and don't like `{0}` style initialization: https://stackoverflow.com/questions/1538943
@@ -144,13 +144,14 @@ declare failed_builds=""
   export RUSTUP_HOME=/home/builder/.rustup
 
   cargo build ${verbose:+-v} --release --target x86_64-unknown-linux-gnu --target-dir "$out_dir/launcher"
-  cargo build ${verbose:+-v} --no-default-features --release --target x86_64-pc-windows-gnu --target-dir "$out_dir/launcher"
+  cargo build ${verbose:+-v} --no-default-features --features "win_con" --release --target x86_64-pc-windows-gnu --target-dir "$out_dir/launcher"
   cargo about generate about.hbs > $out_dir/launcher/launcher-licenses.html
 
   verify_glibc "$out_dir/launcher/x86_64-unknown-linux-gnu/release/xplat-launcher"
   cp "$out_dir/launcher/x86_64-unknown-linux-gnu/release/xplat-launcher" $dist_dir/launcher
   cp "$out_dir/launcher/x86_64-pc-windows-gnu/release/xplat-launcher.exe" $dist_dir/launcher.exe
-  cp $out_dir/launcher/launcher-licenses.html $dist_dir/.
+  cp "$out_dir/launcher/x86_64-pc-windows-gnu/release/xplat-launcher-win-con.exe" $dist_dir/xplat-launcher-win-con.exe
+  cp $out_dir/launcher/launcher-licenses.html $dist_dir/xplat-launcher-third-party-licenses.html
   chmod +x $dist_dir/launcher
   ls -lha $dist_dir/launcher
   ls -lha $dist_dir/launcher.exe

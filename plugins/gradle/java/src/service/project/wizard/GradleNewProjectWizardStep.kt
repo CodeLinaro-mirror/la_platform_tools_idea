@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.plugins.gradle.service.project.wizard
 
 import com.intellij.CommonBundle
@@ -136,11 +136,20 @@ abstract class GradleNewProjectWizardStep<ParentStep>(parent: ParentStep) :
     builder: Panel,
     sdkFilter: (Sdk) -> Boolean = { true },
     jdkPredicate: ProjectWizardJdkPredicate? = null,
+    kotlinVersion: String? = null,
+    maxKotlinJvmTarget: String? = null,
   ) {
     builder.row(JavaUiBundle.message("label.project.wizard.new.project.jdk")) {
       projectWizardJdkComboBox(this, jdkIntentProperty, sdkFilter, jdkPredicate)
         .validationOnInput { validateJavaSdk(withDialog = false) }
         .validationOnApply { validateJavaSdk(withDialog = true) }
+        .validationOnApply {
+          if (validateGradleVersion(gradleVersion, withDialog = false) == null
+              && (kotlinVersion != null && maxKotlinJvmTarget != null)) validateKotlinJdkCompatibility(withDialog = true,
+                                                                                                       sdkFilter,
+                                                                                                       maxKotlinJvmTarget, kotlinVersion)
+          else null
+        }
         .whenItemSelectedFromUi { jdkIntent.javaVersion?.let { logSdkChanged(it.feature) } }
         .onApply { jdkIntent.javaVersion?.let { logSdkFinished(it.feature) } }
     }.bottomGap(BottomGap.SMALL)
@@ -181,7 +190,7 @@ abstract class GradleNewProjectWizardStep<ParentStep>(parent: ParentStep) :
               label(GradleBundle.message("gradle.project.settings.distribution.wrapper.version.npw"))
                 .applyToComponent { minimumWidth = MINIMUM_LABEL_WIDTH }
               cell(TextCompletionComboBox(context.project, TextCompletionComboBoxConverter.Default()))
-                .columns(8)
+                .columns(COLUMNS_SHORT)
                 .applyToComponent { bindSelectedItem(gradleVersionProperty) }
                 .applyToComponent { bindCompletionVariants(gradleVersionsProperty) }
                 .trimmedTextValidation(CHECK_NON_EMPTY)
@@ -284,7 +293,7 @@ abstract class GradleNewProjectWizardStep<ParentStep>(parent: ParentStep) :
     if (GradleJvmSupportMatrix.isJavaSupportedByIdea(javaVersion)) {
       return null
     }
-    val oldestSupportedJavaVersion = GradleJvmSupportMatrix.getOldestSupportedJavaVersionByIdea()
+    val oldestSupportedJavaVersion = GradleJvmSupportMatrix.suggestOldestSupportedJavaVersionByIdea()
     return errorWithDialog(
       withDialog = withDialog,
       message = GradleBundle.message(
@@ -307,7 +316,7 @@ abstract class GradleNewProjectWizardStep<ParentStep>(parent: ParentStep) :
     if (GradleJvmSupportMatrix.isGradleSupportedByIdea(gradleVersion)) {
       return null
     }
-    val oldestSupportedGradleVersion = GradleJvmSupportMatrix.getOldestSupportedGradleVersionByIdea()
+    val oldestSupportedGradleVersion = GradleJvmSupportMatrix.suggestOldestSupportedGradleVersionByIdea()
     return errorWithDialog(
       withDialog = withDialog,
       message = GradleBundle.message(
@@ -322,6 +331,37 @@ abstract class GradleNewProjectWizardStep<ParentStep>(parent: ParentStep) :
         "gradle.settings.wizard.gradle.unsupported.message",
         ApplicationNamesInfo.getInstance().fullProductName,
         oldestSupportedGradleVersion.version,
+      )
+    )
+  }
+
+  /**
+   * For Kotlin, we don't filter out detected but incompatible JDKs, so it's still possible to choose them.
+   * In this case, we want to warn a user if there's an incompatibility with such a version.
+   */
+  private fun ValidationInfoBuilder.validateKotlinJdkCompatibility(
+    withDialog: Boolean,
+    sdkFilter: (Sdk) -> Boolean,
+    maxKotlinJvmTarget: String,
+    kotlinVersion: String,
+  ): ValidationInfo? {
+    val sdk = jdkIntent.prepareJdk() ?: return null
+    if (sdkFilter(sdk)) {
+      return null
+    }
+    val javaVersion = jdkIntent.javaVersion ?: return null
+    return validationWithDialog(
+      withDialog = withDialog,
+      message = GradleBundle.message(
+        "gradle.settings.wizard.kotlin.unsupported.message",
+        maxKotlinJvmTarget
+      ),
+      dialogTitle = GradleBundle.message(
+        "gradle.settings.wizard.java.unsupported.title"
+      ),
+      dialogMessage = GradleBundle.message(
+        "gradle.settings.wizard.kotlin.unsupported.dialog.message",
+        maxKotlinJvmTarget, kotlinVersion, javaVersion.toFeatureString(),
       )
     )
   }

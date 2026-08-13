@@ -23,7 +23,7 @@ import com.jetbrains.python.psi.PySequenceExpression
 import com.jetbrains.python.psi.PyStringLiteralExpression
 import com.jetbrains.python.psi.PyTargetExpression
 import com.jetbrains.python.psi.impl.PyPsiUtils
-import com.jetbrains.python.psi.types.PyClassType
+import com.jetbrains.python.psi.types.PyClassLikeType
 import com.jetbrains.python.psi.types.TypeEvalContext
 
 class PyDunderSlotsInspection : PyInspection() {
@@ -87,7 +87,7 @@ class PyDunderSlotsInspection : PyInspection() {
 
       val classAttribute = pyClass.findClassAttribute(name, false, myTypeEvalContext)
       if (classAttribute != null && classAttribute.hasAssignedValue()) {
-        val message = PyPsiBundle.message("INSP.dunder.slots.name.in.slots.conflicts.with.class.variable", name)
+        val message = PyPsiBundle.problemMessage("INSP.dunder.slots.name.in.slots.conflicts.with.class.variable", name)
         registerProblem(slot, message)
       }
     }
@@ -101,8 +101,8 @@ class PyDunderSlotsInspection : PyInspection() {
       }
 
       val qualifierType = myTypeEvalContext.getType(qualifier)
-      if (qualifierType is PyClassType && !qualifierType.isAttributeWritable(targetName, myTypeEvalContext)) {
-        val message = PyPsiBundle.message("INSP.dunder.slots.class.object.missing.attribute", qualifierType.name, targetName)
+      if (qualifierType is PyClassLikeType && !qualifierType.isAttributeWritable(targetName, myTypeEvalContext)) {
+        val message = PyPsiBundle.problemMessage("INSP.dunder.slots.class.object.missing.attribute", qualifierType.name, targetName)
         registerProblem(target, message)
       }
     }

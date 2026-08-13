@@ -6,6 +6,7 @@ import com.intellij.ide.BrowserUtil;
 import com.intellij.ide.plugins.newui.ListPluginComponent;
 import com.intellij.openapi.application.IdeUrlTrackingParametersProvider;
 import com.intellij.ui.components.labels.LinkLabel;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -18,6 +19,7 @@ import java.util.function.Supplier;
 /**
  * @author Alexander Lobas
  */
+@ApiStatus.Internal
 public final class LinkPanel {
   private final JLabel myTextLabel = new JLabel();
   private final JLabel myLinkLabel;
@@ -39,7 +41,7 @@ public final class LinkPanel {
   }
 
   private @NotNull JLabel createLink(boolean icon) {
-    LinkLabel<Object> linkLabel = new LinkLabel<>(null, icon ? AllIcons.Ide.External_link_arrow : null, (__, ___) -> myRunnable.run());
+    LinkLabel<Object> linkLabel = new LinkLabel<>(null, icon ? AllIcons.Ide.External_link_arrow : null, (_, _) -> myRunnable.run());
     linkLabel.setIconTextGap(0);
     linkLabel.setHorizontalTextPosition(SwingConstants.LEFT);
     return linkLabel;

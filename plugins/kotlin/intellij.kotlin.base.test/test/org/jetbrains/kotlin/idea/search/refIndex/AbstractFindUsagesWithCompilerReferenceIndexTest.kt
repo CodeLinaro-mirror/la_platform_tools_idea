@@ -3,11 +3,9 @@ package org.jetbrains.kotlin.idea.search.refIndex
 
 import com.intellij.pom.java.LanguageLevel
 import com.intellij.psi.PsiElement
-import com.intellij.testFramework.IdeaTestUtil
 import com.intellij.testFramework.builders.JavaModuleFixtureBuilder
 import org.jetbrains.kotlin.findUsages.AbstractFindUsagesTest
 import org.jetbrains.kotlin.findUsages.KotlinFindUsageConfigurator
-import org.jetbrains.kotlin.idea.base.plugin.KotlinPluginMode
 import org.jetbrains.kotlin.idea.test.Diagnostic
 import org.jetbrains.kotlin.idea.test.TestMetadataUtil
 import org.jetbrains.kotlin.idea.test.kmp.KMPTestPlatform
@@ -18,7 +16,7 @@ abstract class AbstractFindUsagesWithCompilerReferenceIndexTest : KotlinCompiler
     override fun tuneFixture(moduleBuilder: JavaModuleFixtureBuilder<*>) {
         super.tuneFixture(moduleBuilder)
         moduleBuilder.setLanguageLevel(LanguageLevel.JDK_17)
-        moduleBuilder.addJdk(IdeaTestUtil.getMockJdk18Path().path)
+        moduleBuilder.addJdkVersion(LanguageLevel.JDK_1_8)
     }
 
     protected open val ignoreLog: Boolean get() = false
@@ -28,8 +26,7 @@ abstract class AbstractFindUsagesWithCompilerReferenceIndexTest : KotlinCompiler
     abstract fun getDiagnosticProvider(): (KtFile) -> List<Diagnostic>
 
     protected fun doTest(path: String) {
-        val isFir = pluginMode == KotlinPluginMode.K2
-        val criType = if (isFir) AbstractFindUsagesTest.Companion.FindUsageTestType.FIR_CRI else AbstractFindUsagesTest.Companion.FindUsageTestType.CRI
+        val criType = AbstractFindUsagesTest.Companion.FindUsageTestType.FIR_CRI
         runCatching {
             AbstractFindUsagesTest.Companion.doFindUsageTest<PsiElement>(
                 path,
@@ -38,7 +35,7 @@ abstract class AbstractFindUsagesWithCompilerReferenceIndexTest : KotlinCompiler
                 ignoreLog = ignoreLog,
                 testPlatform = KMPTestPlatform.Unspecified,
                 executionWrapper = { findUsageTest ->
-                    findUsageTest(if (isFir) AbstractFindUsagesTest.Companion.FindUsageTestType.FIR else AbstractFindUsagesTest.Companion.FindUsageTestType.DEFAULT)
+                    findUsageTest(AbstractFindUsagesTest.Companion.FindUsageTestType.FIR)
 
                     installCompiler()
                     rebuildProject()

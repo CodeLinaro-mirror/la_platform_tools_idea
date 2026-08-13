@@ -18,9 +18,11 @@ import com.intellij.ide.highlighter.JavaFileType
 import com.intellij.lang.injection.InjectedLanguageManager
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.runReadAction
+import com.intellij.openapi.application.runReadActionBlocking
 import com.intellij.openapi.components.service
-import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.diagnostic.logger
+import com.intellij.openapi.diagnostic.rethrowControlFlowException
+import com.intellij.openapi.externalSystem.service.project.manage.ProjectDataImportListener
 import com.intellij.openapi.fileTypes.FileType
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.module.ModuleManager
@@ -45,12 +47,11 @@ import com.intellij.psi.util.PsiUtilCore
 import com.intellij.util.Processor
 import com.intellij.util.containers.generateRecursiveSequence
 import com.intellij.util.indexing.StorageException
+import kotlinx.coroutines.CoroutineScope
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.TestOnly
-import org.jetbrains.annotations.VisibleForTesting
 import org.jetbrains.kotlin.asJava.syntheticAccessors
 import org.jetbrains.kotlin.asJava.unwrapped
-import org.jetbrains.kotlin.config.SettingConstants
 import org.jetbrains.kotlin.idea.KotlinFileType
 import org.jetbrains.kotlin.idea.base.psi.kotlinFqName
 import org.jetbrains.kotlin.idea.base.util.not
@@ -58,6 +59,7 @@ import org.jetbrains.kotlin.idea.base.util.restrictToKotlinSources
 import org.jetbrains.kotlin.idea.compiler.configuration.KotlinCompilerWorkspaceSettings
 import org.jetbrains.kotlin.idea.search.declarationsSearch.HierarchySearchRequest
 import org.jetbrains.kotlin.idea.search.declarationsSearch.searchInheritors
+import org.jetbrains.kotlin.idea.search.refIndex.bta.BtaFileWatcher
 import org.jetbrains.kotlin.idea.util.application.isUnitTestMode
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
@@ -76,6 +78,7 @@ import org.jetbrains.kotlin.utils.addToStdlib.UnsafeCastFunction
 import org.jetbrains.kotlin.utils.addToStdlib.safeAs
 import java.io.IOException
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.LongAdder
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.read
@@ -84,13 +87,15 @@ import kotlin.concurrent.write
 /**
  * Based on [com.intellij.compiler.backwardRefs.CompilerReferenceServiceBase] and [com.intellij.compiler.backwardRefs.CompilerReferenceServiceImpl]
  */
-class KotlinCompilerReferenceIndexService(private val project: Project) : Disposable, ModificationTracker {
+class KotlinCompilerReferenceIndexService(private val project: Project, private val coroutineScope: CoroutineScope) : Disposable, ModificationTracker {
     private var initialized: Boolean = false
     private var storage: KotlinCompilerReferenceIndexStorage? = null
     private var activeBuildCount = 0
     private val compilationCounter = LongAdder()
+    private val btaWatcherInstalled = AtomicBoolean(false)
     private val projectFileIndex = ProjectRootManager.getInstance(project).fileIndex
     private val supportedFileTypes: Set<FileType> = setOf(KotlinFileType.INSTANCE, JavaFileType.INSTANCE)
+    private val currentBuilderId by lazy { KotlinCompilerReferenceIndexStorage.getBuilderId(project) }
     private val dirtyScopeHolder = DirtyScopeHolder(
         project,
         supportedFileTypes,
@@ -101,7 +106,7 @@ class KotlinCompilerReferenceIndexService(private val project: Project) : Dispos
         connect.subscribe(
             CustomBuilderMessageHandler.TOPIC,
             CustomBuilderMessageHandler { builderId, _, messageText ->
-                if (builderId == SettingConstants.KOTLIN_COMPILER_REFERENCE_INDEX_BUILDER_ID) {
+                if (builderId == currentBuilderId) {
                     mutableSet += messageText
                 }
             },
@@ -158,6 +163,53 @@ class KotlinCompilerReferenceIndexService(private val project: Project) : Dispos
                 withWriteLock { closeStorage() }
             }
         })
+
+        // TODO KTIJ-37446 Make Kotlin Compiler Reference Index JPS-agnostic
+        // eager attempt covers reopened projects
+        installBtaFileWatcherIfApplicable()
+        // for first-time project `GradleSettings.linkedProjectsSettings` is still empty,
+        // so we retry once Gradle import registers linked projects
+        connection.subscribe(ProjectDataImportListener.TOPIC, object : ProjectDataImportListener {
+            override fun onImportFinished(projectPath: String?) {
+                installBtaFileWatcherIfApplicable()
+            }
+        })
+    }
+
+    /**
+     * Installs the BTA file watcher if / when it is applicable for this project; idempotent
+     */
+    @ApiStatus.Internal
+    fun installBtaFileWatcherIfApplicable() {
+        if (!BtaFileWatcher.isApplicable(project)) return
+        if (!btaWatcherInstalled.compareAndSet(false, true)) return
+        BtaFileWatcher(project).watchIn(coroutineScope) { updatedModules ->
+            executeOnBuildThread {
+                onExternalCompilationDetected(updatedModules)
+            }
+        }
+    }
+
+    @get:TestOnly
+    @get:ApiStatus.Internal
+    val isBtaFileWatcherInstalled: Boolean
+        get() = btaWatcherInstalled.get()
+
+    private fun onExternalCompilationDetected(compiledModules: Collection<Module>) {
+        val allModules = if (!initialized) allModules() else null
+        compilationCounter.increment()
+        val projectPath = runReadActionBlocking { projectIfNotDisposed?.basePath }
+        withDirtyScopeUnderWriteLock {
+            if (!refreshStorageIncrementally(compiledModules)) {
+                openStorage(projectPath)
+            }
+
+            if (!initialized) {
+                initialize(allModules, compiledModules)
+            } else {
+                compilerActivityFinished(compiledModules.toList())
+            }
+        }
     }
 
     internal class KCRIIsUpToDateConsumer : IsUpToDateCheckConsumer {
@@ -186,6 +238,12 @@ class KotlinCompilerReferenceIndexService(private val project: Project) : Dispos
         val allModules = if (!initialized) allModules() else null
         compilationCounter.increment()
         withDirtyScopeUnderWriteLock {
+            if (activeBuildCount <= 0) {
+                // IJPL-243245 `BuildManagerListener.buildFinished` fires without preceding `buildStarted`
+                LOG.warn("buildFinished without preceding buildStarted (activeBuildCount=$activeBuildCount), skipping")
+                return@withDirtyScopeUnderWriteLock
+            }
+
             --activeBuildCount
 
             if (activeBuildCount == 0) openStorage(projectPath)
@@ -208,11 +266,13 @@ class KotlinCompilerReferenceIndexService(private val project: Project) : Dispos
     private fun allModules(): Array<Module>? = runReadAction { projectIfNotDisposed?.let { ModuleManager.getInstance(it).modules } }
 
     @ApiStatus.Internal
-    @VisibleForTesting
     fun dirtyModules(): Set<Module>? {
         if (!initialized) return null
         return dirtyScopeHolder.allDirtyModules
     }
+
+    @ApiStatus.Internal
+    fun isBuildActive(): Boolean = withReadLock { activeBuildCount != 0 }
 
     private fun markAsUpToDate() {
         val modules = allModules() ?: return
@@ -244,6 +304,17 @@ class KotlinCompilerReferenceIndexService(private val project: Project) : Dispos
         }
     }
 
+    private fun refreshStorageIncrementally(updatedModules: Collection<Module>): Boolean {
+        val incrementalStorage = storage as? IncrementalKotlinCompilerReferenceIndexStorage ?: return false
+        return try {
+            incrementalStorage.refreshModules(updatedModules)
+        } catch (e: Throwable) {
+            rethrowControlFlowException(e)
+            LOG.error("an exception during incremental KCRI storage refresh", e)
+            false
+        }
+    }
+
     private fun closeStorage() {
         storage?.close().let {
             LOG.info("KCRI storage is closed" + if (it == null) " (didn't exist)" else "")
@@ -254,7 +325,7 @@ class KotlinCompilerReferenceIndexService(private val project: Project) : Dispos
     private fun <T> runActionSafe(actionName: String, action: () -> T): T? = try {
         action()
     } catch (e: Throwable) {
-        if (Logger.shouldRethrow(e)) throw e
+        rethrowControlFlowException(e)
 
         try {
             LOG.error("an exception during $actionName calculation", e)
@@ -430,7 +501,7 @@ class KotlinCompilerReferenceIndexService(private val project: Project) : Dispos
         return !isInsideLibraryScope() &&
                 storage != null &&
                 isEnabled(project) &&
-                runReadAction { element.containingFile }
+                runReadActionBlocking { element.containingFile }
                     ?.let(InjectedLanguageManager.getInstance(project)::isInjectedFragment)
                     ?.not() == true
     }

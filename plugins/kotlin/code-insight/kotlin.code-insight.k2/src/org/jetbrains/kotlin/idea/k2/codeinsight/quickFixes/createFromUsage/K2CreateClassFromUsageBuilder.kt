@@ -13,6 +13,7 @@ import com.intellij.util.text.UniqueNameGenerator
 import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaSession
 import org.jetbrains.kotlin.analysis.api.analyze
+import org.jetbrains.kotlin.analysis.api.components.expandedSymbol
 import org.jetbrains.kotlin.analysis.api.components.isAnyType
 import org.jetbrains.kotlin.analysis.api.components.isUnitType
 import org.jetbrains.kotlin.analysis.api.renderer.types.impl.KaTypeRendererForSource
@@ -29,7 +30,7 @@ import org.jetbrains.kotlin.idea.codeinsight.utils.containsStarProjections
 import org.jetbrains.kotlin.idea.codeinsight.utils.isEnum
 import org.jetbrains.kotlin.idea.codeinsight.utils.isInheritable
 import org.jetbrains.kotlin.idea.codeinsight.utils.resolveExpression
-import org.jetbrains.kotlin.idea.codeinsight.utils.toVisibility
+import org.jetbrains.kotlin.idea.codeinsight.utils.toCompilerVisibility
 import org.jetbrains.kotlin.idea.k2.codeinsight.quickFixes.createFromUsage.CreateKotlinCallableActionTextBuilder.renderCandidatesOfParameterTypes
 import org.jetbrains.kotlin.idea.k2.codeinsight.quickFixes.createFromUsage.K2CreateFunctionFromUsageUtil.computeExpectedParams
 import org.jetbrains.kotlin.idea.k2.codeinsight.quickFixes.createFromUsage.K2CreateFunctionFromUsageUtil.convertToClass
@@ -178,7 +179,7 @@ object K2CreateClassFromUsageBuilder {
                     KtTokens.PRIVATE_KEYWORD.value
                 } else if (curVisibility == KtTokens.INTERNAL_KEYWORD.value || param.expectedTypes.any {
                         it.toKtTypeWithNullability(refExpr)?.convertToClass()?.visibilityModifierTypeOrDefault()
-                            ?.toVisibility() == Visibilities.Internal
+                            ?.toCompilerVisibility() == Visibilities.Internal
                     }) {
                     KtTokens.INTERNAL_KEYWORD.value
                 } else {
@@ -304,7 +305,7 @@ object K2CreateClassFromUsageBuilder {
             }
         }
         else if (qualifier is KaCallableSymbol) {
-            targetParents = listOfNotNull(qualifier.returnType.convertToClass())
+            targetParents = listOfNotNull(qualifier.returnType.expandedSymbol?.psi)
             inner = true
         }
         if (receiverExpression is KtThisExpression) {

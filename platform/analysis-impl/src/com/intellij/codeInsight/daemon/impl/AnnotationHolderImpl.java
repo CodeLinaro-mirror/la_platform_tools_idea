@@ -33,6 +33,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static com.intellij.openapi.diagnostic.LoggerKt.rethrowControlFlowException;
+
 /**
  * Use {@link AnnotationHolder} instead. The members of this class can suddenly change or disappear.
  */
@@ -95,13 +97,6 @@ public final class AnnotationHolderImpl extends SmartList<@NotNull Annotation> i
     assertMyFile(elt);
     Class<?> callerClass = ReflectionUtilRt.findCallerClass(2);
     return doCreateAnnotation(HighlightSeverity.WARNING, elt.getTextRange(), message, wrapXml(message), callerClass, "createWarningAnnotation");
-  }
-
-  @Override
-  public Annotation createWarningAnnotation(@NotNull ASTNode node, @NlsContexts.DetailedDescription String message) {
-    assertMyFile(node.getPsi());
-    Class<?> callerClass = ReflectionUtilRt.findCallerClass(2);
-    return doCreateAnnotation(HighlightSeverity.WARNING, node.getTextRange(), message, wrapXml(message), callerClass, "createWarningAnnotation");
   }
 
   @Override
@@ -224,7 +219,7 @@ public final class AnnotationHolderImpl extends SmartList<@NotNull Annotation> i
     catch (IndexNotReadyException ignore) {
     }
     catch (Throwable t) {
-      if (Logger.shouldRethrow(t)) throw t;
+      rethrowControlFlowException(t);
       LOG.error(t);
     }
   }

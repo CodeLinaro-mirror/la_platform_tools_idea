@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.intellij.build
 
 import org.jetbrains.intellij.build.dependencies.BuildDependenciesConstants.INTELLIJ_DEPENDENCIES_URL
@@ -36,14 +36,15 @@ object NativeBinaryDownloader {
    * Attempts to locate a local debug build of cross-platform launcher when in the development mode
    * and [org.jetbrains.intellij.build.BuildOptions.useLocalLauncher] is set to `true`.
    *
-   * Otherwise, Downloads and unpacks the launcher tarball.
+   * Otherwise, downloads and unpacks the launcher tarball.
    *
-   * Returns a pair of paths `(executable, license)` for the given platform.
+   * Returns a tuple of paths `(executable, license, extra-file?)` for the given platform (e.g., a console executable for Windows).
    */
-  suspend fun getLauncher(context: BuildContext, os: OsFamily, arch: JvmArchitecture): Pair<Path, Path> {
-    return Pair(
+  suspend fun getLauncher(context: BuildContext, os: OsFamily, arch: JvmArchitecture): Triple<Path, Path, Path?> {
+    return Triple(
       findFileForAndroidStudio("launcher", context, os, arch),
       findFileForAndroidStudio("launcher_licenses.html", context, os, arch),
+      null, // Not yet shipping the Windows console launcher in Studio (b/536093713).
     )
     /* Android Studio (b/342419219): we build platform binaries from source instead of downloading them from JetBrains.
     if (context.options.isInDevelopmentMode && context.options.useLocalLauncher) {
@@ -52,23 +53,27 @@ object NativeBinaryDownloader {
     }
 
     val (archiveFile, unpackedDir) = downloadAndUnpack(context, "launcherBuild", LAUNCHER_ID)
-    val executableFile = findExecutable(archiveFile, unpackedDir, os, arch, "xplat-launcher")
+    val executableFile = findFile(archiveFile, unpackedDir, binName(os, arch, "xplat-launcher"))
     val licenseFile = findFile(archiveFile, unpackedDir, "license/${LICENSE_FILE_NAME}")
-    return executableFile to licenseFile
+    val extraFile = when (os) {
+      OsFamily.WINDOWS -> unpackedDir.resolve(binName(os, arch, "xplat-launcher-win-con"))
+      else -> null
+    }?.takeIf { it.isRegularFile() }
+    return Triple(executableFile, licenseFile, extraFile)
     */
   }
 
-  private fun findLocalLauncher(context: BuildContext, os: OsFamily): Pair<Path, Path>? {
+  private fun findLocalLauncher(context: BuildContext, os: OsFamily): Triple<Path, Path, Path?>? {
     val targetDir = context.paths.communityHomeDirRoot.communityRoot.resolve("native/XPlatLauncher/target/debug")
     if (targetDir.isDirectory()) {
-      val executableName = "xplat-launcher${os.binaryExt}"
-      val executableFile = targetDir.resolve(executableName)
+      val executableFile = targetDir.resolve(os.binaryName("xplat-launcher"))
       if (executableFile.isRegularFile()) {
         val licenseFile = targetDir.resolve(LICENSE_FILE_NAME)
         if (!licenseFile.exists()) {
           licenseFile.writeText("(cross-platform launcher license file stub)", options = arrayOf(StandardOpenOption.CREATE_NEW))
         }
-        return executableFile to licenseFile
+        val extraFile = targetDir.resolve(os.binaryName("xplat-launcher-win-con")).takeIf { it.isRegularFile() }
+        return Triple(executableFile, licenseFile, extraFile)
       }
     }
 
@@ -76,13 +81,13 @@ object NativeBinaryDownloader {
   }
 
   /**
-   * Downloads and unpacks the restarter tarball and returns a path to an executable for the given platform.
+   * Downloads and unpacks the restart helper tarball and returns a path to an executable for the given platform.
    */
   suspend fun getRestarter(context: BuildContext, os: OsFamily, arch: JvmArchitecture): Path {
     return findFileForAndroidStudio("restarter", context, os, arch)
     /* Android Studio (b/342419219): we build platform binaries from source instead of downloading them from JetBrains.
     val (archiveFile, unpackedDir) = downloadAndUnpack(context, "restarterBuild", RESTARTER_ID)
-    return findExecutable(archiveFile, unpackedDir, os, arch, "restarter")
+    return findFile(archiveFile, unpackedDir, binName(os, arch, "restarter"))
     */
   }
 
@@ -96,8 +101,10 @@ object NativeBinaryDownloader {
     return archiveFile to unpackedDir
   }
 
-  private fun findExecutable(archiveFile: Path, unpackedDir: Path, os: OsFamily, arch: JvmArchitecture, baseName: String): Path =
-    findFile(archiveFile, unpackedDir, "${os.osName}-${arch.archName}/${baseName}${os.binaryExt}")
+  private fun binName(os: OsFamily, arch: JvmArchitecture, baseName: String): String = "${os.osName}-${arch.archName}/${os.binaryName(baseName)}"
+
+  @Suppress("SameParameterValue")
+  private fun libName(os: OsFamily, arch: JvmArchitecture, baseName: String): String = "${os.osName}-${arch.archName}/${os.libraryName(baseName)}"
 
   private fun findFile(archiveFile: Path, unpackedDir: Path, relativePath: String): Path {
     val file = unpackedDir.resolve(relativePath)

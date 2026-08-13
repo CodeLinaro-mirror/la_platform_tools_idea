@@ -27,6 +27,7 @@ public final class PluginNode implements IdeaPluginDescriptor {
   private static final DecimalFormat K_FORMAT = new DecimalFormat("###.#K");
   private static final DecimalFormat M_FORMAT = new DecimalFormat("###.#M");
 
+  @ApiStatus.Internal
   public enum Status {
     UNKNOWN, INSTALLED, DOWNLOADED, DELETED
   }
@@ -67,7 +68,6 @@ public final class PluginNode implements IdeaPluginDescriptor {
   private String myChannel; // TODO parameters map?
   private @NlsSafe String myRepositoryName;
   private String myInstalledVersion;
-  private boolean myEnabled = true;
   private String myRating;
   private boolean myIncomplete;
   private List<String> myTags;
@@ -286,10 +286,12 @@ public final class PluginNode implements IdeaPluginDescriptor {
     this.sinceBuild = sinceBuild;
   }
 
+  @ApiStatus.Internal
   public Status getStatus() {
     return myStatus;
   }
 
+  @ApiStatus.Internal
   public void setStatus(Status status) {
     myStatus = status;
   }
@@ -441,22 +443,6 @@ public final class PluginNode implements IdeaPluginDescriptor {
            null;
   }
 
-  /**
-   * @deprecated Use {@link #setDependencies(List)} instead
-   */
-  @Deprecated(forRemoval = true)
-  public void setDepends(@NotNull List<PluginId> depends, PluginId @Nullable [] optionalDependencies) {
-    myDependencies = new ArrayList<>();
-    for (PluginId id : depends) {
-      myDependencies.add(new PluginNodeDependency(id, false));
-    }
-    if (optionalDependencies != null) {
-      for (PluginId dependency : optionalDependencies) {
-        myDependencies.add(new PluginNodeDependency(dependency, true));
-      }
-    }
-  }
-
   public void setDependencies(@NotNull List<? extends IdeaPluginDependency> dependencies) {
     myDependencies = new ArrayList<>(dependencies);
   }
@@ -530,13 +516,7 @@ public final class PluginNode implements IdeaPluginDescriptor {
   @Deprecated
   @Override
   public boolean isEnabled() {
-    return myEnabled;
-  }
-
-  @Deprecated
-  @Override
-  public void setEnabled(boolean enabled) {
-    myEnabled = enabled;
+    return true;
   }
 
   public String getDownloadUrl() {

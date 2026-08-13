@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.intellij.build
 
 import com.intellij.util.text.SemVer
@@ -23,6 +23,21 @@ import org.jetbrains.jps.model.module.JpsModuleDependency
 import kotlin.io.path.exists
 
 private const val GROUP_ID: String = "org.jetbrains.jewel"
+
+/**
+ * Each entry represents a prefix for Platform dependencies which are being published to Maven Central.
+ * And distinct Maven Central publication credentials are issued per namespace/groupId.
+ * Please do not edit this list since every entry requires a corresponding change on the JetBrains infrastructure.
+ */
+private val PLATFORM_DEPENDENCY_PREFIXES: Set<String> = setOf(
+  "com.jetbrains.intellij.platform:icons-",
+)
+
+private val JEWEL_STANDALONE_REQUIRED_ICONS_MODULES: Set<String> = setOf(
+  "intellij.platform.icons.api",
+  "intellij.platform.icons.api.rendering",
+  "intellij.platform.icons.impl",
+)
 
 private val CORE: PersistentMap<String, String> = persistentHashMapOf(
   "intellij.platform.jewel.foundation" to "jewel-foundation",
@@ -80,6 +95,13 @@ internal object JewelMavenArtifacts {
   fun isPublishedJewelModule(module: JpsModule): Boolean =
     module.name.startsWith("intellij.platform.jewel.") && module.name !in NOT_PUBLISHED
 
+  /**
+   * The icons modules required in Jewel Standalone and published to Maven Central transitively through
+   * the published Jewel artifacts. Keep this allow-list aligned with [PLATFORM_DEPENDENCY_PREFIXES].
+   */
+  fun isPublishedPlatformDependency(module: JpsModule): Boolean =
+    module.name in JEWEL_STANDALONE_REQUIRED_ICONS_MODULES
+
   fun patchCoordinates(module: JpsModule, coordinates: MavenCoordinates): MavenCoordinates {
     check(isPublishedJewelModule(module))
     val version = "$VERSION-${coordinates.version}"
@@ -135,6 +157,14 @@ internal object JewelMavenArtifacts {
             add(dependency.withTransitiveDependencies(DependencyScope.COMPILE))
           }
         }
+        "com.jetbrains.intellij.platform" -> {
+          // Publish the Icons API modules (icons-api / icons-api-rendering / icons-impl) as compile
+          // dependencies, so consumers of the Jewel Standalone artifacts get IconManager on their
+          // classpath and can both boot IntUiTheme and compile against the public Icon/iconKey APIs.
+          if (coordinates.artifactId.startsWith("icons-")) {
+            add(dependency.withTransitiveDependencies(DependencyScope.COMPILE))
+          }
+        }
 
         // else -> ignore the dependency, as it comes through transitively, usually from Compose.
 
@@ -174,6 +204,20 @@ internal object JewelMavenArtifacts {
     })
   }
 
+  /**
+   * Supplies the POM metadata required by Maven Central for the [isPublishedPlatformDependency] modules.
+   * The `name`, `url`, `scm`, `developers` and `organization` fields are already filled in by the POM
+   * generator for these community modules; only `description` and `licenses` are missing.
+   */
+  fun addPlatformPomMetadata(module: JpsModule, model: Model) {
+    check(isPublishedPlatformDependency(module))
+    model.description = "IntelliJ Platform icons API."
+    model.addLicense(License().apply {
+      name = "Apache License 2.0"
+      url = "https://www.apache.org/licenses/LICENSE-2.0.txt"
+    })
+  }
+
   private fun JpsModule.modulesTree(): Sequence<JpsModule> {
     return sequenceOf(this) + dependenciesList
       .dependencies
@@ -191,7 +235,7 @@ internal object JewelMavenArtifacts {
 
   fun validate(context: BuildContext, mavenArtifacts: Collection<GeneratedMavenArtifacts>) {
     ALL_MODULES.asSequence()
-      .map(context::findRequiredModule)
+      .map { context.outputProvider.findRequiredModule(it) }
       .flatMap { it.modulesTree() }
       .distinct().forEach { module ->
         val artifact = mavenArtifacts.singleOrNull { (it) -> it.name == module.name }
@@ -199,9 +243,9 @@ internal object JewelMavenArtifacts {
           checkNotNull(artifact) {
             "No maven artifact is created for the module ${module.name}:\n$mavenArtifacts"
           }
-          check(artifact.coordinates.groupId == GROUP_ID) {
-            "The module ${module.name} has groupId=${artifact.coordinates.groupId} " +
-            "but it's expected to have groupId=$GROUP_ID because Maven Central publication credentials are issues per namespace/groupId"
+          check(artifact.coordinates.groupId == GROUP_ID || PLATFORM_DEPENDENCY_PREFIXES.any { "${artifact.coordinates}".startsWith(it) }) {
+            "A ${module.name} module has unknown groupId=${artifact.coordinates.groupId}, " +
+            "it is not allowed because Maven Central publication credentials are issued per namespace/groupId"
           }
         }
       }

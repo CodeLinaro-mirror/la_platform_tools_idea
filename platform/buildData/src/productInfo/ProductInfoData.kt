@@ -6,19 +6,19 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.Serializer
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
-import org.jetbrains.annotations.ApiStatus.Internal
+import org.jetbrains.annotations.ApiStatus
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
 /**
  * Describes the product-info file containing meta-information about a product installation.
  * The schema of the file is also described in the `product-info.schema.json` file, so it must be kept consistent with it.
- * 
+ *
  * Data from product-info.json is used from code inside the IDE it's bundled with (e.g., XPlatLauncher), and such internal clients may
  * rely on the presence of properties added in the current version.
  * Also, it's used by external tools and from other IDE versions, so the schema and deserialization logic must be backward compatible.
  * It means that all newly added properties must be optional, and default values must be provided for them in the primary constructor.
- * If the new version always specifies values for these properties in the product-info.json, they can be marked as non-null in 
+ * If the new version always specifies values for these properties in the product-info.json, they can be marked as non-null in
  * [the factory method][ProductInfoData.create] to state that they are required in the current version and allow internal clients relying
  * on their presence.
  */
@@ -42,18 +42,18 @@ class ProductInfoData private constructor(
   val modules: List<String> = emptyList(),  // actually, it is not modules but plugin aliases
   val fileExtensions: List<String> = emptyList(),
   val flavors: List<ProductFlavorData> = emptyList(),
-  
+
   // not used by the launcher; must be at the end
-  @Internal
+  @ApiStatus.Internal
   @JvmField val layout: List<ProductInfoLayoutItem> = emptyList(),
 ) {
   companion object {
     /**
      * Creates an instance of [ProductInfoData] for the current version.
-     * Some properties that are nullable in the primary constructor are deliberately marked as not-null in this function to state that they
-     * are required in the current version, and internal clients may rely on their presence.
+     * Some properties that are nullable in the primary constructor are deliberately marked as not-null in this function
+     * to state that they are required in the current version, and internal clients may rely on their presence.
      */
-    @Internal
+    @ApiStatus.Internal
     fun create(
       name: String,
       version: String,
@@ -73,38 +73,21 @@ class ProductInfoData private constructor(
       fileExtensions: List<String>,
       flavors: List<ProductFlavorData>,
       layout: List<ProductInfoLayoutItem>,
-    ): ProductInfoData {
-      return ProductInfoData(
-        name = name,
-        version = version,
-        versionSuffix = versionSuffix,
-        buildNumber = buildNumber,
-        productCode = productCode,
-        envVarBaseName = envVarBaseName,
-        dataDirectoryName = dataDirectoryName,
-        svgIconPath = svgIconPath,
-        productVendor = productVendor,
-        majorVersionReleaseDate = majorVersionReleaseDate,
-        minRequiredJavaVersion = minRequiredJavaVersion,
-        launch = launch,
-        customProperties = customProperties,
-        bundledPlugins = bundledPlugins,
-        modules = modules,
-        fileExtensions = fileExtensions,
-        flavors = flavors,
-        layout = layout
-      )
-    }
+    ): ProductInfoData = ProductInfoData(
+      name, version, versionSuffix, buildNumber, productCode, envVarBaseName, dataDirectoryName, svgIconPath, productVendor,
+      majorVersionReleaseDate, minRequiredJavaVersion, launch, customProperties, bundledPlugins, modules, fileExtensions, flavors, layout
+    )
   }
 }
 
 @Serializable
-class ProductFlavorData @Internal constructor(@JvmField val id: String)
+class ProductFlavorData @ApiStatus.Internal constructor(@JvmField val id: String)
 
 /**
  * Describes 'launch' section in [product-info.json][ProductInfoData] file.
  */
 @Serializable
+@Suppress("unused")
 class ProductInfoLaunchData private constructor(
   val os: String,
   val arch: String? = null,
@@ -115,15 +98,16 @@ class ProductInfoLaunchData private constructor(
   val bootClassPathJarNames: List<String> = emptyList(),
   val additionalJvmArguments: List<String> = emptyList(),
   val mainClass: String? = null,
+  val stdioRedirectArg: String? = null,
   val customCommands: List<CustomCommandLaunchData> = emptyList(),
 ) {
   companion object {
     /**
      * Creates an instance of [ProductInfoLaunchData] for the current version.
-     * Some properties that are nullable in the primary constructor are deliberately marked as not-null in this function to state that they
-     * are required in the current version, and internal clients may rely on their presence.
+     * Some properties that are nullable in the primary constructor are deliberately marked as not-null in this function
+     * to state that they are required in the current version, and internal clients may rely on their presence.
      */
-    @Internal
+    @ApiStatus.Internal
     @JvmStatic
     fun create(
       os: String,
@@ -134,46 +118,38 @@ class ProductInfoLaunchData private constructor(
       bootClassPathJarNames: List<String>,
       additionalJvmArguments: List<String>,
       mainClass: String,
+      stdioRedirectArg: String? = null,
       startupWmClass: String? = null,
       customCommands: List<CustomCommandLaunchData> = emptyList(),
-    ): ProductInfoLaunchData {
-      return ProductInfoLaunchData(
-        os = os,
-        arch = arch,
-        launcherPath = launcherPath,
-        javaExecutablePath = javaExecutablePath,
-        vmOptionsFilePath = vmOptionsFilePath,
-        startupWmClass = startupWmClass,
-        bootClassPathJarNames = bootClassPathJarNames,
-        additionalJvmArguments = additionalJvmArguments,
-        mainClass = mainClass,
-        customCommands = customCommands,
-      )
-    }
+    ): ProductInfoLaunchData = ProductInfoLaunchData(
+      os, arch, launcherPath, javaExecutablePath, vmOptionsFilePath, startupWmClass, bootClassPathJarNames, additionalJvmArguments,
+      mainClass, stdioRedirectArg, customCommands
+    )
   }
 }
 
 @Serializable
 @Suppress("unused")
-class CustomCommandLaunchData @Internal constructor(
+class CustomCommandLaunchData @ApiStatus.Internal constructor(
   @JvmField val commands: List<String>,
   @JvmField val vmOptionsFilePath: String? = null,
   @JvmField val bootClassPathJarNames: List<String> = emptyList(),
   @JvmField val additionalJvmArguments: List<String> = emptyList(),
   @JvmField val mainClass: String? = null,
+  @JvmField val stdioRedirectArg: String? = null,
   @JvmField val envVarBaseName: String? = null,
   @JvmField val dataDirectoryName: String? = null,
 )
 
 @Serializable
-class CustomProperty @Internal constructor(
+class CustomProperty @ApiStatus.Internal constructor(
   val key: String,
   val value: String,
 )
 
 @Serializer(forClass = LocalDate::class)
 private object LocalDateSerializer : KSerializer<LocalDate> {
-  private val formatter = DateTimeFormatter.ofPattern(@Suppress("SpellCheckingInspection") "yyyyMMdd")
+  private val formatter = DateTimeFormatter.ofPattern("yyyyMMdd")
 
   override fun serialize(encoder: Encoder, value: LocalDate) {
     encoder.encodeString(value.format(formatter))

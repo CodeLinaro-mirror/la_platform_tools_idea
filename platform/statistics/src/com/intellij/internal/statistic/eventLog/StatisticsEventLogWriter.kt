@@ -7,11 +7,14 @@ import com.intellij.openapi.Disposable
 import com.jetbrains.fus.reporting.model.lion3.LogEvent
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.jetbrains.annotations.ApiStatus
 import java.io.File
 import java.io.IOException
 import java.nio.file.Path
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.seconds
 
+@ApiStatus.Internal
 interface StatisticsEventLogWriter : Disposable {
   fun log(logEvent: LogEvent)
 
@@ -24,8 +27,8 @@ interface StatisticsEventLogWriter : Disposable {
   fun rollOver()
 }
 
-class StatisticsEventLogFileWriter(private val recorderId: String,
-                                   private val loggerProvider: StatisticsEventLoggerProvider,
+@ApiStatus.Internal
+class StatisticsEventLogFileWriter(private val loggerProvider: StatisticsEventLoggerProvider,
                                    maxFileSizeInBytes: Int,
                                    isEap: Boolean,
                                    prefix: String) : StatisticsEventLogWriter {
@@ -43,9 +46,15 @@ class StatisticsEventLogFileWriter(private val recorderId: String,
       val dir = getEventLogDir()
       val buildType = if (isEap) EventLogBuildType.EAP else EventLogBuildType.RELEASE
       val logFilePathProvider = { directory: Path -> EventLogFile.create(directory, buildType, prefix).file }
-      val fileEventLoggerLogger = EventLogFileWriter(dir, maxFileSizeInBytes, logFilePathProvider)
+      val fileEventLoggerLogger = EventLogFileWriter(
+        dir,
+        maxFileSizeInBytes,
+        logFilePathProvider,
+        maxFileAge = 7.days,
+        eventLogSystemCollector = loggerProvider.eventLogSystemLogger
+      )
       logger = fileEventLoggerLogger
-      if (StatisticsRecorderUtil.isTestModeEnabled(recorderId)) {
+      if (StatisticsRecorderUtil.isTestModeEnabled(loggerProvider.recorderId)) {
         // effectively canceled when this object is disposed
         loggerProvider.coroutineScope.launch {
           delay(10.seconds)
@@ -59,7 +68,7 @@ class StatisticsEventLogFileWriter(private val recorderId: String,
   }
 
   private fun getEventLogDir(): Path {
-    return EventLogConfiguration.getInstance().getEventLogDataPath().resolve("logs").resolve(recorderId)
+    return EventLogConfiguration.getInstance().getEventLogDataPath().resolve("logs").resolve(loggerProvider.recorderId)
   }
 
   override fun log(logEvent: LogEvent) {

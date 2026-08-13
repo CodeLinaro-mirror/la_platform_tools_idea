@@ -3,6 +3,7 @@ package com.intellij.platform.runtime.repository.serialization;
 
 import com.intellij.platform.runtime.repository.MalformedRepositoryException;
 import com.intellij.platform.runtime.repository.RuntimeModuleRepository;
+import com.intellij.platform.runtime.repository.RuntimePluginHeader;
 import com.intellij.platform.runtime.repository.impl.RuntimeModuleRepositoryImpl;
 import com.intellij.platform.runtime.repository.serialization.impl.CompactFileReader;
 import com.intellij.platform.runtime.repository.serialization.impl.CompactFileWriter;
@@ -16,6 +17,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collection;
+import java.util.Collections;
 
 /**
  * Runtime module repository is stored in two formats: a JAR file containing XML files describing modules, and a compact binary file.
@@ -25,9 +27,11 @@ import java.util.Collection;
 public final class RuntimeModuleRepositorySerialization {
   private RuntimeModuleRepositorySerialization() {}
 
-  public static void saveToCompactFile(@NotNull Collection<RawRuntimeModuleDescriptor> descriptors, @Nullable String bootstrapModuleName,
+  public static void saveToCompactFile(@NotNull Collection<RawRuntimeModuleDescriptor> moduleDescriptors,
+                                       @NotNull Collection<RuntimePluginHeader> pluginHeaders,
+                                       @Nullable String bootstrapModuleName,
                                        @NotNull Path filePath, int generatorVersion) throws IOException {
-    CompactFileWriter.saveToFile(descriptors, bootstrapModuleName, generatorVersion, filePath);
+    CompactFileWriter.saveToFile(moduleDescriptors, pluginHeaders, bootstrapModuleName, generatorVersion, filePath);
   }
 
   /**
@@ -36,13 +40,25 @@ public final class RuntimeModuleRepositorySerialization {
   @Deprecated(forRemoval = true)
   public static void saveToCompactFile(@NotNull Collection<RawRuntimeModuleDescriptor> descriptors, @Nullable String bootstrapModuleName,
                                        @NotNull Path filePath, @Nullable String mainPluginModuleId, int generatorVersion) throws IOException {
-    saveToCompactFile(descriptors, bootstrapModuleName, filePath, generatorVersion);
+    saveToCompactFile(descriptors, Collections.emptyList(), bootstrapModuleName, filePath, generatorVersion);
   }
 
-  public static void saveToJar(@NotNull Collection<RawRuntimeModuleDescriptor> descriptors, @Nullable String bootstrapModuleName,
+  /**
+   * @deprecated use {@link #saveToJar(Collection, Collection, String, Path, int)} instead
+   */
+  @Deprecated(forRemoval = true)
+  public static void saveToJar(@NotNull Collection<RawRuntimeModuleDescriptor> descriptors,
+                               @Nullable String bootstrapModuleName,
+                               @NotNull Path jarPath, int generatorVersion) throws IOException {
+    saveToJar(descriptors, Collections.emptyList(), bootstrapModuleName, jarPath, generatorVersion);
+  }
+
+  public static void saveToJar(@NotNull Collection<RawRuntimeModuleDescriptor> descriptors,
+                               @NotNull Collection<RuntimePluginHeader> pluginHeaders,
+                               @Nullable String bootstrapModuleName,
                                @NotNull Path jarPath, int generatorVersion) throws IOException {
     try {
-      JarFileSerializer.saveToJar(descriptors, bootstrapModuleName, jarPath, generatorVersion);
+      JarFileSerializer.saveToJar(descriptors, pluginHeaders, bootstrapModuleName, jarPath, generatorVersion);
     }
     catch (XMLStreamException e) {
       throw new IOException(e);
@@ -56,7 +72,7 @@ public final class RuntimeModuleRepositorySerialization {
   public static void saveToJar(@NotNull Collection<RawRuntimeModuleDescriptor> descriptors, @Nullable String bootstrapModuleName,
                                @NotNull Path jarPath, @Nullable String mainPluginModuleId, int generatorVersion)
     throws IOException {
-    saveToJar(descriptors, bootstrapModuleName, jarPath, generatorVersion);
+    saveToJar(descriptors, Collections.emptyList(), bootstrapModuleName, jarPath, generatorVersion);
   }
   
   public static @NotNull RawRuntimeModuleRepositoryData loadFromCompactFile(@NotNull Path filePath) throws MalformedRepositoryException {

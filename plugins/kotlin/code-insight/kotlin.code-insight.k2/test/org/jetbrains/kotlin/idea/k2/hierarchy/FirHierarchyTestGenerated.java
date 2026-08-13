@@ -1,9 +1,8 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package org.jetbrains.kotlin.idea.k2.hierarchy;
 
 import com.intellij.testFramework.TestDataPath;
-import org.jetbrains.kotlin.idea.base.plugin.KotlinPluginMode;
 import org.jetbrains.kotlin.idea.base.test.TestRoot;
 import org.jetbrains.kotlin.idea.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils;
@@ -22,12 +21,6 @@ public abstract class FirHierarchyTestGenerated extends AbstractFirHierarchyTest
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../idea/tests/testData/hierarchy/calls/callers")
     public static class Callers extends AbstractFirHierarchyTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doCallerHierarchyTest, this, testDataFilePath);
         }
@@ -166,12 +159,6 @@ public abstract class FirHierarchyTestGenerated extends AbstractFirHierarchyTest
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../idea/tests/testData/hierarchy/calls/callersJava")
     public static class CallersJava extends AbstractFirHierarchyTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doCallerJavaHierarchyTest, this, testDataFilePath);
         }
@@ -183,14 +170,21 @@ public abstract class FirHierarchyTestGenerated extends AbstractFirHierarchyTest
     }
 
     @RunWith(JUnit3RunnerWithInners.class)
-    @TestMetadata("../../idea/tests/testData/hierarchy/calls/callees")
-    public static class Callees extends AbstractFirHierarchyTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
+    @TestMetadata("../../idea/tests/testData/hierarchy/calls/calleesJava")
+    public static class CalleesJava extends AbstractFirHierarchyTest {
+        private void runTest(String testDataFilePath) throws Exception {
+            KotlinTestUtils.runTest(this::doCalleeJavaHierarchyTest, this, testDataFilePath);
         }
 
+        @TestMetadata("javaMethod")
+        public void testJavaMethod() throws Exception {
+            runTest("../../idea/tests/testData/hierarchy/calls/calleesJava/javaMethod/");
+        }
+    }
+
+    @RunWith(JUnit3RunnerWithInners.class)
+    @TestMetadata("../../idea/tests/testData/hierarchy/calls/callees")
+    public static class Callees extends AbstractFirHierarchyTest {
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doCalleeHierarchyTest, this, testDataFilePath);
         }
@@ -264,12 +258,6 @@ public abstract class FirHierarchyTestGenerated extends AbstractFirHierarchyTest
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../idea/tests/testData/hierarchy/class/type")
     public static class Type extends AbstractFirHierarchyTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTypeClassHierarchyTest, this, testDataFilePath);
         }
@@ -423,12 +411,6 @@ public abstract class FirHierarchyTestGenerated extends AbstractFirHierarchyTest
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../idea/tests/testData/hierarchy/class/super")
     public static class Super extends AbstractFirHierarchyTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doSuperClassHierarchyTest, this, testDataFilePath);
         }
@@ -462,12 +444,6 @@ public abstract class FirHierarchyTestGenerated extends AbstractFirHierarchyTest
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../idea/tests/testData/hierarchy/class/sub")
     public static class Sub extends AbstractFirHierarchyTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doSubClassHierarchyTest, this, testDataFilePath);
         }
@@ -556,12 +532,6 @@ public abstract class FirHierarchyTestGenerated extends AbstractFirHierarchyTest
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../idea/tests/testData/hierarchy/overrides")
     public static class Overrides extends AbstractFirHierarchyTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doOverrideHierarchyTest, this, testDataFilePath);
         }

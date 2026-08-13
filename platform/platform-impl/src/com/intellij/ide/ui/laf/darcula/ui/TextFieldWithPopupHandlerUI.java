@@ -25,6 +25,7 @@ import com.intellij.util.ui.JBInsets;
 import com.intellij.util.ui.JBUI;
 import com.intellij.xml.util.XmlStringUtil;
 import kotlin.Unit;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
@@ -86,6 +87,7 @@ public abstract class TextFieldWithPopupHandlerUI extends BasicTextFieldUI imple
   private static final @NonNls String INPLACE_HISTORY = "JTextField.Search.InplaceHistory";
   private static final @NonNls String ON_CLEAR = "JTextField.Search.CancelAction";
   private static final @NonNls String SEARCH_ICON = "JTextField.Search.Icon";
+  private static final @NonNls String SEARCH_ICON_TOOLTIP = "JTextField.Search.IconTooltip";
   private static final @NonNls String HISTORY_POPUP_ENABLED = "History.Popup.Enabled";
 
   private static final @NonNls String SEARCH_VARIANT_VALUE = "search";
@@ -195,6 +197,7 @@ public abstract class TextFieldWithPopupHandlerUI extends BasicTextFieldUI imple
   }
 
   @SuppressWarnings("unused")
+  @ApiStatus.Internal
   protected SearchAction getActionUnder(@NotNull Point p) {
     return null;
   }
@@ -285,6 +288,7 @@ public abstract class TextFieldWithPopupHandlerUI extends BasicTextFieldUI imple
     return action instanceof AbstractAction ? (AbstractAction)action : null;
   }
 
+  @ApiStatus.Internal
   public enum SearchAction {
     CLEAR, NEWLINE
   }
@@ -781,6 +785,10 @@ public abstract class TextFieldWithPopupHandlerUI extends BasicTextFieldUI imple
 
     @Override
     public String getTooltip() {
+      Object customTooltip = getComponent().getClientProperty(SEARCH_ICON_TOOLTIP);
+      if (customTooltip instanceof @NlsContexts.Tooltip String tooltip) {
+        return tooltip;
+      }
       String prefix = null;
       if (ClientProperty.get(getComponent(), INPLACE_HISTORY) != null) {
         prefix = IdeBundle.message("tooltip.recent.search");
@@ -837,6 +845,7 @@ public abstract class TextFieldWithPopupHandlerUI extends BasicTextFieldUI imple
     }
   }
 
+  @ApiStatus.Internal
   public static class MarginAwareCaret extends BasicCaret {
     @Override
     protected void adjustVisibility(Rectangle r) {

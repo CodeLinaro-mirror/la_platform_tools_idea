@@ -1,15 +1,50 @@
-### auto-generated section `build intellij.platform.buildScripts.studioIcons` start
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
+### auto-generated section `build intellij.platform.buildScripts.studioIcons` start
+
 jvm_library(
-  name = "studio-icons",
-  module_name = "intellij.platform.buildScripts.studioIcons",
-  visibility = ["//visibility:public"],
-  srcs = glob(["src/**/*.kt", "src/**/*.java", "src/**/*.form"], allow_empty = True),
-  deps = [
-    "//platform/build-scripts",
-    "//platform/build-scripts/icons:images-build",
-    "@lib//:kotlin-stdlib",
-  ]
+    name = "studio-icons",
+    srcs = glob(
+        [
+            "src/**/*.kt",
+            "src/**/*.java",
+            "src/**/*.form",
+        ],
+        allow_empty = True,
+    ),
+    module_name = "intellij.platform.buildScripts.studioIcons",
+    visibility = ["//visibility:public"],
+    deps = [
+        # do not sort,
+        "//platform/build-scripts",
+        "//platform/build-scripts/icons:images-build",
+        "@lib//:kotlin-stdlib",
+    ],
+)
+
+jvm_library(
+    name = "studio-icons_test_lib",
+    testonly = True,
+    srcs = glob(
+        [],
+        allow_empty = True,
+    ),
+    module_name = "intellij.platform.buildScripts.studioIcons",
+    visibility = ["//visibility:public"],
+    runtime_deps = [
+        # do not sort,
+        ":studio-icons",
+        "//platform/build-scripts:build-scripts_test_lib",
+        "//platform/build-scripts/icons:images-build_test_lib",
+    ],
 )
 ### auto-generated section `build intellij.platform.buildScripts.studioIcons` end
+
+### auto-generated section `iml intellij.platform.buildScripts.studioIcons` start
+exports_files(
+    [
+        "intellij.platform.buildScripts.studioIcons.iml",
+    ],
+    visibility = ["//visibility:public"],
+)
+### auto-generated section `iml intellij.platform.buildScripts.studioIcons` end

@@ -5,7 +5,9 @@ import re
 import sys
 import textwrap
 
-from six import text_type, u
+from six import text_type
+from six import u
+from six import PY2
 
 ENCODING = 'utf-8'
 
@@ -31,9 +33,9 @@ def format_fragments(fragments_list):
 
 
 def format_rest(docstring):
+    from docutils import Component
     from docutils import nodes
     from docutils.core import publish_string
-    from docutils.frontend import get_default_settings
     from docutils.nodes import Text, field_body, field_name, SkipNode
     from docutils.parsers.rst import directives
     from docutils.parsers.rst.directives.admonitions import BaseAdmonition
@@ -84,7 +86,12 @@ def format_rest(docstring):
         def __init__(self, document):
             # Copied from epydoc.markup.restructuredtext._EpydocHTMLTranslator
             if self.settings is None:
-                settings = get_default_settings(HTMLWriter())
+                if PY2:
+                    from docutils.frontend import OptionParser
+                    settings = OptionParser([HTMLWriter()]).get_default_values()
+                else:
+                    from docutils.frontend import get_default_settings
+                    settings = get_default_settings(HTMLWriter())
                 self.__class__.settings = settings
             document.settings = self.settings
 
@@ -305,14 +312,19 @@ def format_rest(docstring):
         """
 
         def apply(self):
-            for node in tuple(self.document.findall(nodes.system_message)):
+            if PY2:
+                findall = self.document.traverse
+            else:
+                findall = self.document.findall
+
+            for node in tuple(findall(nodes.system_message)):
                 if node['level'] < self.document.reporter.report_level:
                     node.parent.remove(node)
                     try:
                         del self.document.ids[node['ids'][0]]
                     except IndexError:
                         pass
-            for node in self.document.findall(nodes.section):
+            for node in findall(nodes.section):
                 if "system-messages" in node['classes'] and len(node) == 1:
                     node.parent.remove(node)
 
@@ -322,7 +334,7 @@ def format_rest(docstring):
             Writer.__init__(self)
 
         def get_transforms(self):
-            return super(Writer, self).get_transforms() + [
+            return Component.get_transforms(self) + [
                 universal.Messages,
                 _FilterMessagesKeepProblematic,  # Instead of `FilterMessages`
                 universal.StripClassesAndElements,
@@ -341,6 +353,7 @@ def format_rest(docstring):
             'halt_level': 10000,
             'warning_stream': None,
             'docinfo_xform': False,
+            'syntax_highlight': 'none',
         },
     )
     document = writer.document

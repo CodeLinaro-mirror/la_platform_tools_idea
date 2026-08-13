@@ -25,7 +25,6 @@ import org.jetbrains.kotlin.analysis.api.symbols.KaSymbolOrigin
 import org.jetbrains.kotlin.analysis.api.symbols.KaValueParameterSymbol
 import org.jetbrains.kotlin.analysis.api.types.KaDefinitelyNotNullType
 import org.jetbrains.kotlin.analysis.api.types.KaType
-import org.jetbrains.kotlin.analysis.api.types.KaTypeNullability
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.codeinsight.api.applicators.fixes.KotlinQuickFixFactory
 import org.jetbrains.kotlin.idea.codeinsight.api.classic.quickfixes.KotlinQuickFixAction
@@ -42,6 +41,7 @@ import org.jetbrains.kotlin.psi.KtOperationExpression
 import org.jetbrains.kotlin.psi.KtParameter
 import org.jetbrains.kotlin.psi.KtParenthesizedExpression
 import org.jetbrains.kotlin.psi.KtValueArgument
+import org.jetbrains.kotlin.psi.psiUtil.parameterIndex
 import org.jetbrains.kotlin.types.Variance
 
 object ChangeParameterTypeFixFactory {
@@ -62,11 +62,10 @@ object ChangeParameterTypeFixFactory {
     val nullForNotNullTypeFactory = KotlinQuickFixFactory.IntentionBased { diagnostic: KaFirDiagnostic.NullForNonnullType ->
         val psi = diagnostic.psi
         if (psi !is KtExpression) return@IntentionBased emptyList()
-        createTypeMismatchFixes(psi, diagnostic.expectedType.withNullability(KaTypeNullability.NULLABLE))
+        createTypeMismatchFixes(psi, diagnostic.expectedType.withNullability(isMarkedNullable = true))
     }
 
     context(_: KaSession)
-    @OptIn(KaExperimentalApi::class)
     private fun createTypeMismatchFixes(psi: KtExpression, targetType: KaType): List<KotlinQuickFixAction<*>> {
         val outermostExpression = psi.getOutermostParenthesizedExpressionOrThis()
         val psiParent = outermostExpression.parent ?: return emptyList()
@@ -126,8 +125,8 @@ object ChangeParameterTypeFixFactory {
         }
     }
 
-    context(_: KaSession)
     @OptIn(KaExperimentalApi::class)
+    context(_: KaSession)
     private fun createChangeParameterTypeFix(
         parameter: KtParameter,
         targetType: KaType,
@@ -196,7 +195,9 @@ internal class ChangeParameterTypeFix(
         val methodDescriptor = KotlinMethodDescriptor(function)
 
         val changeInfo = KotlinChangeInfo(methodDescriptor)
-        val parameterInfo = changeInfo.newParameters[if (methodDescriptor.receiver != null) parameterIndex + 1 else parameterIndex]
+        val parameterInfo = changeInfo.getNonReceiverParameters().find {
+            !it.isContextParameter && it.oldIndex == (parameterIndex + if (methodDescriptor.receiver != null) 1 else 0)
+        } ?: return
 
         parameterInfo.setType(typeFQNPresentation)
 

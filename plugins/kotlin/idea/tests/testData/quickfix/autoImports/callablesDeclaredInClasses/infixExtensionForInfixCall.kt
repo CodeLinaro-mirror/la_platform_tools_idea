@@ -1,4 +1,5 @@
 // "Import infix extension function 'Int.ext'" "true"
+// K2_ERROR: Unresolved reference 'ext'.
 package p
 
 open class A {
@@ -12,4 +13,4 @@ fun usage() {
 }
 
 // FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.imprt.ImportQuickFix
-// IGNORE_K1
+

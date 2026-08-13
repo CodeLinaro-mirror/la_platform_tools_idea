@@ -2,7 +2,7 @@
 import type {ChildProcessWithoutNullStreams} from 'node:child_process'
 import {spawn} from 'node:child_process'
 import {mkdtempSync, rmSync} from 'node:fs'
-import {createServer} from 'node:http'
+import {createServer, type IncomingHttpHeaders} from 'node:http'
 import {tmpdir} from 'node:os'
 import {dirname, join} from 'node:path'
 import {env, stderr} from 'node:process'
@@ -11,7 +11,7 @@ import {Server} from '@modelcontextprotocol/sdk/server/index.js'
 import {StreamableHTTPServerTransport} from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import {CallToolRequestSchema, ListToolsRequestSchema} from '@modelcontextprotocol/sdk/types.js'
 import {BLOCKED_TOOL_NAMES, getReplacedToolNames} from './proxy-tools/registry'
-import type {ToolSpecLike} from './proxy-tools/types'
+import type {ToolAnnotationsLike, ToolSpecLike} from './proxy-tools/types'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -31,8 +31,9 @@ interface ToolCall {
   args: unknown
 }
 
-interface FakeServerInstance {
+export interface FakeServerInstance {
   port: number
+  requestHeaders: IncomingHttpHeaders[]
   waitForToolCall: () => Promise<ToolCall>
   close: () => Promise<void>
 }
@@ -128,7 +129,8 @@ export class McpTestClient {
 export function buildUpstreamTool(
   name: string,
   properties: Record<string, unknown> = {},
-  required?: string[]
+  required?: string[],
+  annotations?: ToolAnnotationsLike
 ): ToolSpecLike {
   return {
     name,
@@ -137,7 +139,8 @@ export function buildUpstreamTool(
       type: 'object',
       properties,
       required: required && required.length > 0 ? required : undefined
-    }
+    },
+    ...(annotations ? {annotations} : {})
   }
 }
 
@@ -152,6 +155,7 @@ export async function startFakeMcpServer(
 ): Promise<FakeServerInstance> {
   const toolCallQueue: ToolCall[] = []
   const toolCallWaiters: Array<(call: ToolCall) => void> = []
+  const requestHeaders: IncomingHttpHeaders[] = []
   const sockets = new Set()
   const responseModeValue = responseMode === 'sse' ? 'sse' : 'json'
   let isClosed = false
@@ -198,6 +202,7 @@ export async function startFakeMcpServer(
   await mcpServer.connect(transport)
 
   const httpServer = createServer((req, res) => {
+    requestHeaders.push(req.headers)
     const requestPath = req.url?.split('?')[0]
     if (requestPath !== '/stream') {
       res.writeHead(404, {'Content-Type': 'text/plain'})
@@ -278,6 +283,7 @@ export async function startFakeMcpServer(
 
   return {
     port: boundPort,
+    requestHeaders,
     waitForToolCall(): Promise<ToolCall> {
       return new Promise((resolve) => {
         if (toolCallQueue.length > 0) {

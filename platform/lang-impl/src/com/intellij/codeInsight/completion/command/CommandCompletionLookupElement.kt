@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.completion.command
 
 import com.intellij.codeInsight.CodeInsightBundle
@@ -11,6 +11,8 @@ import com.intellij.codeInsight.lookup.LookupElementCustomPreviewHolder
 import com.intellij.codeInsight.lookup.LookupElementDecorator
 import com.intellij.codeInsight.lookup.LookupElementInsertStopper
 import com.intellij.codeInsight.lookup.LookupElementPresentation
+import com.intellij.codeInsight.lookup.cachePreview
+import com.intellij.modcommand.ActionContext
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.actionSystem.LangDataKeys
@@ -45,9 +47,8 @@ class CommandCompletionLookupElement(
     return NEVER_AUTOCOMPLETE
   }
 
-  override val preview: IntentionPreviewInfo by lazy {
-    command.getPreview()
-  }
+  override fun preview(ctx: ActionContext): IntentionPreviewInfo =
+    cachePreview { command.getPreview() }
 
   override fun shouldStopLookupInsertion(): Boolean {
     return !useLookupString

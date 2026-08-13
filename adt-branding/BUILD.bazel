@@ -1,18 +1,48 @@
-### auto-generated section `build intellij.android.adt.branding` start
 load("@rules_jvm//:jvm.bzl", "jvm_library", "resourcegroup")
 
-resourcegroup(
-  name = "android-adt-branding_resources",
-  srcs = glob(["resources/**/*"]),
-  strip_prefix = "resources"
+### auto-generated section `build intellij.android.adt.branding` start
+
+jvm_library(
+    name = "android-adt-branding",
+    srcs = glob(
+        [
+            "src/**/*.kt",
+            "src/**/*.java",
+            "src/**/*.form",
+        ],
+        allow_empty = True,
+    ),
+    module_name = "intellij.android.adt.branding",
+    resource_strip_prefix = "resources",
+    resources = glob(
+        ["resources/**/*"],
+    ),
+    visibility = ["//visibility:public"],
+    deps = ["//platform/bootstrap"],
 )
 
 jvm_library(
-  name = "android-adt-branding",
-  module_name = "intellij.android.adt.branding",
-  visibility = ["//visibility:public"],
-  srcs = glob(["src/**/*.kt", "src/**/*.java", "src/**/*.form"], allow_empty = True),
-  resources = [":android-adt-branding_resources"],
-  deps = ["//platform/bootstrap"]
+    name = "android-adt-branding_test_lib",
+    testonly = True,
+    srcs = glob(
+        [],
+        allow_empty = True,
+    ),
+    module_name = "intellij.android.adt.branding",
+    visibility = ["//visibility:public"],
+    runtime_deps = [
+        # do not sort,
+        ":android-adt-branding",
+        "//platform/bootstrap:bootstrap_test_lib",
+    ],
 )
 ### auto-generated section `build intellij.android.adt.branding` end
+
+### auto-generated section `iml intellij.android.adt.branding` start
+exports_files(
+    [
+        "intellij.android.adt.branding.iml",
+    ],
+    visibility = ["//visibility:public"],
+)
+### auto-generated section `iml intellij.android.adt.branding` end

@@ -22,6 +22,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.Collections;
 
 import static com.intellij.java.codeInspection.DataFlowInspectionTest.addJavaxNullabilityAnnotations;
+import static com.intellij.java.codeInspection.DataFlowInspectionTestCase.addJSpecifyNonNull;
 import static com.intellij.java.codeInspection.DataFlowInspectionTestCase.addJSpecifyNullMarked;
 import static com.intellij.java.codeInspection.DataFlowInspectionTestCase.setupTypeUseAnnotations;
 
@@ -110,6 +111,8 @@ public class NullableStuffInspectionTest extends LightJavaCodeInsightFixtureTest
     myInspection.REPORT_ANNOTATION_NOT_PROPAGATED_TO_OVERRIDERS = true;
     doTest();
   }
+
+  public void testStaticMethodHiding() { doTest(); }
 
   public void testNoOverridingChecksOnInapplicableAnnotations() {
     myInspection.REPORT_ANNOTATION_NOT_PROPAGATED_TO_OVERRIDERS = true;
@@ -494,7 +497,7 @@ public class NullableStuffInspectionTest extends LightJavaCodeInsightFixtureTest
     addJSpecifyNullMarked(myFixture);
     setupTypeUseAnnotations("org.jspecify.annotations", myFixture);
     doTest();
-    IntentionAction action = myFixture.findSingleIntention("Fix all '@NotNull/@Nullable problems' problems in file");
+    IntentionAction action = myFixture.findSingleIntention("Fix all 'Nullability problems' problems in file");
     myFixture.launchAction(action);
     myFixture.checkResultByFile(getTestName(false) + "_after.java");
   }
@@ -526,6 +529,7 @@ public class NullableStuffInspectionTest extends LightJavaCodeInsightFixtureTest
 
   public void testIncompatibleContainer() {
     addJSpecifyNullMarked(myFixture);
+    addJSpecifyNonNull(myFixture);
     doTest();
   }
 
@@ -574,6 +578,19 @@ public class NullableStuffInspectionTest extends LightJavaCodeInsightFixtureTest
 
   public void testCallIncompatibilitiesWithGenericWithNotNullToNull() {
     myInspection.REPORT_NOT_NULL_TO_NULLABLE_CONFLICTS_IN_ASSIGNMENTS = false;
+    addJSpecifyNullMarked(myFixture);
+    setupTypeUseAnnotations("org.jspecify.annotations", myFixture);
+    doTest();
+  }
+  
+  public void testNoOverrideWarningOnParameterization() {
+    myInspection.REPORT_NOTNULL_PARAMETERS_OVERRIDES_NOT_ANNOTATED = true;
+    addJSpecifyNullMarked(myFixture);
+    setupTypeUseAnnotations("org.jspecify.annotations", myFixture);
+    doTest();
+  }
+  
+  public void testJSpecifyNullMarkedDiamond() {
     addJSpecifyNullMarked(myFixture);
     setupTypeUseAnnotations("org.jspecify.annotations", myFixture);
     doTest();

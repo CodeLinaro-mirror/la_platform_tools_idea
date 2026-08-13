@@ -7,17 +7,17 @@ import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.openapi.util.UserDataHolder
 import com.intellij.python.community.impl.conda.icons.PythonCommunityImplCondaIcons
 import com.intellij.util.concurrency.annotations.RequiresBackgroundThread
+import com.jetbrains.python.PythonBinary
+import com.jetbrains.python.sdk.PythonEnvironment
+import com.jetbrains.python.sdk.detectPythonEnvironment
 import com.jetbrains.python.sdk.flavors.CPythonSdkFlavor
 import com.jetbrains.python.sdk.flavors.PythonFlavorProvider
 import com.jetbrains.python.sdk.flavors.PythonSdkFlavor
-import com.jetbrains.python.sdk.legacy.PythonSdkUtil
-import org.jetbrains.annotations.ApiStatus
 import java.nio.file.Path
 import javax.swing.Icon
 
 
-@ApiStatus.Internal
-object CondaEnvSdkFlavor : CPythonSdkFlavor<PyCondaFlavorData>() {
+internal object CondaEnvSdkFlavor : CPythonSdkFlavor<PyCondaFlavorData>() {
   override fun getIcon(): Icon = PythonCommunityImplCondaIcons.Anaconda
 
   override fun getFlavorDataClass(): Class<PyCondaFlavorData> = PyCondaFlavorData::class.java
@@ -41,12 +41,11 @@ object CondaEnvSdkFlavor : CPythonSdkFlavor<PyCondaFlavorData>() {
     return "Conda"
   }
 
-  override fun isValidSdkPath(pathStr: String): Boolean {
-    if (!super.isValidSdkPath(pathStr)) {
-      return false
+  override fun isValidSdkPath(pythonBinaryPath: PythonBinary): Boolean {
+    return super.isValidSdkPath(pythonBinaryPath) && when (pythonBinaryPath.detectPythonEnvironment().successOrNull) {
+      is PythonEnvironment.Conda -> true
+      is PythonEnvironment.Venv, is PythonEnvironment.SystemPython, null -> false
     }
-
-    return PythonSdkUtil.isConda(pathStr)
   }
 
   override fun isPlatformIndependent(): Boolean = true

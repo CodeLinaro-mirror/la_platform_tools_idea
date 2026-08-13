@@ -1,9 +1,9 @@
 from collections.abc import Callable, Iterable, Sequence
-from typing import Any, Generic, Literal, TypeVar, overload
+from typing import Any, Generic, Literal, overload
 from uuid import UUID
 
 from django import forms
-from django.core import validators  # due to weird mypy.stubtest error
+from django.core.validators import _ValidatorCallable
 from django.db.backends.base.base import BaseDatabaseWrapper
 from django.db.models.base import Model
 from django.db.models.expressions import Combinable, Expression
@@ -23,7 +23,7 @@ from django.db.models.query_utils import FilteredRelation, PathInfo, Q
 from django.db.models.sql.where import WhereNode
 from django.utils.choices import _Choices
 from django.utils.functional import _StrOrPromise, cached_property
-from typing_extensions import Self, override
+from typing_extensions import Self, TypeVar, override
 
 RECURSIVE_RELATIONSHIP_CONSTANT: Literal["self"]
 
@@ -73,13 +73,13 @@ class RelatedField(FieldCacheMixin, Field[_ST, _GT]):
         db_column: str | None = ...,
         db_tablespace: str | None = ...,
         auto_created: bool = ...,
-        validators: Iterable[validators._ValidatorCallable] = ...,
+        validators: Iterable[_ValidatorCallable] = ...,
         error_messages: _ErrorMessagesMapping | None = ...,
         db_comment: str | None = ...,
     ) -> None: ...
     @cached_property
     @override
-    def related_model(self) -> type[Model] | Literal["self"]: ...  # type: ignore[override]
+    def related_model(self) -> type[Model]: ...  # type: ignore[override]
     @override
     def contribute_to_class(self, cls: type[Model], name: str, private_only: bool = False, **kwargs: Any) -> None: ...
     def get_forward_related_filter(self, obj: Model) -> dict[str, int | UUID]: ...
@@ -130,7 +130,7 @@ class ForeignObject(RelatedField[_ST, _GT]):
         help_text: _StrOrPromise = ...,
         db_column: str | None = ...,
         db_tablespace: str | None = ...,
-        validators: Iterable[validators._ValidatorCallable] = ...,
+        validators: Iterable[_ValidatorCallable] = ...,
         error_messages: _ErrorMessagesMapping | None = ...,
         db_comment: str | None = ...,
     ) -> None: ...
@@ -216,7 +216,7 @@ class ForeignKey(ForeignObject[_ST, _GT]):
         help_text: _StrOrPromise = ...,
         db_column: str | None = ...,
         db_tablespace: str | None = ...,
-        validators: Iterable[validators._ValidatorCallable] = ...,
+        validators: Iterable[_ValidatorCallable] = ...,
         error_messages: _ErrorMessagesMapping | None = ...,
         db_comment: str | None = ...,
     ) -> None: ...
@@ -270,7 +270,7 @@ class OneToOneField(ForeignKey[_ST, _GT]):
         help_text: _StrOrPromise = ...,
         db_column: str | None = ...,
         db_tablespace: str | None = ...,
-        validators: Iterable[validators._ValidatorCallable] = ...,
+        validators: Iterable[_ValidatorCallable] = ...,
         error_messages: _ErrorMessagesMapping | None = ...,
         db_comment: str | None = ...,
     ) -> None: ...

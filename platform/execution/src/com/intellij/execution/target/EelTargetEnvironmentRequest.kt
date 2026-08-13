@@ -8,18 +8,19 @@ import com.intellij.openapi.components.BaseState
 import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.runBlockingCancellable
 import com.intellij.openapi.progress.runBlockingMaybeCancellable
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.IntellijInternalApi
 import com.intellij.openapi.util.NlsSafe
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.platform.eel.EelApi
 import com.intellij.platform.eel.EelDescriptor
 import com.intellij.platform.eel.EelExecApi
 import com.intellij.platform.eel.EelExecApi.EnvironmentVariablesException
+import com.intellij.platform.eel.EelMachine
 import com.intellij.platform.eel.EelOsFamily
 import com.intellij.platform.eel.EelPathBoundDescriptor
 import com.intellij.platform.eel.EelTunnelsApi
@@ -33,8 +34,10 @@ import com.intellij.platform.eel.path.EelPath
 import com.intellij.platform.eel.provider.asEelPath
 import com.intellij.platform.eel.provider.asNioPath
 import com.intellij.platform.eel.provider.getEelDescriptor
-import com.intellij.platform.eel.provider.toEelApiBlocking
-import com.intellij.platform.eel.provider.utils.EelPathUtils
+import com.intellij.platform.eel.provider.getResolvedEelMachine
+import com.intellij.platform.eel.provider.resolveEelMachine
+import com.intellij.platform.eel.provider.utils.EelFileTransferAttributesStrategy
+import com.intellij.platform.eel.provider.utils.EelPathTransfer
 import com.intellij.platform.eel.provider.utils.asEelChannel
 import com.intellij.platform.eel.provider.utils.consumeAsEelChannel
 import com.intellij.platform.eel.provider.utils.copy
@@ -51,6 +54,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import org.jetbrains.annotations.ApiStatus
 import java.net.InetAddress
 import java.net.InetSocketAddress
@@ -60,9 +64,11 @@ import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
 import javax.swing.Icon
 import kotlin.io.path.Path
 import kotlin.io.path.isSameFileAs
+import kotlin.time.Duration.Companion.seconds
 
 private fun EelOsFamily.toTargetPlatform(): TargetPlatform = when (this) {
   EelOsFamily.Posix -> TargetPlatform(Platform.UNIX)
@@ -118,7 +124,7 @@ class EelTargetType : TargetEnvironmentType<EelTargetEnvironmentRequest.Configur
 @ApiStatus.Internal
 class EelTargetEnvironmentRequest(
   override val configuration: Configuration,
-) : BaseTargetEnvironmentRequest(), VolumeCopyingRequest {
+) : BaseTargetEnvironmentRequest() {
   class Configuration private constructor(
     eelDescriptor: EelDescriptor?,
   ) : TargetEnvironmentConfiguration(TARGET_TYPE_NAME), TargetConfigurationWithLocalFsAccess, PersistentStateComponent<Configuration.PersistentState> {
@@ -141,7 +147,9 @@ class EelTargetEnvironmentRequest(
     override val asTargetConfig: TargetEnvironmentConfiguration = this
 
     override fun getTargetPathIfLocalPathIsOnTarget(probablyPathOnTarget: Path): FullPathOnTarget? {
-      return probablyPathOnTarget.asEelPath().takeIf { it.descriptor == descriptor }?.toString()
+      val eelPath = probablyPathOnTarget.asEelPath()
+      val targetMachine = descriptor.getResolvedEelMachine()
+      return eelPath.takeIf { it.descriptor == descriptor || targetMachine?.ownsDescriptor(it.descriptor) == true }?.toString()
     }
 
     override fun getState(): PersistentState {
@@ -164,23 +172,34 @@ class EelTargetEnvironmentRequest(
 
   override val targetPlatform: TargetPlatform = configuration.descriptor.osFamily.toTargetPlatform()
 
+  var uploadVolumeFilters: MutableMap<TargetEnvironment.UploadRoot, (Path) -> Boolean> = HashMap()
+
   override fun prepareEnvironment(progressIndicator: TargetProgressIndicator): TargetEnvironment {
     val env = EelTargetEnvironment(this)
     environmentPrepared(env, progressIndicator)
     return env
   }
-
-  override var shouldCopyVolumes: Boolean = false
 }
 
 @ApiStatus.Internal
 class EelTargetEnvironment(override val request: EelTargetEnvironmentRequest) : TargetEnvironment(request) {
+  companion object {
+    private val LOG = logger<EelTargetEnvironment>()
+  }
+
   private val myUploadVolumes: MutableMap<UploadRoot, UploadableVolume> = HashMap()
   private val myDownloadVolumes: MutableMap<DownloadRoot, DownloadableVolume> = HashMap()
   private val myTargetPortBindings: MutableMap<TargetPortBinding, ResolvedPortBinding> = HashMap()
   private val myLocalPortBindings: MutableMap<LocalPortBinding, ResolvedPortBinding> = ConcurrentHashMap()
+  private val acceptors = ConcurrentLinkedQueue<EelTunnelsApi.ConnectionAcceptor>()
+  private val descriptor = request.configuration.descriptor
+  private val eelMachine = runBlockingMaybeCancellable {
+    descriptor.resolveEelMachine()
+  }
 
-  private val eel = request.configuration.descriptor.toEelApiBlocking()
+  private val eel = runBlockingMaybeCancellable {
+    eelMachine.toEelApi(descriptor)
+  }
 
   private val forwardingScope by lazy { service<EelTargetScope>().scope.childScope("Eel target forwarding scope: ${request.configuration.descriptor}") }
 
@@ -195,11 +214,11 @@ class EelTargetEnvironment(override val request: EelTargetEnvironmentRequest) : 
 
   init {
     request.uploadVolumes.forEach { uploadRoot ->
-      myUploadVolumes[uploadRoot] = EelVolume.createFor(eel, uploadRoot)
+      myUploadVolumes[uploadRoot] = EelVolume.createFor(eel, eelMachine, uploadRoot, request.uploadVolumeFilters[uploadRoot])
     }
 
     request.downloadVolumes.forEach { downloadRoot ->
-      myDownloadVolumes[downloadRoot] = EelVolume.createFor(eel, downloadRoot)
+      myDownloadVolumes[downloadRoot] = EelVolume.createFor(eel, eelMachine, downloadRoot)
     }
 
     request.targetPortBindings.forEach { targetPortBinding ->
@@ -218,8 +237,9 @@ class EelTargetEnvironment(override val request: EelTargetEnvironmentRequest) : 
       val acceptor = runBlockingMaybeCancellable {
         eel.tunnels.getAcceptorForRemotePort().port((localPortBinding.target ?: 0).toUShort()).eelIt()
       }
+      acceptors.add(acceptor)
 
-      @OptIn(DelicateCoroutinesApi::class, IntellijInternalApi::class)
+      @OptIn(DelicateCoroutinesApi::class)
       forwardingScope.launch(blockingDispatcher) {
         try {
           for (connection in acceptor.incomingConnections) {
@@ -252,12 +272,13 @@ class EelTargetEnvironment(override val request: EelTargetEnvironmentRequest) : 
     }
   }
 
-  private class EelVolume private constructor(
+  class EelVolume private constructor(
     private val eel: EelApi,
+    private val filter: ((Path) -> Boolean)?,
     override val localRoot: Path,
     override val targetRoot: String,
   ) : UploadableVolume, DownloadableVolume {
-    private fun targetRootPath(): Path {
+    fun targetRootPath(): Path {
       return eel.fs.getPath(targetRoot).asNioPath()
     }
 
@@ -271,7 +292,12 @@ class EelTargetEnvironment(override val request: EelTargetEnvironmentRequest) : 
         if (!Files.exists(from)) throw err
       }
       // TODO: generalize com.intellij.execution.wsl.ijent.nio.IjentWslNioFileSystemProvider.copy
-      EelPathUtils.walkingTransfer(from, to, removeSource = false, copyAttributes = true)
+      EelPathTransfer.walkingTransfer(from,
+                                      to,
+                                      removeSource = false,
+                                      EelFileTransferAttributesStrategy.Copy,
+                                      absoluteSymlinkHandler = null,
+                                      filter = filter)
     }
 
     override fun download(relativePath: String, progressIndicator: ProgressIndicator) {
@@ -284,7 +310,12 @@ class EelTargetEnvironment(override val request: EelTargetEnvironmentRequest) : 
         if (!Files.exists(from)) throw err
       }
       // TODO: generalize com.intellij.execution.wsl.ijent.nio.IjentWslNioFileSystemProvider.copy
-      EelPathUtils.walkingTransfer(from, to, removeSource = false, copyAttributes = true)
+      EelPathTransfer.walkingTransfer(from,
+                                      to,
+                                      removeSource = false,
+                                      EelFileTransferAttributesStrategy.Copy,
+                                      absoluteSymlinkHandler = null,
+                                      filter = null)
     }
 
     override fun resolveTargetPath(relativePath: String): String {
@@ -292,13 +323,19 @@ class EelTargetEnvironment(override val request: EelTargetEnvironmentRequest) : 
     }
 
     companion object {
-      private fun createFor(eel: EelApi, localPathGetter: () -> Path, targetPathGetter: () -> TargetPath): EelVolume {
+      private fun createFor(
+        eel: EelApi,
+        eelMachine: EelMachine,
+        localPathGetter: () -> Path,
+        targetPathGetter: () -> TargetPath,
+        filter: ((Path) -> Boolean)?,
+      ): EelVolume {
         val localRootPath = localPathGetter()
 
         val remoteRoot = when (val targetRootPath = targetPathGetter()) {
           is TargetPath.Temporary -> {
             val localEelPath = localRootPath.asEelPath()
-            if (localEelPath.descriptor == eel.descriptor) {
+            if (localEelPath.descriptor == eel.descriptor || eelMachine.ownsDescriptor(localEelPath.descriptor)) {
               localEelPath.toString()
             }
             else {
@@ -316,19 +353,19 @@ class EelTargetEnvironment(override val request: EelTargetEnvironmentRequest) : 
           is TargetPath.Persistent -> targetRootPath.absolutePath
         }
 
-        return EelVolume(eel, localRootPath, remoteRoot)
+        return EelVolume(eel, filter, localRootPath, remoteRoot)
       }
 
-      fun createFor(eel: EelApi, uploadRoot: UploadRoot): EelVolume {
-        return createFor(eel, { uploadRoot.localRootPath }, { uploadRoot.targetRootPath })
+      fun createFor(eel: EelApi, eelMachine: EelMachine, uploadRoot: UploadRoot, filter: ((Path) -> Boolean)?): EelVolume {
+        return createFor(eel, eelMachine, { uploadRoot.localRootPath }, { uploadRoot.targetRootPath }, filter)
       }
 
-      fun createFor(eel: EelApi, downloadRoot: DownloadRoot): EelVolume {
+      fun createFor(eel: EelApi, eelMachine: EelMachine, downloadRoot: DownloadRoot): EelVolume {
         val localRootPath =
           downloadRoot.localRootPath
           ?: FileUtil.createTempDirectory("intellij-eel-target.", "").toPath()
 
-        return createFor(eel, { localRootPath }, { downloadRoot.targetRootPath })
+        return createFor(eel, eelMachine, { localRootPath }, { downloadRoot.targetRootPath }, null)
       }
     }
   }
@@ -394,7 +431,26 @@ class EelTargetEnvironment(override val request: EelTargetEnvironmentRequest) : 
 
   override fun shutdown() {
     runBlockingMaybeCancellable {
-      forwardingScope.coroutineContext.job.cancelAndJoin()
+      // Explicitly close acceptors — sends closeRemoteServer via gRPC
+      // before cancelling the scope. Timeout each close because
+      // ConnectionAcceptorImpl.close() calls cancelAndJoin() which
+      // can block if gRPC is congested.
+      coroutineScope {
+        for (acceptor in acceptors) {
+          launch {
+            withTimeoutOrNull(5.seconds) {
+              try {
+                acceptor.close()
+              }
+              catch (_: Exception) {
+              }
+            }
+          }
+        }
+      }
+      withTimeoutOrNull(10.seconds) {
+        forwardingScope.coroutineContext.job.cancelAndJoin()
+      } ?: LOG.warn("Forwarding scope shutdown timed out")
     }
   }
 }

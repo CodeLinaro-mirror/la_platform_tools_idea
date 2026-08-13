@@ -6,9 +6,10 @@ package com.intellij.platform.workspace.storage.testEntities.entities.cacheVersi
 import com.intellij.platform.workspace.storage.EntitySource
 import com.intellij.platform.workspace.storage.EntityType
 import com.intellij.platform.workspace.storage.GeneratedCodeApiVersion
-import com.intellij.platform.workspace.storage.WorkspaceEntityBuilder
 import com.intellij.platform.workspace.storage.MutableEntityStorage
+import com.intellij.platform.workspace.storage.WorkspaceEntityBuilder
 import com.intellij.platform.workspace.storage.impl.containers.toMutableWorkspaceList
+import com.intellij.platform.workspace.storage.testEntities.entities.cacheVersion.impl.ChangedValueTypeEntityImpl
 
 @GeneratedCodeApiVersion(3)
 interface ChangedValueTypeEntityBuilder : WorkspaceEntityBuilder<ChangedValueTypeEntity> {
@@ -20,6 +21,7 @@ interface ChangedValueTypeEntityBuilder : WorkspaceEntityBuilder<ChangedValueTyp
 
 internal object ChangedValueTypeEntityType : EntityType<ChangedValueTypeEntity, ChangedValueTypeEntityBuilder>() {
   override val entityClass: Class<ChangedValueTypeEntity> get() = ChangedValueTypeEntity::class.java
+  override val entityImplBuilderClass: Class<*> get() = ChangedValueTypeEntityImpl.Builder::class.java
   operator fun invoke(
     type: String,
     someKey: Int,

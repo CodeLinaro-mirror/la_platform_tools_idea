@@ -1,4 +1,4 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.vcs.impl;
 
 import com.intellij.CommonBundle;
@@ -86,6 +86,7 @@ import com.intellij.util.Consumer;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.MessageCategory;
+import com.intellij.util.ui.VcsConfirmationUtil;
 import com.intellij.vcs.history.VcsHistoryProviderEx;
 import com.intellij.vcsUtil.VcsUtil;
 import org.jetbrains.annotations.ApiStatus;
@@ -103,7 +104,6 @@ import java.util.Map;
 import java.util.function.Supplier;
 
 import static com.intellij.openapi.ui.Messages.getQuestionIcon;
-import static com.intellij.util.ui.ConfirmationDialog.requestForConfirmation;
 import static java.text.MessageFormat.format;
 
 public class AbstractVcsHelperImpl extends AbstractVcsHelper {
@@ -169,11 +169,11 @@ public class AbstractVcsHelperImpl extends AbstractVcsHelper {
     }
 
     final String okActionName = CommonBundle.getAddButtonText();
-    final String cancelActionName = CommonBundle.getCancelButtonText();
+    final String cancelActionName = Messages.getCancelButton();
 
     if (files.size() == 1 && singleFileTitle != null && singleFilePromptTemplate != null) {
       String filePrompt = format(singleFilePromptTemplate, FileUtil.getLocationRelativeToUserHome(files.get(0).getPresentableUrl()));
-      if (requestForConfirmation(confirmationOption, myProject, filePrompt, singleFileTitle, getQuestionIcon(),
+      if (VcsConfirmationUtil.requestConfirmation(confirmationOption, myProject, filePrompt, singleFileTitle, getQuestionIcon(),
                                  okActionName, cancelActionName)) {
         return new ArrayList<>(files);
       }
@@ -208,7 +208,7 @@ public class AbstractVcsHelperImpl extends AbstractVcsHelper {
                                                                  @Nullable String cancelActionName) {
     if (files.size() == 1 && singleFileTitle != null && singleFilePromptTemplate != null) {
       final String filePrompt = format(singleFilePromptTemplate, files.get(0).getPresentableUrl());
-      if (requestForConfirmation(confirmationOption, myProject, filePrompt, singleFileTitle,
+      if (VcsConfirmationUtil.requestConfirmation(confirmationOption, myProject, filePrompt, singleFileTitle,
                                  getQuestionIcon(), okActionName, cancelActionName)) {
         return new ArrayList<>(files);
       }
@@ -423,15 +423,21 @@ public class AbstractVcsHelperImpl extends AbstractVcsHelper {
   }
 
   @Override
-  public @NotNull List<VirtualFile> showMergeDialog(@NotNull List<? extends VirtualFile> files,
-                                                    @NotNull MergeProvider provider,
-                                                    @NotNull MergeDialogCustomizer mergeDialogCustomizer) {
-    if (files.isEmpty()) return Collections.emptyList();
+  public @NotNull MergeDialogResult showMergeDialogWithResult(@NotNull List<? extends VirtualFile> files,
+                                                              @NotNull MergeProvider provider,
+                                                              @NotNull MergeDialogCustomizer mergeDialogCustomizer) {
+    return showMergeDialogImpl(files, provider, mergeDialogCustomizer);
+  }
+
+  private @NotNull MergeDialogResult showMergeDialogImpl(@NotNull List<? extends VirtualFile> files,
+                                                         @NotNull MergeProvider provider,
+                                                         @NotNull MergeDialogCustomizer mergeDialogCustomizer) {
+    if (files.isEmpty()) return new MergeDialogResultImpl(Collections.emptyList(), true);
     ApplicationManager.getApplication().runWriteAction(() -> RefreshVFsSynchronously.refreshVirtualFiles(files));
     final MultipleFileMergeDialog fileMergeDialog = new MultipleFileMergeDialog(myProject, files, provider, mergeDialogCustomizer);
     AppIcon.getInstance().requestAttention(myProject, true);
     fileMergeDialog.show();
-    return fileMergeDialog.getProcessedFiles();
+    return new MergeDialogResultImpl(fileMergeDialog.getProcessedFiles(), fileMergeDialog.getShouldFinishMergeAfterClosing());
   }
 
   @Override

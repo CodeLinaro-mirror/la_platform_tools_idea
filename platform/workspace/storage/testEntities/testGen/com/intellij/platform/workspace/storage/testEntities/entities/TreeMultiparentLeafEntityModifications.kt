@@ -3,7 +3,12 @@
 
 package com.intellij.platform.workspace.storage.testEntities.entities
 
-import com.intellij.platform.workspace.storage.*
+import com.intellij.platform.workspace.storage.EntitySource
+import com.intellij.platform.workspace.storage.EntityType
+import com.intellij.platform.workspace.storage.GeneratedCodeApiVersion
+import com.intellij.platform.workspace.storage.MutableEntityStorage
+import com.intellij.platform.workspace.storage.WorkspaceEntityBuilder
+import com.intellij.platform.workspace.storage.testEntities.entities.impl.TreeMultiparentLeafEntityImpl
 
 @GeneratedCodeApiVersion(3)
 interface TreeMultiparentLeafEntityBuilder : WorkspaceEntityBuilder<TreeMultiparentLeafEntity> {
@@ -16,6 +21,7 @@ interface TreeMultiparentLeafEntityBuilder : WorkspaceEntityBuilder<TreeMultipar
 
 internal object TreeMultiparentLeafEntityType : EntityType<TreeMultiparentLeafEntity, TreeMultiparentLeafEntityBuilder>() {
   override val entityClass: Class<TreeMultiparentLeafEntity> get() = TreeMultiparentLeafEntity::class.java
+  override val entityImplBuilderClass: Class<*> get() = TreeMultiparentLeafEntityImpl.Builder::class.java
   operator fun invoke(
     data: String,
     entitySource: EntitySource,

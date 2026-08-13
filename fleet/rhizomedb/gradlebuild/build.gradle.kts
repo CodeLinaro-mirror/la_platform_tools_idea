@@ -12,7 +12,8 @@ plugins {
   alias(libs.plugins.dokka)
   // GRADLE_PLUGINS__MARKER_START
   id("fleet-module")
-  alias(jps.plugins.rhizomedb)
+  alias(jps.plugins.ksp)
+  id("fleet-ksp-plugin")
   // GRADLE_PLUGINS__MARKER_END
 }
 
@@ -78,7 +79,9 @@ kotlin {
     }
     implementation(project(":fleet.util.core"))
     implementation(project(":fleet.multiplatform.shims"))
+    implementation(project(":fleet.radixTrie"))
     implementation(project(":fleet.fastutil"))
+    implementation(project(":fleet.openmap"))
   }
   // KOTLIN__MARKER_END
 }

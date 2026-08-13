@@ -4,6 +4,8 @@
 To regenerate, run `node community/.ai/render-guides.mjs`.
 <!-- /TEMPLATE:COMMENT -->
 
+**Always display the output of SessionStart hooks verbatim to the user at the start of conversation**
+
 **Critical:** These guidelines MUST be followed at all times.
 
 ## Project Invariants
@@ -15,11 +17,13 @@ To regenerate, run `node community/.ai/render-guides.mjs`.
 
 {{PARTIAL:module-specific}}
 
+{{PARTIAL:code-ownership}}
+
 ## Mandatory Rules
 
 ### After Code Changes
 
-- **Run affected tests:** `./tests.cmd -Dintellij.build.test.patterns=<FQN or wildcard>` (**FQN required; simple class names do not match**), or `node --test <file>` for `*.test.mjs`.
+- **Run affected tests:** `./tests.cmd --module <module> --test <FQN or wildcard>` (**FQN required; simple class names do not match; always specify the test module directly**), or `node --test <file>` for `*.test.mjs`.
   `tests.cmd` performs Bazel compilation internally, so a separate `bazel build` step is not needed when tests will be run.
   Module-specific rules may override the runner. Skip if plugin has no tests. See [TESTING](../.agents/skills/testing/SKILL.md).
 - **Bazel compilation without tests:** when only verifying compilation (no tests to run), use `bazel build <target>` for affected modules. Skip if only `.js`, `.mjs`, `.md`, `.txt`, or `.json` files are modified.
@@ -27,7 +31,7 @@ To regenerate, run `node community/.ai/render-guides.mjs`.
 
 ### After Writing Code
 
-- Use `get_file_problems` with `errorsOnly=false` to check files for warnings.
+- Use `lint_files` to check files for warnings.
   Fix any warnings related to the code changes made. You may ignore unrelated warnings.
 
 ## Repository-wide rules
@@ -37,12 +41,17 @@ Preserve IDE-serialized .iml files in canonical form. Do not:
 - add comments
 - auto-format
 - normalize (structure or whitespace)
+- add a trailing newline at end of file
 - prune (remove) empty tags
 - reorder elements or attributes
 
 ## Tools (use in this order)
 
-### ijproxy (required when available)
+## Skills
+
+Never use the `search-tools-instructions` skill. See ijproxy for search tools.
+
+### ijproxy (required)
 <!-- IF_TOOL:CODEX -->
 - Read: `mcp__ijproxy__read_file`
 - Edit/Write: `mcp__ijproxy__apply_patch`
@@ -61,18 +70,15 @@ Preserve IDE-serialized .iml files in canonical form. Do not:
 - Search regex: `search_regex`
 - List dir: `list_dir`
 <!-- /IF_TOOL:CLAUDE -->
-
-### jetbrains MCP (fallback)
-Direct JetBrains MCP connection. Use when ijproxy unavailable.
-
-- Read: `get_file_text_by_path`
-- Edit: `replace_text_in_file`
-- Write: `create_new_file`
-- Find by glob: `find_files_by_glob`
-- Find by name: `find_files_by_name_keyword`
-- Search text: `search_in_files_by_text`
-- Search regex: `search_in_files_by_regex`
-- List dir: `list_directory_tree`
+<!-- IF_TOOL:JUNIE -->
+- Read: `read_file`
+- Edit/Write: `apply_patch`
+- **Search symbols (preferred):** `search_symbol`
+- Find files (glob): `search_file`
+- Search text: `search_text`
+- Search regex: `search_regex`
+- List dir: `list_dir`
+<!-- /IF_TOOL:JUNIE -->
 
 ### Client fallback (no MCP)
 <!-- IF_EDITION:ULTIMATE -->
@@ -102,6 +108,9 @@ Available via ijproxy or JetBrains MCP. Use these for semantic operations; avoid
 <!-- IF_TOOL:CLAUDE -->
 - For repo edits, use the ijproxy edit/write tools listed above. Generic edit/write fallbacks are forbidden unless ijproxy is unavailable.
 <!-- /IF_TOOL:CLAUDE -->
+<!-- IF_TOOL:JUNIE -->
+- For repo edits, use the ijproxy edit/write tools listed above. Generic edit/write fallbacks are forbidden unless ijproxy is unavailable.
+<!-- /IF_TOOL:JUNIE -->
 <!-- IF_EDITION:ULTIMATE -->
 - Never shell for file ops (`cat`, `sed`, `find`, `grep`) on repo paths, except the client fallback (`./community/tools/fd.cmd`, `./community/tools/rg.cmd`) when no MCP is available.
 <!-- /IF_EDITION:ULTIMATE -->
@@ -109,7 +118,12 @@ Available via ijproxy or JetBrains MCP. Use these for semantic operations; avoid
 - Never shell for file ops (`cat`, `sed`, `find`, `grep`) on repo paths, except the client fallback (`./tools/fd.cmd`, `./tools/rg.cmd`) when no MCP is available.
 <!-- /IF_EDITION:COMMUNITY -->
 - Shell OK for: git (prefer `git_status` if the tool is available), build/test.
-- Outside repo: native shell permitted.
+<!-- IF_EDITION:ULTIMATE -->
+- Outside repo: native shell permitted, except for text/file search — use `./community/tools/rg.cmd` and `./community/tools/fd.cmd` (absolute paths OK) instead of native `grep`/`find`.
+<!-- /IF_EDITION:ULTIMATE -->
+<!-- IF_EDITION:COMMUNITY -->
+- Outside repo: native shell permitted, except for text/file search — use `./tools/rg.cmd` and `./tools/fd.cmd` (absolute paths OK) instead of native `grep`/`find`.
+<!-- /IF_EDITION:COMMUNITY -->
 
 {{PARTIAL:knowledge-mcps}}
 

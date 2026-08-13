@@ -22,6 +22,8 @@ import org.jetbrains.annotations.NonNls
 public interface WorkspaceModelInternal: WorkspaceModel {
   public val entityStorage: VersionedEntityStorageImpl
 
+  public val unloadedEntitiesStorage: VersionedEntityStorageImpl
+
   /**
    * Returns a snapshot of the storage containing unloaded entities.
    * Unloaded entities must be ignored by almost all code in the IDE, so this property isn't supposed for general use.
@@ -95,5 +97,20 @@ public interface WorkspaceModelInternal: WorkspaceModel {
 
   @ApiStatus.Experimental
   public suspend fun <T> flowOfDiff(query: CollectionQuery<T>): Flow<Diff<T>>
-}
 
+  /**
+   * Project model (modules, libraries, etc.) is serialized to iml/xml files, which we treat as a source of truth.
+   * This method waits until [WorkspaceModel] is synchronized with the JPS model.
+   *
+   * This method requires non-modal context as it waits for an event that can only happen in a non-modal context.
+   *
+   * This method should be used in the situations when it's critical to have WSM in the up-to-date state.
+   * Particularly, when you want to automatically change WSM based on its current state, for example, add a missing SDK.
+   *
+   * Note that if WSM was loaded without cache (it was completely empty), then you already have the up-to-date state because it's read from iml/xml files.
+   * So even if you don't invoke this method, it's guaranteed that WSM will contain at least some state,
+   * but in some rare cases like force IDE quit, this state may be not up to date.
+   */
+  @ApiStatus.Experimental
+  public suspend fun awaitSynchronizationWithJpsModel()
+}

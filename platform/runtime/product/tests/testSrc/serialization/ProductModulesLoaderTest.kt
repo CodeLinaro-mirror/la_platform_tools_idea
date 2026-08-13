@@ -1,11 +1,6 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.platform.runtime.product.serialization
 
-import com.intellij.platform.runtime.product.ProductMode
-import com.intellij.platform.runtime.repository.RuntimeModuleLoadingRule
-import com.intellij.platform.runtime.product.impl.ServiceModuleMapping
-import com.intellij.platform.runtime.repository.MalformedRepositoryException
-import com.intellij.platform.runtime.repository.RuntimeModuleId
 import com.intellij.platform.runtime.repository.createModuleDescriptor
 import com.intellij.platform.runtime.repository.createRepository
 import com.intellij.platform.runtime.repository.writePluginXml
@@ -15,7 +10,6 @@ import com.intellij.util.io.directoryContent
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.RegisterExtension
 import java.nio.file.Path
 import kotlin.io.path.div
@@ -36,76 +30,10 @@ class ProductModulesLoaderTest {
     )
     writePluginXmlWithModules(tempDirectory.rootPath / "plugin", "<idea-plugin><id>plugin</id></idea-plugin>")
     val xml = generateProductModulesWithPlugin()
-    val productModules = ProductModulesSerialization.loadProductModules(xml, ProductMode.MONOLITH, repository)
-    val mainGroupModules = productModules.mainModuleGroup.includedModules.sortedBy { it.moduleDescriptor.moduleId.stringId }
-    assertEquals(2, mainGroupModules.size)
-    val (root, util) = mainGroupModules
-    assertEquals("root", root.moduleDescriptor.moduleId.stringId)
-    assertEquals(RuntimeModuleLoadingRule.REQUIRED, root.loadingRule)
-    assertEquals("util", util.moduleDescriptor.moduleId.stringId)
-    assertEquals(RuntimeModuleLoadingRule.ON_DEMAND, util.loadingRule)
-    assertEquals(emptySet<RuntimeModuleId>(), productModules.mainModuleGroup.optionalModuleIds)
-
-    val pluginGroup = productModules.bundledPluginModuleGroups.single()
-    assertEquals("plugin", pluginGroup.includedModules.single().moduleDescriptor.moduleId.stringId)
+    val productModules = ProductModulesSerialization.loadProductModules(xml, repository)
+    assertEquals("plugin", productModules.bundledPluginDescriptorModules.single().name)
   }
   
-  @Test
-  fun `optional modules in main module group`() {
-    val repository = createRepository(tempDirectory.rootPath,
-                                      createModuleDescriptor("util", emptyList(), emptyList()),
-                                      createModuleDescriptor("root", emptyList(), emptyList()),
-                                      createModuleDescriptor("required", emptyList(), emptyList()),
-                                      createModuleDescriptor("optional", emptyList(), listOf("root")),
-    )
-    val xml = directoryContent { 
-      xml(FILE_NAME, """
-        <product-modules>
-          <main-root-modules>
-            <module loading="embedded">root</module>
-            <module loading="required">required</module>
-            <module loading="optional">optional</module>
-            <module loading="optional">unknown-optional</module>
-          </main-root-modules>
-        </product-modules>
-      """.trimIndent())
-    }.generateInTempDir().resolve(FILE_NAME)
-    val productModules = ProductModulesSerialization.loadProductModules(xml, ProductMode.MONOLITH, repository)
-    val mainGroupModules = productModules.mainModuleGroup.includedModules.sortedBy { it.moduleDescriptor.moduleId.stringId }
-    assertEquals(3, mainGroupModules.size)
-    val (optional, required, root) = mainGroupModules
-    assertEquals("root", root.moduleDescriptor.moduleId.stringId)
-    assertEquals(RuntimeModuleLoadingRule.EMBEDDED, root.loadingRule)
-    assertEquals("required", required.moduleDescriptor.moduleId.stringId)
-    assertEquals(RuntimeModuleLoadingRule.REQUIRED, required.loadingRule)
-    assertEquals("optional", optional.moduleDescriptor.moduleId.stringId)
-    assertEquals(RuntimeModuleLoadingRule.OPTIONAL, optional.loadingRule)
-    assertEquals(setOf("optional", "unknown-optional"), productModules.mainModuleGroup.optionalModuleIds.mapTo(HashSet()) { it.stringId })
-  }
-  
-  @Test
-  fun `multiple modules in plugin module group`() {
-    val repository = createRepository(
-      tempDirectory.rootPath,
-      createModuleDescriptor("root", emptyList(), emptyList()),
-      createModuleDescriptor("plugin", listOf("plugin"), emptyList()),
-      createModuleDescriptor("optional", emptyList(), listOf("plugin")),
-    )
-    writePluginXmlWithModules(tempDirectory.rootPath / "plugin", "plugin", "optional", "unknown")
-
-    val xml = generateProductModulesWithPlugin()
-    val productModules = ProductModulesSerialization.loadProductModules(xml, ProductMode.MONOLITH, repository)
-    val pluginModuleGroup = productModules.bundledPluginModuleGroups.single()
-    val pluginModules = pluginModuleGroup.includedModules
-    assertEquals(2, pluginModules.size)
-    val (plugin, optional) = pluginModules
-    assertEquals("plugin", plugin.moduleDescriptor.moduleId.stringId)
-    assertEquals(RuntimeModuleLoadingRule.EMBEDDED, plugin.loadingRule)
-    assertEquals("optional", optional.moduleDescriptor.moduleId.stringId)
-    assertEquals(RuntimeModuleLoadingRule.OPTIONAL, optional.loadingRule)
-    assertEquals(setOf("optional", "unknown"), pluginModuleGroup.optionalModuleIds.mapTo(HashSet()) { it.stringId })
-  }
-
   @Test
   fun `unresolved plugin module`() {
     val repository = createRepository(
@@ -116,46 +44,8 @@ class ProductModulesLoaderTest {
     )
     writePluginXmlWithModules(tempDirectory.rootPath / "plugin", "plugin")
     val xml = generateProductModulesWithPlugin()
-    val productModules = ProductModulesSerialization.loadProductModules(xml, ProductMode.MONOLITH, repository)
-    assertThat(productModules.bundledPluginModuleGroups).isEmpty()
-    assertThat(productModules.notLoadedBundledPluginModules).hasSize(1)
-    val notLoadedPlugin = productModules.notLoadedBundledPluginModules.entries.single()
-    assertThat(notLoadedPlugin.key.stringId).isEqualTo("plugin")
-    assertThat(notLoadedPlugin.value).containsExactly(
-      RuntimeModuleId.raw("plugin"),
-      RuntimeModuleId.raw("plugin.util"),
-      RuntimeModuleId.raw("unresolved.module"),
-    )
-  }
-
-  @Test
-  fun `enable plugin modules in relevant modes`() {
-    val repository = createRepository(
-      tempDirectory.rootPath,
-      createModuleDescriptor("root", emptyList(), emptyList()),
-      createModuleDescriptor("intellij.platform.frontend.split", emptyList(), emptyList()),
-      createModuleDescriptor("intellij.platform.backend", emptyList(), emptyList()),
-      createModuleDescriptor("intellij.platform.monolith", emptyList(), listOf("intellij.platform.backend")),
-      createModuleDescriptor("plugin", listOf("plugin"), emptyList()),
-      createModuleDescriptor("plugin.common", emptyList(), listOf("plugin")),
-      createModuleDescriptor("plugin.frontend", emptyList(), listOf("plugin", "intellij.platform.frontend.split")),
-      createModuleDescriptor("plugin.localIde", emptyList(), listOf("plugin", "intellij.platform.monolith")),
-    )
-    writePluginXmlWithModules(tempDirectory.rootPath / "plugin", "plugin", "plugin.common", "plugin.frontend", "plugin.localIde")
-
-    val xml = generateProductModulesWithPlugin()
-    fun checkGroup(productMode: ProductMode, additionalModuleName: String) {
-      val productModules = ProductModulesSerialization.loadProductModules(xml, productMode, repository)
-      val pluginModuleGroup = productModules.bundledPluginModuleGroups.single()
-      val pluginModules = pluginModuleGroup.includedModules
-      assertEquals(3, pluginModules.size)
-      val (plugin, common, additional) = pluginModules
-      assertEquals("plugin", plugin.moduleDescriptor.moduleId.stringId)
-      assertEquals("plugin.common", common.moduleDescriptor.moduleId.stringId)
-      assertEquals(additionalModuleName, additional.moduleDescriptor.moduleId.stringId)
-    }
-    checkGroup(ProductMode.MONOLITH, "plugin.localIde")
-    checkGroup(ProductMode.FRONTEND, "plugin.frontend")
+    val productModules = ProductModulesSerialization.loadProductModules(xml, repository)
+    assertThat(productModules.bundledPluginDescriptorModules.single().name).isEqualTo("plugin")
   }
 
   @Test
@@ -178,20 +68,14 @@ class ProductModulesLoaderTest {
             <include>
               <from-module>root</from-module>
             </include>
-            <main-root-modules>
-              <module loading="required">additional</module>
-            </main-root-modules>
             <bundled-plugins>
               <module>plugin</module>
             </bundled-plugins>  
           </product-modules>
         """.trimIndent())
     }.generateInTempDir().resolve(FILE_NAME)
-    val productModules = ProductModulesSerialization.loadProductModules(xmlPath, ProductMode.FRONTEND, repository)
-    val mainModules = productModules.mainModuleGroup.includedModules
-    assertEquals(listOf("additional", "root"), mainModules.map { it.moduleDescriptor.moduleId.stringId })
-    val bundledPlugins = productModules.bundledPluginModuleGroups.map { it.mainModule.moduleId.stringId }
-    assertEquals(listOf("plugin", "common.plugin"), bundledPlugins)
+    val productModules = ProductModulesSerialization.loadProductModules(xmlPath, repository)
+    assertEquals(listOf("plugin", "common.plugin"), productModules.bundledPluginDescriptorModules.map { it.name })
   }
   
   @Test
@@ -207,7 +91,6 @@ class ProductModulesLoaderTest {
     writePluginXmlWithModules(tempDirectory.rootPath.resolve("plugin2"), "plugin2")
     val rootProductModulesPath = tempDirectory.rootPath.resolve("root/META-INF/root")
     productModulesWithPlugins(
-      mainModules = listOf("root", "additional"),
       plugins = listOf("plugin", "plugin2")
     ).generate(rootProductModulesPath)
 
@@ -222,57 +105,9 @@ class ProductModulesLoaderTest {
           </product-modules>
         """.trimIndent())
     }.generateInTempDir().resolve(FILE_NAME)
-    val productModules = ProductModulesSerialization.loadProductModules(xmlPath, ProductMode.FRONTEND, repository)
-    val mainModules = productModules.mainModuleGroup.includedModules
-    assertEquals(listOf("root"), mainModules.map { it.moduleDescriptor.moduleId.stringId })
-    val bundledPlugins = productModules.bundledPluginModuleGroups.map { it.mainModule.moduleId.stringId }
+    val productModules = ProductModulesSerialization.loadProductModules(xmlPath, repository)
+    val bundledPlugins = productModules.bundledPluginDescriptorModules.map { it.name }
     assertEquals(listOf("plugin"), bundledPlugins)
-  }
-  
-  @Test
-  fun `service module mapping`() {
-    val repository = createRepository(
-      tempDirectory.rootPath,
-      createModuleDescriptor("root", listOf("root"), emptyList()),
-      createModuleDescriptor("additional1", emptyList(), emptyList()),
-      createModuleDescriptor("lib.common", emptyList(), emptyList()),
-      createModuleDescriptor("plugin1", listOf("plugin1"), listOf("additional1", "lib.common")),
-      createModuleDescriptor("plugin2", listOf("plugin2"), listOf("lib.common")),
-    )
-    writePluginXmlWithModules(tempDirectory.rootPath.resolve("plugin1"), "plugin1")
-    writePluginXmlWithModules(tempDirectory.rootPath.resolve("plugin2"), "plugin2")
-    val rootProductModulesPath = tempDirectory.rootPath.resolve("root/META-INF/root")
-    productModulesWithPlugins(
-      mainModules = listOf("root"),
-      plugins = listOf("plugin1", "plugin2")
-    ).generate(rootProductModulesPath)
-    val productModules = ProductModulesSerialization.loadProductModules(rootProductModulesPath.resolve(FILE_NAME), ProductMode.MONOLITH, repository)
-    val (plugin1, plugin2) = productModules.bundledPluginModuleGroups
-    val moduleMapping = ServiceModuleMapping.buildMapping(productModules)
-    assertEquals(listOf("additional1", "lib.common"), moduleMapping.getAdditionalModules(plugin1).map { it.moduleId.stringId})
-    assertEquals(listOf("lib.common"), moduleMapping.getAdditionalModules(plugin2).map { it.moduleId.stringId })
-  }
-  
-  @Test
-  fun `service module mapping reports error about ambiguous module`() {
-    val repository = createRepository(
-      tempDirectory.rootPath,
-      createModuleDescriptor("root", listOf("root"), emptyList()),
-      createModuleDescriptor("additional", emptyList(), emptyList()),
-      createModuleDescriptor("plugin1", listOf("plugin1"), listOf("additional")),
-      createModuleDescriptor("plugin2", listOf("plugin2"), listOf("additional")),
-    )
-    writePluginXmlWithModules(tempDirectory.rootPath.resolve("plugin1"), "plugin1")
-    writePluginXmlWithModules(tempDirectory.rootPath.resolve("plugin2"), "plugin2")
-    val rootProductModulesPath = tempDirectory.rootPath.resolve("root/META-INF/root")
-    productModulesWithPlugins(
-      mainModules = listOf("root"),
-      plugins = listOf("plugin1", "plugin2")
-    ).generate(rootProductModulesPath)
-    val productModules = ProductModulesSerialization.loadProductModules(rootProductModulesPath.resolve(FILE_NAME), ProductMode.MONOLITH, repository)
-    assertThrows<MalformedRepositoryException> {
-      ServiceModuleMapping.buildMapping(productModules)
-    }
   }
 
   @Test
@@ -295,9 +130,6 @@ class ProductModulesLoaderTest {
            <from-module>plugin1</from-module>
            <without-module>plugin3</without-module>
           </include>
-          <main-root-modules>
-            <module loading="required">root</module>
-          </main-root-modules>
         </product-modules>
       """.trimIndent())
     }.generate(rootProductModulesPath)
@@ -308,17 +140,14 @@ class ProductModulesLoaderTest {
           <include>
            <from-module>plugin2</from-module>
           </include>
-          <main-root-modules>
-            <module loading="required">plugin1</module>
-          </main-root-modules>
         </product-modules>
       """.trimIndent())
     }.generate(plugin1ProductModulesPath)
     val plugin2ProductModulesPath = tempDirectory.rootPath.resolve("plugin2/META-INF/plugin2")
-    productModulesWithPlugins(mainModules = listOf("plugin2"), plugins = listOf("plugin3")).generate(plugin2ProductModulesPath)
+    productModulesWithPlugins(plugins = listOf("plugin3")).generate(plugin2ProductModulesPath)
     val productModules =
-      ProductModulesSerialization.loadProductModules(rootProductModulesPath.resolve(FILE_NAME), ProductMode.MONOLITH, repository)
-    assertThat(productModules.bundledPluginModuleGroups.map { it.mainModule.moduleId.stringId })
+      ProductModulesSerialization.loadProductModules(rootProductModulesPath.resolve(FILE_NAME), repository)
+    assertThat(productModules.bundledPluginDescriptorModules.map { it.name })
       .doesNotContain("plugin3")
   }
 
@@ -326,7 +155,7 @@ class ProductModulesLoaderTest {
     writePluginXml(resourcePath, """
         |<idea-plugin>
         |  <id>$pluginId</id>
-        |  <content>
+        |  <content namespace="jetbrains">
         |    ${contentModules.joinToString("\n    ") { "<module name=\"$it\"/>"}}
         |  </content>
         |</idea-plugin>
@@ -336,14 +165,9 @@ class ProductModulesLoaderTest {
   private fun generateProductModulesWithPlugin(): Path = 
     productModulesWithPlugins(plugins = listOf("plugin")).generateInTempDir().resolve(FILE_NAME)
 
-  private fun productModulesWithPlugins(mainModules: List<String> = listOf("root"), plugins: List<String>) = directoryContent {
+  private fun productModulesWithPlugins(plugins: List<String>) = directoryContent {
       xml(FILE_NAME, """
             <product-modules>
-              <main-root-modules>
-               ${mainModules.joinToString("\n") { 
-                  "<module loading=\"required\">$it</module>"
-               }}
-              </main-root-modules>
               <bundled-plugins>
                 ${plugins.joinToString("\n") { "<module>$it</module>" }}
               </bundled-plugins>  

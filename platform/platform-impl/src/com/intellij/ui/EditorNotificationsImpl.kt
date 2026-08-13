@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 @file:Suppress("ReplaceGetOrSet", "ReplacePutWithAssignment")
 @file:OptIn(FlowPreview::class)
 
@@ -18,7 +18,7 @@ import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.asContextElement
 import com.intellij.openapi.application.impl.NonBlockingReadActionImpl
 import com.intellij.openapi.application.readAction
-import com.intellij.openapi.application.runReadAction
+import com.intellij.openapi.application.runReadActionBlocking
 import com.intellij.openapi.components.serviceAsync
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.extensions.impl.ExtensionPointImpl
@@ -27,6 +27,7 @@ import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.FileEditorManagerEvent
 import com.intellij.openapi.fileEditor.FileEditorManagerListener
 import com.intellij.openapi.fileEditor.TextEditor
+import com.intellij.openapi.fileEditor.TextEditorWithPreview
 import com.intellij.openapi.fileEditor.impl.FileEditorManagerImpl
 import com.intellij.openapi.fileEditor.impl.text.AsyncEditorLoader.Companion.isEditorLoaded
 import com.intellij.openapi.fileEditor.impl.text.TextEditorImpl
@@ -94,7 +95,7 @@ class EditorNotificationsImpl(private val project: Project, coroutineScope: Coro
   private val updateAllRequestFlowJob: Job
 
   init {
-    val connection = project.messageBus.connect()
+    val connection = project.messageBus.connect(coroutineScope)
     connection.subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, object : FileEditorManagerListener {
       override fun selectionChanged(event: FileEditorManagerEvent) {
         val file = event.newFile ?: return
@@ -195,7 +196,7 @@ class EditorNotificationsImpl(private val project: Project, coroutineScope: Coro
 
   override fun updateNotifications(file: VirtualFile) {
     coroutineScope.launch(Dispatchers.EDT + ModalityState.any().asContextElement()) {
-      if (runReadAction { file.isValid }) {
+      if (readAction { file.isValid }) {
         val fileEditorManager = project.serviceAsync<FileEditorManager>()
         doUpdateNotifications(file, fileEditorManager)
       }
@@ -205,11 +206,17 @@ class EditorNotificationsImpl(private val project: Project, coroutineScope: Coro
   override fun scheduleUpdateNotifications(editor: TextEditor) {
     ((editor as? TextEditorImpl)?.asyncLoader?.coroutineScope ?: coroutineScope).launch(Dispatchers.EDT + ModalityState.any().asContextElement()) {
       if (editor.isValid) {
-        if (ApplicationManager.getApplication().isHeadlessEnvironment || AppMode.isRemoteDevHost() || UIUtil.isShowing(editor.component)) {
-          updateEditors(file = editor.file, fileEditors = listOf(editor))
+        // The async loader notifies us about the inner text editor, but when it is wrapped in a split
+        // editor (e.g. TextEditorWithPreview), the FileEditor registered in the composite - the one
+        // returned by getAllEditorList and the one top components attach to - is the wrapper, not the
+        // inner editor. Target the wrapper so the notification lands on (and PENDING_UPDATE is read
+        // from) the visible editor.
+        val fileEditor: FileEditor = TextEditorWithPreview.getParentSplitEditor(editor) ?: editor
+        if (ApplicationManager.getApplication().isHeadlessEnvironment || AppMode.isRemoteDevHost() || UIUtil.isShowing(fileEditor.component)) {
+          updateEditors(file = editor.file, fileEditors = listOf(fileEditor))
         }
         else {
-          editor.putUserData(PENDING_UPDATE, true)
+          fileEditor.putUserData(PENDING_UPDATE, true)
         }
       }
     }
@@ -242,7 +249,7 @@ class EditorNotificationsImpl(private val project: Project, coroutineScope: Coro
     // we use ugly `project.isDisposed` because a light project is not disposed in tests
     val job = coroutineScope.launch(start = CoroutineStart.LAZY) {
       // delay for debouncing
-      delay(100)
+      delay(100.milliseconds)
 
       // light project is not disposed in tests
       if (project.isDisposed) {
@@ -264,7 +271,19 @@ class EditorNotificationsImpl(private val project: Project, coroutineScope: Coro
         }
 
         try {
-          val provider = adapter.createInstance<EditorNotificationProvider>(project) ?: continue
+          val provider = try {
+            adapter.createInstance<EditorNotificationProvider>(project) ?: continue
+          }
+          catch (e: Exception) {
+            // some EditorNotificationProviders assume the project is active and register things on its disposables
+            // that could throw IncorrectOperationException/PluginException/etc when they are already disposed
+            if (project.isDisposed) {
+              return@launch
+            }
+            else {
+              throw e
+            }
+          }
           coroutineContext.ensureActive()
 
           val result = readAction {
@@ -301,7 +320,7 @@ class EditorNotificationsImpl(private val project: Project, coroutineScope: Coro
           }
         }
         catch (e: Exception) {
-          val pluginException = if (e is PluginException) e else PluginException(e, adapter.pluginDescriptor.pluginId)
+          val pluginException = e as? PluginException ?: PluginException(e, adapter.pluginDescriptor.pluginId)
           logger<EditorNotificationsImpl>().error(pluginException)
         }
       }

@@ -2,8 +2,8 @@
 package com.intellij.java.completion.modcommand;
 
 import com.intellij.codeInsight.completion.CompletionUtil;
+import com.intellij.codeInsight.completion.JavaCompletionUtil;
 import com.intellij.codeInsight.completion.JavaGenerateMemberCompletionContributor;
-import com.intellij.codeInsight.completion.JavaKeywordCompletion;
 import com.intellij.codeInsight.completion.JavaMemberNameCompletionContributor;
 import com.intellij.codeInsight.generation.GenerateMembersUtil;
 import com.intellij.codeInsight.generation.GenerationInfo;
@@ -14,8 +14,9 @@ import com.intellij.codeInsight.generation.PsiGenerationInfo;
 import com.intellij.codeInsight.generation.TemplateGenerationInfo;
 import com.intellij.icons.AllIcons;
 import com.intellij.modcommand.ModPsiUpdater;
-import com.intellij.modcompletion.ModCompletionItem;
+import com.intellij.modcompletion.CommonCompletionItem;
 import com.intellij.modcompletion.ModCompletionItemPresentation;
+import com.intellij.modcompletion.ModCompletionResult;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.util.Iconable;
 import com.intellij.openapi.util.NlsSafe;
@@ -56,7 +57,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import static com.intellij.patterns.PlatformPatterns.psiElement;
@@ -64,11 +64,11 @@ import static com.intellij.patterns.PlatformPatterns.psiElement;
 @NotNullByDefault
 final class GenerateMemberItemProvider extends JavaModCompletionItemProvider {
   @Override
-  public void provideItems(CompletionContext context, Consumer<ModCompletionItem> sink) {
+  public void provideItems(CompletionContext context, ModCompletionResult sink) {
     PsiElement position = context.getPosition();
     if (JavaMemberNameCompletionContributor.INSIDE_TYPE_PARAMS_PATTERN.accepts(position)) return;
     if (psiElement(PsiIdentifier.class).withParents(PsiJavaCodeReferenceElement.class, PsiTypeElement.class, PsiClass.class).
-      andNot(JavaKeywordCompletion.AFTER_DOT).accepts(position)) {
+      andNot(JavaCompletionUtil.AFTER_DOT).accepts(position)) {
       PsiElement prevLeaf = PsiTreeUtil.prevVisibleLeaf(position);
       PsiModifierList modifierList = PsiTreeUtil.getParentOfType(prevLeaf, PsiModifierList.class);
       suggestGeneratedMethods(sink, position, modifierList);
@@ -85,7 +85,7 @@ final class GenerateMemberItemProvider extends JavaModCompletionItemProvider {
     }
   }
 
-  private static void suggestGeneratedMethods(Consumer<ModCompletionItem> sink,
+  private static void suggestGeneratedMethods(ModCompletionResult sink,
                                               PsiElement position,
                                               @Nullable PsiModifierList modifierList) {
     PsiClass parent = CompletionUtil.getOriginalElement(Objects.requireNonNull(PsiTreeUtil.getParentOfType(position, PsiClass.class)));
@@ -98,7 +98,7 @@ final class GenerateMemberItemProvider extends JavaModCompletionItemProvider {
     }
   }
 
-  private static void addGetterSetterElements(Consumer<ModCompletionItem> sink,
+  private static void addGetterSetterElements(ModCompletionResult sink,
                                               PsiClass parent,
                                               Set<? super MethodSignature> addedSignatures) {
     int count = 0;
@@ -148,7 +148,7 @@ final class GenerateMemberItemProvider extends JavaModCompletionItemProvider {
 
   private static void addSuperSignatureElements(PsiClass parent,
                                                 boolean implemented,
-                                                Consumer<ModCompletionItem> sink,
+                                                ModCompletionResult sink,
                                                 Set<? super MethodSignature> addedSignatures,
                                                 boolean generateDefaultMethods) {
     for (CandidateInfo candidate : OverrideImplementExploreUtil.getMethodsToOverrideImplement(parent, implemented)) {

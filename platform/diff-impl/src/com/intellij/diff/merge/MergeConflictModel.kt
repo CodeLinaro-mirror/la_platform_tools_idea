@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.diff.merge
 
 import com.intellij.diff.InvalidDiffRequestException
@@ -14,8 +14,8 @@ import com.intellij.diff.util.MergeConflictType
 import com.intellij.diff.util.Side
 import com.intellij.diff.util.ThreeSide
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.UiWithModelAccess
-import com.intellij.openapi.application.edtWriteAction
 import com.intellij.openapi.command.UndoConfirmationPolicy
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.diff.DiffBundle
@@ -31,6 +31,7 @@ import com.intellij.util.EventDispatcher
 import com.intellij.util.concurrency.annotations.RequiresBlockingContext
 import com.intellij.util.concurrency.annotations.RequiresEdt
 import com.intellij.util.concurrency.annotations.RequiresWriteLock
+import it.unimi.dsi.fastutil.ints.IntArrayList
 import it.unimi.dsi.fastutil.ints.IntList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -62,6 +63,15 @@ class MergeConflictModel(
     private set
 
   var contentModified: Boolean = false
+  var wasReviewed: Boolean = false
+    private set
+
+  /**
+   * Tracks how this file's conflicts were resolved (e.g. accepted left, accepted right, or merged manually = null).
+   * Used by the iterative merge dialog to determine the correct VCS resolution when finalizing
+   * (e.g. `git add` for merged files vs `git rm` for files where the deleted side was accepted).
+   */
+  var chosenSide: Side? = null
 
   @RequiresBlockingContext
   @Throws(DiffTooBigException::class, InvalidDiffRequestException::class)
@@ -103,7 +113,7 @@ class MergeConflictModel(
   }
 
   @RequiresEdt
-  private suspend fun setInitialOutputContent(document: Document, content: CharSequence): Boolean = edtWriteAction {
+  private suspend fun setInitialOutputContent(document: Document, content: CharSequence): Boolean = withContext(Dispatchers.EDT) {
     DiffUtil.executeWriteCommand(document, project, DiffBundle.message("message.init.merge.content.command")) {
       document.setText(content)
       DiffUtil.putNonundoableOperation(project, document)
@@ -127,6 +137,7 @@ class MergeConflictModel(
 
   fun getAllChanges(): List<TextMergeChange> = mergeChanges.toList()
   fun getUnresolvedChanges(): List<TextMergeChange> = mergeChanges.filterNot { it.isResolved }
+  fun getResolvedChanges(): List<TextMergeChange> = mergeChanges.filter { it.isResolved }
   fun getAutoResolvableChanges(): List<TextMergeChange> = mergeChanges.filter { canResolveChangeAutomatically(it.index, ThreeSide.BASE) }
   fun getImportChanges(): List<TextMergeChange> = mergeChanges.filter { it.isImportChange }
   fun getSemanticallyResolvableChanges(): List<TextMergeChange> = getAutoResolvableChanges()
@@ -149,6 +160,43 @@ class MergeConflictModel(
     else {
       markChangeResolved(change, side)
     }
+  }
+
+  @RequiresWriteLock
+  fun resolveAllChangesAutomatically() {
+    val autoResolvableChanges = getAutoResolvableChanges()
+    if (autoResolvableChanges.isEmpty()) return
+    val affected = autoResolvableChanges.mapTo(IntArrayList()) { it.index }
+    val success = executeMergeCommand(
+      DiffBundle.message("action.presentation.merge.resolve.automatically.text"),
+      null,
+      UndoConfirmationPolicy.DEFAULT,
+      true,
+      affected
+    ) {
+      autoResolvableChanges.forEach { change: TextMergeChange -> resolveChangeAutomatically(change.index, ThreeSide.BASE) }
+    }
+    if (success) {
+      wasReviewed = false
+    }
+  }
+
+  fun acceptRevisionForSide(side: Side) {
+    val affected = getAllChanges().mapTo(IntArrayList()) { it.index }
+
+    executeMergeCommand(commandName = DiffBundle.message("merge.dialog.resolve.conflict.command"),
+                        commandGroupId = null,
+                        undoConfirmationPolicy = UndoConfirmationPolicy.DEFAULT,
+                        bulkUpdate = true,
+                        affectedIndexes = affected) {
+      resetAllChanges()
+      replaceAllChanges(side)
+      markReviewed()
+    }
+  }
+
+  fun markReviewed() {
+    wasReviewed = true
   }
 
   @RequiresWriteLock
@@ -208,12 +256,13 @@ class MergeConflictModel(
     val baseContent = DiffUtil.getLines(content, startLine, endLine)
 
     resultModel.replaceChange(change.index, baseContent)
+    fireChangeReset(change)
     change.resetState()
     resultModel.invalidateChange(change.index)
   }
 
   @RequiresWriteLock
-  fun replaceWithNewContent(index: Int, newContent: CharSequence): LineRange {
+  private fun replaceWithNewContent(index: Int, newContent: CharSequence): LineRange {
     val change = getByIndex(index)
     val newContentLines: Array<String> = LineTokenizer.tokenize(newContent, false)
     resultModel.replaceChange(change.index, listOf(*newContentLines))
@@ -274,8 +323,9 @@ class MergeConflictModel(
   }
 
   @RequiresWriteLock
-  fun replaceAllChanges(side: Side) {
+  private fun replaceAllChanges(side: Side) {
     getAllChanges().forEach { change: TextMergeChange -> replaceChange(change.index, side, true) }
+    chosenSide = side
   }
 
   @RequiresWriteLock
@@ -364,8 +414,11 @@ class MergeConflictModel(
     affectedIndexes: IntList?,
     task: () -> Unit,
   ): Boolean {
-    contentModified = true
-    return resultModel.executeMergeCommand(commandName, commandGroupId, undoConfirmationPolicy, bulkUpdate, affectedIndexes, task)
+    return resultModel.executeMergeCommand(commandName, commandGroupId, undoConfirmationPolicy, bulkUpdate, affectedIndexes, task).also {
+      if (it) {
+        contentModified = true
+      }
+    }
   }
 
   private fun getByIndex(index: Int): TextMergeChange {
@@ -406,6 +459,7 @@ class MergeConflictModel(
   private fun fireChangeResolved(change: TextMergeChange) = fireEvent(MergeEvent.ChangeResolved(change))
   private fun fireChangeProcessed(change: TextMergeChange) = fireEvent(MergeEvent.ChangeProcessed(change))
   private fun fireBulkProcessingFinished() = fireEvent(MergeEvent.BulkProcessingFinished)
+  private fun fireChangeReset(change: TextMergeChange) = fireEvent(MergeEvent.ChangeReset(change))
 }
 
 @ApiStatus.Internal
@@ -427,6 +481,9 @@ sealed class MergeEvent {
 
   @ApiStatus.Internal
   class ChangeSideResolved(val change: TextMergeChange, val side: Side) : MergeEvent()
+
+  @ApiStatus.Internal
+  class ChangeReset(val change: TextMergeChange) : MergeEvent()
 
   @ApiStatus.Internal
   class ChangeProcessed(val change: TextMergeChange) : MergeEvent()

@@ -18,8 +18,16 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
 RUN useradd -ms /bin/bash builder
 USER builder
 
-ADD --chown=builder:builder https://musl.libc.org/releases/musl-1.2.2.tar.gz /home/builder/
-RUN chmod 644 /home/builder/musl-1.2.2.tar.gz
+RUN curl -fSL \
+    --connect-timeout 120 \
+    --max-time 300 \
+    --retry 5 \
+    --retry-delay 5 \
+    --retry-connrefused \
+    "https://musl.libc.org/releases/musl-1.2.6.tar.gz" \
+    -o /home/builder/musl-1.2.6.tar.gz \
+ && chown builder:builder /home/builder/musl-1.2.6.tar.gz
+RUN chmod 644 /home/builder/musl-1.2.6.tar.gz
 
 # Setup Rust for offline build
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y -v --default-toolchain stable --default-host x86_64-unknown-linux-gnu --profile minimal; \
@@ -38,7 +46,8 @@ WORKDIR /home/builder/prefetch
 
 # fetch dependencies for XPlatLauncher
 COPY cargo/XPlatLauncher/Cargo.toml cargo/XPlatLauncher/Cargo.lock /home/builder/prefetch/
-RUN . "$HOME/.cargo/env"; cargo fetch
+# 0.8.4 is max version that understands "no-clearly-defined" in about.toml
+RUN . "$HOME/.cargo/env"; cargo fetch ; cargo install --locked --force --version 0.8.4 cargo-about
 
 # fetch dependencies for restarter
 COPY cargo/restarter/Cargo.toml cargo/restarter/Cargo.lock /home/builder/prefetch/

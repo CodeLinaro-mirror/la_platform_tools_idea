@@ -4,16 +4,20 @@ package org.jetbrains.plugins.terminal.startup
 import com.intellij.execution.wsl.WSLDistribution
 import com.intellij.execution.wsl.WslDistributionManager
 import com.intellij.execution.wsl.WslPath
-import com.intellij.openapi.diagnostic.fileLogger
-import com.intellij.openapi.util.SystemInfo
+import com.intellij.openapi.diagnostic.logger
 import com.intellij.platform.eel.EelApi
 import com.intellij.platform.eel.EelDescriptor
 import com.intellij.platform.eel.EelPosixApi
+import com.intellij.platform.eel.EelUnavailableException
 import com.intellij.platform.eel.path.EelPath
 import com.intellij.platform.eel.provider.getEelDescriptor
 import com.intellij.platform.eel.provider.toEelApi
+import com.intellij.platform.ide.productMode.IdeProductMode
 import com.intellij.util.PathUtil
 import com.intellij.util.asSafely
+import com.intellij.util.system.LowLevelLocalMachineAccess
+import com.intellij.util.system.OS
+import kotlinx.coroutines.future.await
 import org.jetbrains.plugins.terminal.LocalTerminalDirectRunner.LOGIN_CLI_OPTION
 import org.jetbrains.plugins.terminal.TerminalStartupEelContext
 import org.jetbrains.plugins.terminal.runner.LocalTerminalStartCommandBuilder.INTERACTIVE_CLI_OPTION
@@ -48,30 +52,31 @@ internal class WslShellExecCommand(
       val eelApi = eelDescriptor.toWslEelApiIfAvailable()
       if (eelApi != null) {
         return TerminalStartupEelContext(
-          findRemoteWorkingDirectory(eelApi, workingDirectory),
-          createDefaultWslShellCommand(eelApi)
+          workingDirectory = findRemoteWorkingDirectory(eelApi, workingDirectory),
+          shellCommand = createDefaultWslShellCommand(eelApi),
+          platform = eelApi.platform,
         )
       }
     }
     return null
   }
 
-  private fun findDistributionName(workingDirectory: Path): String? {
+  private suspend fun findDistributionName(workingDirectory: Path): String? {
     distributionNameFromCommandLine?.let {
       return it
     }
     WslPath.parseWindowsUncPath(workingDirectory.toString())?.let {
       return it.distributionId
     }
-    val installedDistributions = WslDistributionManager.getInstance().installedDistributions
+    val installedDistributions = WslDistributionManager.getInstance().installedDistributionsFuture.await()
     if (installedDistributions.size == 1) {
       return installedDistributions[0].msId
     }
     if (installedDistributions.isEmpty()) {
-      logFallbackWarn("Found no installed WSL distributions.")
+      logFallbackWarn("Found no installed WSL distributions")
     }
     else {
-      logFallbackWarn("Found multiple (${installedDistributions.size}) installed WSL distributions.")
+      logFallbackWarn("Found multiple (${installedDistributions.size}) installed WSL distributions")
     }
     return null
   }
@@ -99,13 +104,14 @@ internal class WslShellExecCommand(
             return WslShellExecCommand(shellCommand[2])
           }
         }
-        logFallbackWarn("Unable to parse WSL command $shellCommand to launch via IJEnt.")
+        logFallbackWarn("Unable to parse WSL command $shellCommand to launch via IJEnt")
       }
       return null
     }
 
+    @OptIn(LowLevelLocalMachineAccess::class)
     internal fun isWslCommand(command: List<String>): Boolean {
-      if (SystemInfo.isWindows) {
+      if (!IdeProductMode.isFrontend && OS.CURRENT == OS.Windows) {
         val exePath = command.getOrNull(0) ?: return false
         val exeFileName = PathUtil.getFileName(exePath)
         return exeFileName.equals("wsl.exe", true) || exeFileName.equals("wsl", true)
@@ -117,7 +123,7 @@ internal class WslShellExecCommand(
       val eelApi = try {
         toEelApi()
       }
-      catch (e: Exception) {
+      catch (e: EelUnavailableException) {
         logFallbackWarn("Unavailable EelApi for ${this.name}", e)
         return null
       }
@@ -128,7 +134,7 @@ internal class WslShellExecCommand(
     }
 
     private fun logFallbackWarn(reason: String, t: Throwable? = null) {
-      fileLogger().warn("$reason. Fallback to local launch via wsl.exe.", t)
+      logger<WslShellExecCommand>().warn("$reason. Fallback to local launch via wsl.exe.", t)
     }
   }
 }

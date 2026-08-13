@@ -11,6 +11,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.job
 import org.jetbrains.bazel.jvm.*
+import org.jetbrains.jps.dependency.impl.ElementInternerImpl
+import org.jetbrains.jps.dependency.impl.GraphElementInterner
 import org.jetbrains.jps.javac.ExternalRefCollectorCompilerToolExtension
 import java.io.InputStream
 import java.io.Writer
@@ -45,6 +47,7 @@ internal class BazelIncExecutor : WorkRequestExecutor {
 
     private fun configureGlobals() {
       ExternalRefCollectorCompilerToolExtension.enable()
+      GraphElementInterner.setImplementation(ElementInternerImpl())
       // TMH assertions
       /* Android Studio (b/493960803): disable threading assertions for now, matching the previous behavior in the JPS build.
       System.setProperty(ThreadingModelInstrumenter.INSTRUMENT_ANNOTATIONS_PROPERTY, "true")

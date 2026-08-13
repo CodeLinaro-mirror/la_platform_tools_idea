@@ -13,7 +13,7 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.application.readAction
-import com.intellij.openapi.application.writeAction
+import com.intellij.openapi.application.edtWriteAction
 import com.intellij.openapi.command.writeCommandAction
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.fileEditor.FileDocumentManager
@@ -39,7 +39,7 @@ import com.intellij.openapi.vfs.readText
 import com.intellij.openapi.vfs.writeText
 import com.intellij.platform.eel.codegen.BuilderRequest.Ownership
 import com.intellij.profile.codeInspection.InspectionProjectProfileManager
-import com.intellij.project.IntelliJProjectConfiguration
+import com.intellij.project.loadIntelliJProject
 import com.intellij.project.stateStore
 import com.intellij.psi.JavaPsiFacade
 import com.intellij.psi.PsiClass
@@ -54,6 +54,7 @@ import com.intellij.psi.stubs.StubUpdatingIndex
 import com.intellij.testFramework.IndexingTestUtil
 import com.intellij.testFramework.TestApplicationManager
 import com.intellij.testFramework.UsefulTestCase
+import com.intellij.testFramework.common.ThreadLeakTracker
 import com.intellij.testFramework.junit5.fixture.TestFixtures
 import com.intellij.testFramework.junit5.fixture.projectFixture
 import com.intellij.util.indexing.FileBasedIndex
@@ -87,7 +88,6 @@ import org.jetbrains.kotlin.descriptors.annotations.AnnotationUseSiteTarget.PROP
 import org.jetbrains.kotlin.descriptors.annotations.AnnotationUseSiteTarget.PROPERTY_SETTER
 import org.jetbrains.kotlin.descriptors.annotations.AnnotationUseSiteTarget.RECEIVER
 import org.jetbrains.kotlin.descriptors.annotations.AnnotationUseSiteTarget.SETTER_PARAMETER
-import org.jetbrains.kotlin.idea.test.UseK2PluginMode
 import org.jetbrains.kotlin.kdoc.psi.api.KDoc
 import org.jetbrains.kotlin.psi.KtAnnotated
 import org.jetbrains.kotlin.psi.KtAnnotationEntry
@@ -115,7 +115,6 @@ import java.nio.file.Path
 import java.util.Optional
 import java.util.TreeSet
 import kotlin.io.path.ExperimentalPathApi
-import kotlin.io.path.pathString
 import kotlin.io.path.readText
 import kotlin.io.path.walk
 import kotlin.jvm.optionals.getOrNull
@@ -128,7 +127,7 @@ import kotlin.jvm.optionals.getOrNull
  * Remember to commit new builders.
  */
 @TestFixtures
-@UseK2PluginMode
+
 class BuildersGeneratorTest {
   companion object {
     private var oldInitInspections = false
@@ -147,6 +146,10 @@ class BuildersGeneratorTest {
     fun beforeAll() {
       TestApplicationManager.getInstance()
       testClassDisposable = Disposer.newDisposable()
+
+      // Opening the temporary project may lazily initialize these application-scoped Android ADB helper threads
+      // after the JUnit thread snapshot.
+      ThreadLeakTracker.longRunningThreadCreated(testClassDisposable, "AndroidAdbSessionHost", "InnocuousThread")
 
       oldInitInspections = InspectionProfileImpl.INIT_INSPECTIONS
       InspectionProfileImpl.INIT_INSPECTIONS = true
@@ -227,7 +230,7 @@ class BuildersGeneratorTest {
         if (!Files.exists(path)) Files.createFile(path)
         val virtualFile = VfsUtil.findFile(path, true)!!
         val (_, newContent) = contentPair
-        writeAction {
+        edtWriteAction {
           if (newContent.isPresent) {
             virtualFile.writeText(newContent.get())
           }
@@ -285,7 +288,7 @@ class BuildersGeneratorTest {
   }
 
   private suspend fun synchronizeVariousCaches(tempProject: Project) {
-    writeAction {
+    edtWriteAction {
       FileDocumentManager.getInstance().saveAllDocuments()
     }
     IndexingTestUtil.suspendUntilIndexesAreReady(tempProject)
@@ -335,18 +338,18 @@ class BuildersGeneratorTest {
     moduleName: String,
   ): Pair<Module, Path> {
     var genSrcDirName: Path? = null
-    val ultimateProject: JpsProject = IntelliJProjectConfiguration.loadIntelliJProject(Path.of(PathManager.getHomePath()).pathString)
+    val ultimateProject: JpsProject = loadIntelliJProject(PathManager.getHomeDir())
 
     val libraries = mutableSetOf<JpsLibrary>()
 
-    val newEelModule: Module = writeAction {
+    val newEelModule: Module = edtWriteAction {
       val projectModel = ModuleManager.getInstance(tempProject).getModifiableModel()
 
       val jpsModuleQueue = mutableListOf(ultimateProject.findModuleByName(moduleName)!!)
 
-      val jdkName = "jbr-21"
+      val jdkName = "jbr-25"
       val projectJdkTable = ProjectJdkTable.getInstance(tempProject)
-      val projectJdk = JavaSdk.getInstance().createJdk("jbr-21", System.getProperty("java.home"))
+      val projectJdk = JavaSdk.getInstance().createJdk("jbr-25", System.getProperty("java.home"))
       projectJdkTable.addJdk(projectJdk)
       ProjectRootManager.getInstance(tempProject).setProjectSdkName(jdkName, JavaSdk.getInstance().name)
 
@@ -763,6 +766,11 @@ private suspend fun writeBuilderFiles(
           else -> null
         }
 
+        val ownedBuilderClass = when (val o = builderRequest.ownership) {
+          is Ownership.ExtensionFunction -> "com.intellij.platform.eel.EelOwnedBuilder"
+          is Ownership.Method -> "com.intellij.platform.eel.EelOwnedBuilder"
+          else -> "com.intellij.platform.eel.OwnedBuilder"
+        }
         text += """
         /**
          * Create it via [${ownerForKdoc?.plus(".").orEmpty()}${builderRequest.methodName}]. 
@@ -774,7 +782,7 @@ private suspend fun writeBuilderFiles(
             "\nprivate var ${prop.name}: ${prop.typeFqn},"
           }
         }
-        ) : com.intellij.platform.eel.OwnedBuilder<${builderRequest.returnTypeFqn}> {
+        ) : $ownedBuilderClass<${builderRequest.returnTypeFqn}> {
         ${
           argsInterfaceInfo.optionalArguments.joinToString("\n\n") { prop ->
             "private var ${prop.name}: ${prop.typeFqn} = ${prop.body}"
@@ -802,6 +810,9 @@ private suspend fun writeBuilderFiles(
           argsInterfaceInfo.properties.map { it.name }.joinToString("\n") { name -> "$name = $name," }
         })
             )
+          ${if (ownerForPropertyType != null) {
+            "override val eelDescriptor: EelDescriptor get() = owner.descriptor".trimIndent()
+          } else ""}
         }
         """
       }
@@ -922,15 +933,25 @@ private fun renderPropertyInBuilder(
     for ((enumMethodName, field) in fields) {
       val passingAnnotations = field.annotations
         .filter { annotation ->
-          val annotationClass =
-            annotation.nameReferenceElement?.resolve()?.let { it as? KtClass }
-            ?: return@filter false
-          annotationClass.annotationEntries.none { annotationOfAnnotation ->
-            annotationOfAnnotation.name == null &&
-            annotationOfAnnotation.shortName?.asString() == "Target" &&
-            annotationOfAnnotation.valueArguments.none { target ->
-              (target as KtValueArgument).renderWithFqnTypes() == "AnnotationTarget.FUNCTION"
+          when (val resolved = annotation.nameReferenceElement?.resolve()) {
+            is PsiClass -> {
+              val targetAnnotation = resolved.getAnnotation("java.lang.annotation.Target")
+                                     ?: resolved.getAnnotation("kotlin.annotation.Target")
+
+              targetAnnotation == null || targetAnnotation.text.let {
+                it.contains("METHOD") || it.contains("FUNCTION")
+              }
             }
+            is KtClass -> {
+              val targetAnnotation = resolved.annotationEntries.find {
+                it.shortName?.asString() == "Target"
+              }
+
+              targetAnnotation == null || targetAnnotation.valueArguments.any { target ->
+                (target as KtValueArgument).renderWithFqnTypes().contains("FUNCTION")
+              }
+            }
+            else -> false
           }
         }
         .joinToString("") { "$it\n" }
@@ -1006,7 +1027,7 @@ private fun PsiElement.getImportableTypes(): Collection<String> {
       if (element is KtTypeReference) {
         val clsName = analyze(element) {
           val maybeNestedClass = element.type.takeIf { !it.isPrimitive && !it.isAnyType && !it.isNothingType }?.expandedSymbol?.classId
-          val rootClass = generateSequence(maybeNestedClass) { it.parentClassId }.lastOrNull()
+          val rootClass = generateSequence(maybeNestedClass) { it.outerClassId }.lastOrNull()
           rootClass?.asFqNameString()
         }
         if (clsName != null) {

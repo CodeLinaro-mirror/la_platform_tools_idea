@@ -1,14 +1,16 @@
-<idea-plugin package="com.intellij.devkit.workspaceModel">
-
+<idea-plugin>
+  <!-- region Generated dependencies - run `Generate Product Layouts` to regenerate -->
   <dependencies>
-    <module name="intellij.java.backend"/>
     <plugin id="org.jetbrains.kotlin"/>
     <plugin id="org.editorconfig.editorconfigjetbrains"/>
+    <module name="intellij.java.backend"/>
+    <plugin id="com.intellij.copyright"/>
     <module name="intellij.devkit.core"/>
-    <!-- region Generated dependencies - run `Generate Product Layouts` to regenerate -->
     <module name="intellij.java.aetherDependencyResolver"/>
-    <!-- endregion -->
+    <module name="intellij.java.psi"/>
+    <module name="intellij.java.ui"/>
   </dependencies>
+  <!-- endregion -->
 
   <resource-bundle>messages.DevKitWorkspaceModelBundle</resource-bundle>
 

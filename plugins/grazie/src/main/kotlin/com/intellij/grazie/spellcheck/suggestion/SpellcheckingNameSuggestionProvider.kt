@@ -4,6 +4,7 @@ package com.intellij.grazie.spellcheck.suggestion
 import com.intellij.codeInsight.completion.CompletionUtilCore
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.psi.PsiElement
+import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiNamedElement
 import com.intellij.psi.codeStyle.SuggestedNameInfo
 import com.intellij.refactoring.rename.NameSuggestionProvider
@@ -22,14 +23,25 @@ class SpellcheckingNameSuggestionProvider : NameSuggestionProvider {
     val manager = SpellCheckerManager.getInstance(element.project)
     if (!manager.hasProblem(name)) return null
 
-    val suggestions = manager.getSuggestions(name)
+    val sequence = manager.getSuggestions(name)
+      .asSequence()
       .filter { RenameUtil.isValidName(element.project, element, it) }
-      .toList()
+
+    val suggestions = if (element is PsiFile) {
+      val extension = element.name.substringAfterLast('.').takeIf { it.isNotBlank() }
+      if (extension != null) sequence.map { "$it.$extension" }.toList() else sequence.toList()
+    } else {
+      sequence.toList()
+    }
     if (suggestions.isEmpty()) return null
 
     result.addAll(suggestions)
     return SuggestedNameInfo.NULL_INFO
   }
 
-  private fun getName(element: PsiElement): String? = if (element is PsiNamedElement) element.name else null
+  private fun getName(element: PsiElement): String? = when (element) {
+    is PsiFile -> element.name.substringBeforeLast('.').takeIf { it.isNotBlank() }
+    is PsiNamedElement -> element.name
+    else -> null
+  }
 }

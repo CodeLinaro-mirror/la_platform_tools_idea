@@ -4,13 +4,14 @@ package com.intellij.profile.codeInspection.ui
 import com.intellij.lang.Language
 import com.intellij.lang.LanguageUtil
 import com.intellij.lang.documentation.QuickDocHighlightingHelper
-import com.intellij.openapi.application.runReadAction
+import com.intellij.openapi.application.runReadActionBlocking
 import com.intellij.openapi.fileTypes.PlainTextLanguage
 import com.intellij.openapi.project.DefaultProjectFactory
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBHtmlPane
 import com.intellij.ui.components.JBHtmlPaneConfiguration
 import com.intellij.ui.components.JBHtmlPaneStyleConfiguration
+import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.Nls
 import org.jsoup.Jsoup
 import java.awt.Color
@@ -35,6 +36,7 @@ open class DescriptionEditorPane : JBHtmlPane(
 
   override fun getBackground(): Color = JBColor.PanelBackground
 
+  @ApiStatus.Internal
   companion object {
     const val EMPTY_HTML: String = "<html><body></body></html>"
   }
@@ -85,7 +87,7 @@ fun JEditorPane.readHTMLWithCodeHighlighting(text: String, language: String?) {
     if (codeSnippet.hasAttr("lang")) lang = LanguageUtil.findRegisteredLanguage(codeSnippet.attr("lang")) ?: lang
     val defaultProject = DefaultProjectFactory.getInstance().defaultProject
 
-    val styledBlock = runReadAction {
+    val styledBlock = runReadActionBlocking {
       Jsoup.parse(QuickDocHighlightingHelper.getStyledCodeBlock(defaultProject, lang, codeSnippet.wholeText()))
     }
     val styledHtml = styledBlock.select("pre code").first()?.html()

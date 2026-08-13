@@ -1,13 +1,15 @@
 <idea-plugin visibility="public">
   <resource-bundle>messages.GitLabBundle</resource-bundle>
 
+  <!-- region Generated dependencies - run `Generate Product Layouts` to regenerate -->
   <dependencies>
-    <!-- region Generated dependencies - run `Generate Product Layouts` to regenerate -->
     <plugin id="Git4Idea"/>
     <module name="intellij.platform.collaborationTools"/>
     <module name="intellij.platform.vcs.log"/>
-    <!-- endregion -->
+    <module name="intellij.vcs.git.backend"/>
+    <module name="intellij.vcs.git.shared"/>
   </dependencies>
+  <!-- endregion -->
 
   <extensionPoints>
     <extensionPoint qualifiedName="intellij.vcs.gitlab.titleGenerator"
@@ -63,6 +65,11 @@
     <customPasteProvider id="CommentFileLinkPasteProvider"
                          implementation="org.jetbrains.plugins.gitlab.ui.comment.CommitFilePasteProvider"/>
 
+    <completion.contributor language="any"
+                            implementationClass="org.jetbrains.plugins.gitlab.ui.GitlabMarkdownCompletionContributor"/>
+    <typedHandler implementation="org.jetbrains.plugins.gitlab.ui.GitlabMarkdownTypedHandler"/>
+    <backspaceHandlerDelegate implementation="org.jetbrains.plugins.gitlab.ui.GitlabMarkdownBackspaceHandler"/>
+
     <registryKey key="vcs.gitlab.connect.silently"
                  description="Connect to GitLab repository without an explicit user action"
                  defaultValue="true"/>
@@ -78,6 +85,12 @@
 
     <registryKey defaultValue="true" description="Enable file uploading action for review notes"
                  key="gitlab.merge.requests.file.upload.enabled"/>
+    <applicationSettings service="org.jetbrains.plugins.gitlab.authentication.accounts.GitLabPersistentAccounts"/>
+    <projectSettings service="org.jetbrains.plugins.gitlab.mergerequest.ui.filters.GitLabMergeRequestsPersistentFiltersHistory"/>
+    <projectSettings service="org.jetbrains.plugins.gitlab.mergerequest.GitLabMergeRequestsPreferences"/>
+    <projectSettings service="org.jetbrains.plugins.gitlab.mergerequest.ui.details.model.GitLabPersistentMergeRequestChangesViewedState"/>
+    <projectSettings service="org.jetbrains.plugins.gitlab.authentication.accounts.GitLabProjectDefaultAccountHolder"/>
+    <applicationSettings service="org.jetbrains.plugins.gitlab.GitLabSettings"/>
   </extensions>
 
   <extensions defaultExtensionNs="com.intellij.statistics">
@@ -220,9 +233,7 @@
            class="org.jetbrains.plugins.gitlab.mergerequest.ui.diff.action.GitLabMergeRequestDiffReviewDiscussionsToggleAction"
            icon="AllIcons.Actions.Show"
            popup="true">
-      <add-to-group group-id="Diff.EditorGutterPopupMenu.EditorSettings"
-                    relative-to-action="Vcs.Diff.ToggleDiffAligningMode"
-                    anchor="before"/>
+      <add-to-group group-id="Diff.ViewerSettings"/>
     </group>
     <action id="GitLab.MergeRequest.Review.Submit"
             class="org.jetbrains.plugins.gitlab.mergerequest.diff.action.GitLabMergeRequestDiffSubmitReviewAction"/>
@@ -232,7 +243,7 @@
       <override-text place="EditorTabPopup"/>
       <override-text place="ProjectViewPopup" use-text-of-place="EditorTabPopup"/>
       <override-text place="EditorPopup" use-text-of-place="EditorTabPopup"/>
-      <override-text place="FavoritesPopup" use-text-of-place="EditorTabPopup"/>
+      <override-text place="BookmarksPopup" use-text-of-place="EditorTabPopup"/>
       <add-to-group group-id="Git.Hosting.Open.In.Browser.Group"/>
     </group>
 

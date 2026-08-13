@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.template.impl;
 
 import com.intellij.codeInsight.intention.preview.IntentionPreviewUtils;
@@ -44,6 +44,7 @@ import com.intellij.openapi.editor.ex.RangeHighlighterEx;
 import com.intellij.openapi.editor.ex.util.EditorActionAvailabilityHint;
 import com.intellij.openapi.editor.ex.util.EditorActionAvailabilityHintKt;
 import com.intellij.openapi.editor.impl.ImaginaryEditor;
+import com.intellij.openapi.editor.impl.elf.ElfTheManager;
 import com.intellij.openapi.editor.markup.EffectType;
 import com.intellij.openapi.editor.markup.HighlighterLayer;
 import com.intellij.openapi.editor.markup.HighlighterTargetArea;
@@ -131,7 +132,9 @@ public final class TemplateState extends TemplateStateBase implements Disposable
     myEditorDocumentListener = new DocumentListener() {
       @Override
       public void beforeDocumentChange(@NotNull DocumentEvent e) {
-        if (CommandProcessor.getInstance().isCommandInProgress() && !isUndoOrRedoInProgress()) {
+        if (CommandProcessor.getInstance().isCommandInProgress() &&
+            !isUndoOrRedoInProgress() &&
+            !ElfTheManager.getInstance().isElfCommandInProgress()) {
           myDocumentChanged = true;
         }
       }
@@ -386,7 +389,6 @@ public final class TemplateState extends TemplateStateBase implements Disposable
         int segmentOffset = myTemplateRange.getStartOffset() + template.getSegmentOffset(i);
         getSegments().addSegment(segmentOffset, segmentOffset);
       }
-
       LOG.assertTrue(myTemplateRange.isValid(), getRangesDebugInfo());
       calcResults(false);
       LOG.assertTrue(myTemplateRange.isValid(), getRangesDebugInfo());
@@ -1030,7 +1032,6 @@ public final class TemplateState extends TemplateStateBase implements Disposable
         offset = myTemplateRange.getEndOffset();
       }
     }
-
     if (!isInteractiveModeSupported() && getCurrentVariableNumber() > -1) {
       offset = -1; //do not move caret in multicaret mode if at least one tab had been made already
     }

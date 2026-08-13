@@ -1,10 +1,8 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 @file:Suppress("ReplacePutWithAssignment", "ReplaceGetOrSet")
 
 package org.jetbrains.intellij.build.dev
 
-import com.fasterxml.jackson.core.JsonFactory
-import com.fasterxml.jackson.core.JsonToken
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -18,6 +16,9 @@ import org.jetbrains.intellij.build.productLayout.discovery.ProductConfiguration
 import org.jetbrains.intellij.build.productLayout.discovery.ProductConfigurationRegistry
 import org.jetbrains.intellij.build.telemetry.TraceManager
 import org.jetbrains.intellij.build.telemetry.use
+import tools.jackson.core.JsonToken
+import tools.jackson.core.ObjectReadContext
+import tools.jackson.core.json.JsonFactory
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Properties
@@ -49,7 +50,7 @@ fun getIdeSystemProperties(runDir: Path): VmProperties {
     .filter { it.startsWith("-D") }
     .map { it.removePrefix("-D") }
     .associateByTo(result, { it.substringBefore('=') }, { it.substringAfter('=', "") })
-  
+
   return VmProperties(result)
 }
 
@@ -62,10 +63,10 @@ private fun extractAdditionalJvmArguments(productInfoFile: Path): List<String> {
   val jsonFactory = JsonFactory()
 
   productInfoFile.inputStream().use { input ->
-    jsonFactory.createParser(input).use { parser ->
+    jsonFactory.createParser(ObjectReadContext.empty(), input).use { parser ->
       // Find the "launch" array
       while (parser.nextToken() != null) {
-        if (parser.currentToken == JsonToken.FIELD_NAME && parser.currentName() == "launch") {
+        if (parser.currentToken() == JsonToken.PROPERTY_NAME && parser.currentName() == "launch") {
           // Move to START_ARRAY
           parser.nextToken()
           // Move to first object in array (START_OBJECT)
@@ -73,14 +74,14 @@ private fun extractAdditionalJvmArguments(productInfoFile: Path): List<String> {
 
           // Find "additionalJvmArguments" in the first launch config
           while (parser.nextToken() != JsonToken.END_OBJECT) {
-            if (parser.currentToken == JsonToken.FIELD_NAME && parser.currentName() == "additionalJvmArguments") {
+            if (parser.currentToken() == JsonToken.PROPERTY_NAME && parser.currentName() == "additionalJvmArguments") {
               // Move to START_ARRAY
               parser.nextToken()
 
               // Read all string values from the array
               while (parser.nextToken() != JsonToken.END_ARRAY) {
-                if (parser.currentToken == JsonToken.VALUE_STRING) {
-                  result.add(parser.text)
+                if (parser.currentToken() == JsonToken.VALUE_STRING) {
+                  result.add(parser.string)
                 }
               }
 
@@ -125,19 +126,10 @@ suspend fun buildProductInProcess(request: BuildRequest): Path {
   }
   return TraceManager.spanBuilder("build ide").setAttribute("request", request.toString()).use {
     try {
-      buildProduct(
-        request = request,
-        createProductProperties = { compilationContext ->
-          val configuration = createConfiguration(homePath = request.projectDir, productionClassOutput = request.productionClassOutput)
-          val productConfiguration = getProductConfiguration(configuration, request.platformPrefix, request.baseIdePlatformPrefixForFrontend)
-          createProductProperties(
-            productConfiguration = productConfiguration,
-            outputProvider = compilationContext.outputProvider,
-            projectDir = request.projectDir,
-            platformPrefix = request.platformPrefix,
-          )
-        },
-      )
+      val buildOptionsTemplate = BuildOptions()
+      val configuration = createConfiguration(homePath = request.projectDir)
+      val productConfiguration = getProductConfiguration(configuration, request.platformPrefix, request.baseIdePlatformPrefixForFrontend)
+      buildProductFromProject(request = request, productConfiguration = productConfiguration, buildOptionsTemplate = buildOptionsTemplate)
     }
     finally {
       // otherwise, a thread leak in tests
@@ -150,12 +142,7 @@ suspend fun buildProductInProcess(request: BuildRequest): Path {
   }
 }
 
-private fun createConfiguration(productionClassOutput: Path, homePath: Path): ProductConfigurationRegistry {
-  // for compatibility with local runs and runs on CI
-  if (System.getProperty(BuildOptions.PROJECT_CLASSES_OUTPUT_DIRECTORY_PROPERTY) == null) {
-    System.setProperty(BuildOptions.PROJECT_CLASSES_OUTPUT_DIRECTORY_PROPERTY, productionClassOutput.parent.toString())
-  }
-
+private fun createConfiguration(homePath: Path): ProductConfigurationRegistry {
   val projectPropertiesPath = getProductPropertiesPath(homePath)
   return Json.decodeFromString(Files.readString(projectPropertiesPath))
 }

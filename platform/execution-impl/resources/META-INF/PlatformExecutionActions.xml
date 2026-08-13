@@ -1,7 +1,6 @@
 <idea-plugin>
   <actions>
     <action class="com.intellij.execution.wsl.target.WslSyncAction" internal="true" text="WSL Sync"/>
-    <action class="com.intellij.execution.wsl.proxy.WslProxyAction" internal="true"/>
     <action id="TerminalIncreaseFontSize" class="com.intellij.openapi.editor.actions.TerminalChangeFontSizeAction$IncreaseEditorFontSize"
             use-shortcut-of="EditorIncreaseFontSize">
       <override-text place="GoToAction"/>
@@ -95,7 +94,15 @@
                  key="run.toolwindow.split.enabled"
                  restartRequired="true"/>
     <remote.customDataContextSerializer implementation="com.intellij.execution.RunContentDescriptorIdSerializer"/>
+    <remote.customDataContextSerializer implementation="com.intellij.execution.ExecutionEnvironmentIdSerializer"/>
     <uiDataRule implementation="com.intellij.execution.RunContentDescriptorIdDataRule"/>
+    <uiDataRule implementation="com.intellij.execution.ExecutionEnvironmentIdDataRule"/>
+    <projectSettings service="com.intellij.execution.startup.ProjectStartupLocalConfiguration"/>
+    <projectSettings service="com.intellij.execution.startup.ProjectStartupSharedConfiguration"/>
+    <projectSettings service="com.intellij.execution.impl.IprRunManagerImpl"/>
+    <projectSettings service="com.intellij.execution.ui.RunConfigurationStartHistory"/>
+    <projectSettings service="com.intellij.execution.runToolbar.RunToolbarSettings"/>
+    <applicationSettings service="com.intellij.terminal.TerminalUiSettingsManager"/>
   </extensions>
   <extensionPoints>
     <extensionPoint interface="com.intellij.execution.DisplayDescriptorChooser"
@@ -111,6 +118,9 @@
                     dynamic="true" />
     <extensionPoint qualifiedName="com.intellij.execution.impl.runSessionService"
                     interface="com.intellij.execution.RunSessionService"
+                    dynamic="true" />
+    <extensionPoint qualifiedName="com.intellij.execution.consolePauseStateProvider"
+                    interface="com.intellij.execution.ui.ExecutionConsolePauseStateProvider"
                     dynamic="true" />
 
     <extensionPoint qualifiedName="com.intellij.execution.processHandlerPidProvider"

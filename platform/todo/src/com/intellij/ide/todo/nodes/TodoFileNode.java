@@ -9,7 +9,6 @@ import com.intellij.ide.projectView.impl.nodes.PsiFileNode;
 import com.intellij.ide.todo.SmartTodoItemPointer;
 import com.intellij.ide.todo.TodoFilter;
 import com.intellij.ide.todo.TodoTreeBuilder;
-import com.intellij.ide.todo.rpc.TodoHelperKt;
 import com.intellij.ide.todo.rpc.TodoResult;
 import com.intellij.ide.util.treeView.AbstractTreeNode;
 import com.intellij.injected.editor.DocumentWindow;
@@ -64,14 +63,11 @@ public final class TodoFileNode extends PsiFileNode {
           return Collections.emptyList();
         }
 
-        TodoFilter filter = getToDoFilter();
-
-        List<TodoResult> results = TodoHelperKt.findAllTodos(getProject(), virtualFile, filter);
+        List<TodoResult> results = myBuilder.getCachedRemoteTodos(virtualFile);
 
         List<TodoRemoteItemNode> children = new ArrayList<>(results.size());
         for (TodoResult result : results) {
-          String lineText = result.getPresentation().isEmpty() ? "" : result.getPresentation().getFirst().getText();
-          TodoRemoteItemNode.Value value = new TodoRemoteItemNode.Value(virtualFile, result.getNavigationOffset(), result.getLength(), result.getLine(), lineText);
+          TodoRemoteItemNode.Value value = new TodoRemoteItemNode.Value(virtualFile, result.getNavigationOffset(), result.getLength(), result.getLine(), result.getPresentation());
           children.add(new TodoRemoteItemNode(getProject(), value, myBuilder));
         }
         return Collections.unmodifiableList(children);
@@ -109,11 +105,15 @@ public final class TodoFileNode extends PsiFileNode {
                                                                @NotNull PsiTodoSearchHelper helper) {
     List<TodoItem> todoItems = new ArrayList<>(Arrays.asList(helper.findTodoItems(psiFile)));
 
+    InjectedLanguageManager injectedLanguageManager = InjectedLanguageManager.getInstance(psiFile.getProject());
     psiFile.accept(new PsiRecursiveElementWalkingVisitor() {
       @Override
       public void visitElement(@NotNull PsiElement element) {
         if (element instanceof PsiLanguageInjectionHost) {
-          InjectedLanguageManager.getInstance(psiFile.getProject()).enumerate(element, (injectedPsi, places) -> {
+          injectedLanguageManager.enumerate(element, (injectedPsi, places) -> {
+            if (injectedLanguageManager.shouldInspectionsBeLenient(injectedPsi)) {
+              return;
+            }
             if (places.size() == 1) {
               Document document = PsiDocumentManager.getInstance(injectedPsi.getProject()).getCachedDocument(injectedPsi);
               if (!(document instanceof DocumentWindow)) return;

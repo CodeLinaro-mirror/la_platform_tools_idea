@@ -2,6 +2,7 @@
 package com.intellij.util;
 
 import com.intellij.concurrency.JobLauncher;
+import com.intellij.openapi.progress.EmptyProgressIndicator;
 import com.intellij.testFramework.LightPlatformTestCase;
 import one.util.streamex.IntStreamEx;
 import org.jetbrains.annotations.NotNull;
@@ -14,7 +15,7 @@ public class QueryTest extends LightPlatformTestCase {
   public void testForEachIsThreadSafeByDefault() {
     List<String> src = IntStreamEx.range(0, 100).mapToObj(String::valueOf).toList();
     AtomicBoolean processing = new AtomicBoolean();
-    parallelQuery(src).forEach(__ -> {
+    parallelQuery(src).forEach(_ -> {
       assertTrue(processing.compareAndSet(false, true));
       TimeoutUtil.sleep(1);
       processing.set(false);
@@ -27,7 +28,7 @@ public class QueryTest extends LightPlatformTestCase {
     assertTrue(cores > 1);
     int eachSleep = 200;
     long start = System.currentTimeMillis();
-    parallelQuery(Arrays.asList("a", "b")).allowParallelProcessing().forEach(__ -> {
+    parallelQuery(Arrays.asList("a", "b")).allowParallelProcessing().forEach(_ -> {
       TimeoutUtil.sleep(eachSleep);
       return true;
     });
@@ -39,7 +40,7 @@ public class QueryTest extends LightPlatformTestCase {
     return new AbstractQuery<>() {
       @Override
       protected boolean processResults(@NotNull Processor<? super String> consumer) {
-        JobLauncher.getInstance().invokeConcurrentlyUnderProgress(strings, null, consumer);
+        JobLauncher.getInstance().invokeConcurrentlyUnderProgress(strings, new EmptyProgressIndicator(), consumer);
         return false;
       }
     };

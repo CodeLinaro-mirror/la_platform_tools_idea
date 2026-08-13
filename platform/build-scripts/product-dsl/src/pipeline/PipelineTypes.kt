@@ -16,6 +16,7 @@ import org.jetbrains.intellij.build.productLayout.dependency.ModuleDescriptorCac
 import org.jetbrains.intellij.build.productLayout.dependency.PluginContentCache
 import org.jetbrains.intellij.build.productLayout.discovery.DiscoveredProduct
 import org.jetbrains.intellij.build.productLayout.discovery.ModuleSetGenerationConfig
+import org.jetbrains.intellij.build.productLayout.discovery.ModuleSetSourceLabels
 import org.jetbrains.intellij.build.productLayout.stats.SuppressionUsage
 import org.jetbrains.intellij.build.productLayout.util.DeferredFileUpdater
 import org.jetbrains.intellij.build.productLayout.util.FileUpdateStrategy
@@ -50,15 +51,15 @@ internal data class DiscoveryResult(
 
   /** Community module sets */
   val communityModuleSets: List<ModuleSet>
-    get() = moduleSetsByLabel.get("community") ?: emptyList()
+    get() = ModuleSetSourceLabels.COMMUNITY_LABELS.flatMap { moduleSetsByLabel.get(it).orEmpty() }
 
   /** Ultimate module sets */
   val ultimateModuleSets: List<ModuleSet>
-    get() = moduleSetsByLabel.get("ultimate") ?: emptyList()
+    get() = moduleSetsByLabel.get(ModuleSetSourceLabels.ULTIMATE) ?: emptyList()
 
   /** Core module sets */
   val coreModuleSets: List<ModuleSet>
-    get() = moduleSetsByLabel.get("core") ?: emptyList()
+    get() = moduleSetsByLabel.get(ModuleSetSourceLabels.CORE) ?: emptyList()
 }
 
 /**
@@ -81,7 +82,6 @@ internal data class GenerationModel(
   @JvmField val config: ModuleSetGenerationConfig,
   @JvmField val projectRoot: Path,
   @JvmField val outputProvider: ModuleOutputProvider,
-  @JvmField val isUltimateBuild: Boolean,
 
   // ============ Caches (created during model building) ============
 
@@ -94,8 +94,8 @@ internal data class GenerationModel(
   /** Deferred file updater for atomic writes */
   @JvmField val fileUpdater: DeferredFileUpdater,
 
-  /** XML writer policy (write/diff/skip based on generation mode) */
-  @JvmField val xmlWritePolicy: FileUpdateStrategy,
+  /** Generated artifact write policy (write/diff/skip based on generation mode) */
+  @JvmField val generatedArtifactWritePolicy: FileUpdateStrategy,
 
   /** Coroutine scope for async operations */
   @JvmField val scope: CoroutineScope,

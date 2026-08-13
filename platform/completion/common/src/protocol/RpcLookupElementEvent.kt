@@ -2,6 +2,7 @@
 package com.intellij.platform.completion.common.protocol
 
 import com.intellij.codeInsight.lookup.LookupFocusDegree
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.platform.project.ProjectId
 import kotlinx.serialization.Serializable
 
@@ -16,7 +17,7 @@ sealed interface RpcLookupElementEvent {
   @Serializable
   data class LookupStateChanged(
     val requestId: RpcCompletionRequestId,
-    val selectedItemId: RpcSelectedItem? = null,
+    val selectedItemId: RpcSelectedItem?,
     val focusDegree: LookupFocusDegree? = null,
     val sortedItemIds: List<RpcCompletionItemId>? = null,
   ) : RpcLookupElementEvent {
@@ -32,9 +33,10 @@ sealed interface RpcLookupElementEvent {
    * the lookup is closed without completion
    */
   @Serializable
-  data class Cancel(val projectId: ProjectId) : RpcLookupElementEvent {
+  data class Cancel(val projectId: ProjectId, val requestId: RpcCompletionRequestId) : RpcLookupElementEvent {
     override fun toString(): String = buildToString("Cancel") {
       field("projectId", projectId)
+      field("requestId", requestId)
     }
   }
 
@@ -42,9 +44,13 @@ sealed interface RpcLookupElementEvent {
    * the lookup is closed with completion
    */
   @Serializable
-  data class ItemSelected(val projectId: ProjectId) : RpcLookupElementEvent {
+  data class ItemSelected(
+    val projectId: ProjectId,
+    val selectedItemId: RpcCompletionItemId? = null,
+  ) : RpcLookupElementEvent {
     override fun toString(): String = buildToString("ItemSelected") {
       field("projectId", projectId)
+      fieldWithNullDefault("selectedItemId", selectedItemId)
     }
   }
 
@@ -55,5 +61,18 @@ sealed interface RpcLookupElementEvent {
 data class RpcSelectedItem(val value: RpcCompletionItemId? = null) {
   override fun toString(): String = buildToString("RpcSelectedItem") {
     fieldWithNullDefault("value", value)
+  }
+}
+
+fun Logger.logLookupElementEvent(event: RpcLookupElementEvent) {
+  if (isTraceEnabled) {
+    trace(event.toString())
+  }
+  else if (isDebugEnabled) {
+    when (event) {
+      is RpcLookupElementEvent.Cancel -> debug("Lookup cancelled by client")
+      is RpcLookupElementEvent.ItemSelected -> debug("Lookup item selected")
+      is RpcLookupElementEvent.LookupStateChanged -> debug("Lookup state changed: ${event.selectedItemId} ${event.focusDegree} ${event.sortedItemIds?.size}")
+    }
   }
 }

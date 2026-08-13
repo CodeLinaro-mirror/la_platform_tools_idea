@@ -1,14 +1,16 @@
 <idea-plugin visibility="internal" package="org.jetbrains.kotlin.idea.jvm.shared">
+  <!-- region Generated dependencies - run `Generate Product Layouts` to regenerate -->
   <dependencies>
+    <module name="intellij.java.execution.impl"/>
+    <module name="intellij.java.psi"/>
+    <module name="intellij.java.psi.impl"/>
+    <module name="intellij.java.ui"/>
     <module name="intellij.kotlin.base.scripting.shared"/>
+    <module name="intellij.kotlin.codeInsight.shared"/>
     <module name="intellij.kotlin.runConfigurations.jvm"/>
+    <module name="intellij.kotlin.highlighting"/>
   </dependencies>
-  <extensionPoints>
-    <extensionPoint
-            qualifiedName="org.jetbrains.kotlin.idea.jvm.shared.bytecode.compilationConfigurationEnricher"
-            interface="org.jetbrains.kotlin.idea.jvm.shared.bytecode.CompilationConfigurationEnricher"
-            dynamic="true"/>
-  </extensionPoints>
+  <!-- endregion -->
 
   <actions>
     <action id="CreateIncrementalCompilationBackup"

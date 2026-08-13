@@ -1,26 +1,73 @@
-load("//:jvm.bzl", "jvm_import", "jvm_provided_library", "kt_javac_options", "kt_kotlinc_options")
-load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "int_flag")
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@protobuf//bazel/toolchains:proto_lang_toolchain.bzl", "proto_lang_toolchain")
-load("@rules_java//java:defs.bzl", "java_import")
-load("@rules_kotlin//kotlin:core.bzl", _kt_kotlinc_options = "kt_kotlinc_options")
+load("@rules_java//java:defs.bzl", "java_import", "java_library")
+load("@rules_kotlin//kotlin:core.bzl", "define_kt_toolchain")
 load("@rules_kotlin//kotlin:jvm.bzl", "kt_jvm_import")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_filegroup", "pkg_files", "strip_prefix")
 load("@rules_pkg//pkg:pkg.bzl", "pkg_zip")
-
+load("//:jvm.bzl", "jvm_import", "jvm_provided_library", "kt_javac_options", "kt_kotlinc_options")
+load("//:rules/assert_maven_coordinates_match.bzl", "assert_maven_coordinates_match_jar")
 
 jvm_import(
-  name = "protobuf_java",
-  jar = "@protobuf-java_http//file",
-  source_jar = "@protobuf-java-sources_http//file",
-  visibility = ["//visibility:public"],
+    name = "protobuf_java",
+    jar = "@protobuf-java_http//file",
+    source_jar = "@protobuf-java-sources_http//file",
+    visibility = ["//visibility:public"],
 )
 
-_kt_kotlinc_options(
+kt_kotlinc_options(
     name = "rules_jvm_bootstrap_kotlinc_options",
     include_stdlibs = "none",
-    jvm_target = "21",
+    jvm_target = "25",
     visibility = ["//visibility:public"],
-    x_jdk_release = "21",
+    x_jdk_release = "25",
+)
+
+# Controls IC for the custom rules_jvm Kotlin toolchain.
+# Disabled by default to avoid stale compiler-plugin bytecode across backend switches.
+bool_flag(
+    name = "rules_kotlin_incremental_compilation",
+    build_setting_default = False,
+    visibility = ["//visibility:public"],
+)
+
+# Kotlin toolchain for rules_kotlin backend.
+# ABI-generation options are kept in sync with the JPS backend's invocation of
+# JvmAbiCommandLineProcessor in
+# jvm-inc-builder/src/.../kotlinPlugins.kt::configurePlugins so that both
+# backends produce the same Kotlin ABI bytes.
+#
+# Mapping (jvm-abi-gen plugin option -> source of truth here):
+#   removePrivateClasses=true                    -> experimental_remove_private_classes_in_abi_jars
+#   removeDebugInfo=false                        -> experimental_remove_debug_info_in_abi_jars (default False)
+#   treatInternalAsPrivate (not set)             -> experimental_treat_internal_as_private_in_abi_jars (default False)
+#   removeDataClassCopyIfConstructorIsPrivate=true,
+#   preserveDeclarationOrder=true                -> hard-coded in BtapiCompiler.buildAbiGenPlugin
+#                                                   (upstream rules_kotlin doesn't expose these via
+#                                                   toolchain attrs).
+define_kt_toolchain(
+    name = "kotlin_toolchain",
+    api_version = "2.3",
+    btapi_annotations = ":annotations_import",
+    btapi_build_tools_impl = ":kotlin-build-tools-impl_import",
+    btapi_kotlin_compiler_embeddable = ":kotlin-compiler-embeddable_import",
+    btapi_kotlin_coroutines = ":kotlinx-coroutines-core_import",
+    btapi_kotlin_daemon_client = ":kotlin-daemon-client_import",
+    btapi_kotlin_reflect = ":kotlin-reflect_import",
+    btapi_kotlin_stdlib = ":kotlin-stdlib_import",
+    experimental_remove_private_classes_in_abi_jars = True,
+    jvm_runtime = [
+        ":kotlin-stdlib_import",
+    ],
+
+    # Implicit Kotlin stdlib + jetbrains-annotations injected by rules_kotlin into
+    # every kt_jvm_library's JavaInfo. Without these overrides the toolchain falls
+    # back to rules_kotlin's defaults (@kotlin_rules_maven//...)
+    jvm_stdlibs = [
+        ":annotations_import",
+        ":kotlin-stdlib_import",
+    ],
+    language_version = "2.3",
 )
 
 # --@rules_jvm//:trace
@@ -32,24 +79,22 @@ bool_flag(
 # used by _jvm_builder_launcher attribute in jvm_library rule
 exports_files(
     ["rules/impl/MemoryLauncher.java"],
-    visibility = ["//visibility:private"],
-)
-
-# --@rules_jvm//:koltin_inc_threshold=100
-int_flag(
-    name = "koltin_inc_threshold",
-    build_setting_default = -1,
-)
-
-int_flag(
-    name = "java_inc_threshold",
-    build_setting_default = -1,
+    visibility = ["//visibility:public"],
 )
 
 jvm_import(
     name = "annotations_import",
     jar = "@annotations_http//file",
     source_jar = "@annotations-sources_http//file",
+    # Version must match the `annotations_http` http_file URL in MODULE.bazel —
+    # verified at analysis time by `:annotations_import_coords_check`.
+    tags = ["maven_coordinates=org.jetbrains:annotations:26.0.2"],
+    visibility = ["//visibility:public"],
+)
+
+assert_maven_coordinates_match_jar(
+    name = "annotations_import_coords_check",
+    target = ":annotations_import",
     visibility = ["//visibility:public"],
 )
 
@@ -132,6 +177,18 @@ jvm_import(
 )
 
 jvm_import(
+    name = "kotlin-daemon-client_import",
+    jar = "@kotlin-daemon-client_http//file",
+    visibility = ["//visibility:public"],
+)
+
+jvm_import(
+    name = "kotlin-build-tools-impl_import",
+    jar = "@kotlin-build-tools-impl_http//file",
+    visibility = ["//visibility:public"],
+)
+
+jvm_import(
     name = "kotlin-compose-compiler-plugin-embeddable_import",
     jar = "@kotlin-compose-compiler-plugin-embeddable_http//file",
     visibility = ["//visibility:public"],
@@ -164,6 +221,15 @@ jvm_import(
 jvm_import(
     name = "kotlin-stdlib_import",
     jar = "@kotlin-stdlib_http//file",
+    # Version must match `kotlin_compiler_version` in MODULE.bazel — verified at
+    # analysis time by `:kotlin-stdlib_import_coords_check`.
+    tags = ["maven_coordinates=org.jetbrains.kotlin:kotlin-stdlib:2.4.0"],
+    visibility = ["//visibility:public"],
+)
+
+assert_maven_coordinates_match_jar(
+    name = "kotlin-stdlib_import_coords_check",
+    target = ":kotlin-stdlib_import",
     visibility = ["//visibility:public"],
 )
 
@@ -347,21 +413,21 @@ jvm_import(
 )
 
 java_library(
-  name = "junit4",
-  exports = [
-    ":junit-junit-4_13_2_http_import",
-  ],
-  visibility = ["//visibility:public"]
+    name = "junit4",
+    visibility = ["//visibility:public"],
+    exports = [
+        ":junit-junit-4_13_2_http_import",
+    ],
 )
 
 jvm_import(
-  name = "org_opentest4j-opentest4j-1_3_0_http_import",
-  jar = "@org_opentest4j-opentest4j-1_3_0_http//file",
+    name = "org_opentest4j-opentest4j-1_3_0_http_import",
+    jar = "@org_opentest4j-opentest4j-1_3_0_http//file",
 )
 
 jvm_import(
-  name = "junit-junit-4_13_2_http_import",
-  jar = "@junit-junit-4_13_2_http//file",
+    name = "junit-junit-4_13_2_http_import",
+    jar = "@junit-junit-4_13_2_http//file",
 )
 
 kt_javac_options(
@@ -372,6 +438,7 @@ kt_javac_options(
 kt_kotlinc_options(
     name = "default-kotlinc-opts-value",
     visibility = ["//visibility:public"],
+    x_lambdas = "class",
 )
 
 label_flag(
@@ -399,25 +466,26 @@ label_flag(
 )
 
 pkg_files(
-  name = "rules_to_zip",
-  srcs = glob(["rules/**/*"]),
-  strip_prefix = strip_prefix.from_pkg(),
+    name = "rules_to_zip",
+    srcs = glob(["rules/**/*"]),
+    strip_prefix = strip_prefix.from_pkg(),
 )
 
 pkg_zip(
     name = "rules_jvm_zip",
     srcs = glob([
-      "*.bzl",
-      "*.bazel",
-      "*.bazel.lock",
+        "*.bzl",
+        "*.bazel",
+        "*.bazel.lock",
+        "*.patch",
     ]) + [
-      ":rules_to_zip",
-       "//dependency-graph:files_to_zip",
-       "//jps-builders-6:files_to_zip",
-       "//jvm-inc-builder:files_to_zip",
-       "//rules/impl/platforms:files_to_zip",
-       "//worker-framework:files_to_zip",
-       "//zip:files_to_zip",
+        ":rules_to_zip",
+        "//dependency-graph:files_to_zip",
+        "//jps-builders-6:files_to_zip",
+        "//jvm-inc-builder:files_to_zip",
+        "//rules/impl/platforms:files_to_zip",
+        "//worker-framework:files_to_zip",
+        "//zip:files_to_zip",
     ],
     visibility = ["//visibility:public"],
 )

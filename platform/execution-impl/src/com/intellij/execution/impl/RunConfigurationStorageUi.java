@@ -257,7 +257,7 @@ public final class RunConfigurationStorageUi {
 
     boolean isInContent = WorkspaceFileIndex.getInstance(project).isUrlInContent(VfsUtilCore.pathToUrl(path)) != ThreeState.NO;
     if (!isInContent) {
-      if (ProjectFileIndex.getInstance(project).getContentRootForFile(file, false) == null) {
+      if (WorkspaceFileIndex.getInstance(project).getContentFileSetRoot(file, false) == null) {
         return ExecutionBundle.message("run.configuration.storage.folder.not.within.project");
       }
       else {
@@ -499,7 +499,7 @@ public final class RunConfigurationStorageUi {
                  super.isFileSelectable(file) &&
                  !file.getPath().endsWith("/.idea") &&
                  !file.getPath().contains("/.idea/") &&
-                 ReadAction.compute(() -> ProjectFileIndex.getInstance(project).isInContent(file));
+                 ReadAction.computeBlocking(() -> ProjectFileIndex.getInstance(project).isInContent(file));
         }
       };
 

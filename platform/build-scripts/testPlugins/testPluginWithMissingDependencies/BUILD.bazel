@@ -1,16 +1,39 @@
-### auto-generated section `build intellij.platform.buildScripts.testPlugins.testPluginWithMissingDependencies` start
-load("@rules_jvm//:jvm.bzl", "jvm_library", "resourcegroup")
+load("@rules_jvm//:jvm.bzl", "jvm_library")
 
-resourcegroup(
-  name = "testPluginWithMissingDependencies_resources",
-  srcs = glob(["resources/**/*"]),
-  strip_prefix = "resources"
+### auto-generated section `build intellij.platform.buildScripts.testPlugins.testPluginWithMissingDependencies` start
+
+jvm_library(
+    name = "testPluginWithMissingDependencies",
+    srcs = glob(
+        [],
+        allow_empty = True,
+    ),
+    module_name = "intellij.platform.buildScripts.testPlugins.testPluginWithMissingDependencies",
+    resource_strip_prefix = "resources",
+    resources = glob(
+        ["resources/**/*"],
+    ),
+    visibility = ["//visibility:public"],
 )
 
 jvm_library(
-  name = "testPluginWithMissingDependencies",
-  visibility = ["//visibility:public"],
-  srcs = glob([], allow_empty = True),
-  resources = [":testPluginWithMissingDependencies_resources"]
+    name = "testPluginWithMissingDependencies_test_lib",
+    testonly = True,
+    srcs = glob(
+        [],
+        allow_empty = True,
+    ),
+    module_name = "intellij.platform.buildScripts.testPlugins.testPluginWithMissingDependencies",
+    visibility = ["//visibility:public"],
+    runtime_deps = [":testPluginWithMissingDependencies"],
 )
 ### auto-generated section `build intellij.platform.buildScripts.testPlugins.testPluginWithMissingDependencies` end
+
+### auto-generated section `iml intellij.platform.buildScripts.testPlugins.testPluginWithMissingDependencies` start
+exports_files(
+    [
+        "intellij.platform.buildScripts.testPlugins.testPluginWithMissingDependencies.iml",
+    ],
+    visibility = ["//visibility:public"],
+)
+### auto-generated section `iml intellij.platform.buildScripts.testPlugins.testPluginWithMissingDependencies` end

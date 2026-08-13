@@ -19,6 +19,7 @@ import com.intellij.codeInspection.reference.RefManager;
 import com.intellij.codeInspection.reference.RefVisitor;
 import com.intellij.codeInspection.ui.AggregateResultsExporter;
 import com.intellij.codeInspection.ui.GlobalReportedProblemFilter;
+import com.intellij.codeInspection.ui.InspectionProblemAddedListener;
 import com.intellij.codeInspection.ui.ReportedProblemFilter;
 import com.intellij.codeInspection.ui.util.SynchronizedBidiMultiMap;
 import com.intellij.configurationStore.JbXmlOutputter;
@@ -143,7 +144,7 @@ public class DefaultInspectionToolResultExporter implements InspectionToolResult
           catch (IOException e) {
             LOG.error(e);
           }
-        }, __ -> false);
+        }, _ -> false);
 
         writer.write('\n');
       }
@@ -217,8 +218,7 @@ public class DefaultInspectionToolResultExporter implements InspectionToolResult
 
   private void exportResult(@NotNull RefEntity refEntity, @NotNull CommonProblemDescriptor descriptor, @NotNull Element element) {
     PsiElement psiElement = descriptor instanceof ProblemDescriptor problemDescriptor ? problemDescriptor.getPsiElement() : null;
-    InspectionToolWrapper<?,?> toolWrapper =
-      myToolWrapper.getTool() instanceof AggregateResultsInspection ? getToolWrapperFromDescriptor(descriptor) : myToolWrapper;
+    InspectionToolWrapper<?,?> toolWrapper = getToolWrapper(descriptor);
     try {
       @NonNls Element problemClassElement = new Element(INSPECTION_RESULTS_PROBLEM_CLASS_ELEMENT);
       problemClassElement.setAttribute(INSPECTION_RESULTS_ID_ATTRIBUTE, toolWrapper.getShortName());
@@ -300,6 +300,10 @@ public class DefaultInspectionToolResultExporter implements InspectionToolResult
       }
       LOG.error(message, e);
     }
+  }
+
+  protected @NotNull InspectionToolWrapper<?, ?> getToolWrapper(@NotNull CommonProblemDescriptor descriptor) {
+    return myToolWrapper.getTool() instanceof AggregateResultsInspection ? getToolWrapperFromDescriptor(descriptor) : myToolWrapper;
   }
 
   private @NotNull InspectionToolWrapper<?, ?> getToolWrapperFromDescriptor(@NotNull CommonProblemDescriptor commonDescriptor) {
@@ -493,6 +497,17 @@ public class DefaultInspectionToolResultExporter implements InspectionToolResult
     else {
       addLocalInspectionProblem(refElement, descriptors);
     }
+
+    notifyProblemAddedListeners(descriptors);
+  }
+
+  private void notifyProblemAddedListeners(CommonProblemDescriptor @NotNull [] descriptors) {
+    if (descriptors.length == 0) {
+      return;
+    }
+    InspectionProblemAddedListener.EP_NAME.forEachExtensionSafe(listener -> {
+      listener.onProblemsAdded(myContext.getProject(), myToolWrapper, descriptors);
+    });
   }
 
   private void addLocalInspectionProblem(@NotNull RefEntity refElement, CommonProblemDescriptor @NotNull [] descriptors) {

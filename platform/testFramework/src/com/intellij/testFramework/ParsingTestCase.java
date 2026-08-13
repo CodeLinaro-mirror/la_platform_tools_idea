@@ -14,6 +14,7 @@ import com.intellij.lang.LanguageExtension;
 import com.intellij.lang.LanguageExtensionPoint;
 import com.intellij.lang.LanguageParserDefinitions;
 import com.intellij.lang.MetaLanguage;
+import com.intellij.lang.MetaLanguageProvider;
 import com.intellij.lang.ParserDefinition;
 import com.intellij.lang.PsiBuilderFactory;
 import com.intellij.lang.impl.PsiBuilderFactoryImpl;
@@ -78,6 +79,7 @@ import com.intellij.psi.impl.PsiFileFactoryImpl;
 import com.intellij.psi.impl.source.resolve.reference.ReferenceProvidersRegistry;
 import com.intellij.psi.impl.source.resolve.reference.ReferenceProvidersRegistryImpl;
 import com.intellij.psi.impl.source.tree.ForeignLeafPsiElement;
+import com.intellij.psi.impl.source.tree.mvcc.InternalPsiVersioning;
 import com.intellij.psi.tree.TokenSet;
 import com.intellij.psi.util.CachedValuesManager;
 import com.intellij.util.CachedValuesManagerImpl;
@@ -174,6 +176,7 @@ public abstract class ParsingTestCase extends UsefulTestCase {
     project.registerService(StartupManager.class, new StartupManagerImpl(project, project.getCoroutineScope()));
     registerExtensionPoint(app.getExtensionArea(), FileTypeFactory.FILE_TYPE_FACTORY_EP, FileTypeFactory.class);
     registerExtensionPoint(app.getExtensionArea(), MetaLanguage.EP_NAME, MetaLanguage.class);
+    registerExtensionPoint(app.getExtensionArea(), MetaLanguage.PROVIDER_EP_NAME, MetaLanguageProvider.class);
 
     addExplicitExtensionForAnyLanguage(ElementTypeConverters.getInstance(), new CommonElementTypeConverterFactory());
 
@@ -618,12 +621,14 @@ public abstract class ParsingTestCase extends UsefulTestCase {
   private static void ensureCorrectReparse(@NotNull PsiFile file, boolean isCheckNoPsiEventsOnReparse) {
     final String psiToStringDefault = DebugUtil.psiToString(file, true, false);
 
-    TreeChangeEventImpl event = DebugUtil.performPsiModification("ensureCorrectReparse", () -> {
-      String fileText = file.getText();
-      DiffLog diffLog = new BlockSupportImpl().reparseRange(
-        file, file.getNode(), TextRange.allOf(fileText), fileText, new EmptyProgressIndicator(), fileText
-      );
-      return diffLog.performActualPsiChange(file);
+    TreeChangeEventImpl event = InternalPsiVersioning.runModificationOfVersionedPsi(() -> {
+      return DebugUtil.performPsiModification("ensureCorrectReparse", () -> {
+        String fileText = file.getText();
+        DiffLog diffLog = new BlockSupportImpl().reparseRange(
+          file, file.getNode(), TextRange.allOf(fileText), fileText, new EmptyProgressIndicator(), fileText
+        );
+        return diffLog.performActualPsiChange(file);
+      });
     });
 
     assertEquals(psiToStringDefault, DebugUtil.psiToString(file, true, false));

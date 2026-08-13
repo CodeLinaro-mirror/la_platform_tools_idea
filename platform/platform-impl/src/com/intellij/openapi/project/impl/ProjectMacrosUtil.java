@@ -10,23 +10,25 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectBundle;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.WaitForProgressToShow;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.Set;
 
+@ApiStatus.Internal
 public final class ProjectMacrosUtil {
   private ProjectMacrosUtil() {
   }
 
-  public static boolean showMacrosConfigurationDialog(Project project, final Collection<String> undefinedMacros) {
+  public static boolean showMacrosConfigurationDialog(@NotNull Project project, final Collection<String> undefinedMacros) {
     final String text = ProjectBundle.message("project.load.undefined.path.variables.message");
     final Application application = ApplicationManager.getApplication();
     if (application.isHeadlessEnvironment() || application.isUnitTestMode()) {
       throw new RuntimeException(text + ": " + StringUtil.join(undefinedMacros, ", "));
     }
-    return ShowSettingsUtil.getInstance().editConfigurable(project, new UndefinedMacrosConfigurable(text, undefinedMacros));
+    return ShowSettingsUtil.getInstance().editConfigurable(project, new UndefinedMacrosConfigurable(project, text, undefinedMacros));
   }
 
   public static boolean checkNonIgnoredMacros(final Project project, final Set<String> usedMacros){

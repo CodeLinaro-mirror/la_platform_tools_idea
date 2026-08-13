@@ -30,6 +30,7 @@ internal object PluginModelAsyncOperationsExecutor {
     descriptor: PluginUiModel,
     customizer: PluginManagerCustomizer?,
     component: JComponent,
+    pluginUpdateSourceApplier: PluginUpdateSourceApplier,
   ) {
     cs.launch(Dispatchers.IO) {
       val stateForComponent = ModalityState.stateForComponent(component)
@@ -40,9 +41,10 @@ internal object PluginModelAsyncOperationsExecutor {
           customAction()
           return@withContext
         }
-        modelFacade.installOrUpdatePlugin(component, descriptor, null, stateForComponent)
+        val result = modelFacade.installOrUpdatePlugin(component, descriptor, null, stateForComponent)
+        pluginUpdateSourceApplier.revertIfNeeded(result)
       }
-    }
+    }.invokeOnCompletion (pluginUpdateSourceApplier::revertIfNeeded)
   }
 
   suspend fun performMarketplaceSearch(
@@ -104,6 +106,7 @@ internal object PluginModelAsyncOperationsExecutor {
     pluginManagerCustomizer: PluginManagerCustomizer?,
     modalityState: ModalityState,
     component: JComponent?,
+    pluginUpdateSourceApplier: PluginUpdateSourceApplier,
   ) {
     cs.launch(Dispatchers.IO) {
       val model = pluginManagerCustomizer?.getUpdateButtonCustomizationModel(modelFacade, plugin, updateDescriptor, modalityState)
@@ -112,10 +115,11 @@ internal object PluginModelAsyncOperationsExecutor {
           model.action()
         }
         else {
-          modelFacade.installOrUpdatePlugin(component, plugin, updateDescriptor, modalityState)
+          val result = modelFacade.installOrUpdatePlugin(component, plugin, updateDescriptor, modalityState)
+          pluginUpdateSourceApplier.revertIfNeeded(result)
         }
       }
-    }
+    }.invokeOnCompletion(pluginUpdateSourceApplier::revertIfNeeded)
   }
 
   fun loadPopupMenuActions(
@@ -123,16 +127,16 @@ internal object PluginModelAsyncOperationsExecutor {
     selection: List<ListPluginComponent>,
     callback: Consumer<List<AnAction>>,
   ) {
-    val customizer = component.customizer
+    val customizer = component.getCustomizer()
     if (customizer == null) {
       callback.accept(emptyList())
       return
     }
-    val modelFacade = component.modelFacade
-    component.coroutineScope.launch(Dispatchers.IO) {
+    val modelFacade = component.getModelFacade()
+    component.getCoroutineScope().launch(Dispatchers.IO) {
       val stateForComponent = ModalityState.stateForComponent(component)
       val popupSelection = selection.map {
-        PluginPopupMenuActionData(it.pluginModel, it.installedDescriptorForMarketplace, it.descriptorForActions)
+        PluginPopupMenuActionData(it.getPluginModel(), it.getInstalledDescriptorForMarketplace(), it.getDescriptorForActions())
       }
       val popupActions = customizer.getPopupMenuActions(modelFacade, popupSelection, stateForComponent)
       withContext(Dispatchers.EDT + stateForComponent.asContextElement()) {
@@ -144,7 +148,7 @@ internal object PluginModelAsyncOperationsExecutor {
   fun findPlugins(downloaders: Collection<PluginDownloader>, callback: Function<Map<PluginId, PluginUiModel>, Unit>) {
     val coroutineScope = service<CoreUiCoroutineScopeHolder>().coroutineScope
     coroutineScope.launch(Dispatchers.IO) {
-      val pluginModels = UiPluginManager.getInstance().findInstalledPlugins(downloaders.map(PluginDownloader::getId).toSet())
+      val pluginModels = UiPluginManager.getInstance().findInstalledPlugins(downloaders.map(PluginDownloader::id).toSet())
       withContext(Dispatchers.EDT + ModalityState.any().asContextElement()) {
         callback.apply(pluginModels)
       }
@@ -185,8 +189,8 @@ internal object PluginModelAsyncOperationsExecutor {
         }
       }
       else {
-        for (component in group.ui.plugins) {
-          val plugin: PluginUiModel = component.pluginModel
+        for (component in group.ui!!.plugins) {
+          val plugin: PluginUiModel = component.getPluginModel()
           if (pluginModelFacade.isEnabled(plugin) != enable) {
             models.add(plugin)
           }

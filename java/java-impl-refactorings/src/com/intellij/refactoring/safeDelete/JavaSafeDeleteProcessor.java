@@ -1,16 +1,20 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.refactoring.safeDelete;
 
 import com.intellij.codeInsight.AnnotationUtil;
 import com.intellij.codeInsight.ExternalAnnotationsManager;
+import com.intellij.codeInsight.ModCommandAwareExternalAnnotationsManager;
 import com.intellij.codeInsight.daemon.impl.quickfix.RemoveUnusedVariableUtil;
 import com.intellij.codeInsight.daemon.impl.quickfix.SafeDeleteFix;
 import com.intellij.codeInsight.generation.GetterSetterPrototypeProvider;
 import com.intellij.codeInspection.dataFlow.JavaMethodContractUtil;
 import com.intellij.find.findUsages.PsiElement2UsageTargetAdapter;
 import com.intellij.ide.util.SuperMethodWarningUtil;
+import com.intellij.java.JavaBundle;
 import com.intellij.java.refactoring.JavaRefactoringBundle;
 import com.intellij.java.syntax.parser.JavaKeywords;
+import com.intellij.modcommand.ActionContext;
+import com.intellij.modcommand.ModCommandExecutor;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
@@ -97,7 +101,6 @@ import com.intellij.refactoring.safeDelete.usageInfo.SafeDeleteOverridingMethodU
 import com.intellij.refactoring.safeDelete.usageInfo.SafeDeleteParameterCallHierarchyUsageInfo;
 import com.intellij.refactoring.safeDelete.usageInfo.SafeDeleteReferenceJavaDeleteUsageInfo;
 import com.intellij.refactoring.safeDelete.usageInfo.SafeDeleteReferenceUsageInfo;
-import com.intellij.refactoring.safeDelete.usageInfo.SafeDeleteUsageInfo;
 import com.intellij.refactoring.util.ConflictsUtil;
 import com.intellij.refactoring.util.RefactoringMessageUtil;
 import com.intellij.refactoring.util.RefactoringUIUtil;
@@ -115,6 +118,7 @@ import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.MultiMap;
 import com.intellij.util.ui.tree.TreeUtil;
 import com.siyeh.ig.style.LambdaCanBeReplacedWithAnonymousInspection;
+import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -136,7 +140,7 @@ public class JavaSafeDeleteProcessor extends SafeDeleteProcessorDelegateBase {
 
   @Override
   public boolean handlesElement(PsiElement element) {
-    return element instanceof PsiClass || 
+    return element instanceof PsiClass ||
            element instanceof PsiMethod ||
            element instanceof PsiRecordComponent ||
            element instanceof PsiField ||
@@ -190,6 +194,13 @@ public class JavaSafeDeleteProcessor extends SafeDeleteProcessorDelegateBase {
           hasSideEffects = RemoveUnusedVariableUtil.checkSideEffects(rhs, variable, new ArrayList<>());
         }
         usages.add(new SafeDeleteReferenceJavaDeleteUsageInfo(statementOrExprInList, element, isSafeToDelete && !hasSideEffects));
+      }
+    }
+    if (element instanceof PsiModifierListOwner owner) {
+      ExternalAnnotationsManager annotationsManager = ExternalAnnotationsManager.getInstance(element.getProject());
+      List<PsiFile> annotationsFiles = annotationsManager.findExternalAnnotationsFiles(owner);
+      if (annotationsFiles != null) {
+        usages.add(new SafeDeleteExternalAnnotationsUsageInfo(owner, owner));
       }
     }
     return new NonCodeUsageSearchInfo(insideDeletedCondition, element);
@@ -326,7 +337,7 @@ public class JavaSafeDeleteProcessor extends SafeDeleteProcessorDelegateBase {
       PsiClass recordClass = component.getContainingClass();
       assert recordClass != null;
       PsiMethod constructor = JavaPsiRecordUtil.findCanonicalConstructor(recordClass);
-      if (constructor == null || constructor instanceof SyntheticElement) return additional; 
+      if (constructor == null || constructor instanceof SyntheticElement) return additional;
       PsiRecordHeader header = recordClass.getRecordHeader();
       assert header != null;
       int index = ArrayUtil.indexOf(header.getRecordComponents(), component);
@@ -435,17 +446,6 @@ public class JavaSafeDeleteProcessor extends SafeDeleteProcessorDelegateBase {
     List<SafeDeleteMemberCalleeUsageInfo> calleesSafeToDelete = new ArrayList<>();
     for (UsageInfo usage : usages) {
       if (usage.isNonCodeUsage) {
-        if (usage instanceof SafeDeleteUsageInfo info) {
-          PsiElement element = info.getReferencedElement();
-          if (element instanceof PsiModifierListOwner owner) {
-            ExternalAnnotationsManager annotationsManager = ExternalAnnotationsManager.getInstance(element.getProject());
-            List<PsiFile> annotationsFiles = annotationsManager.findExternalAnnotationsFiles(owner);
-            if (annotationsFiles != null && annotationsFiles.contains(usage.getFile())) {
-              result.add(new SafeDeleteExternalAnnotationsUsageInfo(element, usage.getElement()));
-              continue;
-            }
-          }
-        }
         result.add(usage);
       }
       else if (usage instanceof SafeDeleteMemberCalleeUsageInfo info) {
@@ -493,7 +493,7 @@ public class JavaSafeDeleteProcessor extends SafeDeleteProcessorDelegateBase {
     }
 
     if (!delegatingParams.isEmpty()) {
-      SafeDeleteParameterCallHierarchyUsageInfo parameterHierarchyUsageInfo = delegatingParams.get(0);
+      SafeDeleteParameterCallHierarchyUsageInfo parameterHierarchyUsageInfo = delegatingParams.getFirst();
       if (ApplicationManager.getApplication().isUnitTestMode()) {
         result.addAll(delegatingParams);
       }
@@ -533,7 +533,7 @@ public class JavaSafeDeleteProcessor extends SafeDeleteProcessorDelegateBase {
         result.addAll(calleesSafeToDelete);
       }
       else {
-        PsiMember member = calleesSafeToDelete.get(0).getCallerMember();
+        PsiMember member = calleesSafeToDelete.getFirst().getCallerMember();
         List<UsageInfo> list = new ArrayList<>();
         SafeDeleteJavaCalleeChooser chooser = new SafeDeleteJavaCalleeChooser(member, project, list) {
           @Override
@@ -1013,7 +1013,7 @@ public class JavaSafeDeleteProcessor extends SafeDeleteProcessorDelegateBase {
 
   private static SafeDeleteParameterCallHierarchyUsageInfo createParameterCallHierarchyUsageInfo(PsiMethod called,
                                                                                                  PsiParameter calledParameter,
-                                                                                                 PsiMethod caller, 
+                                                                                                 PsiMethod caller,
                                                                                                  PsiParameter parameterInCaller) {
     return ApplicationManager.getApplication().isUnitTestMode()
            ? new SafeDeleteParameterCallHierarchyUsageInfo(caller, parameterInCaller, caller, parameterInCaller)
@@ -1135,9 +1135,11 @@ public class JavaSafeDeleteProcessor extends SafeDeleteProcessorDelegateBase {
                                             PsiParameter parameter) {
     PsiClass containingClass = method.getContainingClass();
     if (containingClass != null) {
-      int parameterIndex = method.getParameterList().getParameterIndex(parameter);
       PsiMethod methodCopy = (PsiMethod)method.copy();
-      methodCopy.getParameterList().getParameters()[parameterIndex].delete();
+      if (!containingClass.isRecord() || !JavaPsiRecordUtil.isCompactConstructor(method)) {
+        int parameterIndex = method.getParameterList().getParameterIndex(parameter);
+        methodCopy.getParameterList().getParameters()[parameterIndex].delete();
+      }
       ConflictsUtil.checkMethodConflicts(containingClass, method, methodCopy, conflicts);
     }
   }
@@ -1194,13 +1196,19 @@ public class JavaSafeDeleteProcessor extends SafeDeleteProcessorDelegateBase {
     public void deleteElement() {
       PsiElement referencedElement = getReferencedElement();
       if (!referencedElement.isValid()) return;
-      ExternalAnnotationsManager annotationsManager = ExternalAnnotationsManager.getInstance(referencedElement.getProject());
-      PsiAnnotation[] externalAnnotations = annotationsManager.findExternalAnnotations((PsiModifierListOwner)referencedElement);
-      for (PsiAnnotation annotation : externalAnnotations) {
-        String qualifiedName = annotation.getQualifiedName();
-        if (qualifiedName == null) continue;
-        annotationsManager.deannotate((PsiModifierListOwner)referencedElement, qualifiedName);
+      List<PsiModifierListOwner> list;
+      if (referencedElement instanceof PsiMethod method) {
+        list = StreamEx.<PsiModifierListOwner>of(method.getParameterList().getParameters()).prepend(method).toList();
+      } else {
+        list = List.of((PsiModifierListOwner)referencedElement);
       }
+      ModCommandAwareExternalAnnotationsManager annotationsManager =
+        ModCommandAwareExternalAnnotationsManager.getInstance(referencedElement.getProject());
+      ModCommandExecutor.executeInteractively(
+        ActionContext.from(null, referencedElement.getContainingFile()),
+        JavaBundle.message("update.external.annotations"),
+        null,
+        () -> annotationsManager.deannotateModCommand(list));
     }
   }
 }

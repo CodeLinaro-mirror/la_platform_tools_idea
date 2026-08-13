@@ -1,4 +1,4 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.execution.application;
 
 import com.intellij.execution.AlternativeSdkRootsProvider;
@@ -78,15 +78,15 @@ public class ApplicationConfiguration extends JavaRunConfigurationBase
              FusAwareRunConfiguration, EnvFilesOptions {
   /* deprecated, but 3rd-party used variables */
   @SuppressWarnings({"DeprecatedIsStillUsed", "MissingDeprecatedAnnotation"})
-  @Deprecated public String MAIN_CLASS_NAME;
+  @Deprecated(forRemoval = true) public String MAIN_CLASS_NAME;
   @SuppressWarnings({"DeprecatedIsStillUsed", "MissingDeprecatedAnnotation"})
-  @Deprecated public String PROGRAM_PARAMETERS;
+  @Deprecated(forRemoval = true) public String PROGRAM_PARAMETERS;
   @SuppressWarnings({"DeprecatedIsStillUsed", "MissingDeprecatedAnnotation"})
-  @Deprecated public String WORKING_DIRECTORY;
+  @Deprecated(forRemoval = true) public String WORKING_DIRECTORY;
   @SuppressWarnings({"DeprecatedIsStillUsed", "MissingDeprecatedAnnotation"})
-  @Deprecated public boolean ALTERNATIVE_JRE_PATH_ENABLED;
+  @Deprecated(forRemoval = true) public boolean ALTERNATIVE_JRE_PATH_ENABLED;
   @SuppressWarnings({"DeprecatedIsStillUsed", "MissingDeprecatedAnnotation"})
-  @Deprecated public String ALTERNATIVE_JRE_PATH;
+  @Deprecated(forRemoval = true) public String ALTERNATIVE_JRE_PATH;
   /* */
 
   public ApplicationConfiguration(String name, @NotNull Project project, @NotNull ApplicationConfigurationType configurationType) {
@@ -397,6 +397,11 @@ public class ApplicationConfiguration extends JavaRunConfigurationBase
   public void setImplicitClassConfiguration(boolean value) { getOptions().setImplicitClassConfiguration(value); }
 
   @Override
+  public boolean isUseModulePath() { return getOptions().isUseModulePath(); }
+
+  public void setUseModulePath(boolean value) { getOptions().setUseModulePath(value); }
+
+  @Override
   public Collection<Module> getValidModules() {
     return JavaRunConfigurationModule.getModulesForClass(getProject(), getMainClassName());
   }
@@ -477,6 +482,11 @@ public class ApplicationConfiguration extends JavaRunConfigurationBase
     @TestOnly
     public JavaParameters createJavaParameters4Test() throws ExecutionException {
       return createJavaParameters();
+    }
+
+    @Override
+    protected boolean useModulePath() {
+      return myConfiguration.isUseModulePath();
     }
 
     @Override

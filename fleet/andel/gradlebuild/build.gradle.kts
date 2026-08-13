@@ -69,9 +69,6 @@ kotlin {
       isTransitive = false
     }
     implementation(jps.org.jetbrains.annotations1504825916.get())
-    implementation(jps.org.jetbrains.intellij.deps.fastutil.intellij.deps.fastutil1191883795.get().let { "${it.group}:${it.name}:${it.version}" }) {
-      isTransitive = false
-    }
     implementation(jps.org.jetbrains.kotlinx.kotlinx.serialization.core.jvm1739247612.get().let { "${it.group}:kotlinx-serialization-core:${it.version}" }) {
       isTransitive = false
     }
@@ -82,6 +79,7 @@ kotlin {
     implementation(project(":fleet.util.codepoints"))
     api(project(":fleet.bifurcan"))
     implementation(project(":fleet.fastutil"))
+    api(project(":fleet.openmap"))
   }
   // KOTLIN__MARKER_END
 }

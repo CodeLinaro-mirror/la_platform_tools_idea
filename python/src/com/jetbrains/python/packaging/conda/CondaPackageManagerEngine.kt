@@ -8,6 +8,7 @@ import com.jetbrains.python.errorProcessing.PyResult
 import com.jetbrains.python.packaging.common.PythonOutdatedPackage
 import com.jetbrains.python.packaging.common.PythonPackage
 import com.jetbrains.python.packaging.common.PythonRepositoryPackageSpecification
+import com.intellij.python.pyproject.PyDependencyGroup
 import com.jetbrains.python.packaging.management.PyWorkspaceMember
 import com.jetbrains.python.packaging.management.PythonPackageInstallRequest
 import com.jetbrains.python.packaging.management.PythonPackageManagerEngine
@@ -15,7 +16,7 @@ import com.jetbrains.python.sdk.conda.execution.CondaExecutor
 import com.jetbrains.python.sdk.conda.execution.getCondaBinToExecute
 import com.jetbrains.python.sdk.flavors.conda.PyCondaEnv
 import com.jetbrains.python.sdk.flavors.conda.PyCondaFlavorData
-import com.jetbrains.python.sdk.getOrCreateAdditionalData
+import com.jetbrains.python.sdk.pySdkAdditionalData
 
 internal class CondaPackageManagerEngine(private val sdk: Sdk) : PythonPackageManagerEngine {
   suspend fun updateFromEnvironmentFile(envFile: VirtualFile): PyResult<Unit> {
@@ -34,7 +35,7 @@ internal class CondaPackageManagerEngine(private val sdk: Sdk) : PythonPackageMa
   }
 
   override suspend fun installPackageCommand(installRequest: PythonPackageInstallRequest, options: List<String>): PyResult<Unit> {
-    val installationArgs = installRequest.buildInstallationArguments().getOr { return it }
+    val installationArgs = installRequest.buildCondaInstallationArguments().getOr { return it }
     val env = getEnvData()
     return CondaExecutor.installPackages(sdk.getCondaBinToExecute(), env.envIdentity, installationArgs, options)
   }
@@ -45,7 +46,7 @@ internal class CondaPackageManagerEngine(private val sdk: Sdk) : PythonPackageMa
     return CondaExecutor.installPackages(sdk.getCondaBinToExecute(), env.envIdentity, packages, emptyList())
   }
 
-  override suspend fun uninstallPackageCommand(vararg pythonPackages: String, workspaceMember: PyWorkspaceMember?): PyResult<Unit> {
+  override suspend fun uninstallPackageCommand(vararg pythonPackages: String, workspaceMember: PyWorkspaceMember?, dependencyGroup: PyDependencyGroup?): PyResult<Unit> {
     if (pythonPackages.isEmpty())
       return PyResult.success(Unit)
 
@@ -59,21 +60,19 @@ internal class CondaPackageManagerEngine(private val sdk: Sdk) : PythonPackageMa
   }
 
 
-  private fun getEnvData(): PyCondaEnv = (sdk.getOrCreateAdditionalData().flavorAndData.data as PyCondaFlavorData).env
+  private fun getEnvData(): PyCondaEnv = (sdk.pySdkAdditionalData.flavorAndData.data as PyCondaFlavorData).env
+}
 
-  private fun PythonPackageInstallRequest.buildInstallationArguments(): PyResult<List<String>> = when (this) {
-    is PythonPackageInstallRequest.ByLocation -> PyResult.localizedError(PyBundle.message("python.packaging.conda.does.not.support.location.uri"))
-    is PythonPackageInstallRequest.ByRepositoryPythonPackageSpecifications -> {
-      val condaSpecs = specifications.filter { it.repository is CondaPackageRepository }
-      val specs = condaSpecs.map { it.nameWithVersionSpec }
+internal fun PythonPackageInstallRequest.buildCondaInstallationArguments(): PyResult<List<String>> = when (this) {
+  is PythonPackageInstallRequest.ByLocation -> PyResult.localizedError(PyBundle.message("python.packaging.conda.does.not.support.location.uri"))
+  is PythonPackageInstallRequest.ByRepositoryPythonPackageSpecifications -> {
+    val condaSpecs = specifications.filter { it.repository is CondaPackageRepository }
+    val specs = condaSpecs.map { it.nameWithVersionSpec }
 
-      //https://docs.conda.io/projects/conda/en/latest/user-guide/concepts/pkg-specs.html#package-match-specifications
-      //When using the command line, put double quotes around any package version specification that
-      // contains the space character or any of the following characters: <, >, *, or |.
-      //Ido not know why we need put single prefix quota but it does not work in EEL with suffix quota
-      val quoted = specs.map { "\"$it" }
-
-      PyResult.success(quoted)
-    }
+    // Each spec is passed to conda as a single argv element (no shell), so it must not be quoted.
+    // conda's docs recommend double quotes only for shell command lines to protect characters like <, >, *, |.
+    // Wrapping the spec in a quote here glues a literal '"' onto the package name, which conda 26.x rejects
+    // with InvalidMatchSpec (PY-91412).
+    PyResult.success(specs)
   }
 }

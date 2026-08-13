@@ -6,5 +6,6 @@
   <content namespace="jetbrains">
     <module name="intellij.platform.lsp" loading="embedded"/>
     <module name="intellij.platform.lsp.impl" loading="embedded"/>
+    <module name="intellij.platform.lsp.impl.structureView"/>
   </content>
 </idea-plugin>

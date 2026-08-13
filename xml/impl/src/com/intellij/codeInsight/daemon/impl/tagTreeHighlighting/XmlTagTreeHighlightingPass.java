@@ -165,7 +165,7 @@ public class XmlTagTreeHighlightingPass extends TextEditorHighlightingPass {
   }
 
   public List<HighlightInfo> getHighlights() {
-    clearLineMarkers(myEditor);
+    clearMyLineMarkers(myEditor);
 
     int count = myPairsToHighlight.size();
     List<HighlightInfo> highlightInfos = new ArrayList<>(count * 2);
@@ -216,7 +216,7 @@ public class XmlTagTreeHighlightingPass extends TextEditorHighlightingPass {
     return highlightInfos;
   }
 
-  private static void clearLineMarkers(Editor editor) {
+  private static void clearMyLineMarkers(@NotNull Editor editor) {
     List<RangeHighlighter> oldHighlighters = editor.getUserData(TAG_TREE_HIGHLIGHTERS_IN_EDITOR_KEY);
 
     if (oldHighlighters != null) {
@@ -241,7 +241,7 @@ public class XmlTagTreeHighlightingPass extends TextEditorHighlightingPass {
     RangeHighlighter highlighter =
       mm.addRangeHighlighter(null, range.getStartOffset(), range.getEndOffset(), 0, HighlighterTargetArea.LINES_IN_RANGE);
 
-    highlighter.setLineMarkerRenderer((__, g, r) -> {
+    highlighter.setLineMarkerRenderer((_, g, r) -> {
       g.setColor(color);
       g.fillRect(r.x - 1, r.y, 2, r.height);
     });
@@ -293,12 +293,11 @@ public class XmlTagTreeHighlightingPass extends TextEditorHighlightingPass {
 
     for (RangeHighlighter highlighter : markupModel.getAllHighlighters()) {
       HighlightInfo info = HighlightInfo.fromRangeHighlighter(highlighter);
-      if (info == null) continue;
-      if (info.type == Holder.TYPE) {
+      if (info != null && info.type == Holder.TYPE) {
         highlighter.dispose();
       }
     }
 
-    clearLineMarkers(editor);
+    clearMyLineMarkers(editor);
   }
 }

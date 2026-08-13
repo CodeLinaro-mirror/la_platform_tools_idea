@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.testFramework;
 
 import com.intellij.application.options.CodeStyle;
@@ -97,6 +97,9 @@ import java.util.Set;
 
 /**
  * @deprecated Do not use in a new code. Use Junit 5.
+ *
+ * @see com.intellij.testFramework.junit5.TestApplication
+ * @see com.intellij.testFramework.junit5.showcase.JUnit5PsiFileFixtureTest
  */
 @Deprecated
 public abstract class LightPlatformTestCase extends UsefulTestCase implements DataProvider {
@@ -616,6 +619,7 @@ public abstract class LightPlatformTestCase extends UsefulTestCase implements Da
 
   public static synchronized void closeAndDeleteProject() {
     Project project = ourProject;
+    Module module = ourModule;
     if (project == null) {
       return;
     }
@@ -624,7 +628,9 @@ public abstract class LightPlatformTestCase extends UsefulTestCase implements Da
     }
 
     if (!project.isDisposed()) {
-      assertEquals(project, ourModule.getProject());
+      if (module != null) {
+        assertEquals(project, module.getProject());
+      }
 
       @SuppressWarnings("ConstantConditions")
       Path ioFile = Paths.get(project.getProjectFilePath());
@@ -643,7 +649,9 @@ public abstract class LightPlatformTestCase extends UsefulTestCase implements Da
       assertTrue(ProjectManagerEx.getInstanceEx().forceCloseProject(project));
       assertTrue(project.isDisposed());
 
-      assertTrue(ourModule.isDisposed());
+      if (module != null) {
+        assertTrue(module.isDisposed());
+      }
       if (ourPsiManager != null) {
         assertTrue(ourPsiManager.isDisposed());
       }

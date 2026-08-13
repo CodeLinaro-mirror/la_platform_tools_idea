@@ -6,7 +6,7 @@ import com.intellij.codeInsight.highlighting.ReadWriteAccessDetector
 import com.intellij.find.FindManager
 import com.intellij.find.findUsages.AbstractFindUsagesDialog
 import com.intellij.find.findUsages.FindUsagesOptions
-import com.intellij.find.impl.FindManagerImpl
+import com.intellij.find.impl.FindManagerBase
 import com.intellij.icons.AllIcons.Actions
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.DataContext
@@ -149,7 +149,7 @@ abstract class KotlinFindMemberUsagesHandler<T : KtNamedDeclaration> protected c
 
             if (isUnitTestMode() ||
                 !isPropertyOfDataClass ||
-                psiElement.getDisableComponentAndDestructionSearch(resetSingleFind = false)
+                runReadAction { psiElement.getDisableComponentAndDestructionSearch(resetSingleFind = false) }
             ) return super.processElementUsages(element, processor, options)
 
             val indicator = ProgressManager.getInstance().progressIndicator
@@ -267,7 +267,7 @@ abstract class KotlinFindMemberUsagesHandler<T : KtNamedDeclaration> protected c
             val kotlinOptions = options as KotlinPropertyFindUsagesOptions
 
             val disabledComponentsAndOperatorsSearch =
-                !forHighlight && psiElement.getDisableComponentAndDestructionSearch(resetSingleFind = true)
+                !forHighlight && runReadAction { psiElement.getDisableComponentAndDestructionSearch(resetSingleFind = true) }
 
             return KotlinReferencesSearchOptions(
                 acceptCallableOverrides = true,
@@ -295,6 +295,7 @@ abstract class KotlinFindMemberUsagesHandler<T : KtNamedDeclaration> protected c
         private val kotlinOptions = options as KotlinCallableFindUsagesOptions
 
         override fun buildTaskList(forHighlight: Boolean): Boolean {
+            if (!super.buildTaskList(forHighlight)) return false
             val referenceProcessor = createReferenceProcessor(processor)
             val uniqueProcessor = CommonProcessors.UniqueProcessor(processor)
 
@@ -414,7 +415,7 @@ abstract class KotlinFindMemberUsagesHandler<T : KtNamedDeclaration> protected c
 
         return if (baseDeclarations.isNotEmpty()) {
             baseDeclarations.flatMap {
-                val handler = (FindManager.getInstance(project) as FindManagerImpl).findUsagesManager.getFindUsagesHandler(it, true)
+                val handler = (FindManager.getInstance(project) as FindManagerBase).findUsagesManager.getFindUsagesHandler(it, true)
                 handler?.findReferencesToHighlight(it, searchScope) ?: emptyList()
             }
         } else {

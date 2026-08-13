@@ -11,7 +11,8 @@ public final class GradleCommonClassNames {
   public static final @NonNls String GRADLE_API_PROJECT = "org.gradle.api.Project";
   public static final @NonNls String GRADLE_API_BASE_PLUGIN_CONVENTION = "org.gradle.api.plugins.BasePluginConvention";
   public static final @NonNls String GRADLE_API_JAVA_PLUGIN_CONVENTION = "org.gradle.api.plugins.JavaPluginConvention";
-  public static final @NonNls String GRADLE_API_JAVA_PLUGIN_EXTENSION = "org.gradle.api.plugins.internal.DefaultJavaPluginExtension";
+  public static final @NonNls String GRADLE_API_DEFAULT_JAVA_PLUGIN_EXTENSION = "org.gradle.api.plugins.internal.DefaultJavaPluginExtension";
+  public static final @NonNls String GRADLE_API_JAVA_PLUGIN_EXTENSION = "org.gradle.api.plugins.JavaPluginExtension";
   public static final @NonNls String GRADLE_API_APPLICATION_PLUGIN_CONVENTION = "org.gradle.api.plugins.ApplicationPluginConvention";
   public static final @NonNls String GRADLE_API_WAR_CONVENTION = "org.gradle.api.plugins.WarPluginConvention";
   public static final @NonNls String GRADLE_API_CONFIGURATION_CONTAINER = "org.gradle.api.artifacts.ConfigurationContainer";
@@ -48,6 +49,7 @@ public final class GradleCommonClassNames {
   public static final @NonNls String GRADLE_API_FILE_FILE_COLLECTION = "org.gradle.api.file.FileCollection";
   public static final @NonNls String GRADLE_API_FILE_CONFIGURABLE_FILE_TREE = "org.gradle.api.file.ConfigurableFileTree";
   public static final @NonNls String GRADLE_API_FILE_CONFIGURABLE_FILE_COLLECTION = "org.gradle.api.file.ConfigurableFileCollection";
+  public static final @NonNls String GRADLE_API_FILE_SYSTEM_LOCATION_PROPERTY = "org.gradle.api.file.FileSystemLocationProperty";
   public static final @NonNls String GRADLE_API_SCRIPT_HANDLER = "org.gradle.api.initialization.dsl.ScriptHandler";
   public static final @NonNls String GRADLE_API_VERSION_CATALOG_BUILDER = "org.gradle.api.initialization.dsl.VersionCatalogBuilder";
   public static final @NonNls String GRADLE_API_TASK = "org.gradle.api.Task";

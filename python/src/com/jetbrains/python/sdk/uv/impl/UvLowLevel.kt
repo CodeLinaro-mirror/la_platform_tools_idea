@@ -5,10 +5,9 @@ import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.RuntimeJsonMappingException
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
-import com.intellij.execution.target.TargetProgressIndicator
-import com.intellij.execution.target.value.constant
-import com.intellij.execution.target.value.getRelativeTargetPath
 import com.intellij.platform.eel.provider.localEel
+import com.intellij.python.pyproject.PyDependencyGroup
+import com.intellij.python.pyproject.PyDependencyGroupKind
 import com.jetbrains.python.PyBundle
 import com.jetbrains.python.errorProcessing.ExecError
 import com.jetbrains.python.errorProcessing.ExecErrorReason
@@ -16,12 +15,14 @@ import com.jetbrains.python.errorProcessing.PyError
 import com.jetbrains.python.errorProcessing.PyExecResult
 import com.jetbrains.python.errorProcessing.PyResult
 import com.jetbrains.python.onFailure
-import com.jetbrains.python.packaging.PyPackageName
 import com.jetbrains.python.packaging.PyPIPackageUtil
+import com.jetbrains.python.packaging.PyPackageName
 import com.jetbrains.python.packaging.common.PythonOutdatedPackage
 import com.jetbrains.python.packaging.common.PythonPackage
 import com.jetbrains.python.packaging.management.PyWorkspaceMember
 import com.jetbrains.python.packaging.management.PythonPackageInstallRequest
+import com.jetbrains.python.packaging.pip.PipParseUtils
+import com.jetbrains.python.sdk.add.v2.EelFileSystem
 import com.jetbrains.python.sdk.add.v2.FileSystem
 import com.jetbrains.python.sdk.add.v2.PathHolder
 import com.jetbrains.python.sdk.uv.ScriptSyncCheckResult
@@ -38,8 +39,13 @@ private const val NO_METADATA_MESSAGE = "does not contain a PEP 723 metadata tag
 private const val OUTDATED_ENV_MESSAGE = "The environment is outdated"
 private val versionRegex = Regex("(\\d+\\.\\d+)\\.\\d+-.+\\s")
 
-private class UvLowLevelImpl<P : PathHolder>(private val cwd: Path, private val venvPath: P?, private val uvCli: UvCli<P>, private val fileSystem: FileSystem<P>) : UvLowLevel<P> {
-  override suspend fun initializeEnvironment(init: Boolean, version: Version?): PyResult<P> {
+private class UvLowLevelImpl<P : PathHolder>(
+  private val cwd: Path,
+  private val venvPath: P?,
+  private val uvCli: UvCli<P>,
+  private val fileSystem: FileSystem<P>,
+) : UvLowLevel<P> {
+  override suspend fun initializeEnvironment(init: Boolean, version: Version?, clearExisting: Boolean): PyResult<P> {
     val addPythonArg: (MutableList<String>) -> Unit = { args ->
       version?.let {
         args.add("--python")
@@ -62,31 +68,24 @@ private class UvLowLevelImpl<P : PathHolder>(private val cwd: Path, private val 
 
     val venvArgs = mutableListOf("venv")
     venvPath?.also { venvArgs += it.toString() }
+    if (clearExisting) {
+      venvArgs.add("--clear")
+    }
     addPythonArg(venvArgs)
-    uvCli.runUv(cwd, null, true, *venvArgs.toTypedArray())
-      .getOr { return it }
+    uvCli.runUv(cwd, null, true, *venvArgs.toTypedArray()).onFailure {
+      uvCli.runUv(cwd, null, true, *venvArgs.toTypedArray(), "--force").getOr { return it }
+    }.getOr { return it }
 
-    // TODO PY-87712 Would be great to get rid of unsafe casts
-    val path: P? = when (fileSystem) {
-      is FileSystem.Eel -> {
-        VirtualEnvReader().findPythonInPythonRoot((venvPath as? PathHolder.Eel)?.path ?: cwd.resolve(VirtualEnvReader.DEFAULT_VIRTUALENV_DIRNAME))
-          ?.let { fileSystem.resolvePythonBinary(PathHolder.Eel(it)) } as P?
-      }
-      is FileSystem.Target -> {
-        val pythonBinary = if (venvPath == null) {
-          val targetPath = constant(cwd.pathString)
-          val venvPath = targetPath.getRelativeTargetPath(VirtualEnvReader.DEFAULT_VIRTUALENV_DIRNAME)
-          venvPath.apply(fileSystem.targetEnvironmentConfiguration.createEnvironmentRequest(project = null).prepareEnvironment(TargetProgressIndicator.EMPTY))
-        } else venvPath.toString()
-        fileSystem.resolvePythonBinary(PathHolder.Target(pythonBinary)) as P?
-      }
+    val resolvedVenvPath = venvPath?.let { fileSystem.resolvePythonBinary(it) }
+    if (resolvedVenvPath != null) {
+      return PyResult.success(resolvedVenvPath)
     }
 
-    if (path == null) {
-      return PyResult.localizedError(PyBundle.message("python.sdk.uv.failed.to.initialize.uv.environment"))
-    }
+    val resolvedFallback = fileSystem.resolveInWorkingDir(cwd, VirtualEnvReader.DEFAULT_VIRTUALENV_DIRNAME)
+                             ?.let { fileSystem.resolvePythonBinary(it) }
+                           ?: return PyResult.localizedError(PyBundle.message("python.sdk.uv.failed.to.initialize.uv.environment"))
 
-    return PyResult.success(path)
+    return PyResult.success(resolvedFallback)
   }
 
   override suspend fun listUvPythons(): PyResult<Set<Path>> {
@@ -132,16 +131,9 @@ private class UvLowLevelImpl<P : PathHolder>(private val cwd: Path, private val 
   override suspend fun listPackages(): PyResult<List<PythonPackage>> {
     val out = uvCli.runUv(cwd, venvPath, false, "pip", "list", "--format", "json")
       .getOr { return it }
-
-    data class PackageInfo(val name: String, val version: String)
-
-    val mapper = jacksonObjectMapper()
-      .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
-    val packages = mapper.readValue<List<PackageInfo>>(out).map {
-      PythonPackage(it.name, it.version, false)
-    }
-
-    return PyExecResult.success(packages)
+    // `uv pip list --format json` emits the same schema as `pip list --format json`,
+    // including the `editable_project_location` field for editable installs.
+    return PyExecResult.success(PipParseUtils.parseListResult(out))
   }
 
   override suspend fun listOutdatedPackages(): PyResult<List<PythonOutdatedPackage>> {
@@ -172,7 +164,7 @@ private class UvLowLevelImpl<P : PathHolder>(private val cwd: Path, private val 
   }
 
   override suspend fun listProjectStructureTree(): PyResult<String> {
-    val out = uvCli.runUv(cwd, venvPath, false, "tree", "--frozen", "--no-dedupe")
+    val out = uvCli.runUv(cwd, venvPath, false, "tree", "--frozen", "--no-dedupe", "--all-groups")
       .getOr { return it }
 
     return PyExecResult.success(out)
@@ -200,25 +192,46 @@ private class UvLowLevelImpl<P : PathHolder>(private val cwd: Path, private val 
     return PyExecResult.success(Unit)
   }
 
-  override suspend fun addDependency(pyPackages: PythonPackageInstallRequest, options: List<String>, workspaceMember: PyWorkspaceMember?): PyResult<Unit> {
-    val args = mutableListOf("add")
-    if (workspaceMember != null) {
-      args.add("--package")
-      args.add(workspaceMember.name)
+  override suspend fun addDependency(
+    pyPackages: PythonPackageInstallRequest,
+    options: List<String>,
+    workspaceMember: PyWorkspaceMember?,
+    dependencyGroup: PyDependencyGroup?,
+  ): PyResult<Unit> {
+    // Group flags (`--group` / `--optional`) and `--package` arrive pre-formatted inside [options]
+    // when the caller goes through PythonPackageManagerUI.installPackagesRequestBackground(installOptions,…),
+    // which derives them from the structured InstallOptions. Callers that don't go through the UI
+    // layer can feed the raw dependencyGroup / workspaceMember params instead — leaving them null
+    // is fine when the flags are already in [options].
+    val args = buildList {
+      add("add")
+      workspaceMember?.let { add("--package"); add(it.name) }
+      if (dependencyGroup != null && dependencyGroup.name != "main") {
+        val flag = if (dependencyGroup.kind == PyDependencyGroupKind.OPTIONAL_DEPENDENCY) "--optional" else "--group"
+        add(flag); add(dependencyGroup.name)
+      }
+      val editableFlag = when (pyPackages) {
+        is PythonPackageInstallRequest.ByLocation -> "-e" in options && pyPackages.location.scheme == "file"
+        is PythonPackageInstallRequest.ByRepositoryPythonPackageSpecifications -> false
+      }
+      if (editableFlag) add("--editable")
+      addAll(pyPackages.formatPackageName())
+      addAll(options.filter { it != "-e" })
     }
-    args.addAll(pyPackages.formatPackageName())
-    args.addAll(options)
     uvCli.runUv(cwd, venvPath, true, *args.toTypedArray())
       .getOr { return it }
-
     return PyExecResult.success(Unit)
   }
 
-  override suspend fun removeDependencies(pyPackages: Array<out String>, workspaceMember: PyWorkspaceMember?): PyResult<Unit> {
+  override suspend fun removeDependencies(pyPackages: Array<out String>, workspaceMember: PyWorkspaceMember?, dependencyGroup: PyDependencyGroup?): PyResult<Unit> {
     val args = mutableListOf("remove")
     if (workspaceMember != null) {
       args.add("--package")
       args.add(workspaceMember.name)
+    }
+    if (dependencyGroup != null && dependencyGroup.name != "main") {
+      args.add("--group")
+      args.add(dependencyGroup.name)
     }
     args.addAll(pyPackages)
 
@@ -278,7 +291,7 @@ private class UvLowLevelImpl<P : PathHolder>(private val cwd: Path, private val 
 
   fun PythonPackageInstallRequest.formatPackageName(): Array<String> = when (this) {
     is PythonPackageInstallRequest.ByRepositoryPythonPackageSpecifications -> specifications.map { it.nameWithVersionsSpec }.toTypedArray()
-    is PythonPackageInstallRequest.ByLocation -> error("UV does not support installing from location uri")
+    is PythonPackageInstallRequest.ByLocation -> arrayOf(location.toString())
   }
 
   private fun partitionPackagesBySource(installRequest: PythonPackageInstallRequest, options: List<String>): List<Array<String>> {
@@ -316,14 +329,14 @@ private class UvLowLevelImpl<P : PathHolder>(private val cwd: Path, private val 
   }
 }
 
-fun createUvLowLevelLocal(cwd: Path, uvCli: UvCli<PathHolder.Eel>): UvLowLevel<PathHolder.Eel> =
-  createUvLowLevel(cwd, uvCli, FileSystem.Eel(localEel), null)
+internal fun createUvLowLevelLocal(cwd: Path, uvCli: UvCli<PathHolder.Eel>): UvLowLevel<PathHolder.Eel> =
+  createUvLowLevel(cwd, uvCli, EelFileSystem(localEel), null)
 
-fun <P : PathHolder> createUvLowLevel(cwd: Path, uvCli: UvCli<P>, fileSystem: FileSystem<P>, venvPath: P?): UvLowLevel<P> =
+internal fun <P : PathHolder> createUvLowLevel(cwd: Path, uvCli: UvCli<P>, fileSystem: FileSystem<P>, venvPath: P?): UvLowLevel<P> =
   UvLowLevelImpl(cwd, venvPath, uvCli, fileSystem)
 
-suspend fun createUvLowLevelLocal(cwd: Path): PyResult<UvLowLevel<PathHolder.Eel>> =
-  createUvCli(null, FileSystem.Eel(localEel)).mapSuccess { createUvLowLevelLocal(cwd, it) }
+internal suspend fun createUvLowLevelLocal(cwd: Path): PyResult<UvLowLevel<PathHolder.Eel>> =
+  createUvCli(null, EelFileSystem(localEel)).mapSuccess { createUvLowLevelLocal(cwd, it) }
 
 private fun tryExtractStderr(err: PyError): String? =
   when (err) {

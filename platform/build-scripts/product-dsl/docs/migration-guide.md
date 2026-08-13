@@ -51,7 +51,7 @@ To migrate a product to programmatic content:
 Content modules (have .xml descriptors):
 ```bash
 # Check if module has a descriptor
-find_files_by_glob("**/moduleName.xml")
+search_file(q: "**/moduleName.xml")
 
 # Or look in resources directory
 ls community/modulePath/resources/*.xml
@@ -187,7 +187,7 @@ Before committing changes:
 
 3. **Verify tests pass**
    ```bash
-   bazel test //platform/build-scripts/tests/testSrc/org/jetbrains/intellij/build:UltimatePluginModelTest
+   ./tests.cmd -Dintellij.build.test.patterns=com.intellij.idea.ultimate.build.smokeTests.AllProductsPackagingTest
    ```
 
 4. **Use MCP to analyze transitive dependencies**
@@ -199,9 +199,9 @@ Before committing changes:
    )
    ```
 
-## Migrating from PLATFORM_CORE_MODULES
+## Migrating from Legacy Platform Core Modules
 
-The `PLATFORM_CORE_MODULES` constant in `PlatformModules.kt` is **deprecated**.
+Older build scripts used a hard-coded list in `PlatformModules.kt` for modules that had to be included in every product and loaded by the core classloader. That list has been removed; use Product DSL module sets instead.
 
 **Why it's deprecated:**
 - Hard-coded list, not composable or reusable
@@ -212,10 +212,7 @@ The `PLATFORM_CORE_MODULES` constant in `PlatformModules.kt` is **deprecated**.
 **Migration:**
 
 ```kotlin
-// OLD (deprecated)
-for (module in PLATFORM_CORE_MODULES) {
-  embeddedModule(module)
-}
+// OLD (removed): adding modules to a hard-coded platform core list in PlatformModules.kt
 
 // NEW (recommended)
 moduleSet(CommunityModuleSets.essentialMinimal())

@@ -1,9 +1,30 @@
 <idea-plugin visibility="public">
   <module value="com.intellij.modules.lsp"/>
 
+  <!-- region Generated dependencies - run `Generate Product Layouts` to regenerate -->
   <dependencies>
+    <module name="intellij.libraries.gson"/>
+    <module name="intellij.platform.analysis"/>
+    <module name="intellij.platform.codeStyle"/>
+    <module name="intellij.platform.core"/>
+    <module name="intellij.platform.core.impl"/>
+    <module name="intellij.platform.core.ui"/>
+    <module name="intellij.platform.editor.ex"/>
+    <module name="intellij.platform.editor.ui"/>
+    <module name="intellij.platform.execution.impl"/>
+    <module name="intellij.platform.ide"/>
+    <module name="intellij.platform.ide.core"/>
+    <module name="intellij.platform.ide.impl"/>
+    <module name="intellij.platform.indexing"/>
+    <module name="intellij.platform.lang"/>
+    <module name="intellij.platform.lang.impl"/>
     <module name="intellij.platform.lsp"/>
+    <module name="intellij.platform.markdown.utils"/>
+    <module name="intellij.platform.projectModel"/>
+    <module name="intellij.platform.statistics"/>
+    <module name="intellij.platform.util.ui"/>
   </dependencies>
+  <!-- endregion -->
 
   <extensions defaultExtensionNs="com.intellij">
     <registryKey defaultValue="100" description="LSP server connect timeout" key="lsp.server.connect.timeout"/>
@@ -48,7 +69,7 @@
              implementationClass="com.intellij.platform.lsp.impl.features.completion.LspCompletionWeigher"/>
     <codeInsight.codeVisionProvider implementation="com.intellij.platform.lsp.impl.features.codeLens.LspCodeVisionProvider"/>
     <config.codeVisionGroupSettingProvider implementation="com.intellij.platform.lsp.impl.features.codeLens.LspCodeVisionGroupSettingProvider"/>
-    <codeInsight.inlayProviderFactory implementation="com.intellij.platform.lsp.impl.features.inlayHint.LspInlayHintsProviderFactory"/>
+    <codeInsight.inlayProviderFactory implementation="com.intellij.platform.lsp.impl.features.inlayCommon.LspInlayHintsProviderFactory"/>
     <codeInsight.parameterInfo id="LspParameterInfoHandler" language=""
                                implementationClass="com.intellij.platform.lsp.impl.features.parameterInfo.LspParameterInfoHandler"/>
     <psi.implicitReferenceProvider id="LspImplicitReferenceProvider"
@@ -68,7 +89,6 @@
     <gotoClassContributor implementation="com.intellij.platform.lsp.impl.features.workspaceSymbol.LspGoToClassContributor"/>
     <searchEverywhereResultsEqualityProvider
       implementation="com.intellij.platform.lsp.impl.features.workspaceSymbol.LspWorkspaceSymbolEqualityProvider"/>
-    <lang.psiStructureViewFactory language="" implementationClass="com.intellij.platform.lsp.impl.features.documentSymbol.LspStructureViewFactory"/>
     <fileBreadcrumbsCollector implementation="com.intellij.platform.lsp.impl.features.documentSymbol.LspFileBreadcrumbsCollector"
                               order="last, after PsiFileBreadcrumbsCollector"/>
     <platform.lang.lsWidget.itemsProvider id="LspWidgetItemsProvider"

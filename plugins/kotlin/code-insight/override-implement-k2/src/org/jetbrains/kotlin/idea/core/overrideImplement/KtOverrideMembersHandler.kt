@@ -7,15 +7,15 @@ import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaSession
 import org.jetbrains.kotlin.analysis.api.analyze
+import org.jetbrains.kotlin.analysis.api.components.KaCallableImplementationState
 import org.jetbrains.kotlin.analysis.api.components.containingSymbol
 import org.jetbrains.kotlin.analysis.api.components.directlyOverriddenSymbols
 import org.jetbrains.kotlin.analysis.api.components.fakeOverrideOriginal
-import org.jetbrains.kotlin.analysis.api.components.getImplementationStatus
+import org.jetbrains.kotlin.analysis.api.components.implementationState
 import org.jetbrains.kotlin.analysis.api.components.intersectionOverriddenSymbols
 import org.jetbrains.kotlin.analysis.api.components.isAnyType
 import org.jetbrains.kotlin.analysis.api.components.isVisibleInClass
 import org.jetbrains.kotlin.analysis.api.components.memberScope
-import org.jetbrains.kotlin.analysis.api.components.render
 import org.jetbrains.kotlin.analysis.api.lifetime.KaLifetimeOwner
 import org.jetbrains.kotlin.analysis.api.lifetime.KaLifetimeToken
 import org.jetbrains.kotlin.analysis.api.lifetime.validityAsserted
@@ -44,8 +44,8 @@ open class KtOverrideMembersHandler : KtGenerateMembersHandler(false) {
         }
     }
 
-context(_: KaSession)
 @OptIn(KaExperimentalApi::class)
+context(_: KaSession)
 private fun collectMembers(classOrObject: KtClassOrObject): List<KtClassMember> {
     if (classOrObject is KtClass && classOrObject.isAnnotation()) return emptyList()
     val classSymbol = (classOrObject.symbol as? KaEnumEntrySymbol)?.enumEntryInitializer as? KaClassSymbol ?: classOrObject.classSymbol ?: return emptyList()
@@ -59,7 +59,7 @@ private fun collectMembers(classOrObject: KtClassOrObject): List<KtClassMember> 
         KtClassMember(
             KtClassMemberInfo.create(
                 symbol,
-                symbol.render(renderer),
+                renderMemberText(symbol),
                 KotlinIconProvider.getIcon(symbol),
                 fqName,
                 containingSymbol?.let { KotlinIconProvider.getIcon(it) },
@@ -82,14 +82,21 @@ private fun collectMembers(classOrObject: KtClassOrObject): List<KtClassMember> 
         return symbol.directlyOverriddenSymbols.none { isConcreteFunction(it) }
     }
 
-    context(_: KaSession)
     @OptIn(KaExperimentalApi::class)
+    context(_: KaSession)
     private fun getOverridableMembers(classOrObjectSymbol: KaClassSymbol): List<OverrideMember> {
         return buildList {
             classOrObjectSymbol.memberScope.callables.forEach { symbol ->
                 if (!symbol.isVisibleInClass(classOrObjectSymbol)) return@forEach
-                val implementationStatus = symbol.getImplementationStatus(classOrObjectSymbol) ?: return@forEach
-                if (!implementationStatus.isOverridable) return@forEach
+
+                val isImplementable = when (val implementationState = symbol.implementationState(classOrObjectSymbol)) {
+                    null -> false
+                    is KaCallableImplementationState.Explicit -> !implementationState.isComplete
+                    is KaCallableImplementationState.Inherited -> implementationState.isOverridable
+                    else -> true
+                }
+
+                if (!isImplementable) return@forEach
 
                 val intersectionSymbols = symbol.intersectionOverriddenSymbols
                 val symbolsToProcess = if (intersectionSymbols.size <= 1) {

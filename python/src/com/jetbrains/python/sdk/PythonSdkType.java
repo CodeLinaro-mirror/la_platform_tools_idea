@@ -9,14 +9,12 @@ import com.intellij.notification.NotificationListener;
 import com.intellij.notification.NotificationType;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.fileChooser.FileChooserDescriptor;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.projectRoots.AdditionalDataConfigurable;
-import com.intellij.openapi.projectRoots.ProjectJdkTable;
 import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.projectRoots.SdkAdditionalData;
 import com.intellij.openapi.projectRoots.SdkModel;
@@ -44,6 +42,7 @@ import com.jetbrains.python.psi.LanguageLevel;
 import com.jetbrains.python.sdk.add.PyAddSdkDialog;
 import com.jetbrains.python.sdk.flavors.CPythonSdkFlavor;
 import com.jetbrains.python.sdk.flavors.PythonSdkFlavor;
+import com.jetbrains.python.sdk.impl.SdkInternalUtilKt;
 import com.jetbrains.python.sdk.legacy.PythonSdkUtil;
 import com.jetbrains.python.target.PyDetectedSdkAdditionalData;
 import com.jetbrains.python.target.PyInterpreterVersionUtil;
@@ -64,7 +63,6 @@ import org.jetbrains.annotations.VisibleForTesting;
 import javax.swing.Icon;
 import javax.swing.JComponent;
 import java.awt.Component;
-import java.io.File;
 import java.lang.ref.WeakReference;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
@@ -123,12 +121,9 @@ public final class PythonSdkType extends SdkType {
 
   @Override
   public @NotNull Collection<String> suggestHomePaths() {
-    final Sdk[] existingSdks = ReadAction.compute(() -> ProjectJdkTable.getInstance().getAllJdks());
-    final List<PyDetectedSdk> sdks = PySdkExtKt.detectSystemWideSdks(null, Arrays.asList(existingSdks));
-    //return all detected items after PY-41218 is fixed
-    final PyDetectedSdk latest = StreamEx.of(sdks).findFirst().orElse(null);
+    final String latest = StreamEx.of(SdkInternalUtilKt.getBasePythonsPaths()).findFirst().orElse(null);
     if (latest != null) {
-      return Collections.singleton(latest.getHomePath());
+      return Collections.singleton(latest);
     }
     return Collections.emptyList();
   }
@@ -136,7 +131,7 @@ public final class PythonSdkType extends SdkType {
   /**
    * This function doesn't support remote SDKs.
    *
-   * @deprecated Use {@link PySdkExtKt#getSdkSeemsValid(Sdk)}
+   * @deprecated Use {@link SdkExtKt#isSdkSeemsValid(Sdk)}
    */
   @Override
   @Deprecated
@@ -210,8 +205,11 @@ public final class PythonSdkType extends SdkType {
       @Override
       public boolean isFileSelectable(@Nullable VirtualFile file) {
         if (file == null) return false;
-        Path pythonPath = VirtualEnvReaderKt.VirtualEnvReader().findPythonInPythonRoot(file.toNioPath());
-        return pythonPath != null;
+        // A regular file may be a Python binary or a wrapper script (e.g. a .bat/.sh launching Python), so allow
+        // selecting any file and let validateSelectedFiles() reject the invalid ones (PY-89236). A directory is
+        // selectable only when it contains a Python binary (the folder-selection feature from PY-86247).
+        if (!file.isDirectory()) return true;
+        return VirtualEnvReaderKt.VirtualEnvReader().findPythonInPythonRoot(file.toNioPath()) != null;
       }
     }
       .withTitle(PyBundle.message("sdk.select.path"))
@@ -288,23 +286,23 @@ public final class PythonSdkType extends SdkType {
 
   @Override
   public @NotNull String suggestSdkName(final @Nullable String currentSdkName, final @NotNull String sdkHome) {
-    final String name = StringUtil.notNullize(suggestBaseSdkName(sdkHome), "Unknown");
-    final File virtualEnvRoot = PythonSdkUtil.getVirtualEnvRoot(sdkHome);
-    if (virtualEnvRoot != null) {
-      final String path = FileUtil.getLocationRelativeToUserHome(virtualEnvRoot.getAbsolutePath());
-      return name + " " + path;
+    if (CustomSdkHomePattern.isCustomPythonSdkHomePath(sdkHome)) {
+      return sdkHome;
     }
-    else {
-      return name;
+    Path pythonBinary;
+    try {
+      pythonBinary = Path.of(sdkHome);
     }
-  }
-
-  @RequiresBackgroundThread(generateAssertion = false) //because of process output
-  @ApiStatus.Internal
-  public static @Nullable String suggestBaseSdkName(@NotNull String sdkHome) {
-    final PythonSdkFlavor flavor = PythonSdkFlavor.getFlavor(sdkHome);
-    if (flavor == null) return null;
-    return flavor.getName() + " " + flavor.getLanguageLevel(sdkHome);
+    catch (InvalidPathException e) {
+      LOG.warn("Invalid SDK home path: " + sdkHome, e);
+      return sdkHome;
+    }
+    var pythonEnvironment = PythonEnvironmentKt.detectPythonEnvironment(pythonBinary).getSuccessOrNull();
+    if (pythonEnvironment == null) {
+      return FileUtil.getLocationRelativeToUserHome(pythonBinary.toAbsolutePath().toString(), false);
+    }
+    var path = pythonEnvironment instanceof HasPythonHome ? ((HasPythonHome)pythonEnvironment).getPythonHomePath() : pythonBinary;
+    return FileUtil.getLocationRelativeToUserHome(path.toAbsolutePath().toString(), false);
   }
 
   @Override
@@ -342,7 +340,7 @@ public final class PythonSdkType extends SdkType {
       }
       else if (isCustomPythonSdkHomePath(homePath)) {
         LOG.warn("Pretarget SDK skipped " + homePath);
-        return PyInvalidSdk.INSTANCE;
+        return new PyInvalidSdk();
       }
     }
 
@@ -403,7 +401,7 @@ public final class PythonSdkType extends SdkType {
           projectRef.set(CommonDataKeys.PROJECT.getData(DataManager.getInstance().getDataContext(ownerComponent)));
         }
         else {
-          projectRef.set(CommonDataKeys.PROJECT.getData(DataManager.getInstance().getDataContext()));
+        projectRef.set(CommonDataKeys.PROJECT.getData(DataManager.getInstance().getDataContext()));
         }
       });
     }
@@ -508,12 +506,6 @@ public final class PythonSdkType extends SdkType {
     }
     VirtualFile homeDir = sdk.getHomeDirectory();
     return homeDir != null && homeDir.isValid();
-  }
-
-  @ApiStatus.Internal
-  public static boolean isRunAsRootViaSudo(@NotNull Sdk sdk) {
-    SdkAdditionalData data = sdk.getSdkAdditionalData();
-    return data instanceof PyTargetAwareAdditionalData pyTargetAwareAdditionalData && pyTargetAwareAdditionalData.isRunAsRootViaSudo();
   }
 
   @ApiStatus.Internal

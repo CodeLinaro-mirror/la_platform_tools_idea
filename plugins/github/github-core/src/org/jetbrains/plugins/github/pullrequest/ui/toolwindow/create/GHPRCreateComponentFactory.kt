@@ -33,6 +33,7 @@ import com.intellij.collaboration.ui.util.bindEnabledIn
 import com.intellij.collaboration.ui.util.gap
 import com.intellij.collaboration.ui.util.popup.PopupItemPresentation
 import com.intellij.collaboration.ui.util.swingAction
+import com.intellij.collaboration.util.IncrementallyComputedValue
 import com.intellij.collaboration.util.fold
 import com.intellij.collaboration.util.getOrNull
 import com.intellij.collaboration.util.onFailure
@@ -78,14 +79,11 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import net.miginfocom.layout.CC
@@ -95,11 +93,11 @@ import org.jetbrains.annotations.Nls
 import org.jetbrains.plugins.github.api.data.GHLabel
 import org.jetbrains.plugins.github.api.data.GHUser
 import org.jetbrains.plugins.github.api.data.pullrequest.GHPullRequestRequestedReviewer
+import org.jetbrains.plugins.github.exceptions.GHAPIExceptionUtil
 import org.jetbrains.plugins.github.i18n.GithubBundle
 import org.jetbrains.plugins.github.i18n.GithubBundle.message
 import org.jetbrains.plugins.github.pullrequest.ui.toolwindow.create.GHPRCreateViewModel.BranchesCheckResult
 import org.jetbrains.plugins.github.pullrequest.ui.toolwindow.create.GHPRCreateViewModel.CreationState
-import org.jetbrains.plugins.github.ui.component.GHHtmlErrorPanel
 import org.jetbrains.plugins.github.ui.component.LabeledListPanelViewModel
 import org.jetbrains.plugins.github.ui.icons.GHAvatarIconsProvider
 import org.jetbrains.plugins.github.ui.util.GHUIUtil
@@ -272,8 +270,8 @@ internal object GHPRCreateComponentFactory {
   @OptIn(FlowPreview::class)
   private fun CoroutineScope.changesPanel(vm: GHPRCreateViewModel): JComponent {
     val wrapper = Wrapper()
-    val errorStatusPresenter = ErrorStatusPresenter.simple(message("pull.request.create.failed.to.load.commits"),
-                                                           descriptionProvider = GHHtmlErrorPanel::getLoadingErrorText)
+    val errorStatusPresenter = ErrorStatusPresenter.simpleHTML(message("pull.request.create.failed.to.load.commits"),
+                                                               descriptionProvider = GHAPIExceptionUtil::getPresentableMessage)
     launchNow {
       vm.changesVm.debounce(50).collectScoped { changesResult ->
         val content = changesResult?.fold({ moveToCenter(LoadingTextLabel()) },
@@ -319,8 +317,8 @@ internal object GHPRCreateComponentFactory {
       })
     }
 
-    val errorStatusPresenter = ErrorStatusPresenter.simple(message("pull.request.create.failed.to.load.changes"),
-                                                           descriptionProvider = GHHtmlErrorPanel::getLoadingErrorText)
+    val errorStatusPresenter = ErrorStatusPresenter.simpleHTML(message("pull.request.create.failed.to.load.changes"),
+                                                               descriptionProvider = GHAPIExceptionUtil::getPresentableMessage)
     cs.launchNow {
       changesVm.commitChangesVm.collectScoped { commitChangesVm ->
         commitChangesVm.changeListVm.debounce(50).collectScoped { changeListVmResult ->
@@ -544,25 +542,28 @@ private suspend fun <T : Any> editList(
   vm: LabeledListPanelViewModel<T>,
   getItemPresentation: (T) -> PopupItemPresentation,
 ) {
-  val newList = ChooserPopupUtil.showAsyncMultipleChooserPopup(
+  val newList = ChooserPopupUtil.showMultipleChooserPopupWithIncrementalLoading(
     RelativePoint.getNorthEastOf(parentComponent),
     vm.items.value,
-    vm.getSelectableItemsFlow(),
+    vm.getSelectableItemsState(),
     getItemPresentation,
     PopupConfig(showDirection = ShowDirection.ABOVE)
   )
   vm.adjustList(newList)
 }
 
-private fun <T : Any> LabeledListPanelViewModel<T>.getSelectableItemsFlow(): Flow<Result<List<T>>> {
+private fun <T : Any> LabeledListPanelViewModel<T>.getSelectableItemsState(): StateFlow<IncrementallyComputedValue<List<T>>> {
   val current = items.value
-  return flow {
-    if (current.isNotEmpty()) {
-      emit(Result.success(current))
+  return selectableItems.mapState { state ->
+    val loaded = state.valueOrNull ?: return@mapState state
+    val merged = current + loaded.filterNot(current::contains)
+    val exception = state.exceptionOrNull
+
+    when {
+      exception != null -> IncrementallyComputedValue.partialFailure(merged, exception)
+      state.isComplete -> IncrementallyComputedValue.success(merged)
+      else -> IncrementallyComputedValue.partialSuccess(merged)
     }
-    selectableItems
-      .mapNotNull { it.result?.map { items -> current + items.filter { item -> !current.contains(item) } } }
-      .first().let { emit(it) }
   }
 }
 
@@ -570,8 +571,8 @@ private fun <T : Any> LabeledListPanelViewModel<T>.getSelectableItemsFlow(): Flo
 private fun ErrorLink(error: Throwable) =
   ActionLink(message("pull.request.create.error.details")).also { link ->
     link.addActionListener {
-      val errorStatusPresenter = ErrorStatusPresenter.simple(message("pull.request.create.error"),
-                                                             descriptionProvider = GHHtmlErrorPanel::getLoadingErrorText)
+      val errorStatusPresenter = ErrorStatusPresenter.simpleHTML(message("pull.request.create.error"),
+                                                                 descriptionProvider = GHAPIExceptionUtil::getPresentableMessage)
       val errorTextPane = ErrorStatusPanelFactory.create(error, errorStatusPresenter, ErrorStatusPanelFactory.Alignment.LEFT).let {
         ScrollPaneFactory.createScrollPane(it, true)
       }.apply {

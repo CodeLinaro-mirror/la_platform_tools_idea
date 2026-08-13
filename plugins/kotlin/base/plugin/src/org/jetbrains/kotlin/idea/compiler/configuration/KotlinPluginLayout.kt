@@ -15,12 +15,12 @@ import com.intellij.platform.eel.provider.getEelDescriptor
 import com.intellij.platform.eel.provider.toEelApi
 import com.intellij.platform.eel.provider.utils.EelPathUtils
 import com.intellij.platform.eel.provider.utils.EelPathUtils.transferLocalContentToRemote
+import kotlinx.coroutines.runBlocking
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.kotlin.config.KotlinCompilerVersion
 import org.jetbrains.kotlin.idea.base.plugin.artifacts.KotlinArtifactConstants
 import org.jetbrains.kotlin.idea.base.plugin.artifacts.KotlinArtifactConstants.KOTLIN_MAVEN_GROUP_ID
 import org.jetbrains.kotlin.idea.base.plugin.artifacts.KotlinArtifactConstants.OLD_FAT_JAR_KOTLIN_JPS_PLUGIN_CLASSPATH_ARTIFACT_ID
-import org.jetbrains.kotlin.idea.base.plugin.artifacts.KotlinArtifactConstants.OLD_KOTLIN_DIST_ARTIFACT_ID
 import org.jetbrains.kotlin.idea.base.plugin.artifacts.LazyZipUnpacker
 import org.jetbrains.kotlin.idea.compiler.configuration.KotlinArtifactsDownloader.downloadArtifactForIdeFromSources
 import org.jetbrains.kotlin.idea.testFramework.TestKotlinArtifactsProvider
@@ -38,31 +38,23 @@ val isRunningFromSources: Boolean
     get() = KotlinPluginLayoutModeProvider.kotlinPluginLayoutMode == KotlinPluginLayoutMode.SOURCES
 
 object KotlinPluginLayoutModeProvider {
-    @Volatile
-    private var forcedMode: AtomicReference<KotlinPluginLayoutMode?> = AtomicReference(null)
 
     private val lazyMode = lazy {
-        forcedMode.get() ?: computeDefaultMode()
+        computeDefaultMode()
     }
 
     private fun computeDefaultMode(): KotlinPluginLayoutMode {
         val isRunningFromSources =
             !AppMode.isRunningFromDevBuild() && Files.isDirectory(PathManager.getHomeDir().resolve(Project.DIRECTORY_STORE_FOLDER))
-        return if (isRunningFromSources) KotlinPluginLayoutMode.SOURCES else KotlinPluginLayoutMode.INTELLIJ
+        return when {
+            System.getProperty("kotlin.plugin.layout", "") == "LSP" -> KotlinPluginLayoutMode.LSP
+            isRunningFromSources -> KotlinPluginLayoutMode.SOURCES
+            else -> KotlinPluginLayoutMode.INTELLIJ
+        }
     }
 
     @get:ApiStatus.Internal
     val kotlinPluginLayoutMode: KotlinPluginLayoutMode by lazyMode
-
-    @ApiStatus.Internal
-    fun setForcedKotlinPluginLayoutMode(mode: KotlinPluginLayoutMode) {
-        if (lazyMode.isInitialized()) {
-            error("Cannot set forced mode after lazy initialization: ${lazyMode.value} -> $mode")
-        }
-        if (!forcedMode.compareAndSet(null, mode)) {
-            error("Forced mode is already set to ${forcedMode.get()}")
-        }
-    }
 }
 
 @ApiStatus.Internal
@@ -72,6 +64,7 @@ enum class KotlinPluginLayoutMode {
     LSP,
 }
 
+@Suppress("DEPRECATION", "IO_FILE_USAGE")
 object KotlinPluginLayout {
 
     /**
@@ -128,6 +121,10 @@ object KotlinPluginLayout {
     private val jpsPluginClasspathProvider: Lazy<List<Path>>
     private val standaloneCompilerVersionProvider: Lazy<IdeKotlinVersion>
 
+    private val bundledJpsVersion by lazy {
+        KotlinMavenUtils.findLibraryVersion("kotlinc_kotlin_dist.xml")
+    }
+
     init {
         val standaloneCompilerVersionDefaultProvider = lazy {
             val buildTxtPath = kotlincPath.resolve("build.txt")
@@ -157,18 +154,15 @@ object KotlinPluginLayout {
                     standaloneCompilerVersionProvider = standaloneCompilerVersionDefaultProvider
                 }
                 else {
-                    val bundledJpsVersion by lazy {
-                        KotlinMavenUtils.findLibraryVersion("kotlinc_kotlin_dist.xml")
-                    }
-
                     kotlincProvider = lazy {
-                        @Suppress("DEPRECATION")
-                        val distJar = downloadArtifactForIdeFromSources(
-                            OLD_KOTLIN_DIST_ARTIFACT_ID,
-                            bundledJpsVersion
-                        ) ?: error("Can't download dist")
+                        @Suppress("RAW_RUN_BLOCKING")
+                        val distJar = runBlocking {
+                            downloadArtifactForIdeFromSources(bundledJpsVersion)
+                        } ?: error("Can't download dist")
+
                         val unpackedDistDir =
                             KotlinArtifactConstants.KOTLIN_DIST_LOCATION_PREFIX_PATH.resolve("kotlinc-dist-for-ide-from-sources")
+
                         LazyZipUnpacker(unpackedDistDir.toFile()).lazyUnpack(distJar)
                     }
 
@@ -243,6 +237,10 @@ class KotlinPluginLayoutService(private val project: Project) {
 
 
     fun resolveRelativeToRemoteKotlinc(path: Path): Path {
+        if (KotlinPluginLayoutModeProvider.kotlinPluginLayoutMode == KotlinPluginLayoutMode.LSP) {
+            return path
+        }
+
         val kotlinc = KotlinPluginLayout.kotlincPath
         if (!path.startsWith(kotlinc)) return path
 

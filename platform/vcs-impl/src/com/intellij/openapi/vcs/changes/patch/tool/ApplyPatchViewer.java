@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.vcs.changes.patch.tool;
 
 import com.intellij.codeInsight.hint.HintManager;
@@ -9,7 +9,7 @@ import com.intellij.diff.DiffDialogHints;
 import com.intellij.diff.DiffManager;
 import com.intellij.diff.actions.ProxyUndoRedoAction;
 import com.intellij.diff.actions.impl.FocusOppositePaneAction;
-import com.intellij.diff.actions.impl.SetEditorSettingsAction;
+import com.intellij.diff.actions.impl.SetEditorSettingsActionGroup;
 import com.intellij.diff.contents.DocumentContent;
 import com.intellij.diff.merge.MergeModelBase;
 import com.intellij.diff.requests.SimpleDiffRequest;
@@ -34,6 +34,7 @@ import com.intellij.diff.util.LineRange;
 import com.intellij.diff.util.Side;
 import com.intellij.icons.AllIcons;
 import com.intellij.openapi.Disposable;
+import com.intellij.openapi.actionSystem.ActionGroup;
 import com.intellij.openapi.actionSystem.ActionManager;
 import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnAction;
@@ -41,6 +42,7 @@ import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.actionSystem.CompositeShortcutSet;
 import com.intellij.openapi.actionSystem.DataSink;
+import com.intellij.openapi.actionSystem.IdeActions;
 import com.intellij.openapi.actionSystem.Presentation;
 import com.intellij.openapi.actionSystem.Separator;
 import com.intellij.openapi.actionSystem.ex.ActionUtil;
@@ -103,7 +105,7 @@ class ApplyPatchViewer implements Disposable {
   private final @NotNull StatusPanel myStatusPanel;
   private final @NotNull MyFoldingModel myFoldingModel;
 
-  private final @NotNull SetEditorSettingsAction myEditorSettingsAction;
+  protected final @NotNull SetEditorSettingsActionGroup myEditorSettingsAction;
 
   // Changes with known AppliedTo. Ordered as in result-editor
   private final @NotNull List<ApplyPatchChange> myResultChanges = new ArrayList<>();
@@ -175,8 +177,10 @@ class ApplyPatchViewer implements Disposable {
 
     new TextDiffViewerUtil.EditorFontSizeSynchronizer(editors).install(this);
 
-    myEditorSettingsAction = new SetEditorSettingsAction(getTextSettings(), editors);
+    myEditorSettingsAction = new SetEditorSettingsActionGroup(getTextSettings(), editors);
     myEditorSettingsAction.applyDefaults();
+    ActionGroup gutterActionGroup = TextDiffViewerUtil.createEditorGutterActionGroup(myEditorSettingsAction);
+    TextDiffViewerUtil.installGutterPopup(editors, gutterActionGroup);
 
     ProxyUndoRedoAction.register(myProject, myResultEditor, myContentPanel);
   }
@@ -186,7 +190,6 @@ class ApplyPatchViewer implements Disposable {
 
     if (!isReadOnly()) {
       group.add(new MyToggleExpandByDefaultAction());
-      group.add(myEditorSettingsAction);
       group.add(Separator.getInstance());
       group.add(new ShowDiffWithLocalAction());
       group.add(new ApplyNonConflictsAction());
@@ -204,7 +207,7 @@ class ApplyPatchViewer implements Disposable {
     }
 
     group.add(Separator.getInstance());
-    group.addAll(TextDiffViewerUtil.createEditorPopupActions());
+    group.add(ActionManager.getInstance().getAction(IdeActions.GROUP_DIFF_EDITOR_POPUP));
 
     return group;
   }

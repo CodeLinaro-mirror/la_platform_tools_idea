@@ -11,6 +11,7 @@ import com.intellij.lang.ParserDefinition;
 import com.intellij.navigation.ItemPresentation;
 import com.intellij.openapi.application.AppUIExecutor;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.EditorLockFreeTyping;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
@@ -21,6 +22,7 @@ import com.intellij.openapi.ui.Queryable;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.TextRange;
+import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileWithId;
@@ -59,6 +61,8 @@ import com.intellij.psi.impl.source.tree.CompositeElement;
 import com.intellij.psi.impl.source.tree.FileElement;
 import com.intellij.psi.impl.source.tree.SharedImplUtil;
 import com.intellij.psi.impl.source.tree.TreeElement;
+import com.intellij.psi.impl.source.tree.mvcc.InternalPsiVersioning;
+import com.intellij.psi.impl.source.tree.mvcc.VersionedPsiConsistencyException;
 import com.intellij.psi.scope.PsiScopeProcessor;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.search.PsiElementProcessor;
@@ -214,20 +218,6 @@ public abstract class PsiFileImpl extends ElementBase implements PsiFileEx, PsiF
 
     if (!myPossiblyInvalidated) return true;
 
-    /*
-    Originally, all PSI was invalidated on root change, to avoid UI freeze (IDEA-172762),
-    but that has led to too many PIEAEs (like IDEA-191185, IDEA-188292, IDEA-184186, EA-114990).
-
-    Ideally those clients should all be converted to smart pointers, but that proved to be quite hard to do, especially without breaking API.
-    And they mostly worked before those batch invalidations.
-
-    So now we have a smarter way of dealing with this issue. On root change, we mark
-    PSI as "potentially invalid", and then, when someone calls "isValid"
-    (hopefully not for all cached PSI at once, and hopefully in a background thread),
-    we check if the old PSI is equivalent to the one that would be re-created in its place.
-    If yes, we return valid. If no, we invalidate the old PSI forever and return the new one.
-    */
-
     // synchronized by read-write action
     if (((FileManagerEx)myManager.getFileManager()).evaluateValidity(this)) {
       myPossiblyInvalidated = false;
@@ -249,7 +239,9 @@ public abstract class PsiFileImpl extends ElementBase implements PsiFileEx, PsiF
   }
 
   protected void assertReadAccessAllowed() {
-    if (myViewProvider.getVirtualFile() instanceof ReadOnlyLightVirtualFile) return;
+    VirtualFile virtualFile = myViewProvider.getVirtualFile();
+    if (virtualFile instanceof ReadOnlyLightVirtualFile) return;
+    if (!EditorLockFreeTyping.isReadAccessNeeded(virtualFile)) return;
     ApplicationManager.getApplication().assertReadAccessAllowed();
   }
 
@@ -273,10 +265,30 @@ public abstract class PsiFileImpl extends ElementBase implements PsiFileEx, PsiF
       synchronized (myPsiLock) {
         FileElement treeElement = derefTreeElement();
         if (treeElement != null) {
+          if (InternalPsiVersioning.isVersionedSyntaxTreeEnabled() && viewProvider.isPhysical() && !treeElement.isVersioned()) {
+            VersionedPsiConsistencyException exception = new VersionedPsiConsistencyException.ViewProvider("Illegal state: attempted to attach a versioned=" + treeElement.isVersioned() + " tree to a physical=" + viewProvider.isPhysical() + " file.");
+            LOG.error(exception);
+          }
           return treeElement;
         }
 
-        treeElement = createFileElement(viewProvider.getContents());
+        // We create persistent trees for real physical files.
+        // also, if we are operating in a versioned environment, the created tree should also be versioned,
+        // because they will likely be used for real physical files later, like in document commit.
+        // This is the case for write action for example
+        // but if there is an explicit non-versioned environment, then we create a collapsed tree no matter what.
+        boolean canUseVersioned =
+          InternalPsiVersioning.isVersionedComputation() ||
+          (viewProvider.isPhysical());
+
+        treeElement = InternalPsiVersioning.inVersionedEnvironment(canUseVersioned, () -> {
+          if (canUseVersioned) {
+            FileElement fileElement = InternalPsiVersioning.runModificationOfVersionedPsi(() -> createFileElement(viewProvider.getContents()));
+            return fileElement;
+          } else {
+            return createFileElement(viewProvider.getContents());
+          }
+        });
         treeElement.setPsi(this);
 
         myLoadingAst = true;
@@ -459,8 +471,11 @@ public abstract class PsiFileImpl extends ElementBase implements PsiFileEx, PsiF
     copyCopyableDataTo(clone);
 
     if (getTreeElement() != null) {
+      // this is basically always collapsed environment, as by contract `providerCopy` is not physical
+      // alternatively, for a non-physical view provider, we could have a persistent tree
+      boolean runInVersionedEnv = providerCopy.isPhysical() || InternalPsiVersioning.isVersionedComputation();
+      FileElement treeClone = InternalPsiVersioning.inVersionedEnvironment(runInVersionedEnv, () -> (FileElement)calcTreeElement().clone());
       // not set by provider in clone
-      FileElement treeClone = (FileElement)calcTreeElement().clone();
       clone.setTreeElementPointer(treeClone); // should not use setTreeElement here because cloned file still have VirtualFile (SCR17963)
       treeClone.setPsi(clone);
     }
@@ -854,12 +869,24 @@ public abstract class PsiFileImpl extends ElementBase implements PsiFileEx, PsiF
   }
 
   private void updateTrees(@NotNull FileTrees trees) {
+    TreeElement treeElement = trees.derefTreeElement();
+    if (InternalPsiVersioning.isVersionedSyntaxTreeEnabled() && treeElement != null && getViewProvider().isPhysical() && !treeElement.isVersioned()) {
+      VersionedPsiConsistencyException exception = new VersionedPsiConsistencyException.ViewProvider("Attempt to set non-versioned tree to a physical view provider");
+      LOG.error(exception);
+    }
+    updateTreesDirectly(trees);
+  }
+
+  // this function exists only for cloneImpl
+  private void updateTreesDirectly(@NotNull FileTrees trees) {
+    trees.assertConsistency(this);
     myTrees = trees;
   }
 
   protected PsiFileImpl cloneImpl(FileElement treeElementClone) {
     PsiFileImpl clone = (PsiFileImpl)super.clone();
-    clone.setTreeElementPointer(treeElementClone); // should not use setTreeElement here because the cloned file still has VirtualFile (SCR17963)
+    // we need to update trees without assertion about collapsed tree in a physical FileViewProvider, as clients usually clone PsiFile and only then set the cloned viewProvider there.
+    clone.updateTreesDirectly(FileTrees.noStub(treeElementClone, clone)); // should not use setTreeElement here because the cloned file still has VirtualFile (SCR17963)
     treeElementClone.setPsi(clone);
     return clone;
   }

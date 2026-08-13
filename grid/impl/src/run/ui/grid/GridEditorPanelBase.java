@@ -52,6 +52,7 @@ import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.ui.EditorTextField;
+import com.intellij.ui.RemoteTransferUIManager;
 import com.intellij.ui.awt.RelativePoint;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBList;
@@ -136,6 +137,7 @@ public abstract class GridEditorPanelBase extends JPanel
     }, myGrid);
 
     add(clearFieldLabel, BorderLayout.EAST);
+    RemoteTransferUIManager.forbidBeControlizationInLux(myEditor, null);
     add(myEditor.getComponent(), BorderLayout.CENTER);
   }
 
@@ -281,8 +283,11 @@ public abstract class GridEditorPanelBase extends JPanel
   @Override
   public void apply() {
     GridFilteringModel model = myGrid.getDataHookup().getFilteringModel();
+    boolean shouldClearPendingChanges = myGrid.getDataHookup().getMutator() != null && myGrid.getDataHookup().getMutator().hasPendingChanges();
     if (model != null && myGrid.isSafeToReload()) {
-      myGrid.getDataHookup().getLoader().applyFilterAndSorting(new GridRequestSource(new GridEditorPanelRequestPlace(this, myGrid)));
+      GridRequestSource source = GridRequestSource.create(new GridEditorPanelRequestPlace(this, myGrid));
+      source.setMutatedDataLocally(shouldClearPendingChanges);
+      myGrid.getDataHookup().getLoader().applyFilterAndSorting(source);
     }
   }
 

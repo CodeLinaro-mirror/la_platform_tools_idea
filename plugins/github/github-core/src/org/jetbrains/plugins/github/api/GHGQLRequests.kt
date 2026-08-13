@@ -79,6 +79,24 @@ object GHGQLRequests {
   }
 
   object Repo {
+    fun findMentionableUsers(
+      repository: GHRepositoryCoordinates,
+      server: GithubServerPath,
+      pagination: GraphQLRequestPagination? = null,
+    ): GQLQuery<GraphQLPagedResponseDataDTO<GHUser>> =
+      GQLQuery.TraversedParsed(
+        server.toGraphQLUrl(), GHGQLQueries.getMentionableUsers,
+        mapOf("repoOwner" to repository.repositoryPath.owner,
+              "repoName" to repository.repositoryPath.repository,
+              "pageSize" to pagination?.pageSize,
+              "cursor" to pagination?.afterCursor),
+        UserConnection::class.java,
+        "repository", "mentionableUsers"
+      ).apply {
+        withOperation(GithubApiRequestOperation.GraphQLGetMentionableUsers)
+        withOperationName("get mentionable users")
+      }
+
     fun find(repository: GHRepositoryCoordinates): GQLQuery<GHRepository?> =
       GQLQuery.OptionalTraversedParsed(
         repository.serverPath.toGraphQLUrl(), GHGQLQueries.findRepository,
@@ -120,8 +138,8 @@ object GHGQLRequests {
         withOperationName("get branch protection rules")
       }
 
-    private class ProtectedRulesConnection(pageInfo: GraphQLCursorPageInfoDTO, nodes: List<GHBranchProtectionRule> = listOf())
-      : GraphQLConnectionDTO<GHBranchProtectionRule>(pageInfo, nodes)
+    private class ProtectedRulesConnection(pageInfo: GraphQLCursorPageInfoDTO, nodes: List<GHBranchProtectionRule> = listOf()) :
+      GraphQLConnectionDTO<GHBranchProtectionRule>(pageInfo, nodes)
 
     fun getCommitStatus(
       repo: GHRepositoryCoordinates,
@@ -221,6 +239,9 @@ object GHGQLRequests {
         Unit::class.java
       )
   }
+
+  private class UserConnection(pageInfo: GraphQLCursorPageInfoDTO, nodes: List<GHUser> = listOf())
+    : GraphQLConnectionDTO<GHUser>(pageInfo, nodes)
 
   object PullRequest {
     fun findOneId(repository: GHRepositoryCoordinates, number: Long): GQLQuery<GHPRIdentifier?> =
@@ -333,6 +354,25 @@ object GHGQLRequests {
 
         withOperation(GithubApiRequestOperation.GraphQLSearchPullRequests)
         withOperationName("search issues")
+      }
+
+    fun findParticipants(
+      repository: GHRepositoryCoordinates,
+      number: Long,
+      pagination: GraphQLRequestPagination? = null,
+    ): GQLQuery<GraphQLPagedResponseDataDTO<GHUser>> =
+      GQLQuery.TraversedParsed(
+        repository.serverPath.toGraphQLUrl(), GHGQLQueries.getPullRequestParticipants,
+        mapOf("repoOwner" to repository.repositoryPath.owner,
+              "repoName" to repository.repositoryPath.repository,
+              "number" to number,
+              "pageSize" to pagination?.pageSize,
+              "cursor" to pagination?.afterCursor),
+        UserConnection::class.java,
+        "repository", "pullRequest", "participants"
+      ).apply {
+        withOperation(GithubApiRequestOperation.GraphQLGetPullRequestParticipants)
+        withOperationName("get pull request participants")
       }
 
     internal fun metrics(repo: GHRepositoryCoordinates): GQLQuery<GHPullRequestMetrics> =

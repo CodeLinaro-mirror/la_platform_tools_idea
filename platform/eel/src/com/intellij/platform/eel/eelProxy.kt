@@ -5,6 +5,7 @@
 package com.intellij.platform.eel
 
 import com.intellij.platform.eel.channels.EelDelicateApi
+import com.intellij.platform.eel.impl.eelProxyImpl
 import org.jetbrains.annotations.ApiStatus
 
 // TODO Move to a separate package along with EelTunnelsApi

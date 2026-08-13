@@ -3,10 +3,11 @@ package org.jetbrains.kotlin.idea.k2.codeinsight.fixes
 
 import com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.analysis.api.KaSession
+import org.jetbrains.kotlin.analysis.api.components.isBooleanType
+import org.jetbrains.kotlin.analysis.api.components.isPrimitive
 import org.jetbrains.kotlin.analysis.api.fir.diagnostics.KaFirDiagnostic
 import org.jetbrains.kotlin.analysis.api.types.KaFunctionType
 import org.jetbrains.kotlin.analysis.api.types.KaType
-import org.jetbrains.kotlin.analysis.api.types.KaTypeNullability
 import org.jetbrains.kotlin.idea.codeinsight.api.applicators.fixes.KotlinQuickFixFactory
 import org.jetbrains.kotlin.idea.quickfix.SurroundWithLambdaForTypeMismatchFix
 import org.jetbrains.kotlin.psi.KtExpression
@@ -46,11 +47,14 @@ internal object SurroundWithLambdaForTypeMismatchFixFactory {
         if (expectedType.arity > 1) return null
         val lambdaReturnType = expectedType.returnType
 
-        if (actualType.withNullability(KaTypeNullability.NON_NULLABLE).isSubtypeOf(lambdaReturnType) ||
+        if (actualType.withNullability(isMarkedNullable = false).isSubtypeOf(lambdaReturnType) ||
             (actualType.isPrimitiveNumberType() && lambdaReturnType.isPrimitiveNumberType())
         ) {
             return SurroundWithLambdaForTypeMismatchFix(element)
         }
         return null
     }
+
+    context(_: KaSession)
+    private fun KaType.isPrimitiveNumberType(): Boolean = isPrimitive && !isBooleanType
 }

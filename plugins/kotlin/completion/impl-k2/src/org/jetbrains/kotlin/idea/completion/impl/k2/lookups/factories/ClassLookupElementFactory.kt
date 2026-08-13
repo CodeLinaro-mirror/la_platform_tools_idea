@@ -9,21 +9,28 @@ import kotlinx.serialization.Serializable
 import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaSession
 import org.jetbrains.kotlin.analysis.api.components.asSignature
+import org.jetbrains.kotlin.analysis.api.components.defaultType
 import org.jetbrains.kotlin.analysis.api.components.importableFqName
+import org.jetbrains.kotlin.analysis.api.components.lowerBoundIfFlexible
 import org.jetbrains.kotlin.analysis.api.components.render
+import org.jetbrains.kotlin.analysis.api.components.upperBoundIfFlexible
 import org.jetbrains.kotlin.analysis.api.renderer.types.impl.KaTypeRendererForSource.WITH_SHORT_NAMES
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassKind
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassLikeSymbol
-import org.jetbrains.kotlin.analysis.api.symbols.KaClassSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaConstructorSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.KaNamedFunctionSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.KaSamConstructorSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.nameOrAnonymous
 import org.jetbrains.kotlin.analysis.api.types.KaStarTypeProjection
 import org.jetbrains.kotlin.analysis.api.types.KaTypeArgumentWithVariance
 import org.jetbrains.kotlin.analysis.api.types.KaTypeProjection
+import org.jetbrains.kotlin.idea.KotlinIcons
 import org.jetbrains.kotlin.idea.base.analysis.withRootPrefixIfNeeded
 import org.jetbrains.kotlin.idea.base.serialization.names.KotlinFqNameSerializer
 import org.jetbrains.kotlin.idea.base.serialization.names.KotlinNameSerializer
+import org.jetbrains.kotlin.idea.completion.impl.k2.contributors.ChainedInsertHandler
 import org.jetbrains.kotlin.idea.completion.impl.k2.handlers.AnonymousObjectInsertHandler
+import org.jetbrains.kotlin.idea.completion.impl.k2.handlers.TrailingLambdaInsertionHandler
 import org.jetbrains.kotlin.idea.completion.impl.k2.lookups.CallableInsertionOptions
 import org.jetbrains.kotlin.idea.completion.impl.k2.lookups.CallableInsertionStrategy
 import org.jetbrains.kotlin.idea.completion.impl.k2.lookups.CompletionShortNamesRenderer
@@ -32,8 +39,11 @@ import org.jetbrains.kotlin.idea.completion.impl.k2.lookups.KotlinLookupObject
 import org.jetbrains.kotlin.idea.completion.impl.k2.lookups.QuotedNamesAwareInsertionHandler
 import org.jetbrains.kotlin.idea.completion.impl.k2.lookups.TailTextProvider
 import org.jetbrains.kotlin.idea.completion.impl.k2.lookups.addImportIfRequired
+import org.jetbrains.kotlin.idea.completion.impl.k2.lookups.renderVerbose
 import org.jetbrains.kotlin.idea.completion.impl.k2.lookups.withClassifierSymbolInfo
 import org.jetbrains.kotlin.idea.completion.impl.k2.weighers.KindWeigher.isConstructorCall
+import org.jetbrains.kotlin.idea.completion.impl.k2.weighers.TrailingLambdaWeigher.hasTrailingLambda
+import org.jetbrains.kotlin.idea.util.realName
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.KtFile
@@ -57,20 +67,21 @@ internal object ClassLookupElementFactory {
 
     context(_: KaSession)
     fun createAnonymousObjectLookup(
-        symbol: KaClassSymbol,
+        symbol: KaClassLikeSymbol,
+        classKind: KaClassKind,
         typeArguments: List<KaTypeProjection>?,
         importingStrategy: ImportStrategy,
         aliasName: Name? = null,
     ): LookupElementBuilder {
         val name = aliasName ?: symbol.nameOrAnonymous
-        val constructorParenthesis = if (symbol.classKind != KaClassKind.INTERFACE) "()" else ""
+        val constructorParenthesis = if (classKind != KaClassKind.INTERFACE) "()" else ""
         val hasTypeArguments = typeArguments == null || typeArguments.isNotEmpty()
 
         @OptIn(KaExperimentalApi::class)
         val renderedFullTypeArgs = typeArguments?.takeIf { hasTypeArguments }?.joinToString(", ", "<", ">") {
             when (it) {
                 is KaStarTypeProjection -> "Any?"
-                is KaTypeArgumentWithVariance -> it.type.render(position = Variance.INVARIANT)
+                is KaTypeArgumentWithVariance -> it.type.upperBoundIfFlexible().render(position = Variance.INVARIANT)
             }
         }
 
@@ -78,7 +89,8 @@ internal object ClassLookupElementFactory {
         val renderedShortTypeArgs = typeArguments?.takeIf { hasTypeArguments }?.joinToString(", ", "<", ">") {
             when (it) {
                 is KaStarTypeProjection -> "Any?"
-                is KaTypeArgumentWithVariance -> it.type.render(renderer = WITH_SHORT_NAMES, position = Variance.INVARIANT)
+                is KaTypeArgumentWithVariance -> it.type.upperBoundIfFlexible()
+                    .render(renderer = WITH_SHORT_NAMES, position = Variance.INVARIANT)
             }
         }
 
@@ -110,8 +122,8 @@ internal object ClassLookupElementFactory {
             .let { withClassifierSymbolInfo(symbol, it) }
     }
 
-    context(_: KaSession)
     @OptIn(KaExperimentalApi::class)
+    context(_: KaSession)
     fun createConstructorLookup(
         containingSymbol: KaClassLikeSymbol,
         constructorSymbols: List<KaConstructorSymbol>,
@@ -145,6 +157,76 @@ internal object ClassLookupElementFactory {
                 it.isConstructorCall = true
                 withClassifierSymbolInfo(containingSymbol, it)
             }
+    }
+
+    @OptIn(KaExperimentalApi::class)
+    context(s: KaSession)
+    fun createSamObjectLookupElement(
+        samInterfaceSymbol: KaClassLikeSymbol,
+        samFunction: KaNamedFunctionSymbol,
+        samConstructorSymbol: KaSamConstructorSymbol,
+        importingStrategy: ImportStrategy,
+        inputTypeArgumentsAreRequired: Boolean,
+        aliasName: Name?,
+    ): LookupElementBuilder {
+        val name = samInterfaceSymbol.nameOrAnonymous
+
+        val options = CallableInsertionOptions(
+            importingStrategy = importingStrategy,
+            insertionStrategy = CallableInsertionStrategy.AsCall
+        )
+
+        val valueParameters = samFunction.valueParameters
+
+        val samConstructorParameters = samConstructorSymbol.valueParameters.map { it.asSignature() }
+
+        val renderedNames = if (valueParameters.size <= 1) {
+            " {...} "
+        } else {
+            samFunction.valueParameters.joinToString(prefix = " { ", postfix = " -> ... } ") {
+                val renderedType = it.returnType
+                    .lowerBoundIfFlexible()
+                    .render(renderer = WITH_SHORT_NAMES, position = Variance.INVARIANT)
+                it.realName?.asString() ?: renderedType
+            }
+        }
+
+        val trailingLambdaInsertHandler = TrailingLambdaInsertionHandler.create(samFunction, skipBraces = true)
+
+        val insertHandler = if (valueParameters.size > 1 && trailingLambdaInsertHandler != null) {
+            ChainedInsertHandler(FunctionInsertionHandler, trailingLambdaInsertHandler)
+        } else {
+            FunctionInsertionHandler
+        }
+
+        val lookupObject = FunctionCallLookupObject(
+            shortName = name,
+            options = options,
+            renderedDeclaration = CompletionShortNamesRenderer.renderFunctionParameters(samConstructorParameters),
+            hasReceiver = false,
+            inputTrailingLambdaIsRequired = true,
+            inputTypeArgumentsAreRequired = inputTypeArgumentsAreRequired,
+            isConstructorCall = true,
+        )
+
+        val element = LookupElementBuilder.create(lookupObject, name.asString())
+            .withInsertHandler(insertHandler)
+            .appendTailText(renderedNames, true)
+            .appendTailText(lookupObject.renderedDeclaration, true)
+            .appendTailText(
+                TailTextProvider.getTailText(
+                    samInterfaceSymbol,
+                    useFqnAsTailText = aliasName != null,
+                    addTypeParameters = false
+                ), true
+            )
+
+        element.hasTrailingLambda = true
+        element.isConstructorCall = true
+
+        return withClassifierSymbolInfo(samInterfaceSymbol, element)
+            .withTypeText(samInterfaceSymbol.defaultType.renderVerbose())
+            .withIcon(KotlinIcons.FUNCTION)
     }
 }
 

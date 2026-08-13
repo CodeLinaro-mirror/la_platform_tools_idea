@@ -4,9 +4,9 @@ import com.intellij.lang.ASTNode;
 import com.intellij.openapi.util.Ref;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.util.containers.ContainerUtil;
+import com.jetbrains.python.PyNames;
 import com.jetbrains.python.codeInsight.controlflow.PyTypeAssertionEvaluator;
-import com.jetbrains.python.codeInsight.stdlib.PyDataclassTypeProvider;
-import com.jetbrains.python.codeInsight.stdlib.PyNamedTupleTypeProvider;
+import com.jetbrains.python.codeInsight.typing.PyTypingTypeProvider;
 import com.jetbrains.python.psi.PyClass;
 import com.jetbrains.python.psi.PyClassPattern;
 import com.jetbrains.python.psi.PyElementVisitor;
@@ -43,8 +43,14 @@ public class PyClassPatternImpl extends PyElementImpl implements PyClassPattern,
 
   @Override
   public @Nullable PyType getType(@NotNull TypeEvalContext context, TypeEvalContext.@NotNull Key key) {
-    final PyType type = context.getType(getClassNameReference());
+    PyType type = context.getType(getClassNameReference());
     if (type instanceof PyClassType classType) {
+      
+      PyClassType parameterized = PyTypingTypeProvider.parameterizeType(type, context);
+      if (parameterized != null) {
+        classType = parameterized;
+      }
+      
       final PyType instanceType = classType.toInstance();
       final PyType captureType = PyCaptureContext.getCaptureType(this, context);
       return Ref.deref(PyTypeAssertionEvaluator.createAssertionType(captureType, instanceType, true, true, context));
@@ -67,7 +73,7 @@ public class PyClassPatternImpl extends PyElementImpl implements PyClassPattern,
 
     final List<PyPattern> arguments = getArgumentList().getPatterns();
     final @Nullable String classQName = classType.getClassQName();
-    if (classQName != null && SPECIAL_BUILTINS.contains(classQName)) {
+    if (classQName != null && SPECIAL_BUILTINS.contains(PyNames.FQN.unqualifyBuiltinName(classQName))) {
       if (arguments.isEmpty()) return true;
       if (arguments.size() > 1) return false;
       return isExhaustive(arguments.getFirst(), context);
@@ -118,7 +124,7 @@ public class PyClassPatternImpl extends PyElementImpl implements PyClassPattern,
     return PyTypeUtil.toStream(context.getType(this)).map(type -> {
       if (type instanceof PyClassType classType) {
         final @Nullable String classQName = classType.getClassQName();
-        if (classQName != null && SPECIAL_BUILTINS.contains(classQName)) {
+        if (classQName != null && SPECIAL_BUILTINS.contains(PyNames.FQN.unqualifyBuiltinName(classQName))) {
           if (index == 0) {
             return classType;
           }
@@ -150,15 +156,13 @@ public class PyClassPatternImpl extends PyElementImpl implements PyClassPattern,
   }
 
   public static @Nullable List<@NotNull String> getMatchArgs(@NotNull PyClassType type, @NotNull TypeEvalContext context) {
-    final PyClass cls = type.getPyClass();
-    // TODO: change to getMemberType, when PyLiteralType can be created without PyExpression
+    Ref<PyType> memberTypeRef = getMemberType(type, PyNames.MATCH_ARGS, context);
+    if (memberTypeRef != null) {
+      List<String> matchArgs = PyTypeUtil.extractStringLiteralsFromTupleType(memberTypeRef.get());
+      if (matchArgs != null) return matchArgs;
+    }
 
-    List<String> matchArgs = cls.getOwnMatchArgs();
-    if (matchArgs != null) return matchArgs;
-
-    matchArgs = PyNamedTupleTypeProvider.Helper.getGeneratedMatchArgs(type, context);
-    if (matchArgs != null) return matchArgs;
-    matchArgs = PyDataclassTypeProvider.Helper.getGeneratedMatchArgs(type, context);
+    List<String> matchArgs = type.getPyClass().getOwnMatchArgs();
     if (matchArgs != null) return matchArgs;
 
     for (PyClassLikeType baseType : type.getSuperClassTypes(context)) {

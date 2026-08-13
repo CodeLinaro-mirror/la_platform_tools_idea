@@ -7,16 +7,10 @@ import com.intellij.grazie.text.TextContent
 import com.intellij.grazie.text.TextContentTest
 import com.intellij.grazie.text.TextExtractor
 import com.intellij.testFramework.LightProjectDescriptor
-import org.jetbrains.kotlin.idea.base.plugin.KotlinPluginMode
-import org.jetbrains.kotlin.idea.test.ExpectedPluginModeProvider
 import org.jetbrains.kotlin.idea.test.KotlinWithJdkAndRuntimeLightProjectDescriptor
-import org.jetbrains.kotlin.idea.test.setUpWithKotlinPlugin
 
-class KotlinGrazieSupportTest28 : GrazieTestBase(), ExpectedPluginModeProvider {
-    override val pluginMode: KotlinPluginMode = KotlinPluginMode.K2
-    override fun setUp() {
-        setUpWithKotlinPlugin { super.setUp() }
-    }
+class KotlinGrazieSupportTest28 : GrazieTestBase() {
+    
 
     override fun getProjectDescriptor(): LightProjectDescriptor {
         return KotlinWithJdkAndRuntimeLightProjectDescriptor.getInstance()
@@ -49,6 +43,18 @@ class KotlinGrazieSupportTest28 : GrazieTestBase(), ExpectedPluginModeProvider {
         runHighlightTestForFile("grazie/Umlauts.kt")
     }
 
+    fun `test no german warnings in kdoc with heading and slashes`() {
+        enableProofreadingFor(setOf(Lang.GERMANY_GERMAN))
+        myFixture.configureByText("a.kt", """
+            /**
+             * # Titel
+             * Hier ist ok // Außer am Satzanfang werden nur Nomen und Eigennamen großgeschrieben.
+             */
+            fun f() {}
+        """.trimIndent())
+        myFixture.checkHighlighting()
+    }
+
     fun `test text extraction in string literals`() {
         val file = myFixture.configureByText("a.kt", "val s = \"foo $" + "{injection} bar\" ")
         val content = TextExtractor.findTextAt(file, 10, TextContent.TextDomain.ALL)
@@ -71,5 +77,15 @@ class KotlinGrazieSupportTest28 : GrazieTestBase(), ExpectedPluginModeProvider {
                 val target = 1
             }
         """)
+    }
+
+    fun `test escape sequences in string literals`() {
+        myFixture.configureByText("a.kt", """
+            val value2 = "class\nexpected 1\ttypo: 2"
+            val value1 = ""${'"'}
+                wrong object class\<TYPO descr="Typo: In word 'nexpected'">nexpected</TYPO> 1\<TYPO descr="Typo: In word 'ttypo'">ttypo</TYPO>: 2
+            ""${'"'}""".trimIndent()
+        )
+        myFixture.checkHighlighting()
     }
 }

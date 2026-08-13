@@ -1,12 +1,19 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.workspaceModel.ide.impl
 
+import com.intellij.concurrency.ThreadContextAwareReentrantLock
 import com.intellij.diagnostic.StartUpMeasurer
-import com.intellij.openapi.application.edtWriteAction
+import com.intellij.diagnostic.ThreadDumper
+import com.intellij.diagnostic.dumpCoroutines
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ModalityState
+import com.intellij.openapi.application.PathManager
+import com.intellij.openapi.application.backgroundWriteAction
 import com.intellij.openapi.components.serviceIfCreated
 import com.intellij.openapi.diagnostic.ControlFlowException
 import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.diagnostic.logger
+import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.openapi.progress.checkCanceled
 import com.intellij.openapi.project.Project
@@ -23,6 +30,7 @@ import com.intellij.platform.backend.workspace.WorkspaceModelTopics
 import com.intellij.platform.backend.workspace.impl.WorkspaceModelInternal
 import com.intellij.platform.diagnostic.telemetry.helpers.Milliseconds
 import com.intellij.platform.diagnostic.telemetry.helpers.MillisecondsMeasurer
+import com.intellij.platform.eel.provider.getEelMachine
 import com.intellij.platform.workspace.storage.EntityChange
 import com.intellij.platform.workspace.storage.EntityStorage
 import com.intellij.platform.workspace.storage.ImmutableEntityStorage
@@ -41,12 +49,17 @@ import com.intellij.project.ProjectStoreOwner
 import com.intellij.serviceContainer.AlreadyDisposedException
 import com.intellij.util.concurrency.ThreadingAssertions
 import com.intellij.util.messages.impl.MessageBusImpl
+import com.intellij.util.ui.EDT
 import com.intellij.workspaceModel.core.fileIndex.EntityStorageKind
 import com.intellij.workspaceModel.core.fileIndex.WorkspaceFileIndex
 import com.intellij.workspaceModel.core.fileIndex.impl.WorkspaceFileIndexImpl
+import com.intellij.workspaceModel.ide.JpsProjectLoadingManager
+import com.intellij.workspaceModel.ide.ProjectSynchronizerUtil
 import com.intellij.workspaceModel.ide.impl.reactive.WmReactive
 import io.opentelemetry.api.metrics.Meter
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -54,10 +67,16 @@ import kotlinx.coroutines.launch
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.NonNls
 import org.jetbrains.annotations.TestOnly
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+import kotlin.io.path.writeText
 import kotlin.system.measureTimeMillis
+import kotlin.time.Duration.Companion.minutes
 
 private val EP_NAME: ExtensionPointName<BridgeInitializer> = ExtensionPointName("com.intellij.workspace.bridgeInitializer")
+
+@ApiStatus.Internal
+var logSilentUpdates: Boolean = true
 
 @ApiStatus.Internal
 open class WorkspaceModelImpl : WorkspaceModelInternal {
@@ -71,7 +90,8 @@ open class WorkspaceModelImpl : WorkspaceModelInternal {
   private val reactive = WmReactive(this)
 
   final override val entityStorage: VersionedEntityStorageImpl
-  private val unloadedEntitiesStorage: VersionedEntityStorageImpl
+  final override val unloadedEntitiesStorage: VersionedEntityStorageImpl
+  private val lock = ThreadContextAwareReentrantLock()
 
   /** replay = 1 is needed to send the very first state when the subscription fo the flow happens.
   otherwise, the flow won't be emitted till the first update. Since we don't update the workspace model really often,
@@ -142,7 +162,7 @@ open class WorkspaceModelImpl : WorkspaceModelInternal {
           MutableEntityStorage.create()
         }
         else {
-          log.info("Load workspace model from cache in $loadingCacheTime ms")
+          log.info("Load workspace model from cache in $loadingCacheTime ms (project=${project.name}, locationHash=${project.locationHash})")
           loadedFromCache = true
           entityTracer.printInfoAboutTracedEntity(previousStorage, "cache")
           previousStorage
@@ -180,8 +200,7 @@ open class WorkspaceModelImpl : WorkspaceModelInternal {
   }
 
   @OptIn(EntityStorageInstrumentationApi::class)
-  @Synchronized
-  final override fun updateProjectModel(description: @NonNls String, updater: (MutableEntityStorage) -> Unit) {
+  final override fun updateProjectModel(description: @NonNls String, updater: (MutableEntityStorage) -> Unit): Unit = lock.withLock {
     ThreadingAssertions.assertWriteAccess()
     checkRecursiveUpdate()
 
@@ -228,7 +247,7 @@ open class WorkspaceModelImpl : WorkspaceModelInternal {
       totalUpdatesTimeMs.duration.addAndGet(this)
       updatesCounter.incrementAndGet()
     }
-    log.info("Project model for project ${project.name} updated to version ${entityStorage.pointer.version} in $generalTime ms: $description")
+    log.info("Project model for project ${project.name} (locationHash=${project.locationHash}) updated to version ${entityStorage.pointer.version} in $generalTime ms: $description")
     if (generalTime > 1000) {
       log.info(
         "Project model update details: Updater code: $updateTimeMillis ms, Pre handlers: $preHandlersTimeMillis ms, Collect changes: $collectChangesTimeMillis ms")
@@ -264,8 +283,8 @@ open class WorkspaceModelImpl : WorkspaceModelInternal {
         }
         checkCanceled()
         val replacement = builderSnapshot.getStorageReplacement()
-        log.info("Workspace model update attempt $attempt/$maxRetryAttempts, updater took $updaterTime ms: $description")
-        success = edtWriteAction { replaceWorkspaceModel(description, replacement) }
+        log.info("Workspace model update attempt $attempt/$maxRetryAttempts, updater took $updaterTime ms: $description  (project=${project.name}, locationHash=${project.locationHash})")
+        success = backgroundWriteAction { replaceWorkspaceModel(description, replacement) }
         if (success) {
           break
         }
@@ -273,17 +292,17 @@ open class WorkspaceModelImpl : WorkspaceModelInternal {
     }
     if (!success) {
       if (maxRetryAttempts > 1) {
-        log.info("Failed to update workspace model after ${maxRetryAttempts - 1} attempts in $generalTime ms. Falling back to update under WA: $description")
+        log.info("Failed to update workspace model after ${maxRetryAttempts - 1} attempts in $generalTime ms. Falling back to update under WA: $description  (project=${project.name}, locationHash=${project.locationHash})")
       }
       updateUnderWriteAction(description, updater)
     }
     else {
-      log.info("Workspace model updated in $generalTime ms: $description")
+      log.info("Workspace model updated in $generalTime ms: $description (project=${project.name}, locationHash=${project.locationHash})")
     }
   }
 
   suspend fun updateUnderWriteAction(description: String, updater: (MutableEntityStorage) -> Unit) {
-    edtWriteAction { updateProjectModel(description, updater) }
+    backgroundWriteAction { updateProjectModel(description, updater) }
   }
 
   override suspend fun update(description: String, updater: (MutableEntityStorage) -> Unit) {
@@ -303,8 +322,7 @@ open class WorkspaceModelImpl : WorkspaceModelInternal {
    */
   @OptIn(EntityStorageInstrumentationApi::class)
   @ApiStatus.Obsolete
-  @Synchronized
-  fun updateProjectModelSilent(description: @NonNls String, updater: (MutableEntityStorage) -> Unit) {
+  fun updateProjectModelSilent(description: @NonNls String, updater: (MutableEntityStorage) -> Unit): Unit = lock.withLock {
     checkRecursiveUpdate()
 
     val newStorage: ImmutableEntityStorage
@@ -337,7 +355,9 @@ open class WorkspaceModelImpl : WorkspaceModelInternal {
       updatesCounter.incrementAndGet()
     }
 
-    log.info("Project model updated silently to version ${entityStorage.pointer.version} in $generalTime ms: $description")
+    if (logSilentUpdates) {
+      log.info("Project model updated silently to version ${entityStorage.pointer.version} in $generalTime ms: $description (project=${project.name}, locationHash=${project.locationHash})")
+    }
   }
 
   /**
@@ -345,8 +365,8 @@ open class WorkspaceModelImpl : WorkspaceModelInternal {
    */
   private fun checkRecursiveUpdate() = checkRecursiveUpdateTimeMs.addMeasuredTime {
     val stackStraceIterator = RuntimeException().stackTrace.iterator()
-    // Skip two methods of the current update
-    repeat(2) { stackStraceIterator.next() }
+    // Skip six methods of the current update
+    repeat(6) { stackStraceIterator.next() }
     while (stackStraceIterator.hasNext()) {
       val frame = stackStraceIterator.next()
       if ((frame.methodName == updateModelMethodName || frame.methodName == updateModelSilentMethodName)
@@ -413,7 +433,7 @@ open class WorkspaceModelImpl : WorkspaceModelInternal {
       unloadedEntitiesStorage.replace(newStorage, changes, builder.collectSymbolicEntityIdsChanges(), {}, ::onUnloadedEntitiesChanged)
     }.apply { updateUnloadedEntitiesTimeMs.duration.addAndGet(this) }
 
-    log.info("Unloaded entity storage updated in $time ms: $description")
+    log.info("Unloaded entity storage updated in $time ms: $description (project=${project.name}, locationHash=${project.locationHash})")
   }
 
   final override fun getBuilderSnapshot(): BuilderSnapshot {
@@ -426,19 +446,18 @@ open class WorkspaceModelImpl : WorkspaceModelInternal {
     return BuilderSnapshot(current.version, current.storage)
   }
 
-  @Synchronized
-  final override fun replaceWorkspaceModel(description: @NonNls String, replacement: StorageReplacement): Boolean {
+  final override fun replaceWorkspaceModel(description: @NonNls String, replacement: StorageReplacement): Boolean = lock.withLock {
     ThreadingAssertions.assertWriteAccess()
 
-    if (entityStorage.version != replacement.version) return false
+    if (entityStorage.version != replacement.version) return@withLock false
 
     replaceProjectModelTimeMs.addMeasuredTime {
       val builder = replacement.builder
       this.initializeBridges(replacement.changes, builder)
       entityStorage.replace(builder.toSnapshot(), replacement.changes, replacement.symbolicEntityIdChanges, this::onBeforeChanged, this::onChanged)
-      log.info("Project model for project ${project.name} updated to version ${entityStorage.pointer.version}: $description")
+      log.info("Project model for project ${project.name} (locationHash=${project.locationHash}) updated to version ${entityStorage.pointer.version}: $description")
     }
-    return true
+    return@withLock true
   }
 
   @Synchronized
@@ -456,7 +475,7 @@ open class WorkspaceModelImpl : WorkspaceModelInternal {
 
       val unloadBuilder = unloadStorageReplacement.builder
       unloadedEntitiesStorage.replace(unloadBuilder.toSnapshot(), unloadStorageReplacement.changes, unloadStorageReplacement.symbolicEntityIdChanges, {}, ::onUnloadedEntitiesChanged)
-      log.info("Project model for project ${project.name} updated to version ${entityStorage.pointer.version}")
+      log.info("Project model for project ${project.name} (locationHash=${project.locationHash}) updated to version ${entityStorage.pointer.version}")
     }
     return true
   }
@@ -464,6 +483,57 @@ open class WorkspaceModelImpl : WorkspaceModelInternal {
   override suspend fun <T> flowOfQuery(query: StorageQuery<T>): Flow<T> = reactive.flowOfQuery(query)
   override suspend fun <T> flowOfNewElements(query: CollectionQuery<T>): Flow<T> = reactive.flowOfNewElements(query)
   override suspend fun <T> flowOfDiff(query: CollectionQuery<T>): Flow<Diff<T>> = reactive.flowOfDiff(query)
+
+  private val waitingTimedOut = AtomicBoolean(false)
+
+  override suspend fun awaitSynchronizationWithJpsModel() {
+    if (EDT.isCurrentThreadEdt() && ModalityState.current() != ModalityState.nonModal()) {
+      throw IllegalStateException("awaitSynchronizationWithJpsModel() can only be called in non-modal context. Current context: ${ModalityState.current()}")
+    }
+    GlobalWorkspaceModel.getInstance(project.getEelMachine()).awaitSynchronizationWithJpsModel()
+
+    CompletableDeferred<Unit>().also { deferred ->
+      JpsProjectLoadingManager.getInstance(project).jpsProjectLoaded { deferred.complete(Unit) }
+
+      if (deferred.isCompleted) {
+        return@also
+      }
+
+      if (!deferred.isCompleted && ApplicationManager.getApplication().isUnitTestMode) {
+        // Startup activities including DelayedProjectSynchronizer are skipped in unit tests unless it's explicitly specified
+        // that they have to be run. So we need to trigger synchronization manually.
+        ProjectSynchronizerUtil.getInstance(project).applyJpsModelToProjectModel()
+        deferred.complete(Unit)
+      }
+      else if (waitingTimedOut.get()) {
+        deferred.complete(Unit) // don't wait again
+      }
+      else {
+        // Safety net: if the callback is never invoked (e.g. due to a platform bug), unblock waiters after a timeout.
+        coroutineScope.launch {
+          // JpsGlobalModelSynchronizerImpl has a 5-second delay and ModuleManagerComponentBridgeInitializer has a 1-second delay;
+          val timeout = 1.minutes
+          delay(timeout)
+          if (deferred.complete(Unit) && !waitingTimedOut.getAndSet(true)) {
+            val threadDump = buildString {
+              appendLine(ThreadDumper.dumpThreadsToString())
+              appendLine()
+              appendLine("Coroutines dump:")
+              appendLine(dumpCoroutines())
+            }
+            val logFile = PathManager.getLogDir().resolve("jps-project-loaded-timeout-${System.currentTimeMillis()}.txt")
+            logFile.writeText(threadDump)
+            thisLogger().warn(
+              "JPS project loaded callback was not called within $timeout, proceeding anyway. " +
+              "Thread dump saved to ${logFile}. " +
+              "Project: ${project.name} (locationHash=${project.locationHash})."
+            )
+          }
+        }
+      }
+    }.await()
+  }
+
 
   private fun initializeBridges(change: Map<Class<*>, List<EntityChange<*>>>, builder: MutableEntityStorage) {
     if (project.isDisposed) {
@@ -656,13 +726,5 @@ private fun isProjectCaseSensitive(project: Project): Boolean {
   }
 
   val historicalProjectBasePath = project.componentStore.storeDescriptor.historicalProjectBasePath
-  val ioFile = try {
-    @Suppress("IO_FILE_USAGE")
-    historicalProjectBasePath.toFile()
-  }
-  catch (_: UnsupportedOperationException) {
-    // memory file system does not support #toFile()
-    return false
-  }
-  return FileSystemUtil.readParentCaseSensitivity(ioFile) == FileAttributes.CaseSensitivity.SENSITIVE
+  return FileSystemUtil.readParentCaseSensitivity(historicalProjectBasePath) == FileAttributes.CaseSensitivity.SENSITIVE
 }

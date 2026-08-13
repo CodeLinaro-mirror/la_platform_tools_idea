@@ -3,7 +3,12 @@
 
 package com.intellij.platform.workspace.storage.testEntities.entities
 
-import com.intellij.platform.workspace.storage.*
+import com.intellij.platform.workspace.storage.EntitySource
+import com.intellij.platform.workspace.storage.EntityType
+import com.intellij.platform.workspace.storage.GeneratedCodeApiVersion
+import com.intellij.platform.workspace.storage.MutableEntityStorage
+import com.intellij.platform.workspace.storage.WorkspaceEntityBuilder
+import com.intellij.platform.workspace.storage.testEntities.entities.impl.XChildChildEntityImpl
 
 @GeneratedCodeApiVersion(3)
 interface XChildChildEntityBuilder : WorkspaceEntityBuilder<XChildChildEntity> {
@@ -14,6 +19,7 @@ interface XChildChildEntityBuilder : WorkspaceEntityBuilder<XChildChildEntity> {
 
 internal object XChildChildEntityType : EntityType<XChildChildEntity, XChildChildEntityBuilder>() {
   override val entityClass: Class<XChildChildEntity> get() = XChildChildEntity::class.java
+  override val entityImplBuilderClass: Class<*> get() = XChildChildEntityImpl.Builder::class.java
   operator fun invoke(
     entitySource: EntitySource,
     init: (XChildChildEntityBuilder.() -> Unit)? = null,

@@ -12,6 +12,7 @@ import com.intellij.ide.starter.ide.asRemDevContext
 import com.intellij.ide.starter.ide.isRemDevContext
 import com.intellij.ide.starter.models.IDEStartResult
 import com.intellij.ide.starter.models.VMOptions
+import com.intellij.ide.starter.models.VMOptions.Companion.TEST_SCRIPT_FILE_OPTION
 import com.intellij.ide.starter.path.IDEDataPaths
 import com.intellij.ide.starter.process.collectJavaThreadDumpSuspendable
 import com.intellij.ide.starter.process.collectMemoryDump
@@ -21,6 +22,7 @@ import com.intellij.ide.starter.profiler.ProfilerType
 import com.intellij.ide.starter.runner.events.IdeAfterLaunchEvent
 import com.intellij.ide.starter.runner.events.IdeLaunchEvent
 import com.intellij.ide.starter.screenRecorder.IDEScreenRecorder
+import com.intellij.ide.starter.utils.FileSystem.listDirectoryEntriesQuietly
 import com.intellij.ide.starter.utils.JvmUtils
 import com.intellij.ide.starter.utils.catchAll
 import com.intellij.ide.starter.utils.formatArtifactName
@@ -45,7 +47,9 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import kotlin.io.path.ExperimentalPathApi
 import kotlin.io.path.bufferedReader
+import kotlin.io.path.deleteRecursively
 import kotlin.io.path.exists
 import kotlin.io.path.name
 import kotlin.io.path.readText
@@ -77,7 +81,6 @@ data class IDERunContext(
   val snapshotsDir: Path = testContext.paths.testHome.resolve(launchName).resolve("snapshots").createDirectoriesIfNotExist()
   val launchDir: Path = testContext.paths.testHome.resolve(launchName).createDirectoriesIfNotExist()
   val logsDir: Path = testContext.paths.testHome.resolve(launchName).resolve("log").createDirectoriesIfNotExist()
-
   private val patchesForVMOptions: ConcurrentList<VMOptions.() -> Unit> = ContainerUtil.createConcurrentList()
 
   var artifactsPublishingEnabled: Boolean = true
@@ -190,7 +193,8 @@ data class IDERunContext(
       if (!useStartupScript) {
         require(commands.count() > 0) { "script builder is not allowed when useStartupScript is disabled" }
       }
-      else
+      // Allow an overridden script file, required for migration of Rider performance tests
+      else if (!this.hasOption(TEST_SCRIPT_FILE_OPTION))
         installTestScript(testName = contextName, paths = testContext.paths, commands = commands)
     }
   }
@@ -249,9 +253,8 @@ data class IDERunContext(
     startConfig: IDEStartConfig,
     ideProcessId: Long,
     snapshotsDir: Path,
-    runContext: IDERunContext,
   ) {
-    if (!runContext.calculateVmOptions().hasHeadlessMode() && runContext.testContext !is IDERemDevTestContext) {
+    if (!calculateVmOptions().hasHeadlessMode() && testContext !is IDERemDevTestContext) {
       catchAll {
         takeScreenshot(logsDir)
       }
@@ -311,19 +314,6 @@ data class IDERunContext(
     return current.format(formatter)
   }
 
-  internal suspend fun resolveAndDownloadSameJDK(): Path {
-    try {
-      return testContext.ide.resolveAndDownloadTheSameJDK()
-    }
-    catch (e: Exception) {
-      logError("Failed to download the same JDK as in ${testContext.ide.build}")
-      logError(e.stackTraceToString())
-
-      val defaultJavaHome = JvmUtils.resolveInstalledJdk()
-      logOutput("JDK is not found in ${testContext.ide.build}. Fallback to default java: $defaultJavaHome")
-      return defaultJavaHome
-    }
-  }
 
   internal fun logStartupInfo(finalOptions: VMOptions) {
     logOutput(buildString {
@@ -333,6 +323,7 @@ data class IDERunContext(
     })
   }
 
+  @OptIn(ExperimentalPathApi::class)
   internal fun deleteSavedAppStateOnMac() {
     if (SystemInfoRt.isMac) {
       val filesToBeDeleted = listOf(
@@ -341,10 +332,10 @@ data class IDERunContext(
       )
       val home = System.getProperty("user.home")
       val savedAppStateDir = Path.of(home).resolve("Library/Saved Application State")
-      savedAppStateDir.toFile()
-        .walkTopDown().maxDepth(1)
-        .filter { file -> filesToBeDeleted.any { fileToBeDeleted -> file.name == fileToBeDeleted } }
-        .forEach { it.deleteRecursively() }
+      savedAppStateDir
+        .listDirectoryEntriesQuietly()
+        ?.filter { file -> filesToBeDeleted.any { fileToBeDeleted -> file.name == fileToBeDeleted } }
+        ?.forEach { it.deleteRecursively() }
     }
   }
 

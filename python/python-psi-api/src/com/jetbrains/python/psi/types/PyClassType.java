@@ -3,7 +3,11 @@ package com.jetbrains.python.psi.types;
 
 import com.intellij.openapi.util.UserDataHolder;
 import com.jetbrains.python.psi.PyClass;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
 
 
 public interface PyClassType extends PyClassLikeType, UserDataHolder {
@@ -11,15 +15,27 @@ public interface PyClassType extends PyClassLikeType, UserDataHolder {
   PyClass getPyClass();
 
   /**
-   * @param name    name to check
-   * @param context type evaluation context
-   * @return true if attribute with the specified name could be created or updated.
-   * Does not take `typing.Final` into account.
-   * @see PyClass#getSlots(TypeEvalContext)
+   * Concrete type arguments of this class instance, e.g. {@code [int]} for {@code list[int]}.
+   * Returns an empty list for non-parameterized class types.
    */
-  default boolean isAttributeWritable(@NotNull String name, @NotNull TypeEvalContext context) {
-    return true;
+  @NotNull
+  List<PyType> getTypeArguments();
+
+  /**
+   * @return whether this class type carries concrete type arguments, e.g. {@code true} for {@code list[int]}
+   * and {@code false} for a bare {@code list}.
+   */
+  default boolean isParameterized() {
+    return !getTypeArguments().isEmpty();
   }
+
+  /**
+   * The element type produced when iterating over an instance of this type, or {@code null} if it is not iterable.
+   * For most parameterized collections it is the first type argument; for mappings it is the key type.
+   */
+  @ApiStatus.Internal
+  @Nullable
+  PyType getIteratedItemType();
 
   @Override
   default <T> T acceptTypeVisitor(@NotNull PyTypeVisitor<T> visitor) {

@@ -15,7 +15,6 @@ import org.jetbrains.kotlin.analysis.api.renderer.types.impl.KaTypeRendererForSo
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbolOrigin
 import org.jetbrains.kotlin.analysis.api.types.KaFunctionType
 import org.jetbrains.kotlin.analysis.api.types.KaType
-import org.jetbrains.kotlin.analysis.api.types.KaTypeNullability
 import org.jetbrains.kotlin.idea.base.codeInsight.ShortenReferencesFacility
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.codeinsight.api.applicators.fixes.KotlinQuickFixFactory
@@ -57,7 +56,6 @@ internal object LetImplementInterfaceFixFactories {
         )
     }
 
-    @OptIn(KaExperimentalApi::class)
     private fun KaSession.createFixIfAvailable(
         expectedType: KaType,
         actualType: KaType,
@@ -73,7 +71,7 @@ internal object LetImplementInterfaceFixFactories {
             ?.takeIf { it.origin == KaSymbolOrigin.SOURCE }
             ?.psi as? KtClassOrObject
 
-        val actualTypeNotNullable = actualType.withNullability(KaTypeNullability.NON_NULLABLE)
+        val actualTypeNotNullable = actualType.withNullability(isMarkedNullable = false)
         if (expressionTypeDeclaration == null || expectedType.semanticallyEquals(actualTypeNotNullable)) return null
 
         val elementContext = buildElementContext(
@@ -96,7 +94,7 @@ internal object LetImplementInterfaceFixFactories {
         else
             "'${renderShort(actualType)}'"
 
-        val expectedTypeNotNullable = expectedType.withNullability(KaTypeNullability.NON_NULLABLE)
+        val expectedTypeNotNullable = expectedType.withNullability(isMarkedNullable = false)
 
         val expectedTypeName = renderShort(expectedTypeNotNullable)
 
@@ -157,11 +155,11 @@ internal object LetImplementInterfaceFixFactories {
             if (membersToAddOverride.isNotEmpty()) {
                 application.runWriteAction {
                     membersToAddOverride.forEach {
-                        it.addModifier(KtTokens.OVERRIDE_KEYWORD)
-                        val visibility = element.visibilityModifierType()
+                        val visibility = it.visibilityModifierType()
                         if (visibility != null && visibility != KtTokens.PUBLIC_KEYWORD) {
-                            element.removeModifier(visibility)
+                            it.removeModifier(visibility)
                         }
+                        it.addModifier(KtTokens.OVERRIDE_KEYWORD)
                     }
                 }
             }

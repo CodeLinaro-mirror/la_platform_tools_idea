@@ -1,8 +1,9 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.diagnostic
 
 import com.intellij.util.ExceptionUtilRt
 import org.jetbrains.annotations.ApiStatus.Internal
+import org.jetbrains.annotations.Contract
 import org.jetbrains.annotations.NonNls
 import java.lang.invoke.MethodHandles
 import java.util.concurrent.CancellationException
@@ -30,7 +31,6 @@ inline fun <reified T : Any> T.thisLogger(): Logger = Logger.getInstance(T::clas
  * This function MUST be inline to properly get the calling class.
  */
 @Suppress("NOTHING_TO_INLINE")
-@Internal
 inline fun currentClassLogger(): Logger {
   val clazz = MethodHandles.lookup().lookupClass()
   return Logger.getInstance(clazz)
@@ -52,7 +52,6 @@ inline fun currentClassLogger(): Logger {
  * ```
  */
 @Suppress("NOTHING_TO_INLINE")
-@Internal
 inline fun fileLogger(): Logger {
   return currentClassLogger()
 }
@@ -62,6 +61,38 @@ inline fun Logger.debug(t: Throwable? = null, lazyMessage: () -> @NonNls String)
     debug(lazyMessage(), t)
   }
 }
+
+/**
+ * Logs a stable, constant [message] at ERROR level and the variable [details] at WARN level.
+ *
+ * A `Logger.error` report is turned into a CI test failure named after its message. When the message
+ * embeds per-occurrence diagnostics, otherwise-identical failures stop merging into a single one. This
+ * helper keeps the ERROR [message] constant — so the failures group together — while the variable
+ * [details] go to the log and are attached to the error report (as an [Attachment]) so they can be
+ * submitted to Diogen.
+ *
+ * Use this instead of interpolating variable data into a `Logger.error` message.
+ */
+fun Logger.errorWithWarnDetails(message: @NonNls String, details: @NonNls String, t: Throwable? = null) {
+  warn(message, details, t)
+  val attachment = Attachment("details.txt", details).also { it.isIncluded = true }
+  if (t == null) error(message, attachment)
+  else error(message, t, attachment)
+}
+
+/**
+ * Throws an exception with stable [message] with the variable [details] attached (see [errorWithWarnDetails]),
+ *
+ * Use for unrecoverable "should never happen" conditions where the caller cannot meaningfully continue.
+ */
+@Contract("_, _, _ -> fail")
+fun Logger.fatalErrorWithWarnDetails(message: @NonNls String, details: @NonNls String, t: Throwable? = null): Nothing {
+  warn(message, details, t)
+  val attachment = Attachment("details.txt", details).also { it.isIncluded = true }
+  throw RuntimeExceptionWithAttachments(message, t, attachment)
+}
+
+private fun Logger.warn(message: @NonNls String, details: @NonNls String, t: Throwable?) = warn("$message: $details", t)
 
 inline fun Logger.trace(@NonNls lazyMessage: () -> String) {
   if (isTraceEnabled) {
@@ -77,7 +108,6 @@ inline fun Logger.traceThrowable(lazyThrowable: () -> Throwable) {
 }
 
 /** Consider using [Result.getOrHandleException] for more straight-forward API instead. */
-@Internal
 inline fun <T> Logger.runAndLogException(runnable: () -> T): T? {
   return runCatching {
     runnable()
@@ -92,7 +122,6 @@ inline fun <T> Logger.runAndLogException(runnable: () -> T): T? {
  * Consider using [Result.getOrHandleException] to have more control over how the exception is handled.
  * Especially consider passing a custom message to the logger, not just the exception.
  */
-@Internal
 fun <T> Result<T>.getOrLogException(logger: Logger): T? {
   return getOrHandleException {
     logger.error(it)
@@ -120,7 +149,6 @@ inline fun <T> Result<T>.getOrLogException(log: (Throwable) -> Unit): T? = getOr
  * If the result is a failure, and the exception is not a control flow exception,
  * then the given [handler] is called and `null` is returned.
  */
-@Internal
 inline fun <T> Result<T>.getOrHandleException(handler: (Throwable) -> Unit): T? {
   return onFailure { e ->
     rethrowControlFlowException(e)
@@ -139,9 +167,8 @@ inline fun <T> Result<T>.getOrHandleException(handler: (Throwable) -> Unit): T? 
  *
  * If [e] is null, then this function is a no-op.
  */
-@Internal
 fun rethrowControlFlowException(e: Throwable?) {
-  if (e is CancellationException || e is ControlFlowException) {
+  if (e != null && Logger.isRethrowable(e)) {
     throw ExceptionUtilRt.addRethrownStackAsSuppressed(e)
   }
 }

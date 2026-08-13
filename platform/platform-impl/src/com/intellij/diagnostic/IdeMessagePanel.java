@@ -23,6 +23,7 @@ import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.wm.IconLikeCustomStatusBarWidget;
 import com.intellij.openapi.wm.IdeFrame;
 import com.intellij.openapi.wm.impl.ProjectFrameHelper;
+import com.intellij.openapi.wm.impl.status.StatusBarAccessibilityUtil;
 import com.intellij.ui.BalloonLayoutData;
 import com.intellij.ui.ClickListener;
 import com.intellij.util.LazyInitializer;
@@ -31,11 +32,16 @@ import com.intellij.util.concurrency.EdtExecutorService;
 import com.intellij.util.concurrency.annotations.RequiresEdt;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
+import kotlin.Unit;
+import kotlin.coroutines.Continuation;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import javax.accessibility.AccessibleAction;
+import javax.accessibility.AccessibleContext;
+import javax.accessibility.AccessibleRole;
 import javax.swing.Icon;
 import javax.swing.JComponent;
 import javax.swing.JDialog;
@@ -50,7 +56,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Internal API. See a note in {@link MessagePool}. */
 @ApiStatus.Internal
-public final class IdeMessagePanel implements MessagePoolListener, IconLikeCustomStatusBarWidget {
+public final class IdeMessagePanel implements MessagePoolAdvisor, IconLikeCustomStatusBarWidget {
   public static final String FATAL_ERROR = "FatalError";
 
   private static final String GROUP_ID = "IDE-errors";
@@ -78,8 +84,7 @@ public final class IdeMessagePanel implements MessagePoolListener, IconLikeCusto
 
   public IdeMessagePanel(@Nullable IdeFrame frame, @NotNull MessagePool messagePool) {
     component = LazyInitializer.create(() -> {
-      var result = new JPanel(new BorderLayout());
-      result.setOpaque(false);
+      var result = new IdeMessagePanelComponent();
       onClick.installOn(result);
       return result;
     });
@@ -94,7 +99,7 @@ public final class IdeMessagePanel implements MessagePoolListener, IconLikeCusto
       });
     }
 
-    messagePool.addListener(this);
+    messagePool.addAdvisor(this);
 
     updateIconAndNotify();
   }
@@ -111,7 +116,7 @@ public final class IdeMessagePanel implements MessagePoolListener, IconLikeCusto
 
   @Override
   public void dispose() {
-    messagePool.removeListener(this);
+    messagePool.removeAdvisor(this);
   }
 
   @Override
@@ -186,19 +191,21 @@ public final class IdeMessagePanel implements MessagePoolListener, IconLikeCusto
   }
 
   @Override
-  public void newEntryAdded() {
+  public @Nullable Object afterEntryAdded(@NotNull AfterEntryAddedEvent e, @NotNull Continuation<? super @NotNull Unit> $completion) {
     UIUtil.invokeLaterIfNeeded(() -> {
       updateIconAndNotify();
     });
+
+    return MessagePoolAdvisor.super.afterEntryAdded(e, $completion);
   }
 
   @Override
-  public void poolCleared() {
+  public void poolCleared(@NotNull PoolClearedEvent e) {
     updateIconAndNotify();
   }
 
   @Override
-  public void entryWasRead() {
+  public void entryWasRead(@NotNull EntryReadEvent e) {
     updateIconAndNotify();
   }
 
@@ -256,6 +263,48 @@ public final class IdeMessagePanel implements MessagePoolListener, IconLikeCusto
     balloon = NotificationsManagerImpl.createBalloon(frame, notification, false, false, new Ref<>(layoutData), project);
     Disposer.register(balloon, () -> balloon = null);
     layout.add(balloon);
+  }
+
+  private final class IdeMessagePanelComponent extends JPanel {
+    private IdeMessagePanelComponent() {
+      super(new BorderLayout());
+      setOpaque(false);
+    }
+
+    @Override
+    public AccessibleContext getAccessibleContext() {
+      if (accessibleContext == null) {
+        accessibleContext = new AccessibleIdeMessagePanelComponent();
+      }
+      return accessibleContext;
+    }
+
+    private final class AccessibleIdeMessagePanelComponent extends AccessibleJPanel {
+      private final AccessibleAction myAccessibleAction =
+        StatusBarAccessibilityUtil.createAccessibleAction(IdeMessagePanelComponent.this, () -> openErrorsDialog(null));
+
+      @Override
+      public AccessibleRole getAccessibleRole() {
+        return AccessibleRole.PUSH_BUTTON;
+      }
+
+      @Override
+      public String getAccessibleName() {
+        var name = super.getAccessibleName();
+        return name == null ? DiagnosticBundle.message("error.new.notification.title") : name;
+      }
+
+      @Override
+      public String getAccessibleDescription() {
+        var description = super.getAccessibleDescription();
+        return description == null ? DiagnosticBundle.message("error.new.notification.link") : description;
+      }
+
+      @Override
+      public AccessibleAction getAccessibleAction() {
+        return myAccessibleAction;
+      }
+    }
   }
 
   private final class IdeMessageAction extends AnAction implements DumbAware {

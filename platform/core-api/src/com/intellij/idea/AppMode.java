@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.idea;
 
 import com.intellij.openapi.project.Project;
@@ -17,14 +17,12 @@ import java.util.List;
 public final class AppMode {
   public static final String FORCE_PLUGIN_UPDATES = "idea.force.plugin.updates";
 
-  public static final String HELP_OPTION = "--help";
-  public static final String VERSION_OPTION = "--version";
-
   private static final String AWT_HEADLESS = "java.awt.headless";
 
   private static boolean isHeadless;
   private static boolean isCommandLine;
   private static boolean isLightEdit;
+  private static boolean isIjLight;
   private static boolean disableNonBundledPlugins;
   private static boolean dontReopenProjects;
   private static boolean isRemoteDevHost;
@@ -37,13 +35,11 @@ public final class AppMode {
     return dontReopenProjects;
   }
 
-  /**
-   * Disable some speculative service initializations to speed up Light Edit startup
-   * <p>
-   * This DOES NOT guarantee that the IDE will be run in Light Edit mode.
-   *
-   * @see com.intellij.ide.lightEdit.LightEditService#isLightEditProject(Project)
-   */
+  /// Disable some speculative service initializations to speed up Light Edit startup
+  ///
+  /// This DOES NOT guarantee that the IDE will be run in Light Edit mode.
+  ///
+  /// @see com.intellij.ide.lightEdit.LightEditService#isLightEditProject(Project)
   @ApiStatus.Obsolete
   public static boolean isLightEdit() {
     return isLightEdit;
@@ -57,14 +53,12 @@ public final class AppMode {
     return isHeadless;
   }
 
-  /**
-   * Returns {@code true} if the IDE is running as a remote development host.
-   * This is an internal method supposed to be used only from code running during early startup phases.
-   * If the instance container is initialized (in particular, in any plugin code), its equivalent
-   * {@link com.intellij.platform.ide.productMode.IdeProductMode#isBackend()} should be used instead.
-   *
-   * @see PlatformUtils#isJetBrainsClient
-   */
+  /// Returns `true` if the IDE is running as a remote development host.
+  /// This is an internal method supposed to be used only from code running during early startup phases.
+  /// If the instance container is initialized (in particular, in any plugin code), its equivalent
+  /// [com.intellij.platform.ide.productMode.IdeProductMode#isBackend()] should be used instead.
+  ///
+  /// @see PlatformUtils#isJetBrainsClient
   public static boolean isRemoteDevHost() {
     return isRemoteDevHost;
   }
@@ -74,40 +68,49 @@ public final class AppMode {
   }
 
   /**
-   * Returns {@code true} if the IDE is running from a development build, not a regular installation.
-   * The IDE can be started with the development build by running '* (dev build)' configuration from source code, also some tests use this
-   * mode.
-   * In this mode modules and plugins are loaded by different classloaders, the same as in production mode.
-   * However, the layout of class-files and resources may differ from the real production layout.
-   *
-   * @see com.intellij.ide.plugins.PluginManagerCore#isRunningFromSources
+   * @return `true` if the IDE was started with the "ijLight" command
    */
+  public static boolean isIjLight() {
+    return isIjLight;
+  }
+
+  /// Returns `true` if the IDE is running from a development build, not a regular installation.
+  /// The IDE can be started with the development build by running '\* (dev build)' configuration from source code,
+  /// also some tests use this mode.
+  ///
+  /// In this mode, modules and plugins are loaded by different classloaders – the same way as in production mode.
+  /// However, the layout of class-files and resources may differ from the real production layout.
+  ///
+  /// @see com.intellij.ide.plugins.PluginManagerCore#isRunningFromSources
   public static boolean isRunningFromDevBuild() {
     return Boolean.getBoolean("idea.use.dev.build.server");
   }
 
   public static void setFlags(@NotNull List<String> args) {
-    WellKnownCommand knownCommand = WellKnownCommands.getCommandFor(args);
+    WellKnownCommand knownCommand = WellKnownCommand.getCommandFor(args);
 
-    isHeadless = Boolean.getBoolean(AWT_HEADLESS) ||
-                 knownCommand != null && knownCommand.isHeadless();
-    isCommandLine = isHeadless ||
-                    knownCommand != null && knownCommand.isCommandLine();
+    isHeadless = Boolean.getBoolean(AWT_HEADLESS) || knownCommand != null && knownCommand.isHeadless;
+    isCommandLine = isHeadless || knownCommand != null && knownCommand.isCommandLine;
 
     if (isHeadless) {
       System.setProperty(AWT_HEADLESS, Boolean.TRUE.toString());
     }
 
-    isRemoteDevHost = knownCommand != null && knownCommand.isRemoteDevHost();
+    isRemoteDevHost = knownCommand != null && knownCommand.isRemoteDevHost;
 
-    isLightEdit = Boolean.parseBoolean(System.getProperty("idea.force.light.edit.mode")) ||
-                  (knownCommand == null && !isHeadless && mayHappenToBeAFile(args));
+    isLightEdit = (
+      Boolean.parseBoolean(System.getProperty("idea.force.light.edit.mode")) ||
+      (knownCommand == null && !isHeadless && mayHappenToBeAFile(args))
+    );
 
     if (ApplicationStartArguments.DISABLE_NON_BUNDLED_PLUGINS.isSet(args)) {
       disableNonBundledPlugins = true;
     }
     if (ApplicationStartArguments.DONT_REOPEN_PROJECTS.isSet(args)) {
       dontReopenProjects = true;
+    }
+    if (!args.isEmpty() && args.get(0).equals("ijLight")) {
+      isIjLight = true;
     }
   }
 

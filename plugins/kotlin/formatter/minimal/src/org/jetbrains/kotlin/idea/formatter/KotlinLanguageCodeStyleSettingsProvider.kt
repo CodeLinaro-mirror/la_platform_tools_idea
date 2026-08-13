@@ -150,6 +150,12 @@ class KotlinLanguageCodeStyleSettingsProvider : LanguageCodeStyleSettingsProvide
                     KotlinBundle.message("formatter.title.when.parentheses"),
                     codeStyleSettingsCustomizableOptions.SPACES_BEFORE_PARENTHESES
                 )
+
+                showCustomOption(
+                    KotlinCodeStyleSettings::SPACE_AFTER_CONTEXT_PARAMETER_LIST_IN_FUNCTION_TYPE,
+                    KotlinBundle.message("formatter.title.after.context.parameter.list.in.function.type"),
+                    codeStyleSettingsCustomizableOptions.SPACES_OTHER
+                )
             }
             SettingsType.WRAPPING_AND_BRACES_SETTINGS -> {
                 consumer.showStandardOptions(
@@ -249,6 +255,12 @@ class KotlinLanguageCodeStyleSettingsProvider : LanguageCodeStyleSettingsProvide
                 )
 
                 showCustomOption(
+                    KotlinCodeStyleSettings::CONTINUATION_INDENT_IN_CONTEXT_PARAMETER_LISTS,
+                    KotlinBundle.message("formatter.title.use.continuation.indent.in.context.parameters"),
+                    codeStyleSettingsCustomizableOptions.WRAPPING_METHOD_PARAMETERS
+                )
+
+                showCustomOption(
                     KotlinCodeStyleSettings::CONTINUATION_INDENT_IN_ARGUMENT_LISTS,
                     KotlinBundle.message("formatter.title.use.continuation.indent"),
                     codeStyleSettingsCustomizableOptions.WRAPPING_METHOD_ARGUMENTS_WRAPPING
@@ -269,7 +281,7 @@ class KotlinLanguageCodeStyleSettingsProvider : LanguageCodeStyleSettingsProvide
                 showCustomOption(
                     KotlinCodeStyleSettings::WRAP_EXPRESSION_BODY_FUNCTIONS,
                     KotlinBundle.message("formatter.title.expression.body.functions"),
-                    options = *arrayOf(
+                    options = *arrayOf<Any>(
                         codeStyleSettingsCustomizableOptions.WRAP_OPTIONS_FOR_SINGLETON,
                         CodeStyleSettingsCustomizable.WRAP_VALUES_FOR_SINGLETON
                     )
@@ -284,7 +296,7 @@ class KotlinLanguageCodeStyleSettingsProvider : LanguageCodeStyleSettingsProvide
                 showCustomOption(
                     KotlinCodeStyleSettings::WRAP_ELVIS_EXPRESSIONS,
                     KotlinBundle.message("formatter.title.elvis.expressions"),
-                    options = *arrayOf(
+                    options = *arrayOf<Any>(
                         codeStyleSettingsCustomizableOptions.WRAP_OPTIONS_FOR_SINGLETON,
                         CodeStyleSettingsCustomizable.WRAP_VALUES_FOR_SINGLETON
                     )
@@ -503,9 +515,11 @@ class KotlinLanguageCodeStyleSettingsProvider : LanguageCodeStyleSettingsProvide
                            return 0
                        }
 
+                       context(a: Int)
                        fun multilineMethod(
                            foo: String,
-                           bar: String
+                           bar: String,
+                           baz: context(Int, String) (String, Int) -> Unit
                        ) {
                            foo
                                .length

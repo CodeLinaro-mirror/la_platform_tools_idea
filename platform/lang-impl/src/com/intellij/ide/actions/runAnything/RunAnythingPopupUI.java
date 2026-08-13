@@ -150,6 +150,7 @@ public final class RunAnythingPopupUI extends BigPopupUI implements UiDataProvid
   private RunAnythingContext mySelectedExecutingContext;
   private final List<RunAnythingContext> myAvailableExecutingContexts = new ArrayList<>();
   private RunAnythingChooseContextAction myChooseContextAction;
+  private ShowFilterAction myFilterAction;
   private final Alarm myListRenderingAlarm = new Alarm();
   private final ExecutorService myExecutorService =
     SequentialTaskExecutor.createSequentialApplicationPoolExecutor("Run Anything list building");
@@ -178,6 +179,7 @@ public final class RunAnythingPopupUI extends BigPopupUI implements UiDataProvid
     mySearchField.getDocument().addDocumentListener(new DocumentAdapter() {
       @Override
       protected void textChanged(@NotNull DocumentEvent e) {
+        if (myFilterAction != null) myFilterAction.closeFilterPopup();
         myIsUsedTrigger = true;
 
         final String pattern = mySearchField.getText();
@@ -751,7 +753,7 @@ public final class RunAnythingPopupUI extends BigPopupUI implements UiDataProvid
       .registerCustomShortcutSet(CustomShortcutSet.fromString("shift TAB"), mySearchField, this);
 
     AnAction escape = ActionManager.getInstance().getAction("EditorEscape");
-    DumbAwareAction.create(__ -> {
+    DumbAwareAction.create(_ -> {
       triggerUsed();
       searchFinishedHandler.run();
     }).registerCustomShortcutSet(escape == null ? CommonShortcuts.ESCAPE : escape.getShortcutSet(), this);
@@ -820,7 +822,8 @@ public final class RunAnythingPopupUI extends BigPopupUI implements UiDataProvid
       }
     };
     actionGroup.addAction(myChooseContextAction);
-    actionGroup.addAction(new RunAnythingShowFilterAction());
+    myFilterAction = new RunAnythingShowFilterAction();
+    actionGroup.addAction(myFilterAction);
 
     ActionToolbar toolbar = ActionManager.getInstance().createActionToolbar("run.anything.toolbar", actionGroup, true);
     toolbar.setTargetComponent(mySearchField);
@@ -908,9 +911,7 @@ public final class RunAnythingPopupUI extends BigPopupUI implements UiDataProvid
       res.markElements(getVisibleGroups());
       ElementsChooser.ElementsMarkListener<RunAnythingGroup> listener = (element, isMarked) -> {
         RunAnythingCache.getInstance(myProject)
-          .saveGroupVisibilityKey(element instanceof RunAnythingCompletionGroup
-                                  ? ((RunAnythingCompletionGroup<?, ?>)element).getProvider().getClass().getCanonicalName()
-                                  : element.getTitle(), isMarked);
+          .saveGroupVisibilityKey(element, isMarked);
         rebuildList();
       };
       res.addElementsMarkListener(listener);
