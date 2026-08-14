@@ -137,6 +137,13 @@ class AndroidStudioProperties : ProductProperties() {
       // For precedent, see IntelliJ commit https://github.com/JetBrains/intellij-community/commit/bb6d3cf0ac.
       layout.withProjectLibrary("kotlinx-coroutines-guava")
 
+      // We have a separate MCP server which depends on several ktor libraries. While the platform core already bundles
+      // most of these, we have to explicitly add a few. This is done to avoid any binary incompatibilities by intermingling
+      // versions between our MCP and the core classloader and to avoid friction during updates by having to manually
+      // update our versions. (b/500176062).
+      layout.withProjectLibrary("ktor-server-content-negotiation")
+      layout.withProjectLibrary("ktor-server-sse-jvm")
+
       layout.withPatch { patcher, context ->
         // Patch AndroidStudioProperties.xml: set the platform API version to match the 3-component
         // IntelliJ IDEA build number. At runtime, it will be used by ApplicationInfo.getApiVersion()
