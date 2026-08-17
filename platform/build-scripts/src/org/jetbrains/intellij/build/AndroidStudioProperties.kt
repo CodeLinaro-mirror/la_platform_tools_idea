@@ -264,7 +264,6 @@ class AndroidStudioProperties : ProductProperties() {
   override fun createWindowsCustomizer(projectHome: Path): WindowsDistributionCustomizer {
     return object : WindowsDistributionCustomizer() {
       init {
-        includeConsoleLauncher = false // Not yet shipping the Windows console launcher in Studio (b/536093713).
         buildZipArchiveWithBundledJre = false
         buildZipArchiveWithoutBundledJre = true
       }
