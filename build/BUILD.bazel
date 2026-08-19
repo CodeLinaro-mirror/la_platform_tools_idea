@@ -51,6 +51,21 @@ java_binary(
     runtime_deps = [":build"],
 )
 
+# Sherlock (APA) custom platform distro target.
+java_binary(
+    name = "i_build_target_apa",
+    add_opens = INTELLIJ_ADD_OPENS,
+    data = ALL_COMMUNITY_TARGETS + [
+        BAZEL_TARGETS_JSON_COMMUNITY,
+        "//apa-branding:com-google-apa-branding",
+    ],
+    jvm_flags = [
+        "-Dintellij.build.bazel.targets.json.file=$(rlocationpath %s)" % BAZEL_TARGETS_JSON_COMMUNITY,
+    ],
+    main_class = "ApaPlatformBuildTarget",
+    runtime_deps = [":build"],
+)
+
 java_binary(
     name = "run_tests_build_target",
     add_opens = INTELLIJ_ADD_OPENS,

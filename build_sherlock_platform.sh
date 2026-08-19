@@ -16,12 +16,13 @@ BUILD_PROPERTIES=(
   "-Dintellij.build.dmg.with.bundled.jre=false"
   "-Dintellij.build.dmg.without.bundled.jre=true"
   "-Dintellij.build.skip.build.steps=repair_utility_bundle_step,mac_dmg,mac_sign,mac_sit,windows_exe_installer,linux aarch64,windows aarch64,search_index"
-  "-Dintellij.build.incremental.compilation=true"
-  "-Dintellij.build.incremental.compilation.fallback.rebuild=false"
   "-Dintellij.build.store.git.revision=false"
 )
 
-"${PROG_DIR}/platform/jps-bootstrap/jps-bootstrap.sh" "${BUILD_PROPERTIES[@]}" "${PROG_DIR}" intellij.idea.community.build ApaPlatformBuildTarget
+pushd "${PROG_DIR}"
+./bazel.cmd run //build:i_build_target_apa -- "${BUILD_PROPERTIES[@]/#/--jvm_flag=}"
+popd
+
 # --- Android Build Artifact Copy ---
 # If DIST_DIR is set (by the Android Build system), copy the contents of OUT
 # to the designated artifact directory for Android Build to persist.

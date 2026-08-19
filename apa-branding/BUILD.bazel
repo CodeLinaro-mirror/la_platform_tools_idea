@@ -1,0 +1,59 @@
+load("@rules_jvm//:jvm.bzl", "jvm_library")
+
+### auto-generated section `build com.google.apa.branding` start
+
+jvm_library(
+    name = "com-google-apa-branding",
+    srcs = glob(
+        [],
+        allow_empty = True,
+    ),
+    module_name = "com.google.apa.branding",
+    resource_strip_prefix = "resources",
+    resources = glob(
+        ["resources/**/*"],
+    ),
+    visibility = ["//visibility:public"],
+    runtime_deps = [
+        # do not sort,
+        "//platform/platform-impl:ide-impl",
+        "//idea/customization/base",
+        "//platform/experiment",
+        "//platform/platform-resources:resources",
+        "//xml/impl",
+        "//xml/xml-analysis-impl:analysis-impl",
+        "//xml/xml-psi-impl:psi-impl",
+    ],
+)
+
+jvm_library(
+    name = "com-google-apa-branding_test_lib",
+    testonly = True,
+    srcs = glob(
+        [],
+        allow_empty = True,
+    ),
+    module_name = "com.google.apa.branding",
+    visibility = ["//visibility:public"],
+    runtime_deps = [
+        # do not sort,
+        ":com-google-apa-branding",
+        "//platform/platform-impl:ide-impl_test_lib",
+        "//idea/customization/base:base_test_lib",
+        "//platform/experiment:experiment_test_lib",
+        "//platform/platform-resources:resources_test_lib",
+        "//xml/impl:impl_test_lib",
+        "//xml/xml-analysis-impl:analysis-impl_test_lib",
+        "//xml/xml-psi-impl:psi-impl_test_lib",
+    ],
+)
+### auto-generated section `build com.google.apa.branding` end
+
+### auto-generated section `iml com.google.apa.branding` start
+exports_files(
+    [
+        "com.google.apa.branding.iml",
+    ],
+    visibility = ["//visibility:public"],
+)
+### auto-generated section `iml com.google.apa.branding` end

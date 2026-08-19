@@ -49,6 +49,7 @@ adt-branding
 aether-dependency-resolver
 aether-dependency-resolver/plugin
 android-customization
+apa-branding
 build
 build/cucumber-test-runner
 build/deps
