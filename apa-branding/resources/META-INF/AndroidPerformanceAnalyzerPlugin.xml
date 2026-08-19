@@ -1,0 +1,23 @@
+<idea-plugin xmlns:xi="http://www.w3.org/2001/XInclude">
+
+  <depends>com.intellij.modules.platform</depends>
+
+  <xi:include href="/META-INF/PlatformLangPlugin.xml"/>
+  <xi:include href="/META-INF/intellij.moduleSets.ide.common.xml"/>
+
+  <actions resource-bundle="messages.ActionsBundle">
+    <!--
+      The Sherlock Platform explicitly omits the `intellij.platform.customization.min` plugin
+      to avoid loading standard IntelliJ IDE bloat. However, that customization plugin is
+      normally responsible for injecting the "Open" button into the Welcome Screen.
+      By manually injecting the "Open" button here in the platform customization, we ensure
+      the Sherlock IDE has an Open button WITHOUT forcing downstream plugins to inject it.
+      If a plugin injected the Open button, running that plugin on Vanilla IntelliJ would
+      result in duplicate Open buttons.
+    -->
+    <action id="WelcomeScreen.OpenProject" class="com.intellij.ide.actions.OpenFileAction$OnWelcomeScreen">
+      <add-to-group group-id="WelcomeScreen.QuickStart" anchor="after" relative-to-action="ApaWelcomeScreenNewProject"/>
+    </action>
+  </actions>
+
+</idea-plugin>

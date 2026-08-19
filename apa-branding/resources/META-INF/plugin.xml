@@ -1,0 +1,10 @@
+<!--
+  This file exists only to satisfy the build-time validation of the intellij-platform-gradle-plugin.
+  At runtime, the actual descriptor loaded is AndroidPerformanceAnalyzerPlugin.xml because the platform prefix is set to AndroidPerformanceAnalyzer.
+
+  Do not add any plugin configuration here, as it may conflict with the real descriptor at runtime.
+-->
+<idea-plugin>
+  <id>com.intellij</id>
+  <name>IDEA CORE</name>
+</idea-plugin>

@@ -1,0 +1,9 @@
+<component xmlns="http://jetbrains.org/intellij/schema/application-info">
+  <version major="2026" minor="1"/>
+  <company name="Google" url="http://developer.android.com"/>
+  <build number="IC-__BUILD__" date="__BUILD_DATE__" majorReleaseDate="20260325" />
+  <!-- We don't have a logo (splash-screen) yet, so it's disabled. This is a placeholder. -->
+  <logo url="/apa_logo.png"/>
+  <icon svg="/apa_linux_128x128.svg" svg-small="/apa-small.svg"/>
+  <names product="Android Performance Analyzer" fullname="Android Performance Analyzer" script="apa" motto="Performance analysis and optimization tool for Android"/>
+</component>
