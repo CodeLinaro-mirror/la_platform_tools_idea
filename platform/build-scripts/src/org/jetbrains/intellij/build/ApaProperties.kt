@@ -45,11 +45,24 @@ class ApaProperties(private val home: Path) : ProductProperties() {
     productLayout.prepareCustomPluginRepositoryForPublishedPlugins = false
     productLayout.skipUnresolvedContentModules = true
 
+    // Map native libraries so JarPackager extracts binaries to lib/<name>/ instead of bundling into JARs
+    presignedNativeLibs = mapOf(
+      "pty4j" to "pty4j",
+      "jna" to "jna",
+      "native" to "native", // sqlite-native
+      "async-profiler" to "async-profiler",
+      "skiko-awt-runtime-all" to "skiko-awt-runtime-all",
+    )
+
     productLayout.productImplementationModules = listOf(
       "intellij.platform.starter"
     )
     productLayout.bundledPluginModules = persistentListOf(
-      "intellij.performanceTesting"
+      "intellij.performanceTesting",
+      // Required by intellij.performanceTesting plugin dependencies:
+      "intellij.platform.structureView.plugin",
+      // Unbundled upstream in 2026.2; required by APA for lucene, opencsv, xstream, jettison, and commons-text dependencies:
+      "intellij.libraries.misc.plugin"
     )
 
     // Unlike Android Studio and standard IntelliJ properties, ApaProperties does not call
@@ -107,10 +120,9 @@ class ApaProperties(private val home: Path) : ProductProperties() {
 
     include(CommunityProductFragments.javaIdeBaseFragment())
     moduleSet(CommunityModuleSets.ideCommon())
-    moduleSet(CommunityModuleSets.debuggerStreams())
   }
 
-  override fun createLinuxCustomizer(projectHome: String): LinuxDistributionCustomizer {
+  override fun createLinuxCustomizer(projectHome: Path): LinuxDistributionCustomizer {
     return object : LinuxDistributionCustomizer() {
       init {
         buildArtifactWithoutRuntime = true

@@ -1,5 +1,5 @@
 <component xmlns="http://jetbrains.org/intellij/schema/application-info">
-  <version major="2026" minor="1"/>
+  <version major="2026" minor="2"/>
   <company name="Google" url="http://developer.android.com"/>
   <build number="IC-__BUILD__" date="__BUILD_DATE__" majorReleaseDate="20260325" />
   <!-- We don't have a logo (splash-screen) yet, so it's disabled. This is a placeholder. -->
