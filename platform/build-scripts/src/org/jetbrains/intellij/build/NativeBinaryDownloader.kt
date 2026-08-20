@@ -41,10 +41,11 @@ object NativeBinaryDownloader {
    * Returns a tuple of paths `(executable, license, extra-file?)` for the given platform (e.g., a console executable for Windows).
    */
   suspend fun getLauncher(context: BuildContext, os: OsFamily, arch: JvmArchitecture): Triple<Path, Path, Path?> {
+    val winConLauncher = if (os == OsFamily.WINDOWS) findFileForAndroidStudio("launcher-win-con", context, os, arch) else null
     return Triple(
       findFileForAndroidStudio("launcher", context, os, arch),
       findFileForAndroidStudio("launcher_licenses.html", context, os, arch),
-      null, // Not yet shipping the Windows console launcher in Studio (b/536093713).
+      winConLauncher,
     )
     /* Android Studio (b/342419219): we build platform binaries from source instead of downloading them from JetBrains.
     if (context.options.isInDevelopmentMode && context.options.useLocalLauncher) {

@@ -74,6 +74,7 @@ class AndroidStudioProperties : ProductProperties() {
     platformPrefix = "AndroidStudio"
     mainClassName = "com.android.tools.idea.MainWrapper"
     applicationInfoModule = "intellij.android.adt.branding"
+    imagesDirectoryPath = BuildPaths.COMMUNITY_ROOT.communityRoot.resolve("adt-branding/images")
     useSplash = true
     scrambleMainJar = false
     buildSourcesArchive = true
@@ -135,6 +136,13 @@ class AndroidStudioProperties : ProductProperties() {
       // platform modules, leading to duplicated classes on the runtime classpath in some situations (depending on classloader configuration).
       // For precedent, see IntelliJ commit https://github.com/JetBrains/intellij-community/commit/bb6d3cf0ac.
       layout.withProjectLibrary("kotlinx-coroutines-guava")
+
+      // We have a separate MCP server which depends on several ktor libraries. While the platform core already bundles
+      // most of these, we have to explicitly add a few. This is done to avoid any binary incompatibilities by intermingling
+      // versions between our MCP and the core classloader and to avoid friction during updates by having to manually
+      // update our versions. (b/500176062).
+      layout.withProjectLibrary("ktor-server-content-negotiation")
+      layout.withProjectLibrary("ktor-server-sse-jvm")
 
       layout.withPatch { patcher, context ->
         // Patch AndroidStudioProperties.xml: set the platform API version to match the 3-component
@@ -256,12 +264,8 @@ class AndroidStudioProperties : ProductProperties() {
   override fun createWindowsCustomizer(projectHome: Path): WindowsDistributionCustomizer {
     return object : WindowsDistributionCustomizer() {
       init {
-        includeConsoleLauncher = false // Not yet shipping the Windows console launcher in Studio (b/536093713).
-        icoPath = projectHome.resolve("adt-branding/resources/artwork/androidstudio.ico")
-        icoPathForEAP = projectHome.resolve("adt-branding/resources/artwork/preview/androidstudio.ico")
         buildZipArchiveWithBundledJre = false
         buildZipArchiveWithoutBundledJre = true
-        installerImagesPath = projectHome.resolve("build/idea-community-images/win")
       }
 
       override val fileAssociations: List<String> = listOf(".java", ".groovy", ".kt")
@@ -288,8 +292,6 @@ class AndroidStudioProperties : ProductProperties() {
     return object : LinuxDistributionCustomizer() {
       init {
         buildArtifactWithoutRuntime = true
-        iconPngPath = projectHome.resolve("adt-branding/resources/artwork/icon_AS_128.png")
-        iconPngPathForEAP = projectHome.resolve("adt-branding/resources/artwork/preview/icon_AS_128.png")
       }
 
       override fun getRootDirectoryName(appInfo: ApplicationInfoProperties, buildNumber: String): String = "android-studio"
@@ -310,17 +312,11 @@ class AndroidStudioProperties : ProductProperties() {
     }
   }
 
-  inner class StudioMacDistributionCustomizer(projectHome: Path) : MacDistributionCustomizer() {
+  inner class StudioMacDistributionCustomizer : MacDistributionCustomizer() {
     init {
       urlSchemes = listOf("idea")
       associateIpr = true
       bundleIdentifier = "com.google.android.studio"
-      dmgImagePath = projectHome.resolve("build/conf/ideaCE/mac/images/dmg_background.tiff")
-      // For now we have all 3 platform icons checked in and we change
-      // the icons manually. Fix this when the other platforms have the
-      // same mechanisms for our .ico and .svg files
-      icnsPath = projectHome.resolve("adt-branding/resources/artwork/AndroidStudio.icns")
-      icnsPathForEAP = projectHome.resolve("adt-branding/resources/artwork/preview/AndroidStudio.icns")
     }
 
     override fun getRootDirectoryName(appInfo: ApplicationInfoProperties, buildNumber: String): String = "android-studio"
@@ -342,9 +338,7 @@ class AndroidStudioProperties : ProductProperties() {
     }
   }
 
-  override fun createMacCustomizer(projectHome: Path): MacDistributionCustomizer {
-    return StudioMacDistributionCustomizer(projectHome)
-  }
+  override fun createMacCustomizer(projectHome: Path): MacDistributionCustomizer = StudioMacDistributionCustomizer()
 
   override fun getSystemSelector(appInfo: ApplicationInfoProperties, buildNumber: String): String =
     "_ANDROID_STUDIO_SYSTEM_SELECTOR_"

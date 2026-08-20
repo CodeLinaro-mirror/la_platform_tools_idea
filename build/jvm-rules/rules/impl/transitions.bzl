@@ -1,6 +1,9 @@
 visibility("private")
 
 def _jvm_platform_transition_impl(_settings, _attr):
+    # Android Studio (b/507454037, b/507462421): this configuration transition is a Bazel remote-cache optimization
+    # but it does not play well with our own Java toolchain definitions. So we disable it.
+    return {}
     return {
         "//command_line_option:platforms": ["//rules/impl/platforms:jvm"],
     }

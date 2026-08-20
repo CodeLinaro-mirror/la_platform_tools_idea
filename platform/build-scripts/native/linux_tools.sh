@@ -150,7 +150,7 @@ declare failed_builds=""
   verify_glibc "$out_dir/launcher/x86_64-unknown-linux-gnu/release/xplat-launcher"
   cp "$out_dir/launcher/x86_64-unknown-linux-gnu/release/xplat-launcher" $dist_dir/launcher
   cp "$out_dir/launcher/x86_64-pc-windows-gnu/release/xplat-launcher.exe" $dist_dir/launcher.exe
-  cp "$out_dir/launcher/x86_64-pc-windows-gnu/release/xplat-launcher-win-con.exe" $dist_dir/xplat-launcher-win-con.exe
+  cp "$out_dir/launcher/x86_64-pc-windows-gnu/release/xplat-launcher-win-con.exe" $dist_dir/launcher-win-con.exe
   cp $out_dir/launcher/launcher-licenses.html $dist_dir/xplat-launcher-third-party-licenses.html
   chmod +x $dist_dir/launcher
   ls -lha $dist_dir/launcher
