@@ -17,7 +17,6 @@ jvm_library(
     runtime_deps = [
         # do not sort,
         "//platform/platform-impl:ide-impl",
-        "//idea/customization/base",
         "//platform/experiment",
         "//platform/platform-resources:resources",
         "//xml/impl",
@@ -39,7 +38,6 @@ jvm_library(
         # do not sort,
         ":com-google-apa-branding",
         "//platform/platform-impl:ide-impl_test_lib",
-        "//idea/customization/base:base_test_lib",
         "//platform/experiment:experiment_test_lib",
         "//platform/platform-resources:resources_test_lib",
         "//xml/impl:impl_test_lib",

@@ -20,6 +20,7 @@ BUILD_PROPERTIES=(
 )
 
 pushd "${PROG_DIR}"
+./build/jpsModelToBazelCommunityOnly.cmd # Rerun the jps-to-bazel converter to ensure BUILD files are up-to-date.
 ./bazel.cmd run //build:i_build_target_apa -- "${BUILD_PROPERTIES[@]/#/--jvm_flag=}"
 popd
 
