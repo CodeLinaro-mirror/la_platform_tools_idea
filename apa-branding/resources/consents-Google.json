@@ -1,0 +1,9 @@
+[
+  {
+    "consentId": "rsch.send.usage.stat",
+    "version": "1.0",
+    "text": "Allow Google to collect usage data for Android Performance Analyzer, such as how you use features and resource usage along with software identifiers such as package name and class names and plugin configuration. This data helps improve Android Performance Analyzer and is collected in accordance with <a href=\"http://www.google.com/policies/privacy/\">Google's Privacy Policy</a>. Anonymous and aggregated usage data may be shared with Google's partners to improve Android Performance Analyzer.",
+    "printableName": "Send usage statistics",
+    "accepted": "true"
+  }
+]

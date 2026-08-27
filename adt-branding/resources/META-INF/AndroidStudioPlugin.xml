@@ -1,29 +1,6 @@
 <!--
-In Android Studio, this file is loaded *instead* of IdeaPlugin.xml.
-If a plugin wants to perform Android-Studio-specific customizations, then it can add an
-optional dependency on the module 'com.intellij.modules.androidstudio' declared below.
+This is the "product plugin XML" file for Android Studio, analogous to IdeaPlugin.xml from IntelliJ IDEA.
+This file appears empty because its content is generated at build time based on AndroidStudioProperties.getProductContentDescriptor().
+See generateProductXml() in platform/build-scripts/product-dsl/src/generator.kt for details.
 -->
-<idea-plugin xmlns:xi="http://www.w3.org/2001/XInclude">
-  <module value="com.intellij.modules.androidstudio"/>
-  <!--
-  We bundle 'com.intellij.modules.nativeDebug' instead of its commercial variant 'com.intellij.nativeDebug' (CPP-33729).
-  The following 'incompatible-with' statement was added at JetBrains' request.
-  -->
-  <incompatible-with>com.intellij.nativeDebug</incompatible-with>
-  <!-- The following content is loosely based on IdeaPlugin.xml. -->
-  <xi:include href="/META-INF/PlatformLangPlugin.xml"/>
-  <xi:include href="/META-INF/JavaIdePlugin.xml"/>
-  <module value="com.intellij.modules.java-capable"/>
-  <module value="com.intellij.modules.c-capable"/> <!-- Required for CIDR (com.intellij.cidr.lang) -->
-  <module value="com.intellij.modules.python-core-capable"/> <!-- Python plugin can be installed -->
-  <module value="com.intellij.modules.python-in-non-pycharm-ide-capable"/> <!-- Enable Non-Pycharm-IDE support in Python plugin -->
-  <content namespace="jetbrains">
-    <module name="intellij.platform.customization.min"/>
-    <module name="intellij.platform.coverage"/>
-    <module name="intellij.platform.coverage.agent"/>
-    <!-- From CLionPlugin.xml: -->
-    <module name="intellij.rml.dfa"/>
-    <module name="intellij.rml.dfa.impl"/>
-  </content>
-  <xi:include href="/META-INF/intellij.moduleSets.ide.common.xml"/>
-</idea-plugin>
+<idea-plugin/>

@@ -83,16 +83,18 @@ public final class TMHAssertionGenerator2 implements TMHAssertionGenerator {
     "com/intellij/util/concurrency/annotations"
   );
 
+  /* Android Studio (b/493960803): Using generatedAssert* methods for temporary runtime gating.
+   * Revert these to direct assert* methods once existing test violations across the codebase are fixed. */
   public static @NotNull Set<? extends TMHAssertionGenerator> generators(
     @NotNull String threadAssertionsClassName,
     @NotNull String packageString
   ) {
     return Set.of(
-      generator(threadAssertionsClassName, packageString + "/RequiresEdt", "assertEventDispatchThread"),
-      generator(threadAssertionsClassName, packageString + "/RequiresBackgroundThread", "assertBackgroundThread"),
-      generator(threadAssertionsClassName, packageString + "/RequiresReadLock", "softAssertReadAccess"),
-      generator(threadAssertionsClassName, packageString + "/RequiresReadLockAbsence", "assertNoReadAccess"),
-      generator(threadAssertionsClassName, packageString + "/RequiresWriteLock", "assertWriteAccess")
+      generator(threadAssertionsClassName, packageString + "/RequiresEdt", "generatedAssertEventDispatchThread"),
+      generator(threadAssertionsClassName, packageString + "/RequiresBackgroundThread", "generatedAssertBackgroundThread"),
+      generator(threadAssertionsClassName, packageString + "/RequiresReadLock", "generatedSoftAssertReadAccess"),
+      generator(threadAssertionsClassName, packageString + "/RequiresReadLockAbsence", "generatedAssertNoReadAccess"),
+      generator(threadAssertionsClassName, packageString + "/RequiresWriteLock", "generatedAssertWriteAccess")
     );
   }
 
