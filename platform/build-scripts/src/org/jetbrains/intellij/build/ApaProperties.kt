@@ -30,12 +30,38 @@ import org.jetbrains.intellij.build.productLayout.ProductModulesContentSpec
 import org.jetbrains.intellij.build.productLayout.productModules
 import org.jetbrains.intellij.build.productLayout.CommunityModuleSets
 import org.jetbrains.intellij.build.productLayout.CommunityProductFragments
+import org.jetbrains.intellij.build.productLayout.DEFAULT_BUNDLED_PLUGINS
 
 /**
  * Configures the Sherlock distribution by specifying bundled plugins, JVM args, extra files, and more.
  * See also: BaseIdeaProperties, IdeaCommunityProperties.
  */
 class ApaProperties(private val home: Path) : ProductProperties() {
+  companion object {
+    private val INHERITED_PLUGINS: List<String> = DEFAULT_BUNDLED_PLUGINS
+
+    private val EXTRA_PLUGINS = listOf(
+      "intellij.performanceTesting",
+      // Required for embedded terminal execution and Studiobot CLI commands:
+      "intellij.terminal",
+      // Required for native Git4Idea version control integration:
+      "intellij.vcs.git",
+      // Required for core Java language support and JPS project indexing:
+      JavaPluginLayout.MAIN_MODULE_NAME,
+    )
+
+    private val EXCLUDED_PLUGINS = listOf(
+      "intellij.dev",
+      "intellij.grid.core.plugin",
+      "intellij.jcef.plugin",
+      "intellij.platform.bookmarks.plugin",
+      "intellij.platform.execution.serviceView.plugin",
+      "intellij.platform.images",
+      "intellij.platform.navbar.plugin",
+      "intellij.platform.testRunner.plugin",
+    )
+  }
+
   init {
     platformPrefix = "AndroidPerformanceAnalyzer"
     applicationInfoModule = "com.google.apa.branding"
@@ -57,13 +83,15 @@ class ApaProperties(private val home: Path) : ProductProperties() {
     productLayout.productImplementationModules = listOf(
       "intellij.platform.starter"
     )
-    productLayout.bundledPluginModules = persistentListOf(
-      "intellij.performanceTesting",
-      // Required by intellij.performanceTesting plugin dependencies:
-      "intellij.platform.structureView.plugin",
-      // Unbundled upstream in 2026.2; required by APA for lucene, opencsv, xstream, jettison, and commons-text dependencies:
-      "intellij.libraries.misc.plugin"
-    )
+
+    val unknownExcludedPlugins = EXCLUDED_PLUGINS - INHERITED_PLUGINS
+    check(unknownExcludedPlugins.isEmpty()) { "ApaProperties.EXCLUDED_PLUGINS contains nonexistent plugins: $unknownExcludedPlugins" }
+
+    val duplicateExtraPlugins = EXTRA_PLUGINS.intersect(INHERITED_PLUGINS)
+    check(duplicateExtraPlugins.isEmpty()) { "ApaProperties.EXTRA_PLUGINS contains plugins already inherited from IntelliJ: $duplicateExtraPlugins" }
+
+    val bundledPlugins = (INHERITED_PLUGINS + EXTRA_PLUGINS - EXCLUDED_PLUGINS.toSet()).toPersistentList()
+    productLayout.bundledPluginModules = bundledPlugins
 
     // Unlike Android Studio and standard IntelliJ properties, ApaProperties does not call
     // configurePropertiesForAllEditionsOfIntelliJIdea. Therefore, we must manually configure
@@ -86,7 +114,17 @@ class ApaProperties(private val home: Path) : ProductProperties() {
       }
       layout.withModule("intellij.platform.jewel.intUi.standalone", PlatformJarNames.TEST_FRAMEWORK_JAR)
       layout.withModule("intellij.platform.jewel.markdown.intUiStandaloneStyling", PlatformJarNames.TEST_FRAMEWORK_JAR)
+
+      // Required by Studiobot coroutines & ListenableFuture interop:
+      layout.withProjectLibrary("kotlinx-coroutines-guava")
+      // Required for ACP/MCP JSON content negotiation:
+      layout.withProjectLibrary("ktor-server-content-negotiation")
+      // Required for Studiobot LLM token streaming via Server-Sent Events (SSE):
+      layout.withProjectLibrary("ktor-server-sse-jvm")
     }
+
+    // Include Java plugin layout configuration:
+    productLayout.pluginLayouts = productLayout.pluginLayouts.add(JavaPluginLayout.javaPlugin())
 
     // Fill in the remaining plugin layouts (including "performanceTesting" plugins)
     // so we can correctly patch all plugin layouts below.
@@ -120,6 +158,9 @@ class ApaProperties(private val home: Path) : ProductProperties() {
 
     include(CommunityProductFragments.javaIdeBaseFragment())
     moduleSet(CommunityModuleSets.ideCommon())
+    // Required by Git4Idea and test runner plugins for coverage integration:
+    module("intellij.platform.coverage")
+    module("intellij.platform.coverage.agent")
   }
 
   override fun createLinuxCustomizer(projectHome: Path): LinuxDistributionCustomizer {
