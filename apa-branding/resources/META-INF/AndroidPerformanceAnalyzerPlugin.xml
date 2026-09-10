@@ -1,5 +1,6 @@
 <idea-plugin xmlns:xi="http://www.w3.org/2001/XInclude">
 
+  <module value="com.intellij.modules.java-capable" />
   <depends>com.intellij.modules.platform</depends>
 
   <xi:include href="/META-INF/PlatformLangPlugin.xml"/>

@@ -10,6 +10,10 @@ import com.intellij.openapi.module.ModuleManager
 import com.intellij.openapi.module.ModuleUtilCore
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.text.StringUtil
+import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.vfs.newvfs.ArchiveFileSystem
+import com.intellij.openapi.vfs.toNioPathOrNull
+import org.jetbrains.annotations.ApiStatus
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -46,7 +50,7 @@ internal fun collectOutputRoots(bundle: CoverageSuitesBundle, project: Project):
 
   val roots = hashMapOf<ModuleRequest, MutableList<RequestRoot>>()
   for ((root, module) in outputRoots) {
-    val outputRoot = root.toNioPath()
+    val outputRoot = CoverageOutputRoots.toLocalPathOrNull(root) ?: continue
     for ((packageName, simpleName) in requestedPackages) {
       val packagePath = AnalysisUtils.fqnToInternalName(packageName)
       val isValidRoot = Files.isDirectory(outputRoot) || Files.isRegularFile(outputRoot) && outputRoot.fileName.toString()
@@ -58,6 +62,21 @@ internal fun collectOutputRoots(bundle: CoverageSuitesBundle, project: Project):
     }
   }
   return roots
+}
+
+@ApiStatus.Internal
+object CoverageOutputRoots {
+  @JvmStatic
+  fun toLocalPathOrNull(root: VirtualFile): Path? {
+    val fileSystem = root.fileSystem
+    val localRoot = if (fileSystem is ArchiveFileSystem) {
+      fileSystem.getLocalByEntry(root)
+    }
+    else {
+      root
+    }
+    return localRoot?.toNioPathOrNull()
+  }
 }
 
 internal data class ModuleRequest(val packageName: String, val module: Module)
@@ -82,3 +101,4 @@ private fun isPackageFiltered(bundle: CoverageSuitesBundle, qualifiedName: Strin
   }
   return false
 }
+

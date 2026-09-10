@@ -17,6 +17,7 @@ import com.intellij.execution.configurations.RunConfigurationBase;
 import com.intellij.execution.configurations.coverage.CoverageEnabledConfiguration;
 import com.intellij.execution.configurations.coverage.JavaCoverageEnabledConfiguration;
 import com.intellij.execution.target.RunTargetsEnabled;
+import com.intellij.coverage.analysis.CoverageOutputRoots;
 import com.intellij.execution.target.TargetEnvironmentAwareRunProfile;
 import com.intellij.execution.target.TargetEnvironmentConfigurations;
 import com.intellij.execution.testframework.AbstractTestProxy;
@@ -512,7 +513,9 @@ public class JavaCoverageEngine extends CoverageEngine {
 
     for (VirtualFile root : roots) {
       if (root == null) continue;
-      classFiles.addAll(JavaCoverageClassesEnumerator.collectClassFiles(root.toNioPath(), packageVmName, classNames));
+      Path localRoot = CoverageOutputRoots.toLocalPathOrNull(root);
+      if (localRoot == null) continue;
+      classFiles.addAll(JavaCoverageClassesEnumerator.collectClassFiles(localRoot, packageVmName, classNames));
     }
     return classFiles;
   }

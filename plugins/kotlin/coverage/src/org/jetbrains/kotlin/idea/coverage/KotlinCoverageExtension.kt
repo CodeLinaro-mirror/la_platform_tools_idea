@@ -7,6 +7,7 @@ import com.intellij.coverage.CoverageSuitesBundle
 import com.intellij.coverage.JavaCoverageEngine
 import com.intellij.coverage.JavaCoverageEngineExtension
 import com.intellij.coverage.analysis.AnalysisUtils
+import com.intellij.coverage.analysis.CoverageOutputRoots
 import com.intellij.coverage.analysis.JavaCoverageAnnotator
 import com.intellij.coverage.analysis.JavaCoverageClassesEnumerator
 import com.intellij.coverage.analysis.PackageAnnotator
@@ -123,7 +124,7 @@ class KotlinCoverageExtension : JavaCoverageEngineExtension() {
             findOutputRoots(file)?.flatMap { collectGeneratedClassQualifiedNames(it, file) }
 
         fun collectGeneratedClassQualifiedNames(outputRoot: VirtualFile, file: KtFile): List<String> {
-            val outputRootPath = outputRoot.toNioPath()
+            val outputRootPath = CoverageOutputRoots.toLocalPathOrNull(outputRoot) ?: return emptyList()
             val existingClassFiles = getClassesGeneratedFromFile(outputRoot, file)
             return existingClassFiles.mapNotNull {
                 val classPath = getRelativeClassPath(outputRootPath, it) ?: return@mapNotNull null
@@ -160,7 +161,7 @@ class KotlinCoverageExtension : JavaCoverageEngineExtension() {
             findOutputRoots(file)?.flatMap { getClassesGeneratedFromFile(it, file) } ?: emptyList()
 
         private fun getClassesGeneratedFromFile(outputRoot: VirtualFile, file: KtFile): List<Path> {
-            val outputRootPath = outputRoot.toNioPath()
+            val outputRootPath = CoverageOutputRoots.toLocalPathOrNull(outputRoot) ?: return emptyList()
             val packageName = runReadActionBlocking { file.packageFqName.asString() }
             val packageVMName = AnalysisUtils.fqnToInternalName(packageName)
 
