@@ -12,12 +12,15 @@ import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.removeUserData
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.jetbrains.annotations.ApiStatus
+import org.jetbrains.annotations.TestOnly
 import org.jetbrains.annotations.VisibleForTesting
+import java.util.Queue
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -26,7 +29,9 @@ import kotlin.random.Random
 private val logger by lazy { logger<InlineCompletionLogsContainer>()}
 
 @ApiStatus.Internal
-class InlineCompletionLogsContainer() {
+class InlineCompletionLogsContainer private constructor(
+  private val asyncAdds: Queue<Job>,
+) {
 
   /**
    * used to determine if all features would be sent or only basic
@@ -36,8 +41,6 @@ class InlineCompletionLogsContainer() {
   private val fullLogsShare: AtomicInteger = AtomicInteger(InlineCompletionLogs.fullLogShare)
 
   private val forceFullLogs: AtomicBoolean = AtomicBoolean(false)
-
-  private var project: Project? = null
 
   fun forceFullLogs() {
     forceFullLogs.set(true)
@@ -71,24 +74,28 @@ class InlineCompletionLogsContainer() {
     ConcurrentCollectionFactory.createConcurrentMap()
   }
 
-  private val asyncAdds = ConcurrentLinkedQueue<Job>()
+  private val asyncAddsClosed = AtomicBoolean(false)
 
   private suspend fun awaitAllAlreadyRunningAsyncAdds() {
-    while (currentCoroutineContext().isActive) {
-      val job = asyncAdds.poll() ?: return
+    // A snapshot on purpose: wait only for the adds that are already running, and never remove a job here.
+    // If this coroutine is canceled inside `join`, the job must stay visible to [cancelAsyncAdds], otherwise it keeps running
+    // on the application-level scope and retains everything its block captured (LLM-17026).
+    // The copy goes through `Collection.toArray`, which tolerates a concurrent removal.
+    // `Iterable.toList` does not work here. For one element it reads `size` and then calls `iterator().next()`.
+    // `invokeOnCompletion` in [addAsync] can empty the queue in between. See LLM-30822.
+    for (job in ArrayList(asyncAdds)) {
+      if (!currentCoroutineContext().isActive) return
       job.join()
     }
   }
 
   private fun cancelAsyncAdds() {
+    // Close first, so a concurrent addAsync either stays visible in the queue or cancels itself before it can start.
+    asyncAddsClosed.set(true)
     while (true) {
       val job = asyncAdds.poll() ?: break
       job.cancel()
     }
-  }
-
-  fun addProject(project: Project?) {
-    this.project = project
   }
 
   /**
@@ -107,20 +114,36 @@ class InlineCompletionLogsContainer() {
 
   /**
    * Use [add] if there is no special need to use async variant. See [add] documentation for more info.
+   * Calls made after [logCurrent] are ignored because the container has already been finalized.
    */
   fun addAsync(block: suspend () -> List<EventPair<*>>) {
-    val job = InlineCompletionLogsScopeProvider.getInstance().cs.launch {
+    if (asyncAddsClosed.get()) return
+
+    // Start lazily so every running job is already visible to cancelAsyncAdds.
+    val job = InlineCompletionLogsScopeProvider.getInstance().cs.launch(start = CoroutineStart.LAZY) {
       block().forEach { add(it) }
     }
     asyncAdds.add(job)
+    // [asyncAdds] is a registry of *pending* jobs: a finished job is useless for [cancelAsyncAdds], and only the producer may
+    // remove one, never an awaiter (see [awaitAllAlreadyRunningAsyncAdds]).
+    job.invokeOnCompletion { asyncAdds.remove(job) }
+    if (asyncAddsClosed.get()) {
+      job.cancel()
+    }
+    else {
+      job.start()
+    }
   }
 
   /**
    * Cancel all [asyncAdds] and send current log container.
    * Await for this function completion before exit from the inline completion request and process next typings or next requests.
    * Should be very fast.
+   *
+   * [project] is passed explicitly instead of being stored in a field: this container lives in the editor user data and is captured
+   * by async logging jobs running on an application-level scope, so it must not retain a project (LLM-17026).
    */
-  fun logCurrent(extraLogger: CustomRequestIdLogger? = null) {
+  fun logCurrent(project: Project?, extraLogger: CustomRequestIdLogger? = null) {
     cancelAsyncAdds()
 
     val shouldSendFullLogs = getShouldSendFullLogs()
@@ -181,7 +204,7 @@ class InlineCompletionLogsContainer() {
      * Create, store in editor and get log container
      */
     fun create(editor: Editor): InlineCompletionLogsContainer {
-      val container = InlineCompletionLogsContainer()
+      val container = InlineCompletionLogsContainer(ConcurrentLinkedQueue())
       editor.putUserData(KEY, container)
       return container
     }
@@ -196,6 +219,12 @@ class InlineCompletionLogsContainer() {
      */
     fun remove(editor: Editor): InlineCompletionLogsContainer? {
       return editor.removeUserData(KEY)
+    }
+
+    @TestOnly
+    @ApiStatus.Internal
+    fun createUnregistered(asyncAddsContainer: Queue<Job> = ConcurrentLinkedQueue()): InlineCompletionLogsContainer {
+      return InlineCompletionLogsContainer(asyncAddsContainer)
     }
   }
 }

@@ -131,6 +131,15 @@
                                           nameKey="INLAY.numeric.promotion"
                                           providerId="python.numeric.promotion.inlays"/>
 
+    <codeInsight.declarativeInlayProvider group="VALUES_GROUP"
+                                          bundle="messages.PyPsiBundle"
+                                          implementationClass="com.jetbrains.python.inlayHints.PyEnumAutoValueInlayHintsProvider"
+                                          isEnabledByDefault="true"
+                                          language="Python"
+                                          nameKey="INLAY.enum.auto.value"
+                                          descriptionKey="INLAY.enum.auto.value.description"
+                                          providerId="python.enum.auto.value.inlays"/>
+
     <codeInsight.declarativeInlayProvider group="PARAMETERS_GROUP"
                                           bundle="messages.PyPsiBundle"
                                           implementationClass="com.jetbrains.python.inlayHints.PyTestParametrizeInlayHintsProvider"
@@ -341,6 +350,8 @@
     <typeHierarchyProvider language="Python" implementationClass="com.jetbrains.python.hierarchy.PyTypeHierachyProvider"/>
     <callHierarchyProvider language="Python" implementationClass="com.jetbrains.python.hierarchy.call.PyCallHierarchyProvider"/>
     <highlightUsagesHandlerFactory implementation="com.jetbrains.python.codeInsight.highlighting.PyHighlightExitPointsHandlerFactory"/>
+    <heavyBracesHighlighter implementation="com.jetbrains.python.codeInsight.highlighting.PyControlFlowKeywordBraceHighlighter"/>
+    <codeBlockSupportHandler language="Python" implementationClass="com.jetbrains.python.codeInsight.highlighting.PyControlFlowKeywordCodeBlockSupportHandler"/>
 
     <testFinder implementation="com.jetbrains.python.codeInsight.testIntegration.PyTestFinder"/>
     <testCreator language="Python" implementationClass="com.jetbrains.python.codeInsight.testIntegration.PyTestCreator"/>
@@ -755,9 +766,10 @@
     <notificationGroup id="Python source root detection" displayType="STICKY_BALLOON" isLogByDefault="true" bundle="messages.PyBundle"
                        key="python.source.root.detection.confirm.notification.group"/>
 
-    <toolWindow id="Python Packages" anchor="bottom" secondary="true"
+    <toolWindow id="Python Packages" anchor="right" secondary="false"
                 icon="com.jetbrains.python.icons.PythonIcons.Python.PythonPackages"
                 factoryClass="com.jetbrains.python.packaging.toolwindow.PyPackagesToolWindowFactory"/>
+    <postStartupActivity implementation="com.jetbrains.python.packaging.toolwindow.PyPackagesToolWindowMigrationActivity"/>
     <toolWindowExtractorMode id="Python Packages" mode="mirror"/>
     <toolWindowExtractor implementation="com.jetbrains.python.packaging.toolwindow.PyPackagesToolWindowExtractor"/>
     <statistics.counterUsagesCollector

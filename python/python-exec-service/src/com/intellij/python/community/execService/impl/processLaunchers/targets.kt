@@ -242,13 +242,16 @@ private class TargetProcessCommands(
 
   private suspend fun downloadAfterExecution() {
     if (downloadConfig == null) return
+    val workingDirOnTarget = info.cwd ?: return
 
     targetEnv.downloadVolumes.forEach { (_, volume) ->
+      if (!workingDirOnTarget.startsWith(volume.targetRoot)) return@forEach
+      val downloadRelativeDir = computeDownloadRelativeDir(workingDirOnTarget, volume.targetRoot)
       val paths = downloadConfig.relativePaths.takeIf { it.isNotEmpty() } ?: listOf(".")
       for (path in paths) {
         coroutineToIndicator {
           try {
-            volume.download(path, it)
+            volume.download(downloadRelativeDir + path, it)
           }
           catch (e: IOException) {
             fileLogger().warn("Could not download $path: ${e.message}")
@@ -311,6 +314,19 @@ fun measureUploadTime(@RequiresBackgroundThread upload: () -> Unit, genMessage: 
 }
 
 /**
+ * Path of [workingDirOnTarget] relative to [targetRoot], formatted for prepending to the
+ * relative paths passed to [TargetEnvironment.DownloadableVolume.download], whose argument must be
+ * relative to [targetRoot] (see the [TargetEnvironment.Volume] contract).
+ *
+ * Returns an empty string when the working dir *is* the volume root (the common single-module
+ * case) so `download` receives just the plain relative path (e.g. `pyproject.toml`); otherwise the
+ * subpath with a trailing `/`. Never returns an absolute path.
+ */
+internal fun computeDownloadRelativeDir(workingDirOnTarget: String, targetRoot: String): String =
+  if (workingDirOnTarget == targetRoot) ""
+  else workingDirOnTarget.substringAfter("$targetRoot/") + "/"
+
+/**
  * Maps download roots using existing upload roots.
  * This allows downloading files modified on the target back to the local machine.
  *
@@ -326,7 +342,7 @@ private fun mapDownloadRoots(
 
   if (matchingUpload != null) {
     TargetEnvironment.DownloadRoot(
-      localRootPath = localDir,
+      localRootPath = matchingUpload.localRootPath,
       targetRootPath = matchingUpload.targetRootPath,
     )
   }

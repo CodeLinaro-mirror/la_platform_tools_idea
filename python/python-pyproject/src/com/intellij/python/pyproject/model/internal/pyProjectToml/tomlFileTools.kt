@@ -162,14 +162,17 @@ private fun getToolSpecificDependencies(
 ): Sequence<Directory> {
   return tomlDependencySpecifications.asSequence().flatMap { specification ->
     when (specification) {
-      is TomlDependencySpecification.PathDependency -> tomlTable.getTable(specification.tomlKey)?.let {
+      // PY-91089: use safeGet instead of TomlTable.getTable, which throws TomlInvalidTypeException
+      // (not returns null) when the key holds a non-table value such as an array (the `[[tool.uv.sources]]`
+      // double-bracket typo). An unhandled throw here aborts the whole model sync and hides every member.
+      is TomlDependencySpecification.PathDependency -> tomlTable.safeGet<TomlTable>(specification.tomlKey, unquotedDottedKey = true).successOrNull?.let {
         getToolSpecificDependenciesFromTomlTable(root, it)
       } ?: emptySet()
       is TomlDependencySpecification.Pep621Dependency -> getPep621Dependencies(root, tomlTable, specification.tomlKey).toSet()
       is TomlDependencySpecification.GroupPathDependency -> {
-        val groups = tomlTable.getTable(specification.tomlKeyToGroup) ?: return@flatMap emptySet()
+        val groups = tomlTable.safeGet<TomlTable>(specification.tomlKeyToGroup, unquotedDottedKey = true).successOrNull ?: return@flatMap emptySet()
         groups.keySet().flatMap { group ->
-          groups.getTable("${group}.${specification.tomlKeyFromGroupToPath}")?.let {
+          groups.safeGet<TomlTable>("${group}.${specification.tomlKeyFromGroupToPath}", unquotedDottedKey = true).successOrNull?.let {
             getToolSpecificDependenciesFromTomlTable(root, it)
           } ?: emptySet()
         }
@@ -193,7 +196,8 @@ private fun getPep621Dependencies(root: Path, tomlTable: TomlTable, tomlKeyToDep
 @RequiresBackgroundThread
 private fun getToolSpecificDependenciesFromTomlTable(root: Path, tomlTable: TomlTable): Set<Directory> {
   return tomlTable.keySet().asSequence().mapNotNull {
-    tomlTable.getString("${it}.path")?.let { depPathString -> parseDepFromPathString(root, depPathString) }
+    // PY-91089: safeGet instead of getString, which throws when `<dep>.path` holds a non-string value.
+    tomlTable.safeGet<String>("${it}.path", unquotedDottedKey = true).successOrNull?.let { depPathString -> parseDepFromPathString(root, depPathString) }
   }.toSet()
 }
 

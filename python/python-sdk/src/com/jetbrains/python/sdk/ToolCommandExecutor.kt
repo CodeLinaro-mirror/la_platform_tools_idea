@@ -28,7 +28,7 @@ import kotlin.time.Duration.Companion.minutes
 data class ToolCommandExecutor(
   private val toolName: @NlsSafe String,
   private val additionalSearchPaths: List<ToolSearchPath> = emptyList(),
-  private val getToolPathFromSettings: PropertiesComponent.() -> @SystemIndependent String?,
+  private val getToolPathFromSettings: PropertiesComponent.() -> @SystemIndependent String? = { null },
 ) {
   companion object {
     private val KNOWN_SEARCH_PATHS = listOf(
@@ -41,11 +41,7 @@ data class ToolCommandExecutor(
   suspend fun <P : PathHolder> detectToolExecutable(
     fileSystem: FileSystem<P>,
     filter: (P) -> Boolean,
-  ): P? {
-    val toolSpec = toCommandSpec()
-    val resolvedSearchPaths = fileSystem.resolveToolSearchPaths(toolSpec)
-    return fileSystem.detectTool(toolSpec.toolName, resolvedSearchPaths, filter)
-  }
+  ): P? = fileSystem.detectTool(toCommandSpec(), filter)
 
   fun toCommandSpec(): ToolCommandSpec = ToolCommandSpec(toolName, KNOWN_SEARCH_PATHS + additionalSearchPaths)
 

@@ -21,6 +21,7 @@ import com.intellij.openapi.project.modules
 import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.openapi.roots.ModuleRootEvent
 import com.intellij.openapi.roots.ModuleRootListener
+import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.util.messages.MessageBusConnection
@@ -100,6 +101,57 @@ internal class PyPackagingToolWindowService(val project: Project, val serviceSco
   private var searchJob: Job? = null
   private var currentQuery: String = ""
   internal val activeSearchQuery: String get() = currentQuery
+
+  // --- Shared "active installations" state (PY-91529) --------------------------------------------
+  // The state itself is per-SDK (installs happen per interpreter — see [PyActiveInstalls]); this
+  // service only exposes it to, and notifies, the UI. Shared by the packages tree, the info pane and
+  // the install dialog (all hold this project-level service). Marked at the UI action sites (mirrors
+  // the dialog's former local `installingTargets`), so the visual state flips synchronously at click
+  // time. Listeners are project/UI-scoped and fire on the EDT.
+  private val installStateListeners = java.util.concurrent.CopyOnWriteArrayList<Runnable>()
+
+  /** `true` while an install keyed by exactly [key] is running on [sdk] (verbatim key — see [packageKey]). */
+  fun isInstalling(sdk: Sdk, key: String): Boolean = PyActiveInstalls.forSdk(sdk).isInstalling(key)
+
+  /** `true` while a package named [packageName] (any version) is being installed on [sdk]. */
+  fun isPackageInstalling(sdk: Sdk, packageName: String): Boolean = PyActiveInstalls.forSdk(sdk).isPackageInstalling(packageName)
+
+  /**
+   * Records [key] as an active install on [sdk]. Returns `false` if already recorded (rejects a rapid re-trigger).
+   *
+   * [traceUuid] — uuid of the trace the install runs in, for callers that own one (see [installPackage]'s
+   * `trace` parameter). Stored so a surface showing the install as in progress can point the user at the
+   * running command's output; cleared again by [unmarkInstalling].
+   */
+  fun markInstalling(sdk: Sdk, key: String, traceUuid: String? = null): Boolean =
+    PyActiveInstalls.forSdk(sdk).mark(key, traceUuid).also { if (it) fireInstallStateChanged() }
+
+  /** Clears [key] on [sdk]; must run in a `finally` / completion handler so a cancelled install can't leak it. */
+  fun unmarkInstalling(sdk: Sdk, key: String) {
+    if (PyActiveInstalls.forSdk(sdk).unmark(key)) fireInstallStateChanged()
+  }
+
+  /** Uuid of the trace of the install running under [key] on [sdk], or `null` if unknown or nothing is running. */
+  fun installTraceUuid(sdk: Sdk, key: String): String? = PyActiveInstalls.forSdk(sdk).traceUuid(key)
+
+  /**
+   * Subscribes [listener] to any change of the active-installations state; it is invoked on the EDT
+   * and unregistered when [parent] is disposed. The signal is not SDK-filtered (a listener repaints
+   * and re-queries for its own SDK), and the service stays Swing-free — it only *invokes* the UI
+   * callback, it never touches Swing itself.
+   */
+  fun addInstallStateListener(parent: Disposable, listener: Runnable) {
+    installStateListeners.add(listener)
+    Disposer.register(parent) { installStateListeners.remove(listener) }
+  }
+
+  private fun fireInstallStateChanged() {
+    if (installStateListeners.isEmpty()) return
+    serviceScope.launch(Dispatchers.EDT) {
+      installStateListeners.forEach { it.run() }
+    }
+  }
+  // -----------------------------------------------------------------------------------------------
 
   private data class SdkContext(
     val sdk: Sdk,
@@ -311,17 +363,24 @@ internal class PyPackagingToolWindowService(val project: Project, val serviceSco
     }
   }
 
+  /**
+   * [trace] — when non-null the install runs directly in this trace instead of a fresh nested one, so
+   * the caller's uuid is the one the spawned pip / uv process reports. Callers that show their own
+   * in-progress UI need that: nothing between here and the process launcher adds another trace, so
+   * whichever trace wraps this call is the one the process is tagged with.
+   */
   suspend fun installPackage(
     installRequest: PythonPackageInstallRequest,
     options: List<String> = emptyList(),
     workspaceMember: PyWorkspaceMember? = null,
     dependencyGroup: PyDependencyGroup? = null,
+    trace: TraceContext? = null,
   ) {
     val context = sdkContext ?: return
     val managerUI = context.managerUI
     val module = workspaceMember?.let { context.manager.workspaceSupport?.resolveModule(it) }
 
-    withContext(TraceContext(message("trace.context.packaging.tool.window.install"))) {
+    withContext(trace ?: TraceContext(message("trace.context.packaging.tool.window.install"))) {
       PythonPackagesToolwindowStatisticsCollector.installPackageEvent.log(project)
       managerUI.installPackagesRequestBackground(installRequest, options, module, dependencyGroup)?.let {
         handleActionCompleted(
@@ -862,6 +921,12 @@ internal class PyPackagingToolWindowService(val project: Project, val serviceSco
     private const val PACKAGES_LIMIT = 50
 
     fun getInstance(project: Project): PyPackagingToolWindowService = project.service<PyPackagingToolWindowService>()
+
+    /**
+     * Normalized active-installations key for a package install (PY-91529); distinct from the
+     * dialog's `"location:"` / `"command:"` keys because a package name can never contain a colon.
+     */
+    fun packageKey(packageName: String): String = PyActiveInstalls.packageKey(packageName)
 
     /**
      * Query-aware comparator over package names: prefix matches first (shortest wins), then plain
