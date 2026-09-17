@@ -18,6 +18,7 @@ package org.jetbrains.intellij.build.productLayout
 
 import com.intellij.platform.pluginGraph.ContentModuleName
 import com.intellij.platform.pluginGraph.PluginId
+import com.intellij.platform.pluginGraph.PluginModuleId
 import com.intellij.platform.pluginGraph.TargetName
 import com.intellij.platform.pluginSystem.parser.impl.elements.ModuleLoadingRuleValue
 import kotlinx.serialization.Serializable
@@ -34,14 +35,12 @@ annotation class ProductDslMarker
  *
  * @param contentModuleName The JPS module name containing the resource (e.g., "intellij.platform.resources")
  * @param resourcePath The path to the resource within the module (e.g., "META-INF/PlatformLangPlugin.xml")
- * @param ultimateOnly If true, this include is only processed in Ultimate builds (skipped in Community builds)
  * @param optional If true, this include is always generated with xi:fallback and never inlined (safe for files that may not exist)
  */
 @Serializable
 data class DeprecatedXmlInclude(
   val contentModuleName: ContentModuleName,
   @JvmField val resourcePath: String,
-  @JvmField val ultimateOnly: Boolean = false,
   @JvmField val optional: Boolean = false,
 )
 
@@ -116,7 +115,7 @@ class ProductModulesContentSpec(
   /**
    * Product vendor name for the `<vendor>` tag in plugin.xml.
    * If null (default), no vendor tag will be generated.
-   * Example: "JetBrains"
+   * Example: PluginModuleId.DEFAULT_NAMESPACE
    */
   @JvmField val vendor: String? = null,
 
@@ -215,7 +214,7 @@ class ProductModulesContentSpecBuilder @PublishedApi internal constructor() {
 
   /**
    * Set the product vendor for the `<vendor>` tag in plugin.xml.
-   * Example: vendor("JetBrains")
+   * Example: vendor(PluginModuleId.DEFAULT_NAMESPACE)
    */
   fun vendor(value: String) {
     this.vendor = value
@@ -263,24 +262,18 @@ class ProductModulesContentSpecBuilder @PublishedApi internal constructor() {
    * Add an XML include (xi:include directive) by specifying module name and resource path.
    * Example: deprecatedInclude("intellij.platform.resources", "META-INF/PlatformLangPlugin.xml")
    *
-   * For Ultimate-only includes that should be conditionally processed:
-   * Example: deprecatedInclude("intellij.platform.extended.community.impl", "META-INF/community-extensions.xml", ultimateOnly = true)
-   *
    * For optional includes that may not exist in all builds (always uses xi:fallback):
    * Example: deprecatedInclude("intellij.rider.languages", "intellij.rider.languages.xml", optional = true)
    *
    * @param moduleName The JPS module name containing the resource
    * @param resourcePath The path to the resource within the module
-   * @param ultimateOnly If true, this include is only processed in Ultimate builds.
-   *   - When inlining: Skipped in Community builds
-   *   - When NOT inlining: Generates xi:include with xi:fallback wrapper for graceful handling
    * @param optional If true, this include is never inlined and always generates xi:include with xi:fallback.
    *   Use this for includes that may not exist in all build configurations (e.g., Rider-specific XML files).
    *
    * @see <a href="programmatic-content.md#ultimate-only-includes">Ultimate-Only Includes Documentation</a>
    */
-  fun deprecatedInclude(moduleName: String, resourcePath: String, ultimateOnly: Boolean = false, optional: Boolean = false) {
-    xmlIncludes.add(DeprecatedXmlInclude(ContentModuleName(moduleName), resourcePath, ultimateOnly, optional))
+  fun deprecatedInclude(moduleName: String, resourcePath: String, optional: Boolean = false) {
+    xmlIncludes.add(DeprecatedXmlInclude(ContentModuleName(moduleName), resourcePath, optional))
     compositionGraph.add(SpecComposition(
       type = CompositionType.DEPRECATED_XML,
       reference = "$moduleName:$resourcePath",
@@ -333,13 +326,14 @@ class ProductModulesContentSpecBuilder @PublishedApi internal constructor() {
    */
   fun module(
     name: String,
+    namespace: String? = PluginModuleId.DEFAULT_NAMESPACE,
     loading: ModuleLoadingRuleValue = ModuleLoadingRuleValue.OPTIONAL,
     allowedMissingPluginIds: List<String> = emptyList(),
   ) {
     additionalModules.add(
       ContentModule(
-        ContentModuleName(name),
-        loading,
+        moduleId = PluginModuleId(name, namespace),
+        loading = loading,
         allowedMissingPluginIds = allowedMissingPluginIds.map { PluginId(it) },
       )
     )
@@ -357,11 +351,11 @@ class ProductModulesContentSpecBuilder @PublishedApi internal constructor() {
    * @param allowedMissingPluginIds Plugin IDs that are allowed to be missing for auto-added dependencies
    *   discovered from this module (DSL test plugins only).
    */
-  fun embeddedModule(name: String, allowedMissingPluginIds: List<String> = emptyList()) {
+  fun embeddedModule(name: String, namespace: String? = PluginModuleId.DEFAULT_NAMESPACE, allowedMissingPluginIds: List<String> = emptyList()) {
     additionalModules.add(
       ContentModule(
-        ContentModuleName(name),
-        ModuleLoadingRuleValue.EMBEDDED,
+        moduleId = PluginModuleId(name, namespace),
+        loading = ModuleLoadingRuleValue.EMBEDDED,
         allowedMissingPluginIds = allowedMissingPluginIds.map { PluginId(it) },
       )
     )
@@ -379,11 +373,11 @@ class ProductModulesContentSpecBuilder @PublishedApi internal constructor() {
    * @param allowedMissingPluginIds Plugin IDs that are allowed to be missing for auto-added dependencies
    *   discovered from this module (DSL test plugins only).
    */
-  fun requiredModule(name: String, allowedMissingPluginIds: List<String> = emptyList()) {
+  fun requiredModule(name: String, namespace: String? = PluginModuleId.DEFAULT_NAMESPACE, allowedMissingPluginIds: List<String> = emptyList()) {
     additionalModules.add(
       ContentModule(
-        ContentModuleName(name),
-        ModuleLoadingRuleValue.REQUIRED,
+        moduleId = PluginModuleId(name, namespace),
+        loading = ModuleLoadingRuleValue.REQUIRED,
         allowedMissingPluginIds = allowedMissingPluginIds.map { PluginId(it) },
       )
     )
@@ -523,7 +517,7 @@ class ProductModulesContentSpecBuilder @PublishedApi internal constructor() {
  *     include("intellij.gateway", "META-INF/Gateway.xml")
  *
  *     // Module sets
- *     moduleSet(UltimateModuleSets.ssh())
+   *     moduleSet(UltimateModuleSets.webIde())
  *     moduleSet(CommunityModuleSets.vcs())
  *
  *     // Individual modules

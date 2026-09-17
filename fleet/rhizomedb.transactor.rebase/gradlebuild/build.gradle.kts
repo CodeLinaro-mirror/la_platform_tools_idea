@@ -13,8 +13,9 @@ plugins {
   // GRADLE_PLUGINS__MARKER_START
   id("fleet-module")
   alias(jps.plugins.kotlin.serialization)
-  alias(jps.plugins.rhizomedb)
-  alias(jps.plugins.rpc)
+  alias(jps.plugins.ksp)
+  id("fleet-ksp-plugin")
+  id("rpc")
   // GRADLE_PLUGINS__MARKER_END
 }
 
@@ -77,11 +78,8 @@ kotlin {
     implementation(jps.org.jetbrains.intellij.deps.kotlinx.kotlinx.coroutines.core.jvm930800474.get().let { "${it.group}:kotlinx-coroutines-core:${it.version}" }) {
       isTransitive = false
     }
-    implementation(jps.org.jetbrains.intellij.deps.fastutil.intellij.deps.fastutil1191883795.get().let { "${it.group}:${it.name}:${it.version}" }) {
-      isTransitive = false
-    }
     api(project(":fleet.rhizomedb.transactor"))
-    api(project(":fleet.rhizomedb"))
+    implementation(project(":fleet.rhizomedb"))
     api(project(":fleet.util.core"))
     api(project(":fleet.rpc"))
     implementation(project(":fleet.reporting.api"))
@@ -89,6 +87,7 @@ kotlin {
     implementation(project(":fleet.multiplatform.shims"))
     implementation(project(":fleet.bifurcan"))
     implementation(project(":fleet.fastutil"))
+    implementation(project(":fleet.openmap"))
   }
   // KOTLIN__MARKER_END
 }

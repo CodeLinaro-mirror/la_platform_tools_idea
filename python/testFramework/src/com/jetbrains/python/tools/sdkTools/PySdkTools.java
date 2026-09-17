@@ -29,6 +29,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.junit.Assert;
 
+import static com.intellij.python.venv.VenvKt.createVenvAdditionalData;
 import static com.jetbrains.python.sdk.ModuleExKt.setPythonSdk;
 
 
@@ -54,15 +55,18 @@ public final class PySdkTools {
    * @return sdk
    */
   public static @NotNull Sdk createTempSdk(final @NotNull VirtualFile sdkHome,
-                                  final @NotNull SdkCreationType sdkCreationType,
-                                  final @Nullable Module module,
-                                  @Nullable Disposable parentDisposable
+                                           final @NotNull SdkCreationType sdkCreationType,
+                                           final @Nullable Module module,
+                                           @Nullable Disposable parentDisposable
   )
     throws InvalidSdkException {
     final Ref<Sdk> ref = Ref.create();
     ApplicationManager.getApplication().invokeAndWait(() -> {
       // sdkHome guarantees SDK name uniqueness. SdkUtil can't do that since no current SDK are provided.
-      final Sdk sdk = SdkConfigurationUtil.setupSdk(NO_SDK, sdkHome, PythonSdkType.getInstance(), null, sdkHome.getPath());
+      var additionalData = module != null
+                           ? createVenvAdditionalData(module).getSuccessOrNull()
+                           : createVenvAdditionalData(sdkHome.toNioPath().getParent());
+      final Sdk sdk = SdkConfigurationUtil.setupSdk(NO_SDK, sdkHome, PythonSdkType.getInstance(), additionalData, sdkHome.getPath());
       Assert.assertNotNull("Failed to create SDK on " + sdkHome, sdk);
 
       ref.set(sdk);

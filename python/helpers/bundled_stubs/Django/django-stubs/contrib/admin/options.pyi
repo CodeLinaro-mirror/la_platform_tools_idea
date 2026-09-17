@@ -1,6 +1,6 @@
 import enum
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from typing import Any, ClassVar, Generic, Literal, TypeAlias, TypeVar, cast, type_check_only
+from typing import Any, ClassVar, Generic, Literal, TypeAlias, cast, type_check_only
 
 from django import forms
 from django.contrib.admin.filters import FieldListFilter, ListFilter
@@ -33,7 +33,7 @@ from django.urls.resolvers import URLPattern
 from django.utils.datastructures import _ListOrTuple
 from django.utils.functional import _StrOrPromise
 from django.utils.safestring import SafeString
-from typing_extensions import Self, TypedDict, override
+from typing_extensions import Self, TypedDict, TypeVar, override
 
 IS_POPUP_VAR: str
 TO_FIELD_VAR: str
@@ -95,7 +95,7 @@ class BaseModelAdmin(Generic[_ModelT], metaclass=MediaDefiningClass):
     filter_horizontal: ClassVar[_ListOrTuple[str]]
     radio_fields: ClassVar[Mapping[str, _Direction]]
     prepopulated_fields: ClassVar[dict[str, Sequence[str]]]
-    formfield_overrides: ClassVar[Mapping[type[Field], Mapping[str, Any]]]
+    formfield_overrides: ClassVar[Mapping[type[Field[Any, Any]], Mapping[str, Any]]]
     readonly_fields: ClassVar[_ListOrTuple[str]]
     ordering: ClassVar[_ListOrTuple[_OrderByFieldName] | None]
     sortable_by: ClassVar[_ListOrTuple[str] | None]
@@ -106,9 +106,11 @@ class BaseModelAdmin(Generic[_ModelT], metaclass=MediaDefiningClass):
     admin_site: AdminSite
     def __init__(self) -> None: ...
     def check(self, **kwargs: Any) -> list[CheckMessage]: ...
-    def formfield_for_dbfield(self, db_field: Field, request: HttpRequest, **kwargs: Any) -> FormField | None: ...
+    def formfield_for_dbfield(
+        self, db_field: Field[Any, Any], request: HttpRequest, **kwargs: Any
+    ) -> FormField | None: ...
     def formfield_for_choice_field(
-        self, db_field: Field, request: HttpRequest, **kwargs: Any
+        self, db_field: Field[Any, Any], request: HttpRequest, **kwargs: Any
     ) -> TypedChoiceField | None: ...
     def get_field_queryset(self, db: str | None, db_field: RelatedField, request: HttpRequest) -> QuerySet | None: ...
     def formfield_for_foreignkey(
@@ -137,8 +139,7 @@ class BaseModelAdmin(Generic[_ModelT], metaclass=MediaDefiningClass):
     def has_view_permission(self, request: HttpRequest, obj: _ModelT | None = ...) -> bool: ...
     def has_view_or_change_permission(self, request: HttpRequest, obj: _ModelT | None = ...) -> bool: ...
     def has_module_permission(self, request: HttpRequest) -> bool: ...
-    @property
-    def view_on_site(self) -> Callable[[_ModelT], str | None] | bool: ...
+    view_on_site: Callable[[_ModelT], str | None] | bool
     @property
     def media(self) -> Media: ...
 
@@ -296,8 +297,9 @@ class ModelAdmin(BaseModelAdmin[_ModelT]):
 _ChildModelT = TypeVar("_ChildModelT", bound=Model)
 _ParentModelT = TypeVar("_ParentModelT", bound=Model)
 
-class InlineModelAdmin(BaseModelAdmin[_ChildModelT], Generic[_ChildModelT, _ParentModelT]):
+class InlineModelAdmin(BaseModelAdmin[Any], Generic[_ChildModelT, _ParentModelT]):
     model: type[_ChildModelT]
+    form: type[forms.ModelForm[_ChildModelT]]
     fk_name: str | None
     formset: type[BaseInlineFormSet[_ChildModelT, _ParentModelT, forms.ModelForm[_ChildModelT]]]
     extra: int
@@ -324,15 +326,34 @@ class InlineModelAdmin(BaseModelAdmin[_ChildModelT], Generic[_ChildModelT, _Pare
         self, request: HttpRequest, obj: _ParentModelT | None = ..., **kwargs: Any
     ) -> type[BaseInlineFormSet[_ChildModelT, _ParentModelT, forms.ModelForm[_ChildModelT]]]: ...
     @override
+    def get_exclude(self, request: HttpRequest, obj: _ParentModelT | None = ...) -> _ListOrTuple[str] | None: ...
+    @override
+    def get_fields(self, request: HttpRequest, obj: _ParentModelT | None = ...) -> _FieldGroups: ...
+    @override
+    def get_fieldsets(self, request: HttpRequest, obj: _ParentModelT | None = ...) -> _FieldsetSpec: ...
+    @override
+    def get_inlines(self, request: HttpRequest, obj: _ParentModelT | None) -> _ListOrTuple[type[InlineModelAdmin]]: ...
+    @override
+    def get_readonly_fields(self, request: HttpRequest, obj: _ParentModelT | None = ...) -> _ListOrTuple[str]: ...
+    @override
+    def get_prepopulated_fields(
+        self, request: HttpRequest, obj: _ParentModelT | None = ...
+    ) -> dict[str, Sequence[str]]: ...
+    @override
+    def has_view_or_change_permission(self, request: HttpRequest, obj: _ParentModelT | None = ...) -> bool: ...
+    @override
+    def get_view_on_site_url(self, obj: _ChildModelT | None = ...) -> str | None: ...
+    view_on_site: Callable[[_ChildModelT], str | None] | bool
+    @override
     def get_queryset(self, request: HttpRequest) -> QuerySet[_ChildModelT]: ...
     @override
     def has_add_permission(self, request: HttpRequest, obj: _ParentModelT | None) -> bool: ...  # type: ignore[override]
     @override
-    def has_change_permission(self, request: HttpRequest, obj: _ParentModelT | None = ...) -> bool: ...  # type: ignore[override]
+    def has_change_permission(self, request: HttpRequest, obj: _ParentModelT | None = ...) -> bool: ...
     @override
-    def has_delete_permission(self, request: HttpRequest, obj: _ParentModelT | None = ...) -> bool: ...  # type: ignore[override]
+    def has_delete_permission(self, request: HttpRequest, obj: _ParentModelT | None = ...) -> bool: ...
     @override
-    def has_view_permission(self, request: HttpRequest, obj: _ParentModelT | None = ...) -> bool: ...  # type: ignore[override]
+    def has_view_permission(self, request: HttpRequest, obj: _ParentModelT | None = ...) -> bool: ...
 
 class StackedInline(InlineModelAdmin[_ChildModelT, _ParentModelT]):
     template: str

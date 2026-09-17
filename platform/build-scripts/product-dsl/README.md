@@ -21,7 +21,7 @@ GenerationPipeline.execute(config)
   ├─ STAGE 2: BUILD_MODEL   → Caches + shared values  
   ├─ STAGE 3: GENERATE      → Parallel ComputeNodes (slot-based dependencies)
   ├─ STAGE 4: AGGREGATE     → Collect errors, diffs, tracking maps
-  └─ STAGE 5: OUTPUT        → Cleanup orphans, commit, build stats
+  └─ STAGE 5: OUTPUT        → Cleanup orphan files/dirs, commit, build stats
 ```
 
 For detailed architecture, file organization, and component documentation, see [architecture-overview.md](docs/architecture-overview.md)
@@ -47,7 +47,7 @@ For detailed architecture, file organization, and component documentation, see [
 - [errors.md](docs/errors.md) - Error messages and troubleshooting
 - [dependency_generation.md](docs/dependency_generation.md) - Dependency generation pipeline architecture
 - [test-plugins.md](docs/test-plugins.md) - Test plugin generation
-- [migration-guide.md](docs/migration-guide.md) - Migration guides (PLATFORM_CORE_MODULES, productImplementationModules)
+- [migration-guide.md](docs/migration-guide.md) - Migration guides (legacy platform core modules, productImplementationModules)
 - [architecture-overview.md](docs/architecture-overview.md) - Detailed system architecture and file organization
 
 ## Module Set Definition

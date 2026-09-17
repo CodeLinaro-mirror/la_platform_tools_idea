@@ -21,8 +21,6 @@ import org.jetbrains.kotlin.analysis.api.KaSession
 import org.jetbrains.kotlin.analysis.api.analyze
 import org.jetbrains.kotlin.analysis.api.components.allOverriddenSymbols
 import org.jetbrains.kotlin.analysis.api.components.fakeOverrideOriginal
-import org.jetbrains.kotlin.analysis.api.permissions.KaAllowAnalysisFromWriteAction
-import org.jetbrains.kotlin.analysis.api.permissions.KaAllowAnalysisOnEdt
 import org.jetbrains.kotlin.analysis.api.renderer.base.KaKeywordsRenderer
 import org.jetbrains.kotlin.analysis.api.renderer.base.annotations.KaRendererAnnotationsFilter
 import org.jetbrains.kotlin.analysis.api.renderer.declarations.KaCallableReturnTypeFilter
@@ -57,7 +55,6 @@ abstract class KtGenerateMembersHandler(
 
     override fun isClassNode(key: MemberChooserObject): Boolean = key is KaClassOrObjectSymbolChooserObject
 
-    @OptIn(KaAllowAnalysisOnEdt::class, KaAllowAnalysisFromWriteAction::class)
     override fun generateMembers(
         editor: Editor,
         classOrObject: KtClassOrObject,
@@ -115,8 +112,8 @@ abstract class KtGenerateMembersHandler(
         }
     }
 
-    context(session: KaSession)
     @OptIn(KaExperimentalApi::class)
+    context(session: KaSession)
     private fun createMemberEntries(
         editor: Editor,
         currentClass: KtClassOrObject,

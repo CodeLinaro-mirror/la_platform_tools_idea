@@ -36,6 +36,7 @@ import com.intellij.usageView.UsageViewDescriptor;
 import com.intellij.util.IncorrectOperationException;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.MultiMap;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
@@ -283,8 +284,9 @@ public class MoveFilesOrDirectoriesProcessor extends BaseRefactoringProcessor {
   protected boolean preprocessUsages(@NotNull Ref<UsageInfo[]> refUsages) {
     MultiMap<PsiElement, String> conflicts = new MultiMap<>();
     UsageInfo[] usages = refUsages.get();
-    if (!ProgressManager.getInstance().runProcessWithProgressSynchronously(() -> ReadAction.run(() -> MoveFileHandler.detectConflicts(myElementsToMove, usages, myNewParent, conflicts)),
-                                                                           RefactoringBundle.message("detecting.possible.conflicts"), true, myProject)) {
+    if (!ProgressManager.getInstance().runProcessWithProgressSynchronously(
+      () -> ReadAction.runBlocking(() -> MoveFileHandler.detectConflicts(myElementsToMove, usages, myNewParent, conflicts)),
+      RefactoringBundle.message("detecting.possible.conflicts"), true, myProject)) {
       return false;
     }
     return showConflicts(conflicts, usages);
@@ -379,6 +381,7 @@ public class MoveFilesOrDirectoriesProcessor extends BaseRefactoringProcessor {
     return true;
   }
 
+  @ApiStatus.Internal
   protected static final class MovedFileOrDirectoryUsageInfo extends UsageInfo {
     private final PsiElement myTarget;
     final PsiReference myReference;

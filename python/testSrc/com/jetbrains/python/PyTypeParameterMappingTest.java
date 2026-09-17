@@ -13,7 +13,7 @@ import com.jetbrains.python.psi.PyTargetExpression;
 import com.jetbrains.python.psi.types.PyCallableParameter;
 import com.jetbrains.python.psi.types.PyCallableParameterImpl;
 import com.jetbrains.python.psi.types.PyCallableParameterMapping;
-import com.jetbrains.python.psi.types.PyCollectionType;
+import com.jetbrains.python.psi.types.PyClassType;
 import com.jetbrains.python.psi.types.PyFunctionType;
 import com.jetbrains.python.psi.types.PyTupleType;
 import com.jetbrains.python.psi.types.PyType;
@@ -187,16 +187,16 @@ public final class PyTypeParameterMappingTest extends PyTestCase {
 
   public void testExtractingElementsFromUnboundTupleTypeFollowedByExpectedVariadic() {
     doTestShapeMapping("T, *Ts", "*tuple[float, ...]", """
-      T -> float
-      *Ts -> *tuple[float, ...]
+      T -> float | int
+      *Ts -> *tuple[float | int, ...]
       """);
   }
 
   public void testNonTrivialVariadicMatch() {
     doTestShapeMapping("int, T, *Ts, T1", "int, *tuple[float, ...], int, str", """
       int -> int
-      T -> float
-      *Ts -> *tuple[*tuple[float, ...], int]
+      T -> float | int
+      *Ts -> *tuple[*tuple[float | int, ...], int]
       T1 -> str
       """);
   }
@@ -387,7 +387,7 @@ public final class PyTypeParameterMappingTest extends PyTestCase {
   public void testParamSpecWithDefaultAfterTypeVarTupleWithoutDefault() {
     doTestShapeMappingWithDefaults("*Ts, **P=[float, bool]", "int, str", """
       *Ts -> *tuple[int, str]
-      **P -> [float, bool]
+      **P -> [float | int, bool]
       """);
 
     doTestShapeMappingWithDefaults("*Ts, **P=[float, bool]", "int, str, [bytes]", """
@@ -415,14 +415,14 @@ public final class PyTypeParameterMappingTest extends PyTestCase {
     myFixture.configureByText("a.py", testData);
 
     PyClass pyClass = myFixture.findElementByText("Expected", PyClass.class);
-    PyCollectionType expectedGenericClassType =
-      assertInstanceOf(new PyTypingTypeProvider().getGenericType(pyClass, context), PyCollectionType.class);
+    PyClassType expectedGenericClassType =
+      assertInstanceOf(new PyTypingTypeProvider().getGenericType(pyClass, context), PyClassType.class);
 
     PyTargetExpression actualTuple = myFixture.findElementByText("actual", PyTargetExpression.class);
     PyTupleType actualTupleType = assertInstanceOf(context.getType(actualTuple), PyTupleType.class);
 
     PyTypeParameterMapping mapping = PyTypeParameterMapping.mapByShape(
-      expectedGenericClassType.getElementTypes(),
+      expectedGenericClassType.getTypeArguments(),
       ContainerUtil.subList(actualTupleType.getElementTypes(), 1),
       PyTypeParameterMapping.Option.USE_DEFAULTS
     );

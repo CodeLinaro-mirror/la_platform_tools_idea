@@ -1,6 +1,8 @@
 // "Move '@SomeOptInAnnotation' annotation from getter to property" "false"
+// ACTION: Convert requirement to @OptIn
 // ACTION: Remove annotation
 // ERROR: Opt-in requirement marker annotation cannot be used on variable
+// K2_ERROR: Opt-in requirement marker annotation cannot be used on variable.
 // K2_AFTER_ERROR: Opt-in requirement marker annotation cannot be used on variable.
 
 @RequiresOptIn

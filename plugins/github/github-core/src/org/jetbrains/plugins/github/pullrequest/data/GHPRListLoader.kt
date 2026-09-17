@@ -15,9 +15,8 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.launch
 import org.jetbrains.plugins.github.api.GHGQLRequests
 import org.jetbrains.plugins.github.api.GHRepositoryCoordinates
 import org.jetbrains.plugins.github.api.GHRepositoryPath
@@ -45,6 +44,10 @@ internal class GHPRListLoader(
   private val refreshRequests = MutableSharedFlow<Unit>(replay = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
   private val updateRequests = MutableSharedFlow<Updated<GHPullRequestShort>>(replay = 1)
 
+  private val listUpdatedRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+
+  val listUpdated: Flow<Unit> = listUpdatedRequests.asSharedFlow()
+
   private val loader = GraphQLListLoader.startIn(
     cs,
     { it.id },
@@ -66,10 +69,6 @@ internal class GHPRListLoader(
   val loadedData: StateFlow<List<GHPullRequestShort>> = dataStateFlow.mapState { it.getOrNull() ?: listOf() }
   val error: StateFlow<Throwable?> = loader.resultOrErrorFlow.map { it.exceptionOrNull() }.stateInNow(cs, null)
   val isLoading: StateFlow<Boolean> = loader.isBusyFlow
-  val refreshOrReloadRequests: Flow<Unit> = channelFlow {
-    launch { reloadRequests.collect { send(it) } }
-    launch { refreshRequests.collect { send(it) } }
-  }
 
   fun tryLoadMore() {
     requestMoreLauncher.launch {
@@ -83,12 +82,14 @@ internal class GHPRListLoader(
 
   fun refresh() {
     refreshRequests.tryEmit(Unit)
+    listUpdatedRequests.tryEmit(Unit)
   }
 
   fun reload() {
     cs.launchNow {
       reloadRequests.emit(Unit)
     }
+    listUpdatedRequests.tryEmit(Unit)
   }
 
   companion object {

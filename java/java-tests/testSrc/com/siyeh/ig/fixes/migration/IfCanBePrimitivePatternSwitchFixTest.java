@@ -1,11 +1,11 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.siyeh.ig.fixes.migration;
 
 import com.intellij.codeInspection.CommonQuickFixBundle;
 import com.intellij.java.syntax.parser.JavaKeywords;
 import com.intellij.openapi.roots.ModuleRootModificationUtil;
 import com.intellij.pom.java.JavaFeature;
-import com.intellij.testFramework.IdeaTestUtil;
+import com.intellij.pom.java.LanguageLevel;
 import com.intellij.testFramework.builders.JavaModuleFixtureBuilder;
 import com.intellij.testFramework.fixtures.DefaultLightProjectDescriptor;
 import com.siyeh.ig.IGQuickFixesTestCase;
@@ -27,7 +27,7 @@ public class IfCanBePrimitivePatternSwitchFixTest extends IGQuickFixesTestCase {
   protected void tuneFixture(JavaModuleFixtureBuilder builder) throws Exception {
     super.tuneFixture(builder);
     builder.setLanguageLevel(JavaFeature.PRIMITIVE_TYPES_IN_PATTERNS.getMinimumLevel());
-    builder.addJdk(IdeaTestUtil.getMockJdk18Path().getPath());
+    builder.addJdkVersion(LanguageLevel.JDK_1_8);
   }
 
   public void testPrimitiveIntType() { doTest(); }
@@ -59,6 +59,11 @@ public class IfCanBePrimitivePatternSwitchFixTest extends IGQuickFixesTestCase {
   public void testComparisonWithPrimitives2() { doTest(); }
   public void testComparisonWithPrimitives3() { doTest(); }
   public void testComparisonWithPrimitivesUsedTwice() { doTest(); }
+
+  public void testComparisonWithFloatingPoint() { doTest(); }
+  public void testComparisonWithNaN() { assertQuickfixNotAvailable(); }
+  public void testComparisonWithZero() { assertQuickfixNotAvailable(); }
+  public void testComparisonWithNegativeZero() { assertQuickfixNotAvailable(); }
 
   public void testComparisonNonPrimitive() { assertQuickfixNotAvailable(); }
   public void testDoubleComparison() { assertQuickfixNotAvailable(); }

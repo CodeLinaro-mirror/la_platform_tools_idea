@@ -1,8 +1,10 @@
 // "Show conflicting 'MyClass' declarations" "true"
 // SHOULD_BE_AVAILABLE_AFTER_EXECUTION
+// K2_ERROR: Redeclaration:<br>class MyClass : Any
+// K2_ERROR: Redeclaration:<br>class MyClass : Any
 // K2_AFTER_ERROR: Redeclaration:<br>class MyClass : Any
 // K2_AFTER_ERROR: Redeclaration:<br>class MyClass : Any
-// IGNORE_K1
+
 package test
 
 class MyClass<caret> {}

@@ -17,19 +17,16 @@ public final class PlatformPrefix {
   private PlatformPrefix() { }
 
   private static final String[] PREFIX_CANDIDATES = {
-    "AndroidStudio", "Idea",
-    /* Android Studio: Our classpath may match other platform prefixes but
-       we prefer AndroidStudio and fall back to Idea without adt-branding.
     "Rider", "GoLand", "CLion", "FleetBackend",
     null,
     "AppCode",
-    "Python", "DataSpell", "PyCharmCore",
+    "Python", "PyCharmCore",
     "DataGrip",
     "Ruby",
     "PhpStorm",
     "RustRover",
+    "IntelliJServer",
     "UltimateLangXml", "Idea", "PlatformLangXml"
-    */
   };
 
   private static boolean ourPlatformPrefixInitialized;

@@ -117,6 +117,8 @@ And this is an html block.
   </tr>
 </table>
 
+<!-- This is an HTML comment -->
+
 <hh2>Horizontal rules
 ----------------</hh2>
 
@@ -168,3 +170,34 @@ Tables:
 | Header 1 | Header 2 |
 | -------- | -------- |
 | Data 1   | Data 2   |
+
+
+<hh2>Footnotes
+---------</hh2>
+
+Text with a footnote[^1] and a multiline footnote[^2].
+
+<link_label>[^1]</link_label>: <footnote_def>This is the footnote definition.</footnote_def>
+
+<link_label>[^2]</link_label>: <footnote_def>First paragraph of the multiline footnote.</footnote_def>
+
+    <footnote_def>Continuation line one.</footnote_def>
+    <footnote_def>Continuation line two.</footnote_def>
+
+<hh2>Alerts
+---------</hh2>
+
+> <alert_note>[!NOTE]</alert_note> 
+> Note content
+
+> <alert_tip>[!TIP]</alert_tip> 
+> Tip content
+
+> <alert_important>[!IMPORTANT]</alert_important> 
+> Important content
+
+> <alert_warning>[!WARNING]</alert_warning> 
+> Warning content
+
+> <alert_caution>[!CAUTION]</alert_caution> 
+> Caution content

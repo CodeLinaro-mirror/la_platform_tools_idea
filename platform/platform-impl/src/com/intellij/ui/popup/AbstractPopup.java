@@ -248,7 +248,7 @@ public class AbstractPopup implements JBPopup, ScreenAreaConsumer, AlignedPopup,
   private Object[] modalEntitiesWhenShown;
   private Project myProject;
   private boolean myCancelOnClickOutside;
-  private final List<JBPopupListener> myListeners = new CopyOnWriteArrayList<>();
+  private final List<JBPopupListener> myListeners = ContainerUtil.createLockFreeCopyOnWriteList();
   private boolean myUseDimServiceForXYLocation;
   private MouseChecker myCancelOnMouseOutCallback;
   private Canceller myMouseOutCanceller;
@@ -1036,7 +1036,7 @@ public class AbstractPopup implements JBPopup, ScreenAreaConsumer, AlignedPopup,
     }
     Dimension size = getStoredSize();
     if (size != null) return size;
-    return myComponent.getPreferredSize();
+    return myContent.getPreferredSize();
   }
 
   @Override
@@ -1432,7 +1432,7 @@ public class AbstractPopup implements JBPopup, ScreenAreaConsumer, AlignedPopup,
     if (ClientSystemInfo.isWaylandToolkit()) {
       // In Wayland, popup's owner must be a toplevel, i.e., a window or another popup that is also a window:
       popupOwner = SwingUtilities.getRoot(popupOwner);
-      targetBounds.setLocation(getLocationRelativeToParent(targetBounds, (Window) popupOwner));
+      targetBounds.setLocation(fitIntoParentBounds(targetBounds, (Window) popupOwner));
     }
     if (LOG.isDebugEnabled()) {
       LOG.debug("expected preferred size: " + myContent.getPreferredSize());
@@ -1491,11 +1491,6 @@ public class AbstractPopup implements JBPopup, ScreenAreaConsumer, AlignedPopup,
     if (window instanceof IdeFrame) {
       LOG.warn("Lightweight popup is shown using AbstractPopup class. But this class is not supposed to work with lightweight popups.");
     }
-
-    // In some environments, e.g. native Wayland, the default root and/or window background (white)
-    // may be displayed briefly, causing very noticeable flickering in dark themes (IJPL-222913).
-    window.setBackground(myContent.getBackground());
-    root.setBackground(myContent.getBackground());
 
     window.setFocusableWindowState(myFocusable);
     window.setFocusable(myRequestFocus);
@@ -1642,7 +1637,7 @@ public class AbstractPopup implements JBPopup, ScreenAreaConsumer, AlignedPopup,
       }
 
       removeActivity();
-      TraceKt.use(TelemetryManager.getInstance().getTracer(UI).spanBuilder("afterShow#" + getClass().getSimpleName()), __ -> {
+      TraceKt.use(TelemetryManager.getInstance().getTracer(UI).spanBuilder("afterShow#" + getClass().getSimpleName()), _ -> {
         afterShow();
         return null;
       });
@@ -1684,7 +1679,7 @@ public class AbstractPopup implements JBPopup, ScreenAreaConsumer, AlignedPopup,
     afterShowSync();
   }
 
-  private static Point getLocationRelativeToParent(Rectangle bounds, Window popupParent) {
+  private static Point fitIntoParentBounds(Rectangle bounds, Window popupParent) {
     Rectangle newBounds = new Rectangle(bounds);
     // The Wayland server may refuse to show a popup whose top-left corner is located outside the parent toplevel's bounds.
     var toplevelParent = getNearestTopLevelAncestor(popupParent);
@@ -1704,17 +1699,6 @@ public class AbstractPopup implements JBPopup, ScreenAreaConsumer, AlignedPopup,
     ScreenUtil.moveToFit(newBounds, okBounds, new Insets(0, 0, 1, 1));
     if (LOG.isDebugEnabled()) {
       LOG.debug("The bounds after fitting into the top-level parent: " + newBounds);
-    }
-    // The "bounds" are "screen" coordinates, which in Wayland means that they
-    // are relative to the nearest toplevel (Window) in the hierarchy.
-    // But popups in Wayland are expected to be located relative to popup's "parent" (a toplevel or another popup).
-    // We need to adjust "bounds" to be relative to the parent.
-    Point parentLocation = popupParent.getLocationOnScreen();
-    newBounds.x -= parentLocation.x;
-    newBounds.y -= parentLocation.y;
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("The direct popup parent is located at " + parentLocation);
-      LOG.debug("The bounds after converting to the parent coordinate system: " + newBounds);
     }
     return newBounds.getLocation();
   }
@@ -2111,7 +2095,7 @@ public class AbstractPopup implements JBPopup, ScreenAreaConsumer, AlignedPopup,
       Rectangle newBounds = wnd.getBounds();
       newBounds.setLocation(p.getScreenPoint());
       Component parent = SwingUtilities.getRoot(myOwner);
-      wnd.setLocation(getLocationRelativeToParent(newBounds, (Window) parent));
+      wnd.setLocation(fitIntoParentBounds(newBounds, (Window) parent));
     } else {
       wnd.setLocation(p.getScreenPoint());
     }
@@ -2353,6 +2337,18 @@ public class AbstractPopup implements JBPopup, ScreenAreaConsumer, AlignedPopup,
   @ApiStatus.Internal
   public void setForceCancelOnFocusLoss(boolean forceCancelOnFocusLoss) {
     myForceCancelOnFocusLoss = forceCancelOnFocusLoss;
+  }
+
+  /**
+   * Returns true iff the popup will close on focus loss even on Wayland.
+   *
+   * @see #setForceCancelOnFocusLoss(boolean)
+   * @param popup the popup to check
+   * @return true iff the popup will close on focus loss even on Wayland
+   */
+  @ApiStatus.Internal
+  public static boolean isForceCancelOnFocusLoss(@NotNull JBPopup popup) {
+    return popup instanceof AbstractPopup abstractPopup && abstractPopup.myForceCancelOnFocusLoss;
   }
 
   @ApiStatus.Internal
@@ -2621,7 +2617,7 @@ public class AbstractPopup implements JBPopup, ScreenAreaConsumer, AlignedPopup,
         // The location is in the screen coordinates, but popups need to be positioned relative to their parent
         Component parent = SwingUtilities.getRoot(myOwner);
         Rectangle targetBounds = new Rectangle(location, size);
-        location.setLocation(getLocationRelativeToParent(targetBounds, (Window) parent));
+        location.setLocation(fitIntoParentBounds(targetBounds, (Window) parent));
       }
 
       if (LOG.isDebugEnabled()) {

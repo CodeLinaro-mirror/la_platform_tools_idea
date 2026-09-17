@@ -19,6 +19,7 @@ Validation ensures module and plugin dependencies are resolvable at runtime and 
 | 11 | Test library scope | Module | [test-library-scope.md](validators/test-library-scope.md) |
 | 12 | Suppression config keys | Config | [suppression-config.md](validators/suppression-config.md) |
 | 13 | Plugin content structural validation | Plugin | [plugin-content-structure.md](validators/plugin-content-structure.md) |
+| 14 | Embedded content module dependencies | Product | [embedded-content-module-dependency.md](validators/embedded-content-module-dependency.md) |
 
 ## When Validation Runs
 

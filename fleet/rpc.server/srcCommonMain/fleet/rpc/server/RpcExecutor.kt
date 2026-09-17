@@ -11,7 +11,6 @@ import fleet.rpc.core.InstanceId
 import fleet.rpc.core.InternalStreamDescriptor
 import fleet.rpc.core.InternalStreamMessage
 import fleet.rpc.core.PrefetchStrategy
-import fleet.rpc.core.RemoteObject
 import fleet.rpc.core.RemoteResource
 import fleet.rpc.core.RpcException
 import fleet.rpc.core.RpcMessage
@@ -179,7 +178,7 @@ class RpcExecutor private constructor(
           val msg = RpcMessage.CallFailure(
             requestId = message.requestId,
             error = FailureInfo(
-              requestError = "Invalid arguments for ${message.classMethodDisplayName()}: ${ex}"
+              requestError = "Invalid arguments for ${message.classMethodDisplayName()}: $ex"
             ),
           ).seal(destination = clientId, origin = route)
           send(msg)
@@ -201,24 +200,7 @@ class RpcExecutor private constructor(
               val remoteObjectId = InstanceId(UID.random().toString())
               val returnType = signature.returnType
 
-              if (result is RemoteObject) {
-                registerRemoteObject(
-                  path = remoteObjectId,
-                  remoteApiDescriptor = (returnType as RemoteKind.RemoteObject).descriptor,
-                  inst = result,
-                  serviceScope = serviceScope,
-                  parent = message.service
-                )
-              }
-
-              if (impl.instance is RemoteObject && request.method == "clientDispose") {
-                unregisterRemoteObject(message.service)
-              }
-
-              val resultSerialized = if (result is RemoteObject) {
-                Json.encodeToJsonElement(InstanceId.serializer(), remoteObjectId)
-              }
-              else if (returnType is RemoteKind.Resource) {
+              val resultSerialized = if (returnType is RemoteKind.Resource) {
                 val ready = CompletableDeferred<RemoteResource>()
 
                 val job = serviceScope.launch {
@@ -322,7 +304,7 @@ class RpcExecutor private constructor(
       }
       is RpcMessage.StreamInit -> {
         if (channels[message.streamId] == null) {
-          logger.trace("received StreamInit for unregistered stream ${message.streamId}, will respond with StreamClosed")
+          logger.trace { "received StreamInit for unregistered stream ${message.streamId}, will respond with StreamClosed" }
           sendAsync(RpcMessage.StreamClosed(message.streamId).seal(clientId, route))
         }
       }
@@ -419,7 +401,7 @@ class RpcExecutor private constructor(
     }
 
     // Add dependency to the created remote object
-    children.compute(parent) { k, v -> v.orEmpty().toPersistentSet().add(path) }
+    children.compute(parent) { k, v -> v.orEmpty().toPersistentSet().adding(path) }
     parents[path] = parent
   }
 
@@ -440,7 +422,7 @@ class RpcExecutor private constructor(
     additionalStep?.invoke(path)
 
     // Remove from parent deps, and unregister children
-    parents.remove(path)?.let { parent -> children.computeIfPresent(parent) { _, deps -> deps.toPersistentSet().remove(path) } }
+    parents.remove(path)?.let { parent -> children.computeIfPresent(parent) { _, deps -> deps.toPersistentSet().removing(path) } }
     children.remove(path)?.forEach {
       unregisterRemoteObject(it, additionalStep)
     }

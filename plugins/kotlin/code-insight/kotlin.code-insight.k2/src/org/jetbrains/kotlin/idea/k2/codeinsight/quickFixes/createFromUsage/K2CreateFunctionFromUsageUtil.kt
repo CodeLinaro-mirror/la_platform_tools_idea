@@ -8,7 +8,7 @@ import com.intellij.lang.jvm.actions.ExpectedType
 import com.intellij.lang.jvm.actions.ExpectedTypeWithNullability
 import com.intellij.lang.jvm.actions.expectedParameter
 import com.intellij.lang.jvm.types.JvmType
-import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.diagnostic.rethrowControlFlowException
 import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiPackage
@@ -19,16 +19,19 @@ import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaSession
 import org.jetbrains.kotlin.analysis.api.components.asKaType
 import org.jetbrains.kotlin.analysis.api.components.asPsiType
-import org.jetbrains.kotlin.analysis.api.components.buildClassType
-import org.jetbrains.kotlin.analysis.api.components.buildTypeParameterType
+import org.jetbrains.kotlin.analysis.api.components.type
 import org.jetbrains.kotlin.analysis.api.components.builtinTypes
 import org.jetbrains.kotlin.analysis.api.components.containingDeclaration
 import org.jetbrains.kotlin.analysis.api.components.defaultType
 import org.jetbrains.kotlin.analysis.api.components.expandedSymbol
 import org.jetbrains.kotlin.analysis.api.components.expectedType
 import org.jetbrains.kotlin.analysis.api.components.expressionType
+import org.jetbrains.kotlin.analysis.api.components.hasFlexibleNullability
+import org.jetbrains.kotlin.analysis.api.components.isMarkedNullable
+import org.jetbrains.kotlin.analysis.api.components.render
 import org.jetbrains.kotlin.analysis.api.components.returnType
 import org.jetbrains.kotlin.analysis.api.components.semanticallyEquals
+import org.jetbrains.kotlin.analysis.api.components.typeCreator
 import org.jetbrains.kotlin.analysis.api.components.withNullability
 import org.jetbrains.kotlin.analysis.api.renderer.types.KaTypeRenderer
 import org.jetbrains.kotlin.analysis.api.renderer.types.impl.KaTypeRendererForSource
@@ -53,8 +56,9 @@ import org.jetbrains.kotlin.analysis.api.types.KaErrorType
 import org.jetbrains.kotlin.analysis.api.types.KaFlexibleType
 import org.jetbrains.kotlin.analysis.api.types.KaFunctionType
 import org.jetbrains.kotlin.analysis.api.types.KaIntersectionType
+import org.jetbrains.kotlin.analysis.api.types.KaStarTypeProjection
 import org.jetbrains.kotlin.analysis.api.types.KaType
-import org.jetbrains.kotlin.analysis.api.types.KaTypeNullability
+import org.jetbrains.kotlin.analysis.api.types.KaTypeArgumentWithVariance
 import org.jetbrains.kotlin.analysis.api.types.KaTypeParameterType
 import org.jetbrains.kotlin.analysis.api.types.symbol
 import org.jetbrains.kotlin.analysis.api.useSiteSession
@@ -65,6 +69,7 @@ import org.jetbrains.kotlin.asJava.findFacadeClass
 import org.jetbrains.kotlin.asJava.toLightClass
 import org.jetbrains.kotlin.idea.base.analysis.api.utils.approximateAnonymousObjectToSupertypeOrSelf
 import org.jetbrains.kotlin.idea.base.codeInsight.KotlinNameSuggester
+import org.jetbrains.kotlin.idea.core.CollectingNameValidator
 import org.jetbrains.kotlin.idea.base.psi.classIdIfNonLocal
 import org.jetbrains.kotlin.idea.base.psi.extensions.ImplementationDetailClassNameCheckerProvider
 import org.jetbrains.kotlin.idea.base.psi.kotlinFqName
@@ -106,9 +111,27 @@ import org.jetbrains.kotlin.psi.KtTypeParameterListOwner
 import org.jetbrains.kotlin.psi.KtTypeReference
 import org.jetbrains.kotlin.psi.KtValueArgument
 import org.jetbrains.kotlin.psi.ValueArgument
+import org.jetbrains.kotlin.psi.psiUtil.containingClass
 import org.jetbrains.kotlin.psi.psiUtil.getNonStrictParentOfType
 import org.jetbrains.kotlin.psi.psiUtil.getReceiverExpression
+import org.jetbrains.kotlin.psi.psiUtil.hasInnerModifier
 import org.jetbrains.kotlin.renderer.render
+import org.jetbrains.kotlin.types.Variance
+
+internal data class TypeArgumentInfo(
+    val typeParameterName: String,
+    val renderedTypeArgument: String,
+)
+
+internal data class CallTypeParameterInfo(
+    val typeParameterDeclarations: List<TypeArgumentInfo>,
+    val substitutionMap: Map<String, String>,
+) {
+    companion object {
+        val EMPTY = CallTypeParameterInfo(emptyList(), emptyMap())
+    }
+}
+
 
 object K2CreateFunctionFromUsageUtil {
     fun PsiElement.isPartOfImportDirectiveOrAnnotation(): Boolean = PsiTreeUtil.getParentOfType(
@@ -152,9 +175,10 @@ object K2CreateFunctionFromUsageUtil {
                     val symbol = variable.symbol as? KaCallableSymbol
                     val parameterType = symbol?.receiverType ?: (variable.symbol
                         .containingDeclaration as? KaNamedClassSymbol)?.defaultType ?: builtinTypes.nullableAny
-                    buildClassType(ClassId.fromString("kotlin/properties/$delegateClassName")) {
-                        argument(parameterType)
-                        argument(ktType)
+                    @OptIn(KaExperimentalApi::class)
+                    typeCreator.classType(ClassId.fromString("kotlin/properties/$delegateClassName")) {
+                        invariantTypeArgument(parameterType)
+                        invariantTypeArgument(ktType)
                     }
                 }
                 parent is KtParameter && parent.defaultValue == current -> parent.returnType // KT-77254
@@ -175,13 +199,18 @@ object K2CreateFunctionFromUsageUtil {
         }
         if (expectedType == null) return null
 
-        val receiverExpression = (parent as? KtDotQualifiedExpression)?.receiverExpression
+        val receiverExpression = when (this) {
+            is KtBinaryExpression -> left
+            else -> (parent as? KtDotQualifiedExpression)?.receiverExpression
+        }
         val receiverType = receiverExpression?.expressionType
+
+        expectedType = makeAccessibleInCreationPlace(expectedType, this) ?: return null
+
         if (receiverType is KaClassType) {
             expectedType = guessAccessibleTypeByArguments(receiverType, expectedType)
         }
 
-        expectedType = makeAccessibleInCreationPlace(expectedType, this) ?: return null
         val jvmType = expectedType.convertToJvmType(this) ?: return null
         return ExpectedKotlinType.create(expectedType, jvmType)
     }
@@ -219,8 +248,8 @@ object K2CreateFunctionFromUsageUtil {
         return null
     }
 
-    context(_: KaSession)
     @OptIn(KaExperimentalApi::class)
+    context(_: KaSession)
     fun KaType.convertToJvmType(useSitePosition: PsiElement): JvmType? = asPsiType(useSitePosition, allowErrorTypes = false)
 
     context(_: KaSession)
@@ -231,49 +260,116 @@ object K2CreateFunctionFromUsageUtil {
     }?.psi
 
     context(_: KaSession)
-    @OptIn(KaExperimentalApi::class)
     internal fun ValueArgument.getExpectedParameterInfo(
         defaultParameterName: String,
         isTheOnlyAnnotationParameter: Boolean,
         receiverType: KaType?
     ): ExpectedParameter {
         val parameterNameAsString = getArgumentName()?.asName?.asString()
-        val argumentExpression = getArgumentExpression()
-        val parameterNames = parameterNameAsString?.let { sequenceOf(it) } ?: argumentExpression?.let { NAME_SUGGESTER.suggestExpressionNames(it) }
+        return createExpectedParameterInfo(
+            argumentExpression = getArgumentExpression(),
+            defaultParameterName = defaultParameterName,
+            parameterNameAsString = parameterNameAsString,
+            isTheOnlyAnnotationParameter = isTheOnlyAnnotationParameter,
+            receiverType = receiverType,
+        )
+    }
+
+    context(_: KaSession)
+    internal fun createExpectedParameterInfo(
+        argumentExpression: KtExpression?,
+        defaultParameterName: String,
+        parameterNameAsString: String?,
+        isTheOnlyAnnotationParameter: Boolean,
+        receiverType: KaType?
+    ): ExpectedParameter {
         var expectedArgumentType = argumentExpression?.expressionType?.approximateAnonymousObjectToSupertypeOrSelf()
         if (expectedArgumentType != null && receiverType is KaClassType) {
             expectedArgumentType = guessAccessibleTypeByArguments(receiverType, expectedArgumentType)
         }
-        val jvmParameterType = expectedArgumentType?.convertToJvmType(argumentExpression!!)
-        val expectedType = if (jvmParameterType == null) ExpectedTypeWithNullability.INVALID_TYPE else ExpectedKotlinType.create(expectedArgumentType, jvmParameterType)
+        val parameterNames = when {
+            parameterNameAsString != null -> sequenceOf(parameterNameAsString)
+            expectedArgumentType is KaTypeParameterType -> NAME_SUGGESTER.suggestTypeNames(expectedArgumentType)
+            else -> argumentExpression?.let { NAME_SUGGESTER.suggestExpressionNames(it) }
+        }
+        val jvmParameterType = argumentExpression?.let { expectedArgumentType?.convertToJvmType(it) }
+        val expectedType = when (jvmParameterType) {
+            null if expectedArgumentType != null ->
+                ExpectedTypeWithNullability.createExpectedKotlinType(
+                    PsiType.getJavaLangObject(
+                        argumentExpression!!.manager,
+                        argumentExpression.resolveScope
+                    ), Nullability.UNKNOWN
+                )
+
+            null -> ExpectedTypeWithNullability.INVALID_TYPE
+            else -> ExpectedKotlinType.create(expectedArgumentType!!, jvmParameterType)
+        }
         val names = parameterNames?.toList() ?: listOf(defaultParameterName)
-        val nameArray = (if (isTheOnlyAnnotationParameter && parameterNameAsString==null) listOf("value") + names else names).toTypedArray()
+        val nameArray = (if (isTheOnlyAnnotationParameter && parameterNameAsString == null) listOf("value") + names else names).toTypedArray()
         return expectedParameter(expectedType, *nameArray)
     }
 
-    context(_: KaSession) @OptIn(KaExperimentalApi::class)
+    @OptIn(KaExperimentalApi::class)
+    context(_: KaSession)
     private fun guessAccessibleTypeByArguments(
         receiverType: KaClassType, expectedArgumentType: KaType
     ): KaType {
-        val classLikeSymbol = receiverType.symbol
-        val typeArguments = receiverType.typeArguments
-        if (expectedArgumentType is KaTypeParameterType) {
-            classLikeSymbol.typeParameters.zip(typeArguments).forEach { (typeParameter, typeArgument) ->
-                val argType = typeArgument.type
-                if (argType != null && expectedArgumentType.semanticallyEquals(argType)) {
-                    return buildTypeParameterType(typeParameter)
+        val substitutions = receiverType.symbol.typeParameters.zip(receiverType.typeArguments).mapNotNull { (typeParameter, typeArgument) ->
+            typeArgument.type?.let { it to typeCreator.typeParameterType(typeParameter) }
+        }
+        return guessUnsubstitutedType(expectedArgumentType, substitutions)
+    }
+
+    context(_: KaSession)
+    private fun guessUnsubstitutedType(type: KaType, substitutions: List<Pair<KaType, KaTypeParameterType>>): KaType {
+        val matchedArg = substitutions.find { (receiverTypeArgument, _) ->
+            type.semanticallyEquals(receiverTypeArgument)
+        }
+
+        return when {
+            matchedArg != null -> matchedArg.second
+            type is KaFunctionType -> guessUnsubstitutedType(type, substitutions)
+            type is KaClassType -> guessUnsubstitutedType(type, substitutions)
+            else -> null
+        }?.let { if (type.isMarkedNullable) it.withNullability(true) else it } ?: type
+    }
+
+    @OptIn(KaExperimentalApi::class)
+    context(_: KaSession)
+    private fun guessUnsubstitutedType(type: KaClassType, substitutions: List<Pair<KaType, KaTypeParameterType>>): KaType {
+        return typeCreator.classType(type.symbol) {
+            type.typeArguments.forEach { typeArgument ->
+                when (typeArgument) {
+                    is KaStarTypeProjection -> typeArgument(starTypeProjection())
+                    is KaTypeArgumentWithVariance -> {
+                        val substitutedArgumentType = guessUnsubstitutedType(typeArgument.type, substitutions)
+                        typeArgument(typeArgument.variance, substitutedArgumentType)
+                    }
                 }
             }
         }
-        if (expectedArgumentType is KaClassType && expectedArgumentType.symbol == classLikeSymbol &&
-            expectedArgumentType.typeArguments.any { it.type is KaTypeParameterType }) {
-            return buildClassType(classLikeSymbol) {
-                classLikeSymbol.typeParameters.forEach {
-                    argument(buildTypeParameterType(it))
-                }
-            }
+    }
+
+    @OptIn(KaExperimentalApi::class)
+    context(_: KaSession)
+    private fun guessUnsubstitutedType(type: KaFunctionType, substitutions: List<Pair<KaType, KaTypeParameterType>>): KaType {
+        val substitutedReceiverType = type.receiverType?.let { originalReceiverType ->
+            guessUnsubstitutedType(originalReceiverType, substitutions)
         }
-        return expectedArgumentType
+        val substitutedParameterTypes = type.parameters.map { parameter ->
+            guessUnsubstitutedType(parameter.type, substitutions)
+        }
+        val substitutedReturnType = guessUnsubstitutedType(type.returnType, substitutions)
+
+        return typeCreator.functionType {
+            isSuspend = type.isSuspend
+            receiverType = substitutedReceiverType
+            type.parameters.zip(substitutedParameterTypes).forEach { (parameter, substitutedType) ->
+                valueParameter(parameter.name, substitutedType)
+            }
+            returnType = substitutedReturnType
+        }
     }
 
     context(_: KaSession)
@@ -363,14 +459,14 @@ object K2CreateFunctionFromUsageUtil {
 
     }
 
-    context(_: KaSession)
     @OptIn(KaExperimentalApi::class)
+    context(_: KaSession)
     private fun JvmType.toKtType(useSitePosition: PsiElement): KaType? = when (this) {
         is PsiType -> if (isValid) {
             try {
                 asKaType(useSitePosition)
             } catch (e: Throwable) {
-                if (Logger.shouldRethrow(e)) throw e
+                rethrowControlFlowException(e)
 
                 // Some requests from Java side do not have a type. For example, in `var foo = dep.<caret>foo();`, we cannot guess
                 // the type of `foo()`. In this case, the request passes "PsiType:null" whose name is "null" as a text. The analysis
@@ -395,11 +491,12 @@ object K2CreateFunctionFromUsageUtil {
         return theType.toKtType(useSitePosition)?.let { if (ktTypeNullability == null) it else it.withNullability(ktTypeNullability) }
     }
 
-    fun KaTypeNullability.toNullability() : Nullability {
-        return when (this) {
-            KaTypeNullability.NON_NULLABLE -> Nullability.NOT_NULL
-            KaTypeNullability.NULLABLE -> Nullability.NULLABLE
-            KaTypeNullability.UNKNOWN -> Nullability.UNKNOWN
+    context(_: KaSession)
+    fun KaType.getNullability() : Nullability {
+        return when {
+            this.hasFlexibleNullability -> Nullability.NOT_NULL
+            this.isMarkedNullable -> Nullability.NULLABLE
+            else -> Nullability.UNKNOWN
         }
     }
 
@@ -473,13 +570,47 @@ object K2CreateFunctionFromUsageUtil {
     }
 
     context(_: KaSession)
-    @OptIn(KaExperimentalApi::class)
     fun computeExpectedParams(call: KtCallElement, isAnnotation:Boolean=false): List<ExpectedParameter> {
         val receiverExpression = (call.parent as? KtDotQualifiedExpression)?.receiverExpression
         val receiverType = receiverExpression?.expressionType
         return call.valueArguments.mapIndexed { index, valueArgument ->
             valueArgument.getExpectedParameterInfo("p$index", isAnnotation && call.valueArguments.size == 1, receiverType)
         }
+    }
+
+    @OptIn(KaExperimentalApi::class)
+    context(_: KaSession)
+    internal fun computeCallTypeParameterInfo(
+        call: KtCallElement,
+        targetContainerClass: KtClassOrObject?,
+    ): CallTypeParameterInfo {
+        val typeArguments = call.typeArguments
+        if (typeArguments.isEmpty()) return CallTypeParameterInfo.EMPTY
+
+        val containerTypeParameters = generateSequence(targetContainerClass) {
+            if (it.hasInnerModifier()) it.containingClass() else null
+        }
+            .flatMap { it.typeParameters }
+            .toSet()
+
+        val renderedTypes = typeArguments.mapNotNull {
+            it.typeReference?.type?.render(WITH_TYPE_NAMES_FOR_CREATE_ELEMENTS, Variance.INVARIANT)
+        }
+
+        val validator = CollectingNameValidator(containerTypeParameters.mapNotNull { it.name })
+        val freshNames = KotlinNameSuggester.suggestNamesForTypeParameters(renderedTypes.size, validator)
+
+        val declarations = mutableListOf<TypeArgumentInfo>()
+        val substitutionMap = mutableMapOf<String, String>()
+        var freshIndex = 0
+
+        for (rendered in renderedTypes) {
+            val freshName = freshNames[freshIndex++]
+            declarations.add(TypeArgumentInfo(freshName, rendered))
+            substitutionMap[rendered] = freshName
+        }
+
+        return CallTypeParameterInfo(declarations, substitutionMap)
     }
 
     /**

@@ -30,12 +30,13 @@ final class GeneralHighlightingPassFactory implements MainHighlightingPassFactor
   @Override
   public @NotNull TextEditorHighlightingPass createHighlightingPass(@NotNull PsiFile psiFile, @NotNull Editor editor) {
     TextRange textRange = FileStatusMap.getDirtyTextRange(editor.getDocument(), psiFile, Pass.UPDATE_ALL);
+    Project project = psiFile.getProject();
     if (textRange == null) {
-      return new EmptyPass(psiFile.getProject(), editor.getDocument());
+      return new EmptyPass(project, editor.getDocument());
     }
-    ProperTextRange visibleRange = HighlightingSessionImpl.getFromCurrentIndicator(psiFile).getVisibleRange();
+    ProperTextRange visibleRange = DaemonCodeAnalyzerEx.getInstanceEx(project).getHighlightSessionFromCurrentIndicator(psiFile).getVisibleRange();
     return new GeneralHighlightingPass(psiFile, editor.getDocument(), textRange.getStartOffset(), textRange.getEndOffset(), true, visibleRange, editor, true,
-                                       true, true, HighlightInfoUpdater.getInstance(psiFile.getProject()));
+                                       true, true, false, HighlightInfoUpdater.getInstance(project));
   }
 
   @Override
@@ -46,6 +47,6 @@ final class GeneralHighlightingPassFactory implements MainHighlightingPassFactor
     // no applying to the editor - for read-only analysis only
     return new GeneralHighlightingPass(psiFile, document, 0, psiFile.getTextLength(),
                                        true, new ProperTextRange(0, document.getTextLength()), null, true, true,
-                                       true, HighlightInfoUpdater.EMPTY);
+                                       true, false, HighlightInfoUpdater.EMPTY);
   }
 }

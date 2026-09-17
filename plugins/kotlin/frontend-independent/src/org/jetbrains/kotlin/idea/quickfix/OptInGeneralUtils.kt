@@ -4,13 +4,20 @@ package org.jetbrains.kotlin.idea.quickfix
 
 import com.intellij.codeInsight.intention.PriorityAction
 import com.intellij.modcommand.ModCommandAction
-import org.jetbrains.kotlin.descriptors.annotations.KotlinTarget
+import com.intellij.psi.PsiElement
+import com.intellij.psi.util.findParentOfType
+import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
+import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotationTarget
+import org.jetbrains.kotlin.idea.references.mainReference
 import org.jetbrains.kotlin.idea.util.findAnnotation
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.psi.KtAnnotated
+import org.jetbrains.kotlin.psi.KtAnnotatedExpression
 import org.jetbrains.kotlin.psi.KtBlockExpression
+import org.jetbrains.kotlin.psi.KtCallExpression
 import org.jetbrains.kotlin.psi.KtCallableDeclaration
+import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtClassBody
 import org.jetbrains.kotlin.psi.KtClassOrObject
 import org.jetbrains.kotlin.psi.KtConstructor
@@ -18,8 +25,11 @@ import org.jetbrains.kotlin.psi.KtDeclaration
 import org.jetbrains.kotlin.psi.KtDeclarationWithBody
 import org.jetbrains.kotlin.psi.KtDestructuringDeclaration
 import org.jetbrains.kotlin.psi.KtElement
+import org.jetbrains.kotlin.psi.KtFunctionLiteral
+import org.jetbrains.kotlin.psi.KtLambdaExpression
 import org.jetbrains.kotlin.psi.KtProperty
 import org.jetbrains.kotlin.psi.KtPsiUtil
+import org.jetbrains.kotlin.psi.KtScriptInitializer
 import org.jetbrains.kotlin.psi.KtTypeAlias
 import org.jetbrains.kotlin.psi.psiUtil.containingClassOrObject
 import org.jetbrains.kotlin.psi.psiUtil.getParentOfTypesAndPredicate
@@ -36,16 +46,17 @@ abstract class OptInGeneralUtilsBase {
 
     abstract fun KtDeclaration.isSubclassOptPropagateApplicable(annotationFqName: FqName): Boolean
 
+    @KaExperimentalApi
     fun collectPropagateOptInAnnotationFix(
         targetElement: KtDeclaration,
         kind: AddAnnotationFix.Kind,
-        applicableTargets: Set<KotlinTarget>,
-        actualTargetList: List<KotlinTarget>,
+        applicableTargets: Set<KaAnnotationTarget>,
+        actualTargets: Set<KaAnnotationTarget>,
         annotationClassId: ClassId,
         isOverrideError: Boolean
     ): AddAnnotationFix? {
         if (KtPsiUtil.isLocal(targetElement)) return null
-        if (actualTargetList.none { it in applicableTargets }) return null
+        if (actualTargets.none { it in applicableTargets }) return null
 
         val annotationFqName = annotationClassId.asSingleFqName()
         return when {
@@ -83,6 +94,32 @@ abstract class OptInGeneralUtilsBase {
         } else {
             OptInFixes.UseOptInAnnotationFix(targetElement, optInClassId, kind, annotationFqName, priority)
         }
+    }
+
+    fun collectScriptCandidates(element: KtElement): List<CandidateData> {
+        val result = mutableListOf<CandidateData>()
+        var current: PsiElement? = element
+
+        val closestDeclaration = element.findParentOfType<KtDeclaration>(strict = false)
+
+        while (current != null) {
+            when (current) {
+                is KtClassOrObject if closestDeclaration != current -> findContainingClassOrObjectCandidate(current)?.addTo(result)
+
+                is KtCallExpression -> findSamConstructorCallCandidate(current)?.addTo(result)
+
+                is KtDeclaration
+                    if (current is KtDeclarationWithBody && current !is KtLambdaExpression && current !is KtFunctionLiteral
+                        || current is KtTypeAlias
+                        || current is KtProperty
+                        || current is KtClassOrObject) ->
+                    findContainingDeclarationCandidate(current).addTo(result)
+            }
+            current = current.parent
+        }
+
+        findStatementCandidate(element)?.addTo(result)
+        return result.sortedBy { it.kind == AddAnnotationFix.Kind.Self }
     }
 
     fun collectCandidates(element: KtElement): List<CandidateData> {
@@ -128,5 +165,20 @@ abstract class OptInGeneralUtilsBase {
             statementElement.parent as? KtElement ?: return null
         if (statementElement is KtDestructuringDeclaration) return null
         return CandidateData(statementElement, AddAnnotationFix.Kind.Self)
+    }
+
+    private fun findSamConstructorCallCandidate(callExpression: KtCallExpression): CandidateData? {
+        if (callExpression.parent !is KtBlockExpression && callExpression.parent !is KtScriptInitializer && callExpression.parent !is KtAnnotatedExpression) return null
+
+        val resolve = callExpression.calleeExpression?.mainReference?.resolve() ?: return null
+        // Only match SAM constructor calls: the callee must resolve to a fun interface (KtClass), not to a regular function (KtNamedFunction)
+        if (resolve !is KtClass) return null
+        val element = when (callExpression.parent) {
+            is KtScriptInitializer -> callExpression.parent
+            is KtAnnotatedExpression if callExpression.parent.parent is KtScriptInitializer -> callExpression.parent.parent
+            else -> callExpression
+        }
+        val name = resolve.name ?: return null
+        return CandidateData(element as KtElement, AddAnnotationFix.Kind.Declaration(name))
     }
 }

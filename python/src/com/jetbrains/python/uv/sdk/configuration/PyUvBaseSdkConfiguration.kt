@@ -2,8 +2,9 @@
 package com.jetbrains.python.uv.sdk.configuration
 
 import com.intellij.openapi.module.Module
-import com.intellij.python.common.tools.ToolId
-import com.intellij.python.community.impl.uv.common.UV_BASE_TOOL_ID
+import com.intellij.python.community.common.tools.ToolId
+import com.intellij.python.pyproject.PY_PROJECT_TOML
+import com.intellij.python.uv.common.UV_BASE_TOOL_ID
 import com.jetbrains.python.PythonBinary
 import com.jetbrains.python.sdk.configuration.CreateSdkInfo
 import com.jetbrains.python.sdk.configuration.PyProjectSdkConfigurationExtension
@@ -14,9 +15,11 @@ internal class PyUvBaseSdkConfiguration : PyProjectSdkConfigurationExtension {
 
   override val toolId: ToolId = UV_BASE_TOOL_ID
 
+  override val potentialDependencyFiles: Set<String> = setOf(PY_PROJECT_TOML)
+
   override suspend fun checkEnvironmentAndPrepareSdkCreator(module: Module, venvsInModule: List<PythonBinary>): CreateSdkInfo? =
     prepareSdkCreator(
-      { checkManageableUvEnvBase(venvsInModule) }
+      { checkManageableUvEnvBase(module, toolId, venvsInModule) }
     ) { envExists -> { createUvSdk(module, toolId, venvsInModule, envExists) } }
 
   override fun asPyProjectTomlSdkConfigurationExtension(): PyProjectTomlConfigurationExtension? = null

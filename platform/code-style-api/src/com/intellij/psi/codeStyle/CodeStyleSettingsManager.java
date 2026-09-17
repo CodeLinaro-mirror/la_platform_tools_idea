@@ -25,6 +25,7 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
 import org.jetbrains.annotations.Unmodifiable;
 
+import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
 import java.util.Collection;
 import java.util.Collections;
@@ -35,9 +36,11 @@ public class CodeStyleSettingsManager implements PersistentStateComponentWithMod
   private static final Logger LOG = Logger.getInstance(CodeStyleSettingsManager.class);
 
   /**
-   * @deprecated Use {@link #setMainProjectCodeStyle(CodeStyleSettings)} or {@link #getMainProjectCodeStyle()} instead
+   * Use {@link #setMainProjectCodeStyle(CodeStyleSettings)} or {@link #getMainProjectCodeStyle()} instead
    */
-  @Deprecated(forRemoval = true) public volatile @Nullable CodeStyleSettings PER_PROJECT_SETTINGS;
+  @ApiStatus.Internal
+  // public for DefaultJDOMExternalizer
+  public volatile @Nullable CodeStyleSettings PER_PROJECT_SETTINGS;
 
   public volatile boolean USE_PER_PROJECT_SETTINGS;
   public volatile String PREFERRED_PROJECT_CODE_STYLE;
@@ -195,38 +198,56 @@ public class CodeStyleSettingsManager implements PersistentStateComponentWithMod
   }
 
   protected void registerExtensionPointListeners(@Nullable Disposable disposable) {
-    FileIndentOptionsProvider.EP_NAME.addChangeListener(this::notifyCodeStyleSettingsChanged, disposable);
+    // The extension point and CodeStyleSettingsService are application-scoped and outlive project-scoped
+    // subclasses (ProjectCodeStyleSettingsManager). A missed/late disposal of these listeners would otherwise
+    // pin the manager - and, for a project manager, its Project - through the app-scoped listener lists.
+    // Weakly referencing `this` at the listener boundary keeps the manager collectable regardless.
+    WeakReference<CodeStyleSettingsManager> selfRef = new WeakReference<>(this);
+    FileIndentOptionsProvider.EP_NAME.addChangeListener(() -> {
+      CodeStyleSettingsManager self = selfRef.get();
+      if (self != null) self.notifyCodeStyleSettingsChanged();
+    }, disposable);
     CodeStyleSettingsService.getInstance().addListener(new CodeStyleSettingsServiceListener() {
       @Override
       public void fileTypeIndentOptionsFactoryAdded(@NotNull FileTypeIndentOptionsFactory factory) {
-        registerFileTypeIndentOptions(getAllSettings(), factory.getFileType(), factory.createIndentOptions());
+        CodeStyleSettingsManager self = selfRef.get();
+        if (self != null) self.registerFileTypeIndentOptions(self.getAllSettings(), factory.getFileType(), factory.createIndentOptions());
       }
 
       @Override
       public void fileTypeIndentOptionsFactoryRemoved(@NotNull FileTypeIndentOptionsFactory factory) {
-        unregisterFileTypeIndentOptions(getAllSettings(), factory.getFileType());
+        CodeStyleSettingsManager self = selfRef.get();
+        if (self != null) self.unregisterFileTypeIndentOptions(self.getAllSettings(), factory.getFileType());
       }
 
       @Override
       public void languageCodeStyleProviderAdded(@NotNull LanguageCodeStyleProvider provider) {
-        registerLanguageSettings(getAllSettings(), provider);
-        registerCustomSettings(getAllSettings(), provider);
+        CodeStyleSettingsManager self = selfRef.get();
+        if (self != null) {
+          self.registerLanguageSettings(self.getAllSettings(), provider);
+          self.registerCustomSettings(self.getAllSettings(), provider);
+        }
       }
 
       @Override
       public void languageCodeStyleProviderRemoved(@NotNull LanguageCodeStyleProvider provider) {
-        unregisterLanguageSettings(getAllSettings(), provider);
-        unregisterCustomSettings(getAllSettings(), provider);
+        CodeStyleSettingsManager self = selfRef.get();
+        if (self != null) {
+          self.unregisterLanguageSettings(self.getAllSettings(), provider);
+          self.unregisterCustomSettings(self.getAllSettings(), provider);
+        }
       }
 
       @Override
       public void customCodeStyleSettingsFactoryAdded(@NotNull CustomCodeStyleSettingsFactory factory) {
-        registerCustomSettings(getAllSettings(), factory);
+        CodeStyleSettingsManager self = selfRef.get();
+        if (self != null) self.registerCustomSettings(self.getAllSettings(), factory);
       }
 
       @Override
       public void customCodeStyleSettingsFactoryRemoved(@NotNull CustomCodeStyleSettingsFactory factory) {
-        unregisterCustomSettings(getAllSettings(), factory);
+        CodeStyleSettingsManager self = selfRef.get();
+        if (self != null) self.unregisterCustomSettings(self.getAllSettings(), factory);
       }
     }, disposable);
   }

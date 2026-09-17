@@ -1,4 +1,4 @@
-// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.codeVision.settings
 
 import com.intellij.codeInsight.codeVision.CodeVisionAnchorKind
@@ -18,6 +18,7 @@ import com.intellij.ui.dsl.listCellRenderer.textListCellRenderer
 import com.intellij.util.ResourceUtil
 import javax.swing.JComponent
 import javax.swing.JPanel
+import org.jetbrains.annotations.ApiStatus
 
 open class CodeVisionGroupDefaultSettingModel(override val name: String,
                                               groupId: String,
@@ -32,6 +33,7 @@ open class CodeVisionGroupDefaultSettingModel(override val name: String,
               isEnabled: Boolean,
               providers: List<CodeVisionProvider<*>>) : this(name, groupId, description, null, isEnabled, providers)
 
+  @ApiStatus.Internal
   companion object {
     private val CODE_VISION_PREVIEW_ENABLED = Key<Boolean>("code.vision.preview.data")
 
@@ -99,7 +101,11 @@ open class CodeVisionGroupDefaultSettingModel(override val name: String,
   private fun getCasePreview(): String? {
     val associatedFileType = previewLanguage?.associatedFileType ?: return null
     val path = "codeVisionProviders/" + id + "/preview." + associatedFileType.defaultExtension
-    val stream = associatedFileType.javaClass.classLoader.getResourceAsStream(path)
+    val stream =
+      associatedFileType.javaClass.classLoader.getResourceAsStream(path) ?: providers.firstNotNullOfOrNull { provider ->
+        val clazz = if (provider is CodeVisionProviderAdapter) provider.delegate.javaClass else provider.javaClass
+        clazz.classLoader.getResourceAsStream(path)
+      }
     return if (stream != null) ResourceUtil.loadText(stream) else null
   }
 

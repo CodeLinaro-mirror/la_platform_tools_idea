@@ -50,7 +50,6 @@ import com.intellij.openapi.roots.libraries.ui.OrderRoot;
 import com.intellij.openapi.util.NlsActions;
 import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.util.ThrowableComputable;
-import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.JarFileSystem;
@@ -106,7 +105,8 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Method;
-import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -117,7 +117,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import java.util.jar.Attributes;
@@ -142,7 +141,7 @@ public abstract class TestObject extends JavaTestFrameworkRunnableState<JUnitCon
   private static final int DEFAULT_SHUTDOWN_TIMEOUT = 600;
 
   private final JUnitConfiguration myConfiguration;
-  protected File myListenersFile;
+  protected Path myListenersFile;
 
   private final Map<Module, JavaParameters> myAdditionalJarsForModuleFork = new HashMap<>();
 
@@ -260,7 +259,7 @@ public abstract class TestObject extends JavaTestFrameworkRunnableState<JUnitCon
   }
 
   protected void fillForkModule(Map<Module, List<String>> perModule, Module module, String name) {
-    perModule.computeIfAbsent(module, elemList -> new ArrayList<>()).add(name);
+    perModule.computeIfAbsent(module, _ -> new ArrayList<>()).add(name);
   }
 
   public Module[] getModulesToCompile() {
@@ -401,6 +400,10 @@ public abstract class TestObject extends JavaTestFrameworkRunnableState<JUnitCon
       javaParameters.getVMParametersList().addProperty("idea.test.graceful.shutdown.timeout.seconds", String.valueOf(timeout));
     }
 
+    if (!Registry.is("test.use.suite.duration")) {
+      javaParameters.getVMParametersList().addProperty("test.use.suite.duration", "false");
+    }
+
     if (javaParameters.getMainClass() == null) { // for custom main class, e.g. overridden by JUnitDevKitUnitTestingSettings.Companion#apply
       javaParameters.setMainClass(JUnitConfiguration.JUNIT_START_CLASS);
     }
@@ -410,9 +413,9 @@ public abstract class TestObject extends JavaTestFrameworkRunnableState<JUnitCon
     collectListeners(javaParameters, buf, IDEAJUnitListener.EP_NAME, "\n");
     if (!buf.isEmpty()) {
       try {
-        myListenersFile = FileUtil.createTempFile("junit_listeners_", "", true);
-        javaParameters.getProgramParametersList().add("@@" + myListenersFile.getPath());
-        FileUtil.writeToFile(myListenersFile, buf.toString().getBytes(StandardCharsets.UTF_8));
+        myListenersFile = Files.createTempFile("junit_listeners_", "");
+        javaParameters.getProgramParametersList().add("@@" + myListenersFile);
+        Files.writeString(myListenersFile, buf.toString());
       }
       catch (IOException e) {
         LOG.error(e);
@@ -595,7 +598,6 @@ public abstract class TestObject extends JavaTestFrameworkRunnableState<JUnitCon
     return null;
   }
 
-  private static final Map<String, Object> DOWNLOAD_LOCKS = new ConcurrentHashMap<>();
   private void downloadDependenciesWhenRequired(@NotNull Project project,
                                                 @NotNull List<String> classPath,
                                                 @NotNull RepositoryLibraryProperties properties) throws CantRunException {
@@ -610,14 +612,11 @@ public abstract class TestObject extends JavaTestFrameworkRunnableState<JUnitCon
         String title = JavaUiBundle.message("jar.repository.manager.dialog.resolving.dependencies.title", 1);
         targetProgressIndicator.addSystemLine(title);
       }
-      Object lock = DOWNLOAD_LOCKS.computeIfAbsent(properties.getMavenId(), key -> ObjectUtils.sentinel("JUnitDownload: " + key));
-      synchronized (lock) {
-        roots = JarRepositoryManager.loadDependenciesSync(
-          project, properties, false, false, null, null,
-          targetProgressIndicator != null
-          ? new ProgressIndicatorWrapper(targetProgressIndicator)
-          : ObjectUtils.notNull(ProgressManager.getInstance().getProgressIndicator(), new DumbProgressIndicator()));
-      }
+      roots = JarRepositoryManager.loadDependenciesSync(
+        project, properties, false, false, null, null,
+        targetProgressIndicator != null
+        ? new ProgressIndicatorWrapper(targetProgressIndicator)
+        : ObjectUtils.notNull(ProgressManager.getInstance().getProgressIndicator(), new DumbProgressIndicator()));
     }
     catch (ProcessCanceledException e) {
       roots = Collections.emptyList();
@@ -639,14 +638,17 @@ public abstract class TestObject extends JavaTestFrameworkRunnableState<JUnitCon
     }
   }
 
+  @SuppressWarnings("DuplicateBranchesInSwitch")
   private static GlobalSearchScope getScopeForJUnit(@Nullable Module module, Project project) {
     if (module == null) return GlobalSearchScope.allScope(project);
-    return switch (Registry.stringValue("junit.version.detection.scope")) {
+
+    return switch (Registry.get("junit.version.detection.scope").getSelectedOption()) {
       case "runtime" -> GlobalSearchScope.moduleRuntimeScope(module, true);
       case "module" -> GlobalSearchScope.moduleScope(module);
       case "testsWithDependents" -> GlobalSearchScope.moduleTestsWithDependentsScope(module);
       case "withLibraries" -> GlobalSearchScope.moduleWithLibrariesScope(module);
-      default -> GlobalSearchScope.moduleWithDependenciesAndLibrariesScope(module, true);
+      case "withDependenciesAndLibraries" -> GlobalSearchScope.moduleWithDependenciesAndLibrariesScope(module, true);
+      case null, default -> GlobalSearchScope.moduleRuntimeScope(module, true);
     };
   }
 
@@ -704,7 +706,7 @@ public abstract class TestObject extends JavaTestFrameworkRunnableState<JUnitCon
       ThrowableComputable<Void, ExecutionException> downloader = () -> {
         appendJUnitLauncherClasses(preferredRunner, javaParameters, project,
                                    getScopeForJUnit(module, project),
-                                   useModulePath() && module != null && ReadAction.compute(() -> findJavaModule(module, true)) != null);
+                                   useModulePath() && module != null && ReadAction.compute(() -> findJavaModule(module, true) != null || findJavaModule(module, false) != null));
         if (forkPerModule()) {
           for (Module packageModule : ReadAction.compute(() -> collectPackageModules(configuration.getPackage()))) {
             JavaParameters parameters = new JavaParameters();
@@ -715,7 +717,7 @@ public abstract class TestObject extends JavaTestFrameworkRunnableState<JUnitCon
             parameters.setJdk(javaParameters.getJdk());
             appendJUnitLauncherClasses(preferredRunner, parameters, project,
                                        getScopeForJUnit(packageModule, project),
-                                       useModulePath() && packageModule != null && ReadAction.compute(() -> findJavaModule(packageModule, true)) != null);
+                                       useModulePath() && packageModule != null && ReadAction.compute(() -> findJavaModule(packageModule, true) != null || findJavaModule(packageModule, false) != null));
             myAdditionalJarsForModuleFork.put(packageModule, parameters);
           }
         }
@@ -799,7 +801,11 @@ public abstract class TestObject extends JavaTestFrameworkRunnableState<JUnitCon
   protected void deleteTempFiles() {
     super.deleteTempFiles();
     if (myListenersFile != null) {
-      FileUtil.delete(myListenersFile);
+      try {
+        Files.deleteIfExists(myListenersFile);
+      }
+      catch (IOException ignored) {
+      }
     }
   }
 

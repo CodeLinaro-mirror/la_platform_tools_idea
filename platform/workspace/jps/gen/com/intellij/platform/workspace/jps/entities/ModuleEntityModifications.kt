@@ -3,6 +3,7 @@
 
 package com.intellij.platform.workspace.jps.entities
 
+import com.intellij.platform.workspace.jps.entities.impl.ModuleEntityImpl
 import com.intellij.platform.workspace.storage.EntitySource
 import com.intellij.platform.workspace.storage.EntityType
 import com.intellij.platform.workspace.storage.GeneratedCodeApiVersion
@@ -24,6 +25,7 @@ interface ModuleEntityBuilder : WorkspaceEntityBuilder<ModuleEntity> {
 
 internal object ModuleEntityType : EntityType<ModuleEntity, ModuleEntityBuilder>() {
   override val entityClass: Class<ModuleEntity> get() = ModuleEntity::class.java
+  override val entityImplBuilderClass: Class<*> get() = ModuleEntityImpl.Builder::class.java
   operator fun invoke(
     name: String,
     dependencies: List<ModuleDependencyItem>,
@@ -58,6 +60,11 @@ fun MutableEntityStorage.modifyModuleEntity(
   entity: ModuleEntity,
   modification: ModuleEntityBuilder.() -> Unit,
 ): ModuleEntity = modifyEntity(ModuleEntityBuilder::class.java, entity, modification)
+
+@get:Internal
+@set:Internal
+var ModuleEntityBuilder.customImlComponent: CustomImlComponentEntityBuilder?
+  by WorkspaceEntity.extensionBuilder(CustomImlComponentEntity::class.java)
 
 @get:Internal
 @set:Internal

@@ -46,7 +46,7 @@ abstract class AbstractGradleImportHandler : GradleProjectImportHandler {
             var isAlreadyReplaced = false
 
             val newPluginClasspaths = buildList {
-                for (jarFile in this@updateCompilerArguments.pluginClasspaths ?: emptyArray<String>()) {
+                for (jarFile in this@updateCompilerArguments.pluginClasspaths) {
                     val jarFileName = Path.of(jarFile).fileName.toString()
                     val matches = pluginJarsToReplaceRegex.any { regex -> jarFileName.matches(regex) }
                     if (matches) {

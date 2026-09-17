@@ -153,7 +153,6 @@ a:com.intellij.openapi.vcs.changes.ui.BaseChangesGroupingPolicy
 - sf:getCachingRoot(com.intellij.openapi.vcs.changes.ui.ChangesBrowserNode,com.intellij.openapi.vcs.changes.ui.ChangesBrowserNode):com.intellij.openapi.vcs.changes.ui.ChangesBrowserNode
 - pf:getNextPolicy():com.intellij.openapi.vcs.changes.ui.ChangesGroupingPolicy
 - sf:markCachingRoot(com.intellij.openapi.vcs.changes.ui.ChangesBrowserNode):V
-- pf:resolveVirtualFile(com.intellij.openapi.vcs.changes.ui.StaticFilePath):com.intellij.openapi.vfs.VirtualFile
 - f:setNextGroupingPolicy(com.intellij.openapi.vcs.changes.ui.ChangesGroupingPolicy):V
 - pf:setNextPolicy(com.intellij.openapi.vcs.changes.ui.ChangesGroupingPolicy):V
 f:com.intellij.openapi.vcs.changes.ui.BaseChangesGroupingPolicy$Companion
@@ -312,6 +311,7 @@ c:com.intellij.openapi.vcs.changes.ui.ChangesBrowserNodeRenderer
 - isShowFlatten():Z
 - isShowingLocalChanges():Z
 - setBackgroundInsets(com.intellij.util.ui.JBInsets):V
+- setFileNameSuffixAppender(java.lang.Runnable):V
 - setIcon(com.intellij.openapi.vcs.FilePath,Z):V
 c:com.intellij.openapi.vcs.changes.ui.ChangesBrowserSpecificFilePathsNode
 - com.intellij.openapi.vcs.changes.ui.ChangesBrowserSpecificNode

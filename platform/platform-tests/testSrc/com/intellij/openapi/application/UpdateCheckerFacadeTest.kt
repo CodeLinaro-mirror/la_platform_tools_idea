@@ -1,4 +1,6 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+@file:OptIn(LowLevelLocalMachineAccess::class)
+
 package com.intellij.openapi.application
 
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -29,6 +31,7 @@ import com.intellij.util.application
 import com.intellij.util.io.HttpRequests
 import com.intellij.util.queryParameters
 import com.intellij.util.system.CpuArch
+import com.intellij.util.system.LowLevelLocalMachineAccess
 import com.intellij.util.system.OS
 import com.sun.net.httpserver.HttpServer
 import org.apache.http.client.utils.URLEncodedUtils
@@ -388,6 +391,41 @@ class UpdateCheckerFacadeTest {
 
     assertEquals("2.2", result.allEnabled.find { it.id == PluginId.getId("ImageView") }!!.pluginVersion)
     assertEquals("2.0", result.allEnabled.find { it.id == PluginId.getId("ColourChooser") }!!.pluginVersion)
+  }
+
+  @Test
+  fun `custom repository receives os and arch in query`() {
+    installedPluginsFacade.setPlugins(listOf(
+      InstalledPluginMock("ImageView", "Image View", "JetBrains", "0.1", "1.0", "999.99999", true),
+    ))
+
+    setServerPlugins(emptyList(), "[]")
+
+    installedPluginsFacade.setHosts(listOf(server.url + "/custom-repository"))
+
+    var capturedUri: URI? = null
+    server.createContext("/custom-repository") { handler ->
+      capturedUri = handler.requestURI
+      handler.sendResponseHeaders(200, 0)
+      handler.responseBody.writer().use { out ->
+        out.write("""<?xml version="1.0" encoding="UTF-8"?><plugins/>""")
+      }
+    }
+
+    UpdateCheckerFacade.getInstance().checkInstalledPluginUpdates()
+
+    assertNotNull(capturedUri, "Custom repository must receive a request")
+    val params = capturedUri.queryParameters
+
+    assertTrue(params.contains("build"), "Query parameters must contain 'build'")
+    assertEquals(ApplicationInfoImpl.getShadowInstanceImpl().getPluginCompatibleBuildAsNumber().asString(),
+                 params["build"])
+
+    assertTrue(params.contains("os"), "Query parameters must contain 'os'")
+    assertEquals("${OS.CURRENT} ${OS.CURRENT.version()}", params["os"])
+
+    assertTrue(params.contains("arch"), "Query parameters must contain 'arch'")
+    assertEquals(CpuArch.CURRENT.name, params["arch"])
   }
 
   @Test

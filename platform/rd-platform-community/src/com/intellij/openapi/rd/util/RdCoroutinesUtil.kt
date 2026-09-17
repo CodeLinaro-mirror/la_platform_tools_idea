@@ -23,6 +23,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.concurrency.Promise
+import org.jetbrains.concurrency.toPromiseWithoutLogError
 import java.util.concurrent.CompletableFuture
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
@@ -71,6 +72,7 @@ private val uiDispatcherAnyModality: CoroutineContext
  *
  * @deprecated Use application/project/client/plugin level [CoroutineScope] and [lifetimedCoroutineScope].
  */
+@ApiStatus.ScheduledForRemoval
 @Deprecated("Use application/project/client/plugin level CoroutineScope. See KDoc for details.")
 fun Lifetime.launchOnUi(
   context: CoroutineContext = EmptyCoroutineContext,
@@ -80,6 +82,7 @@ fun Lifetime.launchOnUi(
   return launch(uiDispatcher + ModalityState.defaultModalityState().asContextElement() + context, start, action)
 }
 
+@ApiStatus.ScheduledForRemoval
 @Deprecated("Do not use this method")
 fun Lifetime.launchOnUiAllowInlining(
   context: CoroutineContext = EmptyCoroutineContext,
@@ -87,6 +90,7 @@ fun Lifetime.launchOnUiAllowInlining(
   action: suspend CoroutineScope.() -> Unit
 ): Job = launch(uiDispatcherWithInlining + context, start, action)
 
+@ApiStatus.ScheduledForRemoval
 @Deprecated("Please use launch with an explicit modality statement")
 fun Lifetime.launchOnUiAnyModality(
   context: CoroutineContext = EmptyCoroutineContext,
@@ -138,6 +142,7 @@ fun Lifetime.launchIOBackground(
  *
  * @deprecated Use application/project/client/plugin level [CoroutineScope] and [lifetimedCoroutineScope].
  */
+@ApiStatus.ScheduledForRemoval
 @Deprecated("Use application/project/client/plugin level CoroutineScope. See KDoc for details.")
 fun Lifetime.launchBackground(
   context: CoroutineContext = EmptyCoroutineContext,
@@ -145,6 +150,7 @@ fun Lifetime.launchBackground(
   action: suspend CoroutineScope.() -> Unit
 ): Job = launch(applicationThreadPool + ModalityState.defaultModalityState().asContextElement() + context, start, action)
 
+@ApiStatus.ScheduledForRemoval
 @Deprecated("Use launchBackground", ReplaceWith("launchBackground(start, action)"))
 fun Lifetime.launchLongBackground(
   context: CoroutineContext = EmptyCoroutineContext,
@@ -152,6 +158,7 @@ fun Lifetime.launchLongBackground(
   action: suspend CoroutineScope.() -> Unit
 ) = launchBackground(context, start, action)
 
+@ApiStatus.ScheduledForRemoval
 @Deprecated("Use launch with a specific dispatcher for your purposes")
 fun Lifetime.launchNonUrgentBackground(
   context: CoroutineContext = EmptyCoroutineContext,
@@ -189,6 +196,7 @@ fun Lifetime.launchNonUrgentBackground(
  *
  * @deprecated Use application/project/client/plugin level [CoroutineScope] and [lifetimedCoroutineScope].
  */
+@ApiStatus.ScheduledForRemoval
 @Deprecated("Use application/project/client/plugin level CoroutineScope. See KDoc for details.")
 fun <T> Lifetime.startOnUiAsync(
   context: CoroutineContext = EmptyCoroutineContext,
@@ -196,6 +204,7 @@ fun <T> Lifetime.startOnUiAsync(
   action: suspend CoroutineScope.() -> T
 ): Deferred<T> = async(uiDispatcher + ModalityState.defaultModalityState().asContextElement() + context, start, action)
 
+@ApiStatus.ScheduledForRemoval
 @Deprecated("Please use async with modality specified explicitly")
 fun <T> Lifetime.startOnUiAnyModalityAsync(
   context: CoroutineContext = EmptyCoroutineContext,
@@ -209,6 +218,7 @@ fun <T> Lifetime.startOnUiAnyModalityAsync(
   return async(uiDispatcherAnyModality + context, start, action)
 }
 
+@ApiStatus.ScheduledForRemoval
 @Deprecated("Use startSyncIOBackgroundAsync or startBackgroundAsync")
 fun <T> Lifetime.startIOBackgroundAsync(
   context: CoroutineContext = EmptyCoroutineContext,
@@ -254,6 +264,7 @@ fun <T> Lifetime.startLongBackgroundAsync(
  *
  * @deprecated Use application/project/client/plugin level [CoroutineScope] and [lifetimedCoroutineScope].
  */
+@ApiStatus.ScheduledForRemoval
 @Deprecated("Use application/project/client/plugin level CoroutineScope. See KDoc for details.")
 fun <T> Lifetime.startBackgroundAsync(
   context: CoroutineContext = EmptyCoroutineContext,
@@ -261,6 +272,7 @@ fun <T> Lifetime.startBackgroundAsync(
   action: suspend CoroutineScope.() -> T
 ): Deferred<T> = async(applicationThreadPool + ModalityState.defaultModalityState().asContextElement() + context, start, action)
 
+@ApiStatus.ScheduledForRemoval
 @Deprecated("Use launch(Dispatchers.EDT)", ReplaceWith("launch(Dispatchers.EDT, start, action)", "kotlinx.coroutines.launch", "kotlinx.coroutines.Dispatchers",
                                                       "com.intellij.openapi.application.EDT"))
 fun CoroutineScope.launchChildOnUi(
@@ -268,23 +280,27 @@ fun CoroutineScope.launchChildOnUi(
   action: suspend CoroutineScope.() -> Unit
 ): Job = launch(Dispatchers.EDT, start, action)
 
+@ApiStatus.ScheduledForRemoval
 @Deprecated("For CPU-bound tasks, use launch(Dispatchers.Default, action). For IO-bound tasks, use launch(Dispatchers.IO, action)")
 fun CoroutineScope.launchChildBackground(
   start: CoroutineStart = CoroutineStart.DEFAULT,
   action: suspend CoroutineScope.() -> Unit
 ): Job = launch(applicationThreadPool, start, action)
 
+@ApiStatus.ScheduledForRemoval
 @Deprecated("For CPU-bound tasks, use async(Dispatchers.Default, action). For IO-bound tasks, use async(Dispatchers.IO, action)")
 fun <T> CoroutineScope.startChildBackgroundAsync(
   start: CoroutineStart = CoroutineStart.DEFAULT,
   action: suspend CoroutineScope.() -> T
 ) = async(applicationThreadPool, start, action)
 
+@ApiStatus.ScheduledForRemoval
 @Deprecated("Use withContext(Dispatchers.EDT)", ReplaceWith("withContext(Dispatchers.EDT, action)", "kotlinx.coroutines.withContext", "kotlinx.coroutines.Dispatchers",
                                                             "com.intellij.openapi.application.EDT"))
 suspend fun <T> withUiContext(lifetime: Lifetime = Lifetime.Eternal, action: suspend CoroutineScope.() -> T): T =
   withContext(lifetime, uiDispatcher, action)
 
+@ApiStatus.ScheduledForRemoval
 @Deprecated("Please use withContext with modality specified explicitly")
 suspend fun <T> withUiAnyModalityContext(lifetime: Lifetime = Lifetime.Eternal, action: suspend CoroutineScope.() -> T): T =
   withContext(lifetime, uiDispatcherAnyModality, action)
@@ -293,10 +309,12 @@ suspend fun <T> withUiAnyModalityContext(lifetime: Lifetime = Lifetime.Eternal, 
 suspend fun <T> withIOBackgroundContext(lifetime: Lifetime = Lifetime.Eternal, action: suspend CoroutineScope.() -> T): T =
   withContext(lifetime, processIODispatcher, action)
 
+@ApiStatus.ScheduledForRemoval
 @Deprecated("Use withContext with a specific IO dispatcher for your purposes")
 suspend fun <T> withSyncIOBackgroundContext(lifetime: Lifetime = Lifetime.Eternal, action: () -> T): T =
   withContext(lifetime, processIODispatcher) { action() }
 
+@ApiStatus.ScheduledForRemoval
 @Deprecated("Use withBackgroundContext", ReplaceWith("withBackgroundContext(action)"))
 suspend fun <T> withLongBackgroundContext(lifetime: Lifetime = Lifetime.Eternal, action: suspend CoroutineScope.() -> T): T =
   withBackgroundContext(lifetime, action)
@@ -312,17 +330,12 @@ suspend fun <T> lifetimedCoroutineScope(lifetime: Lifetime, action: suspend Coro
 
 
 // See IJPL-157034
-@ExperimentalCoroutinesApi
-fun <T> Deferred<T>.toPromise(): Promise<T> = AsyncPromiseWithoutLogError<T>().also { promise ->
-  invokeOnCompletion { throwable ->
-    if (throwable != null) {
-      promise.setError(throwable)
-    }
-    else {
-      promise.setResult(getCompleted())
-    }
-  }
-}
+@ApiStatus.ScheduledForRemoval
+@Deprecated(
+  "Use org.jetbrains.concurrency.toPromise(logErrors) instead",
+  ReplaceWith("toPromise(logErrors = false)", "org.jetbrains.concurrency.toPromise"),
+)
+fun <T> Deferred<T>.toPromise(): Promise<T> = toPromiseWithoutLogError()
 
 // See IJPL-157034
 fun <T> CompletableFuture<T>.toPromise(): Promise<T> = AsyncPromiseWithoutLogError<T>().also { promise ->

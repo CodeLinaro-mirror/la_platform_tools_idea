@@ -2,8 +2,7 @@
 # Everything in this module is private for stubs. There is no runtime equivalent.
 
 from collections.abc import Iterable, Mapping, Sequence
-from typing import Any, Protocol, TypeVar, type_check_only
-from typing_extensions import TypeAlias
+from typing import Any, Protocol, TypeAlias, TypeVar, type_check_only
 
 import numpy as np
 import numpy.typing as npt
@@ -40,6 +39,7 @@ StrDataSequence: TypeAlias = Sequence[str] | Sequence[StrDataSequence]
 DataSequence: TypeAlias = FloatDataSequence | StrDataSequence | IntDataSequence
 ScalarTensorCompatible: TypeAlias = tf.Tensor | str | float | np.ndarray[Any, Any] | np.number[Any]
 UIntTensorCompatible: TypeAlias = tf.Tensor | int | UIntArray
+IntTensorCompatible: TypeAlias = tf.Tensor | int | IntArray | Sequence[IntTensorCompatible]
 FloatTensorCompatible: TypeAlias = tf.Tensor | int | IntArray | float | FloatArray | np.number[Any]
 StringTensorCompatible: TypeAlias = tf.Tensor | str | npt.NDArray[np.str_] | Sequence[StringTensorCompatible]
 
@@ -57,6 +57,7 @@ TensorOrArray: TypeAlias = tf.Tensor | AnyArray
 
 ShapeLike: TypeAlias = tf.TensorShape | Iterable[ScalarTensorCompatible | None] | int | tf.Tensor
 DTypeLike: TypeAlias = DType | str | np.dtype[Any] | int
+Signature: TypeAlias = DType | tf.RaggedTensorSpec | tf.SparseTensorSpec | Sequence[Signature]
 
 ContainerTensors: TypeAlias = ContainerGeneric[tf.Tensor]
 ContainerTensorsLike: TypeAlias = ContainerGeneric[TensorLike]

@@ -5,7 +5,9 @@ import com.intellij.ide.actions.OpenFileAction
 import com.intellij.openapi.application.readAction
 import com.intellij.openapi.application.readAndEdtWriteAction
 import com.intellij.openapi.application.runReadAction
+import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.module.Module
+import com.intellij.openapi.options.advanced.AdvancedSettings
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.modules
 import com.intellij.platform.ide.progress.runWithModalProgressBlocking
@@ -14,8 +16,10 @@ import com.intellij.platform.util.progress.reportSequentialProgress
 import com.intellij.util.concurrency.annotations.RequiresEdt
 import com.intellij.util.concurrency.annotations.RequiresReadLock
 import org.jetbrains.annotations.ApiStatus
+import org.jetbrains.annotations.VisibleForTesting
 import org.jetbrains.kotlin.idea.base.projectStructure.ModuleSourceRootGroup
 import org.jetbrains.kotlin.idea.base.projectStructure.ModuleSourceRootMap
+import org.jetbrains.kotlin.idea.base.projectStructure.allModules
 import org.jetbrains.kotlin.idea.compiler.configuration.IdeKotlinVersion
 import org.jetbrains.kotlin.idea.framework.ui.ConfigureDialogWithModulesAndVersion
 import org.jetbrains.kotlin.idea.projectConfiguration.KotlinProjectConfigurationBundle
@@ -29,6 +33,10 @@ import kotlin.io.path.relativeTo
 abstract class BaseKotlinProjectConfigurator : KotlinProjectConfigurator {
 
     override fun getStatus(moduleSourceRootGroup: ModuleSourceRootGroup): ConfigureKotlinStatus {
+        if (!AdvancedSettings.getBoolean("kotlin.enable.autoconfiguration")) {
+            return ConfigureKotlinStatus.NON_APPLICABLE
+        }
+
         val module = moduleSourceRootGroup.baseModule
         if (!isApplicable(module)) {
             return ConfigureKotlinStatus.NON_APPLICABLE
@@ -50,10 +58,6 @@ abstract class BaseKotlinProjectConfigurator : KotlinProjectConfigurator {
 
     @RequiresReadLock
     protected abstract fun calculateAutoConfigSettingsReadAction(module: Module): AutoConfigurationSettings?
-
-    override fun queueSyncIfNeeded(project: Project) {
-        KotlinProjectConfigurationService.getInstance(project).queueSync()
-    }
 
     override suspend fun runAutoConfig(settings: AutoConfigurationSettings) {
         val module = settings.module
@@ -84,10 +88,12 @@ abstract class BaseKotlinProjectConfigurator : KotlinProjectConfigurator {
         val result = resultBuilder.build()
         val error = result.error
         if (error == null) {
-            queueSyncIfNeeded(project)
+            FileDocumentManager.getInstance().saveAllDocuments()
+            KotlinProjectConfigurationService.getInstance(project).queueSyncIfPossible()
 
+            val changes = readAction { result.changedFiles.calculateChanges() }
             notificationHolder
-                .showAutoConfiguredNotification(module.name, result.changedFiles.calculateChanges())
+                .showAutoConfiguredNotification(module.name, changes)
 
             collector.showNotification()
             ConfigureKotlinNotificationManager.expireOldNotifications(project)
@@ -102,7 +108,12 @@ abstract class BaseKotlinProjectConfigurator : KotlinProjectConfigurator {
 
     @RequiresEdt
     override fun configureAndGetConfiguredModules(project: Project, excludeModules: Collection<Module>): Set<Module> {
-        val dialog = ConfigureDialogWithModulesAndVersion(project, this, excludeModules, getMinimumSupportedVersion())
+        val dialog = ConfigureDialogWithModulesAndVersion(
+            project,
+            this,
+            effectiveModules(project, excludeModules) ?: emptyList(),
+            getMinimumSupportedVersion()
+        )
 
         dialog.show()
         if (!dialog.isOK) return emptySet()
@@ -135,7 +146,8 @@ abstract class BaseKotlinProjectConfigurator : KotlinProjectConfigurator {
 
         val projectPath = project.basePath?.let { Path.of(it) }
 
-        queueSyncIfNeeded(project)
+        val configurationService = KotlinProjectConfigurationService.getInstance(project)
+        configurationService.queueSyncIfPossible()
 
         for (file in configurationResult.changedFiles.getChangedFiles()) {
             val virtualFile = file.virtualFile ?: continue
@@ -168,7 +180,8 @@ abstract class BaseKotlinProjectConfigurator : KotlinProjectConfigurator {
 
     abstract fun notificationHolder(project: Project): KotlinAutoConfigurationNotificationHolder
 
-    protected open fun doInternalConfigure(
+    @VisibleForTesting
+    open fun doInternalConfigure(
         project: Project,
         kotlinVersion: IdeKotlinVersion,
         modules: List<Module>,
@@ -235,15 +248,12 @@ abstract class BaseKotlinProjectConfigurator : KotlinProjectConfigurator {
                         val resultBuilder = configureAction()
                         val configurationResult = resultBuilder.build()
                         if (configurationResult.error == null) {
-                            // have to make an actual snapshot of modules to avoid concurrent modification
-                            val configuredModules =
-                                configurationResult.configuredModules.toCollection(linkedSetOf())
-
                             // attempt to configure compiler plugin during the same step as kotlin configuration
                             // when module dependency is known
-                            configuredModules.forEach { module ->
-                                configureCompilerPluginsForModule(module, resultBuilder)
-                            }
+                            configureCompilerPluginsForModules(
+                                postConfigurationModules(project, modules),
+                                resultBuilder
+                            )
                         }
                         addUndoConfigurationListener(
                             project,
@@ -280,9 +290,7 @@ abstract class BaseKotlinProjectConfigurator : KotlinProjectConfigurator {
     }
 
     private fun Collection<Module>.configuratorsByModule(): List<Pair<Module, List<KotlinProjectPostConfigurator>>>? {
-        val project = this.firstOrNull()?.project ?: return null
-        val effectiveModules = effectiveModules(project, this) ?: return null
-        val configuratorsByModule = effectiveModules.mapNotNull { module ->
+        val configuratorsByModule = this.mapNotNull { module ->
             val configuratorsByModules =
                 KotlinProjectPostConfigurator.EP_NAME.extensionList
                     .filter {
@@ -297,8 +305,17 @@ abstract class BaseKotlinProjectConfigurator : KotlinProjectConfigurator {
         return configuratorsByModule.takeIf { it.isNotEmpty() }
     }
 
-    protected fun configureCompilerPluginsForModule(module: Module, resultBuilder: ConfigurationResultBuilder) {
-        val configuratorsByModule = listOf(module).configuratorsByModule() ?: return
+    private fun postConfigurationModules(
+        project: Project,
+        requestedModules: Collection<Module>
+    ): Collection<Module> {
+        val moduleSourceRootMap = ModuleSourceRootMap(project)
+        return requestedModules
+            .flatMapTo(linkedSetOf()) { moduleSourceRootMap.getWholeModuleGroup(it).allModules() }
+    }
+
+    private fun configureCompilerPluginsForModules(modules: Collection<Module>, resultBuilder: ConfigurationResultBuilder) {
+        val configuratorsByModule = modules.configuratorsByModule() ?: return
 
         configuratorsByModule.forEach { (module, configuratorsByModules) ->
             configuratorsByModules.forEach { it.configureModule(module, resultBuilder) }

@@ -4,7 +4,7 @@ package org.jetbrains.idea.maven.execution;
 import com.intellij.execution.process.ProcessEvent;
 import com.intellij.execution.process.ProcessHandler;
 import com.intellij.execution.process.ProcessListener;
-import com.intellij.execution.process.ProcessOutputTypes;
+import com.intellij.execution.process.ProcessOutputType;
 import com.intellij.execution.runners.ProgramRunner;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.PersistentStateComponent;
@@ -16,6 +16,7 @@ import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Key;
+import com.intellij.openapi.vfs.newvfs.ManagingFS;
 import com.intellij.util.Consumer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -59,6 +60,7 @@ public final class MavenRunner implements PersistentStateComponent<MavenRunnerSe
 
   public void run(final MavenRunnerParameters parameters, final MavenRunnerSettings settings, final Runnable onComplete) {
     ApplicationManager.getApplication().invokeAndWait(() -> FileDocumentManager.getInstance().saveAllDocuments());
+    ManagingFS.getInstance().flushPendingUpdatesOrNotify();
 
     ProgramRunner.Callback callback = descriptor -> {
       ProcessHandler handler = descriptor.getProcessHandler();
@@ -67,13 +69,13 @@ public final class MavenRunner implements PersistentStateComponent<MavenRunnerSe
         @Override
         public void onTextAvailable(@NotNull ProcessEvent event, @NotNull Key outputType) {
           String eventText = event.getText();
-          if (outputType == ProcessOutputTypes.STDERR || eventText.contains("[ERROR]")) {
+          if (ProcessOutputType.isStderr(outputType) || eventText.contains("[ERROR]")) {
             MavenLog.LOG.warn(eventText);
           }
-          else if (outputType == ProcessOutputTypes.SYSTEM) {
+          else if (ProcessOutputType.isSystem(outputType)) {
             MavenLog.LOG.info(eventText);
           }
-          else if (outputType == ProcessOutputTypes.STDOUT) {
+          else if (ProcessOutputType.isStdout(outputType)) {
             MavenLog.LOG.trace(eventText);
           }
         }

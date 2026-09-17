@@ -35,7 +35,6 @@ import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.io.FileUtil;
-import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.wm.IdeFocusManager;
 import com.intellij.openapi.wm.IdeFrame;
@@ -135,18 +134,13 @@ public class RecentProjectPanel extends JPanel {
     myList = createList(recentProjectActions.toArray(AnAction.EMPTY_ARRAY), getPreferredScrollableViewportSize());
     myList.setCellRenderer(createRenderer(pathShortener));
 
-    if (Registry.is("autocheck.availability.welcome.screen.projects")) {
-      myChecker = new FilePathChecker(() -> {
-        if (myList.isShowing()) {
-          myList.revalidate();
-          myList.repaint();
-        }
-      }, pathsToCheck);
-      Disposer.register(parentDisposable, myChecker);
-    }
-    else {
-      myChecker = null;
-    }
+    myChecker = new FilePathChecker(() -> {
+      if (myList.isShowing()) {
+        myList.revalidate();
+        myList.repaint();
+      }
+    }, pathsToCheck);
+    Disposer.register(parentDisposable, myChecker);
 
     new ClickListener(){
       @Override
@@ -621,6 +615,7 @@ public class RecentProjectPanel extends JPanel {
 
   public static final class FilePathChecker implements Disposable, PowerSaveMode.Listener {
     private static final int MIN_AUTO_UPDATE_MILLIS = 2500;
+    private static final int PATH_PROBE_TIMEOUT_MILLIS = 3000;
     private ScheduledExecutorService service;
     private final Set<String> invalidPaths = Collections.synchronizedSet(new HashSet<>());
 
@@ -656,7 +651,7 @@ public class RecentProjectPanel extends JPanel {
     }
 
     private void onAppStateChanged() {
-      boolean settingsAreOK = Registry.is("autocheck.availability.welcome.screen.projects") && !PowerSaveMode.isEnabled();
+      boolean settingsAreOK = !PowerSaveMode.isEnabled();
       boolean everythingIsOK = settingsAreOK && ApplicationManager.getApplication().isActive();
       synchronized (this) {
         if (service == null && everythingIsOK) {
@@ -702,7 +697,10 @@ public class RecentProjectPanel extends JPanel {
         final long startTime = System.currentTimeMillis();
         boolean pathIsValid;
         try {
-          pathIsValid = !RecentProjectsManagerBase.Companion.isFileSystemPath(path) || isPathAvailable(path);
+          // remote IJent paths may deploy on probe - cap to keep checker pool free (IJPL-245202)
+          pathIsValid = ApplicationManager.getApplication().executeOnPooledThread(
+            () -> !RecentProjectsManagerBase.Companion.isFileSystemPath(path) || isPathAvailable(path)
+          ).get(PATH_PROBE_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
         }
         catch (Exception e) {
           pathIsValid = false;

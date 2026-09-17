@@ -1,14 +1,19 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.testFramework.bucketing
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.SerializationFeature
 import com.intellij.GroupBasedTestClassFilter
 import com.intellij.TestCaseLoader
 import com.intellij.TestCaseLoader.TEST_RUNNERS_COUNT
 import com.intellij.TestCaseLoader.TEST_RUNNER_INDEX
+import com.intellij.platform.bazel.runfiles.BazelLabel
+import com.intellij.platform.bazel.runfiles.BazelRunfiles
+import com.intellij.platform.testFramework.teamCity.TeamCityReporter
 import com.intellij.testFramework.TeamCityLogger
+import jetbrains.buildServer.messages.serviceMessages.ServiceMessage
+import jetbrains.buildServer.messages.serviceMessages.ServiceMessageTypes
 import org.jetbrains.annotations.ApiStatus
+import tools.jackson.databind.SerializationFeature
+import tools.jackson.databind.json.JsonMapper
 import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -45,7 +50,7 @@ internal object TestsDurationBucketingUtils {
     System.out.printf("Loaded tests duration for %d classes. Filtered out of scope ones, left with %d relevant classes%n",
                       loadedSize, relevantSize)
 
-    var missing: MutableSet<String> = HashSet<String>(classes)
+    var missing: MutableSet<String> = HashSet(classes)
     missing.removeAll(classesDurations.keys)
     missing.remove("_FirstInSuiteTest")
     missing.remove("_LastInSuiteTest")
@@ -57,9 +62,9 @@ internal object TestsDurationBucketingUtils {
       }
     }
     if (TeamCityLogger.isUnderTC) {
-      println(String.format("##teamcity[buildStatisticValue key='testDurationClasses.loaded' value='%d']", loadedSize))
-      println(String.format("##teamcity[buildStatisticValue key='testDurationClasses.relevant' value='%d']", relevantSize))
-      println(String.format("##teamcity[buildStatisticValue key='testDurationClasses.missing' value='%d']", missing.size))
+      TeamCityReporter.reportStatisticValue("testDurationClasses.loaded", loadedSize)
+      TeamCityReporter.reportStatisticValue("testDurationClasses.relevant", relevantSize)
+      TeamCityReporter.reportStatisticValue("testDurationClasses.missing", missing.size)
     }
 
     if (classesDurations.isEmpty()) return emptyList()
@@ -68,23 +73,59 @@ internal object TestsDurationBucketingUtils {
     return filters
   }
 
+  @JvmStatic
+  fun loadSeasonBucketFilters(
+    filter: TestCaseLoader.TestClassesFilterArgs,
+    seasonData: Map<String, Int>,
+  ): List<BucketFilter> {
+    val filters = getBucketFilter(seasonData, TEST_RUNNERS_COUNT, TEST_RUNNER_INDEX)
+    dump(filter, null, seasonData, filters)
+    return filters
+  }
+
+  @JvmStatic
+  fun loadSeasonData(season: String?): Map<String, Int>? {
+    if (season == null) return null
+
+    val files = if (BazelRunfiles.isRunningFromBazel) {
+      val label = BazelLabel.fromString("//:tests/classes-duration")
+      BazelRunfiles.getFileByLabelOrNull(label)?.absolute()?.resolve("seasons/$season.csv")?.let { listOf(it) } ?: emptyList()
+    } else {
+      getDataDirectories().map { it.resolve("seasons/$season.csv") }.filter { Files.isRegularFile(it) }.distinct().toList()
+    }
+
+    if (files.isEmpty()) {
+      println(ServiceMessage.asString(ServiceMessageTypes.BUILD_PROBLEM, mapOf("description" to "No CSV file for season '$season' found")))
+      return null
+    }
+    if (files.size > 1) {
+      println(ServiceMessage.asString(ServiceMessageTypes.BUILD_PROBLEM,
+                                      mapOf("description" to "Multiple files for season '$season' found, will use the first one: ${files.joinToString { it.absolutePathString() }}")))
+    }
+    val result = HashMap<String, Int>()
+    loadCSV(files.first(), result)
+    return result
+  }
+
   private fun dump(
     filter: TestCaseLoader.TestClassesFilterArgs,
-    classes: Set<String>,
+    classes: Set<String>?,
     durations: Map<String, Int>,
     filters: List<BucketFilter>,
   ) {
     try {
-      val dumpData = mapOf(
+      val dumpData = mutableMapOf(
         "filter" to filter,
-        "classes" to classes.sorted(),
         "index" to TEST_RUNNER_INDEX,
         "count" to TEST_RUNNERS_COUNT,
         "durations" to durations.toSortedMap(),
         "buckets" to filters,
       )
+      if (classes != null) {
+        dumpData["classes"] = classes.sorted()
+      }
 
-      val objectMapper = ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT)
+      val objectMapper = JsonMapper.builder().enable(SerializationFeature.INDENT_OUTPUT).build()
       val outputFile = Path.of(System.getProperty("java.io.tmpdir"))
         .resolve("test-bucketing-dump-${System.currentTimeMillis()}.json")
         .createParentDirectories()
@@ -92,12 +133,12 @@ internal object TestsDurationBucketingUtils {
 
       println("Dumped bucketing data to: $outputFile")
       if (TeamCityLogger.isUnderTC) {
-        println("##teamcity[publishArtifacts '${outputFile.absolutePathString()}']")
+        TeamCityReporter.reportPublishArtifacts(outputFile.absolutePathString())
       }
     }
     catch (e: Exception) {
-      System.err.println("Failed to dump bucketing data: ${e.message}")
-      e.printStackTrace()
+      println(ServiceMessage.asString(ServiceMessageTypes.BUILD_PROBLEM,
+                                      mapOf("description" to "Failed to dump bucketing data: ${e.stackTraceToString()}")))
     }
   }
 
@@ -133,9 +174,9 @@ internal object TestsDurationBucketingUtils {
     val averageTime = (buckets.sumOf { it.totalTime.inWholeMilliseconds } / bucketsCount).milliseconds
     println("*** Calculated bucket partitions, average bucket time is ${averageTime}")
     if (TeamCityLogger.isUnderTC) {
-      println(String.format("##teamcity[buildStatisticValue key='buckets.averageMs' value='%d']", averageTime.inWholeMilliseconds))
-      val bucket = buckets[currentBucketIndex]
-      println(String.format("##teamcity[buildStatisticValue key='buckets.currentMs' value='%d']", bucket.totalTime.inWholeMilliseconds))
+      TeamCityReporter.reportStatisticValue("buckets.averageMs", averageTime.inWholeMilliseconds)
+      val bucket = buckets.getOrNull(currentBucketIndex)
+      TeamCityReporter.reportStatisticValue("buckets.currentMs", bucket?.totalTime?.inWholeMilliseconds ?: 0)
     }
     filters.forEachIndexed { index, filter ->
       val bucket = buckets[index]
@@ -163,7 +204,7 @@ internal object TestsDurationBucketingUtils {
 
   private fun createBucketsFromTestsStatistics(statistics: Map<String, Int>,
                                                bucketsCount: Int): List<ItemsAndTotalTime<PackageClassesGroup>> {
-    val partitionPerPackages = statistics.entries.groupBy { it.packageName() }.map {
+    val partitionPerPackages = statistics.entries.groupBy { it.packageName() }.map {  // TODO: partition per jars
       ItemsAndTotalTime(it.value, it.value.sumOf { it.value }.milliseconds)
     }
     val averageTime = (partitionPerPackages.sumOf { it.totalTime.inWholeMilliseconds } / bucketsCount).milliseconds
@@ -196,28 +237,56 @@ internal object TestsDurationBucketingUtils {
       result
     }
 
-    return tossElementsIntoBuckets(partition.map { Pair(it, it.groupTime) }, bucketsCount)
+    return tossElementsIntoBuckets(partition.map { Pair(it, it.groupTime) }, bucketsCount, averageTime, deltaTimeMax)
   }
 
   private data class ItemsAndTotalTime<T>(val items: List<T>, val totalTime: Duration)
 
-  private fun <T> tossElementsIntoBuckets(elements: List<Pair<T, Duration>>, binCount: Int): List<ItemsAndTotalTime<T>> {
+  private fun <T> tossElementsIntoBuckets(elements: List<Pair<T, Duration>>, binCount: Int, averageTime: Duration, deltaTimeMax: Duration): List<ItemsAndTotalTime<T>> {
     val queue = PriorityQueue<ItemsAndTotalTime<T>>(binCount, Comparator.comparing { it.totalTime })
-    for (i in 0 until binCount)
-      queue.add(ItemsAndTotalTime(emptyList(), ZERO))
-
-    for (element in elements.sortedByDescending { it.second }) {
-      val smallestBin = queue.poll()
-      queue.add(ItemsAndTotalTime(smallestBin.items + element.first, smallestBin.totalTime + element.second))
+    (0 until binCount).forEach { _ ->
+        queue.add(ItemsAndTotalTime(emptyList(), ZERO))
     }
+
+    var smallestBin = queue.poll()
+    for (element in elements) {  // keep alphabetical order
+      // add consecutive elements while they don't exceed the limit, don't skip the big ones to preserve alphabetical order
+      if (smallestBin.totalTime >= averageTime ||
+          smallestBin.totalTime + element.second >= averageTime + deltaTimeMax) {
+        queue.add(smallestBin)
+        smallestBin = queue.poll()
+      }
+
+      smallestBin = ItemsAndTotalTime(smallestBin.items + element.first, smallestBin.totalTime + element.second)
+    }
+    queue.add(smallestBin)
 
     return queue.sortedBy { it.totalTime }
   }
 
   private fun loadDurationData(filter: TestCaseLoader.TestClassesFilterArgs): Map<String, Int> {
     val groupsToLoad = getGroupsToLoad(filter)
-    val result = HashMap<String, Int>()
+    val directories = getDataDirectories()
+    for (directory in directories) {
+      val result = HashMap<String, Int>()
+      try {
+        val files = directory.listDirectoryEntries("*.csv")
+          .filter { groupsToLoad == null || it.nameWithoutExtension in groupsToLoad }
+        for (path in files) {
+          loadCSV(path, result)
+        }
+      }
+      catch (e: IOException) {
+        println(ServiceMessage.asString(ServiceMessageTypes.BUILD_PROBLEM,
+                                        mapOf("description" to "Failed to load test classes duration from files in '$directory': ${e.stackTraceToString()}")))
+      }
+      // load only from the first directory
+      return result
+    }
+    return emptyMap()
+  }
 
+  private fun getDataDirectories(): Sequence<Path> {
     // Guess project directory, data located under ultimate repo and not available in the community version.
     val directories = setOfNotNull(
       System.getenv("JPS_PROJECT_HOME"),
@@ -238,41 +307,33 @@ internal object TestsDurationBucketingUtils {
       }
       .map { it.resolve("tests/classes-duration/") }
       .filter(Files::isDirectory)
-    for (directory in directories) {
-      try {
-        val files = directory.listDirectoryEntries("*.csv")
-          .filter { groupsToLoad == null || it.nameWithoutExtension in groupsToLoad }
-        for (path in files) {
-          try {
-            path.useLines(StandardCharsets.UTF_8) { lines ->
-              lines.forEach { line ->
-                val split = line.split(',', limit = 3)
-                if (split.size == 2) {
-                  val name = split[0]
-                  var duration = split[1].toInt()
-                  val previous = result[name]
-                  if (previous != null) {
-                    if (previous != duration) {
-                      System.err.println("Conflicting test duration for '$name': $previous vs $duration")
-                      duration = maxOf(previous, duration)
-                    }
-                  }
-                  result[name] = duration
-                }
+    return directories
+  }
+
+  private fun loadCSV(path: Path, result: MutableMap<String, Int>) {
+    try {
+      path.useLines(StandardCharsets.UTF_8) { lines ->
+        lines.forEach { line ->
+          val split = line.split(',', limit = 3)
+          if (split.size == 2) {
+            val name = split[0]
+            var duration = split[1].toInt()
+            val previous = result[name]
+            if (previous != null) {
+              if (previous != duration) {
+                println(ServiceMessage.asString(ServiceMessageTypes.BUILD_PROBLEM, mapOf("description" to "Conflicting test duration for '$name': $previous vs $duration")))
+                duration = maxOf(previous, duration)
               }
             }
-          }
-          catch (e: Exception) {
-            System.err.println("Failed to load test classes duration from '$path': ${e.message}")
+            result[name] = duration
           }
         }
       }
-      catch (e: IOException) {
-        System.err.println("Failed to load test classes duration from files in '$directory': ${e.message}")
-      }
-      return result
     }
-    return result
+    catch (e: Exception) {
+      println(ServiceMessage.asString(ServiceMessageTypes.BUILD_PROBLEM,
+                                      mapOf("description" to "Failed to load test classes duration from '$path': ${e.stackTraceToString()}")))
+    }
   }
 
   private fun getGroupsToLoad(filter: TestCaseLoader.TestClassesFilterArgs): List<String>? {

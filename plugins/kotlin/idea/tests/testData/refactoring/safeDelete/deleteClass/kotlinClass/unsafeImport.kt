@@ -11,3 +11,4 @@ class <caret>A {
 class B {
 
 }
+

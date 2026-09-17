@@ -35,6 +35,7 @@ import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiFileSystemItem;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.tree.TreeUtil;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -80,6 +81,7 @@ public final class FileTreeModelBuilder {
   private final VirtualFile myBaseDir;
   private VirtualFile[] myContentRoots;
 
+  @ApiStatus.Internal
   public FileTreeModelBuilder(@NotNull Project project, Marker marker, DependenciesPanel.DependencyPanelSettings settings) {
     myProject = project;
     myBaseDir = myProject.getBaseDir();
@@ -256,7 +258,7 @@ public final class FileTreeModelBuilder {
     Runnable buildingRunnable = () -> {
       for (final PsiFile file : files) {
         if (file != null) {
-          ReadAction.run(() -> buildFileNode(file.getVirtualFile(), null));
+          ReadAction.runBlocking(() -> buildFileNode(file.getVirtualFile(), null));
         }
       }
     };
@@ -664,7 +666,7 @@ public final class FileTreeModelBuilder {
 
     @Override
     public boolean processFile(@NotNull VirtualFile fileOrDir) {
-      ReadAction.run(() -> {
+      ReadAction.runBlocking(() -> {
         if (!fileOrDir.isDirectory()) {
           if (lastParent != null && !Comparing.equal(dir, fileOrDir.getParent())) {
             lastParent = null;

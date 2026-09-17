@@ -73,6 +73,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+@ApiStatus.Internal
 public final class SurroundWithHandler implements CodeInsightActionHandler {
   public static final TextRange CARET_IS_OK = new TextRange(0, 0);
 
@@ -265,7 +266,7 @@ public final class SurroundWithHandler implements CodeInsightActionHandler {
       );
     } else {
       CommandProcessor.getInstance().executeCommand(project, () -> {
-        TextRange range = ReadAction.compute(() -> surrounder.surroundElements(project, editor, elements));
+        TextRange range = ReadAction.computeBlocking(() -> surrounder.surroundElements(project, editor, elements));
         if (!(surrounder instanceof ModCommandSurrounder)) {
           updateRange(project, editor, range, line, col);
         }

@@ -8,6 +8,7 @@ import com.intellij.build.BuildEventDispatcher;
 import com.intellij.build.DefaultBuildDescriptor;
 import com.intellij.build.SyncViewManager;
 import com.intellij.build.events.BuildEvent;
+import com.intellij.build.events.Failure;
 import com.intellij.build.events.FinishBuildEvent;
 import com.intellij.build.events.impl.FailureImpl;
 import com.intellij.build.events.impl.FailureResultImpl;
@@ -49,11 +50,14 @@ import com.intellij.openapi.externalSystem.execution.ExternalSystemExecutionCons
 import com.intellij.openapi.externalSystem.importing.ImportSpec;
 import com.intellij.openapi.externalSystem.importing.ImportSpecBuilder;
 import com.intellij.openapi.externalSystem.issue.BuildIssueException;
+import com.intellij.openapi.externalSystem.model.DataNode;
 import com.intellij.openapi.externalSystem.model.ExternalProjectInfo;
 import com.intellij.openapi.externalSystem.model.ExternalSystemDataKeys;
 import com.intellij.openapi.externalSystem.model.ExternalSystemException;
+import com.intellij.openapi.externalSystem.service.internal.ExternalSystemPartialResolutionException;
 import com.intellij.openapi.externalSystem.model.ProjectSystemId;
 import com.intellij.openapi.externalSystem.model.execution.ExternalSystemTaskExecutionSettings;
+import com.intellij.openapi.externalSystem.model.project.ProjectData;
 import com.intellij.openapi.externalSystem.model.task.ExternalSystemTask;
 import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskId;
 import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskNotificationEvent;
@@ -130,6 +134,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -355,7 +360,7 @@ public final class ExternalSystemUtil {
         public void execute(@NotNull ProgressIndicator indicator) {
           var activity = ExternalSystemStatUtilKt.importActivityStarted(project, externalSystemId, null);
           try {
-            ExternalSystemTelemetryUtil.runWithSpan(externalSystemId, "ExternalSystemSyncProjectTask", __ ->
+            ExternalSystemTelemetryUtil.runWithSpan(externalSystemId, "ExternalSystemSyncProjectTask", _ ->
               executeSync(externalProjectPath, importSpec, resolveProjectTask, indicator)
             );
           }
@@ -601,20 +606,7 @@ public final class ExternalSystemUtil {
     try {
       var error = resolveProjectTask.getError();
       if (error == null) {
-        var projectDataManager = ProjectDataManager.getInstance();
-        var externalProjectData = projectDataManager.getExternalProjectData(project, externalSystemId, externalProjectPath);
-        var externalProject = ObjectUtils.doIfNotNull(externalProjectData, it -> it.getExternalProjectStructure());
-        if (externalProject != null) {
-          if (importSpec.shouldCreateDirectoriesForEmptyContentRoots()) {
-            externalProject.putUserData(ContentRootDataService.CREATE_EMPTY_DIRECTORIES, Boolean.TRUE);
-          }
-          if (importSpec.shouldImportProjectData()) {
-            if (importSpec.shouldSelectProjectDataToImport()) {
-              selectProjectDataToImport(project, externalProjectData);
-            }
-            projectDataManager.importData(externalProject, project);
-          }
-        }
+        var externalProject = importProjectData(project, importSpec, externalSystemId, externalProjectPath);
         if (callback != null) {
           callback.onSuccess(taskId, externalProject);
         }
@@ -623,6 +615,10 @@ public final class ExternalSystemUtil {
           externalSystemTaskActivator.runTasks(externalProjectPath, ExternalSystemTaskActivator.Phase.AFTER_SYNC);
         }
         return;
+      }
+      if (error instanceof ExternalSystemPartialResolutionException) {
+        // The resolve failed but produced partial project data.
+        importProjectData(project, importSpec, externalSystemId, externalProjectPath);
       }
       if (error instanceof ImportCanceledException) {
         // stop refresh task
@@ -663,6 +659,29 @@ public final class ExternalSystemUtil {
         eventDispatcher.onEvent(taskId, getSyncFinishEvent(taskId, finishSyncEventSupplier));
       }
     }
+  }
+
+  private static @Nullable DataNode<ProjectData> importProjectData(
+    @NotNull Project project,
+    @NotNull ImportSpec importSpec,
+    @NotNull ProjectSystemId externalSystemId,
+    @NotNull String externalProjectPath
+  ) {
+    var projectDataManager = ProjectDataManager.getInstance();
+    var externalProjectData = projectDataManager.getExternalProjectData(project, externalSystemId, externalProjectPath);
+    if (externalProjectData == null) return null;
+    var externalProject = externalProjectData.getExternalProjectStructure();
+    if (externalProject == null) return null;
+    if (importSpec.shouldCreateDirectoriesForEmptyContentRoots()) {
+      externalProject.putUserData(ContentRootDataService.CREATE_EMPTY_DIRECTORIES, Boolean.TRUE);
+    }
+    if (importSpec.shouldImportProjectData()) {
+      if (importSpec.shouldSelectProjectDataToImport()) {
+        selectProjectDataToImport(project, externalProjectData);
+      }
+      projectDataManager.importData(externalProject, project);
+    }
+    return externalProject;
   }
 
   private static void selectProjectDataToImport(
@@ -709,7 +728,7 @@ public final class ExternalSystemUtil {
   /**
    * @deprecated Use {@link ExternalSystemTrustedProjectDialog} instead
    */
-  @Deprecated
+  @Deprecated(forRemoval = true)
   public static boolean confirmLoadingUntrustedProject(
     @NotNull Project project,
     @NotNull ProjectSystemId systemId
@@ -794,18 +813,9 @@ public final class ExternalSystemUtil {
                       ? findLocalFileByPath(notificationData.getFilePath())
                       : null;
 
-    var buildIssueNavigatable = exception instanceof BuildIssueException
-                                ? ((BuildIssueException)exception).getBuildIssue().getNavigatable(project)
-                                : null;
-    final Navigatable navigatable;
-    if (!isNullOrNonNavigatable(buildIssueNavigatable)) {
-      navigatable = buildIssueNavigatable;
-    }
-    else if (isNullOrNonNavigatable(notificationData.getNavigatable())) {
-      navigatable = virtualFile != null ? new OpenFileDescriptor(project, virtualFile, line, column) : NonNavigatable.INSTANCE;
-    }
-    else {
-      navigatable = notificationData.getNavigatable();
+    Navigatable navigatable = notificationData.getNavigatable();
+    if (isNullOrNonNavigatable(navigatable) && virtualFile != null) {
+      navigatable = new OpenFileDescriptor(project, virtualFile, line, column);
     }
 
     final Notification notification;
@@ -821,15 +831,17 @@ public final class ExternalSystemUtil {
         .setListener(notificationData.getListener());
     }
 
-    final FailureImpl failure;
-    if (exception instanceof BuildIssueException) {
-      var buildIssue = ((BuildIssueException)exception).getBuildIssue();
-      failure = new FailureImpl(buildIssue.getTitle(), notificationData.getMessage(), Collections.emptyList(), exception, notification,
-                                navigatable);
-    } else {
-      failure = new FailureImpl(notificationData.getMessage(), exception, notification, navigatable);
+    var failures = new ArrayList<Failure>();
+    if (exception instanceof BuildIssueException buildIssueException) {
+      for (var buildIssue : buildIssueException.getBuildIssues()) {
+        failures.add(new FailureImpl(buildIssue.getTitle(), buildIssue.getDescription(), Collections.emptyList(), exception, notification,
+                                     buildIssue.getNavigatable(project)));
+      }
     }
-    return new FailureResultImpl(Collections.singletonList(failure));
+    else {
+      failures.add(new FailureImpl(notificationData.getMessage(), exception, notification, navigatable));
+    }
+    return new FailureResultImpl(failures);
   }
 
   private static boolean isNullOrNonNavigatable(@Nullable Navigatable navigatable) {

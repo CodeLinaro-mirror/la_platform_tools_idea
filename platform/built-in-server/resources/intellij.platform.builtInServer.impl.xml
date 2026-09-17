@@ -8,19 +8,27 @@
     <module name="intellij.libraries.guava"/>
     <module name="intellij.libraries.jackson"/>
     <module name="intellij.libraries.jackson.jr.objects"/>
+    <module name="intellij.libraries.jackson3"/>
     <module name="intellij.libraries.kotlinx.coroutines.core"/>
     <module name="intellij.libraries.netty.buffer"/>
     <module name="intellij.libraries.netty.codec.compression"/>
     <module name="intellij.libraries.netty.codec.http"/>
     <module name="intellij.platform.analysis"/>
     <module name="intellij.platform.builtInServer"/>
+    <module name="intellij.platform.codeStyle"/>
     <module name="intellij.platform.core"/>
     <module name="intellij.platform.core.impl"/>
     <module name="intellij.platform.core.ui"/>
     <module name="intellij.platform.diff"/>
+    <module name="intellij.platform.editor.ui"/>
+    <module name="intellij.platform.execution"/>
+    <module name="intellij.platform.ide.core"/>
+    <module name="intellij.platform.ide.core.plugins"/>
     <module name="intellij.platform.ide.impl"/>
     <module name="intellij.platform.projectModel"/>
     <module name="intellij.platform.projectModel.impl"/>
+    <module name="intellij.platform.util.ex"/>
+    <module name="intellij.platform.util.ui"/>
   </dependencies>
   <!-- endregion -->
   <extensionPoints>
@@ -63,8 +71,11 @@
     <httpRequestHandler implementation="org.jetbrains.builtInWebServer.liveReload.WebServerPageConnectionService$WebServerPageRequestHandler"/>
 
     <jbProtocolCommand implementation="org.jetbrains.ide.OpenSettingsJbProtocolService"/>
+    <jbProtocolCommand implementation="org.jetbrains.ide.InstallPluginJbProtocolCommand"/>
+    <jbProtocolCommand implementation="org.jetbrains.ide.OpenProjectByGitUrlJbProtocolCommand"/>
 
     <httpRequestHandler implementation="org.jetbrains.builtInWebServer.BuiltInWebServer" order="last"/>
+    <applicationSettings service="org.jetbrains.builtInWebServer.BuiltInServerOptions"/>
   </extensions>
   <extensions defaultExtensionNs="org.jetbrains">
     <customPortServerManager implementation="org.jetbrains.builtInWebServer.BuiltInServerOptions$MyCustomPortServerManager"/>
@@ -76,4 +87,11 @@
 
     <binaryRequestHandler implementation="org.jetbrains.io.jsonRpc.socket.RpcBinaryRequestHandler"/>
   </extensions>
+  <actions resource-bundle="messages.IdeBundle">
+    <action id="TestJbProtocolCommand"
+            internal="true"
+            class="org.jetbrains.ide.TestJbProtocolCommandAction">
+      <add-to-group group-id="Internal" anchor="last"/>
+    </action>
+  </actions>
 </idea-plugin>

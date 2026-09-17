@@ -74,6 +74,8 @@
                     interface="com.intellij.debugger.engine.DebuggerAgentParametersModifier" dynamic="true"/>
     <extensionPoint qualifiedName="com.intellij.debugger.hotSwapSourceFileFilterProvider"
                     interface="com.intellij.debugger.impl.hotswap.HotSwapSourceFileFilterProvider" dynamic="true"/>
+    <extensionPoint qualifiedName="com.intellij.debugger.jvmHotSwapListener"
+                    interface="com.intellij.debugger.impl.hotswap.JvmHotSwapListener" dynamic="true"/>
   </extensionPoints>
 
   <extensions defaultExtensionNs="com.intellij">
@@ -88,6 +90,9 @@
     <xdebugger.hotSwapInDebugSessionEnabler implementation="com.intellij.debugger.impl.hotswap.JvmHotSwapInDebugSessionEnabler"/>
     <projectService serviceInterface="com.intellij.debugger.DebuggerManager"
                     serviceImplementation="com.intellij.debugger.impl.DebuggerManagerImpl"/>
+    <applicationService serviceInterface="com.intellij.debugger.ui.breakpoints.MethodBreakpointProgressSupport"
+                        serviceImplementation="com.intellij.debugger.ui.breakpoints.DefaultMethodBreakpointProgressSupport"
+                        open="true"/>
     <debugger.additionalContextProvider implementation="com.intellij.debugger.engine.evaluation.MarkedObjectAdditionalContextProvider"/>
     <debugger.jdiHelperClassLoader implementation="com.intellij.debugger.impl.JdiHelperClassLoaderImpl"/>
     <debuggerEditorTextProvider language="JAVA" implementationClass="com.intellij.debugger.impl.JavaEditorTextProviderImpl"/>
@@ -142,8 +147,10 @@
     <debugger.compoundRendererProvider implementation="com.intellij.debugger.ui.tree.render.UnboxableTypeRenderer$FloatRenderer"/>
     <debugger.compoundRendererProvider implementation="com.intellij.debugger.ui.tree.render.UnboxableTypeRenderer$DoubleRenderer"/>
     <debugger.compoundRendererProvider implementation="com.intellij.debugger.ui.tree.render.ColorObjectRenderer"/>
-    <debugger.compoundRendererProvider implementation="com.intellij.debugger.ui.tree.render.ImageObjectRenderer"/>
-    <debugger.compoundRendererProvider implementation="com.intellij.debugger.ui.tree.render.IconObjectRenderer"/>
+    <debugger.compoundRendererProvider id="defaultImageObjectRenderer"
+                                       implementation="com.intellij.debugger.ui.tree.render.ImageObjectRenderer"/>
+    <debugger.compoundRendererProvider id="defaultIconObjectRenderer"
+                                       implementation="com.intellij.debugger.ui.tree.render.IconObjectRenderer"/>
     <debugger.compoundRendererProvider implementation="com.intellij.debugger.ui.tree.render.GraphicsObjectRenderer"/>
     <debugger.compoundRendererProvider implementation="com.intellij.debugger.ui.tree.render.BinaryRenderer"/>
     <debugger.compoundRendererProvider implementation="com.intellij.debugger.ui.tree.render.TimestampRenderer"/>
@@ -242,7 +249,7 @@
                  description="The allowed overhead of the async stacktraces collection in percents. When exceeded, a user will be suggested to disable or throttle."/>
     <registryKey key="debugger.stepping.current.thread.check.timeout.ms" defaultValue="100"
                  description="In the 'Resume only the current thread mode': Check timeout (in ms) for the stepping thread is running."/>
-    <registryKey key="debugger.evaluation.runtime.type" defaultValue="500"
+    <registryKey key="debugger.evaluation.runtime.type" defaultValue="2000"
                  description="Timeout (in ms) to evaluate runtime type of a given expression"/>
     <registryKey key="debugger.run.to.cursor.any.hit.timeout.ms" defaultValue="1000"
                  description="The timeout between the hit run-to-cursor breakpoint in another thread/coroutine and pause the debugger"/>
@@ -323,8 +330,18 @@
                  description="Enable collection watchpoints support"/>
     <registryKey key="debugger.async.stacks.via.breakpoints" defaultValue="false"
                  description="Enable async stack traces implementation via breakpoints"/>
-    <registryKey key="debugger.breakpoint.instrumentation" defaultValue="false"
+    <registryKey key="debugger.breakpoint.instrumentation" defaultValue="true"
                  description="Use instrumentation conditional and logging breakpoints if possible"/>
+    <registryKey key="debugger.breakpoint.instrumentation.hotswap.mode" defaultValue="[NONE|SUPPORT_ONLY_EXTERNAL_HOTSWAP|INSTALL_WHEN_TARGET_METHODS_NOT_ON_STACK|WITH_INSTRUMENTATION_PENDING*]"
+                 description="Nested breakpoint instrumentation HotSwap mode. Each option includes previous ones."/>
+    <registryKey key="debugger.helper.method.stack.scan.timeout.ms" defaultValue="200"
+                 description="Timeout (in ms) for helper-based method stack scans"/>
+    <registryKey key="debugger.breakpoint.instrumentation.suspend.context.wait.timeout.ms" defaultValue="200"
+                 description="Wait timeout (in ms) to obtain a suspend context before starting breakpoint instrumentation work"/>
+    <registryKey key="debugger.breakpoint.instrumentation.method.stack.jdi.check.timeout.ms" defaultValue="200"
+                 description="Timeout (in ms) for JDI rechecks of incomplete method stacks before breakpoint instrumentation HotSwap"/>
+    <registryKey key="debugger.breakpoint.instrumentation.pending.retry.delays.ms" defaultValue="500,1000,5000,10000"
+                 description="Retry delays in milliseconds for pending breakpoint instrumentation checks; 0 keeps pending requests enabled without throttling"/>
     <registryKey key="debugger.async.stacks.coroutines" defaultValue="true"
                  description="Enable async stack traces for coroutines"/>
     <registryKey key="debugger.async.stacks.max.depth" defaultValue="500"
@@ -343,6 +360,12 @@
                  description="Watch if a thread we do stepping in is blocked by another suspended thread"/>
     <registryKey key="debugger.check.source" defaultValue="true"
                  description="Check that the source code matches the bytecode"/>
+    <applicationSettings service="com.intellij.debugger.settings.TraceSettings"/>
+    <applicationSettings service="com.intellij.debugger.settings.ViewsGeneralSettings"/>
+    <applicationSettings service="com.intellij.debugger.settings.ThreadsViewSettings"/>
+    <projectSettings service="com.intellij.debugger.settings.DebuggerProjectSettings"/>
+    <applicationSettings service="com.intellij.debugger.settings.NodeRendererSettings"/>
+    <projectSettings service="com.intellij.debugger.impl.DebuggerManagerImpl"/>
   </extensions>
 
   <actions>

@@ -1,28 +1,31 @@
 package com.intellij.ide.starter.driver.engine.remoteDev
 
-import com.intellij.driver.sdk.waitNotNull
+import com.intellij.driver.sdk.waitNotNullAsync
+import com.intellij.ide.starter.ci.CIServer
 import com.intellij.ide.starter.process.exec.ExecOutputRedirect
 import com.intellij.ide.starter.process.exec.ProcessExecutor
 import com.intellij.ide.starter.process.getProcessList
 import com.intellij.ide.starter.runner.IDERunContext
 import com.intellij.ide.starter.utils.getRunningDisplays
+import com.intellij.platform.testFramework.teamCity.TeamCityReporter.SyntheticTestKind
 import com.intellij.tools.ide.util.common.logError
 import com.intellij.tools.ide.util.common.logOutput
+import com.intellij.tools.ide.util.common.withRetry
 import kotlin.io.path.div
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.seconds
 
 object XorgWindowManagerHandler {
 
-  fun provideDisplay(): Int {
-    return waitNotNull("There is a display", 5.seconds) { getRunningDisplays().firstOrNull() }
+  suspend fun provideDisplay(): Int {
+    return waitNotNullAsync("There is a display", 5.seconds) { getRunningDisplays().firstOrNull() }
   }
 
   // region Fluxbox
   private val fluxboxName = "fluxbox"
 
-  private fun isFluxBoxIsRunning(displayWithColumn: String): Boolean {
-    val running = getProcessList { it.name == fluxboxName && it.arguments.contains(":$displayWithColumn") }.isNotEmpty()
+  private suspend fun isFluxBoxIsRunning(displayWithColumn: String): Boolean {
+    val running = getProcessList(processName = fluxboxName).any { it.arguments.contains(":$displayWithColumn") }
     logOutput("$fluxboxName is running: $running")
     return running
   }
@@ -49,14 +52,28 @@ object XorgWindowManagerHandler {
 
     if (!isFluxBoxIsRunning(displayWithColumn)) {
       val fluxboxRunLog = ideRunContext.logsDir / "$fluxboxName.log"
-      ProcessExecutor(
-        presentableName = "Start $fluxboxName",
-        timeout = 2.hours,
-        args = listOf("/usr/bin/${fluxboxName}", "-display", displayWithColumn),
-        workDir = null,
-        stdoutRedirect = ExecOutputRedirect.ToFile(fluxboxRunLog.toFile()),
-        stderrRedirect = ExecOutputRedirect.ToFile(fluxboxRunLog.toFile())
-      ).startCancellable()
+      val failureMessage = "$fluxboxName failed to start"
+      val started = withRetry(failureMessage, retries = 5, delay = 3.seconds) {
+        ProcessExecutor(
+          presentableName = "Start $fluxboxName",
+          timeout = 2.hours,
+          args = listOf("/usr/bin/${fluxboxName}", "-display", displayWithColumn),
+          workDir = null,
+          stdoutRedirect = ExecOutputRedirect.ToFile(fluxboxRunLog),
+          stderrRedirect = ExecOutputRedirect.ToFile(fluxboxRunLog)
+        ).startCancellable()
+      }
+
+      if (started == null) {
+        CIServer.instance.reportTestFailure(
+          testName = failureMessage,
+          message = Throwable(failureMessage).stackTraceToString(),
+          generifyTestName = false,
+          kind = SyntheticTestKind.TEST_INFRA_EXCEPTION,
+          details = "",
+        )
+        return
+      }
     }
     else {
       logOutput("$fluxboxName is already running on display $displayWithColumn")

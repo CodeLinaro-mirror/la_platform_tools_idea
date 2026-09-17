@@ -2,7 +2,6 @@
 package com.intellij.codeInsight.daemon.impl;
 
 import com.intellij.codeInsight.daemon.DaemonAnalyzerTestCase;
-import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer;
 import com.intellij.ide.highlighter.JavaFileType;
 import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.lang.annotation.HighlightSeverity;
@@ -28,6 +27,7 @@ import com.intellij.psi.PsiComment;
 import com.intellij.psi.PsiElement;
 import com.intellij.testFramework.CoroutineKt;
 import com.intellij.testFramework.LeakHunter;
+import com.intellij.testFramework.PlatformTestUtil;
 import com.intellij.util.TestTimeOut;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ref.GCWatcher;
@@ -101,6 +101,7 @@ public class HighlightingMarkupGraveTest extends DaemonAnalyzerTestCase {
 
           List<String> symbolHighlighters =
             Arrays.stream(markupModel.getAllHighlighters())
+              .filter(h -> h.isValid())
               .filter(h -> h.getTextAttributesKey() != null)
               .filter(h -> h.getLayer() == HighlighterLayer.ADDITIONAL_SYNTAX)
               .filter(h -> HighlightingNecromancer.isZombieMarkup(h))
@@ -131,8 +132,8 @@ public class HighlightingMarkupGraveTest extends DaemonAnalyzerTestCase {
     while (!t.isTimedOut()) {
       CoroutineKt.executeSomeCoroutineTasksAndDispatchAllInvocationEvents(myProject);
       LaterInvocator.purgeExpiredItems();
-      LaterInvocator.dispatchPendingFlushes();
-      DaemonCodeAnalyzer.getInstance(getProject()).restart(this);
+      PlatformTestUtil.dispatchAllEventsInIdeEventQueue();
+      myDaemonCodeAnalyzer.restart(this);
     }
     try {
       GCWatcher.tracking(FileDocumentManager.getInstance().getDocument(virtualFile)).ensureCollected();
@@ -169,8 +170,7 @@ public class HighlightingMarkupGraveTest extends DaemonAnalyzerTestCase {
           MarkupModel markupModel = DocumentMarkupModel.forDocument(document, getProject(), true);
           CoroutineKt.executeSomeCoroutineTasksAndDispatchAllInvocationEvents(myProject);
 
-          RangeHighlighter
-            errorHighlighter = ContainerUtil.find(markupModel.getAllHighlighters(), h -> CodeInsightColors.ERRORS_ATTRIBUTES.equals(h.getTextAttributesKey()));
+          RangeHighlighter errorHighlighter = ContainerUtil.find(markupModel.getAllHighlighters(), h -> h.isValid() && CodeInsightColors.ERRORS_ATTRIBUTES.equals(h.getTextAttributesKey()));
           assertNotNull(errorHighlighter);
           assertEquals("//XXX", errorHighlighter.getTextRange().substring(document.getText()));
           assertTrue(HighlightingNecromancer.isZombieMarkup(errorHighlighter));
@@ -182,8 +182,8 @@ public class HighlightingMarkupGraveTest extends DaemonAnalyzerTestCase {
     });
   }
 
-  private TextEditor openTextEditorForDaemonTest(Project project, VirtualFile file) {
-    List<FileEditor> editors = TasksKt.runWithModalProgressBlocking(project, "", (_1, _2) ->
+  private static TextEditor openTextEditorForDaemonTest(Project project, VirtualFile file) {
+    List<FileEditor> editors = TasksKt.runWithModalProgressBlocking(project, "", (_, _) ->
       FileEditorManagerEx.getInstanceEx(project).openFile(file));
     return ContainerUtil.findInstance(editors, TextEditor.class);
   }

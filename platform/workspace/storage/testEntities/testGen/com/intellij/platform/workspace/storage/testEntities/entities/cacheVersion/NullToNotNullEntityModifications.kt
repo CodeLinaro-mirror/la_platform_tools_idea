@@ -6,8 +6,9 @@ package com.intellij.platform.workspace.storage.testEntities.entities.cacheVersi
 import com.intellij.platform.workspace.storage.EntitySource
 import com.intellij.platform.workspace.storage.EntityType
 import com.intellij.platform.workspace.storage.GeneratedCodeApiVersion
-import com.intellij.platform.workspace.storage.WorkspaceEntityBuilder
 import com.intellij.platform.workspace.storage.MutableEntityStorage
+import com.intellij.platform.workspace.storage.WorkspaceEntityBuilder
+import com.intellij.platform.workspace.storage.testEntities.entities.cacheVersion.impl.NullToNotNullEntityImpl
 
 @GeneratedCodeApiVersion(3)
 interface NullToNotNullEntityBuilder : WorkspaceEntityBuilder<NullToNotNullEntity> {
@@ -19,6 +20,7 @@ interface NullToNotNullEntityBuilder : WorkspaceEntityBuilder<NullToNotNullEntit
 
 internal object NullToNotNullEntityType : EntityType<NullToNotNullEntity, NullToNotNullEntityBuilder>() {
   override val entityClass: Class<NullToNotNullEntity> get() = NullToNotNullEntity::class.java
+  override val entityImplBuilderClass: Class<*> get() = NullToNotNullEntityImpl.Builder::class.java
   operator fun invoke(
     notNullBoolean: Boolean,
     notNullInt: Int,

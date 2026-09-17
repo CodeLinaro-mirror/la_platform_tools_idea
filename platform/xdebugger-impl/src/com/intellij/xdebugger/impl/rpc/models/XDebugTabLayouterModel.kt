@@ -7,7 +7,6 @@ import com.intellij.platform.debugger.impl.rpc.XDebugTabLayouterId
 import com.intellij.platform.kernel.ids.BackendValueIdType
 import com.intellij.platform.kernel.ids.findValueById
 import com.intellij.platform.kernel.ids.storeValueGlobally
-import com.intellij.xdebugger.impl.ui.RunnerLayoutUiBridge
 import com.intellij.xdebugger.ui.XDebugTabLayouter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow

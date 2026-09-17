@@ -58,15 +58,10 @@ override fun getProductContentModules(): ProductModulesContentSpec {
     deprecatedInclude("intellij.platform.resources", "META-INF/PlatformLangPlugin.xml")
     deprecatedInclude("intellij.gateway", "META-INF/Gateway.xml")
     
-    // Ultimate-only includes (only included in Ultimate builds)
-    // When inlining: Skipped in Community builds
-    // When NOT inlining: Generates xi:include with xi:fallback for graceful handling
-    deprecatedInclude("intellij.platform.extended.community.impl", "META-INF/community-extensions.xml", ultimateOnly = true)
-
     // Include module sets
     moduleSet(CommunityModuleSets.essential())
     moduleSet(CommunityModuleSets.vcs())
-    moduleSet(UltimateModuleSets.ssh())
+    moduleSet(UltimateModuleSets.webIde())
 
     // Add individual modules
     module("intellij.platform.collaborationTools")
@@ -86,10 +81,10 @@ override fun getProductContentModules(): ProductModulesContentSpec {
 Register the product's plugin.xml file path in `build/dev-build.json`:
 
 ```json
-"DataSpell": {
+"GoLand": {
   "modules": [...],
-  "class": "com.intellij.dataspell.build.DataSpellProperties",
-  "pluginXmlPath": "dataspell/ide/resources/META-INF/DataSpellPlugin.xml"
+  "class": "org.jetbrains.intellij.build.goland.GoLandProperties",
+  "pluginXmlPath": "goland/resources/META-INF/GoLandPlugin.xml"
 }
 ```
 
@@ -111,15 +106,12 @@ This will generate a complete plugin.xml file like:
 ```xml
   <!-- DO NOT EDIT: This file is auto-generated from Kotlin code -->
   <!-- To regenerate, run 'Generate Product Layouts' or directly UltimateModuleSets.main() -->
-  <!-- Source: com.intellij.dataspell.build.DataSpellProperties -->
+  <!-- Source: org.jetbrains.intellij.build.goland.GoLandProperties -->
 <idea-plugin xmlns:xi="http://www.w3.org/2001/XInclude">
-  <module value="com.intellij.modules.dataspell"/>
-  <module value="com.intellij.modules.python-core-capable"/>
+  <module value="com.intellij.modules.goland"/>
   <module value="com.intellij.platform.ide.provisioner"/>
 
-  <xi:include href="/META-INF/pycharm-core.xml"/>
   <xi:include href="/META-INF/ultimate.xml"/>
-  <xi:include href="/META-INF/dataspell-customization.xml"/>
   <xi:include href="/META-INF/intellij.moduleSets.commercial.xml"/>
   <xi:include href="/META-INF/intellij.moduleSets.ide.common.xml"/>
   <!-- ... -->
@@ -161,7 +153,7 @@ Choose the appropriate mechanism based on your needs:
 
 ### Choosing the Right Module Set
 
-See [migration-guide.md](migration-guide.md) for guidance on choosing module sets and migrating from `PLATFORM_CORE_MODULES`.
+See [migration-guide.md](migration-guide.md) for guidance on choosing module sets and migrating from legacy platform core module declarations.
 
 ## How It Works
 
@@ -214,7 +206,7 @@ override fun getProductContentModules(): ProductModulesContentSpec {
   return productModules {
     moduleSet(CommunityModuleSets.essential())
     moduleSet(CommunityModuleSets.vcs())
-    moduleSet(UltimateModuleSets.ssh())
+    moduleSet(UltimateModuleSets.webIde())
     embeddedModule("intellij.gateway.ssh")
 
     module("intellij.platform.collaborationTools")
@@ -225,10 +217,6 @@ override fun getProductContentModules(): ProductModulesContentSpec {
 ```
 
 The content is generated into `/remote-dev/gateway/resources/META-INF/plugin.xml`.
-
-## Ultimate-Only Includes
-
-The `ultimateOnly` flag on `deprecatedInclude()` enables conditional inclusion of resources that only exist in Ultimate builds.
 
 ### Behavior
 
@@ -253,11 +241,6 @@ override fun getProductContentModules(): ProductModulesContentSpec {
   return productModules {
     // Regular include - always processed
     deprecatedInclude("intellij.pycharm.community", "META-INF/pycharm-core.xml")
-    
-    // Ultimate-only - conditionally processed
-    deprecatedInclude("intellij.platform.extended.community.impl", 
-                     "META-INF/community-extensions.xml", 
-                     ultimateOnly = true)
   }
 }
 ```
@@ -275,21 +258,6 @@ override fun getProductContentModules(): ProductModulesContentSpec {
 <xi:include href="/META-INF/pycharm-core.xml"/>
 <xi:include href="/META-INF/community-extensions.xml"/>
 ```
-
-### Use Cases
-
-Use `ultimateOnly = true` when:
-
-1. **The included XML file exists only in Ultimate repository**
-   - The module or resource is not available in community builds
-
-2. **Multiple products share the same descriptor**
-   - Both Community and Ultimate variants use the same `getProductContentDescriptor()`
-   - Ultimate variant needs additional functionality
-
-3. **Backward compatibility during migration**
-   - `xi:fallback` allows runtime resolution
-   - Community builds gracefully skip missing files
 
 ## Implementation Details
 

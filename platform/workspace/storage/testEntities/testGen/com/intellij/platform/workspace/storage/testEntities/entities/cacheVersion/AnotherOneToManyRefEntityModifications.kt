@@ -6,8 +6,9 @@ package com.intellij.platform.workspace.storage.testEntities.entities.cacheVersi
 import com.intellij.platform.workspace.storage.EntitySource
 import com.intellij.platform.workspace.storage.EntityType
 import com.intellij.platform.workspace.storage.GeneratedCodeApiVersion
-import com.intellij.platform.workspace.storage.WorkspaceEntityBuilder
 import com.intellij.platform.workspace.storage.MutableEntityStorage
+import com.intellij.platform.workspace.storage.WorkspaceEntityBuilder
+import com.intellij.platform.workspace.storage.testEntities.entities.cacheVersion.impl.AnotherOneToManyRefEntityImpl
 
 @GeneratedCodeApiVersion(3)
 interface AnotherOneToManyRefEntityBuilder : WorkspaceEntityBuilder<AnotherOneToManyRefEntity> {
@@ -19,6 +20,7 @@ interface AnotherOneToManyRefEntityBuilder : WorkspaceEntityBuilder<AnotherOneTo
 
 internal object AnotherOneToManyRefEntityType : EntityType<AnotherOneToManyRefEntity, AnotherOneToManyRefEntityBuilder>() {
   override val entityClass: Class<AnotherOneToManyRefEntity> get() = AnotherOneToManyRefEntity::class.java
+  override val entityImplBuilderClass: Class<*> get() = AnotherOneToManyRefEntityImpl.Builder::class.java
   operator fun invoke(
     version: Int,
     someData: OneToManyRefDataClass,

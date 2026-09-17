@@ -177,6 +177,7 @@ c:com.intellij.openapi.externalSystem.service.execution.DefaultExternalSystemExe
 - com.intellij.openapi.externalSystem.execution.ExternalSystemExecutionConsoleManager
 - <init>():V
 - attachExecutionConsole(com.intellij.openapi.project.Project,com.intellij.openapi.externalSystem.model.task.ExternalSystemTask,com.intellij.execution.runners.ExecutionEnvironment,com.intellij.execution.process.ProcessHandler):com.intellij.execution.ui.ExecutionConsole
+- p:createConsoleView(com.intellij.openapi.project.Project,com.intellij.openapi.externalSystem.model.task.ExternalSystemTask,com.intellij.execution.runners.ExecutionEnvironment):com.intellij.execution.ui.ConsoleView
 - getExternalSystemId():com.intellij.openapi.externalSystem.model.ProjectSystemId
 - getRestartActions(com.intellij.execution.ui.ExecutionConsole):com.intellij.openapi.actionSystem.AnAction[]
 - isApplicableFor(com.intellij.openapi.externalSystem.model.task.ExternalSystemTask):Z
@@ -349,10 +350,6 @@ f:com.intellij.openapi.externalSystem.service.execution.configuration.fragments.
 - sf:addSettingsEditorFragment(com.intellij.openapi.externalSystem.service.execution.configuration.fragments.SettingsEditorFragmentContainer,com.intellij.openapi.externalSystem.service.ui.util.SettingsFragmentInfo,kotlin.jvm.functions.Function1,kotlin.jvm.functions.Function2,kotlin.jvm.functions.Function2):com.intellij.execution.ui.SettingsEditorFragment
 - sf:addSettingsEditorFragment(com.intellij.openapi.externalSystem.service.execution.configuration.fragments.SettingsEditorFragmentContainer,com.intellij.openapi.externalSystem.service.ui.util.SettingsFragmentInfo,kotlin.jvm.functions.Function1,kotlin.jvm.functions.Function2,kotlin.jvm.functions.Function2,kotlin.jvm.functions.Function1):com.intellij.execution.ui.SettingsEditorFragment
 - sf:addTag(com.intellij.openapi.externalSystem.service.execution.configuration.fragments.SettingsEditorFragmentContainer,java.lang.String,java.lang.String,java.lang.String,java.lang.String,kotlin.jvm.functions.Function1,kotlin.jvm.functions.Function2):com.intellij.execution.ui.SettingsEditorFragment
-f:com.intellij.openapi.externalSystem.service.execution.configuration.fragments.SettingsEditorFragmentBuildersKt$sam$i$com_intellij_util_Function$0
-- com.intellij.util.Function
-- <init>(kotlin.jvm.functions.Function1):V
-- bf:fun(java.lang.Object):java.lang.Object
 f:com.intellij.openapi.externalSystem.service.execution.configuration.fragments.SettingsEditorFragmentBuildersKt$sam$i$java_util_function_BiConsumer$0
 - java.util.function.BiConsumer
 - <init>(kotlin.jvm.functions.Function2):V
@@ -435,7 +432,7 @@ com.intellij.openapi.externalSystem.service.notification.ExternalSystemNotificat
 - a:getTargetExternalSystemId():com.intellij.openapi.externalSystem.model.ProjectSystemId
 f:com.intellij.openapi.externalSystem.service.notification.ExternalSystemNotificationManager
 - com.intellij.openapi.Disposable
-- <init>(com.intellij.openapi.project.Project):V
+- <init>(com.intellij.openapi.project.Project,kotlinx.coroutines.CoroutineScope):V
 - clearNotifications(java.lang.String,com.intellij.openapi.externalSystem.service.notification.NotificationSource,com.intellij.openapi.externalSystem.model.ProjectSystemId):V
 - s:createNotification(java.lang.String,java.lang.Throwable,com.intellij.openapi.externalSystem.model.ProjectSystemId,com.intellij.openapi.project.Project,java.lang.String,com.intellij.openapi.actionSystem.DataContext):com.intellij.openapi.externalSystem.service.notification.NotificationData
 - dispose():V
@@ -599,6 +596,7 @@ c:com.intellij.openapi.externalSystem.service.project.IdeModifiableModelsProvide
 c:com.intellij.openapi.externalSystem.service.project.autoimport.CachingExternalSystemAutoImportAware
 - com.intellij.openapi.externalSystem.ExternalSystemAutoImportAware
 - <init>(com.intellij.openapi.externalSystem.ExternalSystemAutoImportAware):V
+- getAffectedExternalProjectFilePaths(java.lang.String,com.intellij.openapi.project.Project):java.util.List
 - getAffectedExternalProjectFiles(java.lang.String,com.intellij.openapi.project.Project):java.util.List
 - getAffectedExternalProjectPath(java.lang.String,com.intellij.openapi.project.Project):java.lang.String
 - isApplicable(com.intellij.openapi.externalSystem.importing.ProjectResolverPolicy):Z

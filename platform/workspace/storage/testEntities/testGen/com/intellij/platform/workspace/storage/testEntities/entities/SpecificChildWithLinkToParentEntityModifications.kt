@@ -6,17 +6,21 @@ package com.intellij.platform.workspace.storage.testEntities.entities
 import com.intellij.platform.workspace.storage.EntitySource
 import com.intellij.platform.workspace.storage.EntityType
 import com.intellij.platform.workspace.storage.GeneratedCodeApiVersion
-import com.intellij.platform.workspace.storage.WorkspaceEntityBuilder
 import com.intellij.platform.workspace.storage.MutableEntityStorage
+import com.intellij.platform.workspace.storage.WorkspaceEntityBuilder
+import com.intellij.platform.workspace.storage.testEntities.entities.impl.SpecificChildWithLinkToParentEntityImpl
 
 @GeneratedCodeApiVersion(3)
-interface SpecificChildWithLinkToParentEntityBuilder : WorkspaceEntityBuilder<SpecificChildWithLinkToParentEntity>, AbstractChildWithLinkToParentEntityBuilder<SpecificChildWithLinkToParentEntity> {
+interface SpecificChildWithLinkToParentEntityBuilder : WorkspaceEntityBuilder<SpecificChildWithLinkToParentEntity>,
+                                                       AbstractChildWithLinkToParentEntityBuilder<SpecificChildWithLinkToParentEntity> {
   override var entitySource: EntitySource
   override var data: String
 }
 
-internal object SpecificChildWithLinkToParentEntityType : EntityType<SpecificChildWithLinkToParentEntity, SpecificChildWithLinkToParentEntityBuilder>() {
+internal object SpecificChildWithLinkToParentEntityType :
+  EntityType<SpecificChildWithLinkToParentEntity, SpecificChildWithLinkToParentEntityBuilder>() {
   override val entityClass: Class<SpecificChildWithLinkToParentEntity> get() = SpecificChildWithLinkToParentEntity::class.java
+  override val entityImplBuilderClass: Class<*> get() = SpecificChildWithLinkToParentEntityImpl.Builder::class.java
   operator fun invoke(
     data: String,
     entitySource: EntitySource,

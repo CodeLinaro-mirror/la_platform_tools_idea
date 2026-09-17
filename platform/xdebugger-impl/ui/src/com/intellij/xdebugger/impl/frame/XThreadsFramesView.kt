@@ -8,12 +8,16 @@ import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.components.service
 import com.intellij.openapi.ui.NonProportionalOnePixelSplitter
+import com.intellij.openapi.ui.getUserData
+import com.intellij.openapi.ui.putUserData
 import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.util.Key
 import com.intellij.platform.debugger.impl.shared.proxy.XDebugSessionProxy
 import com.intellij.ui.ListSpeedSearch
 import com.intellij.ui.PopupHandler
 import com.intellij.ui.ScrollPaneFactory
 import com.intellij.ui.SpeedSearchComparator
+import com.intellij.util.concurrency.annotations.RequiresEdt
 import com.intellij.util.ui.JBEmptyBorder
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.TextTransferable
@@ -28,7 +32,6 @@ import com.intellij.xdebugger.impl.util.SequentialDisposables
 import com.intellij.xdebugger.impl.util.isNotAlive
 import com.intellij.xdebugger.impl.util.onTermination
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.annotations.ApiStatus.Internal
 import java.awt.BorderLayout
@@ -44,6 +47,17 @@ import javax.swing.JScrollPane
 
 @Internal
 class XThreadsFramesView(tabDisposable: Disposable, private val sessionProxy: XDebugSessionProxy) : XDebugView() {
+
+  /**
+   * With the new split debugger model, we always recompute the local variables from com.intellij.platform.debugger.impl.shared.proxy.XDebugSessionProxy.setCurrentStackFrame
+   * So currently when user clicks on the current frame or current thread the local variables are recomputed (and the editor is scrolled to the current execution point)
+   * It is a regression against the old monolith debugger model, but not very serious to my mind. But at the same time we've got an issue that
+   * local variables are also computed 2 times when building the local variables view. It is more serious issue since it causes side effects
+   * to be applied twice on every stop
+   * @See PreserveCurrentFrameIfEqual was introduced to fix this issue. Currently, it is used only to fix the double local variables computing on each stop
+   */
+  private object PreserveCurrentFrameIfEqual : Key<Any?>("XThreadsFramesView.PreserveCurrentFrameIfEqual")
+
   private val myPauseDisposables = SequentialDisposables(this)
 
   private val myThreadsList = XDebuggerThreadsList.createDefault()
@@ -100,7 +114,7 @@ class XThreadsFramesView(tabDisposable: Disposable, private val sessionProxy: XD
 
     val coloredStringBuilder = TextTransferable.ColoredStringBuilder()
     fun getPresentation(element: Any?): String? {
-      element ?: return null
+      if (element == null) return null
 
       return myFramesPresentationCache.getOrPut(element) {
         when (element) {
@@ -224,11 +238,10 @@ class XThreadsFramesView(tabDisposable: Disposable, private val sessionProxy: XD
     myFramesList.addListSelectionListener {
       if (it.valueIsAdjusting || !myListenersEnabled) return@addListSelectionListener
 
-      val session = getSessionProxy(it) ?: return@addListSelectionListener
       val stack = myThreadsList.selectedValue?.stack ?: return@addListSelectionListener
       val frame = myFramesList.selectedValue as? XStackFrame ?: return@addListSelectionListener
 
-      session.setCurrentStackFrame(stack, frame)
+      setSessionStackFrame(stack, frame)
     }
 
     myFramesList.addMouseListener(object : PopupHandler() {
@@ -243,11 +256,18 @@ class XThreadsFramesView(tabDisposable: Disposable, private val sessionProxy: XD
       // not mousePressed here, otherwise click in an unfocused frames list transfers focus to the new opened editor
       override fun mouseReleased(e: MouseEvent) {
         processMouseEvent(e) { session, stack, frame ->
-          frame ?: return@processMouseEvent
-          session.setCurrentStackFrame(stack, frame)
+          if (frame == null) return@processMouseEvent
+          setSessionStackFrame(stack, frame)
         }
       }
     })
+  }
+
+  private fun setSessionStackFrame(stack: XExecutionStack, frame: XStackFrame) {
+    if (frame == sessionProxy.getCurrentStackFrame() && myFramesList.getUserData(PreserveCurrentFrameIfEqual) != null)
+      return
+
+    sessionProxy.setCurrentStackFrame(stack, frame)
   }
 
   private inline fun processMouseEvent(e: MouseEvent, action: (XDebugSessionProxy, XExecutionStack, XStackFrame?) -> Unit) {
@@ -311,6 +331,7 @@ class XThreadsFramesView(tabDisposable: Disposable, private val sessionProxy: XD
     }
   }
 
+  @RequiresEdt
   fun start(sessionProxy: XDebugSessionProxy) {
     if (!(sessionProxy.hasSuspendContext())) return
     val disposable = nextDisposable()
@@ -323,6 +344,7 @@ class XThreadsFramesView(tabDisposable: Disposable, private val sessionProxy: XD
     myThreadsContainer.start(sessionProxy)
   }
 
+  @RequiresEdt
   private fun XExecutionStack.setActive(sessionProxy: XDebugSessionProxy) {
     myFramesManager.setActive(this)
 
@@ -330,7 +352,7 @@ class XThreadsFramesView(tabDisposable: Disposable, private val sessionProxy: XD
 
     val currentFrame = myFramesManager.tryGetCurrentFrame(this) ?: return
 
-    sessionProxy.setCurrentStackFrame(this, currentFrame)
+    setSessionStackFrame(this, currentFrame)
   }
 
   private fun nextDisposable(): Disposable {
@@ -385,19 +407,26 @@ class XThreadsFramesView(tabDisposable: Disposable, private val sessionProxy: XD
       }
     }
 
+    @RequiresEdt
     fun setActive(activeDisposable: Disposable) {
       startIfNeeded()
 
       isActive = true
       activeDisposable.onTermination {
-        isActive = false
-        myVisibleRectangle = myFramesList.visibleRect
-        mySelectedValue = if (myFramesList.isSelectionEmpty) null else myFramesList.selectedValue
+        deactivate()
       }
 
       updateView()
     }
 
+    @RequiresEdt
+    private fun deactivate() {
+      isActive = false
+      myVisibleRectangle = myFramesList.visibleRect
+      mySelectedValue = if (myFramesList.isSelectionEmpty) null else myFramesList.selectedValue
+    }
+
+    @RequiresEdt
     private fun updateView() {
       if (!isActive) return
 
@@ -442,11 +471,20 @@ class XThreadsFramesView(tabDisposable: Disposable, private val sessionProxy: XD
           isProcessed = true
         }
 
-        if (toSelect != null && myItems.contains(toSelect)) {
+        val selectFrame = toSelect != null && myItems.contains(toSelect)
+        if (selectFrame) {
           mySelectedValue = toSelect
         }
 
-        updateView()
+        try {
+          if (selectFrame)
+            myFramesList.putUserData(PreserveCurrentFrameIfEqual, Unit)
+          updateView()
+        }
+        finally {
+          if (selectFrame)
+            myFramesList.putUserData(PreserveCurrentFrameIfEqual, null)
+        }
       }
     }
 
@@ -481,12 +519,14 @@ class XThreadsFramesView(tabDisposable: Disposable, private val sessionProxy: XD
       }
     }
 
+    @RequiresEdt
     fun setActive(stack: XExecutionStack) {
       val disposable = myActiveStackDisposables.next()
       myActiveStack = stack
       stack.getContainer().setActive(disposable)
     }
 
+    @RequiresEdt
     fun tryGetCurrentFrame(stack: XExecutionStack): XStackFrame? {
       return stack.getContainer().currentFrame
     }

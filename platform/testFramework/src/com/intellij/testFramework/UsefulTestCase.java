@@ -50,6 +50,7 @@ import com.intellij.util.io.PathKt;
 import com.intellij.util.ui.UIUtil;
 import junit.framework.AssertionFailedError;
 import junit.framework.TestCase;
+import junit.framework.TestResult;
 import kotlinx.coroutines.Job;
 import org.jdom.Element;
 import org.jetbrains.annotations.ApiStatus;
@@ -155,6 +156,7 @@ public abstract class UsefulTestCase extends TestCase {
   private @Nullable Disposable myTestRootDisposable;
   private @Nullable List<Path> myPathsToKeep;
   private @Nullable Path myTempDir;
+  private @Nullable Description myTestDescription;
 
   private static CodeInsightSettings defaultSettings = new CodeInsightSettings();
 
@@ -247,6 +249,11 @@ public abstract class UsefulTestCase extends TestCase {
   }
 
   @Override
+  public void run(TestResult result) {
+    ApplicationManagerEx.runInStressTest(isStressTest(), () -> super.run(result));
+  }
+
+  @Override
   protected void setUp() throws Exception {
     super.setUp();
 
@@ -255,7 +262,6 @@ public abstract class UsefulTestCase extends TestCase {
     setupTempDir();
 
     boolean isStressTest = isStressTest();
-    ApplicationManagerEx.setInStressTest(isStressTest);
     if (isPerformanceTest()) {
       Timings.getStatistics();
     }
@@ -433,6 +439,14 @@ Most likely there was an uncaught exception in asynchronous execution that resul
     return disposable;
   }
 
+  private @NotNull Description getTestDescription() {
+    Description testDescription = myTestDescription;
+    if (testDescription == null) {
+      myTestDescription = testDescription = Description.createTestDescription(getClass(), getName());
+    }
+    return testDescription;
+  }
+
   /**
    * @deprecated not JUnit4-friendly; to override the way tests are executed use {@link #runTestRunnable} instead
    */
@@ -473,13 +487,14 @@ Most likely there was an uncaught exception in asynchronous execution that resul
 
   protected final void invokeSetUp() throws Exception {
     long setupStart = System.nanoTime();
-    setUp();
+    TestLoggerFactory.fixtureInitialization(false, getTestDescription().getDisplayName(), ()->setUp());
     long setupCost = (System.nanoTime() - setupStart) / 1000000;
     logPerClassCost((int)setupCost, TOTAL_SETUP_COST_MILLIS, TOTAL_SETUP_COUNT);
   }
 
   protected void invokeTearDown() throws Exception {
     long teardownStart = System.nanoTime();
+    TestLoggerFactory.onFixturesDisposeStart(false);
     tearDown();
     long teardownCost = (System.nanoTime() - teardownStart) / 1000000;
     logPerClassCost((int)teardownCost, TOTAL_TEARDOWN_COST_MILLIS, TOTAL_TEARDOWN_COUNT);
@@ -531,6 +546,11 @@ Most likely there was an uncaught exception in asynchronous execution that resul
   }
 
   protected void runBare(@NotNull ThrowableRunnable<Throwable> testRunnable) throws Throwable {
+    // Toggle the stress-test flag here too (not only in run(TestResult)): JUnit4 reaches runBare() without calling it.
+    ApplicationManagerEx.runInStressTest(isStressTest(), () -> doRunBare(testRunnable));
+  }
+
+  private void doRunBare(@NotNull ThrowableRunnable<Throwable> testRunnable) throws Throwable {
     ThrowableRunnable<Throwable> wrappedRunnable = wrapTestRunnable(testRunnable);
     if (runInDispatchThread()) {
       try {
@@ -553,10 +573,9 @@ Most likely there was an uncaught exception in asynchronous execution that resul
   }
 
   protected @NotNull ThrowableRunnable<Throwable> wrapTestRunnable(@NotNull ThrowableRunnable<Throwable> testRunnable) {
-    Description testDescription = Description.createTestDescription(getClass(), getName());
     return () -> {
       boolean success = false;
-      TestLoggerFactory.onTestStarted();
+      TestLoggerFactory.onTestStarted(getClass());
       try {
         recordErrorsLoggedInTheCurrentThreadAndReportThemAsFailures(testRunnable);
         success = true;
@@ -570,7 +589,7 @@ Most likely there was an uncaught exception in asynchronous execution that resul
         throw t;
       }
       finally {
-        TestLoggerFactory.onTestFinished(success, testDescription);
+        TestLoggerFactory.onTestFinished(success, getTestDescription());
       }
     };
   }

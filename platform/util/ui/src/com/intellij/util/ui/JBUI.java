@@ -596,14 +596,6 @@ public final class JBUI {
         return JBColor.namedColor("DefaultTabs.underlineColor", new JBColor(0x4083C9, 0x4A88C7));
       }
 
-      /**
-       * @deprecated use {@link DefaultTabs#UNDERLINE_HEIGHT}
-       */
-      @Deprecated(forRemoval = true)
-      public static int underlineHeight() {
-        return UNDERLINE_HEIGHT.get();
-      }
-
       public static @NotNull Color inactiveUnderlineColor() {
         return JBColor.namedColor("DefaultTabs.inactiveUnderlineColor", new JBColor(0x9ca7b8, 0x747a80));
       }
@@ -927,6 +919,10 @@ public final class JBUI {
     }
 
     public interface IconBadge {
+      /**
+       * @deprecated Not needed anymore
+       */
+      @Deprecated(forRemoval = true)
       Color NEW_UI = JBColor.namedColor("IconBadge.newUiBackground", 0x8F5AE5, 0x8F5AE5);
       Color ERROR = JBColor.namedColor("IconBadge.errorBackground", 0xE55765, 0xDB5C5C);
       Color WARNING = JBColor.namedColor("IconBadge.warningBackground", 0xFFAF0F, 0xF2C55C);
@@ -983,7 +979,7 @@ public final class JBUI {
       /**
        * @deprecated Use {@link Widget#HOVER_BACKGROUND} instead.
        */
-      @Deprecated
+      @Deprecated(forRemoval = true)
       public static Color hoverBackground() {
         return Widget.HOVER_BACKGROUND;
       }
@@ -1960,6 +1956,12 @@ public final class JBUI {
     }
 
     public interface Window {
+      @Internal
+      static Border getDialogBorder(boolean undecoratedWindow) {
+        Border result = UIManager.getBorder("Dialog.border");
+        return result == null ? getBorder(undecoratedWindow) : result;
+      }
+
       static Border getBorder(boolean undecoratedWindow) {
         Border result = UIManager.getBorder("Window.border");
         if (result == null && undecoratedWindow &&

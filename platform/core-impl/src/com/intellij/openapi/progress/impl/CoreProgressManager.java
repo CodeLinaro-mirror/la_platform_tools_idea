@@ -3,6 +3,7 @@ package com.intellij.openapi.progress.impl;
 
 import com.intellij.codeWithMe.ClientId;
 import com.intellij.concurrency.ContextAwareRunnable;
+import com.intellij.diagnostic.ProgressIndicatorDumper;
 import com.intellij.diagnostic.ThreadDumper;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.Application;
@@ -42,6 +43,7 @@ import com.intellij.util.containers.ConcurrentLongObjectMap;
 import com.intellij.util.containers.Java11Shim;
 import com.intellij.util.ui.EDT;
 import io.opentelemetry.api.trace.Span;
+import kotlinx.coroutines.Job;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.ApiStatus.Obsolete;
 import org.jetbrains.annotations.NotNull;
@@ -129,6 +131,10 @@ public class CoreProgressManager extends ProgressManager implements Disposable {
    */
   private static final Map<ProgressIndicator, AtomicInteger> nonStandardIndicators = new ConcurrentHashMap<>();
 
+  public CoreProgressManager() {
+    ProgressIndicatorDumper.INSTANCE.setProgressIndicatorDumper(this::getProgressStateRepresentation);
+  }
+
   // must be under threadsUnderIndicator lock
   private void startBackgroundNonStandardIndicatorsPing() {
     if (myCheckCancelledFuture != null) {
@@ -160,6 +166,7 @@ public class CoreProgressManager extends ProgressManager implements Disposable {
     synchronized (threadsUnderIndicator) {
       stopBackgroundNonStandardIndicatorsPing();
     }
+    ProgressIndicatorDumper.INSTANCE.removeProgressIndicatorDumper();
   }
 
   @ApiStatus.Internal
@@ -170,17 +177,14 @@ public class CoreProgressManager extends ProgressManager implements Disposable {
   }
 
   @ApiStatus.Internal
-  public boolean runCheckCanceledHooks(@Nullable ProgressIndicator indicator) {
-    return false;
-  }
-  @ApiStatus.Internal
   protected boolean hasCheckCanceledHooks() {
     return false;
   }
 
   @Override
   protected void doCheckCanceled() throws ProcessCanceledException {
-    if (isInNonCancelableSection()) {
+    Job job = Cancellation.currentJob();
+    if (Cancellation.isInNonCancelableSection(job)) {
       try {
         CheckCanceledBehavior behavior = ourCheckCanceledBehavior;
         if (behavior != CheckCanceledBehavior.NONE) {
@@ -195,7 +199,7 @@ public class CoreProgressManager extends ProgressManager implements Disposable {
     }
 
     try {
-      Cancellation.ensureActive();
+      Cancellation.ensureActive(job);
     }
     catch (ProcessCanceledException e) {
       fireCanceledByJobEvent();
@@ -517,7 +521,9 @@ public class CoreProgressManager extends ProgressManager implements Disposable {
 
   // from any: bg
   private void runAsynchronously(@NotNull Task.Backgroundable task) {
-    if (LOG.isDebugEnabled()) LOG.debug("CoreProgressManager#runAsynchronously, " + task, new Throwable());
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("CoreProgressManager#runAsynchronously, " + task, new Throwable());
+    }
     if (EDT.isCurrentThreadEdt()) {
       runProcessWithProgressAsynchronously(task);
     }
@@ -557,7 +563,9 @@ public class CoreProgressManager extends ProgressManager implements Disposable {
   @Deprecated
   protected void startTask(@NotNull Task task, @NotNull ProgressIndicator indicator, @Nullable Runnable continuation) {
     try {
-      if (LOG.isDebugEnabled()) LOG.debug("Starting task '" + task + "' under progress: " + indicator, new Throwable());
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Starting task '" + task + "' under progress: " + indicator, new Throwable());
+      }
       task.run(indicator);
     }
     finally {
@@ -644,7 +652,9 @@ public class CoreProgressManager extends ProgressManager implements Disposable {
   // NEW: no assert; bg or calling ...
   @Obsolete
   protected boolean runProcessWithProgressSynchronously(@NotNull Task task) {
-    if (LOG.isDebugEnabled()) LOG.debug("CoreProgressManager#runProcessWithProgressSynchronously, " + task, new Throwable());
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("CoreProgressManager#runProcessWithProgressSynchronously, " + task, new Throwable());
+    }
     Ref<Throwable> exceptionRef = new Ref<>();
     Runnable taskContainer = () -> {
       try {
@@ -686,7 +696,9 @@ public class CoreProgressManager extends ProgressManager implements Disposable {
   public void runProcessWithProgressInCurrentThread(@NotNull Task task,
                                                     @NotNull ProgressIndicator progressIndicator,
                                                     @NotNull ModalityState modalityState) {
-    if (LOG.isDebugEnabled()) LOG.debug("CoreProgressManager#runProcessWithProgressInCurrentThread, " + task, new Throwable());
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("CoreProgressManager#runProcessWithProgressInCurrentThread, " + task, new Throwable());
+    }
     if (progressIndicator instanceof Disposable) {
       Disposer.register(ApplicationManager.getApplication(), (Disposable)progressIndicator);
     }
@@ -746,6 +758,7 @@ public class CoreProgressManager extends ProgressManager implements Disposable {
     }, progress);
   }
 
+  @SuppressWarnings("UseRunReadActionBlockingShortcut")
   @Override
   public boolean runInReadActionWithWriteActionPriority(@NotNull Runnable action, @Nullable ProgressIndicator indicator) {
     ApplicationManager.getApplication().runReadAction(action);
@@ -1162,5 +1175,37 @@ public class CoreProgressManager extends ProgressManager implements Disposable {
     finally {
       threadsUnderCanceledIndicator.remove(fake);
     }
+  }
+
+  /**
+   * A utility method for diagnosing state of progress indicator in monitoring facilities, like JStack
+   */
+  @ApiStatus.Internal
+  public @Nullable String getProgressStateRepresentation() {
+    synchronized (threadsUnderIndicator) {
+      StringBuilder result = new StringBuilder();
+      if (threadsUnderIndicator.isEmpty()) {
+        return null;
+      }
+      for (Map.Entry<ProgressIndicator, Set<Thread>> entry : threadsUnderIndicator.entrySet()) {
+        ProgressIndicator indicator = entry.getKey();
+        Set<Thread> threads = entry.getValue();
+        result.append("Indicator ").append(renderProgressIndicator(indicator)).append(" corresponds to the following threads:\n");
+        for (Thread thread : threads) {
+          result.append(" - ").append(thread).append(";\n");
+        }
+      }
+      return result.toString();
+    }
+  }
+
+  private static String renderProgressIndicator(ProgressIndicator indicator) {
+    String presentationBuilder = indicator.toString() +
+                                 " (canceled: " +
+                                 indicator.isCanceled() +
+                                 ", running:" +
+                                 indicator.isRunning() +
+                                 ")";
+    return presentationBuilder;
   }
 }

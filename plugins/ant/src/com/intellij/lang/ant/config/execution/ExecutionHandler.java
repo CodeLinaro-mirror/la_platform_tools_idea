@@ -9,7 +9,7 @@ import com.intellij.execution.process.OSProcessHandler;
 import com.intellij.execution.process.ProcessEvent;
 import com.intellij.execution.process.ProcessHandler;
 import com.intellij.execution.process.ProcessListener;
-import com.intellij.execution.process.ProcessOutputTypes;
+import com.intellij.execution.process.ProcessOutputType;
 import com.intellij.execution.target.EelTargetEnvironmentRequest;
 import com.intellij.execution.target.TargetEnvironment;
 import com.intellij.execution.target.TargetEnvironmentRequest;
@@ -40,6 +40,7 @@ import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.NlsSafe;
+import com.intellij.openapi.vfs.newvfs.ManagingFS;
 import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.encoding.EncodingProjectManager;
 import com.intellij.openapi.wm.StatusBar;
@@ -110,6 +111,7 @@ public final class ExecutionHandler {
       try {
         final SimpleJavaParameters javaParameters = WriteIntentReadAction.computeThrowable(() -> {
           FileDocumentManager.getInstance().saveAllDocuments();
+          ManagingFS.getInstance().flushPendingUpdatesOrNotify();
           final AntCommandLineBuilder builder = new AntCommandLineBuilder();
 
           builder.setBuildFile(buildFile.getAllOptions(), VfsUtilCore.virtualToIoFile(buildFile.getVirtualFile()));
@@ -238,7 +240,7 @@ public final class ExecutionHandler {
 
       @Override
       public void onTextAvailable(@NotNull ProcessEvent event, @NotNull Key outputType) {
-        if (outputType == ProcessOutputTypes.STDERR) {
+        if (ProcessOutputType.isStderr(outputType)) {
           final String text = event.getText();
           synchronized (myUnprocessedStdErr) {
             myUnprocessedStdErr.append(text);

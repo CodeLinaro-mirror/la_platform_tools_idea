@@ -1,9 +1,11 @@
-// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.ui.components;
 
 import com.intellij.ide.ui.AntialiasingType;
 import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.platform.icons.scale.IconScale;
+import com.intellij.platform.icons.swing.SwingIconKt;
 import com.intellij.ui.AnchorableComponent;
 import com.intellij.ui.BrowserHyperlinkListener;
 import com.intellij.ui.ColorUtil;
@@ -14,7 +16,8 @@ import com.intellij.util.ui.HTMLEditorKitBuilder;
 import com.intellij.util.ui.JBFont;
 import com.intellij.util.ui.UIUtil;
 import com.intellij.util.ui.components.JBComponent;
-import org.intellij.lang.annotations.JdkConstants;
+import com.intellij.util.ui.JdkConstants;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -61,6 +64,16 @@ public class JBLabel extends JLabel implements AnchorableComponent, JBComponent<
 
   public JBLabel(@Nullable Icon image) {
     super(image);
+  }
+
+  @ApiStatus.Internal
+  public JBLabel(@NotNull com.intellij.platform.icons.Icon icon, IconScale scale) {
+    super(SwingIconKt.toSwingIcon(icon, scale));
+  }
+
+  @ApiStatus.Internal
+  public JBLabel(@NotNull com.intellij.platform.icons.Icon icon) {
+    this(icon, IconScale.Default);
   }
 
   public JBLabel(@NotNull @NlsContexts.Label String text) {
@@ -461,5 +474,10 @@ public class JBLabel extends JLabel implements AnchorableComponent, JBComponent<
     if (myEditorPane != null) {
       myEditorPane.setToolTipText(text);
     }
+  }
+
+  @ApiStatus.Internal
+  public @Nullable JEditorPane getEditorPane() {
+    return myEditorPane;
   }
 }

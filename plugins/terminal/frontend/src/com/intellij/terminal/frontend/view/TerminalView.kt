@@ -1,6 +1,8 @@
 package com.intellij.terminal.frontend.view
 
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.DataKey
+import com.intellij.platform.eel.annotations.NativePath
 import com.intellij.terminal.TerminalTitle
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -9,11 +11,22 @@ import kotlinx.coroutines.flow.StateFlow
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.plugins.terminal.session.TerminalGridSize
 import org.jetbrains.plugins.terminal.session.TerminalStartupOptions
+import org.jetbrains.plugins.terminal.session.impl.TerminalSession
 import org.jetbrains.plugins.terminal.view.TerminalOutputModel
 import org.jetbrains.plugins.terminal.view.TerminalOutputModelsSet
 import org.jetbrains.plugins.terminal.view.TerminalSendTextBuilder
 import org.jetbrains.plugins.terminal.view.shellIntegration.TerminalShellIntegration
+import java.awt.event.KeyEvent
+import java.nio.file.Path
 import javax.swing.JComponent
+
+@ApiStatus.Internal
+fun interface TerminalInputInterceptor {
+  /**
+   * Returns `true` when the event is handled and should not be sent to the terminal process.
+   */
+  fun beforeTerminalInput(event: KeyEvent): Boolean
+}
 
 /**
  * Represents the frontend part of the Reworked Terminal.
@@ -74,6 +87,10 @@ interface TerminalView {
    * Events consumed by the action system are not included here.
    *
    * Each key event is emitted after sending input to the shell process.
+   * Your collector will receive the event asynchronously with the rest of Swing key events handling logic,
+   * so the state of [java.awt.event.KeyEvent.isConsumed] is undefined and shouldn't be taken into account.
+   * Also, [java.awt.event.KeyEvent.consume] shouldn't be called.
+   *
    * Note that [TerminalOutputModel] is updated asynchronously after shell receives the input and updates the screen text.
    * So, when collecting this flow, the result of typing may not be reflected in the [TerminalOutputModel] yet.
    *
@@ -82,6 +99,17 @@ interface TerminalView {
    * instead of handling key events directly.
    */
   val keyEventsFlow: Flow<TerminalKeyEvent>
+
+  /**
+   * Absolute [Path] of the current working directory of the terminal process.
+   *
+   * When [TerminalShellIntegration] is available, it is used to track the working directory.
+   * Otherwise, the OS-specific heuristics and polling approach will be used.
+   *
+   * Can be null if process is not started yet.
+   * Or if shell integration is not available and OS-specific heuristics fail to determine the working directory of the process.
+   */
+  val workingDirectoryFlow: StateFlow<Path?>
 
   /**
    * Can be used to get or await the shell integration initialization.
@@ -102,6 +130,9 @@ interface TerminalView {
    * Available after the shell process is started and connected to the [TerminalView].
    */
   val startupOptionsDeferred: Deferred<TerminalStartupOptions>
+
+  @get:ApiStatus.Internal
+  val sessionDeferred: Deferred<TerminalSession>
 
   /*
    * Checks if the shell process has child processes.
@@ -126,7 +157,8 @@ interface TerminalView {
    * Returns null if the shell process is not connected yet to the [TerminalView]
    * or if the initial value is not yet received from the backend.
    */
-  fun getCurrentDirectory(): String?
+  @Deprecated("Use workingDirectoryFlow instead.", ReplaceWith("workingDirectoryFlow.value"))
+  fun getCurrentDirectory(): @NativePath String?
 
   /**
    * A shortcut to schedule sending the specified text to the shell process
@@ -138,6 +170,12 @@ interface TerminalView {
    * Creates the builder with additional options for sending text to the shell process.
    */
   fun createSendTextBuilder(): TerminalSendTextBuilder
+
+  @ApiStatus.Internal
+  fun addInputInterceptor(parentDisposable: Disposable, interceptor: TerminalInputInterceptor)
+
+  @ApiStatus.Internal
+  fun setTopComponent(component: JComponent, disposable: Disposable)
 
   companion object {
     /**

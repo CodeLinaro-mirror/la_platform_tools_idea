@@ -38,7 +38,7 @@
     <!-- preload only for performance reasons -->
     <projectService serviceInterface="com.intellij.openapi.vcs.ProjectLevelVcsManager"
                     serviceImplementation="com.intellij.openapi.vcs.impl.ProjectLevelVcsManagerImpl" preload="notHeadless"/>
-    <registryKey key="vcs.watch.roots" defaultValue="true" restartRequired="true"
+    <registryKey key="vcs.watch.roots" defaultValue="false" restartRequired="true"
                  description="Add VCS repository roots as recursive VFS watch roots"/>
     <dependencyCollector kind="vcs" implementation="com.intellij.openapi.vcs.impl.MissingVcsPluginAdvertiser"/>
     <!--suppress LightServiceMigrationXML - see DefaultProjectStoreTest (IDE needs to know correct Storage without service being loaded) -->
@@ -183,6 +183,10 @@
                  key="vcs.commit.dialog.esc.close"/>
     <registryKey defaultValue="true" description="Always open diff in window in either floating or windowed commit TW"
                  key="vcs.commit.dialog.force.diff.in.window"/>
+    <registryKey defaultValue="true"
+                 description="Scope diff file navigation ('Go to change' popup and file counter) to the current change's group (e.g. changelist or unversioned files). When disabled, navigation spans all changes."
+                 key="vcs.diff.preview.scope.navigation.to.group"
+                 restartRequired="false"/>
 
     <toolWindow id="Version Control" anchor="bottom" canCloseContents="true" icon="AllIcons.Toolwindows.ToolWindowChanges"
                 factoryClass="com.intellij.openapi.vcs.changes.ui.ChangeViewToolWindowFactory"/>
@@ -386,6 +390,17 @@
     <projectService
       serviceInterface="com.intellij.openapi.vcs.changes.ChangesListManagerStateProvider"
       serviceImplementation="com.intellij.openapi.vcs.changes.ChangesListManagerStateProviderImpl"/>
+    <projectSettings service="com.intellij.vcs.commit.message.CommitMessageInspectionProfile"/>
+    <projectSettings service="com.intellij.openapi.vcs.impl.OptionsAndConfirmationsHolder"/>
+    <projectSettings service="com.intellij.openapi.vcs.changes.ChangeListManagerImpl"/>
+    <projectSettings service="com.intellij.openapi.vcs.contentAnnotation.VcsContentAnnotationSettings"/>
+    <projectSettings service="com.intellij.openapi.vcs.impl.ProjectLevelVcsManagerImpl"/>
+    <projectSettings service="com.intellij.openapi.vcs.changes.committed.CommittedChangesCache"/>
+    <projectSettings service="com.intellij.openapi.vcs.changes.ignore.IgnoredFileGeneratorImpl$IgnoredFileRootStore"/>
+    <projectSettings service="com.intellij.openapi.vcs.changes.shelf.ShelveChangesManager"/>
+    <projectSettings service="com.intellij.openapi.vcs.update.RestoreUpdateTree"/>
+    <projectSettings service="com.intellij.openapi.vcs.impl.projectlevelman.VcsDirectoryMappingCache"/>
+    <applicationSettings service="com.intellij.openapi.vcs.changes.VcsEditorTabFilesManager"/>
   </extensions>
 
   <extensions defaultExtensionNs="org.jetbrains">

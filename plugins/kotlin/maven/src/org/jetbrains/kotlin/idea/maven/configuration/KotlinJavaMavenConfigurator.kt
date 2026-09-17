@@ -17,9 +17,9 @@ import org.jetbrains.kotlin.idea.configuration.hasKotlinJvmRuntimeInScope
 import org.jetbrains.kotlin.idea.maven.KotlinMavenBundle
 import org.jetbrains.kotlin.idea.maven.PomFile
 import org.jetbrains.kotlin.idea.projectConfiguration.getDefaultJvmTarget
-import org.jetbrains.kotlin.idea.projectConfiguration.getJvmStdlibArtifactId
 import org.jetbrains.kotlin.platform.TargetPlatform
 import org.jetbrains.kotlin.platform.jvm.JvmPlatforms
+import org.jetbrains.kotlin.utils.PathUtil.KOTLIN_JAVA_STDLIB_NAME
 
 class KotlinJavaMavenConfigurator : KotlinMavenConfigurator(TEST_LIB_ID, false, NAME, PRESENTABLE_TEXT) {
 
@@ -30,16 +30,24 @@ class KotlinJavaMavenConfigurator : KotlinMavenConfigurator(TEST_LIB_ID, false, 
         goalName == PomFile.KotlinGoals.Compile
 
     override fun getStdlibArtifactId(module: Module, version: IdeKotlinVersion): String {
-        return getJvmStdlibArtifactId(ModuleRootManager.getInstance(module).sdk, version)
+        return KOTLIN_JAVA_STDLIB_NAME
     }
 
     private fun hasJavaFiles(module: Module): Boolean {
         return FileTypeIndex.containsFileOfType(JavaFileType.INSTANCE, GlobalSearchScope.moduleScope(module))
     }
 
-    override fun createExecutions(pomFile: PomFile, kotlinPlugin: MavenDomPlugin, module: Module) {
-        createExecution(pomFile, kotlinPlugin, PomFile.DefaultPhases.Compile, PomFile.KotlinGoals.Compile, module, false)
-        createExecution(pomFile, kotlinPlugin, PomFile.DefaultPhases.TestCompile, PomFile.KotlinGoals.TestCompile, module, true)
+    override fun createExecutions(pomFile: PomFile, kotlinPlugin: MavenDomPlugin, module: Module, kotlinVersion: String?) {
+        createExecution(pomFile, kotlinPlugin, PomFile.DefaultPhases.Compile, PomFile.KotlinGoals.Compile, module, false, kotlinVersion)
+        createExecution(
+            pomFile,
+            kotlinPlugin,
+            PomFile.DefaultPhases.TestCompile,
+            PomFile.KotlinGoals.TestCompile,
+            module,
+            true,
+            kotlinVersion
+        )
 
         if (hasJavaFiles(module) || pomFile.hasJavacPlugin()) {
             pomFile.addJavacExecutions(module, kotlinPlugin)

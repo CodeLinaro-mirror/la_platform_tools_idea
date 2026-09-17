@@ -69,6 +69,47 @@ public final class ThreadingAssertions {
     "Access from Event Dispatch Thread (EDT) is not allowed";
 
   /**
+   * Android Studio (b/493960803): here we are temporarily adding new "generated"
+   * assertions, which delegates to the respective IntelliJ asserts. However, these will only
+   * be enabled via the system property "studio.threading.assertions.enabled". We will
+   * generate these at build time in Bazel temporarily, until all existing threading
+   * exception violations are fixed. Then, we will remove this patch to match IntelliJ
+   * behavior.
+   */
+  private static final boolean GENERATED_ASSERTIONS_ENABLED =
+    Boolean.getBoolean("studio.threading.assertions.enabled");
+
+  public static void generatedAssertEventDispatchThread() {
+    if (GENERATED_ASSERTIONS_ENABLED) {
+      assertEventDispatchThread();
+    }
+  }
+
+  public static void generatedAssertBackgroundThread() {
+    if (GENERATED_ASSERTIONS_ENABLED) {
+      assertBackgroundThread();
+    }
+  }
+
+  public static void generatedSoftAssertReadAccess() {
+    if (GENERATED_ASSERTIONS_ENABLED) {
+      softAssertReadAccess();
+    }
+  }
+
+  public static void generatedAssertNoReadAccess() {
+    if (GENERATED_ASSERTIONS_ENABLED) {
+      assertNoReadAccess();
+    }
+  }
+
+  public static void generatedAssertWriteAccess() {
+    if (GENERATED_ASSERTIONS_ENABLED) {
+      assertWriteAccess();
+    }
+  }
+
+  /**
    * Asserts that the current thread is the event dispatch thread.
    *
    * @see com.intellij.util.concurrency.annotations.RequiresEdt

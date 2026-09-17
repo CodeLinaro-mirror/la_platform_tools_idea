@@ -24,6 +24,9 @@ fleetModule {
 
 @OptIn(org.jetbrains.kotlin.gradle.ExperimentalWasmDsl::class)
 kotlin {
+  sourceSets.wasmJsTest.dependencies {
+    implementation("org.jetbrains.kotlinx:atomicfu:0.23.1")
+  }
   // KOTLIN__MARKER_START
   compilerOptions.freeCompilerArgs = listOf(
     "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
@@ -37,8 +40,10 @@ kotlin {
     "-progressive",
   )
   jvm {}
-  sourceSets.jvmTest.configure { kotlin.srcDir(layout.projectDirectory.dir("../src")) }
-  configureAtMostOneJvmTargetOrThrow { compilations.named("test") { withJavaSourceSet { javaSourceSet -> javaSourceSet.java.srcDir(layout.projectDirectory.dir("../src")) } } }
+  wasmJs {
+    browser {}
+  }
+  sourceSets.jvmTest.configure { resources.srcDir(layout.projectDirectory.dir("../resources")) }
   sourceSets.commonMain.configure { kotlin.srcDir(layout.projectDirectory.dir("../srcCommonMain")) }
   sourceSets.commonMain.configure { resources.srcDir(layout.projectDirectory.dir("../resourcesCommonMain")) }
   sourceSets.commonTest.configure { kotlin.srcDir(layout.projectDirectory.dir("../srcCommonTest")) }
@@ -49,6 +54,10 @@ kotlin {
   sourceSets.jvmTest.configure { kotlin.srcDir(layout.projectDirectory.dir("../srcJvmTest")) }
   configureAtMostOneJvmTargetOrThrow { compilations.named("test") { withJavaSourceSet { javaSourceSet -> javaSourceSet.java.srcDir(layout.projectDirectory.dir("../srcJvmTest")) } } }
   sourceSets.jvmTest.configure { resources.srcDir(layout.projectDirectory.dir("../resourcesJvmTest")) }
+  sourceSets.wasmJsMain.configure { kotlin.srcDir(layout.projectDirectory.dir("../srcWasmJsMain")) }
+  sourceSets.wasmJsMain.configure { resources.srcDir(layout.projectDirectory.dir("../resourcesWasmJsMain")) }
+  sourceSets.wasmJsTest.configure { kotlin.srcDir(layout.projectDirectory.dir("../srcWasmJsTest")) }
+  sourceSets.wasmJsTest.configure { resources.srcDir(layout.projectDirectory.dir("../resourcesWasmJsTest")) }
   sourceSets.commonMain.dependencies {
     implementation(jps.org.jetbrains.kotlin.kotlin.stdlib1993400674.get().let { "${it.group}:${it.name}:${it.version}" }) {
       exclude(group = "org.jetbrains", module = "annotations")
@@ -56,14 +65,21 @@ kotlin {
     implementation(jps.org.jetbrains.intellij.deps.kotlinx.kotlinx.coroutines.core.jvm930800474.get().let { "${it.group}:kotlinx-coroutines-core:${it.version}" }) {
       isTransitive = false
     }
+  }
+  sourceSets.commonTest.dependencies {
+    implementation(jps.org.jetbrains.intellij.deps.kotlinx.kotlinx.coroutines.test.jvm1610416103.get().let { "${it.group}:kotlinx-coroutines-test:${it.version}" }) {
+      isTransitive = false
+    }
     implementation(jps.org.jetbrains.kotlinx.kotlinx.io.core.jvm479158162.get().let { "${it.group}:kotlinx-io-core:${it.version}" }) {
       exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib")
     }
-  }
-  sourceSets.commonTest.dependencies {
-    implementation(project(":fleet.ktor.client.cio"))
+    implementation(jps.org.jetbrains.kotlinx.kotlinx.serialization.core.jvm1739247612.get().let { "${it.group}:kotlinx-serialization-core:${it.version}" }) {
+      isTransitive = false
+    }
+    implementation(jps.org.jetbrains.kotlinx.kotlinx.serialization.json.jvm231489733.get().let { "${it.group}:kotlinx-serialization-json:${it.version}" }) {
+      isTransitive = false
+    }
     implementation(project(":fleet.ktor.client.core"))
-    implementation(project(":fleet.ktor.network.tls"))
     implementation(project(":fleet.lsp.protocol"))
     implementation(project(":fleet.test.runtime"))
   }

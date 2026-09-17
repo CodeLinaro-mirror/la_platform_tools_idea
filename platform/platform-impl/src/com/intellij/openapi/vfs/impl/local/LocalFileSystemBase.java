@@ -7,7 +7,6 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.extensions.ExtensionPointName;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.util.SystemInfo;
-import com.intellij.openapi.util.SystemInfoRt;
 import com.intellij.openapi.util.io.FileAttributes;
 import com.intellij.openapi.util.io.FileAttributes.CaseSensitivity;
 import com.intellij.openapi.util.io.FileSystemUtil;
@@ -31,16 +30,18 @@ import com.intellij.openapi.vfs.newvfs.impl.FakeVirtualFile;
 import com.intellij.openapi.vfs.newvfs.impl.VirtualDirectoryImpl;
 import com.intellij.openapi.vfs.newvfs.persistent.PersistentFS;
 import com.intellij.openapi.vfs.newvfs.persistent.PersistentFSImpl;
-import com.intellij.platform.eel.path.EelPath;
+import com.intellij.platform.eel.fs.EelFileUtils;
 import com.intellij.platform.eel.provider.LocalEelDescriptor;
+import com.intellij.platform.eel.provider.EelProviderUtil;
+import com.intellij.platform.eel.provider.LocalEelMachine;
 import com.intellij.util.PathUtilRt;
 import com.intellij.util.SlowOperations;
 import com.intellij.util.SystemProperties;
-import com.intellij.util.ThrowableConsumer;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.io.PreemptiveSafeFileOutputStream;
 import com.intellij.util.io.SafeFileOutputStream;
 import com.intellij.util.io.TrashBin;
+import com.intellij.util.system.OS;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -48,7 +49,6 @@ import org.jetbrains.annotations.TestOnly;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
-import java.io.File;
 import java.io.IOError;
 import java.io.IOException;
 import java.io.InputStream;
@@ -101,7 +101,7 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
 
   protected static @NotNull String toIoPath(@NotNull VirtualFile file) {
     var path = file.getPath();
-    if (path.length() == 2 && SystemInfo.isWindows && OSAgnosticPathUtil.startsWithWindowsDrive(path)) {
+    if (path.length() == 2 && OS.CURRENT == OS.Windows && OSAgnosticPathUtil.startsWithWindowsDrive(path)) {
       // makes 'C:' resolve to a root directory of the drive C:, not the current directory on that drive
       path += '/';
     }
@@ -126,20 +126,19 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
     return path;
   }
 
-  protected static void checkNotSpecialFile(@NotNull VirtualFile file,
-                                            @NotNull Path path) throws IOException {
-    if (SystemInfo.isUnix) {
+  protected static void checkNotSpecialFile(@NotNull VirtualFile file, @NotNull Path path) throws IOException {
+    if (OS.CURRENT != OS.Windows) {
       //IJPL-234326: we don't want to deal with pipes (and symlinks to pipes), because it blocks IO potentially forever.
       //  Strictly speaking, we want to prohibit only read/write operations, but right now we prohibit all accesses,
       //  just to be sure -- could be relaxed later.
       if (file.is(VFileProperty.SPECIAL)) {
-        throw new NoSuchFileException(file.getPath(), null, "Access to special files (fifo?) is prohibited");
+        throw new NoSuchFileException(file.getPath(), null, "Access to special files (FIFO?) is prohibited");
       }
       if (file.is(VFileProperty.SYMLINK)) {
         if (Files.exists(path)) {
-          BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class/*_follows_ symlinks*/);
+          var attributes = Files.readAttributes(path, BasicFileAttributes.class /*_follows_ symlinks*/);
           if (attributes.isOther()) {
-            throw new NoSuchFileException(file.getPath(), null, "Access to special files (fifo?) is prohibited");
+            throw new NoSuchFileException(file.getPath(), null, "Access to special files (FIFO?) is prohibited");
           }
         }
       }
@@ -211,7 +210,7 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
 
   @Override
   protected @Nullable String normalize(@NotNull String path) {
-    if (SystemInfoRt.isWindows) {
+    if (OS.CURRENT == OS.Windows) {
       if (path.length() > 1 && path.charAt(0) == '/' && path.charAt(1) != '/') {
         path = path.substring(1);  // hack around `new File(path).toURI().toURL().getFile()`
       }
@@ -225,7 +224,7 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
 
     try {
       var file = Path.of(path);
-      if (!file.isAbsolute() && !(SystemInfo.isWindows && path.length() == 2 && OSAgnosticPathUtil.startsWithWindowsDrive(path))) {
+      if (!file.isAbsolute() && !(OS.CURRENT == OS.Windows && path.length() == 2 && OSAgnosticPathUtil.startsWithWindowsDrive(path))) {
         path = file.toAbsolutePath().toString();
       }
     }
@@ -235,11 +234,6 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
     }
 
     return FileUtil.normalize(path);
-  }
-
-  @Override
-  public void refreshIoFiles(@NotNull Iterable<? extends File> files, boolean async, boolean recursive, @Nullable Runnable onFinish) {
-    refreshFiles(ContainerUtil.mapNotNull(files, this::refreshAndFindFileByIoFile), async, recursive, onFinish);
   }
 
   @Override
@@ -287,7 +281,7 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
 
   private boolean auxCopy(VirtualFile file, VirtualFile toDir, String copyName) throws IOException {
     for (var handler : handlers()) {
-      if (handler.copy(file, toDir, copyName) != null) return true;
+      if (handler.copyFile(file, toDir, copyName)) return true;
     }
     return false;
   }
@@ -313,9 +307,9 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
     return false;
   }
 
-  private void auxNotifyCompleted(ThrowableConsumer<LocalFileOperationsHandler, IOException> consumer) {
+  private void auxNotifyCompleted() {
     for (var handler : handlers()) {
-      handler.afterDone(consumer);
+      handler.completed();
     }
   }
 
@@ -336,8 +330,10 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
       NioFiles.createDirectories(nioFile);
     }
 
-    auxNotifyCompleted(handler -> handler.createDirectory(parent, name));
+    auxNotifyCompleted();
 
+    //FIXME RC: why we return FakeVirtualFile (extends StubVirtualFile) here?
+    //          it is quite strange/surprising implementation to use
     return new FakeVirtualFile(parent, name);
   }
 
@@ -356,8 +352,8 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
       NioFiles.createIfNotExists(nioFile);
       if (existing != null) {
         // Wow, I/O created the file successfully even though it already existed in VFS. Maybe we got dir case sensitivity wrong?
-        boolean knownCS = parent.isCaseSensitive();
-        CaseSensitivity actualCS = fetchCaseSensitivity(parent, name);
+        var knownCS = parent.isCaseSensitive();
+        var actualCS = fetchCaseSensitivity(parent, name);
         if (actualCS.isKnown() && actualCS.isSensitive() != knownCS) {
           // we need to update case sensitivity
           var event = ((PersistentFSImpl)PersistentFS.getInstance()).prepareCaseSensitivityUpdateIfNeeded(
@@ -371,7 +367,7 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
       }
     }
 
-    auxNotifyCompleted(handler -> handler.createFile(parent, name));
+    auxNotifyCompleted();
 
     return new FakeVirtualFile(parent, name);
   }
@@ -384,7 +380,7 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
     // Both registry keys have the fallback value `false`. If this code is executed before `Registry` initialization,
     // it means that there can be no connections to remote machines anyway.
     if (Registry.is("vfs.fetch.case.sensitivity.using.eel", false)) {
-      EelPath eelPath = LocalFileSystemEelUtil.toEelPath(parent, childName);
+      var eelPath = LocalFileSystemEelUtil.toEelPath(parent, childName);
       if (
         eelPath != null && (
           !(eelPath.getDescriptor() instanceof LocalEelDescriptor)
@@ -394,7 +390,7 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
         return LocalFileSystemEelUtil.fetchCaseSensitivityUsingEel(eelPath);
       }
     }
-    return FileSystemUtil.readParentCaseSensitivity(new File(parent.getPath(), childName));
+    return FileSystemUtil.readParentCaseSensitivity(Path.of(parent.getPath(), childName));
   }
 
   @Override
@@ -407,7 +403,7 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
       if (MOVE_TO_TRASH.get(file) == Boolean.TRUE) {
         TrashBin.moveToTrash(nioFile);
       }
-      else {
+      else if (EelProviderUtil.ownsPath(LocalEelMachine.INSTANCE, nioFile)) {
         var callback = DELETE_CALLBACK.get(file);
         if (callback != null) {
           NioFiles.deleteRecursively(nioFile, callback);
@@ -417,8 +413,11 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
           NioFiles.deleteRecursively(nioFile);
         }
       }
+      else {
+        EelFileUtils.deleteRecursively(nioFile);
+      }
     }
-    auxNotifyCompleted(handler -> handler.delete(file));
+    auxNotifyCompleted();
   }
 
   @Override
@@ -444,7 +443,7 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
   }
 
   protected static byte @NotNull [] readIfNotTooLarge(Path nioFile) throws IOException {
-    byte[] maybeContent = LocalFileSystemEelUtil.readWholeFileIfNotTooLargeWithEel(nioFile);
+    var maybeContent = LocalFileSystemEelUtil.readWholeFileIfNotTooLargeWithEel(nioFile);
     if (maybeContent != null) {
       return maybeContent;
     }
@@ -501,6 +500,9 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
     if (newParent.findChild(name) != null) {
       throw new IOException(IdeCoreBundle.message("vfs.target.already.exists.error", newParent.getPath() + "/" + name));
     }
+    //findChild(name)=null adds the name to adoptedNames (file names known absent in the folder), which has
+    // unexpected but desirable side effect: prevents loading the child into VFS in parallel, via 'local refresh'
+    // branch in PersistentFSImpl.findChildInfo()
 
     if (!auxMove(file, newParent)) {
       var nioFile = convertToNioFileAndCheck(file, false);
@@ -513,7 +515,7 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
       }
     }
 
-    auxNotifyCompleted(handler -> handler.move(file, newParent));
+    auxNotifyCompleted();
   }
 
   @Override
@@ -544,7 +546,7 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
       }
     }
 
-    auxNotifyCompleted(handler -> handler.rename(file, newName));
+    auxNotifyCompleted();
   }
 
   @Override
@@ -573,7 +575,7 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
       NioFiles.copyRecursively(nioFile, nioTarget);
     }
 
-    auxNotifyCompleted(handler -> handler.copy(file, newParent, newName));
+    auxNotifyCompleted();
 
     return new FakeVirtualFile(newParent, newName);
   }
@@ -595,7 +597,7 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
     if (EXTRACT_ROOTS_USING_NIO) {
       final var normalizedPathRootString = Path.of(normalizedPath).getRoot().toString();
 
-      for (Path root : FileSystems.getDefault().getRootDirectories()) {
+      for (var root : FileSystems.getDefault().getRootDirectories()) {
         var stringRoot = root.toString();
 
         if (normalizedPathRootString.equals(stringRoot)) {
@@ -618,11 +620,6 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
   }
 
   @Override
-  public int getRank() {
-    return 1;
-  }
-
-  @Override
   public boolean markNewFilesAsDirty() {
     return true;
   }
@@ -638,7 +635,7 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
     var t = LOG.isTraceEnabled() ? System.nanoTime() : 0;
     try {
       var nioFile = convertToNioFileAndCheck(file, false);
-      if (SystemInfo.isWindows) {
+      if (OS.CURRENT == OS.Windows) {
         return nioFile.toRealPath(LinkOption.NOFOLLOW_LINKS).getFileName().toString();
       }
       // `toRealPath(NOFOLLOW_LINKS)` is too slow on Unix; `toRealPath()` works when there are no symlinks

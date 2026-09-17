@@ -112,6 +112,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.StringTokenizer;
 import java.util.UUID;
@@ -158,6 +159,7 @@ public final class JavaBuilder extends ModuleLevelBuilder {
   private static final String SOURCE_OPTION = "-source";
   private static final String SYSTEM_OPTION = "--system";
   private static final String PATCH_MODULE_OPTION = "--patch-module";
+  private static final String XLINT_OPTION = "-Xlint:";
   private static final Set<String> FILTERED_OPTIONS = Set.of(
     TARGET_OPTION, RELEASE_OPTION, "-d"
   );
@@ -990,6 +992,10 @@ public final class JavaBuilder extends ModuleLevelBuilder {
               vmOptions.add(userOption.substring("-J".length()));
             }
             else {
+              if (compilerOptions.DEPRECATION && containsAnyXlintKey(userOption, "-deprecation", "none")) {
+                // filter the "deprecation" flag overridden by the corresponding user option
+                compilationOptions.remove("-deprecation");
+              }
               appender.accept(compilationOptions, userOption);
             }
           }
@@ -1007,6 +1013,29 @@ public final class JavaBuilder extends ModuleLevelBuilder {
     addCompilationOptions(compilerSdkVersion, compilingTool, compilationOptions, context, chunk, profile, true);
 
     return Pair.create(vmOptions, compilationOptions);
+  }
+
+  /**
+   * checks if the passed option is an "-Xlint:" option and if any of mentioned warn categories are configured
+   * @return true, if at least one of given keys is mentioned in the option
+   */
+  private static boolean containsAnyXlintKey(String option, String... keys) {
+    if (option.startsWith(XLINT_OPTION)) {
+      int begin = XLINT_OPTION.length();
+      while (begin < option.length()) {
+        int end = option.indexOf(',', begin);
+        if (end < 0) {
+          end = option.length();
+        }
+        for (String key : keys) {
+          if (end - begin == key.length() && option.regionMatches(begin, key, 0, key.length())) {
+            return true;
+          }
+        }
+        begin = end + 1;
+      }
+    }
+    return false;
   }
 
   private static void notifyOptionPossibleConflicts(CompileContext context, String option, ModuleChunk chunk) {
@@ -1395,7 +1424,7 @@ public final class JavaBuilder extends ModuleLevelBuilder {
       // Important: must be processed in-place and not postponed or offloaded to a different thread. The JavacFileData is internally backed up by live javac internal data structures,
       // which can be damaged if accessed later or from a different thread
       for (JavacFileReferencesRegistrar registrar : myRegistrars) {
-        registrar.registerFile(myContext, data.getFilePath(), Iterators.map(data.getRefs().entrySet(), entry -> entry), data.getDefs(), data.getCasts(), data.getImplicitToStringRefs());
+        registrar.registerFile(myContext, data.getFilePath(), Iterators.filter(Iterators.map(data.getRefs().entrySet(), entry -> entry.getKey() != null? entry : null), Objects::nonNull), data.getDefs(), data.getCasts(), data.getImplicitToStringRefs());
       }
     }
 

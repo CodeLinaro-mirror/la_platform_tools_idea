@@ -2,7 +2,6 @@
 package com.intellij.platform.searchEverywhere.frontend.vm
 
 import com.intellij.ide.actions.searcheverywhere.SearchEverywhereContributor
-import com.intellij.ide.actions.searcheverywhere.SearchEverywhereToggleAction
 import com.intellij.ide.actions.searcheverywhere.statistics.SearchEverywhereUsageTriggerCollector
 import com.intellij.ide.rpc.ThrottledItems
 import com.intellij.ide.rpc.ThrottledOneItem
@@ -10,7 +9,6 @@ import com.intellij.ide.rpc.throttledWithAccumulation
 import com.intellij.internal.statistic.eventLog.events.EventFields
 import com.intellij.internal.statistic.eventLog.events.EventPair
 import com.intellij.lang.Language
-import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.options.advanced.AdvancedSettings
@@ -38,12 +36,15 @@ import com.intellij.platform.searchEverywhere.frontend.SeSelectionResultKeep
 import com.intellij.platform.searchEverywhere.frontend.SeSelectionResultText
 import com.intellij.platform.searchEverywhere.frontend.SeTab
 import com.intellij.platform.searchEverywhere.frontend.SeTabInfo
+import com.intellij.platform.searchEverywhere.frontend.ml.SeMlService
+import com.intellij.platform.searchEverywhere.frontend.tabs.SeAdaptedTab
 import com.intellij.platform.searchEverywhere.frontend.ui.SePopupHeaderPane
 import com.intellij.platform.searchEverywhere.isCommand
 import com.intellij.platform.searchEverywhere.presentations.SeAdaptedItemEmptyPresentation
 import com.intellij.platform.searchEverywhere.presentations.SeAdaptedItemPresentation
 import com.intellij.platform.searchEverywhere.presentations.SeItemPresentation
 import com.intellij.platform.searchEverywhere.providers.SeAdaptedItem
+import com.intellij.platform.searchEverywhere.providers.SeEverywhereFilter
 import com.intellij.platform.searchEverywhere.providers.SeLog
 import com.intellij.platform.searchEverywhere.utils.SuspendLazyProperty
 import com.intellij.platform.searchEverywhere.utils.initAsync
@@ -96,9 +97,9 @@ sealed interface SeTabVm {
   suspend fun isCommandsSupported(): Boolean
   suspend fun getPreviewInfo(itemData: SeItemData): SePreviewInfo?
   suspend fun itemSelected(itemWithIndex: Pair<Int, SeItemData>, isIndexOriginal: Boolean, modifiers: Int, searchText: String): SeSelectionResult
-  suspend fun openInFindWindow(session: SeSession, initEvent: AnActionEvent): Boolean
+  suspend fun openInFindWindow(session: SeSession): Boolean
   suspend fun canBeShownInFindResults(): Boolean
-  suspend fun getSearchEverywhereToggleAction(): SearchEverywhereToggleAction?
+  suspend fun getAutoToggleAction(): AutoToggleAction?
   suspend fun getUpdatedPresentation(item: SeItemData): SeItemPresentation?
   suspend fun performExtendedAction(item: SeItemData): Boolean
   suspend fun getEmptyResultInfo(context: DataContext): SeEmptyResultInfo?
@@ -176,7 +177,8 @@ class SeTabVmImpl(
             if (lastNotFoundString != null) {
               val newPatternContainsPrevious = lastNotFoundString!!.length > 1 && it.contains(lastNotFoundString!!)
               if (!newPatternContainsPrevious) {
-                (getSearchEverywhereToggleAction() as? AutoToggleAction)?.autoToggle(false)
+                SeLog.log(SeLog.PATTERN) { "SeTabVm<$tabId>: resetting auto toggle due to pattern family change" }
+                getAutoToggleAction()?.autoToggle(false)
               }
             }
           }
@@ -189,18 +191,33 @@ class SeTabVmImpl(
         }.mapLatest { (searchPattern, filterData) ->
           val params = SeParams(searchPattern, filterData)
           val searchId = UUID.randomUUID().toString()
+          val disabledProviderIds = SeEverywhereFilter.from(filterData).disabledProviderIds
+
+          SeMlService.getInstanceIfEnabled()?.onStateStarted(this@SeTabVmImpl.tabId, params)
 
           val resultsFlow = tab.getItems(params).let { resultsFlow ->
             val resultsFlowWithAdaptedPresentations = resultsFlow.mapNotNull {
               checkAndAddMissingPresentationIfPossible(it)
+                ?.let { withPresentation ->
+                  calculateMlWeight(withPresentation)
+                }
             }
 
-            val essential = tab.essentialProviderIds()
+            val essential = tab.essentialProviderIds().filter { it !in disabledProviderIds }.toSet()
             if (essential.isEmpty()) {
-              if (shouldThrottle.load()) resultsFlowWithAdaptedPresentations.throttledWithAccumulation(shouldPassItem = { item -> item !is SeResultEndEvent })
-              else resultsFlowWithAdaptedPresentations.map { event -> ThrottledOneItem(event) }
+              if (shouldThrottle.load()) {
+                SeLog.log(SeLog.THROTTLING) { "Will throttle with accumulation (searchId = $searchId)" }
+                resultsFlowWithAdaptedPresentations.throttledWithAccumulation(shouldPassItem = { item -> item !is SeResultEndEvent })
+              }
+              else {
+                SeLog.log(SeLog.THROTTLING) { "Will not throttle (searchId = $searchId)" }
+                resultsFlowWithAdaptedPresentations.map { event -> ThrottledOneItem(event) }
+              }
             }
-            else resultsFlowWithAdaptedPresentations.throttleUntilEssentialsArrive(essential)
+            else {
+              SeLog.log(SeLog.THROTTLING) { "Will throttle until essentials arrive (searchId = $searchId)" }
+              resultsFlowWithAdaptedPresentations.throttleUntilEssentialsArrive(essential)
+            }
           }.map { item ->
             if (!shouldLoadMoreFlow.value) _resultsHitBackPressureFlow.emit(searchId to true)
             shouldLoadMoreFlow.first { it }
@@ -288,6 +305,19 @@ class SeTabVmImpl(
     }
   }
 
+  private fun calculateMlWeight(resultEvent: SeResultEvent): SeResultEvent {
+    if (resultEvent !is SeResultAddedEvent && resultEvent !is SeResultReplacedEvent) return resultEvent
+    val mlService = SeMlService.getInstanceIfEnabled() ?: return resultEvent
+
+    val itemData = resultEvent.itemDataOrNull() ?: return resultEvent
+    val newItemData = mlService.applyMlWeight(itemData)
+
+    return when (resultEvent) {
+      is SeResultAddedEvent -> SeResultAddedEvent(newItemData)
+      is SeResultReplacedEvent -> SeResultReplacedEvent(resultEvent.uuidsToReplace, newItemData)
+    }
+  }
+
   override suspend fun getEmptyResultInfo(context: DataContext): SeEmptyResultInfo? {
     return tab.getEmptyResultInfo(context)
   }
@@ -296,17 +326,15 @@ class SeTabVmImpl(
     return tab.canBeShownInFindResults()
   }
 
-  override suspend fun openInFindWindow(session: SeSession, initEvent: AnActionEvent): Boolean {
+  override suspend fun openInFindWindow(session: SeSession): Boolean {
     val params = SeParams(searchPattern.value,
                           filterEditor.getValue()?.resultFlow?.value ?: SeFilterState.Empty)
-    return tab.openInFindToolWindow(session, params, initEvent)
+    return tab.openInFindToolWindow(session, params)
   }
 
-  override suspend fun getSearchEverywhereToggleAction(): SearchEverywhereToggleAction? {
-    return tab.getFilterEditor()?.getHeaderActions()?.firstOrNull {
-      it is SearchEverywhereToggleAction
-    } as? SearchEverywhereToggleAction
-  }
+  override suspend fun getAutoToggleAction(): AutoToggleAction? =
+    tab.getFilterEditor()?.getHeaderActions()?.filterIsInstance<AutoToggleAction>()?.firstOrNull()
+    ?: (tab as? SeAdaptedTab)?.autoToggleAction
 
   override suspend fun getUpdatedPresentation(item: SeItemData): SeItemPresentation? {
     if (item.presentation is SeAdaptedItemPresentation) return null
@@ -416,9 +444,9 @@ class SeDummyTabVm private constructor(
   override suspend fun isCommandsSupported(): Boolean = false
   override suspend fun getPreviewInfo(itemData: SeItemData): SePreviewInfo? = null
   override suspend fun itemSelected(itemWithIndex: Pair<Int, SeItemData>, isIndexOriginal: Boolean, modifiers: Int, searchText: String): SeSelectionResult = SeSelectionResultKeep()
-  override suspend fun openInFindWindow(session: SeSession, initEvent: AnActionEvent): Boolean = false
+  override suspend fun openInFindWindow(session: SeSession): Boolean = false
   override suspend fun canBeShownInFindResults(): Boolean = false
-  override suspend fun getSearchEverywhereToggleAction(): SearchEverywhereToggleAction? = null
+  override suspend fun getAutoToggleAction(): AutoToggleAction? = null
   override suspend fun getUpdatedPresentation(item: SeItemData): SeItemPresentation? = null
   override suspend fun performExtendedAction(item: SeItemData): Boolean = false
   override suspend fun getEmptyResultInfo(context: DataContext): SeEmptyResultInfo? = null

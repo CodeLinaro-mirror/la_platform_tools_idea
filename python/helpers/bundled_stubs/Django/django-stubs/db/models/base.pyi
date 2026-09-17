@@ -1,6 +1,6 @@
 import sys
 from collections.abc import Collection, Iterable, Sequence
-from typing import Any, ClassVar, Final, TypeVar, overload
+from typing import Any, ClassVar, Final, overload
 
 from django.core.checks.messages import CheckMessage
 from django.core.exceptions import MultipleObjectsReturned as BaseMultipleObjectsReturned
@@ -9,7 +9,7 @@ from django.db.models import BaseConstraint, Field, QuerySet
 from django.db.models.manager import Manager
 from django.db.models.options import Options
 from django.db.models.utils import AltersData
-from typing_extensions import Self, override
+from typing_extensions import Self, TypeVar, override
 
 _Self = TypeVar("_Self", bound=Model)
 
@@ -104,14 +104,14 @@ class Model(AltersData, metaclass=ModelBase):
         base_qs: QuerySet[Self],
         using: str | None,
         pk_val: Any,
-        values: Collection[tuple[Field, type[Model] | None, Any]],
+        values: Collection[tuple[Field[Any, Any], type[Model] | None, Any]],
         update_fields: Iterable[str] | None,
         forced_update: bool,
         returning_fields: Sequence[Field[Any, Any]],
     ) -> list[Sequence[Any]]: ...
     def delete(self, using: Any | None = None, keep_parents: bool = False) -> tuple[int, dict[str, int]]: ...
     async def adelete(self, using: Any | None = None, keep_parents: bool = False) -> tuple[int, dict[str, int]]: ...
-    def prepare_database_save(self, field: Field) -> Any: ...
+    def prepare_database_save(self, field: Field[Any, Any]) -> Any: ...
     def clean(self) -> None: ...
     def validate_unique(self, exclude: Collection[str] | None = None) -> None: ...
     def date_error_message(self, lookup_type: str, field_name: str, unique_for: str) -> ValidationError: ...

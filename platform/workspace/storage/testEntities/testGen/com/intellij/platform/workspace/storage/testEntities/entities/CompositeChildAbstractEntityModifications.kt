@@ -6,11 +6,13 @@ package com.intellij.platform.workspace.storage.testEntities.entities
 import com.intellij.platform.workspace.storage.EntitySource
 import com.intellij.platform.workspace.storage.EntityType
 import com.intellij.platform.workspace.storage.GeneratedCodeApiVersion
-import com.intellij.platform.workspace.storage.WorkspaceEntityBuilder
 import com.intellij.platform.workspace.storage.MutableEntityStorage
+import com.intellij.platform.workspace.storage.WorkspaceEntityBuilder
+import com.intellij.platform.workspace.storage.testEntities.entities.impl.CompositeChildAbstractEntityImpl
 
 @GeneratedCodeApiVersion(3)
-interface CompositeChildAbstractEntityBuilder : WorkspaceEntityBuilder<CompositeChildAbstractEntity>, CompositeAbstractEntityBuilder<CompositeChildAbstractEntity> {
+interface CompositeChildAbstractEntityBuilder : WorkspaceEntityBuilder<CompositeChildAbstractEntity>,
+                                                CompositeAbstractEntityBuilder<CompositeChildAbstractEntity> {
   override var entitySource: EntitySource
   override var parentInList: CompositeAbstractEntityBuilder<out CompositeAbstractEntity>?
   override var children: List<SimpleAbstractEntityBuilder<out SimpleAbstractEntity>>
@@ -19,6 +21,7 @@ interface CompositeChildAbstractEntityBuilder : WorkspaceEntityBuilder<Composite
 
 internal object CompositeChildAbstractEntityType : EntityType<CompositeChildAbstractEntity, CompositeChildAbstractEntityBuilder>() {
   override val entityClass: Class<CompositeChildAbstractEntity> get() = CompositeChildAbstractEntity::class.java
+  override val entityImplBuilderClass: Class<*> get() = CompositeChildAbstractEntityImpl.Builder::class.java
   operator fun invoke(
     entitySource: EntitySource,
     init: (CompositeChildAbstractEntityBuilder.() -> Unit)? = null,

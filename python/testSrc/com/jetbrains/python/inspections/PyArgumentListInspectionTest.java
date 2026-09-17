@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.inspections;
 
 import com.intellij.testFramework.LightProjectDescriptor;
@@ -482,6 +482,48 @@ public class PyArgumentListInspectionTest extends PyInspectionTestCase {
   // PY-78250
   public void testInitializingGenericDataclassWithDefaultTypeNoArgument() {
     runWithLanguageLevel(LanguageLevel.PYTHON313, this::doTest);
+  }
+
+  // PY-85421
+  public void testTypedDictExtraItemsInArgumentList() {
+    runWithLanguageLevel(LanguageLevel.PYTHON313, () -> doTestByText(
+      """
+      from typing_extensions import TypedDict
+      
+      class MovieNoExtra(TypedDict):
+          name: str
+      
+      MovieNoExtra(name="No Country for Old Men")
+      MovieNoExtra(name="No Country for Old Men", <warning descr="Unexpected argument">novel_adaptation=True</warning>)
+      
+      class Movie(TypedDict, extra_items=bool):
+          name: str
+      
+      Movie(name="No Country for Old Men", novel_adaptation=True)
+      """
+    ));
+  }
+
+  // PY-85421
+  public void testClosedTypedDictRejectsExtraKeywordArguments() {
+    runWithLanguageLevel(LanguageLevel.PYTHON313, () -> doTestByText(
+      """
+      from typing_extensions import TypedDict
+      from typing import Never
+      
+      class ClosedMovie(TypedDict, closed=True):
+          name: str
+      
+      class ExplicitNeverMovie(TypedDict, extra_items=Never):
+          name: str
+      
+      ExplicitNeverMovie(name="No Country for Old Men")  # OK
+      ExplicitNeverMovie(name="No Country for Old Men", <warning descr="Unexpected argument">year=2007</warning>)
+      
+      ClosedMovie(name="No Country for Old Men")  # OK
+      ClosedMovie(name="No Country for Old Men", <warning descr="Unexpected argument">year=2007</warning>)
+      """
+    ));
   }
 
   // PY-73102

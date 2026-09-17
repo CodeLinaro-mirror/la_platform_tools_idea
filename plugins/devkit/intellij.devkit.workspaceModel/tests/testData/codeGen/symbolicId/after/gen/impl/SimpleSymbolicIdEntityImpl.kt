@@ -1,3 +1,5 @@
+@file:OptIn(EntityStorageInstrumentationApi::class)
+
 package com.intellij.workspaceModel.test.api.impl
 
 import com.intellij.platform.workspace.storage.ConnectionId
@@ -205,7 +207,6 @@ result.add(_sealedClassWithLinks.id)
 }
 return result
 }
-
 override fun index(index: WorkspaceMutableIndex<SymbolicEntityId<*>>){
 index.index(this, related)
 val _sealedClassWithLinks = sealedClassWithLinks
@@ -232,7 +233,6 @@ index.index(this, _sealedClassWithLinks.id)
 }
 }
 }
-
 override fun updateLinksIndex(prev: Set<SymbolicEntityId<*>>, index: WorkspaceMutableIndex<SymbolicEntityId<*>>){
 // TODO verify logic
 val mutablePreviousSet = HashSet(prev)
@@ -276,7 +276,6 @@ for (removed in mutablePreviousSet){
 index.remove(this, removed)
 }
 }
-
 override fun updateLink(oldLink: SymbolicEntityId<*>, newLink: SymbolicEntityId<*>): Boolean{
 var changed = false
 val related_data = if (related == oldLink){
@@ -364,7 +363,6 @@ sealedClassWithLinks = res_sealedClassWithLinks
 }
 return changed
 }
-
 override fun wrapAsModifiable(diff: MutableEntityStorage): WorkspaceEntityBuilder<SimpleSymbolicIdEntity>{
 val modifiable = SimpleSymbolicIdEntityImpl.Builder(null)
 modifiable.diff = diff
@@ -372,7 +370,6 @@ modifiable.id = createEntityId()
 return modifiable
 }
 
-@OptIn(EntityStorageInstrumentationApi::class)
 override fun createEntity(snapshot: EntityStorageInstrumentation): SimpleSymbolicIdEntity{
 val entityId = createEntityId()
 return snapshot.initializeEntity(entityId){

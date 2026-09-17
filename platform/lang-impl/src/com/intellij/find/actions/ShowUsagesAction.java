@@ -9,6 +9,7 @@ import com.intellij.find.FindBundle;
 import com.intellij.find.FindManager;
 import com.intellij.find.FindUsagesSettings;
 import com.intellij.find.findUsages.AbstractFindUsagesDialog;
+import com.intellij.find.findUsages.CommonFindUsagesDialog;
 import com.intellij.find.findUsages.FindUsagesHandler;
 import com.intellij.find.findUsages.FindUsagesHandlerBase;
 import com.intellij.find.findUsages.FindUsagesHandlerUi;
@@ -70,6 +71,7 @@ import com.intellij.openapi.fileEditor.impl.text.AsyncEditorLoader;
 import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.openapi.options.advanced.AdvancedSettings;
 import com.intellij.openapi.progress.ProgressIndicator;
+import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.util.ProgressIndicatorBase;
 import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.DumbService;
@@ -810,7 +812,7 @@ public final class ShowUsagesAction extends AnAction implements PopupAction, Hin
           return false;
         }
 
-        UsageNode nodes = ReadAction.compute(() -> usageView.doAppendUsage(usage));
+        UsageNode nodes = ReadAction.computeBlocking(() -> usageView.doAppendUsage(usage));
         usages.add(usage);
         firstUsageAddedTS.compareAndSet(0, System.nanoTime()); // Successes only once - at first assignment
 
@@ -936,7 +938,7 @@ public final class ShowUsagesAction extends AnAction implements PopupAction, Hin
       VirtualFile file = editor.getVirtualFile();
       int offset = editor.getCaretModel().getOffset();
       if (file == null || offset <= 0) {
-        return __ -> false;
+        return _ -> false;
       }
 
       int line = editor.getDocument().getLineNumber(offset);
@@ -947,7 +949,7 @@ public final class ShowUsagesAction extends AnAction implements PopupAction, Hin
           }
 
           for (UsageInfo info : adapter.getMergedInfos()) {
-            Segment range = doIfNotNull(info.getPsiFileRange(), it -> ReadAction.compute(it::getRange));
+            Segment range = doIfNotNull(info.getPsiFileRange(), it -> ReadAction.computeBlocking(it::getRange));
             if (range != null && range.containsInclusive(offset)) {
               return true;
             }
@@ -957,7 +959,7 @@ public final class ShowUsagesAction extends AnAction implements PopupAction, Hin
         return false;
       };
     }
-    return __ -> false;
+    return _ -> false;
   }
 
   private static boolean showPopupIfNeedTo(@NotNull JBPopup popup, @NotNull RelativePoint popupPosition, @NotNull Ref<? super Long> popupShownTime) {
@@ -971,6 +973,20 @@ public final class ShowUsagesAction extends AnAction implements PopupAction, Hin
 
   private static @Nullable FindUsagesOptions showDialog(@NotNull FindUsagesHandlerBase handler) {
     UIEventLogger.ShowUsagesPopupShowSettings.log(handler.getProject());
+    if (handler.precomputedIsInFileOnly == null) {
+      if (!ProgressManager.getInstance().runProcessWithProgressSynchronously(
+        () -> {
+          ReadAction.runBlocking(() -> {
+            CommonFindUsagesDialog.precomputeFindUsagesDialogData(handler);
+          });
+        },
+        FindBundle.message("progress.title.prepare.find.usages"),
+        true,
+        handler.getProject()
+      )) {
+        return null;
+      }
+    }
     AbstractFindUsagesDialog dialog;
     if (handler instanceof FindUsagesHandlerUi) {
       dialog = ((FindUsagesHandlerUi)handler).getFindUsagesDialog(false, false, false);
@@ -1173,7 +1189,7 @@ public final class ShowUsagesAction extends AnAction implements PopupAction, Hin
       }.installOn(table);
 
       builder.setAutoselectOnMouseMove(false).setCloseOnEnter(false).
-        registerKeyboardAction(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), __ -> WriteIntentReadAction.run(itemChoseCallback));
+        registerKeyboardAction(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), _ -> WriteIntentReadAction.run(itemChoseCallback));
 
       Runnable updatePreviewRunnable = () -> {
         if (popupRef.get().isDisposed()) return;
@@ -1304,7 +1320,7 @@ public final class ShowUsagesAction extends AnAction implements PopupAction, Hin
       return null;
     }, (value) -> {
       return null;
-    }, false);
+    }, false, false);
 
     ExtendedInfoComponent extendedInfoComponent = new ExtendedInfoComponent(project, extendedInfo);
     extendedInfoComponent.updateElement("", parentDisposable);

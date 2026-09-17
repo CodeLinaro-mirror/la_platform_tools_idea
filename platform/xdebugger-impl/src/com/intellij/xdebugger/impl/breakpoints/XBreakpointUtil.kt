@@ -14,6 +14,7 @@ import com.intellij.xdebugger.XDebuggerManager
 import com.intellij.xdebugger.XDebuggerUtil
 import com.intellij.xdebugger.XSourcePosition
 import com.intellij.xdebugger.breakpoints.XBreakpoint
+import com.intellij.xdebugger.breakpoints.BreakpointFileProhibitionPolicy
 import com.intellij.xdebugger.breakpoints.XBreakpointProperties
 import com.intellij.xdebugger.breakpoints.XBreakpointType
 import com.intellij.xdebugger.breakpoints.XLineBreakpoint
@@ -56,6 +57,14 @@ object XBreakpointUtil {
   fun getPropertyXMLDescriptions(breakpoint: XBreakpoint<*>): List<String> =
     breakpoint.propertyXMLDescriptions
 
+  /**
+   * @see XBreakpointType.hasCustomCondition
+   */
+  @JvmStatic
+  fun hasCustomCondition(breakpoint: XBreakpoint<*>): Boolean {
+    return breakpoint.hasCustomCondition
+  }
+
   @JvmStatic
   fun findType(id: @NonNls String): XBreakpointType<*, *>? =
     breakpointTypes().find { it.id == id }
@@ -84,6 +93,7 @@ object XBreakpointUtil {
    * - if folded, checks if line breakpoints could be toggled inside folded text
    *
    */
+  @ApiStatus.ScheduledForRemoval
   @Deprecated("use {@link #toggleLineBreakpoint(Project, XSourcePosition, boolean, Editor, boolean, boolean, boolean)}")
   @JvmStatic
   fun toggleLineBreakpoint(
@@ -133,12 +143,17 @@ object XBreakpointUtil {
     selectTypeByPositionColumn: Boolean = false,
   ): List<XLineBreakpointType<*>> {
     val breakpointManager = XDebuggerManager.getInstance(project).breakpointManager
+    val virtualFile = position.file
+    if (BreakpointFileProhibitionPolicy.isBreakpointProhibited(virtualFile)) {
+      return emptyList()
+    }
     val breakpointInfo = XBreakpointUIUtil.getAvailableLineBreakpointInfo(position, selectTypeByPositionColumn, editor,
                                                                           XDebuggerUtil.getInstance().lineBreakpointTypes.toList(),
-                                                                          { type, line -> breakpointManager.findBreakpointAtLine(type, position.file, line) },
+                                                                          { type, line -> breakpointManager.findBreakpointAtLine(type,
+                                                                                                                                 virtualFile, line) },
                                                                           { type -> type.priority },
                                                                           { callback -> callback() },
-                                                                          { type, line -> type.canPutAt(position.file, line, project) }
+                                                                          { type, line -> type.canPutAt(virtualFile, line, project) }
     )
     return breakpointInfo.first
   }
@@ -167,6 +182,13 @@ val XBreakpoint<*>.propertyXMLDescriptions: List<@Nls String>
     @Suppress("UNCHECKED_CAST") val t = type as XBreakpointType<XBreakpoint<*>, *>
     return t.getPropertyXMLDescriptions(this)
   }
+
+val XBreakpoint<*>.hasCustomCondition: Boolean
+  get() {
+    @Suppress("UNCHECKED_CAST")
+    return (this.type as XBreakpointType<XBreakpoint<*>, *>).hasCustomCondition(this)
+  }
+
 
 val <P : XBreakpointProperties<*>> XLineBreakpoint<P>.highlightRange: TextRange?
   get() =

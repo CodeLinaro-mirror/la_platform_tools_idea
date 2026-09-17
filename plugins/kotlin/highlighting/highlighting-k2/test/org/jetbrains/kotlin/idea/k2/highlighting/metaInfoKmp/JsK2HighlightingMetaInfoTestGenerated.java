@@ -3,7 +3,6 @@
 package org.jetbrains.kotlin.idea.k2.highlighting.metaInfoKmp;
 
 import com.intellij.testFramework.TestDataPath;
-import org.jetbrains.kotlin.idea.base.plugin.KotlinPluginMode;
 import org.jetbrains.kotlin.idea.base.test.TestRoot;
 import org.jetbrains.kotlin.idea.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils;
@@ -25,12 +24,6 @@ public abstract class JsK2HighlightingMetaInfoTestGenerated extends AbstractK2Hi
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../idea/tests/testData/highlighterMetaInfo/diagnostics")
     public static class Diagnostics extends AbstractK2HighlightingMetaInfoTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         @java.lang.Override
         public KMPTestPlatform getTestPlatform() {
             return KMPTestPlatform.Js;
@@ -60,6 +53,11 @@ public abstract class JsK2HighlightingMetaInfoTestGenerated extends AbstractK2Hi
             runTest("../../idea/tests/testData/highlighterMetaInfo/diagnostics/mppIsNotEnabled.kt");
         }
 
+        @TestMetadata("redundantOpenFunctionInInterfaceDiagnostic.kt")
+        public void testRedundantOpenFunctionInInterfaceDiagnostic() throws Exception {
+            runTest("../../idea/tests/testData/highlighterMetaInfo/diagnostics/redundantOpenFunctionInInterfaceDiagnostic.kt");
+        }
+
         @TestMetadata("uselessCast.kt")
         public void testUselessCast() throws Exception {
             runTest("../../idea/tests/testData/highlighterMetaInfo/diagnostics/uselessCast.kt");
@@ -69,12 +67,6 @@ public abstract class JsK2HighlightingMetaInfoTestGenerated extends AbstractK2Hi
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../idea/tests/testData/highlighterMetaInfo/dsl")
     public static class Dsl extends AbstractK2HighlightingMetaInfoTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         @java.lang.Override
         public KMPTestPlatform getTestPlatform() {
             return KMPTestPlatform.Js;
@@ -129,12 +121,6 @@ public abstract class JsK2HighlightingMetaInfoTestGenerated extends AbstractK2Hi
     @TestMetadata("../../idea/tests/testData/highlighterMetaInfo/focusMode")
     public static class FocusMode extends AbstractK2HighlightingMetaInfoTest {
         @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
-        @java.lang.Override
         public KMPTestPlatform getTestPlatform() {
             return KMPTestPlatform.Js;
         }
@@ -157,12 +143,6 @@ public abstract class JsK2HighlightingMetaInfoTestGenerated extends AbstractK2Hi
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../idea/tests/testData/highlighterMetaInfo/smartCasts")
     public static class SmartCasts extends AbstractK2HighlightingMetaInfoTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         @java.lang.Override
         public KMPTestPlatform getTestPlatform() {
             return KMPTestPlatform.Js;
@@ -247,12 +227,6 @@ public abstract class JsK2HighlightingMetaInfoTestGenerated extends AbstractK2Hi
     @TestMetadata("../../idea/tests/testData/highlighterMetaInfo")
     public static class Uncategorized extends AbstractK2HighlightingMetaInfoTest {
         @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
-        @java.lang.Override
         public KMPTestPlatform getTestPlatform() {
             return KMPTestPlatform.Js;
         }
@@ -279,6 +253,21 @@ public abstract class JsK2HighlightingMetaInfoTestGenerated extends AbstractK2Hi
         @TestMetadata("AutoCreatedItParameter.kt")
         public void testAutoCreatedItParameter() throws Exception {
             runTest("../../idea/tests/testData/highlighterMetaInfo/AutoCreatedItParameter.kt");
+        }
+
+        @TestMetadata("ContextArguments.kt")
+        public void testContextArguments() throws Exception {
+            runTest("../../idea/tests/testData/highlighterMetaInfo/ContextArguments.kt");
+        }
+
+        @TestMetadata("ContextArgumentsWithoutValue.kt")
+        public void testContextArgumentsWithoutValue() throws Exception {
+            runTest("../../idea/tests/testData/highlighterMetaInfo/ContextArgumentsWithoutValue.kt");
+        }
+
+        @TestMetadata("ContextArgumentsWrongName.kt")
+        public void testContextArgumentsWrongName() throws Exception {
+            runTest("../../idea/tests/testData/highlighterMetaInfo/ContextArgumentsWrongName.kt");
         }
 
         @TestMetadata("DefinitelyNotNullType.kt")
@@ -324,6 +313,11 @@ public abstract class JsK2HighlightingMetaInfoTestGenerated extends AbstractK2Hi
         @TestMetadata("KDoc.kt")
         public void testKDoc() throws Exception {
             runTest("../../idea/tests/testData/highlighterMetaInfo/KDoc.kt");
+        }
+
+        @TestMetadata("KDocWithCodeBlocks.kt")
+        public void testKDocWithCodeBlocks() throws Exception {
+            runTest("../../idea/tests/testData/highlighterMetaInfo/KDocWithCodeBlocks.kt");
         }
 
         @TestMetadata("Labels.kt")
@@ -416,12 +410,6 @@ public abstract class JsK2HighlightingMetaInfoTestGenerated extends AbstractK2Hi
     @TestMetadata("../../idea/tests/testData/highlighterMetaInfo/unresolved")
     public static class Unresolved extends AbstractK2HighlightingMetaInfoTest {
         @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
-        @java.lang.Override
         public KMPTestPlatform getTestPlatform() {
             return KMPTestPlatform.Js;
         }
@@ -433,6 +421,16 @@ public abstract class JsK2HighlightingMetaInfoTestGenerated extends AbstractK2Hi
         @TestMetadata("unresolvedImport.kt")
         public void testUnresolvedImport() throws Exception {
             runTest("../../idea/tests/testData/highlighterMetaInfo/unresolved/unresolvedImport.kt");
+        }
+
+        @TestMetadata("unresolvedKDocLink.kt")
+        public void testUnresolvedKDocLink() throws Exception {
+            runTest("../../idea/tests/testData/highlighterMetaInfo/unresolved/unresolvedKDocLink.kt");
+        }
+
+        @TestMetadata("unresolvedKDocLinkWithSuppressedSamples.kt")
+        public void testUnresolvedKDocLinkWithSuppressedSamples() throws Exception {
+            runTest("../../idea/tests/testData/highlighterMetaInfo/unresolved/unresolvedKDocLinkWithSuppressedSamples.kt");
         }
 
         @TestMetadata("unresolvedLabel.kt")

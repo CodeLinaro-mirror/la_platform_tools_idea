@@ -4,12 +4,12 @@ package org.jetbrains.kotlin.idea.jvm.k2.scratch
 
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.openapi.vfs.VirtualFile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
-import org.jetbrains.kotlin.idea.core.script.k2.configurations.DefaultKotlinScriptEntityProvider
-import org.jetbrains.kotlin.idea.core.script.k2.highlighting.KotlinScriptResolutionService
-import org.jetbrains.kotlin.idea.core.script.v1.ScriptRelatedModuleNameFile
+import org.jetbrains.kotlin.idea.core.script.k2.configurations.KotlinScriptService
+import org.jetbrains.kotlin.idea.core.script.v1.ScratchFileOptionsByFile
 import org.jetbrains.kotlin.idea.jvm.shared.scratch.ScratchFile
 
 class K2KotlinScratchFile(project: Project, virtualFile: VirtualFile, val coroutineScope: CoroutineScope) :
@@ -17,11 +17,21 @@ class K2KotlinScratchFile(project: Project, virtualFile: VirtualFile, val corout
     val executor: K2ScratchExecutor = K2ScratchExecutor(this, project, coroutineScope)
 
     override fun setModule(module: Module?) {
-        ScriptRelatedModuleNameFile[project, virtualFile] = module?.name
+        ScratchFileOptionsByFile.update(project, virtualFile) {
+            copy(selectedModule = module?.name)
+        }
 
+        reloadConfiguration()
+    }
+
+    override fun selectJdk(jdk: Sdk) {
+        saveOptions { copy(selectedJdkHome = jdk.homePath) }
+        reloadConfiguration()
+    }
+
+    private fun reloadConfiguration() {
         coroutineScope.launch {
-            DefaultKotlinScriptEntityProvider.getInstance(project).removeKotlinScriptEntity(virtualFile)
-            KotlinScriptResolutionService.getInstance(project).process(virtualFile)
+            KotlinScriptService.getInstance(project).reload(virtualFile)
         }
     }
 }

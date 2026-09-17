@@ -265,7 +265,11 @@ public class KotlinCompilerRunner implements CompilerRunner {
     return changed? moduleMeta.write() : moduleEntryContent;
   }
 
-  private record GeneratedClass(String jvmClassName, File source) {}
+  private record GeneratedClass(String jvmClassName, File source) {
+    public String getNormalizedSourcePath() {
+      return source.getPath().replace(File.separatorChar, '/');
+    }
+  }
 
   private void processTrackers(OutputSink out, List<GeneratedClass> generated) {
     ensureTrackersInitialized();
@@ -281,7 +285,7 @@ public class KotlinCompilerRunner implements CompilerRunner {
 
   private static void processInlineConstTracker(InlineConstTrackerImpl inlineConstTracker, GeneratedClass output, OutputSink callback) {
     Map<String, Collection<ConstantRef>> constMap = inlineConstTracker.getInlineConstMap();
-    Collection<ConstantRef> constantRefs = constMap.get(output.source.getPath());
+    Collection<ConstantRef> constantRefs = constMap.get(output.getNormalizedSourcePath());
     if (constantRefs == null) return;
 
     List<CompilerDataSink.ConstantRef> cRefs = new ArrayList<>();
@@ -311,7 +315,7 @@ public class KotlinCompilerRunner implements CompilerRunner {
 
   private static void processImportTracker(ImportTrackerImpl importTracker, GeneratedClass output, OutputSink callback) {
     Map<String, Collection<String>> importMap = importTracker.getFilePathToImportedFqNamesMap();
-    Collection<String> importedFqNames = importMap.get(output.source.getPath());
+    Collection<String> importedFqNames = importMap.get(output.getNormalizedSourcePath());
     if (importedFqNames != null) {
       callback.registerImports(output.jvmClassName, importedFqNames, List.of());
     }
@@ -451,7 +455,7 @@ public class KotlinCompilerRunner implements CompilerRunner {
       arguments.setLanguageVersion(languageVersion);
     }
     arguments.setProgressiveMode(CLFlags.PROGRESSIVE.isFlagSet(flags));
-    String explicitApiMode = CLFlags.X_EXPLICIT_API_MODE.getOptionalScalarValue(flags);
+    String explicitApiMode = CLFlags.X_EXPLICIT_API.getOptionalScalarValue(flags);
     if (explicitApiMode != null) {
       arguments.setExplicitApi(explicitApiMode);
     }
@@ -462,11 +466,6 @@ public class KotlinCompilerRunner implements CompilerRunner {
     String jvmDefault = CLFlags.JVM_DEFAULT.getOptionalScalarValue(flags);
     if (jvmDefault != null) {
       arguments.setJvmDefaultStable(jvmDefault);
-    }
-    else {
-      // try to migrate from the deprecated option
-      jvmDefault = CLFlags.X_JVM_DEFAULT.getOptionalScalarValue(flags);
-      arguments.setJvmDefaultStable(migrateXJvmDefaultValue(jvmDefault));
     }
     arguments.setInlineClasses(CLFlags.X_INLINE_CLASSES.isFlagSet(flags));
     arguments.setContextReceivers(CLFlags.X_CONTEXT_RECEIVERS.isFlagSet(flags));
@@ -484,15 +483,6 @@ public class KotlinCompilerRunner implements CompilerRunner {
     NodeSourcePathMapper pathMapper = context.getPathMapper();
     arguments.setFreeArgs(collect(flat(map(sources, ns -> pathMapper.toPath(ns).toString()), myJavaSources), new ArrayList<>()));
     return arguments;
-  }
-
-  private static String migrateXJvmDefaultValue(String xjvmDefaultValue) {
-    return xjvmDefaultValue == null? null : switch (xjvmDefaultValue) {
-      case "disable" -> "disable";
-      case "all-compatibility" -> "enable";
-      case "all" -> "no-compatibility";
-      default -> null;
-    };
   }
 
   private static <T> Collection<T> ensureCollection(Iterable<T> seq) {

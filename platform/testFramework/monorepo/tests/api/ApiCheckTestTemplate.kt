@@ -1,7 +1,6 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.platform.testFramework.monorepo.api
 
-import com.intellij.openapi.util.io.FileUtil
 import com.intellij.platform.testFramework.core.FileComparisonFailedError
 import com.intellij.tools.apiDump.API
 import com.intellij.tools.apiDump.ApiClass
@@ -16,11 +15,11 @@ import org.jetbrains.jps.util.JpsPathUtil
 import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.assertAll
 import org.junit.jupiter.api.fail
-import java.io.File
 import java.nio.file.Path
 import kotlin.io.path.div
 import kotlin.io.path.exists
 import kotlin.io.path.readText
+import kotlin.io.path.writeText
 
 fun performApiCheckTest(cs: CoroutineScope, wantedModules: List<JpsModule>): List<DynamicTest> = buildList {
   val modules = wantedModules.prepareModuleList()
@@ -212,14 +211,10 @@ private fun checkModuleDump(moduleName: String, primaryExpectedDumpPath: Path, s
     if (expectedDump.rawContent == actualDump) {
       return
     }
-    val actualDumpPath: File? = try {
-      FileUtil.createTempFile("actual_${expectedDump.path.fileName}".removeSuffix(".txt"), ".txt").also { it.writeText(actualDump) }
+    if (System.getProperty("api.dump.test.update.files") == "true") {
+      expectedDump.path.writeText(actualDump)
+      return
     }
-    catch (e: Throwable) {
-      e.printStackTrace()
-      null
-    }
-
     throw FileComparisonFailedError(
       message =
         "'$moduleName' ${expectedDump.path.fileName} does not match the actual API. " +
@@ -228,7 +223,7 @@ private fun checkModuleDump(moduleName: String, primaryExpectedDumpPath: Path, s
       expected = expectedDump.rawContent,
       expectedFilePath = if (expectedDump.pathExists) expectedDump.path.toString() else null,
       actual = actualDump,
-      actualFilePath = actualDumpPath?.toString())
+    )
   }
 
   return listOf(

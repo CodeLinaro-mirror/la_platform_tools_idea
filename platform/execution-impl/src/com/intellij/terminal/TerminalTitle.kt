@@ -24,10 +24,18 @@ class TerminalTitle {
   private var state = State()
 
   fun change(block: State.() -> Unit) {
-    val newState = state.copy()
-    newState.block()
-    if (newState != state) {
-      state = newState
+    // The read-modify-write must be atomic: the title is mutated concurrently from several threads
+    val changed = synchronized(this@TerminalTitle) {
+      val newState = state.copy()
+      newState.block()
+      if (newState != state) {
+        state = newState
+        true
+      }
+      else false
+    }
+    // Notify listeners outside the lock: they can run on any thread and may re-enter change().
+    if (changed) {
       fireTitleChanged()
     }
   }
@@ -38,7 +46,7 @@ class TerminalTitle {
   val applicationTitle: @Nls String?
     get() = state.applicationTitle
 
-  internal val trackTerminalApplicationTitleChanges: Boolean?
+  internal val trackTerminalApplicationTitleChanges: Boolean
     get() = state.trackTerminalApplicationTitleChanges
 
   val tag: @Nls String?
@@ -105,7 +113,8 @@ class TerminalTitle {
                    var applicationTitle: @Nls String? = null,
                    var tag: @Nls String? = null,
                    var defaultTitle: @Nls String? = null,
-                   var trackTerminalApplicationTitleChanges: Boolean? = null) {
+                   @ApiStatus.Internal
+                   var trackTerminalApplicationTitleChanges: Boolean = true) {
     override fun toString(): String {
       return "userDefined=$userDefinedTitle, application=$applicationTitle, tag=$tag," +
              " default=$defaultTitle, trackTerminalApplicationTitle=$trackTerminalApplicationTitleChanges"
@@ -115,7 +124,7 @@ class TerminalTitle {
 
 fun TerminalTitle.bindApplicationTitle(terminal: Terminal, parentDisposable: Disposable) {
   val listener = TerminalApplicationTitleListener { newApplicationTitle ->
-    if (trackTerminalApplicationTitleChanges != false) {
+    if (trackTerminalApplicationTitleChanges) {
       change {
         applicationTitle = newApplicationTitle
       }

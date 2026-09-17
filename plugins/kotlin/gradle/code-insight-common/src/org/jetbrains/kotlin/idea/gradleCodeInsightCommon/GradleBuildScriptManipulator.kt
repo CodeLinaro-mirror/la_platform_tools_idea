@@ -4,6 +4,7 @@
 
 package org.jetbrains.kotlin.idea.gradleCodeInsightCommon
 
+import com.intellij.modcommand.ModCommand
 import com.intellij.openapi.application.runReadAction
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.roots.DependencyScope
@@ -17,6 +18,7 @@ import org.jetbrains.kotlin.config.LanguageFeature
 import org.jetbrains.kotlin.idea.compiler.configuration.IdeKotlinVersion
 import org.jetbrains.kotlin.idea.configuration.ChangedConfiguratorFiles
 import org.jetbrains.kotlin.idea.configuration.getJvmTargetNumber
+import org.jetbrains.kotlin.idea.configuration.getRepositoryForVersion
 import org.jetbrains.kotlin.idea.projectConfiguration.RepositoryDescription
 import org.jetbrains.kotlin.tools.projectWizard.compatibility.GradleToPluginsCompatibilityStore
 import org.jetbrains.plugins.gradle.frameworkSupport.settingsScript.isFoojayPluginSupported
@@ -35,22 +37,65 @@ class DefinedKotlinPluginManagementVersion(
     val parsedVersion: IdeKotlinVersion?
 )
 
+const val COMPILER_OPTIONS: String = "compilerOptions"
+
+/**
+ * Repository resolution strategy configured by `dependencyResolutionManagement.repositoriesMode`.
+ */
+enum class SettingsRepositoriesMode {
+    /**
+     * Repositories should be added to project build scripts.
+     */
+    PREFER_PROJECT,
+
+    /**
+     * Repositories declared in project build scripts are ignored.
+     * Repositories should be added to the settings script.
+     */
+    PREFER_SETTINGS,
+
+    /**
+     * Declaring repositories in project build scripts causes the build to fail.
+     * Repositories should be added to the settings script.
+     */
+    FAIL_ON_PROJECT_REPOS,
+}
+
 interface GradleBuildScriptManipulator<out Psi : PsiFile> {
     fun isApplicable(file: PsiFile): Boolean
 
     val scriptFile: Psi
     val preferNewSyntax: Boolean
+    val kaptDependenciesManipulator: KaptGradleDependenciesManipulator?
 
+    fun usesOldSyntax(kotlinPluginName: String): Boolean
     fun isConfiguredWithOldSyntax(kotlinPluginName: String): Boolean
     fun isConfigured(kotlinPluginExpression: String): Boolean
+
+    /**
+     * Returns true if the Kotlin plugin is applied with the "apply false" argument, for example:
+     * ```
+     * plugins {
+     *    kotlin("jvm") apply false
+     * }
+     * ```
+     */
+    fun hasKotlinPluginApplyFalse(): Boolean
 
     fun configureBuildScripts(
         kotlinPluginName: String,
         kotlinPluginExpression: String,
-        stdlibArtifactName: String,
         addVersion: Boolean,
         version: IdeKotlinVersion,
         jvmTarget: String?,
+        changedFiles: ChangedConfiguratorFiles
+    )
+
+    fun configurePluginInPluginsGroup(
+        kotlinPluginExpression: String,
+        addVersion: Boolean,
+        version: IdeKotlinVersion,
+        applyFalse: Boolean,
         changedFiles: ChangedConfiguratorFiles
     )
 
@@ -88,20 +133,11 @@ interface GradleBuildScriptManipulator<out Psi : PsiFile> {
         libraryDescriptor: ExternalLibraryDescriptor
     )
 
-    fun getKotlinStdlibVersion(): String?
-
-    fun addJdkSpec(
-        jvmTarget: String,
-        version: IdeKotlinVersion,
-        gradleVersion: GradleVersionInfo,
-        applySpec: (
-            useToolchain: Boolean,
-            useToolchainHelper: Boolean,
-            targetVersionNumber: String
-        ) -> Unit
-    ) {
-
-    }
+    fun addKotlinLibraryToModuleBuildScriptModCommand(
+        targetModule: Module?,
+        scope: DependencyScope,
+        libraryDescriptor: ExternalLibraryDescriptor
+    ): ModCommand = ModCommand.nop()
 
     /**
      * Finds a "parent" block containing the current element with the [name] – be it a closure block or the whole line containing the [name].
@@ -203,7 +239,47 @@ interface GradleBuildScriptManipulator<out Psi : PsiFile> {
 
     // For settings.gradle/settings.gradle.kts
 
+    /**
+     * Returns the repository mode configured in `dependencyResolutionManagement.repositoriesMode`,
+     * or [SettingsRepositoriesMode.PREFER_PROJECT] if it is not configured.
+     */
+    fun getSettingsRepositoriesMode(): SettingsRepositoriesMode
+
+    /**
+     * Adds all dependency repositories required for the given Kotlin version.
+     *
+     * This always adds Maven Central and, for EAP or dev Kotlin versions,
+     * also adds the corresponding Kotlin repository.
+     */
+    fun addDependencyRepositories(version: IdeKotlinVersion) {
+        getRepositoryForVersion(version)?.let(::addDependencyRepository)
+        addMavenCentralDependencyRepository()
+    }
+
+    /**
+     * Adds Maven Central to `dependencyResolutionManagement.repositories`
+     * if it is not already present.
+     */
+    fun addMavenCentralDependencyRepository()
+
+    /**
+     * Adds the specified repository to `dependencyResolutionManagement.repositories`
+     * if it is not already present.
+     *
+     * Requires `dependencyResolutionManagement` to exist.
+     */
+    fun addDependencyRepository(repository: RepositoryDescription)
+
+    /**
+     * Adds Maven Central to `pluginManagement.repositories`
+     * if it is not already present.
+     */
     fun addMavenCentralPluginRepository()
+
+    /**
+     * Adds the specified repository to `pluginManagement.repositories`
+     * if it is not already present.
+     */
     fun addPluginRepository(repository: RepositoryDescription)
 
     fun addResolutionStrategy(pluginId: String)
@@ -226,7 +302,7 @@ fun GradleBuildScriptManipulator<*>.useNewSyntax(kotlinPluginName: String, gradl
 
     if (gradleVersion < GradleVersionProvider.getVersion(MIN_GRADLE_VERSION_FOR_NEW_PLUGIN_SYNTAX.version)) return false
 
-    if (isConfiguredWithOldSyntax(kotlinPluginName)) return false
+    if (usesOldSyntax(kotlinPluginName)) return false
 
     val fileText = runReadAction { scriptFile.text }
     val hasOldApply = fileText.contains("apply plugin:")

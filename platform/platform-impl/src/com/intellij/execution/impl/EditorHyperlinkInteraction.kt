@@ -12,10 +12,11 @@ import com.intellij.openapi.editor.ex.RangeHighlighterEx
 import com.intellij.openapi.editor.markup.EffectType
 import com.intellij.openapi.editor.markup.RangeHighlighter
 import com.intellij.openapi.editor.markup.TextAttributes
+import com.intellij.platform.eel.isMac
+import com.intellij.platform.eel.provider.localEel
 import com.intellij.ui.ColorUtil
 import com.intellij.ui.JBColor
 import com.intellij.util.concurrency.annotations.RequiresEdt
-import com.intellij.util.system.OS
 import java.awt.Cursor
 import java.awt.Font
 import java.awt.event.KeyAdapter
@@ -30,6 +31,10 @@ internal class EditorHyperlinkInteraction(
   private val hintManager: InvisibleHyperlinkHintManager = InvisibleHyperlinkHintManager(editor, parentDisposable)
   private var followedLinkWrapper: ChangedAttrsLinkWrapper? = null
   private var hoveredLinkWrapper: ChangedAttrsLinkWrapper? = null
+
+  val lastFollowedLink: RangeHighlighter?
+    @RequiresEdt(generateAssertion = false)
+    get() = followedLinkWrapper?.linkRangeHighlighter
 
   init {
     editor.contentComponent.addKeyListener(object : KeyAdapter() {
@@ -53,11 +58,21 @@ internal class EditorHyperlinkInteraction(
 
   /**
    * @param link a highlighter that is already in the editor, expected to be valid
+   * @param consumeOnlyOnCtrlClick if `true`, [event] is consumed only when the Ctrl/Cmd modifier key was pressed.
+   * A plain click is left unconsumed, so it still reaches other listeners.
+   * By default, consume the event not taking modifiers into account.
    */
+  @JvmOverloads
   @RequiresEdt(generateAssertion = false)
-  fun followLink(link: RangeHighlighterEx, event: EditorMouseEvent, action: () -> Unit) {
-    if (effectSupplier.isInvisibleLink(link) && !event.isCtrlPressed) {
-      hintManager.showHint(link, event, action)
+  fun followLink(
+    link: RangeHighlighterEx,
+    event: EditorMouseEvent,
+    consumeOnlyOnCtrlClick: Boolean = false,
+    action: () -> Unit
+  ) {
+    val ctrlPressed = event.isCtrlPressed
+    if (effectSupplier.isInvisibleLink(link) && !ctrlPressed) {
+      hintManager.showHint(link, event, consumeOnHintOpen = !consumeOnlyOnCtrlClick, action)
     }
     else {
       action()
@@ -65,10 +80,13 @@ internal class EditorHyperlinkInteraction(
       if (effectSupplier.isInvisibleLink(link)) {
         EditorHyperlinkUsageCollector.logInvisibleHyperlinkFollowed(HyperlinkFollowedPlace.EDITOR_LINK_CTRL_CLICKED)
       }
+      if (!consumeOnlyOnCtrlClick || ctrlPressed) {
+        event.consume()
+      }
     }
   }
 
-  private fun onLinkFollowed(link: RangeHighlighterEx) {
+  fun onLinkFollowed(link: RangeHighlighterEx) {
     if (followedLinkWrapper?.isSame(link) == true) return
     followedLinkWrapper?.restoreOriginalAttrs()
     followedLinkWrapper = null
@@ -99,18 +117,21 @@ internal class EditorHyperlinkInteraction(
     }
   }
 
+  private fun setMouseCursor(hand: Boolean) {
+    val cursor = if (hand) Cursor.getPredefinedCursor(Cursor.HAND_CURSOR) else null
+    editor.setCustomCursor(EditorHyperlinkInteraction::class.java, cursor)
+  }
+
   @RequiresEdt(generateAssertion = false)
   private fun linkHovered(link: RangeHighlighter?, ctrlPressed: Boolean) {
-    editor.setCustomCursor(EditorHyperlinkEffectSupport::class.java, null)
     if (link == null || link !is RangeHighlighterEx) {
+      setMouseCursor(false)
       hoveredLinkWrapper?.restoreOriginalAttrs()
       hoveredLinkWrapper = null
       return
     }
     val invisibleLink = effectSupplier.isInvisibleLink(link)
-    if (!invisibleLink || ctrlPressed) {
-      editor.setCustomCursor(EditorHyperlinkEffectSupport::class.java, Cursor.getPredefinedCursor(Cursor.HAND_CURSOR))
-    }
+    setMouseCursor(!invisibleLink || ctrlPressed)
     if (hoveredLinkWrapper?.isSame(link, ctrlPressed) == true) {
       return  // the link is already shown as hovered
     }
@@ -132,16 +153,20 @@ internal class EditorHyperlinkInteraction(
         editor.colorsScheme.getAttributes(CodeInsightColors.HYPERLINK_ATTRIBUTES)
       }
       else {
-        val effectColor = ColorUtil.withAlpha(
-          editor.colorsScheme.defaultForeground,
-          if (JBColor.isBright()) 0.4 else 0.5
-        )
-        TextAttributes(null, null, effectColor, EffectType.LINE_UNDERSCORE, Font.PLAIN)
+        effectSupplier.getHoveredHyperlinkAttributes(link) ?: getDefaultHoveredLinkAttrs()
       }
     }
     else {
       effectSupplier.getHoveredHyperlinkAttributes(link)
     }
+  }
+
+  private fun getDefaultHoveredLinkAttrs(): TextAttributes {
+    val effectColor = ColorUtil.withAlpha(
+      editor.colorsScheme.defaultForeground,
+      if (JBColor.isBright()) 0.4 else 0.5
+    )
+    return TextAttributes(null, null, effectColor, EffectType.LINE_UNDERSCORE, Font.PLAIN)
   }
 
   private inner class ChangedAttrsLinkWrapper(
@@ -153,7 +178,9 @@ internal class EditorHyperlinkInteraction(
     private val originalTextAttrs: TextAttributes? = linkRangeHighlighter.getTextAttributes(editor.getColorsScheme())
 
     init {
-      linkRangeHighlighter.setTextAttributes(newTextAttrs)
+      if (linkRangeHighlighter.isValid) {
+        linkRangeHighlighter.setTextAttributes(newTextAttrs)
+      }
     }
 
     fun isSame(linkRangeHighlighter: RangeHighlighter): Boolean = this.linkRangeHighlighter === linkRangeHighlighter
@@ -174,11 +201,11 @@ internal class EditorHyperlinkInteraction(
 private fun defaultFollowedHyperlinkAttributes(): TextAttributes =
   EditorColorsManager.getInstance().getGlobalScheme().getAttributes(CodeInsightColors.FOLLOWED_HYPERLINK_ATTRIBUTES)
 
-private val EditorMouseEvent.isCtrlPressed: Boolean
-  get() = if (OS.CURRENT == OS.macOS) mouseEvent.isMetaDown else mouseEvent.isControlDown
+internal val EditorMouseEvent.isCtrlPressed: Boolean
+  get() = if (localEel.platform.isMac) mouseEvent.isMetaDown else mouseEvent.isControlDown
 
 private val KeyEvent.isCtrlOnly: Boolean
-  get() = when (OS.CURRENT) {
-    OS.macOS -> keyCode == KeyEvent.VK_META
-    else -> keyCode == KeyEvent.VK_CONTROL
+  get() {
+    val ctrlModifier = if (localEel.platform.isMac) KeyEvent.VK_META else KeyEvent.VK_CONTROL
+    return keyCode == ctrlModifier
   }

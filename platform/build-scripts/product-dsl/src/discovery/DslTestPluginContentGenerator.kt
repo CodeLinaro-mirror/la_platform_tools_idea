@@ -8,16 +8,21 @@ import com.intellij.platform.pluginGraph.EDGE_BUNDLES
 import com.intellij.platform.pluginGraph.NODE_PLUGIN
 import com.intellij.platform.pluginGraph.PluginGraph
 import com.intellij.platform.pluginGraph.PluginId
+import com.intellij.platform.pluginGraph.PluginModuleId
+import com.intellij.platform.pluginGraph.TEST_DESCRIPTOR_SUFFIX
 import com.intellij.platform.pluginGraph.TargetDependencyScope
 import com.intellij.platform.pluginGraph.baseModuleName
+import com.intellij.platform.pluginGraph.contentName
 import com.intellij.platform.pluginGraph.containsEdge
 import com.intellij.platform.pluginGraph.isSlashNotation
 import com.intellij.platform.pluginGraph.isTestDescriptor
 import com.intellij.platform.pluginSystem.parser.impl.elements.ModuleLoadingRuleValue
+import com.intellij.platform.pluginSystem.parser.impl.elements.ModuleVisibilityValue
 import org.jetbrains.intellij.build.productLayout.LIB_MODULE_PREFIX
 import org.jetbrains.intellij.build.productLayout.TestPluginSpec
 import org.jetbrains.intellij.build.productLayout.buildContentBlocksAndChainMapping
 import org.jetbrains.intellij.build.productLayout.config.SuppressionConfig
+import org.jetbrains.intellij.build.productLayout.contentName
 import org.jetbrains.intellij.build.productLayout.debug
 import org.jetbrains.intellij.build.productLayout.dependency.ModuleDescriptorCache
 import org.jetbrains.intellij.build.productLayout.deps.DependencyResolutionContext
@@ -27,10 +32,6 @@ import org.jetbrains.intellij.build.productLayout.stats.SuppressionUsage
 import org.jetbrains.intellij.build.productLayout.traversal.OwningPlugin
 import org.jetbrains.intellij.build.productLayout.traversal.collectPluginContentModules
 import java.nio.file.Path
-
-private val TEST_PLUGIN_AUTO_ADD_EXCLUDED_MODULES = setOf(
-  ContentModuleName("intellij.platform.commercial.verifier"), // injected; forbidden as plugin content
-)
 
 /**
  * Computes plugin content from DSL spec instead of reading from disk.
@@ -42,8 +43,8 @@ private val TEST_PLUGIN_AUTO_ADD_EXCLUDED_MODULES = setOf(
  * This enables minimal DSL specifications - only specify module sets, and individual
  * dependencies with descriptors are automatically discovered and added.
  *
- * For test descriptor modules (`._test`), explicit descriptor `<module>` deps are also traversed
- * so test-only content stays self-contained.
+ * Explicit descriptor `<module>` deps are also traversed so descriptor-only runtime dependencies
+ * stay self-contained.
  *
  * Library dependencies are represented in the graph via project library mapping during graph building.
  *
@@ -73,10 +74,10 @@ internal suspend fun computePluginContentFromDslSpec(
     .filter { module ->
       module.loading == ModuleLoadingRuleValue.REQUIRED || module.loading == ModuleLoadingRuleValue.EMBEDDED
     }
-    .mapTo(HashSet()) { it.name }
+    .mapTo(HashSet()) { it.contentName() }
 
   // Build set of explicitly declared module names for quick lookup
-  val declaredContentModuleNames = allModules.mapTo(HashSet()) { it.name }
+  val declaredContentModuleNames = allModules.mapTo(HashSet()) { it.contentName() }
   require(pluginGraph.descriptorFlagsComplete) {
     "PluginGraph descriptor flags are not complete. Ensure markDescriptorModules() runs after the last graph mutation " +
     "before computePluginContentFromDslSpec."
@@ -86,6 +87,17 @@ internal suspend fun computePluginContentFromDslSpec(
     contentModules { module ->
       if (module.hasDescriptor) {
         descriptorBackedModules.add(module.contentName())
+      }
+    }
+  }
+  val privateLeafLibraryModules = HashSet<ContentModuleName>()
+  if (descriptorCache != null) {
+    for (moduleName in descriptorBackedModules) {
+      val descriptorInfo = descriptorCache.getOrAnalyze(moduleName.value)
+      if (moduleName.value.startsWith(LIB_MODULE_PREFIX) &&
+          descriptorInfo?.moduleVisibility == ModuleVisibilityValue.PRIVATE &&
+          descriptorInfo.existingModuleDependencies.isEmpty()) {
+        privateLeafLibraryModules.add(moduleName)
       }
     }
   }
@@ -111,11 +123,11 @@ internal suspend fun computePluginContentFromDslSpec(
   val explicitAllowedMissingPluginIdsByModule: HashMap<ContentModuleName, Set<String>> = testPluginSpec.spec.additionalModules
     .asSequence()
     .filter { it.allowedMissingPluginIds.isNotEmpty() }
-    .associateTo(HashMap()) { it.name to pluginIdValues(it.allowedMissingPluginIds) }
+    .associateTo(HashMap()) { it.contentName() to pluginIdValues(it.allowedMissingPluginIds) }
   val explicitAllowedMissingPluginIdsByName: HashMap<String, Set<String>> = testPluginSpec.spec.additionalModules
     .asSequence()
     .filter { it.allowedMissingPluginIds.isNotEmpty() }
-    .associateTo(HashMap()) { it.name.value to pluginIdValues(it.allowedMissingPluginIds) }
+    .associateTo(HashMap()) { it.moduleId.name to pluginIdValues(it.allowedMissingPluginIds) }
   fun isBundledPluginContent(moduleName: ContentModuleName): Boolean {
     return pluginGraph.query {
       val moduleNode = contentModule(moduleName) ?: return@query false
@@ -146,7 +158,6 @@ internal suspend fun computePluginContentFromDslSpec(
   }
 
   suspend fun collectDescriptorModuleDeps(moduleName: ContentModuleName): List<ContentModuleName> {
-    if (!moduleName.isTestDescriptor()) return emptyList()
     val descriptor = descriptorCache?.getOrAnalyze(moduleName.value) ?: return emptyList()
     return descriptor.existingModuleDependencies.map(::ContentModuleName)
   }
@@ -163,6 +174,25 @@ internal suspend fun computePluginContentFromDslSpec(
   fun resolveTargetName(moduleName: ContentModuleName): String? {
     if (moduleName.isSlashNotation()) return null
     return if (moduleName.isTestDescriptor()) moduleName.baseModuleName().value else moduleName.value
+  }
+
+  // For JPS target deps in DSL test plugins, prefer test descriptor module when only *_test.xml exists.
+  fun normalizeTargetDependencyModule(depName: ContentModuleName): ContentModuleName {
+    if (depName.isTestDescriptor()) {
+      return depName
+    }
+    if (depName in descriptorBackedModules) {
+      return depName
+    }
+    if (isPluginModule(depName)) {
+      return depName
+    }
+    val testDescriptorName = ContentModuleName(depName.value + TEST_DESCRIPTOR_SUFFIX)
+    if (testDescriptorName in descriptorBackedModules) {
+      debug("dslTestDeps") { "remap dep=$depName -> $testDescriptorName (test descriptor fallback)" }
+      return testDescriptorName
+    }
+    return depName
   }
 
   data class TargetDependencyInfo(
@@ -184,11 +214,12 @@ internal suspend fun computePluginContentFromDslSpec(
   }
 
   // Start with declared modules
-  for (module in allModules) {
-    queue.add(module.name)
-    parentByModule.put(module.name, null)
-    rootDeclaredModuleByModule.put(module.name, module.name)
-    allowedMissingPluginIdsByModule.put(module.name, pluginIdValues(module.allowedMissingPluginIds))
+  for ((moduleId, _, _, allowedMissingPluginIds) in allModules) {
+    val moduleName = moduleId.contentName()
+    queue.add(moduleName)
+    parentByModule.put(moduleName, null)
+    rootDeclaredModuleByModule.put(moduleName, moduleName)
+    allowedMissingPluginIdsByModule.put(moduleName, pluginIdValues(allowedMissingPluginIds))
   }
 
   debug("dslTestDeps") {
@@ -216,60 +247,69 @@ internal suspend fun computePluginContentFromDslSpec(
     // Test descriptor modules can declare additional deps in their own XML.
     val descriptorDeps = collectDescriptorModuleDeps(moduleName)
 
-    fun processDependency(depName: ContentModuleName, scopeName: String?) {
-      if (depName in suppressedModules) {
-        val suppressionSource = if (depName in rootSuppressedModules) rootModule else moduleName
-        suppressionUsageSink?.add(SuppressionUsage(suppressionSource, depName.value, SuppressionType.MODULE_DEP))
-        if (!isStrictModule && hasAnyContentSource(depName)) {
-          debug("dslTestDeps") { "skip suppressed dep=$depName from=$moduleName (has content source)" }
+    fun processDependency(depName: ContentModuleName, scopeName: String?, fromJpsTarget: Boolean) {
+      val effectiveDepName = if (fromJpsTarget) normalizeTargetDependencyModule(depName) else depName
+
+      if (effectiveDepName in suppressedModules) {
+        val suppressionSource = if (effectiveDepName in rootSuppressedModules) rootModule else moduleName
+        suppressionUsageSink?.add(SuppressionUsage(suppressionSource, effectiveDepName.value, SuppressionType.MODULE_DEP))
+        if (!isStrictModule && hasAnyContentSource(effectiveDepName)) {
+          debug("dslTestDeps") { "skip suppressed dep=$effectiveDepName from=$moduleName (has content source)" }
           return
         }
-        debug("dslTestDeps") { "process suppressed dep=$depName from=$moduleName (required or orphan)" }
+        debug("dslTestDeps") { "process suppressed dep=$effectiveDepName from=$moduleName (required or orphan)" }
       }
 
-      if (!processedModules.add(depName)) {
+      if (!processedModules.add(effectiveDepName)) {
         return
       }
 
-      parentByModule.putIfAbsent(depName, moduleName)
-      rootDeclaredModuleByModule.putIfAbsent(depName, rootDeclaredModuleByModule.get(moduleName) ?: moduleName)
-      allowedMissingPluginIdsByModule.putIfAbsent(depName, allowedMissingPluginIdsByModule.get(moduleName) ?: emptySet())
+      parentByModule.putIfAbsent(effectiveDepName, moduleName)
+      rootDeclaredModuleByModule.putIfAbsent(effectiveDepName, rootDeclaredModuleByModule.get(moduleName) ?: moduleName)
+      allowedMissingPluginIdsByModule.putIfAbsent(effectiveDepName, allowedMissingPluginIdsByModule.get(moduleName) ?: emptySet())
 
-      if (depName in TEST_PLUGIN_AUTO_ADD_EXCLUDED_MODULES) {
-        debug("dslTestDeps") { "skip injected dep=$depName from=$moduleName" }
+      val isPrivateLeafLibraryDep = effectiveDepName in privateLeafLibraryModules && collectTargetDependencies(effectiveDepName).isEmpty()
+
+      // Already resolvable via module sets or plugin content - skip auto-add and don't traverse.
+      // Private leaf descriptor dependencies must still be copied into the test plugin instead of relying
+      // on private modules from production plugins.
+      val isResolvableModule = effectiveDepName in resolvableModuleNames
+      if (isResolvableModule && (fromJpsTarget || !isPrivateLeafLibraryDep)) {
+        if (fromJpsTarget && isPrivateLeafLibraryDep) {
+          processedModules.remove(effectiveDepName)
+        }
+        debug("dslTestDeps") { "skip resolvable dep=$effectiveDepName from=$moduleName" }
         return
       }
 
-      // Already resolvable via module sets or plugin content - skip auto-add and don't traverse
-      if (depName in resolvableModuleNames) {
-        debug("dslTestDeps") { "skip resolvable dep=$depName from=$moduleName" }
+      val isBundledPluginContentDep = isBundledPluginContent(effectiveDepName)
+      if (isBundledPluginContentDep && (fromJpsTarget || !isPrivateLeafLibraryDep)) {
+        if (fromJpsTarget && isPrivateLeafLibraryDep) {
+          processedModules.remove(effectiveDepName)
+        }
+        debug("dslTestDeps") { "skip bundled production plugin content dep=$effectiveDepName from=$moduleName" }
         return
       }
 
-      if (isBundledPluginContent(depName)) {
-        debug("dslTestDeps") { "skip bundled production plugin content dep=$depName from=$moduleName" }
-        return
-      }
-
-      val depTargetName = resolveTargetName(depName)
+      val depTargetName = resolveTargetName(effectiveDepName)
       if (depTargetName == null || pluginGraph.query { target(depTargetName) == null }) {
         return
       }
 
-      if (isPluginModule(depName)) {
-        debug("dslTestDeps") { "skip plugin dep=$depName from=$moduleName" }
+      if (isPluginModule(effectiveDepName)) {
+        debug("dslTestDeps") { "skip plugin dep=$effectiveDepName from=$moduleName" }
         return
       }
 
-      val isLibraryModule = depName.value.startsWith(LIB_MODULE_PREFIX)
+      val isLibraryModule = effectiveDepName.value.startsWith(LIB_MODULE_PREFIX)
       // Skip content modules that belong to plugins; error if the owning plugin isn't resolvable.
-      val owningPlugins = if (isLibraryModule) emptySet() else findOwningPlugins(depName)
+      val owningPlugins = if (isLibraryModule) emptySet() else findOwningPlugins(effectiveDepName)
       // Ignore test-plugin owners: DSL test plugins must be self-contained and cannot rely on other test plugins,
       // so their content modules should be treated as not plugin-owned for auto-add.
       val owningProdPlugins = owningPlugins.filterNot { it.isTest }
       if (owningPlugins.isNotEmpty() && owningProdPlugins.isEmpty()) {
         debug("dslTestDeps") {
-          "ignore test-plugin owners dep=$depName owners=${owningPlugins.joinToString { it.pluginId.value }}"
+          "ignore test-plugin owners dep=$effectiveDepName owners=${owningPlugins.joinToString { it.pluginId.value }}"
         }
       }
       if (owningProdPlugins.isNotEmpty()) {
@@ -299,7 +339,7 @@ internal suspend fun computePluginContentFromDslSpec(
           }
         }
         validateDslTestPluginOwnedDependency(
-          depName = depName,
+          depName = effectiveDepName,
           moduleName = moduleName,
           scopeName = scopeName,
           isDeclaredInSpec = moduleName in declaredContentModuleNames,
@@ -320,43 +360,52 @@ internal suspend fun computePluginContentFromDslSpec(
       // - The graph is the source of truth for descriptor presence, even if content sources are incomplete.
       // - Model building pre-marks all JPS targets with descriptors so auto-add decisions can rely on the graph.
       // - This does NOT mutate the graph here; the module is registered later when addPluginWithContent runs.
-      val hasDescriptorInGraph = pluginGraph.query {
-        val moduleNode = contentModule(depName) ?: return@query false
-        moduleNode.hasDescriptor
-      }
-      if (!hasDescriptorInGraph) {
-        debug("dslTestDeps") { "skip no descriptor dep=$depName from=$moduleName" }
+      if (effectiveDepName !in descriptorBackedModules) {
+        debug("dslTestDeps") { "skip no descriptor dep=$effectiveDepName from=$moduleName" }
         return
       }
-      autoAddedModules.add(ContentModuleInfo(name = depName, loadingMode = autoAddedModulesLoadingMode))
-      strictModules.add(depName)
+      val namespace = if (isPrivateLeafLibraryDep) {
+        null
+      }
+      else {
+        PluginModuleId.DEFAULT_NAMESPACE
+      }
+      autoAddedModules.add(
+        ContentModuleInfo(
+          moduleId = PluginModuleId(effectiveDepName.value, namespace),
+          loadingMode = autoAddedModulesLoadingMode,
+        )
+      )
+      strictModules.add(effectiveDepName)
       if (dependencyChainsSink != null) {
         val chain = ArrayList<ContentModuleName>()
-        var current: ContentModuleName? = depName
+        var current: ContentModuleName? = effectiveDepName
         val seen = HashSet<ContentModuleName>()
         while (current != null && seen.add(current)) {
           chain.add(current)
           current = parentByModule.get(current)
         }
-        dependencyChainsSink.put(depName, chain.asReversed())
+        dependencyChainsSink.put(effectiveDepName, chain.asReversed())
       }
-      debug("dslTestDeps") { "auto-add dep=$depName from=$moduleName" }
+      debug("dslTestDeps") { "auto-add dep=$effectiveDepName from=$moduleName" }
       // Continue BFS to also process dependencies of this auto-added module
-      queue.add(depName)
+      queue.add(effectiveDepName)
     }
 
     val targetDeps = collectTargetDependencies(moduleName)
-    for (dep in targetDeps) {
-      processDependency(dep.moduleName, dep.scope?.name)
+    for ((depModuleName, depScope) in targetDeps) {
+      processDependency(depModuleName, depScope?.name, fromJpsTarget = true)
     }
 
     for (depName in descriptorDeps) {
-      processDependency(depName, null)
+      processDependency(depName, null, fromJpsTarget = false)
     }
   }
 
   // Combine declared modules with auto-added ones
-  val contentModules = allModules.map { ContentModuleInfo(name = it.name, loadingMode = it.loading) } + autoAddedModules
+  val contentModules = allModules.map {
+    ContentModuleInfo(moduleId = it.moduleId, loadingMode = it.loading)
+  } + autoAddedModules
 
   return PluginContentInfo(
     pluginXmlPath = projectRoot.resolve(testPluginSpec.pluginXmlPath),

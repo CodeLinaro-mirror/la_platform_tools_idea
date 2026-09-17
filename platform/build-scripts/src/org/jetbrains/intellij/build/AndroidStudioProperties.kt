@@ -51,7 +51,7 @@ class AndroidStudioProperties : ProductProperties() {
       // Android Studio: package CIDR plugins.
       "intellij.cidr.clangd",
       "intellij.c",
-      "intellij.cidr.debugger",
+      "intellij.cidr.debugger.plugin",
       "intellij.cidr.base",
     )
 
@@ -61,7 +61,8 @@ class AndroidStudioProperties : ProductProperties() {
       "intellij.eclipse",
       "intellij.featuresTrainer",
       "intellij.java.byteCodeViewer",
-      "intellij.maven",
+      "intellij.jcef.plugin",
+      "intellij.maven.plugin",
       "intellij.mcpserver",
     )
   }
@@ -73,6 +74,7 @@ class AndroidStudioProperties : ProductProperties() {
     platformPrefix = "AndroidStudio"
     mainClassName = "com.android.tools.idea.MainWrapper"
     applicationInfoModule = "intellij.android.adt.branding"
+    imagesDirectoryPath = BuildPaths.COMMUNITY_ROOT.communityRoot.resolve("adt-branding/images")
     useSplash = true
     scrambleMainJar = false
     buildSourcesArchive = true
@@ -85,12 +87,18 @@ class AndroidStudioProperties : ProductProperties() {
       "-XX:FlightRecorderOptions=stackdepth=256",
       // Required by instantapps-api.jar (ag/I55803b347).
       "--add-opens=java.base/sun.net.www.protocol.https=ALL-UNNAMED",
-
+      // Redirect startup errors to our custom handler (b/512488877).
       "-Dij.startup.error.handler.class=com.intellij.platform.ide.bootstrap.StudioStartupErrorHandler",
-      // Workaround for C2 crashes b/377324522
-      "-XX:CompileCommand=exclude,org.jetbrains.kotlin.serialization.deserialization.TypeDeserializer::simpleType",
-      "-XX:CompileCommand=exclude,org.jetbrains.kotlin.serialization.deserialization.TypeDeserializer::toAttributes",
-      )
+    )
+
+    // From JetBrainsProductProperties (to place native libs at the correct locations in the distro):
+    presignedNativeLibs = mapOf(
+      "pty4j" to "pty4j",
+      "jna" to "jna",
+      "native" to "native", // sqlite-native
+      "async-profiler" to "async-profiler",
+      "skiko-awt-runtime-all" to "skiko-awt-runtime-all",
+    )
 
     productLayout.productImplementationModules = listOf(
       // From IdeaCommunityProperties:
@@ -119,9 +127,8 @@ class AndroidStudioProperties : ProductProperties() {
       layout.withModule("intellij.cidr.common.testFramework.core", TEST_FRAMEWORK_JAR)
       layout.withModule("intellij.cidr.common.testFramework.core.nolang", TEST_FRAMEWORK_JAR)
       // The following are needed by the CIDR test framework (b/295336541).
-      layout.withProjectLibrary("assertJ", TEST_FRAMEWORK_JAR)
-      layout.withProjectLibrary("hamcrest", TEST_FRAMEWORK_JAR)
-      layout.withoutProjectLibrary("mockito") // Referenced by CIDR, but we do not want it bundled.
+      layout.withModule("intellij.libraries.assertj.core", TEST_FRAMEWORK_JAR)
+      layout.withModule("intellij.libraries.hamcrest", TEST_FRAMEWORK_JAR)
 
       // Move kotlinx-coroutines-guava to core, making it accessible to the Android plugin.
       // Note: we could bundle kotlinx-coroutines-guava in the Android plugin separately, but that's risky because (1) the library
@@ -130,9 +137,12 @@ class AndroidStudioProperties : ProductProperties() {
       // For precedent, see IntelliJ commit https://github.com/JetBrains/intellij-community/commit/bb6d3cf0ac.
       layout.withProjectLibrary("kotlinx-coroutines-guava")
 
-      // b/376902207: JetBrains apparently converted rml.dfa into a product module in CIDR commit 0f8319e82a.
-      // Note that there is an associated V2 module rml.dfa.impl referenced from AndroidStudioPlugin.xml.
-      layout.withModule("intellij.rml.dfa")
+      // We have a separate MCP server which depends on several ktor libraries. While the platform core already bundles
+      // most of these, we have to explicitly add a few. This is done to avoid any binary incompatibilities by intermingling
+      // versions between our MCP and the core classloader and to avoid friction during updates by having to manually
+      // update our versions. (b/500176062).
+      layout.withProjectLibrary("ktor-server-content-negotiation")
+      layout.withProjectLibrary("ktor-server-sse-jvm")
 
       layout.withPatch { patcher, context ->
         // Patch AndroidStudioProperties.xml: set the platform API version to match the 3-component
@@ -163,8 +173,8 @@ class AndroidStudioProperties : ProductProperties() {
     productLayout.prepareCustomPluginRepositoryForPublishedPlugins = false
     productLayout.buildAllCompatiblePlugins = false
 
-    val inheritedPluginLayouts = COMMUNITY_REPOSITORY_PLUGINS.removeAll { it.mainModule !in bundledPlugins || it.mainModule == "intellij.performanceTesting" }
-    productLayout.pluginLayouts = inheritedPluginLayouts.addAll(listOf(
+    val inheritedPluginLayouts = COMMUNITY_REPOSITORY_PLUGINS.removingAll { it.mainModule !in bundledPlugins }
+    productLayout.pluginLayouts = inheritedPluginLayouts.addingAll(listOf(
       JavaPluginLayout.javaPlugin(),
       CommunityRepositoryModules.groovyPlugin(),
       // CIDR plugins migrated to v2 layouts, thus the included modules are computed
@@ -176,19 +186,14 @@ class AndroidStudioProperties : ProductProperties() {
       pluginAuto("intellij.c") { spec ->
         copyCidrLicense(spec)
         spec.excludeProjectLibrary("Kryo")
-        spec.excludeProjectLibrary("Objenesis")
       },
-      pluginAuto("intellij.cidr.debugger") { spec ->
+      pluginAuto("intellij.cidr.debugger.plugin") { spec ->
         copyCidrLicense(spec)
         spec.withProjectLibrary("antlr4-runtime")
-        spec.withModule("intellij.nativeDebug") // For NativeDebugPlugin.xml.
       },
       pluginAuto("intellij.cidr.base") { spec ->
         copyCidrLicense(spec)
       },
-      pluginAuto("intellij.performanceTesting") { spec ->
-        spec.withProjectLibrary("assertJ")
-      }
     ))
 
     // Fill in the remaining plugin layouts (including "trivial-layout" plugins)
@@ -210,17 +215,19 @@ class AndroidStudioProperties : ProductProperties() {
     // This is loosely based on IdeaCommunityProperties but tailored for Android Studio.
     alias("com.intellij.modules.androidstudio")
     alias("com.intellij.modules.java-capable")
+    alias("com.intellij.modules.c-capable") // Required for CIDR (com.intellij.cidr.lang).
     alias("com.intellij.modules.python-core-capable") // The Python plugin can be installed.
     alias("com.intellij.modules.python-in-non-pycharm-ide-capable") // Enable Non-Pycharm-IDE support in the Python plugin.
 
     include(CommunityProductFragments.javaIdeBaseFragment())
     moduleSet(CommunityModuleSets.ideCommon())
-    moduleSet(CommunityModuleSets.debuggerStreams())
     module("intellij.platform.coverage")
     module("intellij.platform.coverage.agent")
     module("intellij.platform.customization.min")
 
-    module("intellij.rml.dfa.impl") // For CIDR.
+    // For CIDR.
+    module("intellij.rml.dfa")
+    module("intellij.rml.dfa.impl")
   }
 
   private fun copyCidrLicense(spec: PluginLayout.PluginLayoutBuilder) {
@@ -254,21 +261,16 @@ class AndroidStudioProperties : ProductProperties() {
     return super.copyAdditionalFiles(targetDir, context)
   }
 
-  override fun createWindowsCustomizer(projectHome: Path): WindowsDistributionCustomizer? {
+  override fun createWindowsCustomizer(projectHome: Path): WindowsDistributionCustomizer {
     return object : WindowsDistributionCustomizer() {
       init {
-        icoPath = projectHome.resolve("adt-branding/resources/artwork/androidstudio.ico")
-        icoPathForEAP = projectHome.resolve("adt-branding/resources/artwork/preview/androidstudio.ico")
         buildZipArchiveWithBundledJre = false
         buildZipArchiveWithoutBundledJre = true
-        installerImagesPath = projectHome.resolve("build/conf/ideaCE/win/images")
       }
 
       override val fileAssociations: List<String> = listOf(".java", ".groovy", ".kt")
 
       override fun getFullNameIncludingEdition(appInfo: ApplicationInfoProperties): String = "Android Studio"
-
-      override fun getFullNameIncludingEditionAndVendor(appInfo: ApplicationInfoProperties): String = "Android Studio"
 
       override fun getRootDirectoryName(appInfo: ApplicationInfoProperties, buildNumber: String): String = "android-studio"
 
@@ -286,12 +288,10 @@ class AndroidStudioProperties : ProductProperties() {
     }
   }
 
-  override fun createLinuxCustomizer(projectHome: String): LinuxDistributionCustomizer {
+  override fun createLinuxCustomizer(projectHome: Path): LinuxDistributionCustomizer {
     return object : LinuxDistributionCustomizer() {
       init {
         buildArtifactWithoutRuntime = true
-        iconPngPath = Path.of("$projectHome/adt-branding/resources/artwork/icon_AS_128.png")
-        iconPngPathForEAP = Path.of("$projectHome/adt-branding/resources/artwork/preview/icon_AS_128.png")
       }
 
       override fun getRootDirectoryName(appInfo: ApplicationInfoProperties, buildNumber: String): String = "android-studio"
@@ -312,17 +312,11 @@ class AndroidStudioProperties : ProductProperties() {
     }
   }
 
-  inner class StudioMacDistributionCustomizer(projectHome: Path) : MacDistributionCustomizer() {
+  inner class StudioMacDistributionCustomizer : MacDistributionCustomizer() {
     init {
       urlSchemes = listOf("idea")
       associateIpr = true
       bundleIdentifier = "com.google.android.studio"
-      dmgImagePath = projectHome.resolve("build/conf/ideaCE/mac/images/dmg_background.tiff")
-      // For now we have all 3 platform icons checked in and we change
-      // the icons manually. Fix this when the other platforms have the
-      // same mechanisms for our .ico and .svg files
-      icnsPath = projectHome.resolve("adt-branding/resources/artwork/AndroidStudio.icns")
-      icnsPathForEAP = projectHome.resolve("adt-branding/resources/artwork/preview/AndroidStudio.icns")
     }
 
     override fun getRootDirectoryName(appInfo: ApplicationInfoProperties, buildNumber: String): String = "android-studio"
@@ -344,9 +338,7 @@ class AndroidStudioProperties : ProductProperties() {
     }
   }
 
-  override fun createMacCustomizer(projectHome: Path): MacDistributionCustomizer? {
-    return StudioMacDistributionCustomizer(projectHome)
-  }
+  override fun createMacCustomizer(projectHome: Path): MacDistributionCustomizer = StudioMacDistributionCustomizer()
 
   override fun getSystemSelector(appInfo: ApplicationInfoProperties, buildNumber: String): String =
     "_ANDROID_STUDIO_SYSTEM_SELECTOR_"

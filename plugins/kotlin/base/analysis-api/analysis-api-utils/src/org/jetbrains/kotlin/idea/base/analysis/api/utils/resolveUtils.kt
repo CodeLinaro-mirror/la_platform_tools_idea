@@ -7,18 +7,18 @@ import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotationValue
 import org.jetbrains.kotlin.analysis.api.base.KaConstantValue
 import org.jetbrains.kotlin.analysis.api.components.KaSubtypingErrorTypePolicy
 import org.jetbrains.kotlin.analysis.api.components.KaUseSiteVisibilityChecker
-import org.jetbrains.kotlin.analysis.api.components.buildClassType
-import org.jetbrains.kotlin.analysis.api.components.buildStarTypeProjection
 import org.jetbrains.kotlin.analysis.api.components.createUseSiteVisibilityChecker
 import org.jetbrains.kotlin.analysis.api.components.defaultType
 import org.jetbrains.kotlin.analysis.api.components.expandedSymbol
 import org.jetbrains.kotlin.analysis.api.components.expressionType
+import org.jetbrains.kotlin.analysis.api.components.isMarkedNullable
 import org.jetbrains.kotlin.analysis.api.components.isSubtypeOf
 import org.jetbrains.kotlin.analysis.api.components.resolveToCall
 import org.jetbrains.kotlin.analysis.api.components.resolveToCallCandidates
 import org.jetbrains.kotlin.analysis.api.components.resolveToSymbol
 import org.jetbrains.kotlin.analysis.api.components.scopeContext
 import org.jetbrains.kotlin.analysis.api.components.type
+import org.jetbrains.kotlin.analysis.api.components.typeCreator
 import org.jetbrains.kotlin.analysis.api.components.withNullability
 import org.jetbrains.kotlin.analysis.api.resolution.KaCallCandidateInfo
 import org.jetbrains.kotlin.analysis.api.resolution.KaCallableMemberCall
@@ -36,7 +36,6 @@ import org.jetbrains.kotlin.analysis.api.symbols.KaTypeAliasSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.markers.KaAnnotatedSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.symbol
 import org.jetbrains.kotlin.analysis.api.types.KaType
-import org.jetbrains.kotlin.analysis.api.types.KaTypeNullability
 import org.jetbrains.kotlin.builtins.StandardNames
 import org.jetbrains.kotlin.idea.references.KtReference
 import org.jetbrains.kotlin.idea.references.mainReference
@@ -58,8 +57,8 @@ import org.jetbrains.kotlin.utils.exceptions.errorWithAttachment
 import org.jetbrains.kotlin.utils.exceptions.withPsiEntry
 
 // Analogous to Call.resolveCandidates() in plugins/kotlin/core/src/org/jetbrains/kotlin/idea/core/Utils.kt
-context(_: KaSession)
 @OptIn(KaExperimentalApi::class)
+context(_: KaSession)
 fun collectCallCandidates(callElement: KtElement): List<KaCallCandidateInfo> {
     val (candidates, explicitReceiver) = when (callElement) {
         is KtCallElement -> {
@@ -77,8 +76,8 @@ fun collectCallCandidates(callElement: KtElement): List<KaCallCandidateInfo> {
     return candidates.filter { filterCandidate(it, callElement, explicitReceiver, visibilityChecker) }
 }
 
-context(_: KaSession)
 @OptIn(KaExperimentalApi::class)
+context(_: KaSession)
 private fun filterCandidate(
     candidateInfo: KaCallCandidateInfo,
     callElement: KtElement,
@@ -91,8 +90,8 @@ private fun filterCandidate(
     return filterCandidateByReceiverTypeAndVisibility(signature, callElement, explicitReceiver, visibilityChecker)
 }
 
-context(_: KaSession)
 @OptIn(KaExperimentalApi::class)
+context(_: KaSession)
 fun filterCandidateByReceiverTypeAndVisibility(
     signature: KaFunctionSignature<KaFunctionSymbol>,
     callElement: KtElement,
@@ -127,7 +126,7 @@ fun filterCandidateByReceiverTypeAndVisibility(
     val candidateReceiverType = signature.receiverType
     if (candidateReceiverType != null && receiverTypes.none {
             it.isSubtypeOf(candidateReceiverType, subtypingErrorTypePolicy) ||
-                    it.nullability != KaTypeNullability.NON_NULLABLE && it.withNullability(false)
+                    it.isMarkedNullable && it.withNullability(false)
                         .isSubtypeOf(candidateReceiverType, subtypingErrorTypePolicy)
         }
     ) return false
@@ -185,18 +184,23 @@ fun collectReceiverTypesForExplicitReceiverExpression(explicitReceiver: KtExpres
     return listOf(adjustedType)
 }
 
-context(_: KaSession)
 @OptIn(KaExperimentalApi::class)
+context(_: KaSession)
 private fun KaNamedClassSymbol.buildClassTypeBySymbolWithTypeArgumentsFromExpression(expression: KtExpression): KaType =
-    buildClassType(this) {
-        if (expression is KtCallExpression) {
-            val typeArgumentTypes = expression.typeArguments.map { it.typeReference?.type }
-            for (typeArgument in typeArgumentTypes) {
-                if (typeArgument != null) {
-                    argument(typeArgument)
-                } else {
-                    argument(buildStarTypeProjection())
-                }
+    typeCreator.classType(this) {
+        val typeArgumentTypesFromExpression =
+            (expression as? KtCallExpression)?.typeArguments?.map { it.typeReference?.type } ?: emptyList()
+        this@buildClassTypeBySymbolWithTypeArgumentsFromExpression.typeParameters.forEachIndexed { index, originalTypeParameter ->
+            val typeArgumentFromExpression = typeArgumentTypesFromExpression.getOrElse(index) {
+                /**
+                 * [classType] fills lacking type arguments with star projections.
+                 * To provide proper type hints instead of `*`, we explicitly pass a type parameter type here.
+                 */
+                typeParameterType(originalTypeParameter)
+            }
+            when {
+                typeArgumentFromExpression != null -> invariantTypeArgument(typeArgumentFromExpression)
+                else -> typeArgument(starTypeProjection())
             }
         }
     }

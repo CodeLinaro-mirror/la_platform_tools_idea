@@ -1,10 +1,12 @@
-// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.editor.impl;
 
+import com.intellij.openapi.editor.CustomWrap;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.LanguageLineWrapPositionStrategy;
 import com.intellij.openapi.editor.LineWrapPositionStrategy;
 import com.intellij.openapi.editor.SoftWrap;
+import com.intellij.openapi.editor.impl.softwrap.CustomWrapToSoftWrapAdapter;
 import com.intellij.openapi.editor.impl.softwrap.SoftWrapDrawingType;
 import com.intellij.openapi.editor.impl.softwrap.SoftWrapHelper;
 import com.intellij.openapi.editor.impl.softwrap.SoftWrapImpl;
@@ -40,6 +42,7 @@ public final class SoftWrapEngine {
   private final int mySoftWrapWidth;
   private final IncrementalCacheUpdateEvent myEvent;
   private final int myRelativeIndent;
+  private final boolean myAllowGridModeOptimizations;
 
   private LineWrapPositionStrategy myLineWrapPositionStrategy;
 
@@ -50,9 +53,10 @@ public final class SoftWrapEngine {
                         @NotNull IncrementalCacheUpdateEvent event,
                         @Nullable LineWrapPositionStrategy lineWrapStrategy,
                         int visibleWidth,
-                        int relativeIndent) {
+                        int relativeIndent,
+                        boolean allowGridModeOptimizations) {
     myEditor = editor;
-    myDocument = editor.getDocument();
+    myDocument = editor.getElfDocument();
     myText = myDocument.getImmutableCharSequence();
     myView = editor.myView;
     myStorage = storage;
@@ -63,6 +67,7 @@ public final class SoftWrapEngine {
     myEvent = event;
     myRelativeIndent = relativeIndent;
     myLineWrapPositionStrategy = lineWrapStrategy;
+    myAllowGridModeOptimizations = allowGridModeOptimizations;
   }
 
   public void generate() {
@@ -74,8 +79,12 @@ public final class SoftWrapEngine {
       myEditor.getInlayModel().getAfterLineEndElementsInRange(DocumentUtil.getLineStartOffset(startOffset, myDocument), maxEndOffset),
       inlay -> !inlay.getProperties().isSoftWrappingDisabled()
     );
+    var customWraps = myEditor.getCustomWrapModel().getWrapsInRange(startOffset, maxEndOffset);
+
     var grid = myEditor.getCharacterGrid();
-    if (grid != null && inlineInlays.isEmpty() && afterLineEndInlays.isEmpty()) {
+    if (grid != null && myAllowGridModeOptimizations
+        && inlineInlays.isEmpty() && afterLineEndInlays.isEmpty() && customWraps.isEmpty()
+        && !SoftWrapHelper.hasCollapsedOffsetsIn(myEditor.getFoldingModel(), startOffset, maxEndOffset)) {
       generateGridSoftWraps(grid, startOffset, minEndOffset, maxEndOffset);
       return;
     }
@@ -96,8 +105,17 @@ public final class SoftWrapEngine {
       x = lastSoftWrap == null ? 0 : lastSoftWrap.getIndentInPixels();
     }
 
-    WrapElementMeasuringIterator it = new WrapElementMeasuringIterator(myView, startOffset, maxEndOffset, inlineInlays, afterLineEndInlays);
+    WrapElementMeasuringIterator it =
+      new WrapElementMeasuringIterator(myView, startOffset, maxEndOffset, inlineInlays, afterLineEndInlays, customWraps);
     while (!it.atEnd()) {
+      if (it.isAtCustomWrap()) {
+        minWrapOffset = -1;
+        maxWrapOffset = -1;
+        CustomWrap customWrap = it.getCurrentCustomWrap();
+        var customWrapAdapter = new CustomWrapToSoftWrapAdapter(customWrap, myEditor);
+        x = customWrapAdapter.getIndentInPixels();
+        myStorage.storeOrReplace(customWrapAdapter);
+      }
       if (it.isLineBreak()) {
         minWrapOffset = -1;
         maxWrapOffset = -1;
@@ -176,6 +194,7 @@ public final class SoftWrapEngine {
     return result;
   }
 
+  // the returned offset is in [minOffset; maxOffset], possibly in [minOffset-1; maxOffset] due to a surrogate pair
   private int calcSoftWrapOffset(int minOffset, int maxOffset, boolean preferMinOffset) {
     if (myLineWrapPositionStrategy == null) {
       myLineWrapPositionStrategy = LanguageLineWrapPositionStrategy.INSTANCE.forEditor(myEditor);
@@ -185,8 +204,8 @@ public final class SoftWrapEngine {
       if (position != -1) return position;
     }
 
-    int wrapOffset = myLineWrapPositionStrategy.calculateWrapPosition(myDocument, myEditor.getProject(), minOffset - 1, maxOffset + 1, maxOffset + 1,
-                                                                      false, true);
+    int wrapOffset = myLineWrapPositionStrategy.calculateWrapPosition(myEditor, minOffset - 1, maxOffset + 1,
+                                                                      maxOffset + 1, false, true);
     if (wrapOffset < 0) return preferMinOffset ? minOffset : maxOffset;
     if (wrapOffset < minOffset) return minOffset;
     if (wrapOffset > maxOffset) return maxOffset;
@@ -203,7 +222,7 @@ public final class SoftWrapEngine {
    */
   @ApiStatus.Internal
   public static int findWrapPosition(CharSequence text, int maxOffset, int minOffset, LineWrapPositionStrategy strategy) {
-    if (strategy.canWrapLineAtOffset(text, maxOffset))  return maxOffset;
+    if (strategy.canWrapLineAtOffset(text, maxOffset)) return maxOffset;
     for (int i = 0, offset = maxOffset; i < BASIC_LOOK_BACK_LENGTH && offset >= minOffset; i++) {
       int prevOffset = Character.offsetByCodePoints(text, offset, -1);
       if (strategy.canWrapLineAtOffset(text, prevOffset)) return offset;

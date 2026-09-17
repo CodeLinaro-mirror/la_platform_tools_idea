@@ -1,9 +1,8 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package org.jetbrains.kotlin.idea.fir.imports;
 
 import com.intellij.testFramework.TestDataPath;
-import org.jetbrains.kotlin.idea.base.plugin.KotlinPluginMode;
 import org.jetbrains.kotlin.idea.base.test.TestRoot;
 import org.jetbrains.kotlin.idea.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils;
@@ -22,12 +21,6 @@ public abstract class K2JsOptimizeImportsTestGenerated extends AbstractK2JsOptim
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../idea/tests/testData/editor/optimizeImports/js")
     public static class Js extends AbstractK2JsOptimizeImportsTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -49,14 +42,18 @@ public abstract class K2JsOptimizeImportsTestGenerated extends AbstractK2JsOptim
         @RunWith(JUnit3RunnerWithInners.class)
         @TestMetadata("../../idea/tests/testData/editor/optimizeImports/common/basic")
         public static class Basic extends AbstractK2JsOptimizeImportsTest {
-            @java.lang.Override
-            @org.jetbrains.annotations.NotNull
-            public final KotlinPluginMode getPluginMode() {
-                return KotlinPluginMode.K2;
-            }
-
             private void runTest(String testDataFilePath) throws Exception {
                 KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
+            }
+
+            @TestMetadata("OperationReferenceFromObjectSuperInterface_Infix.kt")
+            public void testOperationReferenceFromObjectSuperInterface_Infix() throws Exception {
+                runTest("../../idea/tests/testData/editor/optimizeImports/common/basic/OperationReferenceFromObjectSuperInterface_Infix.kt");
+            }
+
+            @TestMetadata("OperationReferenceFromObjectSuperInterface_Operator.kt")
+            public void testOperationReferenceFromObjectSuperInterface_Operator() throws Exception {
+                runTest("../../idea/tests/testData/editor/optimizeImports/common/basic/OperationReferenceFromObjectSuperInterface_Operator.kt");
             }
 
             @TestMetadata("TypealiasedObject_InvokeFunction.kt")
@@ -168,12 +165,6 @@ public abstract class K2JsOptimizeImportsTestGenerated extends AbstractK2JsOptim
         @RunWith(JUnit3RunnerWithInners.class)
         @TestMetadata("../../idea/tests/testData/editor/optimizeImports/common/contextSensitiveResolution")
         public static class ContextSensitiveResolution extends AbstractK2JsOptimizeImportsTest {
-            @java.lang.Override
-            @org.jetbrains.annotations.NotNull
-            public final KotlinPluginMode getPluginMode() {
-                return KotlinPluginMode.K2;
-            }
-
             private void runTest(String testDataFilePath) throws Exception {
                 KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
             }
@@ -197,19 +188,63 @@ public abstract class K2JsOptimizeImportsTestGenerated extends AbstractK2JsOptim
         @RunWith(JUnit3RunnerWithInners.class)
         @TestMetadata("../../idea/tests/testData/editor/optimizeImports/common/kDoc")
         public static class KDoc extends AbstractK2JsOptimizeImportsTest {
-            @java.lang.Override
-            @org.jetbrains.annotations.NotNull
-            public final KotlinPluginMode getPluginMode() {
-                return KotlinPluginMode.K2;
-            }
-
             private void runTest(String testDataFilePath) throws Exception {
                 KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
+            }
+
+            @TestMetadata("CompanionField.kt")
+            public void testCompanionField() throws Exception {
+                runTest("../../idea/tests/testData/editor/optimizeImports/common/kDoc/CompanionField.kt");
             }
 
             @TestMetadata("extensionForBaseClassViaChildClass.kt")
             public void testExtensionForBaseClassViaChildClass() throws Exception {
                 runTest("../../idea/tests/testData/editor/optimizeImports/common/kDoc/extensionForBaseClassViaChildClass.kt");
+            }
+
+            @TestMetadata("KDocReferenceMemberFromBaseCompanion.kt")
+            public void testKDocReferenceMemberFromBaseCompanion() throws Exception {
+                runTest("../../idea/tests/testData/editor/optimizeImports/common/kDoc/KDocReferenceMemberFromBaseCompanion.kt");
+            }
+
+            @TestMetadata("KDocReferenceMemberFromBaseCompanionUnrelated.kt")
+            public void testKDocReferenceMemberFromBaseCompanionUnrelated() throws Exception {
+                runTest("../../idea/tests/testData/editor/optimizeImports/common/kDoc/KDocReferenceMemberFromBaseCompanionUnrelated.kt");
+            }
+
+            @TestMetadata("KDocReferenceMemberFromCompanion.kt")
+            public void testKDocReferenceMemberFromCompanion() throws Exception {
+                runTest("../../idea/tests/testData/editor/optimizeImports/common/kDoc/KDocReferenceMemberFromCompanion.kt");
+            }
+
+            @TestMetadata("KDocReferenceObjectMemberOnFunction.kt")
+            public void testKDocReferenceObjectMemberOnFunction() throws Exception {
+                runTest("../../idea/tests/testData/editor/optimizeImports/common/kDoc/KDocReferenceObjectMemberOnFunction.kt");
+            }
+
+            @TestMetadata("KDocReferenceObjectMemberOnObject.kt")
+            public void testKDocReferenceObjectMemberOnObject() throws Exception {
+                runTest("../../idea/tests/testData/editor/optimizeImports/common/kDoc/KDocReferenceObjectMemberOnObject.kt");
+            }
+
+            @TestMetadata("KDocReferenceObjectMemberOnObjectFromBase.kt")
+            public void testKDocReferenceObjectMemberOnObjectFromBase() throws Exception {
+                runTest("../../idea/tests/testData/editor/optimizeImports/common/kDoc/KDocReferenceObjectMemberOnObjectFromBase.kt");
+            }
+
+            @TestMetadata("KDocReferenceObjectMemberOnUnrelatedFunction.kt")
+            public void testKDocReferenceObjectMemberOnUnrelatedFunction() throws Exception {
+                runTest("../../idea/tests/testData/editor/optimizeImports/common/kDoc/KDocReferenceObjectMemberOnUnrelatedFunction.kt");
+            }
+
+            @TestMetadata("KDocReferenceObjectMemberOnUnrelatedFunction2.kt")
+            public void testKDocReferenceObjectMemberOnUnrelatedFunction2() throws Exception {
+                runTest("../../idea/tests/testData/editor/optimizeImports/common/kDoc/KDocReferenceObjectMemberOnUnrelatedFunction2.kt");
+            }
+
+            @TestMetadata("KDocReferenceObjectMemberOnUnrelatedFunctionSameObject.kt")
+            public void testKDocReferenceObjectMemberOnUnrelatedFunctionSameObject() throws Exception {
+                runTest("../../idea/tests/testData/editor/optimizeImports/common/kDoc/KDocReferenceObjectMemberOnUnrelatedFunctionSameObject.kt");
             }
 
             @TestMetadata("unresolvedNameInKDocDoesHoldImports.kt")
@@ -221,12 +256,6 @@ public abstract class K2JsOptimizeImportsTestGenerated extends AbstractK2JsOptim
         @RunWith(JUnit3RunnerWithInners.class)
         @TestMetadata("../../idea/tests/testData/editor/optimizeImports/common/kt21515")
         public static class Kt21515 extends AbstractK2JsOptimizeImportsTest {
-            @java.lang.Override
-            @org.jetbrains.annotations.NotNull
-            public final KotlinPluginMode getPluginMode() {
-                return KotlinPluginMode.K2;
-            }
-
             private void runTest(String testDataFilePath) throws Exception {
                 KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
             }
@@ -260,12 +289,6 @@ public abstract class K2JsOptimizeImportsTestGenerated extends AbstractK2JsOptim
         @RunWith(JUnit3RunnerWithInners.class)
         @TestMetadata("../../idea/tests/testData/editor/optimizeImports/common")
         public static class Uncategorized extends AbstractK2JsOptimizeImportsTest {
-            @java.lang.Override
-            @org.jetbrains.annotations.NotNull
-            public final KotlinPluginMode getPluginMode() {
-                return KotlinPluginMode.K2;
-            }
-
             private void runTest(String testDataFilePath) throws Exception {
                 KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
             }

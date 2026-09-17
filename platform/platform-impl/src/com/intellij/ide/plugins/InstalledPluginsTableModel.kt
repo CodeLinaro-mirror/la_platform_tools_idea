@@ -18,7 +18,6 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.options.ex.Settings
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.IntellijInternalApi
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -31,7 +30,6 @@ import java.util.UUID
 import java.util.function.Consumer
 
 @ApiStatus.Internal
-@IntellijInternalApi
 open class InstalledPluginsTableModel @JvmOverloads constructor(
   protected val project: Project?,
   initSessionResult: InitSessionResult? = null,
@@ -146,7 +144,7 @@ open class InstalledPluginsTableModel @JvmOverloads constructor(
     }
     for (plugins in myMarketplacePluginComponentMap.values) {
       for (plugin in plugins) {
-        if (plugin.installedDescriptorForMarketplace != null) {
+        if (plugin.getInstalledDescriptorForMarketplace() != null) {
           plugin.updateEnabledState()
         }
       }

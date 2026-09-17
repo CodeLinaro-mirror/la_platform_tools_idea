@@ -3,7 +3,6 @@
 package org.jetbrains.kotlin.idea.k2.highlighting;
 
 import com.intellij.testFramework.TestDataPath;
-import org.jetbrains.kotlin.idea.base.plugin.KotlinPluginMode;
 import org.jetbrains.kotlin.idea.base.test.TestRoot;
 import org.jetbrains.kotlin.idea.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils;
@@ -20,12 +19,6 @@ import org.junit.runner.RunWith;
 @RunWith(JUnit3RunnerWithInners.class)
 @TestMetadata("../../idea/tests/testData/exitPoints")
 public class K2HighlightExitPointsTestGenerated extends AbstractK2HighlightExitPointsTest {
-    @java.lang.Override
-    @org.jetbrains.annotations.NotNull
-    public final KotlinPluginMode getPluginMode() {
-        return KotlinPluginMode.K2;
-    }
-
     private void runTest(String testDataFilePath) throws Exception {
         KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
     }
@@ -38,6 +31,11 @@ public class K2HighlightExitPointsTestGenerated extends AbstractK2HighlightExitP
     @TestMetadata("anonymousFunction2.kt")
     public void testAnonymousFunction2() throws Exception {
         runTest("../../idea/tests/testData/exitPoints/anonymousFunction2.kt");
+    }
+
+    @TestMetadata("buildListForeignReceiver.kt")
+    public void testBuildListForeignReceiver() throws Exception {
+        runTest("../../idea/tests/testData/exitPoints/buildListForeignReceiver.kt");
     }
 
     @TestMetadata("buildListNested.kt")
@@ -73,6 +71,11 @@ public class K2HighlightExitPointsTestGenerated extends AbstractK2HighlightExitP
     @TestMetadata("buildSetSimple.kt")
     public void testBuildSetSimple() throws Exception {
         runTest("../../idea/tests/testData/exitPoints/buildSetSimple.kt");
+    }
+
+    @TestMetadata("buildStringForeignReceiver.kt")
+    public void testBuildStringForeignReceiver() throws Exception {
+        runTest("../../idea/tests/testData/exitPoints/buildStringForeignReceiver.kt");
     }
 
     @TestMetadata("buildStringNested.kt")
@@ -220,6 +223,11 @@ public class K2HighlightExitPointsTestGenerated extends AbstractK2HighlightExitP
         runTest("../../idea/tests/testData/exitPoints/inLambdaAndUsages.kt");
     }
 
+    @TestMetadata("inLambdaLBrace.kt")
+    public void testInLambdaLBrace() throws Exception {
+        runTest("../../idea/tests/testData/exitPoints/inLambdaLBrace.kt");
+    }
+
     @TestMetadata("inLambdaLastStatement1.kt")
     public void testInLambdaLastStatement1() throws Exception {
         runTest("../../idea/tests/testData/exitPoints/inLambdaLastStatement1.kt");
@@ -330,6 +338,11 @@ public class K2HighlightExitPointsTestGenerated extends AbstractK2HighlightExitP
         runTest("../../idea/tests/testData/exitPoints/loopWithContinueWithNonLocalBreak.kt");
     }
 
+    @TestMetadata("minusEqBuildSet.kt")
+    public void testMinusEqBuildSet() throws Exception {
+        runTest("../../idea/tests/testData/exitPoints/minusEqBuildSet.kt");
+    }
+
     @TestMetadata("notInline1.kt")
     public void testNotInline1() throws Exception {
         runTest("../../idea/tests/testData/exitPoints/notInline1.kt");
@@ -350,6 +363,26 @@ public class K2HighlightExitPointsTestGenerated extends AbstractK2HighlightExitP
         runTest("../../idea/tests/testData/exitPoints/notReturnedLabeledExpression.kt");
     }
 
+    @TestMetadata("plusEqBuildList.kt")
+    public void testPlusEqBuildList() throws Exception {
+        runTest("../../idea/tests/testData/exitPoints/plusEqBuildList.kt");
+    }
+
+    @TestMetadata("plusEqBuildListNested.kt")
+    public void testPlusEqBuildListNested() throws Exception {
+        runTest("../../idea/tests/testData/exitPoints/plusEqBuildListNested.kt");
+    }
+
+    @TestMetadata("plusEqBuildMap.kt")
+    public void testPlusEqBuildMap() throws Exception {
+        runTest("../../idea/tests/testData/exitPoints/plusEqBuildMap.kt");
+    }
+
+    @TestMetadata("receiverResolution.kt")
+    public void testReceiverResolution() throws Exception {
+        runTest("../../idea/tests/testData/exitPoints/receiverResolution.kt");
+    }
+
     @TestMetadata("returnIfStatement.kt")
     public void testReturnIfStatement() throws Exception {
         runTest("../../idea/tests/testData/exitPoints/returnIfStatement.kt");
@@ -363,6 +396,11 @@ public class K2HighlightExitPointsTestGenerated extends AbstractK2HighlightExitP
     @TestMetadata("returnWhenStatement.kt")
     public void testReturnWhenStatement() throws Exception {
         runTest("../../idea/tests/testData/exitPoints/returnWhenStatement.kt");
+    }
+
+    @TestMetadata("sequenceForeignReceiver.kt")
+    public void testSequenceForeignReceiver() throws Exception {
+        runTest("../../idea/tests/testData/exitPoints/sequenceForeignReceiver.kt");
     }
 
     @TestMetadata("sequenceInLambda.kt")

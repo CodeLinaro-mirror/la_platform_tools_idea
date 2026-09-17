@@ -24,8 +24,9 @@ import com.intellij.platform.eel.EelWindowsProcess
 import com.intellij.platform.eel.ExecuteProcessException
 import com.intellij.platform.eel.LocalEelExecApi
 import com.intellij.platform.eel.channels.EelDelicateApi
-import com.intellij.platform.eel.impl.bindProcessToScopeIfSet
-import com.intellij.platform.eel.impl.commandLineForDebug
+import com.intellij.platform.eel.impl.base.EelExecApiEnvironmentVariableCache
+import com.intellij.platform.eel.impl.base.bindProcessToScopeIfSet
+import com.intellij.platform.eel.impl.base.commandLineForDebug
 import com.intellij.platform.eel.path.EelPath
 import com.intellij.platform.eel.provider.LocalEelDescriptor
 import com.intellij.platform.eel.provider.utils.awaitProcessResult
@@ -55,8 +56,6 @@ import java.nio.file.Path
 import kotlin.io.path.Path
 import kotlin.io.path.absolutePathString
 import kotlin.io.path.isDirectory
-import kotlin.io.path.isExecutable
-import kotlin.io.path.isRegularFile
 
 @OptIn(EelDelicateApi::class)
 @ApiStatus.Internal
@@ -69,9 +68,9 @@ class EelLocalExecPosixApi(
   ): EelPosixProcess {
     val process = executeImpl(generatedBuilder)
     val r = if (process is PtyProcess)
-      LocalEelPosixProcess.create(process, process::setWinSize)
+      LocalEelPosixProcess.create(process, process::setWinSize, platform)
     else
-      LocalEelPosixProcess.create(process, null)
+      LocalEelPosixProcess.create(process, null, platform)
     generatedBuilder.bindProcessToScopeIfSet(r)
     return r
   }
@@ -92,28 +91,33 @@ class EelLocalExecPosixApi(
       ?: object : EelExecPosixApi.PosixEnvironmentVariablesOptions, EelExecApi.EnvironmentVariablesOptions by opts {}
 
     return when (val mode = opts.mode) {
-      EelExecPosixApi.PosixEnvironmentVariablesOptions.Mode.DEFAULT -> {
+      EelExecApi.EnvironmentVariablesOptions.Mode.DEFAULT -> {
         EnvironmentVariablesDeferred(CompletableDeferred(EnvironmentUtil.getEnvironmentMap()))
       }
 
-      EelExecPosixApi.PosixEnvironmentVariablesOptions.Mode.MINIMAL -> {
+      EelExecApi.EnvironmentVariablesOptions.Mode.MINIMAL -> {
         EnvironmentVariablesDeferred(CompletableDeferred(EnvironmentUtil.getSystemEnv()))
       }
 
-      EelExecPosixApi.PosixEnvironmentVariablesOptions.Mode.LOGIN_NON_INTERACTIVE,
-      EelExecPosixApi.PosixEnvironmentVariablesOptions.Mode.LOGIN_INTERACTIVE -> {
+      EelExecApi.EnvironmentVariablesOptions.Mode.LOGIN_NON_INTERACTIVE,
+      EelExecApi.EnvironmentVariablesOptions.Mode.LOGIN_INTERACTIVE -> {
         environmentVariablesCache.getDeferred(mode, opts)
+      }
+
+      EelExecApi.EnvironmentVariablesOptions.Mode.LOGIN_INTERACTIVE_VIA_SHELL -> {
+        environmentVariablesCache.getDeferred(EelExecApi.EnvironmentVariablesOptions.Mode.LOGIN_INTERACTIVE, opts)
       }
     }
   }
 
-  private fun makeEnvironmentVariablesDeferred(mode: EelExecPosixApi.PosixEnvironmentVariablesOptions.Mode?): Deferred<Map<String, String>> {
+  private fun makeEnvironmentVariablesDeferred(mode: EelExecApi.EnvironmentVariablesOptions.Mode?): Deferred<Map<String, String>> {
     val interactive = when (mode) {
-      EelExecPosixApi.PosixEnvironmentVariablesOptions.Mode.LOGIN_NON_INTERACTIVE -> false
-      EelExecPosixApi.PosixEnvironmentVariablesOptions.Mode.LOGIN_INTERACTIVE -> true
+      EelExecApi.EnvironmentVariablesOptions.Mode.LOGIN_NON_INTERACTIVE -> false
+      EelExecApi.EnvironmentVariablesOptions.Mode.LOGIN_INTERACTIVE -> true
 
-      EelExecPosixApi.PosixEnvironmentVariablesOptions.Mode.DEFAULT,
-      EelExecPosixApi.PosixEnvironmentVariablesOptions.Mode.MINIMAL,
+      EelExecApi.EnvironmentVariablesOptions.Mode.DEFAULT,
+      EelExecApi.EnvironmentVariablesOptions.Mode.MINIMAL,
+      EelExecApi.EnvironmentVariablesOptions.Mode.LOGIN_INTERACTIVE_VIA_SHELL,
       null
         -> error("unreachable")
     }
@@ -200,9 +204,9 @@ class EelLocalExecPosixApi(
     }
 
     if (shell == null) {
-      val err = IllegalStateException("No shell detected for the current user")
-      errorsToAttach.forEach(err::addSuppressed)
-      throw err
+      // The last resort. It may be not what the user wants to see.
+      LOG.info("Failed to get OS-specific shell. Using /bin/sh as a fallback", errorsToAttach.lastOrNull())
+      shell = "/bin/sh"
     }
 
     return shell
@@ -211,6 +215,16 @@ class EelLocalExecPosixApi(
 
   override suspend fun findExeFilesInPath(binaryName: String): List<EelPath> =
     findExeFilesInPath(binaryName, LOG)
+
+  override suspend fun getUserLoginShell(): EelPath {
+    return EelPath.parse(getUserShell(), descriptor)
+  }
+
+  override suspend fun spawnLoginShell(opts: EelExecApi.LoginShellOptions): EelExecApi.LoginShellHandle {
+    throw UnsupportedOperationException(
+      "spawnLoginShell is not implemented for local Eel; use environmentVariables() for env-only queries"
+    )
+  }
 
   override suspend fun createExternalCli(options: EelExecApi.ExternalCliOptions): EelExecApi.ExternalCliEntrypoint {
     TODO("Not yet implemented")
@@ -243,6 +257,21 @@ class EelLocalExecWindowsApi : EelExecWindowsApi, LocalEelExecApi {
 
   override suspend fun findExeFilesInPath(binaryName: String): List<EelPath> =
     findExeFilesInPath(binaryName, LOG)
+
+  override suspend fun getUserLoginShell(): EelPath {
+    for (name in listOf("pwsh.exe", "powershell.exe")) {
+      val found = findExeFilesInPath(name, LOG).firstOrNull()
+      if (found != null) return found
+    }
+    val systemRoot = System.getenv("SystemRoot") ?: "C:\\Windows"
+    return EelPath.parse("$systemRoot\\System32\\cmd.exe", descriptor)
+  }
+
+  override suspend fun spawnLoginShell(opts: EelExecApi.LoginShellOptions): EelExecApi.LoginShellHandle {
+    throw UnsupportedOperationException(
+      "spawnLoginShell is not implemented for local Eel; use environmentVariables() for env-only queries"
+    )
+  }
 
   override suspend fun createExternalCli(options: EelExecApi.ExternalCliOptions): EelExecApi.ExternalCliEntrypoint {
     TODO("Not yet implemented")
@@ -386,7 +415,7 @@ private suspend fun findExeFilesInPath(binaryName: String, logger: Logger): List
       if (SystemInfo.isWindows) {
         pathsToProbe.addAll(PathEnvironmentVariableUtil.getWindowsExecutableFileExtensions().map { ext -> Path(binaryName + ext) })
       }
-      pathsToProbe.filter { exeFile -> exeFile.isRegularFile() && exeFile.isExecutable() }
+      pathsToProbe.filter { exeFile -> exeFile.canBeExecuted() }
     }
   }
   else {
@@ -401,7 +430,7 @@ private suspend fun findExeFilesInPath(binaryName: String, logger: Logger): List
         if (dir.isAbsolute && dir.isDirectory()) {
           for (name in names) {
             val exeFile = dir.resolve(name)
-            if (exeFile.isRegularFile() && exeFile.isExecutable()) {
+            if (exeFile.canBeExecuted()) {
               collector.add(exeFile)
             }
           }
@@ -410,6 +439,16 @@ private suspend fun findExeFilesInPath(binaryName: String, logger: Logger): List
     }
   }
   return@withContext result.map { EelPath.parse(it.absolutePathString(), LocalEelDescriptor) }
+}
+
+/**
+ * @return true if this file can be specified as executable when spawning a process
+ */
+private fun Path.canBeExecuted(): Boolean {
+  if (!Files.isExecutable(this)) return false
+  // On Windows and Unix, directories pass the isExecutable check.
+  // Files.isRegularFile is not used because it returns false for Windows reparse points.
+  return !Files.isDirectory(this)
 }
 
 private fun toPath(pathStr: String, log: Logger): Path? =

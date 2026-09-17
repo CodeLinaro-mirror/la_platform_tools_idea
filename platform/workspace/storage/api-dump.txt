@@ -76,6 +76,8 @@ a:com.intellij.platform.workspace.storage.EntityType
 - b:<init>(com.intellij.platform.workspace.storage.EntityType,I,kotlin.jvm.internal.DefaultConstructorMarker):V
 - pf:builder():com.intellij.platform.workspace.storage.WorkspaceEntity$Builder
 - p:getEntityClass():java.lang.Class
+- p:getEntityImplBuilderClass():java.lang.Class
+- p:getEntityImplClass():java.lang.Class
 com.intellij.platform.workspace.storage.ExternalEntityMapping
 - a:forEach(kotlin.jvm.functions.Function2):V
 - a:getDataByEntity(com.intellij.platform.workspace.storage.WorkspaceEntity):java.lang.Object
@@ -151,8 +153,6 @@ com.intellij.platform.workspace.storage.WorkspaceEntityWithSymbolicId
 - a:getSymbolicId():com.intellij.platform.workspace.storage.SymbolicEntityId
 @:com.intellij.platform.workspace.storage.annotations.Abstract
 - java.lang.annotation.Annotation
-@:com.intellij.platform.workspace.storage.annotations.Child
-- java.lang.annotation.Annotation
 @:com.intellij.platform.workspace.storage.annotations.Default
 - java.lang.annotation.Annotation
 @:com.intellij.platform.workspace.storage.annotations.Open
@@ -171,6 +171,9 @@ com.intellij.platform.workspace.storage.instrumentation.EntityStorageInstrumenta
 - a:resolveReference(com.intellij.platform.workspace.storage.EntityPointer):com.intellij.platform.workspace.storage.WorkspaceEntity
 @:com.intellij.platform.workspace.storage.instrumentation.EntityStorageInstrumentationApi
 - java.lang.annotation.Annotation
+f:com.intellij.platform.workspace.storage.instrumentation.EntityStorageInstrumentationKt
+- sf:getInstrumentation(com.intellij.platform.workspace.storage.EntityStorage):com.intellij.platform.workspace.storage.instrumentation.EntityStorageInstrumentation
+- sf:getInstrumentation(com.intellij.platform.workspace.storage.MutableEntityStorage):com.intellij.platform.workspace.storage.instrumentation.MutableEntityStorageInstrumentation
 com.intellij.platform.workspace.storage.instrumentation.ImmutableEntityStorageInstrumentation
 - com.intellij.platform.workspace.storage.ImmutableEntityStorage
 - com.intellij.platform.workspace.storage.instrumentation.EntityStorageInstrumentation

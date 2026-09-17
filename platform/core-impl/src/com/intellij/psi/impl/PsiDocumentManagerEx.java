@@ -15,6 +15,7 @@ import com.intellij.psi.FileViewProvider;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.impl.source.PsiFileImpl;
+import com.intellij.util.concurrency.annotations.RequiresEdt;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
@@ -32,10 +33,13 @@ public abstract class PsiDocumentManagerEx extends PsiDocumentManager implements
 
   public abstract void associatePsi(@NotNull Document document, @NotNull PsiFile file);
 
+  public abstract @Nullable Document getDocumentForNonPhysicalLightFile(@NotNull PsiFile psiFile);
+
   public abstract @Nullable PsiFile getRawCachedFile(@NotNull VirtualFile virtualFile, @NotNull CodeInsightContext context);
 
   public abstract @NotNull @Unmodifiable List<FileViewProvider> getCachedViewProviders(@NotNull Document document);
 
+  @RequiresEdt
   public abstract boolean cancelAndRunWhenAllCommitted(@NonNls @NotNull Object key, @NotNull Runnable action);
 
   public abstract void addRunOnCommit(@NotNull Document document, @NotNull Consumer<? super @NotNull Document> action);

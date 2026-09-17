@@ -17,7 +17,6 @@ enum class ErrorCategory {
   MISSING_MODULE_SETS,
   /** [SelfContainedValidationError] - hard failure, not suppressible */
   SELF_CONTAINED_VIOLATION,
-
   // Plugin validation
   /** [PluginDependencyError] - hard failure, not suppressible */
   PLUGIN_DEPENDENCY_UNRESOLVED,
@@ -61,6 +60,11 @@ enum class ErrorCategory {
   // Missing dependencies
   /** [MissingDependenciesError] - hard failure, not suppressible */
   MISSING_DEPENDENCY,
+
+  /** [ImplicitEmbeddedContentModuleError] - hard failure, not suppressible */
+  IMPLICIT_EMBEDDED_CONTENT_MODULE,
+  /** [EmbeddedContentModuleDependencyError] - hard failure, not suppressible */
+  EMBEDDED_CONTENT_MODULE_DEPENDENCY,
 }
 
 /**
@@ -118,5 +122,7 @@ fun ValidationError.errorId(): String {
     is MissingPluginIdError -> "missing-plugin-id:${pluginName.value}"
     is DuplicateDslTestPluginIdError -> "dsl-test-plugin-id-dup:${pluginId.value}"
     is MissingContentModuleBackingError -> "content-module-backing:$context"
+    is ImplicitEmbeddedContentModuleError -> "implicit-embedded-content:$context"
+    is EmbeddedContentModuleDependencyError -> "embedded-content-dependency:$context"
   }
 }

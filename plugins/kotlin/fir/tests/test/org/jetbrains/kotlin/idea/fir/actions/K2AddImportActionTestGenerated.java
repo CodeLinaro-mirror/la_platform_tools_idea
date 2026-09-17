@@ -1,9 +1,8 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package org.jetbrains.kotlin.idea.fir.actions;
 
 import com.intellij.testFramework.TestDataPath;
-import org.jetbrains.kotlin.idea.base.plugin.KotlinPluginMode;
 import org.jetbrains.kotlin.idea.base.test.TestRoot;
 import org.jetbrains.kotlin.idea.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils;
@@ -23,12 +22,6 @@ public abstract class K2AddImportActionTestGenerated extends AbstractK2AddImport
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../idea/tests/testData/idea/actions/kotlinAddImportAction/extensions")
     public static class Extensions extends AbstractK2AddImportActionTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -57,12 +50,6 @@ public abstract class K2AddImportActionTestGenerated extends AbstractK2AddImport
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../idea/tests/testData/idea/actions/kotlinAddImportAction")
     public static class Uncategorized extends AbstractK2AddImportActionTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -115,6 +102,16 @@ public abstract class K2AddImportActionTestGenerated extends AbstractK2AddImport
         @TestMetadata("ExtendingClass2.kt")
         public void testExtendingClass2() throws Exception {
             runTest("../../idea/tests/testData/idea/actions/kotlinAddImportAction/ExtendingClass2.kt");
+        }
+
+        @TestMetadata("FilteredNestedType.kt")
+        public void testFilteredNestedType() throws Exception {
+            runTest("../../idea/tests/testData/idea/actions/kotlinAddImportAction/FilteredNestedType.kt");
+        }
+
+        @TestMetadata("FilteredType.kt")
+        public void testFilteredType() throws Exception {
+            runTest("../../idea/tests/testData/idea/actions/kotlinAddImportAction/FilteredType.kt");
         }
 
         @TestMetadata("Flexible.kt")

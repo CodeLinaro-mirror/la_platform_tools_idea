@@ -1,4 +1,4 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.execution.filters.impl;
 
 import com.intellij.codeInsight.navigation.PsiTargetNavigator;
@@ -13,7 +13,6 @@ import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.ex.EditorEx;
-import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.fileEditor.OpenFileDescriptor;
 import com.intellij.openapi.project.Project;
@@ -76,7 +75,7 @@ public abstract class MultipleFilesHyperlinkInfoBase extends HyperlinkInfoBase i
   public abstract @NotNull List<PsiFile> getFiles(@NotNull Project project);
 
   private void open(@NotNull VirtualFile file, Editor originalEditor) {
-    Document document = FileDocumentManager.getInstance().getDocument(file, myProject);
+    Document document = MultiPsiElementHyperlinkInfo.loadDocument(myProject, file);
     int offset = 0;
     if (document != null && myLineNumber >= 0 && myLineNumber < document.getLineCount()) {
       offset = document.getLineStartOffset(myLineNumber);

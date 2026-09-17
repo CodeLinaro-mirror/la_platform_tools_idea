@@ -7,6 +7,7 @@ import com.intellij.ide.vfs.virtualFile
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.runReadAction
 import com.intellij.openapi.diagnostic.logger
+import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.DumbModeBlockedFunctionality
 import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.Project
@@ -30,12 +31,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.intellij.plugins.markdown.MarkdownBundle
 import org.intellij.plugins.markdown.dto.MarkdownHeaderInfo
+import org.intellij.plugins.markdown.lang.isMarkdownType
 import org.intellij.plugins.markdown.service.MarkdownLinkOpenerRemoteApi
 import org.intellij.plugins.markdown.settings.DocumentLinksSafeState
 import org.intellij.plugins.markdown.ui.MarkdownNotifications
 import org.intellij.plugins.markdown.ui.preview.accessor.MarkdownLinkOpener
 import org.intellij.plugins.markdown.ui.preview.accessor.MarkdownLinkOpenerUtil
 import org.intellij.plugins.markdown.ui.preview.accessor.MarkdownLinkOpenerUtil.findVirtualFile
+import org.intellij.plugins.markdown.util.MarkdownLinkFragmentUtil
 import org.intellij.plugins.markdown.util.MarkdownDisposable
 import java.net.URI
 import java.net.URISyntaxException
@@ -45,6 +48,9 @@ internal class MarkdownLinkOpenerImpl(val coroutineScope: CoroutineScope) : Mark
   override fun openLink(project: Project?, link: String) {
     val uri = createUri(link) ?: return
     if (tryOpenInEditorDeprecated(project, uri)) {
+      return
+    }
+    if (isLocalFilePathLink(link)) {
       return
     }
     coroutineScope.launch {
@@ -57,12 +63,22 @@ internal class MarkdownLinkOpenerImpl(val coroutineScope: CoroutineScope) : Mark
       val data = MarkdownLinkOpenerRemoteApi.Companion.getInstance().fetchLinkNavigationData(link, containingFile?.rpcId())
       val uri = createUri(data.uri) ?: return@launch
       if (uri.scheme != "file") {
+        // An unresolved local file path must not fall through to the external browser.
+        if (isLocalFilePathLink(link)) {
+          return@launch
+        }
         openExternalLink(currentProject, uri)
         return@launch
       }
       val project = currentProject ?: data.projectId?.findProject() ?: return@launch
       val fileToOpen = data.virtualFileId?.virtualFile() ?: return@launch
       val anchor = uri.fragment
+      if (!fileToOpen.fileType.isMarkdownType()) {
+        withContext(Dispatchers.EDT) {
+          openNonMarkdownFile(project, fileToOpen, anchor)
+        }
+        return@launch
+      }
       if (anchor == null) {
         withContext(Dispatchers.EDT) {
           runReadAction {
@@ -187,6 +203,12 @@ internal class MarkdownLinkOpenerImpl(val coroutineScope: CoroutineScope) : Mark
     @Suppress("NAME_SHADOWING")
     val project = project ?: guessProjectForFile(targetFile) ?: return false
     val anchor = uri.fragment
+    if (!targetFile.fileType.isMarkdownType()) {
+      coroutineScope.launch(Dispatchers.EDT) {
+        openNonMarkdownFile(project, targetFile, anchor)
+      }
+      return true
+    }
     if (anchor == null){
       coroutineScope.launch(Dispatchers.EDT) {
         OpenFileAction.Companion.openFile(targetFile, project)
@@ -224,6 +246,15 @@ internal class MarkdownLinkOpenerImpl(val coroutineScope: CoroutineScope) : Mark
     return true
   }
 
+  private fun openNonMarkdownFile(project: Project, fileToOpen: VirtualFile, fragment: String?) {
+    val lineRange = fragment?.let(MarkdownLinkFragmentUtil::parseGitHubLineRange)
+    if (lineRange != null && !fileToOpen.isDirectory) {
+      OpenFileDescriptor(project, fileToOpen, lineRange.first, 0).navigate(true)
+      return
+    }
+    OpenFileAction.openFile(fileToOpen, project)
+  }
+
   companion object {
     private val logger = logger<MarkdownLinkOpenerImpl>()
 
@@ -237,6 +268,17 @@ internal class MarkdownLinkOpenerImpl(val coroutineScope: CoroutineScope) : Mark
         logger.warn(exception)
         null
       }
+    }
+
+    /**
+     * True when [link] is written as an explicit local filesystem path (absolute or relative),
+     * which a real web URL never is. Used to avoid opening unresolved local paths in the browser.
+     */
+    private fun isLocalFilePathLink(link: String): Boolean {
+      return link.startsWith("/") ||
+             link.startsWith("./") ||
+             link.startsWith("../") ||
+             link.startsWith("~/")
     }
 
     private fun isLocalHost(hostName: String?): Boolean {
@@ -253,11 +295,11 @@ internal class MarkdownLinkOpenerImpl(val coroutineScope: CoroutineScope) : Mark
     }
 
     private fun showCannotNavigateNotification(project: Project, anchor: String, point: RelativePoint) {
-      val balloonBuilder = JBPopupFactory.getInstance().createHtmlTextBalloonBuilder(
-        MarkdownBundle.message("markdown.navigate.to.header.no.headers", anchor),
-        MessageType.WARNING,
-        null
-      )
+      showWarningBalloon(project, MarkdownBundle.message("markdown.navigate.to.header.no.headers", anchor), point)
+    }
+
+    private fun showWarningBalloon(project: Project, message: String, point: RelativePoint) {
+      val balloonBuilder = JBPopupFactory.getInstance().createHtmlTextBalloonBuilder(message, MessageType.WARNING, null)
       val balloon = balloonBuilder.createBalloon()
       Disposer.register(MarkdownDisposable.Companion.getInstance(project), balloon)
       balloon.show(point, Balloon.Position.below)

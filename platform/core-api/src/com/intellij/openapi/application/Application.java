@@ -16,6 +16,7 @@ import com.intellij.util.concurrency.annotations.RequiresReadLockAbsence;
 import com.intellij.util.concurrency.annotations.RequiresWriteLock;
 import com.intellij.util.messages.MessageBus;
 import kotlin.coroutines.CoroutineContext;
+import kotlin.jvm.functions.Function0;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NonNls;
@@ -130,7 +131,8 @@ public interface Application extends ComponentManager {
    * The computation is executed immediately if no write action is currently running or the write action is running on the current thread.
    * Otherwise, the action is blocked until the currently running write action completes.
    * <p>
-   * See also {@link ReadAction#compute} for a more lambda-friendly version.
+   * Use {@link ActionsKt#runReadActionBlocking} and {@link ReadAction#computeBlocking} for a more lambda-friendly version.
+   * Avoid using this method directly in applied/plugins code.
    *
    * @param computation the computation to perform.
    * @return the result returned by the computation.
@@ -147,7 +149,8 @@ public interface Application extends ComponentManager {
    * The computation is executed immediately if no write action is currently running or the write action is running on the current thread.
    * Otherwise, the action is blocked until the currently running write action completes.
    * <p>
-   * See also {@link ReadAction#compute} for a more lambda-friendly version.
+   * Use {@link ActionsKt#runReadActionBlocking} and {@link ReadAction#computeBlocking} for a more lambda-friendly version.
+   * Avoid using this method directly in applied/plugins code.
    *
    * @param computation the computation to perform.
    * @return the result returned by the computation.
@@ -663,10 +666,12 @@ public interface Application extends ComponentManager {
   //<editor-fold desc="Deprecated stuff">
 
   /** @deprecated Use {@link #addApplicationListener(ApplicationListener, Disposable)} instead */
+  @ApiStatus.ScheduledForRemoval
   @Deprecated
   void addApplicationListener(@NotNull ApplicationListener listener);
 
   /** @deprecated call {@code Disposer.dispose(disposable);} on disposable passed to {@link #addApplicationListener(ApplicationListener, Disposable)} */
+  @ApiStatus.ScheduledForRemoval
   @Deprecated
   void removeApplicationListener(@NotNull ApplicationListener listener);
 

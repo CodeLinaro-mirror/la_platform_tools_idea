@@ -26,6 +26,7 @@ import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.diagnostic.getOrLogException
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.progress.ProgressManager
+import com.intellij.openapi.progress.checkCanceled
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.platform.util.coroutines.forEachConcurrent
 import com.intellij.platform.util.coroutines.mapConcurrent
@@ -36,6 +37,7 @@ import com.intellij.psi.codeStyle.NameUtil
 import com.intellij.ui.switcher.QuickActionProvider
 import com.intellij.util.CollectConsumer
 import com.intellij.util.gotoByName.FindActionSearchableOptionsFilter
+import com.intellij.util.text.Matcher
 import com.intellij.util.text.matching.MatchingMode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -47,6 +49,7 @@ import kotlinx.coroutines.Runnable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ProducerScope
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.channels.produce
@@ -94,14 +97,43 @@ class ActionAsyncProvider(private val model: GotoActionModel) {
     pattern: String,
     consumer: suspend (MatchedValue) -> Boolean,
   ) {
-    if (pattern.isEmpty()) return
+    filterElements(scope, presentationProvider, pattern, 1, consumer)
+  }
+
+  fun filterElements(
+    scope: CoroutineScope,
+    presentationProvider: suspend (AnAction) -> Presentation,
+    pattern: String,
+    retryCount: Int,
+    consumer: suspend (MatchedValue) -> Boolean,
+  ) {
+    if (pattern.isEmpty() || retryCount < 0) return
 
     LOG.debug { "Start actions searching ($pattern)" }
 
     val actionIds = (actionManager as ActionManagerImpl).actionIds
 
     scope.launch {
-      runFilterJobs(presentationProvider, pattern, consumer, actionIds)
+      try {
+        runFilterJobs(presentationProvider, pattern, consumer, actionIds)
+      }
+      catch (throwable: Throwable) {
+        if (throwable is CancellationException && Registry.`is`("search.everywhere.actions.retry.on.exception", false)) {
+          try {
+            checkCanceled()
+          }
+          catch (@Suppress("IncorrectCancellationExceptionHandling") _: CancellationException) {
+            throw throwable
+          }
+          LOG.warn(RuntimeException("Improper cancellation propagation", throwable))
+
+          LOG.debug { "Will restart actions searching ($pattern)" }
+          filterElements(scope, presentationProvider, pattern, retryCount - 1, consumer)
+        }
+        else {
+          throw throwable
+        }
+      }
     }
   }
 
@@ -288,12 +320,10 @@ class ActionAsyncProvider(private val model: GotoActionModel) {
       LOG.debug { "[$pattern] TEST DIAGNOSTICS: allIds contains \"CollectZippedLogs\": ${allIds.contains("CollectZippedLogs")}" }
     }
 
-    val extendedActions: Sequence<AnAction> = model.dataContext.getData(QuickActionProvider.KEY)?.getActions(true)?.asSequence() ?: emptySequence<AnAction>()
-    val allActions: Sequence<AnAction> = mainActions + extendedActions + extendedActions.flatMap { (it as? ActionGroup)?.let { model.updateSession.children(it) } ?: emptyList() }
+    val extendedActionsList: List<AnAction> = model.dataContext.getData(QuickActionProvider.KEY)?.getActions(true) ?: emptyList()
+    val directActions: Sequence<AnAction> = mainActions + extendedActionsList.asSequence()
     val matchedActions = produce(capacity = Channel.UNLIMITED) {
-      val startAllTime = System.currentTimeMillis()
-
-      allActions.forEach { action ->
+      directActions.forEach { action ->
         val isCollectLogsAction = LOG.isDebugEnabled && action::class.java.simpleName.let {
           it == "ClientCollectZippedLogsWithRemoteAction" || it == "CWMBackendCollectZippedLogsWithRemoteAction"
         }
@@ -302,26 +332,19 @@ class ActionAsyncProvider(private val model: GotoActionModel) {
            LOG.debug { "[$pattern] TEST DIAGNOSTICS: allActions contains Collect Logs action: ${action::class.java.simpleName}" }
         }
 
+        launchMatchAction(action, pattern, matcher, weightMatcher, unmatchedIdsChannel)
+      }
+
+      // Process children of extended action groups in protected launch blocks,
+      // so that a children() failure doesn't crash the entire produce block
+      for (extendedAction in extendedActionsList) {
+        val group = extendedAction as? ActionGroup ?: continue
         launch {
           runCatching {
-            val startOneTime = System.currentTimeMillis()
-            val mode = model.actionMatches(pattern, matcher, action)
-            val endTime = System.currentTimeMillis()
-
-            if (mode != MatchMode.NONE) {
-              if (isCollectLogsAction) {
-                LOG.debug("[$pattern] TEST DIAGNOSTICS: Collect Logs action matched")
-              }
-
-              val weight = calcElementWeight(action, pattern, weightMatcher)
-              send(MatchedAction(action, mode, weight))
-            }
-            else {
-              if (isCollectLogsAction) {
-                LOG.debug("[$pattern] TEST DIAGNOSTICS: Collect Logs action unmatched")
-              }
-
-              if (action is ActionStubBase) actionManager.getId(action)?.let { unmatchedIdsChannel.send(it) }
+            model.updateSession.children(group)
+          }.onSuccess { children ->
+            for (child in children) {
+              launchMatchAction(child, pattern, matcher, weightMatcher, unmatchedIdsChannel)
             }
           }.onFailure { t ->
             handleCancellationError(t)
@@ -330,11 +353,33 @@ class ActionAsyncProvider(private val model: GotoActionModel) {
       }
     }.toList()
 
-
     LOG.debug { "[$pattern] TEST DIAGNOSTICS: matchedActions list is ready (${matchedActions.size})" }
 
     val comparator = Comparator.comparing<MatchedAction, Int> { it.weight ?: 0 }.reversed()
     return@coroutineScope matchedActions.sortedWith(comparator)
+  }
+
+  private fun ProducerScope<MatchedAction>.launchMatchAction(
+    action: AnAction,
+    pattern: String,
+    matcher: Matcher,
+    weightMatcher: MinusculeMatcher,
+    unmatchedIdsChannel: SendChannel<String>,
+  ) {
+    launch {
+      runCatching {
+        val mode = model.actionMatches(pattern, matcher, action)
+        if (mode != MatchMode.NONE) {
+          val weight = calcElementWeight(action, pattern, weightMatcher)
+          send(MatchedAction(action, mode, weight))
+        }
+        else {
+          if (action is ActionStubBase) actionManager.getId(action)?.let { unmatchedIdsChannel.send(it) }
+        }
+      }.onFailure { t ->
+        handleCancellationError(t)
+      }
+    }
   }
 
   private fun handleCancellationError(throwable: Throwable) {

@@ -36,6 +36,7 @@ import com.intellij.util.text.StringTokenizer;
 import com.intellij.util.ui.EDT;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.context.Scope;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -56,6 +57,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.locks.LockSupport;
 
+@ApiStatus.Internal
 public class PlaybackRunner {
   private PlaybackCommandReporter commandStartStopProcessor = PlaybackCommandReporter.EMPTY_PLAYBACK_COMMAND_REPORTER;
 
@@ -272,7 +274,7 @@ public class PlaybackRunner {
       if (error != null) {
         commandStartStopProcessor.endOfCommand(error.getMessage());
         callback.message(null, "Stopped: " + error, StatusCallback.Type.message);
-        LOG.warn("Callback step stopped with error: " + error, error);
+        LOG.warn("Callback step stopped with error: " + error, Logger.shouldRethrow(error) ? error.getCause() : error);
         actionCallback.completeExceptionally(error);
         return;
       }
@@ -455,11 +457,13 @@ public class PlaybackRunner {
     myScriptDir = baseDir;
   }
 
+  @ApiStatus.Internal
   public interface StatusCallback {
     enum Type {message, error, code, test}
 
     void message(@Nullable PlaybackContext context, String text, Type type);
 
+    @ApiStatus.Internal
     abstract class Edt implements StatusCallback {
       @Override
       public final void message(final PlaybackContext context,

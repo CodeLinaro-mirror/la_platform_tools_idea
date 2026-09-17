@@ -6,6 +6,7 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.fileLogger
 import com.intellij.platform.eel.EelConnectionError
+import com.intellij.platform.eel.EelDescriptor
 import com.intellij.platform.eel.EelIpPreference
 import com.intellij.platform.eel.EelTunnelsApi.Connection
 import com.intellij.platform.eel.EelTunnelsApi.ConnectionAcceptor
@@ -19,7 +20,7 @@ import com.intellij.platform.eel.EelTunnelsPosixApi
 import com.intellij.platform.eel.EelTunnelsWindowsApi
 import com.intellij.platform.eel.channels.EelReceiveChannel
 import com.intellij.platform.eel.channels.EelSendChannel
-import com.intellij.platform.eel.impl.asResolvedSocketAddress
+import com.intellij.platform.eel.impl.base.network.asResolvedSocketAddress
 import com.intellij.platform.eel.path.EelPath
 import com.intellij.platform.eel.provider.LocalEelDescriptor
 import com.intellij.platform.eel.provider.utils.CopyError
@@ -69,6 +70,8 @@ private val logger = fileLogger()
 // so we use a private delegate implementing both and Kotlin `by` delegation
 // to avoid duplicating method bodies in each platform-specific object.
 private object LocalTunnelsDelegate : EelTunnelsPosixApi, EelTunnelsWindowsApi {
+  override val descriptor: EelDescriptor = LocalEelDescriptor
+
   override suspend fun listenOnUnixSocket(fixedPath: EelPath): ListenOnUnixSocketResult {
     return listenOnUnixSocket(Path(fixedPath.toString()))
   }

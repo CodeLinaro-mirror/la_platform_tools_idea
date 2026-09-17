@@ -3,7 +3,6 @@
 package org.jetbrains.kotlin.idea.fir.completion.test.handlers;
 
 import com.intellij.testFramework.TestDataPath;
-import org.jetbrains.kotlin.idea.base.plugin.KotlinPluginMode;
 import org.jetbrains.kotlin.idea.base.test.TestRoot;
 import org.jetbrains.kotlin.idea.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils;
@@ -23,12 +22,6 @@ public abstract class HighLevelSmartCompletionHandlerTestGenerated extends Abstr
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../completion/testData/handlers/smart/lambda")
     public static class Lambda extends AbstractHighLevelSmartCompletionHandlerTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -77,12 +70,6 @@ public abstract class HighLevelSmartCompletionHandlerTestGenerated extends Abstr
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../completion/testData/handlers/smart/lambdaSignature")
     public static class LambdaSignature extends AbstractHighLevelSmartCompletionHandlerTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -99,14 +86,51 @@ public abstract class HighLevelSmartCompletionHandlerTestGenerated extends Abstr
     }
 
     @RunWith(JUnit3RunnerWithInners.class)
-    @TestMetadata("../../completion/testData/handlers/smart/suspendLambdaSignature")
-    public static class SuspendLambdaSignature extends AbstractHighLevelSmartCompletionHandlerTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
+    @TestMetadata("../../completion/testData/handlers/smart/SAM")
+    public static class SAM extends AbstractHighLevelSmartCompletionHandlerTest {
+        private void runTest(String testDataFilePath) throws Exception {
+            KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
 
+        @TestMetadata("KotlinFunInterface.kt")
+        public void testKotlinFunInterface() throws Exception {
+            runTest("../../completion/testData/handlers/smart/SAM/KotlinFunInterface.kt");
+        }
+
+        @TestMetadata("KotlinFunInterfaceMultiParam.kt")
+        public void testKotlinFunInterfaceMultiParam() throws Exception {
+            runTest("../../completion/testData/handlers/smart/SAM/KotlinFunInterfaceMultiParam.kt");
+        }
+
+        @TestMetadata("KotlinSamInheritedKotlin.kt")
+        public void testKotlinSamInheritedKotlin() throws Exception {
+            runTest("../../completion/testData/handlers/smart/SAM/KotlinSamInheritedKotlin.kt");
+        }
+
+        @TestMetadata("KotlinSamNullableExpected.kt")
+        public void testKotlinSamNullableExpected() throws Exception {
+            runTest("../../completion/testData/handlers/smart/SAM/KotlinSamNullableExpected.kt");
+        }
+
+        @TestMetadata("KotlinSamVararg.kt")
+        public void testKotlinSamVararg() throws Exception {
+            runTest("../../completion/testData/handlers/smart/SAM/KotlinSamVararg.kt");
+        }
+
+        @TestMetadata("SAMExpected1.kt")
+        public void testSAMExpected1() throws Exception {
+            runTest("../../completion/testData/handlers/smart/SAM/SAMExpected1.kt");
+        }
+
+        @TestMetadata("SAMExpected2.kt")
+        public void testSAMExpected2() throws Exception {
+            runTest("../../completion/testData/handlers/smart/SAM/SAMExpected2.kt");
+        }
+    }
+
+    @RunWith(JUnit3RunnerWithInners.class)
+    @TestMetadata("../../completion/testData/handlers/smart/suspendLambdaSignature")
+    public static class SuspendLambdaSignature extends AbstractHighLevelSmartCompletionHandlerTest {
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -125,12 +149,6 @@ public abstract class HighLevelSmartCompletionHandlerTestGenerated extends Abstr
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../completion/testData/handlers/smart/throwables")
     public static class Throwables extends AbstractHighLevelSmartCompletionHandlerTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -154,12 +172,6 @@ public abstract class HighLevelSmartCompletionHandlerTestGenerated extends Abstr
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../completion/testData/handlers/smart")
     public static class Uncategorized extends AbstractHighLevelSmartCompletionHandlerTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -204,14 +216,84 @@ public abstract class HighLevelSmartCompletionHandlerTestGenerated extends Abstr
             runTest("../../completion/testData/handlers/smart/AnonymousObject3.kt");
         }
 
+        @TestMetadata("AnonymousObjectAbstractMixed.kt")
+        public void testAnonymousObjectAbstractMixed() throws Exception {
+            runTest("../../completion/testData/handlers/smart/AnonymousObjectAbstractMixed.kt");
+        }
+
+        @TestMetadata("AnonymousObjectElvis.kt")
+        public void testAnonymousObjectElvis() throws Exception {
+            runTest("../../completion/testData/handlers/smart/AnonymousObjectElvis.kt");
+        }
+
+        @TestMetadata("AnonymousObjectGenericInterface.kt")
+        public void testAnonymousObjectGenericInterface() throws Exception {
+            runTest("../../completion/testData/handlers/smart/AnonymousObjectGenericInterface.kt");
+        }
+
+        @TestMetadata("AnonymousObjectIf.kt")
+        public void testAnonymousObjectIf() throws Exception {
+            runTest("../../completion/testData/handlers/smart/AnonymousObjectIf.kt");
+        }
+
         @TestMetadata("AnonymousObjectInsertsImport.kt")
         public void testAnonymousObjectInsertsImport() throws Exception {
             runTest("../../completion/testData/handlers/smart/AnonymousObjectInsertsImport.kt");
         }
 
+        @TestMetadata("AnonymousObjectInterfaceProperty.kt")
+        public void testAnonymousObjectInterfaceProperty() throws Exception {
+            runTest("../../completion/testData/handlers/smart/AnonymousObjectInterfaceProperty.kt");
+        }
+
+        @TestMetadata("AnonymousObjectInterfaceWithDefaults.kt")
+        public void testAnonymousObjectInterfaceWithDefaults() throws Exception {
+            runTest("../../completion/testData/handlers/smart/AnonymousObjectInterfaceWithDefaults.kt");
+        }
+
+        @TestMetadata("AnonymousObjectLambda.kt")
+        public void testAnonymousObjectLambda() throws Exception {
+            runTest("../../completion/testData/handlers/smart/AnonymousObjectLambda.kt");
+        }
+
+        @TestMetadata("AnonymousObjectLazyProperty.kt")
+        public void testAnonymousObjectLazyProperty() throws Exception {
+            runTest("../../completion/testData/handlers/smart/AnonymousObjectLazyProperty.kt");
+        }
+
+        @TestMetadata("AnonymousObjectMap.kt")
+        public void testAnonymousObjectMap() throws Exception {
+            runTest("../../completion/testData/handlers/smart/AnonymousObjectMap.kt");
+        }
+
+        @TestMetadata("AnonymousObjectMultipleInterfaces.kt")
+        public void testAnonymousObjectMultipleInterfaces() throws Exception {
+            runTest("../../completion/testData/handlers/smart/AnonymousObjectMultipleInterfaces.kt");
+        }
+
+        @TestMetadata("AnonymousObjectNullableType.kt")
+        public void testAnonymousObjectNullableType() throws Exception {
+            runTest("../../completion/testData/handlers/smart/AnonymousObjectNullableType.kt");
+        }
+
+        @TestMetadata("AnonymousObjectOpenClass.kt")
+        public void testAnonymousObjectOpenClass() throws Exception {
+            runTest("../../completion/testData/handlers/smart/AnonymousObjectOpenClass.kt");
+        }
+
         @TestMetadata("AnonymousObjectUninferredTypeArgs.kt")
         public void testAnonymousObjectUninferredTypeArgs() throws Exception {
             runTest("../../completion/testData/handlers/smart/AnonymousObjectUninferredTypeArgs.kt");
+        }
+
+        @TestMetadata("AnonymousObjectVarReassignment.kt")
+        public void testAnonymousObjectVarReassignment() throws Exception {
+            runTest("../../completion/testData/handlers/smart/AnonymousObjectVarReassignment.kt");
+        }
+
+        @TestMetadata("AnonymousObjectWhen.kt")
+        public void testAnonymousObjectWhen() throws Exception {
+            runTest("../../completion/testData/handlers/smart/AnonymousObjectWhen.kt");
         }
 
         @TestMetadata("ArrayClassLiteral.kt")
@@ -752,16 +834,6 @@ public abstract class HighLevelSmartCompletionHandlerTestGenerated extends Abstr
         @TestMetadata("ReplaceArgument.kt")
         public void testReplaceArgument() throws Exception {
             runTest("../../completion/testData/handlers/smart/ReplaceArgument.kt");
-        }
-
-        @TestMetadata("SAMExpected1.kt")
-        public void testSAMExpected1() throws Exception {
-            runTest("../../completion/testData/handlers/smart/SAMExpected1.kt");
-        }
-
-        @TestMetadata("SAMExpected2.kt")
-        public void testSAMExpected2() throws Exception {
-            runTest("../../completion/testData/handlers/smart/SAMExpected2.kt");
         }
 
         @TestMetadata("SecondVararg.kt")

@@ -17,12 +17,11 @@ import com.intellij.python.pyproject.model.PyProjectModelSettings
 import com.intellij.python.pyproject.model.PyProjectModelSettings.FeatureState.ASK
 import com.intellij.python.pyproject.model.PyProjectModelSettings.FeatureState.OFF
 import com.intellij.python.pyproject.model.PyProjectModelSettings.FeatureState.ON
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 import com.intellij.python.pyproject.statistics.PyProjectTomlCollector
 import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.channels.BufferOverflow.DROP_LATEST
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import org.jetbrains.annotations.Nls
 
 private const val NOTIFICATION_GROUP_ID = "PyProject.toml"
@@ -61,7 +60,7 @@ private fun listenForPyprojectToml(project: Project, settings: PyProjectModelSet
   val disposable = Disposer.newDisposable("PyProjectModelStartupActivity")
   Disposer.register(settings, disposable)
 
-  val dumbModeExited = MutableSharedFlow<Unit>(replay = 1, onBufferOverflow = DROP_LATEST)
+  val dumbModeExited = MutableSharedFlow<Unit>(replay = 1, onBufferOverflow = BufferOverflow.DROP_LATEST)
 
   project.messageBus.connect(disposable).subscribe(DumbService.DUMB_MODE, object : DumbService.DumbModeListener {
     override fun exitDumbMode() {

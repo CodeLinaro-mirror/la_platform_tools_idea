@@ -1,11 +1,11 @@
 package com.intellij.mcpserver.util
 
 import com.intellij.mcpserver.mcpFail
+import com.intellij.openapi.components.serviceAsync
 import com.intellij.openapi.diagnostic.fileLogger
 import com.intellij.openapi.diagnostic.trace
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
-import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.util.io.FileUtilRt
 import com.intellij.openapi.vfs.JarFileSystem
 import com.intellij.openapi.vfs.LocalFileSystem
@@ -14,32 +14,29 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.openapi.vfs.newvfs.ArchiveFileSystem
 import com.intellij.openapi.vfs.toNioPathOrNull
+import com.intellij.project.ProjectStoreOwner
 import com.intellij.util.concurrency.annotations.RequiresBackgroundThread
+import com.intellij.util.lang.UrlClassLoader
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import java.io.File
-import java.net.URI
 import java.nio.file.InvalidPathException
 import java.nio.file.Path
-import java.nio.file.Paths
-import kotlin.io.path.Path
 
 private val logger = fileLogger()
 /**
  * Returns the project's base directory as a [Path].
  *
  * If the project directory cannot be determined, an McpExpectedException is thrown.
+ *
+ * Consider using [com.intellij.openapi.project.BaseProjectDirectories] instead, it handles more cases.
  */
 val Project.projectDirectory: Path
   get() {
-    return try {
-      // don't use guessProjectDir() here because it may point to some internal directory (e.g. src instead of project root)
-      Path(basePath ?: mcpFail("The project directory cannot be determined."))
-    }
-    catch (e: InvalidPathException) {
-      mcpFail("Project directory is invalid: ${e.message}")
-    }
+    // don't use guessProjectDir() here because it may point to some internal directory (e.g. src instead of project root)
+    return if (this is ProjectStoreOwner) componentStore.projectBasePath
+    else mcpFail("The project directory cannot be determined.")
   }
 
 /**
@@ -48,30 +45,59 @@ val Project.projectDirectory: Path
  * When [throwWhenOutside] is true the method throws an McpExpectedException if the path is outside the project directory.
  */
 fun Project.resolveInProject(pathInProject: String, throwWhenOutside: Boolean = true): Path {
+  return resolveInProject(pathInProject = pathInProject, projectDirectory = projectDirectory, throwWhenOutside = throwWhenOutside)
+}
+
+/**
+ * Resolves a relative path against the directory.
+ *
+ * When [throwWhenOutside] is true the method throws an McpExpectedException if the path is outside the project directory.
+ */
+fun resolveInProject(pathInProject: String, projectDirectory: Path, throwWhenOutside: Boolean = true): Path {
   val filePath = projectDirectory.resolve(pathInProject).normalize()
-  if (throwWhenOutside && !filePath.startsWith(projectDirectory)) mcpFail("Specified path '$filePath' points to the location outside of the project directory")
+  if (throwWhenOutside && !filePath.startsWith(projectDirectory)) {
+    mcpFail("Specified path '$filePath' points to the location outside of the project directory")
+  }
   return filePath
 }
 
-fun findMostRelevantProjectForRoots(roots: Collection<String>): Project? {
-  return roots.firstNotNullOfOrNull(::findMostRelevantProject)
+suspend fun findMostRelevantProjectForRoots(roots: Collection<String>): Project? {
+  return roots.firstNotNullOfOrNull { findMostRelevantProject (it) }
 }
 
-fun findMostRelevantProject(path: String): Project? {
-  var siPath = FileUtilRt.toSystemIndependentName(path)
-  if (!siPath.startsWith("file://")) {
-    siPath = "file://$siPath"
+suspend fun findMostRelevantProject(path: String): Project? {
+  val parsedPath = parsePathForProjectLookup(path) ?: return null
+  return findMostRelevantProject(parsedPath.normalize())
+}
+
+internal fun parsePathForProjectLookup(path: String): Path? {
+  val systemIndependentPath = FileUtilRt.toSystemIndependentName(path).trim()
+  if (systemIndependentPath.isEmpty()) return null
+
+  return try {
+    if (systemIndependentPath.startsWith("file://")) {
+      Path.of(UrlClassLoader.urlToFilePath(systemIndependentPath))
+    }
+    else {
+      Path.of(systemIndependentPath)
+    }
   }
-  return findMostRelevantProject(Paths.get(URI(siPath)).normalize())
+  catch (ce: CancellationException) {
+    throw ce
+  }
+  catch (error: Throwable) {
+    logger.trace { "Failed to parse project path '$path': ${error.message}" }
+    null
+  }
 }
 
-private fun findMostRelevantProject(path: Path): Project? {
+private suspend fun findMostRelevantProject(path: Path): Project? {
   if (!path.isAbsolute) {
     logger.trace { "Path is not absolute: $path" }
     return null
   }
   val targetNormalizedPath = path.normalize()
-  val openProjects = ProjectManager.getInstance().openProjects
+  val openProjects = serviceAsync<ProjectManager>().openProjects
 
   // prefer most inner directories
   // let's say we have
@@ -80,7 +106,7 @@ private fun findMostRelevantProject(path: Path): Project? {
   // - frontend/common/src  <-- this path passed as `path`
   // here we will have 2 project matches: `frontend/common` and `frontend` and better to prefer `frontend/common`
   val pairs = openProjects.mapNotNull { project ->
-    val openProjectPath = project.basePath?.let { Paths.get(URI("file://$it")) }?.normalize() ?: return@mapNotNull null
+    val openProjectPath = if (project is ProjectStoreOwner) project.componentStore.projectBasePath.normalize() else return@mapNotNull null
     if (targetNormalizedPath.startsWith(openProjectPath)) project to path else null
   }.sortedByDescending { it.second.nameCount }
   logger.trace { "Found projects for path $path: ${pairs.joinToString { it.first.basePath ?: "null"}}" }
@@ -93,9 +119,9 @@ private fun findMostRelevantProject(path: Path): Project? {
 fun Path.relativizeIfPossible(virtualFile: VirtualFile): String {
   val nioPath = virtualFile.toNioPathOrNull()
                 ?: try {
-                  Paths.get(virtualFile.path)
+                  Path.of(virtualFile.path)
                 }
-                catch (e: Throwable) {
+                catch (_: Throwable) {
                   null
                 }
   if (nioPath == null) return virtualFile.path
@@ -130,12 +156,6 @@ fun resolveReadFile(project: Project, filePath: String): VirtualFile {
     mcpFail("File $filePath is a directory")
   }
   return file
-}
-
-// TODO: this must be unified with resolveInProject and made more flexible to support multiple source roots, also MCP client roots and so on
-fun isFileAccessible(project: Project, virtualFile: VirtualFile): Boolean {
-  val fileIndex = ProjectRootManager.getInstance(project).fileIndex
-  return isUnderProjectDirectory(project, virtualFile) || fileIndex.isInProjectOrExcluded(virtualFile)
 }
 
 private fun normalizeReadFilePath(filePath: String): String {
@@ -180,8 +200,7 @@ private fun resolveArchiveEntryFile(archiveEntryPath: String): VirtualFile? {
 
 fun looksLikeVfsUrl(filePath: String): Boolean {
   val schemeSeparator = filePath.indexOf("://")
-  if (schemeSeparator <= 0) return false
-  return filePath.substring(0, schemeSeparator).all { it.isLetterOrDigit() || it == '+' || it == '-' || it == '.' }
+  return schemeSeparator > 0 && filePath.substring(0, schemeSeparator).all { it.isLetterOrDigit() || it == '+' || it == '-' || it == '.' }
 }
 
 // TODO: this must be unified with resolveInProject and made more flexible to support multiple source roots, also MCP client roots and so on

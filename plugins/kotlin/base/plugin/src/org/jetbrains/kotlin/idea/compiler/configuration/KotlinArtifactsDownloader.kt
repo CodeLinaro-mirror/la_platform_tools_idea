@@ -10,6 +10,12 @@ import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.vfs.VfsUtilCore
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.withContext
 import org.jetbrains.annotations.Nls
 import org.jetbrains.idea.maven.aether.ArtifactKind
 import org.jetbrains.idea.maven.utils.library.RepositoryLibraryProperties
@@ -20,26 +26,24 @@ import org.jetbrains.kotlin.idea.base.plugin.artifacts.KotlinArtifactConstants.K
 import org.jetbrains.kotlin.idea.base.plugin.artifacts.KotlinArtifactConstants.KOTLIN_JPS_PLUGIN_PLUGIN_ARTIFACT_ID
 import org.jetbrains.kotlin.idea.base.plugin.artifacts.KotlinArtifactConstants.KOTLIN_MAVEN_GROUP_ID
 import org.jetbrains.kotlin.idea.base.plugin.artifacts.KotlinArtifactConstants.OLD_KOTLIN_DIST_ARTIFACT_ID
-import org.jetbrains.kotlin.idea.base.plugin.artifacts.KotlinArtifacts
 import org.jetbrains.kotlin.idea.base.plugin.artifacts.LazyZipUnpacker
-import org.jetbrains.kotlin.idea.compiler.configuration.KotlinArtifactsDownloader.isKotlinDistInitialized
-import org.jetbrains.kotlin.idea.compiler.configuration.KotlinArtifactsDownloader.lazyDownloadAndUnpackKotlincDist
 import org.jetbrains.kotlin.idea.compiler.configuration.LazyKotlinMavenArtifactDownloader.DownloadContext
 import org.jetbrains.kotlin.idea.util.application.isHeadlessEnvironment
 import org.jetbrains.kotlin.idea.util.application.isUnitTestMode
 import java.awt.EventQueue
 import java.io.File
-import java.io.FileNotFoundException
-import java.io.IOException
 import java.io.InputStream
 import java.net.URL
+import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.nio.file.StandardCopyOption
 import java.util.EnumSet
 import kotlin.io.path.exists
+import kotlin.time.Duration.Companion.seconds
 
+@Suppress("IO_FILE_USAGE")
 object KotlinArtifactsDownloader {
     fun getUnpackedKotlinDistPath(version: String): File =
         if (IdeKotlinVersion.get(version).isStandaloneCompilerVersion) KotlinPluginLayout.kotlinc
@@ -156,7 +160,8 @@ object KotlinArtifactsDownloader {
 
         val excludedDeps = // Since 1.7.20, 'kotlin-dist-for-jps-meta' doesn't depend on broken 'kotlin-annotation-processing'
             if (artifactId == KOTLIN_DIST_FOR_JPS_META_ARTIFACT_ID && IdeKotlinVersion.get(version) < IdeKotlinVersion.get("1.7.20")) {
-                listOf( // Not existing deps of kotlin-annotation-processing KTI-878
+                listOf(
+                    // Not existing deps of kotlin-annotation-processing KTI-878
                     "$KOTLIN_MAVEN_GROUP_ID:util",
                     "$KOTLIN_MAVEN_GROUP_ID:cli",
                     "$KOTLIN_MAVEN_GROUP_ID:backend",
@@ -187,11 +192,12 @@ object KotlinArtifactsDownloader {
             .distinct()
     }
 
-    fun downloadMavenArtifact(groupId: String, artifactId: String, version: String, suffix: String = ".jar"): Path? {
+    private suspend fun downloadMavenArtifact(groupId: String, artifactId: String, version: String): Path? {
         check(isRunningFromSources) {
             "${::downloadArtifactForIdeFromSources.name} must be called only for IDE running from sources or tests. " +
                     "Use ${::downloadMavenArtifacts.name} when run in production"
         }
+        val suffix = ".jar"
         // In cooperative development artifacts are already downloaded and stored in $PROJECT_DIR$/../build/repo
         KotlinMavenUtils.findArtifact(groupId, artifactId, version, suffix)?.let {
             return it
@@ -205,31 +211,15 @@ object KotlinArtifactsDownloader {
             .also { Files.createDirectories(it.parent) }
         val groupPath = groupId.replace(".", "/")
         if (!artifact.exists()) {
-            val intellijDeps =
-                "https://cache-redirector.jetbrains.com/packages.jetbrains.team/maven/p/ij/intellij-dependencies/" +
-                        "$groupPath/$artifactId/$version/$fileName"
-            val idePluginDeps =
-                "https://cache-redirector.jetbrains.com/intellij-dependencies/" +
-                        "$groupPath/$artifactId/$version/$fileName"
-            val mavenCentral = "https://repo1.maven.org/maven2/$groupPath/$artifactId/$version/$fileName"
-
-            val stream =
-                URL(intellijDeps).openStreamOrNull()
-                    ?: URL(idePluginDeps).openStreamOrNull()
-                    ?: URL(mavenCentral).openStreamOrNull()
-                    ?: return null
-
-            Files.copy(stream, artifact)
+            downloadAtomically(artifact, "$groupPath/$artifactId/$version/$fileName")
             check(artifact.exists()) { "$artifact should be downloaded" }
         }
 
         return artifact
     }
 
-    @JvmOverloads
-    fun downloadArtifactForIdeFromSources(artifactId: String, version: String, suffix: String = ".jar"): Path? {
-        return downloadMavenArtifact(KOTLIN_MAVEN_GROUP_ID, artifactId, version, suffix)
-    }
+    suspend fun downloadArtifactForIdeFromSources(version: String): Path? =
+        downloadMavenArtifact(KOTLIN_MAVEN_GROUP_ID, OLD_KOTLIN_DIST_ARTIFACT_ID, version)
 
     fun resolveProjectCompilerPluginArtifact(
         project: Project,
@@ -267,8 +257,8 @@ object KotlinArtifactsDownloader {
 
     /**
      * Prior to 1.7.20, two formats were possible:
-     * - Old "all in one jar" dist [KotlinArtifacts.OLD_KOTLIN_DIST_ARTIFACT_ID]
-     * - New "dist as all transitive dependencies of one meta pom" format [KotlinArtifacts.KOTLIN_DIST_FOR_JPS_META_ARTIFACT_ID]
+     * - Old "all in one jar" dist [OLD_KOTLIN_DIST_ARTIFACT_ID]
+     * - New "dist as all transitive dependencies of one meta pom" format [KOTLIN_DIST_FOR_JPS_META_ARTIFACT_ID]
      */
     private fun isAllInOneOldFormatDistFormatAvailable(version: IdeKotlinVersion) = version < IdeKotlinVersion.get("1.7.20")
 
@@ -304,11 +294,72 @@ object KotlinArtifactsDownloader {
 
 private val COMPILER_PLUGIN_RESOLVE_LOG = logger<KotlinArtifactsDownloader>()
 
-private fun URL.openStreamOrNull(): InputStream? =
+// downloads and atomically replaces downloaded file with temp file
+// do one additional try in 5 seconds after fail
+suspend fun downloadAtomically(artifact: Path, artifactCoordinates: String): Path? {
+    val tmp = Files.createTempFile(artifact.parent, "${artifact.fileName}.", ".part")
+
     try {
-        openStream()
-    } catch (ex: FileNotFoundException) {
-        null
-    } catch (ex: IOException) {
+        val result = retryWithBackOff(times = 3) {
+            runInterruptible(Dispatchers.IO) {
+                openStream(artifactCoordinates)?.use { input ->
+                    Files.copy(input, tmp, StandardCopyOption.REPLACE_EXISTING)
+                    artifact
+                }
+            }
+        }
+
+        if (result == null) return null
+
+        moveReplacing(tmp, artifact)
+        return artifact
+    } finally {
+        withContext(NonCancellable + Dispatchers.IO) {
+            Files.deleteIfExists(tmp)
+        }
+    }
+}
+
+suspend fun <T : Any> retryWithBackOff(
+    times: Int,
+    block: suspend () -> T?
+): T? {
+    repeat(times - 1) {
+        try {
+            val result = block()
+            if (result != null) return result
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+        }
+        delay(5.seconds)
+    }
+
+    return try {
+        block()
+    } catch (e: Exception) {
+        if (e is CancellationException) throw e
         null
     }
+}
+
+private fun openStream(artifactCoordinates: String): InputStream? {
+    val urls = listOf(
+        "https://cache-redirector.jetbrains.com/packages.jetbrains.team/maven/p/ij/intellij-dependencies/$artifactCoordinates",
+        "https://cache-redirector.jetbrains.com/intellij-dependencies/$artifactCoordinates",
+        "https://repo1.maven.org/maven2/$artifactCoordinates"
+    )
+
+    return urls.firstNotNullOfOrNull { urlString ->
+        runCatching { URL(urlString).openStream() }
+            .onFailure { if (it is CancellationException) throw it }
+            .getOrNull()
+    }
+}
+
+private fun moveReplacing(from: Path, to: Path) {
+    try {
+        Files.move(from, to, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+    } catch (_: AtomicMoveNotSupportedException) {
+        Files.move(from, to, StandardCopyOption.REPLACE_EXISTING)
+    }
+}

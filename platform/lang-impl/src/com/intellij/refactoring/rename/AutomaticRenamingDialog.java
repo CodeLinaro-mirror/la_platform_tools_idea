@@ -40,6 +40,7 @@ import com.intellij.usageView.UsageInfo;
 import com.intellij.usages.UsageViewPresentation;
 import com.intellij.usages.impl.UsagePreviewPanel;
 import com.intellij.util.ui.JBUI;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -373,7 +374,7 @@ public class AutomaticRenamingDialog extends DialogWrapper {
     if (!ApplicationManager.getApplication().isUnitTestMode()) {
       SwingUtilities.invokeLater(() -> {
         if (myTableModel.getRowCount() != 0) {
-          ReadAction.run(() -> {
+          ReadAction.runBlocking(() -> {
             myTable.getSelectionModel().addSelectionInterval(0, 0);
           });
         }
@@ -543,6 +544,7 @@ public class AutomaticRenamingDialog extends DialogWrapper {
     }
   }
 
+  @ApiStatus.Internal
   public abstract static class RenameSelectedAction extends AnAction {
     private final JTable myTable;
     private final AbstractTableModel myModel;

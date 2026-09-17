@@ -1,4 +1,4 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.application
 
 import com.intellij.diagnostic.PluginException
@@ -21,6 +21,7 @@ class JBProtocolCommandResult(
 )
 
 abstract class JBProtocolCommand(private val command: String) {
+  @ApiStatus.Internal
   companion object {
     const val SCHEME: String = "jetbrains"
     const val FRAGMENT_PARAM_NAME: String = "__fragment"
@@ -76,7 +77,6 @@ abstract class JBProtocolCommand(private val command: String) {
       else -> withContext(Dispatchers.IO) { result.get() }
     }
 
-  @Suppress("HardCodedStringLiteral")
   protected open suspend fun executeAndGetResult(target: String?, parameters: Map<String, String>, fragment: String?): JBProtocolCommandResult? =
     JBProtocolCommandResult(execute(target, parameters, fragment))
 

@@ -150,7 +150,7 @@ public class InferNullityAnnotationsAction extends BaseAnalysisAction {
     if (!modulesWithoutAnnotations.isEmpty()) {
       addAnnotationsDependency(project, modulesWithoutAnnotations, defaultNullable,
                                JavaBundle.message("action.title.infer.nullity.annotations"))
-        .onSuccess(__ -> {
+        .onSuccess(_ -> {
           restartAnalysis(project, scope);
         });
       return;
@@ -331,7 +331,7 @@ public class InferNullityAnnotationsAction extends BaseAnalysisAction {
     final UsageTarget[] targets = UsageTarget.EMPTY_ARRAY;
     final Ref<Usage[]> convertUsagesRef = new Ref<>();
     if (!ProgressManager.getInstance().runProcessWithProgressSynchronously(
-      () -> ApplicationManager.getApplication().runReadAction(() -> convertUsagesRef.set(UsageInfo2UsageAdapter.convert(usageInfos))),
+      () -> ReadAction.runBlocking(() -> convertUsagesRef.set(UsageInfo2UsageAdapter.convert(usageInfos))),
       JavaBundle.message("progress.title.preprocess.usages"), true, project)) {
       return;
     }

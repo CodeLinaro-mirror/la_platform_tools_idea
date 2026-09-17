@@ -22,9 +22,9 @@ def main():
     assert workspace.joinpath('MODULE.bazel').exists(), 'failed to find workspace root'
 
     # Set properties not currently exposed as flags.
-    args.kotlinc_version = '2.4.255-dev-255'  # Must match BOOTSTRAP_VERSION in project-model-updater.
     args.intellij_dir = workspace.joinpath('tools/idea')
     args.kotlinc_dir = workspace.joinpath('external/jetbrains/kotlin')
+    args.kotlinc_version = compute_bootstrap_version(args.intellij_dir)
     args.gradlew = args.kotlinc_dir.joinpath('gradlew')
     args.cmd_env = os.environ.copy()
     args.cmd_env['JAVA_HOME'] = str(compute_java_home(workspace, 'jbrjdk-next'))
@@ -71,22 +71,27 @@ def build_kotlin_compiler(args):
 
 # Updates IntelliJ project files to point to the local Kotlinc build.
 def update_ide_project_model(args):
-    # Write our Kotlin version into project-model-updater/resources/model.properties.
     updater_dir: Path = args.intellij_dir.joinpath('plugins/kotlin/util/project-model-updater')
-    properties_file = updater_dir.joinpath('resources/model.properties')
-    properties = properties_file.read_text('utf-8')
-    properties = re.sub(
-        r'^kotlincVersion=.*', f'kotlincVersion={args.kotlinc_version}',
-        properties, flags=re.MULTILINE)
-    properties = re.sub(
-        r'^kotlincArtifactsMode=.*', f'kotlincArtifactsMode=BOOTSTRAP',
-        properties, flags=re.MULTILINE)
-    properties_file.write_text(properties, 'utf-8')
-
-    # Run the updater.
     clean_args = ['clean', '--no-build-cache'] if args.clean else []
-    cmd = [str(args.gradlew), f'--project-dir={updater_dir}', '--no-daemon', *args.gradle_jdk_args, *clean_args, 'run']
+    cmd = [
+        str(args.gradlew),
+        f'--project-dir={updater_dir}',
+        '--no-daemon',
+        *args.gradle_jdk_args,
+        *clean_args,
+        'run',
+        '--args=kotlincArtifactsMode=BOOTSTRAP',
+    ]
     run_subprocess(cmd, args.cmd_env, 'Running project-model-updater')
+
+
+# Finds the Kotlin bootstrap version expected by project-model-updater (e.g., "2.4.255-dev-255").
+def compute_bootstrap_version(intellij_dir: Path) -> str:
+    src = intellij_dir.joinpath('plugins/kotlin/util/project-model-updater/src/org/jetbrains/tools/model/updater/kotlincLibraries.kt')
+    match = re.search(r'BOOTSTRAP_VERSION\s*=\s*"([^"]+)"', src.read_text('utf-8'))
+    if not match:
+        sys.exit(f'ERROR: Failed to find BOOTSTRAP_VERSION in {src}')
+    return match.group(1)
 
 
 # Finds a standard JDK with which to run Gradle.
@@ -99,7 +104,7 @@ def compute_java_home(workspace: Path, version: str) -> Path:
         subdir = 'mac-arm64' if platform.machine() == 'arm64' and version != 'jdk8' else 'mac'
         return jdk_base.joinpath(subdir, 'Contents/Home')
     else:
-        sys.exit(f'Unrecognized system: {system}')
+        sys.exit(f'ERROR: Unrecognized system: {system}')
 
 
 # A wrapper around subprocess.run() with additional logging and stricter env.

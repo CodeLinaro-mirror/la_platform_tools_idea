@@ -1,9 +1,8 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package org.jetbrains.kotlin.idea.k2.debugger.test.cases;
 
 import com.intellij.testFramework.TestDataPath;
-import org.jetbrains.kotlin.idea.base.plugin.KotlinPluginMode;
 import org.jetbrains.kotlin.idea.base.test.TestRoot;
 import org.jetbrains.kotlin.idea.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils;
@@ -20,12 +19,6 @@ import org.junit.runner.RunWith;
 @RunWith(JUnit3RunnerWithInners.class)
 @TestMetadata("../testData/smartStepInto")
 public class K2SmartStepIntoTestGenerated extends AbstractK2SmartStepIntoTest {
-    @java.lang.Override
-    @org.jetbrains.annotations.NotNull
-    public final KotlinPluginMode getPluginMode() {
-        return KotlinPluginMode.K2;
-    }
-
     private void runTest(String testDataFilePath) throws Exception {
         KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
     }
@@ -88,6 +81,21 @@ public class K2SmartStepIntoTestGenerated extends AbstractK2SmartStepIntoTest {
     @TestMetadata("empty.kt")
     public void testEmpty() throws Exception {
         runTest("../testData/smartStepInto/empty.kt");
+    }
+
+    @TestMetadata("enumEquality.kt")
+    public void testEnumEquality() throws Exception {
+        runTest("../testData/smartStepInto/enumEquality.kt");
+    }
+
+    @TestMetadata("enumEqualityFun.kt")
+    public void testEnumEqualityFun() throws Exception {
+        runTest("../testData/smartStepInto/enumEqualityFun.kt");
+    }
+
+    @TestMetadata("enumEqualityFunNonEnum.kt")
+    public void testEnumEqualityFunNonEnum() throws Exception {
+        runTest("../testData/smartStepInto/enumEqualityFunNonEnum.kt");
     }
 
     @TestMetadata("for.kt")

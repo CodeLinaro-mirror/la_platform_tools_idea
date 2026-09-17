@@ -5,16 +5,18 @@ import com.intellij.openapi.module.Module
 import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.openapi.vfs.refreshAndFindVirtualFile
 import com.intellij.platform.ide.progress.withBackgroundProgress
-import com.intellij.python.common.tools.ToolId
+import com.intellij.python.community.common.tools.ToolId
+import com.intellij.python.venv.createVenvAdditionalData
 import com.jetbrains.python.PyBundle
 import com.jetbrains.python.PythonBinary
 import com.jetbrains.python.errorProcessing.MessageError
 import com.jetbrains.python.errorProcessing.PyResult
+import com.jetbrains.python.packaging.setupPy.SetupPyHelpers
+import com.jetbrains.python.packaging.setupPy.SetupPyHelpers.SETUP_PY
 import com.jetbrains.python.projectCreation.createVenvAndSdk
 import com.jetbrains.python.sdk.ModuleOrProject
 import com.jetbrains.python.sdk.PythonSdkAdditionalData
 import com.jetbrains.python.sdk.add.v2.PathHolder
-import com.jetbrains.python.sdk.baseDir
 import com.jetbrains.python.sdk.configuration.CreateSdkInfo
 import com.jetbrains.python.sdk.configuration.EnvCheckerResult
 import com.jetbrains.python.sdk.configuration.EnvExists
@@ -24,21 +26,16 @@ import com.jetbrains.python.sdk.configuration.VENV_TOOL_ID
 import com.jetbrains.python.sdk.configuration.findEnvOrNull
 import com.jetbrains.python.sdk.configuration.prepareSdkCreator
 import com.jetbrains.python.sdk.createSdk
-import com.jetbrains.python.sdk.flavors.PyFlavorAndData
-import com.jetbrains.python.sdk.flavors.PyFlavorData
-import com.jetbrains.python.sdk.flavors.VirtualEnvSdkFlavor
 import com.jetbrains.python.sdk.impl.resolvePythonHome
-import com.jetbrains.python.sdk.persist
-import com.jetbrains.python.sdk.pyvenvContains
-import com.jetbrains.python.sdk.service.PySdkService.Companion.pySdkService
 import com.jetbrains.python.sdk.setAssociationToModule
-import com.jetbrains.python.sdk.suggestAssociatedSdkName
+import com.jetbrains.python.uv.sdk.configuration.isUvEnv
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.io.path.name
 
 internal class PyVenvSdkConfiguration : PyProjectSdkConfigurationExtension {
   override val toolId: ToolId = VENV_TOOL_ID
+  override val potentialDependencyFiles: Set<String> = setOf(PythonSdkAdditionalData.REQUIREMENT_TXT_DEFAULT.fileName.toString(), SETUP_PY)
 
   override suspend fun checkEnvironmentAndPrepareSdkCreator(module: Module, venvsInModule: List<PythonBinary>): CreateSdkInfo? =
     prepareSdkCreator(
@@ -58,9 +55,7 @@ internal class PyVenvSdkConfiguration : PyProjectSdkConfigurationExtension {
     }
   }
 
-  private suspend fun getVirtualEnv(venvsInModule: List<PythonBinary>): PythonBinary? = venvsInModule.firstOrNull {
-    !it.pyvenvContains("uv = ")
-  }
+  private fun getVirtualEnv(venvsInModule: List<PythonBinary>): PythonBinary? = venvsInModule.firstOrNull { !it.isUvEnv() }
 
   private suspend fun setupVenv(module: Module, venvsInModule: List<PythonBinary>, envExists: EnvExists): PyResult<Sdk> =
     if (envExists) {
@@ -75,17 +70,16 @@ internal class PyVenvSdkConfiguration : PyProjectSdkConfigurationExtension {
       getVirtualEnv(venvsInModule)?.refreshAndFindVirtualFile()
     } ?: return PyResult.failure(MessageError(PyBundle.message("sdk.cannot.find.venv.for.module")))
 
+    val additionalData = createVenvAdditionalData(module).getOr { return it }
     val sdk = withContext(Dispatchers.IO) {
       createSdk(
         PathHolder.Eel(pythonBinary.toNioPath()),
-        suggestAssociatedSdkName(pythonBinary.path, module.baseDir?.path),
-        PythonSdkAdditionalData(PyFlavorAndData(PyFlavorData.Empty, VirtualEnvSdkFlavor.getInstance())),
+        additionalData,
+        null,
       )
     }.getOr { return it }
 
-    sdk.persist()
     sdk.setAssociationToModule(module)
-    module.project.pySdkService.persistSdk(sdk)
 
     return PyResult.success(sdk)
   }

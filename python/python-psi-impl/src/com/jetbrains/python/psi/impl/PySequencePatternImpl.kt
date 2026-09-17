@@ -3,19 +3,19 @@ package com.jetbrains.python.psi.impl
 import com.intellij.lang.ASTNode
 import com.intellij.psi.PsiListLikeElement
 import com.intellij.psi.util.findParentInFile
+import com.jetbrains.python.PyNames
 import com.jetbrains.python.psi.PyElementVisitor
 import com.jetbrains.python.psi.PyPattern
 import com.jetbrains.python.psi.PyPsiFacade
 import com.jetbrains.python.psi.PySequencePattern
 import com.jetbrains.python.psi.PySingleStarPattern
 import com.jetbrains.python.psi.types.PyClassType
-import com.jetbrains.python.psi.types.PyCollectionType
 import com.jetbrains.python.psi.types.PyCollectionTypeImpl
-import com.jetbrains.python.psi.types.PyLiteralType.Companion.upcastLiteralToClass
 import com.jetbrains.python.psi.types.PyNeverType
 import com.jetbrains.python.psi.types.PyTupleType
 import com.jetbrains.python.psi.types.PyType
 import com.jetbrains.python.psi.types.PyTypeChecker
+import com.jetbrains.python.psi.types.PyTypeUtil
 import com.jetbrains.python.psi.types.PyTypeUtil.components
 import com.jetbrains.python.psi.types.PyTypeUtil.convertToType
 import com.jetbrains.python.psi.types.PyUnionType
@@ -91,7 +91,7 @@ class PySequencePatternImpl(astNode: ASTNode?) : PyElementImpl(astNode), PySeque
     }
     else {
       val upcast = sequence.convertToType("typing.Sequence", this, context)
-      return (upcast as? PyCollectionType)?.iteratedItemType
+      return (upcast as? PyClassType)?.iteratedItemType
     }
   }
 
@@ -103,7 +103,7 @@ class PySequencePatternImpl(astNode: ASTNode?) : PyElementImpl(astNode), PySeque
     val captureTypes: PyType? = PyCaptureContext.getCaptureType(this, context)
 
     val potentialMatchingTypes = captureTypes.components
-      .filter { it !is PyClassType || it.classQName !in listOf("str", "bytes", "bytearray") }
+      .filter { it !is PyClassType || it.classQName !in listOf(PyNames.FQN.STR, PyNames.FQN.BYTES, PyNames.FQN.BYTEARRAY) }
       .filter { it.convertToType("typing.Sequence", this, context) != null }
 
     val hasStar = elements.any { it is PySingleStarPattern }
@@ -115,12 +115,12 @@ class PySequencePatternImpl(astNode: ASTNode?) : PyElementImpl(astNode), PySeque
 
   fun wrapInListType(elementType: PyType?): PyType? {
     val list = PyBuiltinCache.getInstance(this).getClass("list") ?: return null
-    return PyCollectionTypeImpl(list, false, listOf(upcastLiteralToClass(elementType)))
+    return PyCollectionTypeImpl(list, false, listOf(PyTypeUtil.widenLiteralAndNumeric(elementType)))
   }
 
   fun wrapInSequenceType(elementType: PyType?): PyType? {
     val sequence = PyPsiFacade.getInstance(getProject()).createClassByQName("typing.Sequence", this) ?: return null
-    return PyCollectionTypeImpl(sequence, false, listOf(upcastLiteralToClass(elementType)))
+    return PyCollectionTypeImpl(sequence, false, listOf(PyTypeUtil.widenLiteralAndNumeric(elementType)))
   }
 }
 
@@ -131,7 +131,7 @@ private fun PySingleStarPattern.getCapturedTypesFromSequenceType(sequenceType: P
     return sequenceType.elementTypes.subList(idx, idx + sequenceType.elementCount - sequenceParent.elements.size + 1)
   }
   val upcast = sequenceType.convertToType("typing.Sequence", this, context)
-  if (upcast is PyCollectionType) {
+  if (upcast is PyClassType && upcast.isParameterized) {
     return listOf(upcast.getIteratedItemType())
   }
   return listOf()

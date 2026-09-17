@@ -5,18 +5,16 @@ import com.intellij.ide.trustedProjects.TrustedProjects
 import com.intellij.openapi.diagnostic.fileLogger
 import com.intellij.openapi.diagnostic.trace
 import com.intellij.openapi.project.ProjectManager
-import com.intellij.openapi.project.modules
-import com.intellij.openapi.project.rootManager
 import com.intellij.platform.eel.EelExecApi
 import com.intellij.platform.eel.EelProcess
 import com.intellij.platform.eel.ExecuteProcessException
+import com.intellij.platform.eel.impl.base.ProcessFunctions
 import com.intellij.platform.eel.path.EelPath
 import com.intellij.platform.eel.provider.asEelPath
 import com.intellij.platform.eel.provider.asNioPath
 import com.intellij.platform.eel.provider.getEelDescriptor
 import com.intellij.platform.eel.provider.toEelApi
 import com.intellij.platform.eel.provider.utils.EelPathUtils
-import com.intellij.platform.eel.provider.utils.ProcessFunctions
 import com.intellij.platform.eel.spawnProcess
 import com.intellij.project.stateStore
 import com.intellij.python.community.execService.BinOnEel
@@ -25,6 +23,7 @@ import com.intellij.python.community.execService.impl.PyExecBundle
 import com.jetbrains.python.Result
 import com.jetbrains.python.errorProcessing.Exe
 import com.jetbrains.python.errorProcessing.ExecErrorReason
+import com.jetbrains.python.sdk.getModuleRoots
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -81,8 +80,7 @@ private class EelProcessCommands(
     val nioPathToExec = withContext(Dispatchers.IO) {
       path.asNioPath().toAbsolutePath()
     }
-    val prohibitedPaths = getProhibitedPaths()
-    val pathIsProhibited = prohibitedPaths == null || prohibitedPaths.any { prohibitedParent ->
+    val pathIsProhibited = getProhibitedPaths().any { prohibitedParent ->
       nioPathToExec.startsWith(prohibitedParent) ||
       (workDir != null && workDir.startsWith(prohibitedParent))
     }
@@ -112,14 +110,9 @@ private class EelProcessCommands(
 /**
  * List of roots of all untrusted projects
  */
-private suspend fun getProhibitedPaths(): List<Path>? = withContext(Dispatchers.Default) {
+private suspend fun getProhibitedPaths(): List<Path> = withContext(Dispatchers.Default) {
   val untrustedProjects = ProjectManager.getInstance().openProjects.filter { !TrustedProjects.isProjectTrusted(it) }
-  if (untrustedProjects.isEmpty()) {
-    return@withContext emptyList()
-  }
-  val prohibitedRoots = untrustedProjects.flatMap { p -> p.modules.flatMap { it.rootManager.contentRoots.toList() } }.map { it.toNioPath() }
-  if (prohibitedRoots.isEmpty()) {
-    return@withContext null
-  }
-  return@withContext (prohibitedRoots + untrustedProjects.map { it.stateStore.projectBasePath }).map { it.toAbsolutePath() }
+  return@withContext untrustedProjects.flatMap { project ->
+    setOf(project.stateStore.projectBasePath) + project.getModuleRoots().map { it.toNioPath() }
+  }.map { it.toAbsolutePath() }
 }

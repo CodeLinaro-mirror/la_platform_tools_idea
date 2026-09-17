@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.paint
 import androidx.compose.ui.geometry.Size
@@ -27,13 +28,17 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import org.jetbrains.compose.resources.ExperimentalResourceApi
-import org.jetbrains.compose.resources.decodeToImageBitmap
-import org.jetbrains.compose.resources.decodeToImageVector
-import org.jetbrains.compose.resources.decodeToSvgPainter
+import com.intellij.platform.icons.Icon
+import com.intellij.platform.icons.design.IconDesigner
+import com.intellij.platform.icons.icon
+import com.intellij.platform.icons.impl.rendering.DefaultImageModifiers
+import com.intellij.platform.icons.rendering.IconRendererManager
+import com.intellij.platform.icons.rendering.createRenderer
+import com.intellij.platform.icons.scale.IconScale
 import org.jetbrains.jewel.foundation.modifier.thenIf
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.icon.IconKey
+import org.jetbrains.jewel.ui.icon.iconRender
 import org.jetbrains.jewel.ui.icon.newUiChecker
 import org.jetbrains.jewel.ui.painter.PainterHint
 import org.jetbrains.jewel.ui.painter.rememberResourcePainterProvider
@@ -69,18 +74,71 @@ public fun Icon(
 }
 
 /**
- * Icon component that draws an icon from an [IconKey] using a [tint].
+ * Icon component that draws an icon using IntelliJ icon designer.
  *
- * @param key The [IconKey] to resolve the icon from.
  * @param contentDescription text used by accessibility services to describe what this icon represents. This should
  *   always be provided unless this icon is used for decorative purposes, and does not represent a meaningful action
  *   that a user can take.
+ * @param scale Scale multiplier for the icon.
  * @param modifier optional [Modifier] for this Icon.
- * @param iconClass The class to use for resolving the icon resource. Defaults to `key.iconClass`.
- * @param tint tint to be applied to the icon. If [Color.Unspecified] is provided, then no tint is applied.
- * @param hint [PainterHint] to be passed to the painter.
+ * @param iconDesigner lambda that builds an [Icon] instance using [IconDesigner].
  */
-@Suppress("ComposableParamOrder") // To fix in JEWEL-929
+@Composable
+public fun Icon(
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    scale: IconScale? = null,
+    iconDesigner: IconDesigner.() -> Unit,
+) {
+    Icon(icon(iconDesigner), contentDescription, modifier, scale)
+}
+
+/**
+ * Icon component that draws an icon from an IntelliJ Icon.
+ *
+ * @param icon The Icon descriptor
+ * @param contentDescription text used by accessibility services to describe what this icon represents. This should
+ *   always be provided unless this icon is used for decorative purposes, and does not represent a meaningful action
+ *   that a user can take.
+ * @param scale Scale multiplier for the icon.
+ * @param modifier optional [Modifier] for this Icon.
+ */
+@Composable
+public fun Icon(icon: Icon, contentDescription: String?, modifier: Modifier = Modifier, scale: IconScale? = null) {
+    val scope = rememberCoroutineScope()
+    val isDark = JewelTheme.isDark
+
+    val updateFlow = remember(scope) { IconRendererManager.createUpdateFlow(scope) }
+
+    val context =
+        remember(updateFlow, isDark) {
+            IconRendererManager.createRenderingContext(
+                updateFlow = updateFlow,
+                defaultImageModifiers = DefaultImageModifiers(isDark = isDark),
+            )
+        }
+
+    val renderer = remember(icon, context) { icon.createRenderer(context) }
+
+    val semantics =
+        if (contentDescription != null) {
+            Modifier.semantics {
+                this.contentDescription = contentDescription
+                this.role = Role.Image
+            }
+        } else {
+            Modifier
+        }
+
+    Box(
+        modifier
+            .toolingGraphicsLayer()
+            .iconRender(renderer, LocalDensity.current.density, scale, updateFlow)
+            .then(semantics)
+    )
+}
+
+@Suppress("ComposableParamOrder")
 @Composable
 public fun Icon(
     key: IconKey,
@@ -261,46 +319,6 @@ public fun Icon(
             .then(semantics)
     )
 }
-
-@Deprecated(
-    "Please use iconKeys with the Icon or Image components instead. " +
-        "This will prevent issues when running in the IntelliJ Platform."
-)
-@Composable
-public fun painterResource(resourcePath: String): Painter =
-    when (resourcePath.substringAfterLast(".").lowercase()) {
-        "svg" -> rememberSvgResource(resourcePath)
-        "xml" -> rememberVectorXmlResource(resourcePath)
-        else -> rememberBitmapResource(resourcePath)
-    }
-
-@OptIn(ExperimentalResourceApi::class)
-@Composable
-private fun rememberSvgResource(path: String): Painter {
-    val density = LocalDensity.current
-    return remember(density, path) { readResourceBytes(path).decodeToSvgPainter(density) }
-}
-
-@OptIn(ExperimentalResourceApi::class)
-@Composable
-private fun rememberVectorXmlResource(path: String): Painter {
-    val density = LocalDensity.current
-    val imageVector = remember(density, path) { readResourceBytes(path).decodeToImageVector(density) }
-    return rememberVectorPainter(imageVector)
-}
-
-@OptIn(ExperimentalResourceApi::class)
-@Composable
-private fun rememberBitmapResource(path: String): Painter =
-    remember(path) { BitmapPainter(readResourceBytes(path).decodeToImageBitmap()) }
-
-private object ResourceLoader
-
-private fun readResourceBytes(resourcePath: String) =
-    checkNotNull(ResourceLoader.javaClass.classLoader.getResourceAsStream(resourcePath)) {
-            "Could not load resource $resourcePath: it does not exist or can't be read."
-        }
-        .readAllBytes()
 
 private fun Modifier.defaultSizeFor(painter: Painter) =
     thenIf(painter.intrinsicSize == Size.Unspecified || painter.intrinsicSize.isInfinite()) { DefaultIconSizeModifier }

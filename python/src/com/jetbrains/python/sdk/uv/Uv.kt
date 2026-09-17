@@ -5,6 +5,7 @@ import com.jetbrains.python.errorProcessing.PyResult
 import com.jetbrains.python.packaging.PyPackageName
 import com.jetbrains.python.packaging.common.PythonOutdatedPackage
 import com.jetbrains.python.packaging.common.PythonPackage
+import com.intellij.python.pyproject.PyDependencyGroup
 import com.jetbrains.python.packaging.management.PyWorkspaceMember
 import com.jetbrains.python.packaging.management.PythonPackageInstallRequest
 import com.jetbrains.python.sdk.add.v2.PathHolder
@@ -13,13 +14,13 @@ import org.jetbrains.annotations.ApiStatus
 import java.nio.file.Path
 
 @ApiStatus.Internal
-interface UvCli<P : PathHolder> {
+internal interface UvCli<P : PathHolder> {
   suspend fun runUv(workingDir: Path, venvPath: P?, canChangeTomlOrLock: Boolean, vararg args: String): PyResult<String>
 }
 
 @ApiStatus.Internal
-interface UvLowLevel<P : PathHolder> {
-  suspend fun initializeEnvironment(init: Boolean, version: Version?): PyResult<P>
+internal interface UvLowLevel<P : PathHolder> {
+  suspend fun initializeEnvironment(init: Boolean, version: Version?, clearExisting: Boolean = false): PyResult<P>
 
   suspend fun listUvPythons(): PyResult<Set<Path>>
   suspend fun listSupportedPythonVersions(versionRequest: String? = null): PyResult<List<Version>>
@@ -27,8 +28,8 @@ interface UvLowLevel<P : PathHolder> {
   /**
   * Manage project dependencies by adding/removing them to the project along side installation
   */
-  suspend fun addDependency(pyPackages: PythonPackageInstallRequest, options: List<String>, workspaceMember: PyWorkspaceMember? = null): PyResult<Unit>
-  suspend fun removeDependencies(pyPackages: Array<out String>, workspaceMember: PyWorkspaceMember? = null): PyResult<Unit>
+  suspend fun addDependency(pyPackages: PythonPackageInstallRequest, options: List<String>, workspaceMember: PyWorkspaceMember? = null, dependencyGroup: PyDependencyGroup? = null): PyResult<Unit>
+  suspend fun removeDependencies(pyPackages: Array<out String>, workspaceMember: PyWorkspaceMember? = null, dependencyGroup: PyDependencyGroup? = null): PyResult<Unit>
 
   /**
    * Managing environment packages directly w/o depending or changing the project
@@ -50,7 +51,7 @@ interface UvLowLevel<P : PathHolder> {
 }
 
 @ApiStatus.Internal
-sealed class ScriptSyncCheckResult {
+internal sealed class ScriptSyncCheckResult {
   data object Synced : ScriptSyncCheckResult()
   data object NotSynced : ScriptSyncCheckResult()
   data object NoInlineMetadata : ScriptSyncCheckResult()

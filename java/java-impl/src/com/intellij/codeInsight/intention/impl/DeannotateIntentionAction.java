@@ -16,7 +16,10 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiAnnotation;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiModifierListOwner;
+import com.intellij.psi.PsiType;
+import com.intellij.psi.util.PsiUtil;
 import com.intellij.util.containers.ContainerUtil;
+import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -47,7 +50,7 @@ public class DeannotateIntentionAction implements ModCommandAction {
     PsiModifierListOwner listOwner = AddAnnotationPsiFix.getContainer(context.file(), context.offset(), true);
     if (listOwner != null) {
       final ExternalAnnotationsManager externalAnnotationsManager = ExternalAnnotationsManager.getInstance(context.project());
-      final PsiAnnotation[] annotations = externalAnnotationsManager.findExternalAnnotations(listOwner);
+      final PsiAnnotation[] annotations = getAnnotations(externalAnnotationsManager, listOwner);
       if (annotations.length > 0) {
         String message;
         if (annotations.length == 1) {
@@ -57,13 +60,26 @@ public class DeannotateIntentionAction implements ModCommandAction {
         }
         final List<PsiFile> files = externalAnnotationsManager.findExternalAnnotationsFiles(listOwner);
         if (files == null || files.isEmpty()) return null;
-        final VirtualFile virtualFile = files.get(0).getVirtualFile();
+        final VirtualFile virtualFile = files.getFirst().getVirtualFile();
         if (virtualFile != null && (virtualFile.isWritable() || virtualFile.isInLocalFileSystem())) {
           return Presentation.of(message).withPriority(PriorityAction.Priority.LOW);
         }
       }
     }
     return null;
+  }
+
+  private static PsiAnnotation @NotNull [] getAnnotations(ExternalAnnotationsManager externalAnnotationsManager,
+                                                          PsiModifierListOwner listOwner) {
+    PsiType type = PsiUtil.getTypeByPsiElement(listOwner);
+    PsiAnnotation[] annotations = externalAnnotationsManager.findExternalAnnotations(listOwner);
+    if (type != null) {
+      return StreamEx.of(type.getAnnotations())
+        .filter(ExternalAnnotationsManager::isExternal)
+        .prepend(annotations)
+        .toArray(PsiAnnotation.EMPTY_ARRAY);
+    }
+    return annotations;
   }
 
   @Override
@@ -75,7 +91,7 @@ public class DeannotateIntentionAction implements ModCommandAction {
     if (myAnnotationName != null) {
       return annotationsManager.deannotateModCommand(List.of(listOwner), List.of(myAnnotationName));
     }
-    final PsiAnnotation[] externalAnnotations = annotationsManager.findExternalAnnotations(listOwner);
+    final PsiAnnotation[] externalAnnotations = getAnnotations(annotationsManager, listOwner);
     if (externalAnnotations.length == 0) return ModCommand.nop();
     return ModCommand.chooseAction(JavaBundle.message("deannotate.intention.chooser.title"),
                                    ContainerUtil.map(externalAnnotations, anno -> new DeannotateIntentionAction(

@@ -16,13 +16,12 @@ import com.intellij.testFramework.runInEdtAndWait
 import kotlinx.coroutines.runBlocking
 import org.jetbrains.kotlin.idea.base.test.IgnoreTests
 import org.jetbrains.kotlin.idea.base.test.KotlinRoot
-import org.jetbrains.kotlin.idea.core.script.k2.highlighting.KotlinScriptResolutionService
+import org.jetbrains.kotlin.idea.core.script.k2.configurations.KotlinScriptService
 import org.jetbrains.kotlin.idea.test.Directives
 import org.jetbrains.kotlin.idea.test.KotlinBaseTest.TestFile
 import org.jetbrains.kotlin.idea.test.KotlinMultiFileLightCodeInsightFixtureTestCase
 import org.jetbrains.kotlin.idea.test.TestFiles
 import org.jetbrains.kotlin.idea.test.invalidateLibraryCache
-import org.jetbrains.kotlin.idea.test.setUpWithKotlinPlugin
 import org.jetbrains.kotlin.psi.KtFile
 import org.junit.jupiter.api.Assertions
 import java.nio.file.Path
@@ -52,7 +51,7 @@ abstract class AbstractScriptGotoDeclarationMultifileTest : KotlinMultiFileLight
         }
 
         runBlocking {
-            KotlinScriptResolutionService.getInstance(project).process(mainFile.virtualFile)
+            KotlinScriptService.getInstance(project).load(mainFile.virtualFile)
         }
 
         runInEdtAndWait {
@@ -71,12 +70,10 @@ abstract class AbstractScriptGotoDeclarationMultifileTest : KotlinMultiFileLight
         GlobalState.checkSystemStreams()
         setupTempDir()
 
-        setUpWithKotlinPlugin {
-            val projectBuilder = IdeaTestFixtureFactory.getFixtureFactory().createFixtureBuilder(name)
-            myFixture = JavaTestFixtureFactory.getFixtureFactory().createCodeInsightFixture(projectBuilder.getFixture())
-            myFixture.setTestDataPath(testDataDirectory.path)
-            myFixture.setUp()
-        }
+        val projectBuilder = IdeaTestFixtureFactory.getFixtureFactory().createFixtureBuilder(name)
+        myFixture = JavaTestFixtureFactory.getFixtureFactory().createCodeInsightFixture(projectBuilder.getFixture())
+        myFixture.setTestDataPath(testDataDirectory.path)
+        myFixture.setUp()
 
         VfsRootAccess.allowRootAccess(myFixture.testRootDisposable, KotlinRoot.DIR.path)
         EditorTracker.getInstance(project)

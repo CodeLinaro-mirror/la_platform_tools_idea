@@ -74,6 +74,7 @@ class TextMateLexerCore(
                            linePosition = 0.charOffset(),
                            lineByteOffset = 0.byteOffset(),
                            injections = languageDescriptor.injections,
+                           checkWhileConditions = true,
                            checkCancelledCallback = checkCancelledCallback)
       addToken(output, endLineOffset)
       output
@@ -87,6 +88,7 @@ class TextMateLexerCore(
                            linePosition = 0.charOffset(),
                            lineByteOffset = 0.byteOffset(),
                            injections = languageDescriptor.injections,
+                           checkWhileConditions = true,
                            checkCancelledCallback = checkCancelledCallback)
       output
     }
@@ -100,6 +102,7 @@ class TextMateLexerCore(
     linePosition: TextMateCharOffset,
     lineByteOffset: TextMateByteOffset,
     injections: List<InjectionNodeDescriptor>,
+    checkWhileConditions: Boolean,
     checkCancelledCallback: Runnable?,
   ): PersistentList<TextMateLexerState> {
     var states = states
@@ -113,29 +116,31 @@ class TextMateLexerCore(
     var anchorByteOffset = (-1).byteOffset() // makes sense only for a line, cannot be used across lines
 
     return mySyntaxMatcher.matchingString(line) { string ->
-      var whileStates = states
-      while (!whileStates.isEmpty()) {
-        val whileState = whileStates.last()
-        whileStates = whileStates.removeAt(whileStates.size - 1)
-        if (whileState.syntaxRule.getStringAttribute(Constants.StringKey.WHILE) != null) {
-          val matchWhile = mySyntaxMatcher.matchStringRegex(keyName = Constants.StringKey.WHILE,
-                                                            string = string,
-                                                            byteOffset = lineByteOffset,
-                                                            matchBeginPosition = anchorByteOffset == lineByteOffset,
-                                                            matchBeginString = matchBeginString,
-                                                            lexerState = whileState,
-                                                            checkCancelledCallback = checkCancelledCallback)
-          if (matchWhile.matched) {
-            // todo: support whileCaptures
-            if (anchorByteOffset.offset == -1) {
-              anchorByteOffset = matchWhile.byteRange().end
+      if (checkWhileConditions) {
+        var whileStates = states
+        while (!whileStates.isEmpty()) {
+          val whileState = whileStates.last()
+          whileStates = whileStates.removingAt(whileStates.size - 1)
+          if (whileState.syntaxRule.getStringAttribute(Constants.StringKey.WHILE) != null) {
+            val matchWhile = mySyntaxMatcher.matchStringRegex(keyName = Constants.StringKey.WHILE,
+                                                              string = string,
+                                                              byteOffset = lineByteOffset,
+                                                              matchBeginPosition = anchorByteOffset == lineByteOffset,
+                                                              matchBeginString = matchBeginString,
+                                                              lexerState = whileState,
+                                                              checkCancelledCallback = checkCancelledCallback)
+            if (matchWhile.matched) {
+              // todo: support whileCaptures
+              if (anchorByteOffset.offset == -1) {
+                anchorByteOffset = matchWhile.byteRange().end
+              }
             }
-          }
-          else {
-            closeScopeSelector(output, linePosition + lineStartOffset)
-            closeScopeSelector(output, linePosition + lineStartOffset)
-            states = whileStates
-            anchorByteOffset = (-1).byteOffset()
+            else {
+              closeScopeSelector(output, linePosition + lineStartOffset)
+              closeScopeSelector(output, linePosition + lineStartOffset)
+              states = whileStates
+              anchorByteOffset = (-1).byteOffset()
+            }
           }
         }
       }
@@ -173,7 +178,7 @@ class TextMateLexerCore(
             // if begin hasn't matched EOL, it was performed on the same line; we need to use its anchor
             anchorByteOffset = poppedState.matchData.byteRange().end
           }
-          states = states.removeAt(states.size - 1)
+          states = states.removingAt(states.size - 1)
 
           val endRange = endMatch.charRange(string)
           endPosition = endRange.start
@@ -201,7 +206,7 @@ class TextMateLexerCore(
           endPosition = currentRange.end
 
           if (currentRule.getStringAttribute(Constants.StringKey.BEGIN) != null) {
-            states = states.add(currentState)
+            states = states.adding(currentState)
 
             val name = getStringAttribute(Constants.StringKey.NAME, currentRule, string, currentMatch)
             openScopeSelector(output, name, startPosition + lineStartOffset)
@@ -328,11 +333,12 @@ class TextMateLexerCore(
                                                 line = capturedTextMateString)
           parseLine(line = capturedString,
                     output = output,
-                    states = states.add(captureState),
+                    states = states.adding(captureState),
                     lineStartOffset = startLineOffset,
                     linePosition = captureRange.start,
                     lineByteOffset = byteRange.start,
                     injections = emptyList(),
+                    checkWhileConditions = false,
                     checkCancelledCallback = checkCancelledCallback)
         }
       }

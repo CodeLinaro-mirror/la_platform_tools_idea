@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.ide.logsUploader
 
 import com.intellij.diagnostic.MacOSDiagnosticReportDirectories
@@ -14,6 +14,7 @@ import com.intellij.troubleshooting.TroubleInfoCollector
 import com.intellij.util.SystemProperties
 import com.intellij.util.concurrency.annotations.RequiresBackgroundThread
 import com.intellij.util.io.Compressor
+import com.intellij.util.system.LowLevelLocalMachineAccess
 import com.intellij.util.system.OS
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
@@ -32,6 +33,7 @@ import kotlin.io.path.name
 
 @ApiStatus.Internal
 @Suppress("UseOptimizedEelFunctions")
+@OptIn(LowLevelLocalMachineAccess::class)
 object LogPacker {
   @JvmStatic
   @RequiresBackgroundThread
@@ -47,7 +49,7 @@ object LogPacker {
     (Logger.getFactory() as? LoggerFactory)?.flushHandlers()
 
     val productName = ApplicationNamesInfo.getInstance().productName.lowercase()
-    val date = DateTimeFormatter.ofPattern(@Suppress("SpellCheckingInspection") "yyyyMMdd-HHmmss").format(LocalDateTime.now())
+    val date = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").format(LocalDateTime.now())
     val archive = Files.createTempFile("${productName}-logs-${date}", ".zip")
     try {
       Compressor.Zip(archive).use { zip ->
@@ -68,10 +70,8 @@ object LogPacker {
 
         coroutineContext.ensureActive()
 
-        val filter = mutableSetOf<String>()  // temporary guard for recursive TBE provider
         LogProvider.EP.forEachExtensionSafe { logProvider ->
           logProvider.getAdditionalLogFiles(project).forEach { entry ->
-            if (!filter.add(entry.entryName)) return@forEach
             entry.files.forEach { path ->
               coroutineContext.ensureActive()
               if (path.isDirectory()) {

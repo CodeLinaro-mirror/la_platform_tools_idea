@@ -55,10 +55,7 @@ public abstract class AbstractViewManager implements ViewManager, BuildProgressL
       return buildsView;
     });
     myPinnedViews = ConcurrentCollectionFactory.createConcurrentSet();
-    @Nullable BuildViewProblemsService buildViewProblemsService = project.getService(BuildViewProblemsService.class);
-    if (buildViewProblemsService != null) {
-      buildViewProblemsService.listenToBuildView(this);
-    }
+    BuildProgressListenerRegistrar.registerBuildProgressListeners(project, this);
   }
 
   private MultipleBuildsView createMultipleBuildsView() {

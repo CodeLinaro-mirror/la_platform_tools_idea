@@ -1,7 +1,6 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.intellij.build.productLayout.json
 
-import com.fasterxml.jackson.core.JsonGenerator
 import kotlinx.serialization.Serializable
 import org.jetbrains.intellij.build.productLayout.tooling.MergeImpactResult
 import org.jetbrains.intellij.build.productLayout.tooling.ModulePathsResult
@@ -10,9 +9,11 @@ import org.jetbrains.intellij.build.productLayout.tooling.ProductSimilarityPair
 import org.jetbrains.intellij.build.productLayout.tooling.ProductUsageAnalysis
 import org.jetbrains.intellij.build.productLayout.tooling.UnificationSuggestion
 import org.jetbrains.intellij.build.productLayout.traversal.DependencyPathResult
+import org.jetbrains.intellij.build.productLayout.traversal.EmbeddedDependencyClosureResult
 import org.jetbrains.intellij.build.productLayout.traversal.ModuleDependenciesResult
 import org.jetbrains.intellij.build.productLayout.traversal.ModuleOwnersResult
 import org.jetbrains.intellij.build.productLayout.traversal.ModuleReachabilityResult
+import tools.jackson.core.JsonGenerator
 
 /**
  * Writes product similarity analysis to JSON.
@@ -161,6 +162,13 @@ internal fun writeDependencyPathResult(
 internal fun writeProductUsageAnalysis(
   gen: JsonGenerator,
   result: ProductUsageAnalysis
+) {
+  gen.writeRawValue(kotlinxJson.encodeToString(result))
+}
+
+internal fun writeEmbeddedDependencyClosureResult(
+  gen: JsonGenerator,
+  result: EmbeddedDependencyClosureResult,
 ) {
   gen.writeRawValue(kotlinxJson.encodeToString(result))
 }

@@ -5,49 +5,68 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.platform.eel.EelDescriptor
+import com.intellij.platform.eel.annotations.NativePath
 import com.intellij.platform.eel.path.EelPath
 import com.intellij.platform.eel.pathSeparator
 import com.intellij.platform.eel.provider.LocalEelDescriptor
-import org.jetbrains.plugins.terminal.util.ShellIntegration
+import org.jetbrains.annotations.ApiStatus
 import java.nio.file.Path
 import java.util.Collections
 
-internal class MutableShellExecOptionsImpl(
+@ApiStatus.Internal
+class MutableShellExecOptionsImpl(
   private var _execCommand: ShellExecCommand,
   override val workingDirectory: EelPath,
   private val mutableEnvs: MutableMap<String, String>,
-  shellIntegration: ShellIntegration?,
+  private val shellIntegrationAvailable: Boolean,
   private val requester: Class<out ShellExecOptionsCustomizer>,
 ) : MutableShellExecOptions {
 
   private val translator: TerminalLocalPathTranslator = TerminalLocalPathTranslator(eelDescriptor)
 
   override fun setEnvironmentVariable(name: String, value: String?) {
-    if (value == null) {
-      mutableEnvs.remove(name)
-      LOG.debug { "$requester removed environment variable '$name'" }
-    }
-    else {
-      mutableEnvs[name] = value
-      LOG.debug { "$requester: setEnvironmentVariable('$name', '$value')" }
-    }
+    doSetEnvironmentVariable(name, value, "setEnvironmentVariable")
   }
 
   override fun setEnvironmentVariableToPath(name: String, path: Path?) {
     if (path == null) {
-      mutableEnvs.remove(name)
-      LOG.debug { "$requester removed environment variable '$name'" }
+      doSetEnvironmentVariable(name, null, "setEnvironmentVariableToPath")
     }
     else {
       val translatedPath = translatePathToRemote(path)
       if (translatedPath != null) {
-        mutableEnvs[name] = translatedPath
-        LOG.debug { "$requester: setEnvironmentVariableToPath('$name', '$translatedPath')" }
+        LOG.debug { "$requester: path translated: '$path' -> '$translatedPath'" }
+        doSetEnvironmentVariable(name, translatedPath, "setEnvironmentVariableToPath")
       }
       else {
         LOG.debug { "$requester: path translation failed for setEnvironmentVariableToPath('$name', '$path'), skipping" }
       }
     }
+  }
+
+  private fun doSetEnvironmentVariable(name: String, value: String?, context: String) {
+    if (value == null) {
+      removeEnv(name, context)
+      if (shellIntegrationAvailable) {
+        removeEnv(name.ensureStartsWith(INTELLIJ_FORCE_SET_PREFIX), context)
+      }
+    }
+    else {
+      setEnv(name, value, context)
+      if (shellIntegrationAvailable) {
+        setEnv(name.ensureStartsWith(INTELLIJ_FORCE_SET_PREFIX), value, context)
+      }
+    }
+  }
+
+  private fun removeEnv(name: String, context: String) {
+    val success = mutableEnvs.remove(name) != null
+    LOG.debug { "$requester: $context: removed environment variable: $name ($success)" }
+  }
+
+  private fun setEnv(name: String, value: String, context: String) {
+    mutableEnvs[name] = value
+    LOG.debug { "$requester: $context: set environment variable: $name='$value'" }
   }
 
   override fun appendEntryToPATH(entry: Path) {
@@ -63,7 +82,7 @@ internal class MutableShellExecOptionsImpl(
       LOG.debug { "$requester: appendEntryToPathLikeEnv('$envName', '$entry') failed, skipping" }
       return
     }
-    mutableEnvs[envName] = translator.joinEntries(envs[envName].orEmpty(), remotePath)
+    mutableEnvs[envName] = joinWithPathLikeEnv(remotePath, envName, false)
     LOG.debug { "$requester: appendEntryToPathLikeEnv('$envName', '$remotePath')" }
   }
 
@@ -72,19 +91,32 @@ internal class MutableShellExecOptionsImpl(
       LOG.debug { "$requester: prependEntryToPathLikeEnv('$envName', '$entry') failed, skipping" }
       return
     }
-    var value = translator.joinEntries(remotePath, envs[envName].orEmpty())
-    if (value.startsWith(INTELLIJ_FORCE_PREPEND_PREFIX) && !value.endsWith(eelDescriptor.osFamily.pathSeparator)) {
-      // For every `_INTELLIJ_FORCE_PREPEND_FOO=BAR`, we run `export FOO=BAR$FOO`.
-      // Therefore, `BAR` should end with the path separator.
-      value += eelDescriptor.osFamily.pathSeparator
-    }
-    mutableEnvs[envName] = value
+    val envName = if (shellIntegrationAvailable) envName.ensureStartsWith(INTELLIJ_FORCE_PREPEND_PREFIX) else envName
+    mutableEnvs[envName] = joinWithPathLikeEnv(remotePath, envName, true)
     LOG.debug { "$requester: prependEntryToPathLikeEnv('$envName', '$remotePath')" }
   }
 
-  override val shellIntegrationConfigurer: ShellIntegrationConfigurer? = shellIntegration?.let {
+  private fun joinWithPathLikeEnv(remotePath: @NativePath String, envName: String, prepend: Boolean): String {
+    var value = if (prepend) {
+      translator.joinEntries(remotePath, envs[envName].orEmpty())
+    }
+    else {
+      translator.joinEntries(envs[envName].orEmpty(), remotePath)
+    }
+    if (envName.startsWith(INTELLIJ_FORCE_PREPEND_PREFIX)) {
+      // Ensure a force-prepend env var value ends with a path separator.
+      // A trailing path separator is required to simplify further shell integration code:
+      // For every `_INTELLIJ_FORCE_PREPEND_FOO=BAR`, we run `export FOO=BAR$FOO`.
+      // Therefore, `BAR` should end with the path separator.
+      value = value.ensureEndsWith(eelDescriptor.osFamily.pathSeparator)
+    }
+    return value
+  }
+
+  override val shellIntegrationConfigurer: ShellIntegrationConfigurer? = if (shellIntegrationAvailable) {
     ShellIntegrationConfigurerImpl(_execCommand.shellName, mutableEnvs, translator, requester)
   }
+  else null
 
   override val eelDescriptor: EelDescriptor
     get() = workingDirectory.descriptor
@@ -99,7 +131,7 @@ internal class MutableShellExecOptionsImpl(
 
   override val envs: Map<String, String> = Collections.unmodifiableMap(mutableEnvs)
 
-  private fun translatePathToRemote(path: Path): String? {
+  private fun translatePathToRemote(path: Path): @NativePath String? {
     if (!path.isAbsolute) {
       LOG.debug { "$requester: Relative path '$path' will be added as-is" }
       return path.toString()
@@ -110,9 +142,13 @@ internal class MutableShellExecOptionsImpl(
     return translator.translateAbsoluteLocalPathToRemote(path)?.toString()
   }
 
-  override fun toString() = ShellExecOptionsImpl.stringify(_execCommand, workingDirectory, envs)
+  override fun toString(): String = ShellExecOptionsImpl.stringify(_execCommand, workingDirectory, envs)
 }
+
+private fun String.ensureStartsWith(prefix: String): String = if (this.startsWith(prefix)) this else prefix + this
+private fun String.ensureEndsWith(suffix: String): String = if (this.endsWith(suffix)) this else this + suffix
 
 private const val PATH: String = "PATH"
 private const val INTELLIJ_FORCE_PREPEND_PREFIX: String = "_INTELLIJ_FORCE_PREPEND_"
+private const val INTELLIJ_FORCE_SET_PREFIX: String = "_INTELLIJ_FORCE_SET_"
 private val LOG: Logger = logger<MutableShellExecOptionsImpl>()

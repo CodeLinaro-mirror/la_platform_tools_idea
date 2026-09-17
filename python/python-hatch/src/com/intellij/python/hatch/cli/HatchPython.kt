@@ -6,9 +6,10 @@ import com.intellij.platform.eel.provider.utils.EelProcessExecutionResultInfo
 import com.intellij.platform.eel.provider.utils.stderrString
 import com.intellij.platform.eel.provider.utils.stdoutString
 import com.intellij.python.hatch.cli.HatchPython.PythonInstallResponse.AbortReason
-import com.intellij.python.hatch.runtime.HatchRuntime
+import com.intellij.python.pytools.runtime.PyToolRuntime
 import com.jetbrains.python.Result
 import com.jetbrains.python.errorProcessing.PyResult
+import com.jetbrains.python.sdk.add.v2.PathHolder
 import java.nio.file.Path
 
 /**
@@ -19,7 +20,7 @@ val ALL_NAMES: Array<String> = arrayOf("all")
 /**
  * Manage environment dependencies
  */
-class HatchPython(runtime: HatchRuntime) : HatchCommand("python", runtime) {
+class HatchPython<P : PathHolder>(runtime: PyToolRuntime) : HatchCommand<P>("python", runtime) {
   /**
    * Locate Python binaries
    *

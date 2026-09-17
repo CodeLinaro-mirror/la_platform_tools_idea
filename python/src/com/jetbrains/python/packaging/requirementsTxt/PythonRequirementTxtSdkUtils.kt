@@ -2,8 +2,8 @@
 package com.jetbrains.python.packaging.requirementsTxt
 
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.edtWriteAction
 import com.intellij.openapi.application.runWriteAction
-import com.intellij.openapi.application.writeAction
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.project.Project
@@ -20,42 +20,42 @@ import com.jetbrains.python.sdk.PythonSdkAdditionalData
 import com.jetbrains.python.sdk.associatedModuleDir
 import com.jetbrains.python.sdk.associatedModuleNioPath
 import com.jetbrains.python.sdk.baseDir
+import com.jetbrains.python.sdk.pySdkAdditionalData
 import com.jetbrains.python.sdk.pythonSdk
 import org.jetbrains.annotations.ApiStatus
 import java.nio.file.InvalidPathException
 import java.nio.file.Path
+import kotlin.io.path.name
 
 /**
  * Migrate from the module persistent path to sdk path
  */
 @ApiStatus.Internal
 object PythonRequirementTxtSdkUtils {
+  /**
+   * Resolves the requirements file explicitly stored for [sdk] ([PythonSdkAdditionalData.requirementsFile]).
+   * Returns `null` when no path is stored, or the stored path cannot be resolved to an existing file.
+   * The default when nothing is stored is intentionally left to the caller (it differs per package manager).
+   */
   @JvmStatic
-  fun findRequirementsTxt(sdk: Sdk): VirtualFile? {
-    val data = sdk.sdkAdditionalData as? PythonSdkAdditionalData ?: return null
-    val requirementsPath = data.requiredTxtPath ?: Path.of(PythonSdkAdditionalData.REQUIREMENT_TXT_DEFAULT)
-    if (requirementsPath.isAbsolute) {
-      return VirtualFileManager.getInstance().findFileByNioPath(requirementsPath)
-    }
-
-    val associatedModuleFile = sdk.associatedModuleDir ?: return null
-    return associatedModuleFile.findFileByRelativePath(requirementsPath.toString())
+  fun resolvePersistedRequirementsFile(sdk: Sdk): VirtualFile? {
+    val requirementsPath = sdk.pySdkAdditionalData.requirementsPath ?: return null
+    return VirtualFileManager.getInstance().findFileByNioPath(requirementsPath)
   }
 
   @JvmStatic
-  fun saveRequirementsTxtPath(project: Project, sdk: Sdk, path: Path) {
+  fun saveRequirementsTxtPath(project: Project, sdk: Sdk, path: Path?) {
     val sdkModificator = sdk.sdkModificator
     val modifiedData = sdkModificator.sdkAdditionalData as? PythonSdkAdditionalData ?: return
 
-    val associatedModulePath = sdk.associatedModuleNioPath
-    val realPath = if (path.isAbsolute && associatedModulePath != null && path.startsWith(associatedModulePath)) {
-      associatedModulePath.relativize(path)
+    val requirementsPath = path?.let { requestedPath ->
+      val basePath = modifiedData.workingDirectory.takeIf { modifiedData.hasValidWorkingDirectory() }
+                     ?: sdk.associatedModuleNioPath
+                     ?: project.basePath?.let { Path.of(it) }
+                     ?: return
+      if (requestedPath.isAbsolute) requestedPath else basePath.resolve(requestedPath)
     }
-    else {
-      path
-    }
-
-    modifiedData.requiredTxtPath = realPath
+    modifiedData.requirementsPath = requirementsPath
     if (ApplicationManager.getApplication().isDispatchThread) {
       runWriteAction {
         sdkModificator.commitChanges()
@@ -63,7 +63,7 @@ object PythonRequirementTxtSdkUtils {
     }
     else {
       PyPackageCoroutine.launch(project) {
-        writeAction {
+        edtWriteAction {
           sdkModificator.commitChanges()
         }
       }
@@ -71,8 +71,8 @@ object PythonRequirementTxtSdkUtils {
   }
 
   fun createRequirementsTxtPath(module: Module, sdk: Sdk): VirtualFile? {
-    val basePathString = sdk.associatedModuleDir ?: module.baseDir ?: return null
-    val requirementsFile = basePathString.findOrCreateFile(PythonSdkAdditionalData.REQUIREMENT_TXT_DEFAULT)
+    val basePath = sdk.associatedModuleDir ?: module.baseDir ?: return null
+    val requirementsFile = basePath.findOrCreateFile(PythonSdkAdditionalData.REQUIREMENT_TXT_DEFAULT.toString())
 
     //Need to pass test, because TempFS doesn't support getNioPath()
     val requirementFilePath = requirementsFile.toNioPathOrNull() ?: Path.of(requirementsFile.path)
@@ -83,8 +83,7 @@ object PythonRequirementTxtSdkUtils {
 
 
   fun migrateRequirementsTxtPathFromModuleToSdk(project: Project, sdk: Sdk) {
-    val sdkAdditionalData = sdk.sdkAdditionalData as? PythonSdkAdditionalData ?: return
-    val newPath = sdkAdditionalData.requiredTxtPath
+    val newPath = sdk.pySdkAdditionalData.requirementsFile
     if (newPath != null)
       return
 
@@ -109,7 +108,7 @@ object PythonRequirementTxtSdkUtils {
   @JvmStatic
   fun detectRequirementsTxtInModule(module: Module): VirtualFile? {
     val requirementsPath = ModuleRootManager.getInstance(module).contentRoots.firstNotNullOfOrNull {
-      it.findChild(PythonSdkAdditionalData.REQUIREMENT_TXT_DEFAULT)
+      it.findChild(PythonSdkAdditionalData.REQUIREMENT_TXT_DEFAULT.name)
     }
 
     return requirementsPath
@@ -124,7 +123,7 @@ object PythonRequirementTxtSdkUtils {
 
     val requirementsPath = settings.state.myRequirementsPath
 
-    return if (requirementsPath.isNotBlank() && requirementsPath != PythonSdkAdditionalData.REQUIREMENT_TXT_DEFAULT) {
+    return if (requirementsPath.isNotBlank() && requirementsPath != PythonSdkAdditionalData.REQUIREMENT_TXT_DEFAULT.toString()) {
       requirementsPath
     }
     else

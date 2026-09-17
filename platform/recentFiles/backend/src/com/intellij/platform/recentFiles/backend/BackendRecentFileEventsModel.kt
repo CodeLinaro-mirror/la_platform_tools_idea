@@ -33,6 +33,7 @@ import com.intellij.platform.recentFiles.shared.RecentFileKind
 import com.intellij.platform.recentFiles.shared.RecentFilesBackendRequest
 import com.intellij.platform.recentFiles.shared.RecentFilesEvent
 import com.intellij.platform.recentFiles.shared.SwitcherRpcDto
+import com.intellij.platform.recentFiles.shared.isAllowedInRecentFilesModel
 import com.intellij.problems.ProblemListener
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.awaitCancellation
@@ -52,7 +53,7 @@ import kotlin.time.Duration.Companion.milliseconds
 private val LOG by lazy { fileLogger() }
 
 @Service(Service.Level.PROJECT)
-internal class BackendRecentFileEventsModel(private val project: Project, private val coroutineScope: CoroutineScope) {
+internal class BackendRecentFileEventsModel(private val project: Project, coroutineScope: CoroutineScope) {
   private val bufferSize = Registry.intValue("editor.navigation.history.stack.size").coerceIn(100, 1000)
   private val updateDebounceMs = Registry.intValue("switcher.presentation.update.debounce.interval.ms").coerceIn(0, 10000)
 
@@ -111,12 +112,15 @@ internal class BackendRecentFileEventsModel(private val project: Project, privat
     LOG.debug("Switcher emit recent files metadata: $metadataRequest")
     val targetFlow = chooseTargetFlow(metadataRequest.filesKind)
 
-    val metadata = readAction {
+    val metadata =
       metadataRequest.frontendRecentFiles
         .mapNotNull { frontendFileId -> frontendFileId.virtualFile() }
-        .filter { virtualFile -> virtualFile.isValid }
-        .map { frontendFile -> createRecentFileViewModel(frontendFile, project) }
-    }
+        .filter { isAllowedInRecentFilesModel(project, metadataRequest.filesKind, it) }
+        .map { frontendFile ->
+          readAction {
+            createRecentFileViewModel(frontendFile, project)
+          }
+        }
 
     val event = if (metadataRequest.forceAddToModel)
       BackendRecentFilesEvent.ItemsAdded(metadata)
@@ -181,10 +185,11 @@ internal class BackendRecentFileEventsModel(private val project: Project, privat
   private suspend fun processOrderChangeEvent(event: OrderChangeEvent) {
     when (event.changeKind) {
       FileChangeKind.ADDED -> {
-        val models = createRecentFilesViewModels(event.files)
-        val fileEvent = BackendRecentFilesEvent.ItemsAdded(models)
-
         for (fileKind in RecentFileKind.entries) {
+          val models = createRecentFilesViewModels(
+            event.files.filter { isAllowedInRecentFilesModel(project, fileKind, it) }
+          )
+          val fileEvent = BackendRecentFilesEvent.ItemsAdded(models)
           chooseTargetFlow(fileKind).emit(fileEvent)
         }
       }
@@ -212,12 +217,12 @@ internal class BackendRecentFileEventsModel(private val project: Project, privat
 
     val filesToUpdate = files.filter { file -> knownFilesByKind.values.any { known -> known.contains(file) } }
 
-    val models = createRecentFilesViewModels(filesToUpdate)
-    assert(models.size == filesToUpdate.size)
-
     for (fileKind in RecentFileKind.entries) {
       val knownFiles = knownFilesByKind[fileKind]!!
-      val eventModels = models.filterIndexed { index, _ -> knownFiles.contains(filesToUpdate[index]) }
+      val filesForKind = filesToUpdate.filter { file ->
+        knownFiles.contains(file) && isAllowedInRecentFilesModel(project, fileKind, file)
+      }
+      val eventModels = createRecentFilesViewModels(filesForKind)
 
       val fileEvent = BackendRecentFilesEvent.ItemsUpdated(eventModels, putOnTop)
       chooseTargetFlow(fileKind).emit(fileEvent)
@@ -260,12 +265,16 @@ internal class BackendRecentFileEventsModel(private val project: Project, privat
     LOG.debug("Switcher started fetching recent files")
     val project = filter.projectId.findProjectOrNull() ?: return null
 
-    val collectedFiles = readAction {
+    val collectedFiles =
       getFilesToShow(project = project,
                      recentFileKind = filter.filesKind,
                      filesFromFrontendEditorSelectionHistory = filter.frontendEditorSelectionHistory.mapNotNull(VirtualFileId::virtualFile))
-        .map { createRecentFileViewModel(it, project) }
-    }
+        .filter { isAllowedInRecentFilesModel(project, filter.filesKind, it) }
+        .map {
+          readAction {
+            createRecentFileViewModel(it, project)
+          }
+        }
     LOG.debug("Switcher collected ${collectedFiles.size} recent files")
     LOG.trace { "Switcher collected recent files list: ${collectedFiles.joinToString(prefix = "\n", separator = "\n") { it.mainText }}" }
 

@@ -4,7 +4,7 @@ package com.intellij.lambda.sampleTestsWithFixtures.fixtures
 import com.intellij.ide.GeneralSettings
 import com.intellij.ide.impl.OpenUntrustedProjectChoice
 import com.intellij.ide.trustedProjects.impl.TrustedProjectStartupDialog
-import com.intellij.openapi.application.writeAction
+import com.intellij.openapi.application.edtWriteAction
 import com.intellij.remoteDev.tests.LambdaBackendContext
 import com.intellij.remoteDev.tests.LambdaIdeContext
 import com.intellij.testFramework.fixtures.IdeaTestFixtureFactory
@@ -12,39 +12,25 @@ import com.intellij.testFramework.fixtures.impl.CodeInsightTestFixtureImpl
 import com.intellij.testFramework.fixtures.impl.TempDirTestFixtureImpl
 
 context(context: LambdaIdeContext)
-val codeInsightFixture: CodeInsightTestFixtureImpl
-  get() = newTestFixture<CodeInsightTestFixtureImpl> {
-    val projectBuilder = IdeaTestFixtureFactory.getFixtureFactory().createFixtureBuilder("Test")
+fun codeInsightFixture(projectName: String = "Test"): CodeInsightTestFixtureImpl =
+  newTestFixture<CodeInsightTestFixtureImpl> {
+    val projectBuilder = IdeaTestFixtureFactory.getFixtureFactory().createFixtureBuilder(projectName)
     CodeInsightTestFixtureImpl(projectBuilder.fixture, TempDirTestFixtureImpl())
   }
 
 context(lambdaBackendContext: LambdaBackendContext)
-suspend fun CodeInsightTestFixtureImpl.openNewProjectAndEditor(relativePath: String) {
+suspend fun CodeInsightTestFixtureImpl.openNewProjectAndEditor(relativePath: String, fileContent: String) {
   TrustedProjectStartupDialog.setDialogChoiceInTests(OpenUntrustedProjectChoice.TRUST_AND_OPEN, lambdaBackendContext.globalDisposable)
+
+  val savedConfirmation = GeneralSettings.getInstance().confirmOpenNewProject
   GeneralSettings.getInstance().confirmOpenNewProject = GeneralSettings.OPEN_PROJECT_SAME_WINDOW
+  lambdaBackendContext.addAfterEachCleanup {
+    GeneralSettings.getInstance().confirmOpenNewProject = savedConfirmation
+  }
 
-  writeAction {
+  edtWriteAction {
     openFileInEditor(
-      addFileToProject(
-        relativePath,
-        // language=java
-        """
-            package com.example;
-
-            class Foo {
-              private boolean unboxedZ = false;
-              private byte unboxedB = 0;
-              private char unboxedC = 'a';
-              private double unboxedD = 0.0;
-              private float unboxedF = 0.0f;
-              private int unboxedI = 0;
-              private long unboxedJ = 0l;
-              private short unboxedS = 0;
-            }
-            """
-          .trimIndent(),
-      )
-        .virtualFile
+      addFileToProject(relativePath, fileContent).virtualFile
     )
   }
 }

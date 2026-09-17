@@ -4,10 +4,10 @@ package com.intellij.codeInspection;
 import com.intellij.codeInspection.wrongPackageStatement.AdjustPackageNameFix;
 import com.intellij.java.JavaBundle;
 import com.intellij.modcommand.ActionContext;
+import com.intellij.modcommand.ModCommandAction;
 import com.intellij.modcommand.ModPsiUpdater;
 import com.intellij.modcommand.PsiUpdateModCommandAction;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.roots.SingleFileSourcesTracker;
 import com.intellij.openapi.util.Predicates;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.pom.java.JavaFeature;
@@ -18,6 +18,7 @@ import com.intellij.psi.ImplicitlyImportedStaticMember;
 import com.intellij.psi.JavaDirectoryService;
 import com.intellij.psi.JavaElementVisitor;
 import com.intellij.psi.JavaPsiFacade;
+import com.intellij.psi.JavaRecursiveElementWalkingVisitor;
 import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiDirectory;
 import com.intellij.psi.PsiElement;
@@ -31,15 +32,16 @@ import com.intellij.psi.PsiImportModuleStatement;
 import com.intellij.psi.PsiJavaFile;
 import com.intellij.psi.PsiMember;
 import com.intellij.psi.PsiMethod;
+import com.intellij.psi.PsiMethodCallExpression;
 import com.intellij.psi.PsiModifier;
 import com.intellij.psi.PsiModifierList;
 import com.intellij.psi.PsiPackage;
 import com.intellij.psi.PsiPackageStatement;
+import com.intellij.psi.PsiReferenceExpression;
 import com.intellij.psi.codeStyle.JavaCodeStyleSettings;
 import com.intellij.psi.impl.file.PsiDirectoryFactory;
 import com.intellij.psi.impl.source.codeStyle.ImportHelper;
 import com.intellij.psi.impl.source.tree.java.PsiReferenceExpressionImpl;
-import com.intellij.psi.util.JvmMainMethodSearcher;
 import com.intellij.psi.util.PsiMethodUtil;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.util.containers.ContainerUtil;
@@ -47,6 +49,7 @@ import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
@@ -80,7 +83,7 @@ public final class ImplicitToExplicitClassBackwardMigrationInspection extends Ab
         if (identifier == null) {
           return;
         }
-        ReplaceWithExplicitClassFix fix = new ReplaceWithExplicitClassFix(aClass);
+        ReplaceWithExplicitClassFix fix = new ReplaceWithExplicitClassFix(aClass, false);
         if (InspectionProjectProfileManager.isInformationLevel(getShortName(), identifier)) {
           TextRange textRange =
             TextRange.create(0, method.getParameterList().getTextRange().getEndOffset() - method.getTextRange().getStartOffset());
@@ -102,28 +105,23 @@ public final class ImplicitToExplicitClassBackwardMigrationInspection extends Ab
     PsiMember member = PsiTreeUtil.getNonStrictParentOfType(psiElement, PsiMember.class);
     if (!(member instanceof PsiMethod)) return null;
     if (!(member.getContainingClass() instanceof PsiImplicitClass implicitClass)) return null;
-    boolean hasMainMethod = new JvmMainMethodSearcher() {
-      @Override
-      public boolean instanceMainMethodsEnabled(@NotNull PsiElement psiElement) {
-        return true;
-      }
-
-      @Override
-      protected boolean inheritedStaticMainEnabled(@NotNull PsiElement psiElement) {
-        return true;
-      }
-    }.hasMainMethod(implicitClass);
+    boolean hasMainMethod = JavaFeature.assumeAvailable(JavaFeature.INSTANCE_MAIN_METHOD, () -> {
+      return PsiMethodUtil.hasMainInClass(implicitClass);
+    });
     if (!hasMainMethod) return null;
     if (PsiTreeUtil.hasErrorElements(implicitClass)) {
       return null;
     }
-    return new ImplicitToExplicitClassBackwardMigrationInspection.ReplaceWithExplicitClassFix(implicitClass);
+    return new ImplicitToExplicitClassBackwardMigrationInspection.ReplaceWithExplicitClassFix(implicitClass, true);
   }
 
   public static class ReplaceWithExplicitClassFix extends PsiUpdateModCommandAction<PsiImplicitClass> {
 
-    private ReplaceWithExplicitClassFix(@NotNull PsiImplicitClass element) {
+    private final boolean myFixIO;
+
+    private ReplaceWithExplicitClassFix(@NotNull PsiImplicitClass element, boolean fixIO) {
       super(element);
+      myFixIO = fixIO;
     }
 
     @Override
@@ -167,6 +165,24 @@ public final class ImplicitToExplicitClassBackwardMigrationInspection extends Ab
       addImplicitJavaModuleImports(project, moduleImports, importList);
       addPackageStatement(newPsiJavaFile, originalFile);
       optimizeImport(newPsiJavaFile);
+      List<PsiReferenceExpression> referenceExpressions = new ArrayList<>();
+      if (myFixIO) {
+        newPsiJavaFile.accept(new JavaRecursiveElementWalkingVisitor() {
+          @Override
+          public void visitReferenceExpression(@NotNull PsiReferenceExpression expression) {
+            ModCommandAction fix = MigrateFromJavaLangIoInspection.createCanBeIOFix(expression);
+            if (fix != null) {
+              referenceExpressions.add(expression);
+            }
+            super.visitReferenceExpression(expression);
+          }
+        });
+      }
+      for (PsiReferenceExpression ref : referenceExpressions) {
+        if (!(ref.getParent() instanceof PsiReferenceExpression parentReference)) continue;
+        if (!(parentReference.getParent() instanceof PsiMethodCallExpression methodCallExpression)) continue;
+        MigrateFromJavaLangIoInspection.replaceToSystemOut(methodCallExpression);
+      }
     }
 
     private static void optimizeImport(@NotNull PsiJavaFile newPsiJavaFile) {
@@ -191,9 +207,6 @@ public final class ImplicitToExplicitClassBackwardMigrationInspection extends Ab
       PsiPackageStatement packageStatement = javaFile.getPackageStatement();
       if (packageStatement != null) return;
       String packageName = dirPackage.getQualifiedName();
-      SingleFileSourcesTracker singleFileSourcesTracker = SingleFileSourcesTracker.getInstance(originalFile.getProject());
-      String singleFileSourcePackageName = singleFileSourcesTracker.getPackageNameForSingleFileSource(originalFile.getVirtualFile());
-      if (singleFileSourcePackageName != null) packageName = singleFileSourcePackageName;
       if (packageName.isEmpty()) return;
       if (!PsiDirectoryFactory.getInstance(javaFile.getProject()).isValidPackageName(packageName)) return;
       AdjustPackageNameFix.applyFix(javaFile, originalFile, originalFile.getContainingDirectory());

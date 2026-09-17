@@ -1,15 +1,20 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.ide.plugins
 
+import com.intellij.ide.plugins.ProductPluginInitContext.Companion.defaultProductCompatibilityDependenciesProvider
+import com.intellij.ide.plugins.ProductRulesImposedExclusion.ProductRulesImposedExclusionReason
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.util.BuildNumber
 import com.intellij.platform.pluginSystem.parser.impl.elements.ModuleLoadingRuleValue
+import com.intellij.platform.pluginSystem.parser.impl.elements.ModuleVisibilityValue
+import com.intellij.platform.pluginSystem.testFramework.EmptyTestPluginInitContext
 import com.intellij.platform.pluginSystem.testFramework.PluginSetTestBuilder
-import com.intellij.platform.testFramework.plugins.buildDir
+import com.intellij.platform.pluginSystem.testFramework.TestPluginInitContextFactory
 import com.intellij.platform.testFramework.plugins.content
 import com.intellij.platform.testFramework.plugins.dependencies
 import com.intellij.platform.testFramework.plugins.depends
+import com.intellij.platform.testFramework.plugins.installAt
 import com.intellij.platform.testFramework.plugins.module
 import com.intellij.platform.testFramework.plugins.plugin
 import com.intellij.testFramework.TestLoggerFactory
@@ -41,25 +46,21 @@ class PluginDependencyAnalysisTest {
     essentialPlugins: Set<PluginId> = emptySet(),
     environmentConfiguredModules: Map<PluginModuleId, PluginInitializationContext.EnvironmentConfiguredModuleData> = emptyMap(),
   ): PluginInitializationContext {
-    return object : PluginInitializationContext {
+    return object : EmptyTestPluginInitContext() {
       override val productBuildNumber: BuildNumber = BuildNumber.fromString("241.0")!!
       override val essentialPlugins: Set<PluginId> = essentialPlugins
-      override fun isPluginDisabled(id: PluginId): Boolean = false
-      override fun isPluginExpired(id: PluginId): Boolean = false
-      override fun isPluginBroken(id: PluginId, version: String?): Boolean = false
-      override val requirePlatformAliasDependencyForLegacyPlugins: Boolean = false
-      override val checkEssentialPlugins: Boolean = false
-      override val explicitPluginSubsetToLoad: Set<PluginId>? = null
-      override val disablePluginLoadingCompletely: Boolean = false
-      override val pluginsPerProjectConfig: PluginsPerProjectConfig? = null
       override val currentProductModeId: String = "test"
       override val environmentConfiguredModules: Map<PluginModuleId, PluginInitializationContext.EnvironmentConfiguredModuleData> = environmentConfiguredModules
+      override fun provideCompatibilityDependencies(descriptor: IdeaPluginDescriptorImpl, pluginSet: UnambiguousPluginSet): Sequence<PluginDependencyAnalysis.DependencyRef> =
+        defaultProductCompatibilityDependenciesProvider(descriptor, pluginSet)
+      override fun provideModuleExclusionsImposedByProductRules(pluginSet: UnambiguousPluginSet): Sequence<Pair<PluginModuleDescriptor, ProductRulesImposedExclusionReason>> =
+        emptySequence()
     }
   }
 
   private fun discoverPlugins(): List<PluginMainDescriptor> {
     val (_, discoveryResult) = PluginSetTestBuilder.fromPath(pluginsDirPath).discoverPlugins()
-    return discoveryResult.discoveredPlugins.flatMap { it.plugins }
+    return discoveryResult.pluginLists.flatMap { it.plugins }
   }
 
   @Nested
@@ -246,7 +247,7 @@ class PluginDependencyAnalysisTest {
     fun `plugin with no content modules returns only main descriptor`() {
       plugin("foo") {
         version = "1.0"
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
 
       val plugins = discoverPlugins()
       val initContext = createInitContext()
@@ -266,7 +267,7 @@ class PluginDependencyAnalysisTest {
           module("foo.module1", loadingRule = ModuleLoadingRuleValue.REQUIRED) {}
           module("foo.module2", loadingRule = ModuleLoadingRuleValue.REQUIRED) {}
         }
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
 
       val plugins = discoverPlugins()
       val initContext = createInitContext()
@@ -287,7 +288,7 @@ class PluginDependencyAnalysisTest {
           module("foo.required", loadingRule = ModuleLoadingRuleValue.REQUIRED) {}
           module("foo.optional", loadingRule = ModuleLoadingRuleValue.OPTIONAL) {}
         }
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
 
       val plugins = discoverPlugins()
       val initContext = createInitContext()
@@ -310,7 +311,7 @@ class PluginDependencyAnalysisTest {
           module("foo.embedded2", loadingRule = ModuleLoadingRuleValue.EMBEDDED) {}
           module("foo.optional2", loadingRule = ModuleLoadingRuleValue.OPTIONAL) {}
         }
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
 
       val plugins = discoverPlugins()
       val initContext = createInitContext()
@@ -330,15 +331,15 @@ class PluginDependencyAnalysisTest {
         content {
           module("foo.conditional", loadingRule = ModuleLoadingRuleValue.OPTIONAL, requiredIfAvailable = "target.module") {}
         }
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
 
-      val targetModuleId = PluginModuleId("target.module", "namespace")
+      val targetModuleId = PluginModuleId("target.module", "jetbrains")
       val initContext = createInitContext(
         environmentConfiguredModules = mapOf(
           targetModuleId to PluginInitializationContext.EnvironmentConfiguredModuleData(null) // available
         )
       )
-      val plugins = withInitContextForLoadingRuleDetermination(initContext) {
+      val plugins = PluginInitContextFactory.withCustomFactoryInUnitTests(TestPluginInitContextFactory(initContext)) {
         discoverPlugins()
       }
 
@@ -356,9 +357,9 @@ class PluginDependencyAnalysisTest {
         content {
           module("foo.conditional", loadingRule = ModuleLoadingRuleValue.OPTIONAL, requiredIfAvailable = "target.module") {}
         }
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
 
-      val targetModuleId = PluginModuleId("target.module", "namespace")
+      val targetModuleId = PluginModuleId("target.module", "jetbrains")
       val initContext = createInitContext(
         environmentConfiguredModules = mapOf(
           targetModuleId to PluginInitializationContext.EnvironmentConfiguredModuleData(
@@ -366,7 +367,9 @@ class PluginDependencyAnalysisTest {
           )
         )
       )
-      val plugins = withInitContextForLoadingRuleDetermination(initContext) { discoverPlugins() }
+      val plugins = PluginInitContextFactory.withCustomFactoryInUnitTests(TestPluginInitContextFactory(initContext)) {
+        discoverPlugins()
+      }
       
       val result = PluginDependencyAnalysis.sequenceRequiredModules(initContext, plugins[0]).toList()
 
@@ -381,7 +384,7 @@ class PluginDependencyAnalysisTest {
         content {
           module("foo.embedded", loadingRule = ModuleLoadingRuleValue.EMBEDDED) {}
         }
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
 
       val plugins = discoverPlugins()
       val initContext = createInitContext()
@@ -401,7 +404,7 @@ class PluginDependencyAnalysisTest {
     fun `plugin with no dependencies returns empty sequence`() {
       plugin("foo") {
         version = "1.0"
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
 
       val plugins = discoverPlugins()
       val result = PluginDependencyAnalysis.sequenceStrictDependencies(plugins[0]).toList()
@@ -415,7 +418,7 @@ class PluginDependencyAnalysisTest {
         version = "1.0"
         depends("bar")
         depends("baz")
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
 
       val plugins = discoverPlugins()
       val result = PluginDependencyAnalysis.sequenceStrictDependencies(plugins[0]).toList()
@@ -432,7 +435,7 @@ class PluginDependencyAnalysisTest {
         version = "1.0"
         depends("bar") // required
         depends("baz", optional = true) // optional
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
 
       val plugins = discoverPlugins()
       val result = PluginDependencyAnalysis.sequenceStrictDependencies(plugins[0]).toList()
@@ -448,7 +451,7 @@ class PluginDependencyAnalysisTest {
         version = "1.0"
         depends("com.intellij.modules.platform")
         depends("com.intellij.modules.lang")
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
 
       val plugins = discoverPlugins()
       val result = PluginDependencyAnalysis.sequenceStrictDependencies(plugins[0]).toList()
@@ -465,7 +468,7 @@ class PluginDependencyAnalysisTest {
           module("bar.module")
           module("baz.module")
         }
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
 
       val plugins = discoverPlugins()
       val result = PluginDependencyAnalysis.sequenceStrictDependencies(plugins[0]).toList()
@@ -485,7 +488,7 @@ class PluginDependencyAnalysisTest {
           plugin("bar")
           module("baz.module")
         }
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
 
       val plugins = discoverPlugins()
       val result = PluginDependencyAnalysis.sequenceStrictDependencies(plugins[0]).toList()
@@ -507,7 +510,7 @@ class PluginDependencyAnalysisTest {
         depends("required2")
         depends("optional2", optional = true)
         depends("com.intellij.modules.platform")
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
 
       val plugins = discoverPlugins()
       val result = PluginDependencyAnalysis.sequenceStrictDependencies(plugins[0]).toList()
@@ -529,7 +532,7 @@ class PluginDependencyAnalysisTest {
             }
           }
         }
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
 
       val plugins = discoverPlugins()
       val contentModule = plugins[0].contentModules[0]
@@ -538,6 +541,34 @@ class PluginDependencyAnalysisTest {
       assertThat(result).hasSize(1)
       val pluginDep = result[0] as PluginDependencyAnalysis.DependencyRef.Plugin
       assertThat(pluginDep.pluginId.idString).isEqualTo("bar")
+    }
+
+    @Test
+    fun `depends sub-descriptor includes target dependency`() {
+      plugin("bar") {
+        version = "1.0"
+      }.installAt(pluginsDirPath)
+
+      plugin("baz") {
+        version = "1.0"
+      }.installAt(pluginsDirPath)
+
+      plugin("foo") {
+        version = "1.0"
+        depends("bar", "bar.xml") {
+          depends("baz")
+        }
+      }.installAt(pluginsDirPath)
+
+      val plugins = discoverPlugins()
+      val fooPlugin = plugins.first { it.pluginId.idString == "foo" }
+      val subDescriptor = fooPlugin.dependencies.first { it.pluginId.idString == "bar" }.subDescriptor!!
+      val result = PluginDependencyAnalysis.sequenceStrictDependencies(subDescriptor).toList()
+
+      val pluginIds = result.filterIsInstance<PluginDependencyAnalysis.DependencyRef.Plugin>()
+        .map { it.pluginId.idString }
+
+      assertThat(pluginIds).containsExactlyInAnyOrder("bar", "baz")
     }
   }
 
@@ -548,7 +579,7 @@ class PluginDependencyAnalysisTest {
     fun `single plugin with no dependencies returns only itself`() {
       plugin("foo") {
         version = "1.0"
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
 
       val plugins = discoverPlugins()
       val initContext = createInitContext()
@@ -565,11 +596,11 @@ class PluginDependencyAnalysisTest {
       plugin("foo") {
         version = "1.0"
         depends("bar")
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
       
       plugin("bar") {
         version = "1.0"
-      }.buildDir(pluginsDirPath.resolve("bar"))
+      }.installAt(pluginsDirPath)
 
       val plugins = discoverPlugins()
       val initContext = createInitContext()
@@ -587,16 +618,16 @@ class PluginDependencyAnalysisTest {
       plugin("a") {
         version = "1.0"
         depends("b")
-      }.buildDir(pluginsDirPath.resolve("a"))
+      }.installAt(pluginsDirPath)
       
       plugin("b") {
         version = "1.0"
         depends("c")
-      }.buildDir(pluginsDirPath.resolve("b"))
+      }.installAt(pluginsDirPath)
       
       plugin("c") {
         version = "1.0"
-      }.buildDir(pluginsDirPath.resolve("c"))
+      }.installAt(pluginsDirPath)
 
       val plugins = discoverPlugins()
       val initContext = createInitContext()
@@ -616,14 +647,16 @@ class PluginDependencyAnalysisTest {
         dependencies {
           module("bar.module")
         }
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
       
       plugin("bar") {
         version = "1.0"
-        content {
-          module("bar.module", loadingRule = ModuleLoadingRuleValue.OPTIONAL) {}
+        content(namespace = "jetbrains") {
+          module("bar.module", loadingRule = ModuleLoadingRuleValue.OPTIONAL) {
+            moduleVisibility = ModuleVisibilityValue.PUBLIC
+          }
         }
-      }.buildDir(pluginsDirPath.resolve("bar"))
+      }.installAt(pluginsDirPath)
 
       val plugins = discoverPlugins()
       val initContext = createInitContext()
@@ -644,21 +677,21 @@ class PluginDependencyAnalysisTest {
         version = "1.0"
         depends("b")
         depends("c")
-      }.buildDir(pluginsDirPath.resolve("a"))
+      }.installAt(pluginsDirPath)
       
       plugin("b") {
         version = "1.0"
         depends("d")
-      }.buildDir(pluginsDirPath.resolve("b"))
+      }.installAt(pluginsDirPath)
       
       plugin("c") {
         version = "1.0"
         depends("d")
-      }.buildDir(pluginsDirPath.resolve("c"))
+      }.installAt(pluginsDirPath)
       
       plugin("d") {
         version = "1.0"
-      }.buildDir(pluginsDirPath.resolve("d"))
+      }.installAt(pluginsDirPath)
 
       val plugins = discoverPlugins()
       val initContext = createInitContext()
@@ -677,12 +710,12 @@ class PluginDependencyAnalysisTest {
       plugin("a") {
         version = "1.0"
         depends("b")
-      }.buildDir(pluginsDirPath.resolve("a"))
+      }.installAt(pluginsDirPath)
       
       plugin("b") {
         version = "1.0"
         depends("a")
-      }.buildDir(pluginsDirPath.resolve("b"))
+      }.installAt(pluginsDirPath)
 
       val plugins = discoverPlugins()
       val initContext = createInitContext()
@@ -704,7 +737,7 @@ class PluginDependencyAnalysisTest {
           module("foo.module1", loadingRule = ModuleLoadingRuleValue.REQUIRED) {}
           module("foo.module2", loadingRule = ModuleLoadingRuleValue.REQUIRED) {}
         }
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
 
       val plugins = discoverPlugins()
       val initContext = createInitContext()
@@ -724,18 +757,18 @@ class PluginDependencyAnalysisTest {
       plugin("foo") {
         version = "1.0"
         depends("ambiguous")
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
       
       // Two plugins both declare "ambiguous" as an alias
       plugin("bar1") {
         version = "1.0"
         pluginAliases = listOf("ambiguous")
-      }.buildDir(pluginsDirPath.resolve("bar1"))
+      }.installAt(pluginsDirPath)
       
       plugin("bar2") {
         version = "2.0"
         pluginAliases = listOf("ambiguous")
-      }.buildDir(pluginsDirPath.resolve("bar2"))
+      }.installAt(pluginsDirPath)
 
       val plugins = discoverPlugins()
       val initContext = createInitContext()
@@ -757,7 +790,7 @@ class PluginDependencyAnalysisTest {
           module("foo.required", loadingRule = ModuleLoadingRuleValue.REQUIRED) {}
           module("foo.optional", loadingRule = ModuleLoadingRuleValue.OPTIONAL) {}
         }
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
 
       val plugins = discoverPlugins()
       val initContext = createInitContext()
@@ -779,15 +812,15 @@ class PluginDependencyAnalysisTest {
         version = "1.0"
         depends("required")
         depends("optional", optional = true)
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
       
       plugin("required") {
         version = "1.0"
-      }.buildDir(pluginsDirPath.resolve("required"))
+      }.installAt(pluginsDirPath)
       
       plugin("optional") {
         version = "1.0"
-      }.buildDir(pluginsDirPath.resolve("optional"))
+      }.installAt(pluginsDirPath)
 
       val plugins = discoverPlugins()
       val initContext = createInitContext()
@@ -826,18 +859,18 @@ class PluginDependencyAnalysisTest {
           }
           module("app.extra", loadingRule = ModuleLoadingRuleValue.OPTIONAL) {}
         }
-      }.buildDir(pluginsDirPath.resolve("app"))
+      }.installAt(pluginsDirPath)
       
       plugin("core") {
         version = "1.0"
         content {
           module("core.api", loadingRule = ModuleLoadingRuleValue.REQUIRED) {}
         }
-      }.buildDir(pluginsDirPath.resolve("core"))
+      }.installAt(pluginsDirPath)
       
       plugin("utils") {
         version = "1.0"
-      }.buildDir(pluginsDirPath.resolve("utils"))
+      }.installAt(pluginsDirPath)
 
       val plugins = discoverPlugins()
       val initContext = createInitContext()
@@ -863,7 +896,7 @@ class PluginDependencyAnalysisTest {
       plugin("foo") {
         version = "1.0"
         depends("missing")
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
 
       val plugins = discoverPlugins()
       val initContext = createInitContext()
@@ -893,7 +926,7 @@ class PluginDependencyAnalysisTest {
         dependencies {
           module("missing.module")
         }
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
 
       val plugins = discoverPlugins()
       val initContext = createInitContext()
@@ -921,11 +954,11 @@ class PluginDependencyAnalysisTest {
       plugin("foo") {
         version = "1.0"
         depends("bar")
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
 
       plugin("bar") {
         version = "1.0"
-      }.buildDir(pluginsDirPath.resolve("bar"))
+      }.installAt(pluginsDirPath)
 
       val plugins = discoverPlugins()
       val initContext = createInitContext()
@@ -953,7 +986,7 @@ class PluginDependencyAnalysisTest {
           plugin("missing2")
           module("missing.module")
         }
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
 
       val plugins = discoverPlugins()
       val initContext = createInitContext()
@@ -988,12 +1021,12 @@ class PluginDependencyAnalysisTest {
       plugin("foo") {
         version = "1.0"
         depends("bar")
-      }.buildDir(pluginsDirPath.resolve("foo"))
+      }.installAt(pluginsDirPath)
 
       plugin("bar") {
         version = "1.0"
         depends("missing")
-      }.buildDir(pluginsDirPath.resolve("bar"))
+      }.installAt(pluginsDirPath)
 
       val plugins = discoverPlugins()
       val initContext = createInitContext()

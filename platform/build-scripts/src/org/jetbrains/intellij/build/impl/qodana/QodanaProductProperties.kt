@@ -18,12 +18,13 @@ private val COMMON_ADDITIONAL_VM_OPTIONS = listOf(
   "-Dsdk.download.consent=true",
   "-Dide.activity.tracking.enable.debug=true",
   "-Deslint.service.expiration.timeout.ms=5000",
+  "-Dtypescript.service.node.defaultMemoryLimit=1024",
+  "-Djetbrains.security.package-checker.requestTimeoutSeconds=15",
   "-Dphp.additional.library.manager.new.updater=true",
   "-Dide.region.url.mapping.expiration.timeout=7200",
   "-Dexternal.system.auto.import.headless.async=true",
   "-Dmaven.default.headless.import=true",
   "-Dide.do.not.check.ls.on.startup=true",
-  "-Dintellij.console.use.severe.log.level=true",
   )
 
 private const val IS_EAP = false
@@ -47,6 +48,6 @@ class QodanaProductProperties(val productCode: String, val productName: String, 
 }
 
 private fun isEap(productCode: String): Boolean = when (productCode) {
-  "QDRST", "QDRUBY" -> true
+  "QDRST", "QDRUBY", "QDPOLY" -> true
   else -> IS_EAP
 }

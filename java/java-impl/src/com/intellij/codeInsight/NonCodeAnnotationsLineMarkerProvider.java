@@ -40,6 +40,7 @@ import com.intellij.psi.PsiMethod;
 import com.intellij.psi.PsiModifierListOwner;
 import com.intellij.psi.PsiNameIdentifierOwner;
 import com.intellij.psi.PsiParameter;
+import com.intellij.psi.PsiTypeParameter;
 import com.intellij.psi.util.PsiUtilCore;
 import com.intellij.ui.awt.RelativePoint;
 import com.intellij.util.ObjectUtils;
@@ -120,7 +121,7 @@ public abstract class NonCodeAnnotationsLineMarkerProvider extends LineMarkerPro
   }
 
   private LineMarkerInfo<?> buildLineMarkerInfo(@NotNull PsiElement element) {
-    PsiModifierListOwner owner = getAnnotationOwner(element);
+    PsiModifierListOwner owner = getAnnotationOwner(element, false);
     if (owner == null) return null;
 
     ProgressManager.checkCanceled();
@@ -129,21 +130,20 @@ public abstract class NonCodeAnnotationsLineMarkerProvider extends LineMarkerPro
     if (getAnnotationLineMarkerType(nonCodeAnnotations) != myLineMarkerType) {
       return null;
     }
-
     String tooltip = XmlStringUtil.wrapInHtml(
       "<p>" + NonCodeAnnotationGenerator.getNonCodeHeaderAvailable(nonCodeAnnotations) + CommonXmlStrings.NBSP + JavaBundle.message("non.code.annotations.explanation.full.signature") + "\n" +
       CODE_BLOCK_PREFIX + JavaDocInfoGeneratorFactory.create(owner.getProject(), owner).generateSignature(owner).replaceAll("</?code>", "") + CODE_BLOCK_SUFFIX);
-    return new LineMarkerInfo<>(element, element.getTextRange(), AllIcons.Gutter.ExtAnnotation, __ -> tooltip, MyIconGutterHandler.INSTANCE,
+    return new LineMarkerInfo<>(element, element.getTextRange(), AllIcons.Gutter.ExtAnnotation, _ -> tooltip, MyIconGutterHandler.INSTANCE,
                                 GutterIconRenderer.Alignment.RIGHT);
   }
 
-  static @Nullable PsiModifierListOwner getAnnotationOwner(@Nullable PsiElement element) {
+  static @Nullable PsiModifierListOwner getAnnotationOwner(@Nullable PsiElement element, boolean includeMethodParameter) {
     if (element == null) return null;
 
     PsiElement owner = element.getParent();
     if (!(owner instanceof PsiModifierListOwner) || !(owner instanceof PsiNameIdentifierOwner)) return null;
-    if (owner instanceof PsiParameter || owner instanceof PsiLocalVariable) return null;
-
+    if (owner instanceof PsiParameter parameter && (!includeMethodParameter || !(parameter.getDeclarationScope() instanceof PsiMethod))) return null;
+    if (owner instanceof PsiTypeParameter || owner instanceof PsiLocalVariable) return null;  // should be a part of their owners
     // support non-Java languages where getNameIdentifier may return non-physical psi with the same range
     PsiElement nameIdentifier = ((PsiNameIdentifierOwner)owner).getNameIdentifier();
     if (nameIdentifier == null || !nameIdentifier.getTextRange().equals(element.getTextRange())) return null;

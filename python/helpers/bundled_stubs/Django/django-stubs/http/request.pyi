@@ -1,7 +1,7 @@
 import datetime
 from collections.abc import Awaitable, Callable, Iterable, Iterator, Mapping, Sequence
 from re import Pattern
-from typing import Any, BinaryIO, Literal, NoReturn, Protocol, TypeAlias, TypeVar, overload, type_check_only
+from typing import Any, BinaryIO, Literal, NoReturn, Protocol, TypeAlias, overload, type_check_only
 
 from django.contrib.auth.models import _AnyUser
 from django.contrib.sessions.backends.base import SessionBase
@@ -10,7 +10,7 @@ from django.core.files import uploadedfile, uploadhandler
 from django.urls import ResolverMatch
 from django.utils.datastructures import CaseInsensitiveMapping, ImmutableList, MultiValueDict
 from django.utils.functional import cached_property
-from typing_extensions import Self, override
+from typing_extensions import Self, TypeVar, override
 
 RAISE_ERROR: object
 host_validation_re: Pattern[str]
@@ -69,15 +69,7 @@ class HttpRequest:
     site: Site
     # django.contrib.sessions.middleware.SessionMiddleware
     session: SessionBase
-    # The magic. If we instantiate HttpRequest directly somewhere, it has
-    # mutable GET and POST. However, both ASGIRequest and WSGIRequest have immutable,
-    # so when we use HttpRequest to refer to any of them we want exactly this.
-    # Case when some function creates *exactly* HttpRequest (not subclass)
-    # remain uncovered, however it's probably the best solution we can afford.
-    def __new__(cls) -> _MutableHttpRequest: ...
-    # When both __init__ and __new__ are present, mypy will prefer __init__
-    # (see comments in mypy.checkmember.type_object_type)
-    # def __init__(self) -> None: ...
+    def __init__(self) -> None: ...
     def get_host(self) -> str: ...
     def get_port(self) -> str: ...
     def get_full_path(self, force_append_slash: bool = False) -> str: ...
@@ -118,11 +110,6 @@ class HttpRequest:
     def readline(self, limit: int | None = -1, /) -> bytes: ...
     def __iter__(self) -> Iterator[bytes]: ...
     def readlines(self) -> list[bytes]: ...
-
-@type_check_only
-class _MutableHttpRequest(HttpRequest):
-    GET: QueryDict  # type: ignore[assignment]
-    POST: QueryDict  # type: ignore[assignment]
 
 _Z = TypeVar("_Z")
 

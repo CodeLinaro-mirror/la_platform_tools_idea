@@ -64,13 +64,12 @@ public abstract class ActionPlaces {
   public static final String NEW_UI_RUN_TOOLBAR = "NewUiRunToolbar";
 
   public static final String PROJECT_VIEW_POPUP = "ProjectViewPopup";
+  @ApiStatus.Internal
+  public static final String REPOSITORY_VIEW_POPUP = "RepositoryViewPopup";
   public static final String PROJECT_VIEW_TOOLBAR = "ProjectViewToolbar";
 
   public static final String REVEAL_IN_POPUP = "RevealInPopup";
 
-  /** @deprecated replaced by {@link #BOOKMARKS_VIEW_POPUP} */
-  @Deprecated(forRemoval = true)
-  public static final String FAVORITES_VIEW_POPUP = "FavoritesPopup";
   public static final String BOOKMARKS_VIEW_POPUP = "BookmarksPopup";
 
   public static final String STATUS_BAR_PLACE = "StatusBarPlace";

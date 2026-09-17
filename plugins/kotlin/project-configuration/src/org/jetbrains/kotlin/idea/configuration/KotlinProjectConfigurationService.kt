@@ -9,6 +9,7 @@ import com.intellij.openapi.externalSystem.autoimport.ExternalSystemProjectTrack
 import com.intellij.openapi.externalSystem.autoimport.ExternalSystemProjectTrackerSettings
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.module.Module
+import com.intellij.openapi.options.advanced.AdvancedSettings
 import com.intellij.openapi.project.Project
 import com.intellij.platform.ide.progress.withBackgroundProgress
 import com.intellij.ui.EditorNotifications
@@ -18,6 +19,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.jetbrains.annotations.ApiStatus
+import org.jetbrains.annotations.VisibleForTesting
 import org.jetbrains.kotlin.idea.projectConfiguration.KotlinProjectConfigurationBundle
 import org.jetbrains.kotlin.idea.statistics.KotlinProjectSetupFUSCollector
 import org.jetbrains.kotlin.idea.util.isKotlinFileType
@@ -216,7 +218,7 @@ class KotlinProjectConfigurationService(private val project: Project, val corout
         checkingAndPerformingAutoConfig = true
         // Removes the notification showing for a split second
         refreshEditorNotifications()
-        coroutineScope.launch(Dispatchers.Default) {
+        val job = coroutineScope.launch(Dispatchers.Default) {
             var configured = false
             try {
                 configured = autoConfigure(module)
@@ -232,10 +234,13 @@ class KotlinProjectConfigurationService(private val project: Project, val corout
                 }
             }
         }
+        jobReference?.set(job)
     }
 
     @ApiStatus.Internal
     suspend fun autoConfigure(module: Module): Boolean {
+        if (!AdvancedSettings.getBoolean("kotlin.enable.autoconfiguration")) return false
+
         val autoConfigurator = readAction {
             KotlinProjectConfigurator.EP_NAME.extensionList
                 .firstOrNull { it.canRunAutoConfig() && it.isApplicable(module) }
@@ -253,4 +258,7 @@ class KotlinProjectConfigurationService(private val project: Project, val corout
         autoConfigurator.runAutoConfig(autoConfigSettings)
         return true
     }
+
+    @VisibleForTesting
+    var jobReference: AtomicReference<Job>? = null
 }

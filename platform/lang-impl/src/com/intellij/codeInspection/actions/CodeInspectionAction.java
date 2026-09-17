@@ -27,6 +27,7 @@ import com.intellij.profile.codeInspection.ui.ErrorsConfigurable;
 import com.intellij.profile.codeInspection.ui.header.InspectionProfileSchemesModel;
 import com.intellij.profile.codeInspection.ui.header.InspectionToolsConfigurable;
 import com.intellij.util.containers.ContainerUtil;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
@@ -114,7 +115,7 @@ public class CodeInspectionAction extends BaseAnalysisAction {
     final SchemesCombo<InspectionProfileImpl> profiles = ui.getBrowseProfilesCombo();
     final InspectionProfileManager profileManager = InspectionProfileManager.getInstance();
     final ProjectInspectionProfileManager projectProfileManager = ProjectInspectionProfileManager.getInstance(project);
-    ui.getLink().addActionListener(__ -> {
+    ui.getLink().addActionListener(_ -> {
       final ExternalProfilesComboboxAwareInspectionToolsConfigurable errorConfigurable = createConfigurable(projectProfileManager, profiles);
       final MySingleConfigurableEditor editor = new MySingleConfigurableEditor(project, errorConfigurable, manager);
       if (editor.showAndGet()) {
@@ -132,7 +133,7 @@ public class CodeInspectionAction extends BaseAnalysisAction {
         dialog.setOKActionEnabled(canExecute);
       }
     });
-    profiles.addActionListener(__ -> {
+    profiles.addActionListener(_ -> {
       myExternalProfile = profiles.getSelectedScheme();
       final boolean canExecute = myExternalProfile != null && myExternalProfile.isExecutable(project);
       dialog.setOKActionEnabled(canExecute);
@@ -155,12 +156,14 @@ public class CodeInspectionAction extends BaseAnalysisAction {
     }
     return false;
   }
-  
+
+  @ApiStatus.Internal
   protected ExternalProfilesComboboxAwareInspectionToolsConfigurable createConfigurable(ProjectInspectionProfileManager projectProfileManager,
                                                                                         SchemesCombo<InspectionProfileImpl> profilesCombo) {
     return new ExternalProfilesComboboxAwareInspectionToolsConfigurable(projectProfileManager, profilesCombo);
   }
 
+  @ApiStatus.Internal
   protected static class ExternalProfilesComboboxAwareInspectionToolsConfigurable extends InspectionToolsConfigurable {
     private final SchemesCombo<InspectionProfileImpl> myProfilesCombo;
     private String mySelectedName;

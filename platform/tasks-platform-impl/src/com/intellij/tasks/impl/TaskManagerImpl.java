@@ -23,6 +23,7 @@ import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vcs.AbstractVcs;
 import com.intellij.openapi.vcs.ProjectLevelVcsManager;
+import com.intellij.openapi.vcs.VcsBundle;
 import com.intellij.openapi.vcs.VcsTaskHandler;
 import com.intellij.openapi.vcs.VcsType;
 import com.intellij.openapi.vcs.changes.Change;
@@ -178,6 +179,7 @@ public final class TaskManagerImpl extends TaskManager implements PersistentStat
     });
   }
 
+  @ApiStatus.Internal
   @TestOnly
   public void prepareForNextTest() {
     myTasks.clear();
@@ -356,6 +358,7 @@ public final class TaskManagerImpl extends TaskManager implements PersistentStat
     return activateTask(origin, clearContext, false);
   }
 
+  @ApiStatus.Internal
   public LocalTask activateTask(final @NotNull Task origin, boolean clearContext, boolean newTask) {
     LocalTask activeTask = getActiveTask();
     if (origin.equals(activeTask)) return activeTask;
@@ -434,16 +437,23 @@ public final class TaskManagerImpl extends TaskManager implements PersistentStat
     return switched;
   }
 
+  @ApiStatus.Internal
   public void shelveChanges(LocalTask task, @NotNull String shelfName) {
-    Collection<Change> changes = ChangeListManager.getInstance(myProject).getDefaultChangeList().getChanges();
+    Project project = myProject;
+    Collection<Change> changes = ChangeListManager.getInstance(project).getDefaultChangeList().getChanges();
     if (changes.isEmpty()) return;
-    try {
-      ShelveChangesManager.getInstance(myProject).shelveChanges(changes, shelfName, true);
-      task.setShelfName(shelfName);
-    }
-    catch (Exception e) {
-      LOG.warn("Can't shelve changes", e);
-    }
+    new com.intellij.openapi.progress.Task.Modal(project, VcsBundle.message("shelve.changes.progress.title"), true) {
+      @Override
+      public void run(@NotNull ProgressIndicator indicator) {
+        try {
+          ShelveChangesManager.getInstance(project).shelveChanges(changes, shelfName, true);
+          task.setShelfName(shelfName);
+        }
+        catch (Exception e) {
+          LOG.warn("Can't shelve changes", e);
+        }
+      }
+    }.queue();
   }
 
   private void unshelveChanges(LocalTask task) {
@@ -481,6 +491,7 @@ public final class TaskManagerImpl extends TaskManager implements PersistentStat
     return new VcsTaskHandler.TaskInfo(next.getKey(), next.getValue());
   }
 
+  @ApiStatus.Internal
   public void createBranch(LocalTask task, LocalTask previousActive, String name, @Nullable VcsTaskHandler.TaskInfo branchFrom) {
     VcsTaskHandler[] handlers = VcsTaskHandler.getAllHandlers(myProject);
     for (VcsTaskHandler handler : handlers) {
@@ -496,6 +507,7 @@ public final class TaskManagerImpl extends TaskManager implements PersistentStat
     }
   }
 
+  @ApiStatus.Internal
   public void mergeBranch(LocalTask task) {
     VcsTaskHandler.TaskInfo original = fromBranches(task.getBranches(true));
     VcsTaskHandler.TaskInfo feature = fromBranches(task.getBranches(false));

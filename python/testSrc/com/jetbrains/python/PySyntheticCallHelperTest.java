@@ -12,6 +12,7 @@ import com.jetbrains.python.psi.PyReferenceExpression;
 import com.jetbrains.python.psi.PyTargetExpression;
 import com.jetbrains.python.psi.impl.PyBuiltinCache;
 import com.jetbrains.python.psi.resolve.PyResolveContext;
+import com.jetbrains.python.psi.types.PyAnyType;
 import com.jetbrains.python.psi.types.PyClassType;
 import com.jetbrains.python.psi.types.PySyntheticCallHelper;
 import com.jetbrains.python.psi.types.PyType;
@@ -30,7 +31,7 @@ public class PySyntheticCallHelperTest extends PyTestCase {
         pass
       """, () -> {
       PyFunction function = myFixture.findElementByText("foo", PyFunction.class);
-      return PySyntheticCallHelper.getCallType(function, null, List.of(PyBuiltinCache.getInstance(function).getNoneType()),
+      return PySyntheticCallHelper.getCallType(function, PyAnyType.getUnknown(), List.of(PyBuiltinCache.getInstance(function).getNoneType()),
                                                TypeEvalContext.codeAnalysis(myFixture.getProject(), myFixture.getFile()));
     });
   }
@@ -187,7 +188,7 @@ public class PySyntheticCallHelperTest extends PyTestCase {
   }
 
   public void testGenericClassMethod() {
-    doTest("list", """
+    doTest("list[Any]", """
       class Clazz[T]:
         def foo(self) -> T:
           pass
@@ -234,7 +235,7 @@ public class PySyntheticCallHelperTest extends PyTestCase {
   }
 
   public void testGenericClassMethodInExternalFile() {
-    doMultiFileTest("list", """
+    doMultiFileTest("list[Any]", """
       from lib import Clazz
       instance = Clazz[list]()
       """, () -> {
@@ -248,7 +249,7 @@ public class PySyntheticCallHelperTest extends PyTestCase {
   }
 
   public void testGenericClassMethodWithOverloadsInExternalFile() {
-    doMultiFileTest("float | list", """
+    doMultiFileTest("float | int | list[Any]", """
       from lib import Clazz
       instance = Clazz[list]()
       """, () -> {

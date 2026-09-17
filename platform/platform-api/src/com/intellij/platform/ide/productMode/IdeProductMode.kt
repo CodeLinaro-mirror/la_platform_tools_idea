@@ -8,7 +8,6 @@ import org.jetbrains.annotations.ApiStatus
 /**
  * Provides access to the mode the current IDE instance is running in.
  */
-@ApiStatus.Experimental
 interface IdeProductMode {
   companion object {
     @JvmStatic
@@ -28,7 +27,9 @@ interface IdeProductMode {
      */
     @JvmStatic
     val isFrontend: Boolean
-      get() = getInstance().currentMode == ProductMode.FRONTEND
+      get() = getInstance().currentMode.let {
+        it == ProductMode.FRONTEND || it == ProductMode.LIGHT || it == ProductMode.LIGHT_WITH_RD_CONNECTION
+      }
 
     /**
      * Returns `true` if this process is running in a monolithic mode (a regular IDE instance).
@@ -36,10 +37,20 @@ interface IdeProductMode {
     @JvmStatic
     val isMonolith: Boolean
       get() = getInstance().currentMode == ProductMode.MONOLITH
+
+    /**
+     * Returns `true` if this process is running in a light mode, becomes `false` once the process fully advances to the smart mode.
+     */
+    @JvmStatic
+    val isLight: Boolean
+      get() = getInstance().currentMode.let {
+        it == ProductMode.LIGHT || it == ProductMode.LIGHT_WITH_RD_CONNECTION
+      }
   }
 
   /**
    * Returns the mode the current IDE instance is running in.
    */
+  @get:ApiStatus.Experimental
   val currentMode: ProductMode
 }

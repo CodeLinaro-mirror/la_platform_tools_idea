@@ -1,3 +1,4 @@
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.remoteDev.util
 
 import com.intellij.openapi.util.BuildNumber
@@ -33,7 +34,6 @@ private val PRODUCT_CODES_TO_PREFIXES = mapOf(
   "RM" to "RubyMine",
   "PY" to "PyCharm",
   "PC" to "PyCharmCE",
-  "DS" to "DataSpell",
   "PE" to "PyCharmEdu",
   "PS" to "PhpStorm",
   "WS" to "WebStorm",

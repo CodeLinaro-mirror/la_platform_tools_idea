@@ -3,7 +3,12 @@
 
 package com.intellij.platform.workspace.storage.testEntities.entities
 
-import com.intellij.platform.workspace.storage.*
+import com.intellij.platform.workspace.storage.EntitySource
+import com.intellij.platform.workspace.storage.EntityType
+import com.intellij.platform.workspace.storage.GeneratedCodeApiVersion
+import com.intellij.platform.workspace.storage.MutableEntityStorage
+import com.intellij.platform.workspace.storage.WorkspaceEntityBuilder
+import com.intellij.platform.workspace.storage.testEntities.entities.impl.ComposedIdSoftRefEntityImpl
 
 @GeneratedCodeApiVersion(3)
 interface ComposedIdSoftRefEntityBuilder : WorkspaceEntityBuilder<ComposedIdSoftRefEntity> {
@@ -14,6 +19,7 @@ interface ComposedIdSoftRefEntityBuilder : WorkspaceEntityBuilder<ComposedIdSoft
 
 internal object ComposedIdSoftRefEntityType : EntityType<ComposedIdSoftRefEntity, ComposedIdSoftRefEntityBuilder>() {
   override val entityClass: Class<ComposedIdSoftRefEntity> get() = ComposedIdSoftRefEntity::class.java
+  override val entityImplBuilderClass: Class<*> get() = ComposedIdSoftRefEntityImpl.Builder::class.java
   operator fun invoke(
     myName: String,
     link: NameId,

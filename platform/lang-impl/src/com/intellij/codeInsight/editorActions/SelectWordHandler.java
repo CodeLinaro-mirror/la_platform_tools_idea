@@ -31,11 +31,13 @@ import com.intellij.psi.impl.DebugUtil;
 import com.intellij.psi.impl.source.tree.injected.InjectedCaret;
 import com.intellij.psi.templateLanguages.OuterLanguageElement;
 import com.intellij.util.ArrayUtil;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
+@ApiStatus.Internal
 public final class SelectWordHandler extends EditorActionHandler.ForEachCaret {
   private static final Logger LOG = Logger.getInstance(SelectWordHandler.class);
 
@@ -92,7 +94,7 @@ public final class SelectWordHandler extends EditorActionHandler.ForEachCaret {
 
   private static @Nullable("null means unable to select") TextRange selectWord(@NotNull Caret caret, @NotNull Project project) {
     ThrowableComputable<TextRange, Exception> computable = () -> {
-      return ReadAction.compute(() -> {
+      return ReadAction.computeBlocking(() -> {
         return doSelectWord(caret, project);
       });
     };

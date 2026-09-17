@@ -22,7 +22,8 @@ import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 import org.apache.commons.lang3.RandomStringUtils
 import org.assertj.core.api.Assertions
-import org.jetbrains.plugins.terminal.block.reworked.hyperlinks.TerminalGenericFileFilter
+import org.jetbrains.plugins.terminal.hyperlinks.filter.FILENAME_MAX
+import org.jetbrains.plugins.terminal.hyperlinks.filter.TerminalGenericFileFilter
 import org.junit.Before
 import org.junit.Test
 import org.mockito.Mockito
@@ -52,13 +53,41 @@ internal class TerminalGenericFileFilterAbsolutePathTest {
     getFilterResultAndCheckHighlightPositions("hello / world, hello \\ world", listOf(),false).checkFileLinks()
 
   @Test
+  fun `slash-only strings are not highlighted`() {
+    val slashStrings = listOf(
+      "/",
+      "//",
+      "///",
+      "////",
+      "\\",
+      "\\\\",
+      "\\\\\\",
+      "\\\\\\\\",
+      "/\\",
+      "\\/",
+      "//\\\\",
+    )
+
+    for (slashString in slashStrings) {
+      getFilterResultAndCheckHighlightPositions(
+        "hello $slashString world",
+        emptyList(),
+        checkHighlights = false
+      ).checkFileLinks()
+    }
+
+    getFilterResultAndCheckHighlightPositions("/// @param", emptyList(), false).checkFileLinks()
+    getFilterResultAndCheckHighlightPositions("// comment", emptyList(), false).checkFileLinks()
+  }
+
+  @Test
   fun `short names are highlighted`() =
     getFilterResultAndCheckHighlightPositions("hello /a world, hello C:\\ C:\\b world C:\\d", listOf("/a", "C:\\", "C:\\b"),false)
       .checkFileLinks("/a", "C:\\", "C:\\b")
 
   @Test
   fun `honor FILENAME_MAX for performance reasons`() {
-    val longString = RandomStringUtils.secure().nextAlphanumeric(TerminalGenericFileFilter.FILENAME_MAX + 1)
+    val longString = RandomStringUtils.secure().nextAlphanumeric(FILENAME_MAX + 1)
     whenever(localFileSystem.findFileByPathIfCached(eq("/$longString"))).thenThrow(AssertionError("Should not be queried"))
 
     getFilterResultAndCheckHighlightPositions("/$longString /path/to/file", listOf("/path/to/file"), checkHighlights = false)
@@ -67,9 +96,9 @@ internal class TerminalGenericFileFilterAbsolutePathTest {
 
   @Test
   fun `honor FILENAME_MAX for performance reasons (with spaces)`() {
-    val p1 = RandomStringUtils.secure().nextAlphanumeric(TerminalGenericFileFilter.FILENAME_MAX / 2 + 1)
-    val p2 = RandomStringUtils.secure().nextAlphanumeric(TerminalGenericFileFilter.FILENAME_MAX / 2 + 1)
-    assert(p1.length + p2.length > TerminalGenericFileFilter.FILENAME_MAX)
+    val p1 = RandomStringUtils.secure().nextAlphanumeric(FILENAME_MAX / 2 + 1)
+    val p2 = RandomStringUtils.secure().nextAlphanumeric(FILENAME_MAX / 2 + 1)
+    assert(p1.length + p2.length > FILENAME_MAX)
 
     whenever(localFileSystem.findFileByPathIfCached(eq("/$p1"))).thenReturn(null)
     whenever(localFileSystem.findFileByPathIfCached(eq("/$p1 $p2"))).thenThrow(AssertionError("Should not be queried"))
@@ -111,9 +140,9 @@ internal class TerminalGenericFileFilterAbsolutePathTest {
     .checkFileLinks("/path/to/file.c")
 
   @Test
-  fun `a huge line number will not break it`() = getFilterResultAndCheckHighlightPositions("""
+  fun `a huge line number is not a part of link`() = getFilterResultAndCheckHighlightPositions("""
     | /path/to/file.c:99999999999999999
-      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      ^^^^^^^^^^^^^^^
   """.trimIndent(), listOf("/path/to/file.c"))
     .checkFileLinks("/path/to/file.c")
 
@@ -144,7 +173,7 @@ internal class TerminalGenericFileFilterAbsolutePathTest {
   @Test
   fun `recognize path with line number and column in parenthesis`() = getFilterResultAndCheckHighlightPositions("""
     | /path/to/file.kt: (3, 7): No value passed for parameter 'silent'
-      ^^^^^^^^^^^^^^^^^^^^^^^^^
+      ^^^^^^^^^^^^^^^^^^^^^^^^
   """.trimIndent(), listOf("/path/to/file.kt"))
     .checkFileLinks("/path/to/file.kt")
 
@@ -165,7 +194,7 @@ internal class TerminalGenericFileFilterAbsolutePathTest {
   @Test
   fun `recognize path with space and numbers parenthesis Windows`() = getFilterResultAndCheckHighlightPositions("""
     | blah blah C:\path\to\file\with space.kt: (3, 7): blah blah
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   """.trimIndent(), listOf("""C:\path\to\file\with space.kt"""))
     .checkFileLinks("""C:\path\to\file\with space.kt""")
 
@@ -201,9 +230,9 @@ internal class TerminalGenericFileFilterAbsolutePathTest {
   @Test
   fun `take longest path when prefix with spaces exists`() = getFilterResultAndCheckHighlightPositions("""
     | blah blah C:\path\to\file\with space\and no more.kt: (5, 71): blah blah
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     | blah blah C:\path\to\file\with space and more.kt: (3, 7): blah blah
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     """.trimIndent(), listOf("""C:\path\to\file\with space\and no more.kt""", """C:\path\to\file\with space and more.kt"""))
       .checkFileLinks(
         """C:\path\to\file\with space\and no more.kt""",
@@ -266,6 +295,65 @@ internal class TerminalGenericFileFilterAbsolutePathTest {
         "/Users/jomof/projects/GunBox/GunBox/Sources/Engine/CMakeLists.txt"
       )
   }
+
+  @Test
+  fun `recognize path with line range`() = getFilterResultAndCheckHighlightPositions("""
+    | /path/to/file.c:10-20
+      ^^^^^^^^^^^^^^^^^^^^^
+  """.trimIndent(), listOf("/path/to/file.c"))
+    .checkFileLinks("/path/to/file.c")
+
+  @Test
+  fun `recognize path with single digit line range`() = getFilterResultAndCheckHighlightPositions("""
+    | /path/to/file.c:1-5
+      ^^^^^^^^^^^^^^^^^^^
+  """.trimIndent(), listOf("/path/to/file.c"))
+    .checkFileLinks("/path/to/file.c")
+
+  @Test
+  fun `recognize path with line range at end of sentence`() = getFilterResultAndCheckHighlightPositions("""
+    | error in /path/to/file.c:10-20.
+               ^^^^^^^^^^^^^^^^^^^^^
+  """.trimIndent(), listOf("/path/to/file.c"))
+    .checkFileLinks("/path/to/file.c")
+
+  @Test
+  fun `recognize path with line range in middle of text`() = getFilterResultAndCheckHighlightPositions("""
+    | see /path/to/file:5-10 for details
+          ^^^^^^^^^^^^^^^^^^
+  """.trimIndent(), listOf("/path/to/file"))
+    .checkFileLinks("/path/to/file")
+
+  @Test
+  fun `recognize Windows path with line range`() = getFilterResultAndCheckHighlightPositions("""
+    | C:\path\to\file.txt:10-14
+      ^^^^^^^^^^^^^^^^^^^^^^^^^
+  """.trimIndent(), listOf("""C:\path\to\file.txt"""))
+    .checkFileLinks("""C:\path\to\file.txt""")
+
+  @Test
+  fun `recognize multiple paths with line ranges`() = getFilterResultAndCheckHighlightPositions("""
+    | Compare /path/to/file1:1-5 with /path/to/file2:10-20
+              ^^^^^^^^^^^^^^^^^^      ^^^^^^^^^^^^^^^^^^^^
+  """.trimIndent(), listOf("/path/to/file1", "/path/to/file2"))
+    .checkFileLinks("/path/to/file1", "/path/to/file2")
+
+  @Test
+  fun `recognize mixed formats with line ranges and line column`() = getFilterResultAndCheckHighlightPositions("""
+    | /path/to/file1:10-20 and /path/to/file2:5:10
+      ^^^^^^^^^^^^^^^^^^^^     ^^^^^^^^^^^^^^^^^^^
+  """.trimIndent(), listOf("/path/to/file1", "/path/to/file2"))
+    .checkFileLinks("/path/to/file1", "/path/to/file2")
+
+  @Test
+  fun `malformed line range without end line falls back to start line`() =
+    getFilterResultAndCheckHighlightPositions("error in /path/to/file:10- see details\n", listOf("/path/to/file"), checkHighlights = false)
+      .checkFileLinks("/path/to/file")
+
+  @Test
+  fun `malformed line range with non-numeric end falls back to start line`() =
+    getFilterResultAndCheckHighlightPositions("error in /path/to/file:10-abc see details\n", listOf("/path/to/file"), checkHighlights = false)
+      .checkFileLinks("/path/to/file")
 
   @Test
   fun `real world case for bug 167701951`() =getFilterResultAndCheckHighlightPositions("""

@@ -2,17 +2,21 @@
 
 package com.intellij.mcpserver.toolsets
 
-import com.intellij.mcpserver.McpToolsetTestBase
+import com.intellij.mcpserver.GeneralMcpToolsetTestBase
 import com.intellij.mcpserver.toolsets.general.SearchToolset
 import com.intellij.mcpserver.util.awaitExternalChangesAndIndexing
+import com.intellij.mcpserver.util.INDEXING_PARTIAL_RESULT_REASON
 import com.intellij.openapi.application.edtWriteAction
 import com.intellij.openapi.project.DumbService
+import com.intellij.openapi.projectRoots.ProjectJdkTable
 import com.intellij.openapi.roots.ModuleRootModificationUtil
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.testFramework.DumbModeTestUtils
 import com.intellij.testFramework.junit5.fixture.pathInProjectFixture
 import com.intellij.testFramework.junit5.fixture.sourceRootFixture
 import com.intellij.testFramework.junit5.fixture.virtualFileFixture
-import io.kotest.common.runBlocking
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -20,9 +24,10 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import java.nio.file.Files
 import kotlin.io.path.Path
 
-class SearchToolsetTest : McpToolsetTestBase() {
+class SearchToolsetTest : GeneralMcpToolsetTestBase() {
   private val json = Json { ignoreUnknownKeys = true }
 
   private val searchFile by sourceRootFixture.virtualFileFixture(
@@ -88,6 +93,7 @@ class SearchToolsetTest : McpToolsetTestBase() {
   private data class SearchResult(
     val items: List<SearchItem> = emptyList(),
     val more: Boolean = false,
+    val partialResultReason: String? = null,
   )
 
   private val excludedDirName = "se_excluded_dir_51a2"
@@ -129,7 +135,7 @@ class SearchToolsetTest : McpToolsetTestBase() {
   }
 
   @Test
-  fun search_file_returns_file_path() = runBlocking {
+  fun search_file_returns_file_path() = runBlocking(Dispatchers.Default) {
     DumbService.getInstance(project).waitForSmartMode()
     val fileName = searchFile.name
     testMcpTool(
@@ -149,7 +155,7 @@ class SearchToolsetTest : McpToolsetTestBase() {
   }
 
   @Test
-  fun search_file_supports_explicit_globstar_prefix() = runBlocking {
+  fun search_file_supports_explicit_globstar_prefix() = runBlocking(Dispatchers.Default) {
     DumbService.getInstance(project).waitForSmartMode()
     val fileName = searchFile.name
     testMcpTool(
@@ -164,7 +170,7 @@ class SearchToolsetTest : McpToolsetTestBase() {
   }
 
   @Test
-  fun search_file_supports_exact_subpath_queries() = runBlocking {
+  fun search_file_supports_exact_subpath_queries() = runBlocking(Dispatchers.Default) {
     DumbService.getInstance(project).waitForSmartMode()
     val fileName = scopedFileInSubdir1.name
     testMcpTool(
@@ -179,7 +185,7 @@ class SearchToolsetTest : McpToolsetTestBase() {
   }
 
   @Test
-  fun search_file_respects_paths_scope() = runBlocking {
+  fun search_file_respects_paths_scope() = runBlocking(Dispatchers.Default) {
     DumbService.getInstance(project).waitForSmartMode()
     val fileName = scopedFileInSubdir1.name
     val otherFileName = scopedFileInSubdir2.name
@@ -198,7 +204,7 @@ class SearchToolsetTest : McpToolsetTestBase() {
   }
 
   @Test
-  fun search_file_respects_paths_excludes() = runBlocking {
+  fun search_file_respects_paths_excludes() = runBlocking(Dispatchers.Default) {
     DumbService.getInstance(project).waitForSmartMode()
     val fileName = scopedFileInSubdir1.name
     testMcpTool(
@@ -218,7 +224,27 @@ class SearchToolsetTest : McpToolsetTestBase() {
   }
 
   @Test
-  fun search_file_includes_excluded_files_when_requested() = runBlocking {
+  fun search_file_supports_wildcard_file_name_with_paths_scope() = runBlocking(Dispatchers.Default) {
+    DumbService.getInstance(project).waitForSmartMode()
+    testMcpTool(
+      SearchToolset::search_file.name,
+      buildJsonObject {
+        put("q", JsonPrimitive("se_scoped_*"))
+        put("paths", JsonArray(listOf(
+          JsonPrimitive("subdir1/**"),
+          JsonPrimitive("!**/*.txt"),
+        )))
+      }
+    ) { actualResult ->
+      val filePaths = parseResult(actualResult.textContent.text).filePaths()
+      assertThat(filePaths).anyMatch { it.contains(scopedJavaFileInSubdir1.name) }
+      assertThat(filePaths).noneMatch { it.contains(scopedFileInSubdir1.name) }
+      assertThat(filePaths).noneMatch { it.contains("subdir2") }
+    }
+  }
+
+  @Test
+  fun search_file_includes_excluded_files_when_requested() = runBlocking(Dispatchers.Default) {
     val excludedFile = createExcludedFile()
     DumbService.getInstance(project).waitForSmartMode()
     val fileName = excludedFile.name
@@ -246,7 +272,27 @@ class SearchToolsetTest : McpToolsetTestBase() {
   }
 
   @Test
-  fun search_text_returns_match_coordinates() = runBlocking {
+  fun search_text_returns_match_coordinate_details() = runBlocking(Dispatchers.Default) {
+    awaitExternalChangesAndIndexing(project)
+    val query = "Search Everywhere file content"
+    testMcpTool(
+      SearchToolset::search_text.name,
+      buildJsonObject {
+        put("q", JsonPrimitive(query))
+      }
+    ) { actualResult ->
+      val result = parseResult(actualResult.textContent.text)
+      val item = result.items.firstOrNull { it.filePath.contains(searchFile.name) }
+      assertThat(item).isNotNull
+      assertThat(item?.startLine).isNotNull
+      assertThat(item?.startColumn).isNotNull
+      assertThat(item?.endLine).isNotNull
+      assertThat(item?.endColumn).isNotNull
+    }
+  }
+
+  @Test
+  fun search_text_returns_match_coordinates() = runBlocking(Dispatchers.Default) {
     awaitExternalChangesAndIndexing(project)
     val query = "Search Everywhere file content"
     testMcpTool(
@@ -266,7 +312,7 @@ class SearchToolsetTest : McpToolsetTestBase() {
   }
 
   @Test
-  fun search_regex_returns_match_coordinates() = runBlocking {
+  fun search_regex_returns_match_coordinates() = runBlocking(Dispatchers.Default) {
     awaitExternalChangesAndIndexing(project)
     testMcpTool(
       SearchToolset::search_regex.name,
@@ -285,7 +331,7 @@ class SearchToolsetTest : McpToolsetTestBase() {
   }
 
   @Test
-  fun search_text_respects_paths_glob() = runBlocking {
+  fun search_text_respects_paths_glob() = runBlocking(Dispatchers.Default) {
     awaitExternalChangesAndIndexing(project)
     val query = "Search Everywhere file mask content"
     testMcpTool(
@@ -302,7 +348,7 @@ class SearchToolsetTest : McpToolsetTestBase() {
   }
 
   @Test
-  fun search_text_respects_paths_and_exclude() = runBlocking {
+  fun search_text_respects_paths_and_exclude() = runBlocking(Dispatchers.Default) {
     awaitExternalChangesAndIndexing(project)
 
     testMcpTool(
@@ -323,7 +369,7 @@ class SearchToolsetTest : McpToolsetTestBase() {
   }
 
   @Test
-  fun search_text_respects_directory_excludes() = runBlocking {
+  fun search_text_respects_directory_excludes() = runBlocking(Dispatchers.Default) {
     val excludedByPathsFile = createFileInSubdir1(pathExcludedDirName, pathExcludedFileName, "Scoped file content")
     DumbService.getInstance(project).waitForSmartMode()
     testMcpTool(
@@ -346,7 +392,7 @@ class SearchToolsetTest : McpToolsetTestBase() {
   }
 
   @Test
-  fun search_regex_respects_paths_scope() = runBlocking {
+  fun search_regex_respects_paths_scope() = runBlocking(Dispatchers.Default) {
     awaitExternalChangesAndIndexing(project)
     testMcpTool(
       SearchToolset::search_regex.name,
@@ -362,7 +408,7 @@ class SearchToolsetTest : McpToolsetTestBase() {
   }
 
   @Test
-  fun search_symbol_returns_snippet_details() = runBlocking {
+  fun search_symbol_returns_match_coordinate_details() = runBlocking(Dispatchers.Default) {
     DumbService.getInstance(project).waitForSmartMode()
     val query = "${symbolPrefix}Alpha"
     testMcpTool(
@@ -375,11 +421,39 @@ class SearchToolsetTest : McpToolsetTestBase() {
       val item = result.items.firstOrNull { it.filePath.contains(symbolFileInSubdir1.name) }
       assertThat(item).isNotNull
       assertThat(item?.startLine).isNotNull
+      assertThat(item?.startColumn).isNotNull
+      assertThat(item?.endLine).isNotNull
+      assertThat(item?.endColumn).isNotNull
+      assertThat(result.partialResultReason).isNull()
     }
   }
 
   @Test
-  fun search_symbol_accepts_directory_path_without_trailing_slash() = runBlocking {
+  fun search_symbol_reports_partial_result_during_indexing() = runBlocking(Dispatchers.Default) {
+    DumbService.getInstance(project).waitForSmartMode()
+    // Touch the symbol fixture so its file exists in the project before flipping dumb mode on.
+    symbolFileInSubdir1.name
+    val query = "${symbolPrefix}Alpha"
+    val token = DumbModeTestUtils.startEternalDumbModeTask(project)
+    try {
+      testMcpTool(
+        SearchToolset::search_symbol.name,
+        buildJsonObject {
+          put("q", JsonPrimitive(query))
+        },
+      ) { actualResult ->
+        assertThat(actualResult.isError).isFalse()
+        val result = parseResult(actualResult.textContent.text)
+        assertThat(result.partialResultReason).isEqualTo(INDEXING_PARTIAL_RESULT_REASON)
+      }
+    }
+    finally {
+      DumbModeTestUtils.endEternalDumbModeTaskAndWaitForSmartMode(project, token)
+    }
+  }
+
+  @Test
+  fun search_symbol_accepts_directory_path_without_trailing_slash() = runBlocking(Dispatchers.Default) {
     val directoryName = "se_symbol_dir_4a1c"
     val fileName = "se_symbol_dir_4a1c.kt"
     val symbolName = "SeSymbolDir4a1c"
@@ -399,7 +473,7 @@ class SearchToolsetTest : McpToolsetTestBase() {
   }
 
   @Test
-  fun search_symbol_respects_paths_scope() = runBlocking {
+  fun search_symbol_respects_paths_scope() = runBlocking(Dispatchers.Default) {
     DumbService.getInstance(project).waitForSmartMode()
     testMcpTool(
       SearchToolset::search_symbol.name,
@@ -415,7 +489,7 @@ class SearchToolsetTest : McpToolsetTestBase() {
   }
 
   @Test
-  fun search_symbol_respects_paths_excludes() = runBlocking {
+  fun search_symbol_respects_paths_excludes() = runBlocking(Dispatchers.Default) {
     DumbService.getInstance(project).waitForSmartMode()
     testMcpTool(
       SearchToolset::search_symbol.name,
@@ -431,7 +505,64 @@ class SearchToolsetTest : McpToolsetTestBase() {
   }
 
   @Test
-  fun search_symbol_respects_limit_and_sets_more() = runBlocking {
+  fun search_symbol_respects_paths_excludes_before_limit() = runBlocking(Dispatchers.Default) {
+    repeat(6) { index ->
+      createFileInSubdir1("se_symbol_excluded_limit_$index", "se_symbol_excluded_limit_$index.kt", "class ${symbolPrefix}A$index {}\n")
+    }
+    DumbService.getInstance(project).waitForSmartMode()
+    testMcpTool(
+      SearchToolset::search_symbol.name,
+      buildJsonObject {
+        put("q", JsonPrimitive(symbolPrefix))
+        put("paths", JsonArray(listOf(JsonPrimitive("!subdir1/**"))))
+        put("limit", JsonPrimitive(1))
+      }
+    ) { actualResult ->
+      val result = parseResult(actualResult.textContent.text)
+      val filePaths = result.filePaths()
+      assertThat(result.items).hasSize(1)
+      assertThat(filePaths).anyMatch { it.contains(symbolFileInSubdir2.name) }
+      assertThat(filePaths).noneMatch { it.contains("subdir1") }
+    }
+  }
+
+  @Test
+  fun search_symbol_description_suggests_include_external_retry() = runBlocking(Dispatchers.Default) {
+    withConnection { client ->
+      val tool = client.listTools().tools.first { it.name == SearchToolset::search_symbol.name }
+      assertThat(tool.description).contains("include_external=true")
+    }
+  }
+
+  private suspend fun attachSdkSource(symbolName: String, sourceCode: String): VirtualFile {
+    val root = Files.createTempDirectory("mcp-sdk-$symbolName")
+    val sourcePath = root.resolve("sdk/$symbolName.java")
+    Files.createDirectories(sourcePath.parent)
+    Files.writeString(sourcePath, sourceCode)
+    val rootFile = com.intellij.openapi.vfs.LocalFileSystem.getInstance().refreshAndFindFileByNioFile(root)
+                   ?: error("Cannot find sdk root $root")
+    val sourceFile = com.intellij.openapi.vfs.LocalFileSystem.getInstance().refreshAndFindFileByNioFile(sourcePath)
+                     ?: error("Cannot find source file $sourcePath")
+    val sdkTable = ProjectJdkTable.getInstance(project)
+    val sdk = sdkTable.createSdk("mcp-sdk-$symbolName-${System.nanoTime()}", sdkTable.defaultSdkType)
+    edtWriteAction {
+      sdk.sdkModificator.apply {
+        homePath = root.toString()
+        versionString = "test"
+        addRoot(rootFile, com.intellij.openapi.roots.OrderRootType.CLASSES)
+        addRoot(rootFile, com.intellij.openapi.roots.OrderRootType.SOURCES)
+        commitChanges()
+      }
+      sdkTable.addJdk(sdk, project)
+      ModuleRootModificationUtil.setModuleSdk(moduleFixture.get(), sdk)
+    }
+    awaitExternalChangesAndIndexing(project)
+    DumbService.getInstance(project).waitForSmartMode()
+    return sourceFile
+  }
+
+  @Test
+  fun search_symbol_respects_limit_and_sets_more() = runBlocking(Dispatchers.Default) {
     DumbService.getInstance(project).waitForSmartMode()
     testMcpTool(
       SearchToolset::search_symbol.name,
@@ -451,7 +582,7 @@ class SearchToolsetTest : McpToolsetTestBase() {
   }
 
   @Test
-  fun search_file_respects_limit_and_sets_more() = runBlocking {
+  fun search_file_respects_limit_and_sets_more() = runBlocking(Dispatchers.Default) {
     DumbService.getInstance(project).waitForSmartMode()
     val query = "se_max_results_8b1c_*.txt"
     testMcpTool(

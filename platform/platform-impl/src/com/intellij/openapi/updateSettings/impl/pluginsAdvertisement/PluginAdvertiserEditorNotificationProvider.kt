@@ -10,6 +10,7 @@ import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.ide.plugins.advertiser.PluginData
 import com.intellij.ide.plugins.marketplace.MarketplaceRequests
 import com.intellij.ide.plugins.pluginRequiresUltimatePluginButItsDisabled
+import com.intellij.ide.trustedProjects.TrustedProjects
 import com.intellij.openapi.application.ApplicationInfo
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.EDT
@@ -30,13 +31,13 @@ import com.intellij.openapi.updateSettings.impl.pluginsAdvertisement.PluginAdver
 import com.intellij.openapi.updateSettings.impl.pluginsAdvertisement.PluginAdvertiserExtensionsStateService.ExtensionDataProvider
 import com.intellij.openapi.updateSettings.impl.pluginsAdvertisement.PluginAdvertiserService.Companion.getSuggestedCommercialIdeCode
 import com.intellij.openapi.updateSettings.impl.pluginsAdvertisement.PluginAdvertiserService.Companion.isCommunityIde
-import com.intellij.openapi.util.IntellijInternalApi
 import com.intellij.openapi.util.NlsContexts
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.EditorNotificationPanel
 import com.intellij.ui.EditorNotificationProvider
 import com.intellij.ui.EditorNotifications
 import com.intellij.ui.HyperlinkLabel
+import com.intellij.util.application
 import fleet.util.Either
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -54,18 +55,17 @@ import javax.swing.JComponent
 import javax.swing.JLabel
 
 @ApiStatus.Internal
-@IntellijInternalApi
 class PluginAdvertiserEditorNotificationProvider : EditorNotificationProvider, DumbAware {
 
   override fun collectNotificationData(project: Project, file: VirtualFile): Function<in FileEditor, out JComponent?>? {
-    val app = ApplicationManager.getApplication()
-    if (app.isUnitTestMode || app.isHeadlessEnvironment || tryUltimateIsDisabled()) {
+    if (!TrustedProjects.isProjectTrusted(project)) return null
+
+    if (application.isHeadlessEnvironment || tryUltimateIsDisabled()) {
       return null
     }
 
-    val providedSuggestion = SUGGESTION_EP_NAME.extensionList.asSequence()
-      .mapNotNull { it.getSuggestion(project, file) }
-      .firstOrNull()
+    val providedSuggestion = SUGGESTION_EP_NAME.extensionList
+      .firstNotNullOfOrNull { it.getSuggestion(project, file) }
 
     val suggestionChoice = getSuggestionData(project = project,
                                              activeProductCode = service<ApplicationInfo>().build.productCode,
@@ -147,7 +147,7 @@ class PluginAdvertiserEditorNotificationProvider : EditorNotificationProvider, D
       val status = if (isCommunityIde()) EditorNotificationPanel.Status.Promo else EditorNotificationPanel.Status.Info
       val panel = object : EditorNotificationPanel(fileEditor, status) {
         init {
-          label = myLabel
+          label = myTextLabel
         }
       }
 
@@ -309,8 +309,7 @@ private fun logSuggestionShown(project: Project, pluginIds: Collection<PluginId>
 }
 
 private fun logSuggestedProducts(project: Project, suggestedIdes: List<SuggestedIde>) {
-  for (ide in suggestedIdes) {
-    val productCode = ide.productCode
+  for ((_, productCode) in suggestedIdes) {
     if (!loggedIdeSuggestions.contains(productCode)) {
       FUSEventSource.EDITOR.logIdeSuggested(project, productCode)
       loggedIdeSuggestions.add(productCode)
@@ -334,7 +333,7 @@ private fun getSuggestionData(
   }
 }
 
-private fun getSuggestionDataByDetector(project: Project, suggestion: PluginAdvertisedByFileContent): AdvertiserSuggestion? {
+private fun getSuggestionDataByDetector(project: Project, suggestion: PluginAdvertisedByFileContent): AdvertiserSuggestion {
   val implementationName = "${FILE_HANDLER_KIND}:${suggestion.fileHandler.id}"
 
   return AdvertiserSuggestion(
@@ -349,7 +348,6 @@ private fun getSuggestionDataByDetector(project: Project, suggestion: PluginAdve
 }
 
 @ApiStatus.Internal
-@IntellijInternalApi
 @TestOnly
 fun getSuggestionData(
   project: Project,

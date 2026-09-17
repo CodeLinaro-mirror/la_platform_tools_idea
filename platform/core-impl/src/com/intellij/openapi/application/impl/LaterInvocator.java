@@ -4,6 +4,7 @@ package com.intellij.openapi.application.impl;
 import com.intellij.diagnostic.LoadingState;
 import com.intellij.model.SideEffectGuard;
 import com.intellij.openapi.Disposable;
+import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.application.ModalityStateListener;
@@ -29,7 +30,6 @@ import com.intellij.util.containers.CollectionFactory;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.Stack;
 import com.intellij.util.ui.EDT;
-import kotlin.jvm.Volatile;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
@@ -59,10 +59,8 @@ public final class LaterInvocator {
   private static final Map<Project, List<Dialog>> projectToModalEntities = new WeakHashMap<>(); // accessed in EDT only
   private static final Map<Project, Stack<ModalityState>> projectToModalEntitiesStack = new WeakHashMap<>(); // accessed in EDT only
   private static final Stack<ModalityStateEx> ourModalityStack = new Stack<>((ModalityStateEx)ModalityState.nonModal());// guarded by ourModalityStack
-  private static final EventDispatcher<ModalityStateListener> ourModalityStateMulticaster =
-    EventDispatcher.create(ModalityStateListener.class);
-  @Volatile
-  private static NonBlockingFlushQueue ourNonBlockingEdtQueue = null;
+  private static final EventDispatcher<ModalityStateListener> ourModalityStateMulticaster = EventDispatcher.create(ModalityStateListener.class);
+  private volatile static NonBlockingFlushQueue ourNonBlockingEdtQueue;
 
   public static void initializeNonBlockingFlushQueue(@NotNull ThreadingSupport threadingSupport) {
     ourNonBlockingEdtQueue = new NonBlockingFlushQueue(threadingSupport);
@@ -71,6 +69,15 @@ public final class LaterInvocator {
   public static void addModalityStateListener(@NotNull ModalityStateListener listener, @NotNull Disposable parentDisposable) {
     if (!ourModalityStateMulticaster.getListeners().contains(listener)) {
       ourModalityStateMulticaster.addListener(listener, parentDisposable);
+    }
+  }
+
+  private static void fireBeforeModalityStateChanged(boolean entering, @NotNull Object modalEntity) {
+    ourModalityStateMulticaster.getMulticaster().beforeModalityStateChanged(entering, modalEntity);
+
+    Application app = ApplicationManager.getApplication();
+    if (app != null) {
+      app.getMessageBus().syncPublisher(ModalityStateListener.TOPIC).beforeModalityStateChanged(entering, modalEntity);
     }
   }
 
@@ -187,7 +194,7 @@ public final class LaterInvocator {
       LOG.debug("enterModal:" + modalEntity);
     }
 
-    ourModalityStateMulticaster.getMulticaster().beforeModalityStateChanged(true, modalEntity);
+    fireBeforeModalityStateChanged(true, modalEntity);
 
     ourModalEntities.add(modalEntity);
     synchronized (ourModalityStack) {
@@ -208,7 +215,7 @@ public final class LaterInvocator {
       LOG.debug("enterModal:" + dialog.getName() + " ; for project: " + project.getName());
     }
 
-    ourModalityStateMulticaster.getMulticaster().beforeModalityStateChanged(true, dialog);
+    fireBeforeModalityStateChanged(true, dialog);
 
     List<Dialog> modalEntitiesList = projectToModalEntities.computeIfAbsent(project, __->ContainerUtil.createLockFreeCopyOnWriteList());
     modalEntitiesList.add(dialog);
@@ -240,7 +247,7 @@ public final class LaterInvocator {
       LOG.debug("leaveModal:" + dialog.getName() + " ; for project: " + project.getName());
     }
 
-    ourModalityStateMulticaster.getMulticaster().beforeModalityStateChanged(false, dialog);
+    fireBeforeModalityStateChanged(false, dialog);
 
     int index = ourModalEntities.indexOf(dialog);
 
@@ -281,7 +288,7 @@ public final class LaterInvocator {
     }
 
     Cancellation.executeInNonCancelableSection(() -> {
-      ourModalityStateMulticaster.getMulticaster().beforeModalityStateChanged(false, modalEntity);
+      fireBeforeModalityStateChanged(false, modalEntity);
 
       int index = ourModalEntities.indexOf(modalEntity);
       LOG.assertTrue(index >= 0);

@@ -6,7 +6,7 @@ package com.intellij.platform.runtime.repository;
  * Meaning of the entries is the same as entries in {@link com.intellij.ide.plugins.ModuleLoadingRule} for content modules in plugins, but
  * here it applies not only to plugin modules, but to the platform modules as well.
  * In the future we can reuse this enum instead of having two copies.
- * @see com.intellij.platform.runtime.repository.IncludedRuntimeModule#getLoadingRule()
+ * @see IncludedRuntimeModule#getLoadingRule()
  */
 public enum RuntimeModuleLoadingRule {
   /**
@@ -28,6 +28,7 @@ public enum RuntimeModuleLoadingRule {
   /**
    * The module provides code which can be reused in other modules rather when user-visible functionality, it will be loaded only if some 
    * {@link #REQUIRED} or {@link #OPTIONAL} module depends on it.
+   * This variant <strong>isn't implemented yet</strong> and currently treated the same way as {@link OPTIONAL} (see IJPL-242789).
    */
-  ON_DEMAND
+  ON_DEMAND,
 }

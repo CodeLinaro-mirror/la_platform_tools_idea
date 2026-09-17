@@ -56,6 +56,7 @@ public abstract class ThreesideDiffViewer<T extends EditorHolder> extends Listen
     myContentPanel = new ThreesideContentPanel.Holders(myHolders);
 
     myLoadingPanel = new JBLoadingPanel(new BorderLayout(), this, 300);
+    myLoadingPanel.setOpaque(false);
     myLoadingPanel.add(myContentPanel, BorderLayout.CENTER);
 
     myPanel = new SimpleDiffPanel(myLoadingPanel, context) {
@@ -151,6 +152,7 @@ public abstract class ThreesideDiffViewer<T extends EditorHolder> extends Listen
   public void uiDataSnapshot(@NotNull DataSink sink) {
     super.uiDataSnapshot(sink);
     sink.set(DiffDataKeys.CURRENT_CONTENT, getCurrentSide().select(myRequest.getContents()));
+    sink.set(DiffDataKeys.DIFF_VIEWER, this);
   }
 
   //

@@ -1,4 +1,4 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInspection.dataFlow.java;
 
 import com.intellij.codeInsight.ExceptionUtil;
@@ -18,6 +18,7 @@ import com.intellij.codeInspection.dataFlow.TypeConstraint;
 import com.intellij.codeInspection.dataFlow.TypeConstraints;
 import com.intellij.codeInspection.dataFlow.java.anchor.JavaExpressionAnchor;
 import com.intellij.codeInspection.dataFlow.java.anchor.JavaPolyadicPartAnchor;
+import com.intellij.codeInspection.dataFlow.java.anchor.JavaSwitchDeconstructionLabelAnchor;
 import com.intellij.codeInspection.dataFlow.java.anchor.JavaSwitchLabelTakenAnchor;
 import com.intellij.codeInspection.dataFlow.java.inliner.AccessorInliner;
 import com.intellij.codeInspection.dataFlow.java.inliner.AllNotNullInliner;
@@ -53,6 +54,7 @@ import com.intellij.codeInspection.dataFlow.java.inst.MethodReferenceInstruction
 import com.intellij.codeInspection.dataFlow.java.inst.NotInstruction;
 import com.intellij.codeInspection.dataFlow.java.inst.NumericBinaryInstruction;
 import com.intellij.codeInspection.dataFlow.java.inst.PrimitiveConversionInstruction;
+import com.intellij.codeInspection.dataFlow.java.inst.SimpleEqWithoutCorrectionInstruction;
 import com.intellij.codeInspection.dataFlow.java.inst.StringConcatInstruction;
 import com.intellij.codeInspection.dataFlow.java.inst.ThrowInstruction;
 import com.intellij.codeInspection.dataFlow.java.inst.TypeCastInstruction;
@@ -369,6 +371,18 @@ public class ControlFlowAnalyzer extends JavaElementVisitor {
 
   void addInstruction(Instruction i) {
     myCurrentFlow.addInstruction(i);
+  }
+
+  private static @NotNull Instruction createSwitchLabelMatchInstruction(@Nullable PsiType comparedType, @NotNull PsiExpression label) {
+    JavaSwitchLabelTakenAnchor anchor = new JavaSwitchLabelTakenAnchor(label);
+    if (comparedType != null && isFloatingPoint(comparedType) && comparedType.equals(label.getType())) {
+      return new SimpleEqWithoutCorrectionInstruction(anchor);
+    }
+    return new BooleanBinaryInstruction(RelationType.EQ, true, anchor);
+  }
+
+  private static boolean isFloatingPoint(@Nullable PsiType type) {
+    return PsiTypes.floatType().equals(type) || PsiTypes.doubleType().equals(type);
   }
 
   int getInstructionCount() {
@@ -1234,7 +1248,7 @@ public class ControlFlowAnalyzer extends JavaElementVisitor {
                   if (PsiPrimitiveType.getUnboxedType(targetType) == null) {
                     addInstruction(new PushInstruction(expressionValue, null));
                     expr.accept(this);
-                    addInstruction(new BooleanBinaryInstruction(RelationType.EQ, true, new JavaSwitchLabelTakenAnchor(expr)));
+                    addInstruction(createSwitchLabelMatchInstruction(targetType, expr));
                     addInstruction(new ConditionalGotoInstruction(targetOffset, DfTypes.TRUE));
                   }
                   else {
@@ -1245,7 +1259,7 @@ public class ControlFlowAnalyzer extends JavaElementVisitor {
                     addInstruction(new PushInstruction(expressionValue, null));
                     generateBoxingUnboxingInstructionFor(selector, PsiPrimitiveType.getUnboxedType(targetType));
                     expr.accept(this);
-                    addInstruction(new BooleanBinaryInstruction(RelationType.EQ, true, new JavaSwitchLabelTakenAnchor(expr)));
+                    addInstruction(createSwitchLabelMatchInstruction(PsiPrimitiveType.getUnboxedType(targetType), expr));
                     DeferredOffset gotoOffset = new DeferredOffset();
                     addInstruction(new GotoInstruction(gotoOffset));
 
@@ -1363,9 +1377,10 @@ public class ControlFlowAnalyzer extends JavaElementVisitor {
               PsiField field = PropertyUtil.getFieldOfGetter(accessor);
               VariableDescriptor descriptor = field == null ? new GetterDescriptor(accessor) : new PlainDescriptor(field);
               DfaVariableValue accessorDfaVar = getFactory().getVarFactory().createVariableValue(descriptor, patternDfaVar);
-              addInstruction(new PushInstruction(accessorDfaVar, null));
+              JavaSwitchDeconstructionLabelAnchor labelAnchor = new JavaSwitchDeconstructionLabelAnchor(patternComponent);
+              addInstruction(new PushInstruction(accessorDfaVar, labelAnchor));
               if (JavaPsiSwitchUtil.mayCauseMatchExceptionDuringDeconstruction(deconstructionPattern, recordComponent, patternComponent, Set.of())) {
-                addNullCheck(deconstructionMatchException.problem(patternComponent, null));
+                addNullCheck(deconstructionMatchException.problem(labelAnchor, patternComponent));
               }
               processPattern(sourcePattern, patternComponent, substitutor.substitute(recordComponent.getType()), null, endPatternOffset);
             }

@@ -18,6 +18,7 @@ import com.intellij.grazie.spellcheck.engine.GrazieSpellCheckerEngine;
 import com.intellij.lang.LanguageNamesValidation;
 import com.intellij.lang.injection.InjectedLanguageManager;
 import com.intellij.lang.refactoring.NamesValidator;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
@@ -50,12 +51,14 @@ import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -66,9 +69,17 @@ import static com.intellij.spellchecker.tokenizer.SpellcheckingStrategy.getSpell
 
 public final class GrazieSpellCheckingInspection extends SpellCheckingInspection {
 
+  private static final Logger LOGGER = Logger.getInstance(GrazieSpellCheckingInspection.class);
+  private static final AtomicBoolean IS_LOGGED = new AtomicBoolean(false);
+
   public static Set<SpellCheckingScope> buildAllowedScopes(PsiElement element) {
-    var tool = getTool(element.getContainingFile(), SPELL_CHECKING_INSPECTION_TOOL_NAME, GrazieSpellCheckingInspection.class);
-    if (tool == null) return Set.of();
+    PsiFile file = element.getContainingFile();
+    var tool = getTool(file, SPELL_CHECKING_INSPECTION_TOOL_NAME, GrazieSpellCheckingInspection.class);
+    if (tool == null) {
+      // The commit editor uses a restricted profile that omits the spellcheck inspection.
+      // CommitAnnotator (already gated by the "Commit messages" toggle) drives the check, so allow all scopes.
+      return CommitMessage.isCommitMessage(file) ? EnumSet.allOf(SpellCheckingScope.class) : Set.of();
+    }
     return tool.buildAllowedScopes();
   }
 
@@ -391,6 +402,10 @@ public final class GrazieSpellCheckingInspection extends SpellCheckingInspection
                                       @NotNull TextRange range,
                                       boolean useRename,
                                       String word) {
+    if (!useRename && IS_LOGGED.compareAndSet(false, true)) {
+      LOGGER.warn("Consider migrating programming language '" + element.getLanguage().getDisplayName() + "' to text-level spellchecking. " +
+                  "See SpellcheckingStrategy#useTextLevelSpellchecking() documentation.");
+    }
     if (holder.isOnTheFly()) {
       addRegularDescriptor(element, range, holder, useRename, word);
     }

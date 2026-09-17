@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Objects;
 
 
+@SuppressWarnings("deprecation")
 public class PyTupleType extends PyClassTypeImpl implements PyCollectionType {
 
   private final PyUnpackedTupleType myUnpackedTupleType;
@@ -52,7 +53,9 @@ public class PyTupleType extends PyClassTypeImpl implements PyCollectionType {
     if (myUnpackedTupleType.isUnbound()) {
       return "(" + (getTypeName(getIteratedItemType())) + ", ...)";
     }
-    return "(" + StringUtil.join(myUnpackedTupleType.getElementTypes(), PyTupleType::getTypeName, ", ") + ")";
+    var elementTypes = myUnpackedTupleType.getElementTypes();
+    var suffix = elementTypes.size() == 1 ? ",)" : ")";
+    return "(" + StringUtil.join(elementTypes, PyTupleType::getTypeName, ", ") + suffix;
   }
 
   private static @Nullable String getTypeName(@Nullable PyType type) {
@@ -75,7 +78,7 @@ public class PyTupleType extends PyClassTypeImpl implements PyCollectionType {
       return getIteratedItemType();
     }
     List<PyType> elementTypes = myUnpackedTupleType.getElementTypes();
-    return index >= 0 && index < elementTypes.size() ? elementTypes.get(index) : null;
+    return index >= 0 && index < elementTypes.size() ? elementTypes.get(index) : PyAnyType.getUnknown();
   }
 
   public int getElementCount() {
@@ -101,8 +104,12 @@ public class PyTupleType extends PyClassTypeImpl implements PyCollectionType {
   }
 
   @Override
-  public @NotNull List<PyType> getElementTypes() {
+  public @NotNull List<PyType> getTypeArguments() {
     return myUnpackedTupleType.getElementTypes();
+  }
+
+  public @NotNull List<PyType> getElementTypes() {
+    return getTypeArguments();
   }
 
   @Override

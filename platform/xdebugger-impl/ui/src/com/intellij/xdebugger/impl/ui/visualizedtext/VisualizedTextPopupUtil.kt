@@ -1,9 +1,13 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.xdebugger.impl.ui.visualizedtext
 
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.EDT
+import com.intellij.openapi.components.Service
+import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.Attachment
+import com.intellij.openapi.diagnostic.ControlFlowException
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.extensions.ExtensionPointName
@@ -14,10 +18,12 @@ import com.intellij.openapi.ui.popup.JBPopup
 import com.intellij.openapi.util.DimensionService
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.text.StringUtil
+import com.intellij.openapi.vfs.limits.FileSizeLimit
 import com.intellij.openapi.wm.WindowManager
-import com.intellij.ui.AppUIUtil
+import com.intellij.platform.util.coroutines.childScope
 import com.intellij.ui.ScreenUtil
 import com.intellij.ui.WindowMoveListener
+import com.intellij.ui.codeFloatingToolbar.CodeFloatingToolbar
 import com.intellij.ui.components.JBTabbedPane
 import com.intellij.util.ui.JBUI
 import com.intellij.xdebugger.frame.XFullValueEvaluator
@@ -27,10 +33,20 @@ import com.intellij.xdebugger.impl.ui.TextViewer
 import com.intellij.xdebugger.impl.ui.XDebuggerUIConstants
 import com.intellij.xdebugger.ui.TextValueVisualizer
 import com.intellij.xdebugger.ui.VisualizedContentTab
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.jetbrains.annotations.ApiStatus
 import java.awt.CardLayout
 import java.awt.Dimension
-import java.awt.Font
 import java.awt.Rectangle
 import java.awt.event.MouseEvent
 import java.util.concurrent.atomic.AtomicBoolean
@@ -66,6 +82,7 @@ object VisualizedTextPopupUtil {
     else {
       popup.showInBestPositionFor(editor)
     }
+    CodeFloatingToolbar.getToolbar(editor)?.hideWhilePopupVisible(popup)
     return popup
   }
 
@@ -83,14 +100,18 @@ object VisualizedTextPopupUtil {
   }
 
   // We return pairs because it's easier to do all dangerous stuff and catch all errors in one place.
-  fun collectVisualizedTabs(project: Project, fullValue: String, parentDisposable: Disposable): List<Pair<VisualizedContentTab, JComponent>> {
-    val tabs = calcNonTrivialVisualizedTabs(fullValue) +
-               // Explicitly add the fallback raw visualizer to make it the last one.
-               RawTextVisualizer.visualize(fullValue)
+  suspend fun collectVisualizedTabs(project: Project, fullValue: String, parentDisposable: Disposable): List<Pair<VisualizedContentTab, JComponent>> {
+    val tabs = withContext(Dispatchers.Default) {
+      calcNonTrivialVisualizedTabs(fullValue) +
+        // Explicitly add the fallback raw visualizer to make it the last one.
+        RawTextVisualizer.visualize(fullValue)
+    }
 
-    return tabs.mapNotNull { tab ->
-      wrapUnsafeAction(fullValue, "create visualized component (${tab.id})") {
-        tab to tab.createComponent(project, parentDisposable)
+    return withContext(Dispatchers.EDT) {
+      tabs.mapNotNull { tab ->
+        wrapUnsafeAction(fullValue, "create visualized component (${tab.id})") {
+          tab to tab.createComponent(project, parentDisposable)
+        }
       }
     }
   }
@@ -102,7 +123,10 @@ object VisualizedTextPopupUtil {
       calcNonTrivialVisualizedTabs(fullValue).isNotEmpty()
 }
 
-internal class VisualizedTextPanel(private val project: Project) : JPanel(CardLayout()), Disposable.Default  {
+internal class VisualizedTextPanel(private val project: Project) : JPanel(CardLayout()), Disposable {
+  private val cs = project.service<VisualizedTextPopupUtilProjectCoroutineScope>().cs.childScope("showVisualizedText")
+  private val visualizationRequests = Channel<VisualizationRequest>(capacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+
   private sealed class State
   private data class Showing(val text: String) : State()
   private data class Editing(val initText: String, val editor: Editor) : State()
@@ -111,7 +135,30 @@ internal class VisualizedTextPanel(private val project: Project) : JPanel(CardLa
   private var state: State = Other
 
   init {
-    showTextMessage(XDebuggerUIConstants.getEvaluatingExpressionMessage())
+    cs.launch(Dispatchers.EDT) {
+      // evaluating...
+      showTextMessage(XDebuggerUIConstants.getEvaluatingExpressionMessage())
+
+      // since text visualization computation may be slow and non-cancellable,
+      // we will just asynchronously cancel previous requests, don't wait and start a new computation
+      var requestHandlingJob: Job? = null
+
+      for (request in visualizationRequests) {
+        requestHandlingJob?.cancel()
+        when (request) {
+          is VisualizationRequest.Text -> {
+            requestHandlingJob = launch(Dispatchers.EDT) {
+              handleTextVisualization(request.text, request.onDone)
+            }
+          }
+          is VisualizationRequest.Error -> {
+            showTextMessage("ERROR OCCURRED: ${request.errorMessage}") {
+              it.foreground = XDebuggerUIConstants.ERROR_MESSAGE_ATTRIBUTES.fgColor
+            }
+          }
+        }
+      }
+    }
   }
 
   private fun showComponent(component: JComponent) {
@@ -122,7 +169,7 @@ internal class VisualizedTextPanel(private val project: Project) : JPanel(CardLa
     repaint()
   }
 
-  fun showTextMessage(value: String, format: (TextViewer) -> Unit = {}) {
+  private fun showTextMessage(value: String, format: (TextViewer) -> Unit = {}) {
     val textArea = DebuggerUIUtil.createTextViewer(value, project)
     format(textArea)
     textArea.preferredSize = JBUI.size(300, 60)
@@ -131,27 +178,43 @@ internal class VisualizedTextPanel(private val project: Project) : JPanel(CardLa
   }
 
   fun showError(errorMessage: String) {
-    showTextMessage("ERROR OCCURRED: $errorMessage") {
-      it.foreground = XDebuggerUIConstants.ERROR_MESSAGE_ATTRIBUTES.fgColor
-    }
+    visualizationRequests.trySend(VisualizationRequest.Error(errorMessage))
   }
 
   /** Visualize the text and show it nicely. */
-  fun showVisualizedText(value: String) {
-    val tabs = VisualizedTextPopupUtil.collectVisualizedTabs(project, value, parentDisposable = this)
-    if (tabs.isEmpty()) {
-      // popup might already be canceled, ignore it
-      return
+  fun showVisualizedText(value: String, onDone: Runnable? = null) {
+    visualizationRequests.trySend(VisualizationRequest.Text(value, onDone))
+  }
+
+  private suspend fun handleTextVisualization(value: String, onDone: Runnable?) {
+    try {
+      val tabs = VisualizedTextPopupUtil.collectVisualizedTabs(project, value, parentDisposable = this@VisualizedTextPanel)
+      if (!currentCoroutineContext().isActive || tabs.isEmpty()) {
+        // popup might already be canceled, ignore it
+        return
+      }
+
+      val component = if (tabs.size > 1) {
+        createTabbedPane(tabs)
+      }
+      else {
+        val (tab, component) = tabs.first()
+        tab.onShown(project, firstTime = true)
+        component
+      }
+      showComponent(component)
+      state = Showing(value)
     }
-    val component = if (tabs.size > 1) {
-      createTabbedPane(tabs)
-    } else {
-      val (tab, component) = tabs.first()
-      tab.onShown(project, firstTime = true)
-      component
+    catch (e: Exception) {
+      if (e is CancellationException || e is ControlFlowException) throw e
+      LOG.error(e)
+      showError(e.toString())
     }
-    showComponent(component)
-    state = Showing(value)
+    finally {
+      if (currentCoroutineContext().isActive) {
+        onDone?.run()
+      }
+    }
   }
 
   private fun createTabbedPane(tabsAndComponents: List<Pair<VisualizedContentTab, JComponent>>): JComponent {
@@ -227,6 +290,16 @@ internal class VisualizedTextPanel(private val project: Project) : JPanel(CardLa
     showVisualizedText(newValue)
     return newValue
   }
+
+  override fun dispose() {
+    cs.cancel()
+  }
+
+  private sealed interface VisualizationRequest {
+    class Error(val errorMessage: String) : VisualizationRequest
+
+    class Text(val text: String, val onDone: Runnable?) : VisualizationRequest
+  }
 }
 
 private const val SELECTED_TAB_KEY_PREFIX = "DEBUGGER_VISUALIZED_TEXT_SELECTED_TAB#"
@@ -245,13 +318,20 @@ private fun guessTextFileType(fullValue: String): FileType =
     }
   ?: FileTypes.PLAIN_TEXT
 
-private fun calcNonTrivialVisualizedTabs(fullValue: String): List<VisualizedContentTab> =
-  extensionPoint.extensionList
+private fun calcNonTrivialVisualizedTabs(fullValue: String): List<VisualizedContentTab> {
+  if (fullValue.length > FileSizeLimit.getDefaultContentLoadLimit()) {
+    // Don't try to jump over your head.
+    LOG.info("value is too big to visualize, length: ${fullValue.length}")
+    return emptyList()
+  }
+
+  return extensionPoint.extensionList
     .flatMap { viz ->
       wrapUnsafeAction(fullValue, "visualize value ($viz)") {
         viz.visualize(fullValue)
       } ?: emptyList()
     }
+}
 
 /** Extensions trying visualizing value might fail with arbitrary exceptions. Handle them with care. */
 private fun <R> wrapUnsafeAction(fullValue: String, actionDescription: String, action: () -> R): R? {
@@ -259,6 +339,7 @@ private fun <R> wrapUnsafeAction(fullValue: String, actionDescription: String, a
     return action()
   }
   catch (t: Throwable) {
+    if (t is CancellationException || t is ControlFlowException) throw t
     LOG.error("failed to $actionDescription", t, Attachment("value.txt", fullValue))
     return null
   }
@@ -269,7 +350,7 @@ private class EvaluationCallback(private val panel: VisualizedTextPanel) : XFull
 
   private var lastFullValueHashCode = AtomicReference<Int?>()
 
-  override fun evaluated(fullValue: String, font: Font?) {
+  override fun evaluated(fullValue: String) {
     // This code is not expected to be called multiple times (e.g., statistics are expected to be collected only once),
     // but it is actually called in the case of huge Java string.
     // 1. NodeDescriptorImpl.updateRepresentation() calls ValueDescriptorImpl.calcRepresentation() and it calls labelChanged()
@@ -280,21 +361,11 @@ private class EvaluationCallback(private val panel: VisualizedTextPanel) : XFull
     if (hashCode == lastFullValueHashCode.get()) return
     lastFullValueHashCode.set(hashCode)
 
-    AppUIUtil.invokeOnEdt {
-      try {
-        panel.showVisualizedText(fullValue)
-      }
-      catch (e: Exception) {
-        LOG.error(e)
-        errorOccurred(e.toString())
-      }
-    }
+    panel.showVisualizedText(fullValue)
   }
 
   override fun errorOccurred(errorMessage: String) {
-    AppUIUtil.invokeOnEdt {
-      panel.showError(errorMessage)
-    }
+    panel.showError(errorMessage)
   }
 
   fun setObsolete() {
@@ -305,3 +376,6 @@ private class EvaluationCallback(private val panel: VisualizedTextPanel) : XFull
     return obsolete.get()
   }
 }
+
+@Service(Service.Level.PROJECT)
+private class VisualizedTextPopupUtilProjectCoroutineScope(val cs: CoroutineScope)

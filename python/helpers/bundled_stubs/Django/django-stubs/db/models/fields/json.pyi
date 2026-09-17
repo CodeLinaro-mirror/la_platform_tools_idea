@@ -1,6 +1,6 @@
 import json
 from collections.abc import Callable
-from typing import Any, ClassVar, TypeVar
+from typing import Any, ClassVar
 
 from django.db.backends.base.base import BaseDatabaseWrapper
 from django.db.models import Model, lookups
@@ -9,7 +9,7 @@ from django.db.models.fields import TextField
 from django.db.models.lookups import FieldGetDbPrepValueMixin, PostgresOperatorLookup, Transform
 from django.db.models.sql.compiler import SQLCompiler, _AsSqlType
 from django.utils.functional import _StrOrPromise
-from typing_extensions import Self, override
+from typing_extensions import Self, TypeVar, override
 
 from . import Field
 from .mixins import CheckFieldDefaultMixin
@@ -35,8 +35,6 @@ class JSONField(CheckFieldDefaultMixin, Field[_ST, _GT]):
     def get_transform(self, name: str) -> type[Transform] | KeyTransformFactory: ...  # type: ignore[override]
     @override
     def value_to_string(self, obj: Model) -> Any: ...
-    @override
-    def formfield(self, **kwargs: Any) -> Any: ...  # type: ignore[override]
 
 class DataContains(FieldGetDbPrepValueMixin, PostgresOperatorLookup): ...
 class ContainedBy(FieldGetDbPrepValueMixin, PostgresOperatorLookup): ...

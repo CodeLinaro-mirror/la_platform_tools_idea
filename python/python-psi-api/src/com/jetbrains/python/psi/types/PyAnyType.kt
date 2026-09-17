@@ -41,7 +41,7 @@ sealed class PyAnyType private constructor(override val name: String) : PyType {
   override fun assertValid(message: String?) {
   }
 
-  override fun <T> acceptTypeVisitor(visitor: PyTypeVisitor<T>): T? = when (this) {
+  override fun <T> acceptTypeVisitor(visitor: PyTypeVisitor<T>): T? = when(this) {
     is Any -> visitor.visitAnyType()
     is Unknown -> visitor.visitUnknownType()
   }
@@ -52,18 +52,19 @@ sealed class PyAnyType private constructor(override val name: String) : PyType {
     @JvmStatic
     val isEnabled: Boolean get() = Registry.`is`("python.type.any")
 
-    fun validate(it: PyType?) {
+    @JvmStatic
+    @JvmOverloads
+    fun validate(it: PyType?, context: PsiElement? = null) {
       if (!ApplicationManager.getApplication().isInternal) return
 
       if (isEnabled && it == null)
-        throw AssertionError("a type with a value of `null` was encountered while `PyAnyType` was enabled")
+        throw AssertionError("a python type with a value of `null` was encountered while `PyAnyType` was enabled.\n context: ${context?.text}")
       if (!isEnabled && it is PyAnyType)
-        throw AssertionError("a type with a value of `PyAnyType` was encountered while `PyAnyType` was disabled")
+        throw AssertionError("a python type with a value of `PyAnyType` was encountered while `PyAnyType` was disabled")
     }
 
     @JvmStatic
     val any: Any? get() = if (isEnabled) Any else null
-
     @JvmStatic
     val unknown: Unknown? get() = if (isEnabled) Unknown else null
   }

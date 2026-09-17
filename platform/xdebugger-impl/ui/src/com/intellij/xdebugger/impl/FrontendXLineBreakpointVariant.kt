@@ -29,6 +29,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import kotlinx.coroutines.channels.SendChannel
+import kotlinx.coroutines.future.await
 import kotlinx.coroutines.launch
 import org.jetbrains.annotations.ApiStatus
 import java.util.concurrent.CompletableFuture
@@ -43,10 +44,10 @@ interface FrontendXLineBreakpointVariant {
   val useAsInlineVariant: Boolean
 }
 
-@ApiStatus.Internal
-fun XLineBreakpointInstallationInfo.toRequest(hasBreakpoints: Boolean): XLineBreakpointInstallationRequest = XLineBreakpointInstallationRequest(
+private suspend fun XLineBreakpointInstallationInfo.toRequest(hasBreakpoints: Boolean) = XLineBreakpointInstallationRequest(
   types.map { XBreakpointTypeId(it.id) },
   position.toRpc(),
+  placement,
   isTemporary,
   isLogging,
   logExpression,
@@ -90,9 +91,9 @@ internal fun computeBreakpointProxy(
                        ?: throw kotlin.coroutines.cancellation.CancellationException()
         when (response) {
           is XRemoveBreakpointResponse -> {
-            val breakpoint = XBreakpointUIUtil.findBreakpointsAtLine(project, info).firstOrNull()
-            if (breakpoint != null) {
-              XBreakpointUIUtil.removeBreakpointIfPossible(project, info, breakpoint)
+            val breakpoints = XBreakpointUIUtil.findBreakpointsAtLine(project, info)
+            if (breakpoints.isNotEmpty()) {
+              XBreakpointUIUtil.removeBreakpointIfPossible(info, *breakpoints.toTypedArray()).await()
             }
             result.complete(null)
           }

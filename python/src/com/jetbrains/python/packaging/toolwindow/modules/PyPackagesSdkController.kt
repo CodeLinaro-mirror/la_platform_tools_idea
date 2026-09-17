@@ -3,6 +3,7 @@ package com.jetbrains.python.packaging.toolwindow.modules
 
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.EDT
+import com.intellij.util.concurrency.annotations.RequiresEdt
 import com.intellij.openapi.components.service
 import com.intellij.openapi.fileEditor.FileEditorManagerEvent
 import com.intellij.openapi.fileEditor.FileEditorManagerListener
@@ -23,8 +24,7 @@ import com.jetbrains.python.PyBundle
 import com.jetbrains.python.TraceContext
 import com.jetbrains.python.packaging.toolwindow.PyPackagingToolWindowService
 import com.jetbrains.python.packaging.utils.PyPackageCoroutine
-import com.jetbrains.python.sdk.PySdkPopupFactory
-import com.jetbrains.python.sdk.icon
+import com.jetbrains.python.sdk.pyInterpreterPresentation
 import com.jetbrains.python.sdk.pythonSdk
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -50,8 +50,9 @@ internal class PyPackagesSdkController(private val project: Project) : Disposabl
 
   private val sdkListRenderer = object : SimpleListCellRenderer<Sdk>() {
     override fun customize(list: JList<out Sdk>, value: Sdk, index: Int, selected: Boolean, hasFocus: Boolean) {
-      text = PySdkPopupFactory.shortenNameInPopup(value, 50)
-      icon = icon(value)
+      val presentation = value.pyInterpreterPresentation()
+      text = presentation.shortName
+      icon = presentation.icon
     }
   }
 
@@ -79,11 +80,13 @@ internal class PyPackagesSdkController(private val project: Project) : Disposabl
       .subscribe<FileEditorManagerListener>(FILE_EDITOR_MANAGER, fileEditorListener)
   }
 
+  @RequiresEdt
   fun refreshModuleListAndSelection() {
     refreshModuleList()
     restorePreviousSelection()
   }
 
+  @RequiresEdt
   private fun refreshModuleList() {
     (sdkList.model as DefaultListModel<Sdk>).apply {
       removeAllElements()
@@ -91,6 +94,7 @@ internal class PyPackagesSdkController(private val project: Project) : Disposabl
     }
   }
 
+  @RequiresEdt
   private fun restorePreviousSelection() {
     val selectedModuleName = sdkList.selectedValue?.name
     sdkList.selectedIndex = allSdks.indexOfFirst { it.name == selectedModuleName }
@@ -103,6 +107,7 @@ internal class PyPackagesSdkController(private val project: Project) : Disposabl
     }
   }
 
+  @RequiresEdt
   internal fun refreshAndSyncSelection(sdk: Sdk?) {
     sdkList.removeListSelectionListener(selectionListener)
     try {

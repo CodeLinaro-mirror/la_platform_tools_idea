@@ -1,9 +1,8 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package org.jetbrains.kotlin.idea.fir.highlighter;
 
 import com.intellij.testFramework.TestDataPath;
-import org.jetbrains.kotlin.idea.base.plugin.KotlinPluginMode;
 import org.jetbrains.kotlin.idea.base.test.TestRoot;
 import org.jetbrains.kotlin.idea.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils;
@@ -21,12 +20,6 @@ import org.jetbrains.kotlin.idea.highlighter.AbstractUsageHighlightingTest;
 @RunWith(JUnit3RunnerWithInners.class)
 @TestMetadata("../../idea/tests/testData/usageHighlighter")
 public class UsageHighlightingTestGenerated extends AbstractUsageHighlightingTest {
-    @java.lang.Override
-    @org.jetbrains.annotations.NotNull
-    public final KotlinPluginMode getPluginMode() {
-        return KotlinPluginMode.K2;
-    }
-
     private void runTest(String testDataFilePath) throws Exception {
         KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
     }
@@ -49,6 +42,21 @@ public class UsageHighlightingTestGenerated extends AbstractUsageHighlightingTes
     @TestMetadata("destructingDeclarationLambdaParams.kt")
     public void testDestructingDeclarationLambdaParams() throws Exception {
         runTest("../../idea/tests/testData/usageHighlighter/destructingDeclarationLambdaParams.kt");
+    }
+
+    @TestMetadata("destructuring.kt")
+    public void testDestructuring() throws Exception {
+        runTest("../../idea/tests/testData/usageHighlighter/destructuring.kt");
+    }
+
+    @TestMetadata("fullNameBasedDestructuringOnEntry.kt")
+    public void testFullNameBasedDestructuringOnEntry() throws Exception {
+        runTest("../../idea/tests/testData/usageHighlighter/fullNameBasedDestructuringOnEntry.kt");
+    }
+
+    @TestMetadata("fullNameBasedDestructuringOnInitializer.kt")
+    public void testFullNameBasedDestructuringOnInitializer() throws Exception {
+        runTest("../../idea/tests/testData/usageHighlighter/fullNameBasedDestructuringOnInitializer.kt");
     }
 
     @TestMetadata("functionNameIdentifier.kt")
@@ -131,8 +139,18 @@ public class UsageHighlightingTestGenerated extends AbstractUsageHighlightingTes
         runTest("../../idea/tests/testData/usageHighlighter/localVal.kt");
     }
 
+    @TestMetadata("positionBasedDestructuring.kt")
+    public void testPositionBasedDestructuring() throws Exception {
+        runTest("../../idea/tests/testData/usageHighlighter/positionBasedDestructuring.kt");
+    }
+
     @TestMetadata("primaryCtor.kt")
     public void testPrimaryCtor() throws Exception {
         runTest("../../idea/tests/testData/usageHighlighter/primaryCtor.kt");
+    }
+
+    @TestMetadata("shortNameBasedDestructuring.kt")
+    public void testShortNameBasedDestructuring() throws Exception {
+        runTest("../../idea/tests/testData/usageHighlighter/shortNameBasedDestructuring.kt");
     }
 }

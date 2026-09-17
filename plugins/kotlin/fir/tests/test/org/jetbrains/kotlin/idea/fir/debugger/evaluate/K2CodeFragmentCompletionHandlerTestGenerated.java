@@ -1,9 +1,8 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package org.jetbrains.kotlin.idea.fir.debugger.evaluate;
 
 import com.intellij.testFramework.TestDataPath;
-import org.jetbrains.kotlin.idea.base.plugin.KotlinPluginMode;
 import org.jetbrains.kotlin.idea.base.test.TestRoot;
 import org.jetbrains.kotlin.idea.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils;
@@ -20,14 +19,13 @@ import org.junit.runner.RunWith;
 @RunWith(JUnit3RunnerWithInners.class)
 @TestMetadata("../../completion/testData/handlers/runtimeCast")
 public class K2CodeFragmentCompletionHandlerTestGenerated extends AbstractK2CodeFragmentCompletionHandlerTest {
-    @java.lang.Override
-    @org.jetbrains.annotations.NotNull
-    public final KotlinPluginMode getPluginMode() {
-        return KotlinPluginMode.K2;
-    }
-
     private void runTest(String testDataFilePath) throws Exception {
         KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
+    }
+
+    @TestMetadata("CastFunctionWithParams.kt")
+    public void testCastFunctionWithParams() throws Exception {
+        runTest("../../completion/testData/handlers/runtimeCast/CastFunctionWithParams.kt");
     }
 
     @TestMetadata("CastPrivateFun.kt")
@@ -38,6 +36,16 @@ public class K2CodeFragmentCompletionHandlerTestGenerated extends AbstractK2Code
     @TestMetadata("CastPropertyWithSmartCast.kt")
     public void testCastPropertyWithSmartCast() throws Exception {
         runTest("../../completion/testData/handlers/runtimeCast/CastPropertyWithSmartCast.kt");
+    }
+
+    @TestMetadata("CastRuntimeTypeCompletion.kt")
+    public void testCastRuntimeTypeCompletion() throws Exception {
+        runTest("../../completion/testData/handlers/runtimeCast/CastRuntimeTypeCompletion.kt");
+    }
+
+    @TestMetadata("CastToIntersectionConjunct.kt")
+    public void testCastToIntersectionConjunct() throws Exception {
+        runTest("../../completion/testData/handlers/runtimeCast/CastToIntersectionConjunct.kt");
     }
 
     @TestMetadata("InsertExtFunction.kt")
@@ -55,8 +63,23 @@ public class K2CodeFragmentCompletionHandlerTestGenerated extends AbstractK2Code
         runTest("../../completion/testData/handlers/runtimeCast/InsertImport.kt");
     }
 
+    @TestMetadata("NoRedundantCast.kt")
+    public void testNoRedundantCast() throws Exception {
+        runTest("../../completion/testData/handlers/runtimeCast/NoRedundantCast.kt");
+    }
+
     @TestMetadata("NotImportedExtension.kt")
     public void testNotImportedExtension() throws Exception {
         runTest("../../completion/testData/handlers/runtimeCast/NotImportedExtension.kt");
+    }
+
+    @TestMetadata("NullableClassCast.kt")
+    public void testNullableClassCast() throws Exception {
+        runTest("../../completion/testData/handlers/runtimeCast/NullableClassCast.kt");
+    }
+
+    @TestMetadata("NullableIntClassCast.kt")
+    public void testNullableIntClassCast() throws Exception {
+        runTest("../../completion/testData/handlers/runtimeCast/NullableIntClassCast.kt");
     }
 }
