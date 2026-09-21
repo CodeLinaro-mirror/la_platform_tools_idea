@@ -58,7 +58,6 @@ def build_kotlin_compiler(args):
         *args.gradle_jdk_args,
         *clean_args,
         'publishIdeArtifacts',
-        ':prepare:ide-plugin-dependencies:kotlin-dist-for-ide:publish',
         f'-Pkotlin.build.deploy-path={args.intellij_dir}/lib/kotlin-snapshot',  # From project-model-updater.
         '-Ppublish.ide.plugin.dependencies=true',
         f'-PdeployVersion={args.kotlinc_version}',
