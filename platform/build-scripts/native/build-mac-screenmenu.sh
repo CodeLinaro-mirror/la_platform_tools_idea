@@ -17,7 +17,8 @@ source $(dirname $0)/build-mac-common.sh
 # Make
 (
   cd "$out_dir"
-  export JAVA_HOME="$top/prebuilts/studio/jdk/jdk11/mac/Contents/Home"
+  # MacScreenMenu only needs JNI headers from $JAVA_HOME/include.
+  export JAVA_HOME="$top/prebuilts/studio/jdk/jni_headers/jdk11"
   "$cmake_bin" --log-level=DEBUG -DCMAKE_BUILD_TYPE=Release "$top/tools/idea/native/MacScreenMenu"
   "$cmake_bin" --build . --parallel 1  --verbose
 )

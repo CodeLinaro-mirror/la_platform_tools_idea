@@ -51,7 +51,6 @@ shift $(($OPTIND-1))
 declare -r script_dir=$(realpath "$(dirname "$0")")
 declare -r top=$(realpath "$(dirname "$0")/../../../../..")
 declare -r cmake_bin="$top/prebuilts/studio/sdk/darwin/cmake/4.1.2/bin/cmake"
-declare -x -r JDK_11_x64="$top/prebuilts/studio/jdk/jdk11/mac/Contents/Home"
 
 declare -r rust_version="1.96.0"
 declare -r rust_dir="$top/prebuilts/rust-toolchain/darwin/$rust_version"

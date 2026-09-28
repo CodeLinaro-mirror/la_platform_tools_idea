@@ -11,7 +11,6 @@ set BUILD_ID=%3
 set SCRIPT_DIR=%~dp0
 for %%F in ("%SCRIPT_DIR%..\..\..\..") do set TOP=%%~dpF
 set CMAKE="C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake"
-set JDK_11_0_x64=%TOP%prebuilts\studio\jdk\jdk11\win\
 
 if not exist %OUT_DIR% (mkdir %OUT_DIR%)
 cd %OUT_DIR%
@@ -21,7 +20,6 @@ mkdir WinProcessListHelper && cd WinProcessListHelper
 @rem if BUILD_ID is a number, pass it to cmake via BUILD_NUMBER
 @rem BUILD_NUMBER is also set by ab/, so always override
 IF 1%BUILD_ID% EQU +1%BUILD_ID% (set BUILD_NUMBER=%BUILD_ID%) else (set BUILD_NUMBER=)
-set PATH=%JDK_11_0_x64%include;%PATH%
 %CMAKE% %TOP%tools\idea\native\WinProcessListHelper
 %CMAKE% --build . --config Release -A x64 -- -clp:ShowCommandLine
 
