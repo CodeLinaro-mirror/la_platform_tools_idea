@@ -17,7 +17,6 @@ import com.intellij.platform.workspace.storage.toBuilder
 import com.intellij.util.application
 import io.opentelemetry.api.trace.Tracer
 import org.jetbrains.annotations.ApiStatus.Internal
-import org.jetbrains.annotations.VisibleForTesting
 import org.jetbrains.plugins.gradle.issue.GradleIssueFailure
 import org.jetbrains.plugins.gradle.service.modelAction.GradleModelFetchActionListener
 import org.jetbrains.plugins.gradle.service.project.ProjectResolverContext
@@ -161,10 +160,7 @@ private class GradleSyncActionRunner {
 @Internal
 const val GRADLE_SYNC_FAILURE_GROUP: String = "gradle.sync.failure.group"
 
-@Internal
-class GradleSyncFailureHandler {
-
-  private val issueFailureCache = HashMap<GradleModelFetchFailure, GradleIssueFailure>()
+private class GradleSyncFailureHandler {
 
   fun reportSyncFailures(context: ProjectResolverContext, failureResult: GradleModelFetchFailureResult) {
     for (failure in failureResult.failures) {
@@ -176,13 +172,10 @@ class GradleSyncFailureHandler {
     }
   }
 
-  @VisibleForTesting
-  fun createIssueFailure(failure: GradleModelFetchFailure): GradleIssueFailure =
-    issueFailureCache.getOrPut(failure) {
-      GradleIssueFailure.createIssueFailure(
-        message = failure.message,
-        description = failure.description,
-        causes = failure.causes.map { createIssueFailure(it) }
-      )
-    }
+  private fun createIssueFailure(failure: GradleModelFetchFailure): GradleIssueFailure =
+    GradleIssueFailure.createIssueFailure(
+      message = failure.message,
+      description = failure.description,
+      causes = failure.causes.map { createIssueFailure(it) }
+    )
 }
