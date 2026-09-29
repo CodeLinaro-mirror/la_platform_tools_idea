@@ -850,10 +850,6 @@ object PluginManagerCore {
         missing.add(id.idString to pluginNonLoadReasons[id])
       }
     }
-    // Android Studio: essential plugins are allowed to be absent in unit test mode.
-    if (missing != null && PlatformUtils.isAndroidStudio() && (isUnitTestMode || GraphicsEnvironment.isHeadless())) {
-      missing = null
-    }
     if (missing != null) {
       throw EssentialPluginMissingException(missing.map { it.first })
         .apply { missing.forEach { (_, reason) -> if (reason != null) addSuppressed(Exception(reason.logMessage)) } }
