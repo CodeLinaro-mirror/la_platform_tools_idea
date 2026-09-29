@@ -675,7 +675,6 @@ internal suspend fun layoutPlatformDistribution(
       launch(CoroutineName("patch keymap with Alt click reassigned to multiple carets")) {
         patchKeyMapWithAltClickReassignedToMultipleCarets(moduleOutputPatcher, context)
       }
-/* Android Studio (b/307356412): don't patch ApplicationNamesInfo yet
       launch(CoroutineName("write patched app info")) {
         spanBuilder("write patched app info").use {
           val moduleName = "intellij.platform.core"
@@ -686,7 +685,6 @@ internal suspend fun layoutPlatformDistribution(
           moduleOutputPatcher.patchModuleOutput(moduleName = moduleName, path = relativePath, content = patchedBytes)
         }
       }
-Android Studio (b/307356412): don't patch ApplicationNamesInfo yet */
     }
   }
 
