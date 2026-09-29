@@ -70,7 +70,6 @@ class AndroidStudioProperties : ProductProperties() {
   override val baseFileName: String = "studio"
 
   init {
-    configurePropertiesForAllEditionsOfIntelliJIdea(this)
     platformPrefix = "AndroidStudio"
     mainClassName = "com.android.tools.idea.MainWrapper"
     applicationInfoModule = "intellij.android.adt.branding"

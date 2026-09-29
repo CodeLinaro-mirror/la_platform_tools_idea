@@ -82,7 +82,7 @@ val CE_CLASS_VERSIONS: Map<String, String> = mapOf(
   "plugins/Groovy/lib/groovy-constants-rt.jar" to "1.8",
 )
 
-fun configurePropertiesForAllEditionsOfIntelliJIdea(properties: ProductProperties) {
+fun configurePropertiesForAllEditionsOfIntelliJIdea(properties: JetBrainsProductProperties) {
   properties.productLayout.addPlatformSpec { layout, _ ->
     layout.withModule("intellij.java.ide.resources")
     layout.withModule("intellij.jsp.base")
