@@ -118,13 +118,8 @@ public sealed class GeneralHighlightingPass extends ProgressableTextEditorHighli
     HighlightVisitorRunner.assertHighlightingPassNotRunning();
   }
 
-  // Android Studio (b/461569054): collect metrics for highlighting latency. This callback is initialized during app startup.
-  @SuppressWarnings("StaticNonFinalField")
-  public static volatile java.util.function.BiConsumer<com.intellij.openapi.editor.Document, Long> latencyCallbackForAndroidStudio;
-
   @Override
   protected void collectInformationWithProgress(@NotNull ProgressIndicator progress) {
-    long start = System.nanoTime(); // Android Studio (b/461569054): collect metrics for highlighting latency.
     ThreadingAssertions.assertBackgroundThread();
 
     DaemonCodeAnalyzerEx daemonCodeAnalyzer = DaemonCodeAnalyzerEx.getInstanceEx(myProject);
@@ -201,13 +196,6 @@ public sealed class GeneralHighlightingPass extends ProgressableTextEditorHighli
           if (myUpdateAll) {
             daemonCodeAnalyzer.getFileStatusMap().setErrorFoundFlag(getDocument(), getContext(), myHasErrorSeverity);
             reportErrorsToWolf(myHasErrorSeverity);
-          }
-
-          // Android Studio (b/461569054): collect metrics for syntax highlighting latency.
-          long latencyMs = (System.nanoTime() - start) / 1_000_000;
-          var latencyCallback = latencyCallbackForAndroidStudio;
-          if (latencyCallback != null) {
-            latencyCallback.accept(getDocument(), latencyMs);
           }
         }
         else {
