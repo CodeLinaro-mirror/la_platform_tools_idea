@@ -196,9 +196,7 @@
 
     <projectService serviceImplementation="com.intellij.ide.navigationToolbar.rider.RiderMainToolbarRootPaneManager" open="true"/>
 
-    <!-- Android Studio: disabled by Change I9217935c
     <idePerformanceListener implementation="com.intellij.diagnostic.IdeaFreezeReporter"/>
-    -->
 
     <applicationService serviceImplementation="com.intellij.codeInsight.inline.completion.tooltip.onboarding.InlineCompletionOnboardingComponent"/>
 

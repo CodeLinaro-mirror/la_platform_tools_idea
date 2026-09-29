@@ -21,9 +21,7 @@
       serviceImplementation="com.intellij.openapi.editor.impl.EditorThreadingImpl"
     />
 
-<!-- Android Studio: b/282808067
     <errorHandler implementation="com.intellij.diagnostic.ITNReporter"/>
-Android Studio: b/282808067 -->
     <applicationService serviceInterface="com.intellij.openapi.diagnostic.UnhandledReportSinkService"
                         serviceImplementation="com.intellij.diagnostic.UnhandledReportSinkServiceImpl"/>
 
@@ -581,9 +579,7 @@ The refresh itself is toggled by (Preferences | Appearance &amp; Behavior | Syst
                         serviceImplementation="com.intellij.ide.UiActivityMonitorImpl"/>
 
     <applicationService serviceImplementation="com.intellij.diagnostic.WindowsDefenderChecker" open="true"/>
-<!-- Android Studio: don't register IntelliJ fork
     <applicationService serviceImplementation="com.intellij.diagnostic.GcPauseWatcher"/>
-Android Studio: don't register IntelliJ fork -->
     <applicationService serviceImplementation="com.intellij.diagnostic.WriteDelayDiagnosticsHandlerImpl"
                         serviceInterface="com.intellij.openapi.application.WriteDelayDiagnostics$WriteDelayDiagnosticsHandler"/>
 
@@ -999,10 +995,9 @@ Android Studio: don't register IntelliJ fork -->
 
     <config.inlaySettingsProvider implementation="com.intellij.codeInsight.hints.settings.providers.ParameterInlaySettingsProvider"/>
     <config.inlaySettingsProvider implementation="com.intellij.codeInsight.hints.settings.providers.NewInlaySettingsProvider"/>
-<!-- Android Studio b/395576525
+
     <applicationService serviceInterface="com.intellij.internal.statistic.eventLog.StatisticsRegionSettingsService"
                         serviceImplementation="com.intellij.internal.statistic.StatisticsRegionSettingsServiceImpl" preload="notLightEdit"/>
-Android Studio b/395576525 -->
     <applicationService serviceInterface="com.intellij.internal.statistic.JetBrainsConsentProvider" open="true"
                         serviceImplementation="com.intellij.internal.statistic.EmptyJetBrainsConsentProvider"/>
     <statistics.validation.customValidationRule
@@ -1164,9 +1159,7 @@ Android Studio b/395576525 -->
 
     <statistics.applicationUsagesCollector implementation="com.intellij.featureStatistics.fusCollectors.EAPUsageCollector"
                                            allowOnStartup="true"/>
-<!-- Android Studio: instead AndroidStudioStatisticsEventLoggerProvider is registered in androidstudio.xml
     <statistic.eventLog.eventLoggerProvider implementation="com.intellij.internal.statistic.eventLog.fus.FeatureUsageEventLoggerProvider"/>
-Android Studio: instead AndroidStudioStatisticsEventLoggerProvider is registered in androidstudio.xml -->
     <statistic.eventLog.eventLoggerProvider implementation="com.intellij.internal.statistic.eventLog.mp.MarketplaceEventLoggerProvider"/>
     <statistic.eventLog.eventLoggerProvider implementation="com.intellij.internal.statistic.eventLog.trace.TraceEventLoggerProvider"/>
     <statistics.applicationUsagesCollector implementation="com.intellij.featureStatistics.fusCollectors.OsDataCollector"
@@ -1241,9 +1234,7 @@ Android Studio: instead AndroidStudioStatisticsEventLoggerProvider is registered
                              key="configurable.sticky.lines" bundle="messages.ApplicationBundle"
                              instance="com.intellij.openapi.editor.impl.stickyLines.configurable.StickyLinesConfigurable"/>
 
-<!-- Android Studio: b/285867050
     <backgroundPostStartupActivity implementation="com.intellij.diagnostic.WindowsDefenderCheckerActivity" os="windows"/>
-Android Studio: b/285867050 -->
     <registryKey key="ide.check.windows.defender.rules"
                  defaultValue="true"
                  description="Enables Windows Defender configuration check on project open"/>
