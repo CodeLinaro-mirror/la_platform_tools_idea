@@ -3,8 +3,9 @@ package com.intellij.diagnostic;
 
 import com.intellij.diagnostic.VMOptions.MemoryKind;
 import com.intellij.ide.plugins.IdeaPluginDescriptor;
-import com.intellij.ide.plugins.PluginManagerCore;
 import com.intellij.openapi.diagnostic.ErrorReportSubmitter;
+import com.intellij.openapi.extensions.PluginDescriptor;
+import com.intellij.util.containers.ContainerUtil;
 import com.intellij.openapi.diagnostic.ProblematicPluginInfo;
 import com.intellij.openapi.diagnostic.UnhandledException;
 import org.jetbrains.annotations.ApiStatus;
@@ -62,7 +63,7 @@ public final class DefaultIdeaErrorLogger {
         }
       }
     }
-
+    return getAndroidErrorReporter(); /* Android Studio: use Android instead of Jetbrains
     if (plugin == null || PluginManagerCore.isDevelopedByJetBrains(plugin.getPluginId(), plugin.getVendor(), plugin.getOrganization())) {
       for (var reporter : reporters) {
         var descriptor = reporter.getPluginDescriptor();
@@ -71,7 +72,20 @@ public final class DefaultIdeaErrorLogger {
         }
       }
     }
-
-    return null;
+    */
+  }
+  private static ErrorReportSubmitter getAndroidErrorReporter() {
+    try {
+      return ContainerUtil.find(ErrorReportSubmitter.EP_NAME.getExtensionList(), reporter -> {
+        PluginDescriptor pluginDescriptor = reporter.getPluginDescriptor();
+        if (pluginDescriptor == null) {
+          return false;
+        }
+        String pluginId = pluginDescriptor.getPluginId().getIdString();
+        return pluginId.equals("org.jetbrains.android");
+      });
+    } catch (Throwable t) {
+      return null;
+    }
   }
 }

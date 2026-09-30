@@ -2,9 +2,11 @@
 package com.intellij.diagnostic
 
 import com.intellij.featureStatistics.fusCollectors.LifecycleUsageTriggerCollector
+import com.intellij.ide.AndroidStudioSystemHealthMonitorAdapter
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.ExceptionWithAttachments
 import com.intellij.openapi.diagnostic.IdeaLogRecord
+import com.intellij.openapi.diagnostic.IdeaLoggingEvent
 import com.intellij.openapi.diagnostic.RuntimeExceptionWithAttachments
 import com.intellij.openapi.diagnostic.UnhandledExceptionKind
 import com.intellij.util.ExceptionUtil
@@ -88,6 +90,10 @@ class DialogAppender : Handler() {
 
       val throwable = entry.throwable
       val oomErrorKind = DefaultIdeaErrorLogger.getOOMErrorKind(throwable)
+
+      if( AndroidStudioSystemHealthMonitorAdapter.handleExceptionEvent(IdeaLoggingEvent(entry.message, throwable), oomErrorKind))
+        return
+
       if (oomErrorKind != null) {
         val shouldNotify = synchronized(oomReportsThrottler) {
           oomReportsThrottler.isTimeForNextRun(System.nanoTime())
