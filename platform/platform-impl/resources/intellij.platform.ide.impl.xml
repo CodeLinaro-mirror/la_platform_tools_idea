@@ -600,7 +600,9 @@
             serviceInterface="com.intellij.util.concurrency.TransferredWriteActionService"
             serviceImplementation="com.intellij.openapi.application.impl.TransferredWriteActionServiceImpl"
     />
+<!-- Android Studio: b/282808067
     <errorHandler implementation="com.intellij.diagnostic.ITNReporter"/>
+Android Studio: b/282808067 -->
     <applicationService serviceInterface="com.intellij.openapi.diagnostic.UnhandledReportSinkService"
                         serviceImplementation="com.intellij.diagnostic.UnhandledReportSinkServiceImpl"/>
     <appStarter id="installPlugins" implementation="com.intellij.ide.plugins.HeadlessPluginsInstaller" bundle="messages.IdeBundle" key="install.plugins.help"/>
@@ -905,7 +907,9 @@
     <applicationService serviceInterface="com.intellij.ide.UiActivityMonitor"
                         serviceImplementation="com.intellij.ide.UiActivityMonitorImpl"/>
     <applicationService serviceImplementation="com.intellij.diagnostic.WindowsDefenderChecker" open="true"/>
+<!-- Android Studio: don't register IntelliJ fork
     <applicationService serviceImplementation="com.intellij.diagnostic.GcPauseWatcher"/>
+Android Studio: don't register IntelliJ fork -->
     <applicationService serviceImplementation="com.intellij.diagnostic.WriteDelayDiagnosticsHandlerImpl"
                         serviceInterface="com.intellij.openapi.application.WriteDelayDiagnostics$WriteDelayDiagnosticsHandler"/>
     <applicationService serviceInterface="com.intellij.execution.process.ProcessHandlerFactory"
@@ -1291,7 +1295,9 @@
     <applicationConfigurable parentId="preferences.editor" id="editor.stickyLines"
                              key="configurable.sticky.lines" bundle="messages.ApplicationBundle"
                              instance="com.intellij.openapi.editor.impl.stickyLines.configurable.StickyLinesConfigurable"/>
+<!-- Android Studio: b/285867050
     <backgroundPostStartupActivity implementation="com.intellij.diagnostic.WindowsDefenderCheckerActivity" os="windows"/>
+Android Studio: b/285867050 -->
     <iconLayerProvider implementation="com.intellij.ide.LockedIconLayerProvider"/>
     <fileEditorProvider implementation="com.intellij.openapi.wm.impl.tabInEditor.ToolWindowEditorTabFileEditorProvider" id="ToolWindowEditorTabFileEditor"/>
     <virtualFileSystem implementationClass="com.intellij.openapi.wm.impl.tabInEditor.ToolWindowEditorTabFileSystem" key="tool-window-editor-tab" physical="false"/>
@@ -1623,7 +1629,9 @@
     <cachesInvalidator implementation="com.intellij.ide.ui.IconCacheInvalidator"/>
     <cachesInvalidator implementation="com.intellij.openapi.editor.impl.zombie.NecropolisDestroyer$InvalidationRequest"/>
     <diagnostic.freezeListener implementation="com.intellij.diagnostic.FusFreezeReporter"/>
+    <!-- Android Studio: disabled by Change I9217935c
     <diagnostic.freezeListener implementation="com.intellij.diagnostic.IdeaFreezeReporter"/>
+    -->
     <diagnostic.freezeProfiler implementation="com.intellij.diagnostic.opentelemetry.OTelMetricsFreezeProfiler"/>
     <backgroundPostStartupActivity implementation="com.intellij.diagnostic.opentelemetry.JVMStatsToOTelReporter"/>
     <backgroundPostStartupActivity implementation="com.intellij.diagnostic.opentelemetry.LowMemoryToOTelReporter"/>

@@ -43,7 +43,9 @@
     <statistics.counterUsagesCollector
       implementationClass="com.intellij.internal.statistic.eventLog.LogSystemCollector"/>
     <statistics.counterUsagesCollector implementationClass="com.intellij.internal.statistic.service.fus.collectors.UIEventLogger"/>
+<!-- Android Studio: instead AndroidStudioStatisticsEventLoggerProvider is registered in androidstudio.xml
     <statistic.eventLog.eventLoggerProvider implementation="com.intellij.internal.statistic.eventLog.fus.FeatureUsageEventLoggerProvider"/>
+Android Studio: instead AndroidStudioStatisticsEventLoggerProvider is registered in androidstudio.xml -->
     <statistic.eventLog.eventLoggerProvider implementation="com.intellij.internal.statistic.eventLog.mp.MarketplaceEventLoggerProvider"/>
     <statistic.eventLog.eventLoggerProvider implementation="com.intellij.internal.statistic.eventLog.trace.TraceEventLoggerProvider"/>
     <applicationService
