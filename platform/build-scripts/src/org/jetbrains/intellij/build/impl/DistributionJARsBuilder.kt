@@ -619,6 +619,7 @@ internal fun layoutPlatformDistribution(
       if (selectedModuleNames.contains("intellij.platform.ide.impl")) {
         createStatisticsRecorderBundledMetadataProviderTask(moduleOutputPatcher, context)
       }
+/* Android Studio (b/307356412): don't patch ApplicationNamesInfo yet
       // The stamped resource is the only application-info source at run time. See ApplicationNamesInfo.loadData.
       val appInfoModuleName = context.productProperties.applicationInfoModule
       if (selectedModuleNames.contains(appInfoModuleName)) fork("write application info resource") {
@@ -644,6 +645,7 @@ internal fun layoutPlatformDistribution(
           )
         }
       }
+Android Studio (b/307356412): don't patch ApplicationNamesInfo yet */
       join()
     }
   }
