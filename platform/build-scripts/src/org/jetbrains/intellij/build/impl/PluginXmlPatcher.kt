@@ -239,6 +239,7 @@ private fun getPluginVersion(plugin: PluginLayout, descriptorContent: String, co
 }
 
 internal fun validatePluginDescriptorVersion(plugin: PluginLayout, pluginVersion: String) {
+  /* Android Studio: b/410921576
   check(
     !plugin.semanticVersioning ||
     SemVer.parseFromText(pluginVersion) != null ||
@@ -246,6 +247,7 @@ internal fun validatePluginDescriptorVersion(plugin: PluginLayout, pluginVersion
   ) {
     "$plugin version '$pluginVersion' is expected to match either '$DEV_BUILD_SCHEME' or the Semantic Versioning, see https://semver.org"
   }
+  */
 }
 
 @TestOnly

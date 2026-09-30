@@ -50,9 +50,11 @@ internal fun computePluginBuildNumber(buildNumber: String): String {
   if (value.count { it == '.' } <= 1) {
     value = "$value.0"
   }
+  /* Android Studio: b/410921576
   check(SemVer.parseFromText(value) != null) {
     "The plugin build number $value is expected to match the Semantic Versioning, see https://semver.org"
   }
+  */
   return value
 }
 
