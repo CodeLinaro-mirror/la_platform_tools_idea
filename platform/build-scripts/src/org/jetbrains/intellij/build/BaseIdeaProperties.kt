@@ -82,7 +82,7 @@ val CE_CLASS_VERSIONS: Map<String, String> = mapOf(
   "plugins/Groovy/lib/groovy-constants-rt.jar" to "1.8",
 )
 
-fun configurePropertiesForAllEditionsOfIntelliJIdea(properties: JetBrainsProductProperties) {
+fun configurePropertiesForAllEditionsOfIntelliJIdea(properties: ProductProperties) {
   properties.productLayout.compatiblePluginsToIgnore += persistentListOf(
     JavaPluginLayout.MAIN_MODULE_NAME,
   )
