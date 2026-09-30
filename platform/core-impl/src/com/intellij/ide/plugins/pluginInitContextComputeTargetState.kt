@@ -4,6 +4,7 @@ package com.intellij.ide.plugins
 import com.intellij.diagnostic.Activity
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.extensions.PluginId
+import com.intellij.util.PlatformUtils
 import org.jetbrains.annotations.ApiStatus
 
 
@@ -78,6 +79,10 @@ private fun checkEssentialPluginsAreAvailable(
       diagnosticMessage.appendLine()
       diagnosticMessage.append(PluginInitializationDiagnosticUtils.buildSingleExclusionChainMessage(resolvedPluginSet, module))
     }
+  }
+  // Android Studio: essential plugins are allowed to be absent in unit test mode.
+  if (missingIds != null && PlatformUtils.isAndroidStudio() && (PluginManagerCore.isUnitTestMode || java.awt.GraphicsEnvironment.isHeadless())) {
+    missingIds = null
   }
   if (missingIds != null) {
     throw EssentialPluginMissingException(missingIds, diagnosticMessage?.toString())
