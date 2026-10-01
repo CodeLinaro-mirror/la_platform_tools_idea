@@ -15,11 +15,15 @@
 
   <content namespace="jetbrains">
     <module name="intellij.compose.ide.plugin.shared"/>
+    <!-- Android Studio: b/428768878
     <module name="intellij.compose.ide.plugin.shared.android"/>
+    -->
     <module name="intellij.compose.ide.plugin.codeInsight"/>
     <module name="intellij.compose.ide.plugin.gradleTooling.rt"/>
     <module name="intellij.compose.ide.plugin.resources"/>
+    <!-- Android Studio: b/428768878
     <module name="intellij.compose.ide.plugin.resources.android"/>
+    -->
   </content>
 
 </idea-plugin>
