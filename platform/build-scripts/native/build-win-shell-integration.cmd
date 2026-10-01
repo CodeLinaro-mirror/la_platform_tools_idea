@@ -11,7 +11,7 @@ set BUILD_ID=%3
 set SCRIPT_DIR=%~dp0
 for %%F in ("%SCRIPT_DIR%..\..\..\..") do set TOP=%%~dpF
 set CMAKE="C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake"
-set JDK_11_0_x64=%TOP%prebuilts\studio\jdk\jdk11\win\
+set JDK_11_0_x64=%TOP%prebuilts\studio\jdk\jni_headers\jdk11\
 
 if not exist %OUT_DIR% (mkdir %OUT_DIR%)
 cd %OUT_DIR%

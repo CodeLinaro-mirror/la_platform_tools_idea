@@ -529,6 +529,39 @@ class PyTypedDictTypeTest : PyCodeInsightTestCase() {
       """)
 
     @Test
+    @TestFor(issues = ["PY-88391"])
+    fun `dict literal assignable to optional TypedDict`() = test("""
+      from typing import TypedDict
+
+      class Address(TypedDict):
+          street: str
+
+      a: Address | None = {"street": "Pine"}
+      b: Address | None = {"color": "red"}
+      #                   ^^^^^^^^^^^^^^^^ WARNING Expected type 'Address | None', got 'dict[Literal["color"], Literal["red"]]' instead
+      """)
+
+    @Test
+    @TestFor(issues = ["PY-88391"])
+    fun `dict literal assignable to one of several TypedDicts`() = test("""
+      from typing import TypedDict
+
+      class A(TypedDict):
+          a: str
+
+      class B(TypedDict):
+          b: int
+
+      class C(TypedDict):
+          c: int
+
+      first: A | B | C = {"a": "x"}
+      last:  A | B | C = {"c": 1}
+      none:  A | B | C = {"z": 1}
+      #                  ^^^^^^^^ WARNING Expected type 'A | B | C', got 'dict[Literal["z"], Literal[1]]' instead
+      """)
+
+    @Test
     @TestFor(issues = ["PY-38873"])
     fun `value access through list field`() = test(TestOptions(enablePyAnyType = false), """
       from typing import TypedDict, List, LiteralString
@@ -913,6 +946,60 @@ class PyTypedDictTypeTest : PyCodeInsightTestCase() {
       #   ^^^^^^^ WARNING Expected type 'int', got 'Literal["wrong"]' instead
       foo(1, "hello", name=42)
       #               ^^^^^^^ WARNING Expected type 'str', got 'Literal[42]' instead
+      """)
+
+    @Test
+    @TestFor(issues = ["PY-90614"])
+    fun `dict variable mismatch with Unpack TypedDict kwargs warned once across overloads`() = test("""
+      from typing import TypedDict, Unpack, overload
+      
+      class EmptyKwargs(TypedDict):
+          pass
+      
+      @overload
+      def foo(*, a: int, **kwargs: Unpack[EmptyKwargs]) -> None: ...
+      @overload
+      def foo(*, b: str, **kwargs: Unpack[EmptyKwargs]) -> None: ...
+      def foo(**kwargs) -> None: ...
+      
+      dict_var = {}
+      foo(**dict_var)
+      #     ^^^^^^^^ WARNING Expected type 'EmptyKwargs', got 'dict[Unknown, Unknown]' instead
+      """)
+
+    @Test
+    @TestFor(issues = ["PY-90614"])
+    fun `unpacked parenthesized dict literal keys are checked`() = test("""
+      from typing import TypedDict, Unpack
+      
+      class FieldKwargs(TypedDict):
+          description: str
+      
+      def foo(**kwargs: Unpack[FieldKwargs]) -> None: ...
+      
+      foo(**((({"description": "foo"}))))
+      foo(**((({"description": "foo", "unknown": "foo"}))))
+      #                               ^^^^^^^^^^^^^^^^ WARNING Extra key 'unknown' for TypedDict 'FieldKwargs'
+      """)
+
+    @Test
+    @TestFor(issues = ["PY-91511"])
+    fun `unpacked dict literal keys checked against the overload with matching parameter`() = test("""
+      from typing import TypedDict, Unpack, overload
+      
+      class EmptyKwargs(TypedDict):
+          pass
+      
+      @overload
+      def foo(*, description: str) -> None: ...
+      @overload
+      def foo(**kwargs: Unpack[EmptyKwargs]) -> None: ...
+      def foo(**kwargs) -> None: ...
+      
+      foo(**{"unknown": "foo"})
+      #      ^^^^^^^^^^^^^^^^ WARNING Extra key 'unknown' for TypedDict 'EmptyKwargs'
+      foo(**{"description": "foo"})
+      #      ^^^^^^^^^^^^^^^^^^^^ WARNING Extra key 'description' for TypedDict 'EmptyKwargs' FIXME
       """)
   }
 
