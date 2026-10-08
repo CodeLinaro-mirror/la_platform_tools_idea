@@ -27,7 +27,6 @@ import com.sun.jdi.ObjectReference
 import com.sun.jdi.ReferenceType
 import com.sun.jdi.Type
 import com.sun.jdi.Value
-import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.idea.debugger.base.util.isLateinitVariableGetter
 import org.jetbrains.kotlin.idea.debugger.base.util.isSimpleGetter
 import org.jetbrains.kotlin.idea.debugger.base.util.safeFields
@@ -39,14 +38,13 @@ import org.jetbrains.kotlin.idea.debugger.core.isInKotlinSourcesAsync
 import org.jetbrains.kotlin.idea.debugger.core.render.GetterDescriptor
 import java.util.concurrent.CompletableFuture
 import java.util.function.Function
-import kotlin.metadata.ExperimentalContextReceivers
 import kotlin.metadata.KmProperty
 import kotlin.metadata.isNotDefault
 import kotlin.metadata.jvm.JvmMethodSignature
 import kotlin.metadata.jvm.KotlinClassMetadata
 import kotlin.metadata.jvm.getterSignature
 
-class KotlinClassRenderer : ClassRenderer() {
+open class KotlinClassRenderer : ClassRenderer() {
     init {
         setIsApplicableChecker(Function { type: Type? ->
             if (type is ReferenceType && type !is ArrayType && !type.canBeRenderedBetterByPlatformRenderers()) {
@@ -63,37 +61,48 @@ class KotlinClassRenderer : ClassRenderer() {
             return
         }
 
-        val parentDescriptor = builder.parentDescriptor as ValueDescriptorImpl
-        val nodeManager = builder.nodeManager
-        val nodeDescriptorFactory = builder.descriptorManager
         val refType = value.referenceType()
         val gettersFuture = DebuggerUtilsAsync.allMethods(refType)
             .thenApply { methods ->
-                val getters = fetchGettersUsingMetadata(evaluationContext, methods) ?: methods.getters()
-                getters.createNodes(value, parentDescriptor.project, evaluationContext, nodeManager)
+                fetchGettersUsingMetadata(evaluationContext, methods) ?: methods.getters()
             }
-        DebuggerUtilsAsync.allFields(refType).thenCombine(gettersFuture) { fields, getterNodes ->
-            if (fields.none { FieldVisibilityProvider.shouldDisplayField(it) } && getterNodes.isEmpty()) {
-                builder.setChildren(listOf(nodeManager.createMessageNode(KotlinDebuggerCoreBundle.message("message.class.has.no.properties"))))
-                return@thenCombine
-            }
-
-            createNodesToShow(fields, evaluationContext, parentDescriptor, nodeManager, nodeDescriptorFactory, value)
-                .thenAccept { nodesToShow ->
-                    if (nodesToShow.isEmpty()) {
-                        val classHasNoFieldsToDisplayMessage =
-                            nodeManager.createMessageNode(
-                                JavaDebuggerBundle.message("message.node.class.no.fields.to.display")
-                            )
-                        builder.setChildren(
-                            listOf(classHasNoFieldsToDisplayMessage) +
-                            getterNodes
-                        )
-                        return@thenAccept
-                    }
-                    builder.setChildren(mergeNodesLists(nodesToShow, getterNodes))
-                }
+        DebuggerUtilsAsync.allFields(refType).thenCombine(gettersFuture) { fields, getters ->
+            buildChildren(value, builder, evaluationContext, fields, getters)
         }
+    }
+
+    protected open fun buildChildren(
+        value: ObjectReference,
+        builder: ChildrenBuilder,
+        evaluationContext: EvaluationContext,
+        fields: List<Field>,
+        getters: List<Method>,
+    ) {
+        val parentDescriptor = builder.parentDescriptor as ValueDescriptorImpl
+        val nodeManager = builder.nodeManager
+        val nodeDescriptorFactory = builder.descriptorManager
+
+        val getterNodes = getters.createNodes(value, parentDescriptor.project, evaluationContext, nodeManager)
+        if (fields.none { FieldVisibilityProvider.shouldDisplayField(it) } && getters.isEmpty()) {
+            builder.setChildren(listOf(nodeManager.createMessageNode(KotlinDebuggerCoreBundle.message("message.class.has.no.properties"))))
+            return
+        }
+
+        createNodesToShow(fields, evaluationContext, parentDescriptor, nodeManager, nodeDescriptorFactory, value)
+            .thenAccept { nodesToShow ->
+                if (nodesToShow.isEmpty()) {
+                    val classHasNoFieldsToDisplayMessage =
+                        nodeManager.createMessageNode(
+                            JavaDebuggerBundle.message("message.node.class.no.fields.to.display")
+                        )
+                    builder.setChildren(
+                        listOf(classHasNoFieldsToDisplayMessage) +
+                                getterNodes
+                    )
+                    return@thenAccept
+                }
+                builder.setChildren(mergeNodesLists(nodesToShow, getterNodes))
+            }
     }
 
     private fun fetchGettersUsingMetadata(
