@@ -1,7 +1,6 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
 ### auto-generated section `build com.google.apa.branding` start
-
 jvm_library(
     name = "com-google-apa-branding",
     srcs = glob(
@@ -12,6 +11,7 @@ jvm_library(
     resource_strip_prefix = "resources",
     resources = glob(
         ["resources/**/*"],
+        exclude = ["resources/**/icon-robots.txt"],
     ),
     visibility = ["//visibility:public"],
     runtime_deps = [
@@ -19,9 +19,6 @@ jvm_library(
         "//platform/platform-impl:ide-impl",
         "//platform/experiment",
         "//platform/platform-resources:resources",
-        "//xml/impl",
-        "//xml/xml-analysis-impl:analysis-impl",
-        "//xml/xml-psi-impl:psi-impl",
     ],
 )
 
@@ -40,9 +37,6 @@ jvm_library(
         "//platform/platform-impl:ide-impl_test_lib",
         "//platform/experiment:experiment_test_lib",
         "//platform/platform-resources:resources_test_lib",
-        "//xml/impl:impl_test_lib",
-        "//xml/xml-analysis-impl:analysis-impl_test_lib",
-        "//xml/xml-psi-impl:psi-impl_test_lib",
     ],
 )
 ### auto-generated section `build com.google.apa.branding` end
@@ -51,6 +45,9 @@ jvm_library(
 exports_files(
     [
         "com.google.apa.branding.iml",
+        "resources/META-INF/AndroidPerformanceAnalyzerPlugin.xml",
+        "resources/META-INF/plugin.xml",
+        "resources/idea/AndroidPerformanceAnalyzerApplicationInfo.xml",
     ],
     visibility = ["//visibility:public"],
 )

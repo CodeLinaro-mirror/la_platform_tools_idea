@@ -1,7 +1,6 @@
-load("@rules_jvm//:jvm.bzl", "jvm_library", "resourcegroup")
+load("@rules_jvm//:jvm.bzl", "jvm_library")
 
 ### auto-generated section `build intellij.android.adt.branding` start
-
 jvm_library(
     name = "android-adt-branding",
     srcs = glob(
@@ -42,6 +41,11 @@ jvm_library(
 exports_files(
     [
         "intellij.android.adt.branding.iml",
+        "resources/META-INF/AndroidGameDevelopmentToolsPlugin.xml",
+        "resources/META-INF/AndroidStudioPlugin.xml",
+        "resources/idea/AndroidGameDevelopmentToolsApplicationInfo.xml",
+        "resources/idea/AndroidStudioApplicationInfo.xml",
+        "resources/idea/ToolWindowManager.xml",
     ],
     visibility = ["//visibility:public"],
 )
