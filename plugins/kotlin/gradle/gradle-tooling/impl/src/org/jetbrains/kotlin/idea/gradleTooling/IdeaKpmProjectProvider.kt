@@ -16,7 +16,7 @@ object IdeaKpmProjectProvider : ProjectImportModelProvider {
         modelConsumer: GradleModelConsumer
     ) {
         modelController.fetchRequest(buildModels, IdeaKpmProjectContainer::class.java)
-            .optionalModel()
+            .suppressFailures()
             .executionMode(GradleExecutionMode.SEQUENTIAL)
             .execute(modelConsumer)
     }

@@ -54,7 +54,6 @@ public class GradleClassBuildModelProvider<T> implements ProjectImportModelProvi
     modelController.fetchRequest(buildModels, modelClass)
       .executionMode(GradleExecutionMode.SEQUENTIAL)
       .modelLevel(GradleModelLevel.BUILD)
-      .optionalModel(true)
       .execute(modelConsumer);
   }
 
