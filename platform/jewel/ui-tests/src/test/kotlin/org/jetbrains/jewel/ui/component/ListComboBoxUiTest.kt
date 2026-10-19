@@ -11,10 +11,12 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.ComposeUiFlags
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.isClearFocusOnMouseDownEnabled
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.MouseButton
@@ -34,7 +36,8 @@ import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.ComposeContentTestRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithTag
@@ -51,6 +54,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import junit.framework.TestCase.assertEquals
 import kotlin.test.assertTrue
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import org.jetbrains.jewel.foundation.lazy.rememberSelectableLazyListState
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.intui.standalone.styling.default
@@ -71,7 +75,7 @@ val LIST_ITEM_DEFAULT_HEIGHT = 24.dp
 @Suppress("LargeClass")
 @OptIn(ExperimentalTestApi::class)
 class ListComboBoxUiTest {
-    @get:Rule val composeRule = createComposeRule()
+    @OptIn(ExperimentalCoroutinesApi::class) @get:Rule val composeRule = createJewelComposeRule()
 
     // Helper properties to access common UI elements in tests
     private val popupMenu: SemanticsNodeInteraction
@@ -106,7 +110,6 @@ class ListComboBoxUiTest {
     @Test
     fun `when editable clicking chevron twice opens and closed the popup`() {
         injectEditableListComboBox(FocusRequester(), isEnabled = true)
-
         chevronContainer.assertHasClickAction().performClick()
         popupMenu.assertExists().assertIsDisplayed()
 
@@ -1510,4 +1513,9 @@ class ListComboBoxUiTest {
             "Umbrella",
             "Joy",
         )
+}
+
+private fun createJewelComposeRule(): ComposeContentTestRule {
+    ComposeUiFlags.isClearFocusOnMouseDownEnabled = false
+    return createComposeRule()
 }

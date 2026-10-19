@@ -12,7 +12,7 @@ import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindowId
 import com.intellij.platform.debugger.impl.frontend.editor.BreakpointPromoterEditorListener
-import com.intellij.platform.debugger.impl.frontend.evaluate.quick.common.ValueLookupManager
+import com.intellij.platform.debugger.impl.frontend.evaluate.quick.XQuickEvaluateHandler
 import com.intellij.platform.debugger.impl.frontend.frame.ImageEditorUIUtil
 import com.intellij.platform.debugger.impl.rpc.XDebugSessionDto
 import com.intellij.platform.debugger.impl.rpc.XDebugSessionId
@@ -21,11 +21,10 @@ import com.intellij.platform.debugger.impl.rpc.XDebuggerManagerSessionEvent
 import com.intellij.platform.debugger.impl.rpc.XDebuggerValueLookupHintsRemoteApi
 import com.intellij.platform.debugger.impl.rpc.XFrontendDebuggerCapabilities
 import com.intellij.platform.debugger.impl.shared.proxy.XDebugSessionProxy
+import com.intellij.platform.debugger.impl.ui.evaluate.quick.common.ValueLookupManager
 import com.intellij.platform.project.projectId
 import com.intellij.util.asDisposable
 import com.intellij.xdebugger.SplitDebuggerMode
-import com.intellij.xdebugger.XDebuggerManager
-import com.intellij.xdebugger.impl.XDebuggerManagerImpl
 import com.intellij.xdebugger.impl.XDebuggerManagerProxyListener
 import fleet.rpc.client.durable
 import kotlinx.coroutines.CoroutineScope
@@ -36,7 +35,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
@@ -63,9 +61,6 @@ class FrontendXDebuggerManager(private val project: Project, private val cs: Cor
   val breakpointsManager: FrontendXBreakpointManager = FrontendXBreakpointManager(project, cs)
   internal val sessions get() = sessionsFlow.value
 
-  // TODO Better to have our own watches manager, but then we will need to serialize it
-  internal val watchesManager = (XDebuggerManager.getInstance(project) as XDebuggerManagerImpl).watchesManager
-
   init {
     cs.launch {
       durable {
@@ -77,8 +72,12 @@ class FrontendXDebuggerManager(private val project: Project, private val cs: Cor
 
       launch(Dispatchers.EDT) {
         // await listening started on the backend
-        XDebuggerValueLookupHintsRemoteApi.getInstance().getValueLookupListeningFlow(project.projectId()).filter { it }.first()
-        ValueLookupManager.getInstance(project).startListening()
+        XDebuggerValueLookupHintsRemoteApi.getInstance().getValueLookupListeningFlow(project.projectId()).first { it }
+        val lookupManager = ValueLookupManager.getInstance(project)
+        lookupManager.startListening(XQuickEvaluateHandler())
+        currentSessionFlow.collectLatest {
+          lookupManager.hideHint()
+        }
       }
     }
     if (SplitDebuggerMode.isSplitDebugger()) {
@@ -160,6 +159,7 @@ class FrontendXDebuggerManager(private val project: Project, private val cs: Cor
     val eventMulticaster = EditorFactory.getInstance().getEventMulticaster()
     val bpPromoter = BreakpointPromoterEditorListener(project, cs)
     eventMulticaster.addEditorMouseMotionListener(bpPromoter, cs.asDisposable())
+    eventMulticaster.addEditorMouseListener(bpPromoter, cs.asDisposable())
   }
 
   private fun getSessionIdByContentDescriptor(descriptor: RunContentDescriptor): XDebugSessionId? {

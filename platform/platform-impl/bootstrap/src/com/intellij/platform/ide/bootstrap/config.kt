@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.platform.ide.bootstrap
 
 import com.intellij.accessibility.enableScreenReaderSupportIfNecessary
@@ -9,7 +9,6 @@ import com.intellij.openapi.application.InitialConfigImportState
 import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.diagnostic.getOrLogException
-import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.util.IconLoader
 import com.intellij.openapi.util.io.NioFiles
 import com.intellij.openapi.util.registry.EarlyAccessRegistryManager
@@ -63,27 +62,28 @@ internal suspend fun importConfigIfNeeded(
         CustomConfigMigrationOption.MergeConfigs.writeConfigMarkerFile()
       }
     }
-    log.info("config importing not performed in headless mode")
+    log.info("config importing skipped in headless mode")
     return null
   }
 
   initLafJob.join()
   val log = logDeferred.await()
-  val targetDirectoryToImportConfig = customTargetDirectoryToImportConfig ?: PathManager.getConfigDir()
-  val entries = NioFiles.list(targetDirectoryToImportConfig).joinToString(", ") { "\"${it.name}\"" }
-  log.info("Will import config to directory \"$targetDirectoryToImportConfig\" (exists = ${Files.exists(targetDirectoryToImportConfig)}). Current entries: ${entries}.")
-  importConfig(args, targetDirectoryToImportConfig, log, appStarterDeferred.await(), euaDocumentDeferred)
+  val importTo = customTargetDirectoryToImportConfig ?: PathManager.getConfigDir()
+  val entries = NioFiles.list(importTo).joinToString(", ") { "\"${it.name}\"" }
+  log.info("Will import config to directory \"${importTo}\": exists=${Files.exists(importTo)} custom=${customTargetDirectoryToImportConfig != null} entries=[${entries}]")
+  importConfig(args, importTo, log, appStarterDeferred.await(), euaDocumentDeferred)
 
   val isNewUser = InitialConfigImportState.isNewUser()
 
   if (ClassicUiToIslandsMigration.isEnabledFeature) {
     ClassicUiToIslandsMigration.enableNewUiWithIslands(logDeferred)
-  } else {
+  }
+  else {
     enableNewUi(logDeferred, isNewUser)
   }
 
   if (isNewUser && InitialConfigImportState.isStartupWizardEnabled()) {
-    log.info("Will enter initial app wizard flow.")
+    log.info("entering the initial app wizard flow")
     val result = CompletableDeferred<Boolean>()
     isInitialStart = result
     return result
@@ -114,12 +114,9 @@ private suspend fun importConfig(
 ) {
   span("config importing") {
     appStarter.beforeImportConfigs()
-
-    val euaDocumentStatus = euaDocumentDeferred.await()
-    val veryFirstStartOnThisComputer = euaDocumentStatus is EndUserAgreementStatus.Required
-    val log = logger<ConfigImportHelper>()
+    euaDocumentDeferred.await()
     withContext(RawSwingDispatcher) {
-      ConfigImportHelper.importConfigsTo(veryFirstStartOnThisComputer, targetDirectoryToImportConfig, args, log)
+      ConfigImportHelper.importConfigsTo(targetDirectoryToImportConfig, args)
     }
     appStarter.importFinished(targetDirectoryToImportConfig)
     EarlyAccessRegistryManager.invalidate()

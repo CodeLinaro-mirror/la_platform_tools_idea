@@ -2,24 +2,20 @@
 package com.intellij.openapi.fileEditor.impl
 
 import com.intellij.ide.browsers.actions.WebPreviewFileType
-import com.intellij.openapi.diagnostic.logger
-import com.intellij.openapi.application.EDT
 import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.fileEditor.FileEditor
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.FileEditorPolicy
 import com.intellij.openapi.fileEditor.FileEditorProvider
 import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx
-import com.intellij.openapi.fileEditor.impl.HTMLEditorProvider.Companion.JS_FUNCTION_NAME
 import com.intellij.openapi.fileTypes.FileType
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.NlsContexts.DialogTitle
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.platform.ide.CoreUiCoroutineScopeHolder
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.TestOnly
 import java.io.InputStream
@@ -63,16 +59,10 @@ class HTMLEditorProvider : FileEditorProvider, DumbAware {
     @ApiStatus.Experimental
     suspend fun openEditorAsync(project: Project, @DialogTitle title: String, request: Request): FileEditor? {
       val file = HTMLVirtualFile.createFile(project, title, request, WebPreviewFileType.INSTANCE, ignoreJcef = false)
-      val fileEditorManager = FileEditorManager.getInstance(project)
-      val fileEditors = if (fileEditorManager is FileEditorManagerEx) {
-        fileEditorManager.openFile(file, FileEditorOpenOptions(requestFocus = true, waitForCompositeOpen = false))
-          .allEditorsWithProviders
-          .map { it.fileEditor }
-      } else {
-        withContext(Dispatchers.EDT) {
-          FileEditorManager.getInstance(project).openFile(file, true).toList()
-        }
-      }
+      val fileEditors = FileEditorManagerEx.getInstanceEx(project)
+        .openFile(file, FileEditorOpenOptions(requestFocus = true, waitForCompositeOpen = false))
+        .allEditorsWithProviders
+        .map { it.fileEditor }
       return fileEditors.find { it is HTMLFileEditor }
     }
 
@@ -110,16 +100,11 @@ class HTMLEditorProvider : FileEditorProvider, DumbAware {
     require(!file.isDisposed()) {
       "html request is already disposed"
     }
-    return if (file.shouldUseMockEditor()) {
-      HTMLFileEditorMock(file)
-    }
-    else {
-      HTMLFileEditorImpl(project, file, file.htmlRequest)
-    }
+    return HTMLFileEditorMock(file)
   }
 
   override fun accept(project: Project, file: VirtualFile): Boolean {
-    return file is HTMLVirtualFile && !file.isDisposed() && file.isJcefSupported()
+    return file is HTMLVirtualFile && !file.isDisposed() && file.shouldUseMockEditor()
   }
 
   override fun acceptRequiresReadAction(): Boolean = false
@@ -128,14 +113,19 @@ class HTMLEditorProvider : FileEditorProvider, DumbAware {
 
   override fun getPolicy(): FileEditorPolicy = FileEditorPolicy.HIDE_DEFAULT_EDITOR
 
-  class Request private constructor(@JvmField internal val html: String?, @JvmField internal val url: String?) {
-    internal var currentUrl: String? = url
-    internal var timeoutHtml: String? = null
+  class Request private constructor(@JvmField val html: String?, @JvmField val url: String?) {
+    @ApiStatus.Internal
+    var currentUrl: String? = url
+    @ApiStatus.Internal
+    var timeoutHtml: String? = null
       private set
-    internal var queryHandler: JsQueryHandler? = null
+    @ApiStatus.Internal
+    var queryHandler: JsQueryHandler? = null
       private set
-    internal var requestHandler: ResourceHandler? = null; private set
-    internal var onUrlChanged: (String?, String) -> Unit = { _, _ -> }
+    @ApiStatus.Internal
+    var requestHandler: ResourceHandler? = null; private set
+    @ApiStatus.Internal
+    var onUrlChanged: (String?, String) -> Unit = { _, _ -> }
       private set
 
     companion object {

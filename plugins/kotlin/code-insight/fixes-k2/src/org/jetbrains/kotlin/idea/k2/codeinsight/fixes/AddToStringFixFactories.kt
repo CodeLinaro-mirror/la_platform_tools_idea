@@ -8,16 +8,17 @@ import org.jetbrains.kotlin.analysis.api.types.KaType
 import org.jetbrains.kotlin.idea.codeinsight.api.applicators.fixes.KotlinQuickFixFactory
 import org.jetbrains.kotlin.idea.quickfix.AddToStringFix
 import org.jetbrains.kotlin.psi.KtExpression
+import org.jetbrains.kotlin.psi.KtReturnExpression
 
 internal object AddToStringFixFactories {
 
     private fun KaSession.getFixes(element: PsiElement?, expectedType: KaType, actualType: KaType): List<AddToStringFix> {
-        if (element !is KtExpression) return emptyList()
+        if (element !is KtExpression || element is KtReturnExpression) return emptyList()
         return buildList {
             if (expectedType.isStringType || expectedType.isCharSequenceType) {
-                add(AddToStringFix(element, false))
+                add(AddToStringFix(element, useSafeCallOperator = false))
                 if (expectedType.isMarkedNullable && actualType.isMarkedNullable) {
-                    add(AddToStringFix(element, true))
+                    add(AddToStringFix(element, useSafeCallOperator = true))
                 }
             }
         }
@@ -41,5 +42,9 @@ internal object AddToStringFixFactories {
 
     val initializerTypeMismatch = KotlinQuickFixFactory.ModCommandBased { diagnostic: KaFirDiagnostic.InitializerTypeMismatch ->
         getFixes(diagnostic.initializer, diagnostic.expectedType, diagnostic.actualType)
+    }
+
+    val incompatibleTypes = KotlinQuickFixFactory.ModCommandBased { diagnostic: KaFirDiagnostic.IncompatibleTypes ->
+        getFixes(diagnostic.psi, diagnostic.typeA, diagnostic.typeB)
     }
 }

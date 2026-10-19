@@ -2,9 +2,7 @@ package com.intellij.ide.starter.driver.driver.remoteDev
 
 import com.intellij.driver.client.Driver
 import com.intellij.driver.client.Remote
-import com.intellij.driver.model.OnDispatcher
 import com.intellij.driver.sdk.hasVisibleWindow
-import com.intellij.driver.sdk.ui.IdeEventQueue
 import com.intellij.driver.sdk.waitFor
 import com.intellij.ide.starter.driver.engine.BackgroundRun
 import com.intellij.ide.starter.models.IDEStartResult
@@ -17,14 +15,14 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 class RemoteDevBackgroundRun(
-  private val backendRun: BackgroundRun,
+  val backendRun: BackgroundRun,
   frontendProcess: IDEHandle,
   frontendDriver: Driver,
   frontendStartResult: Deferred<IDEStartResult>,
 ) : BackgroundRun(startResult = frontendStartResult,
                   driverWithoutAwaitedConnection = frontendDriver,
                   process = frontendProcess) {
-  override fun <R> useDriverAndCloseIde(closeIdeTimeout: Duration, shutdownHook: Driver.() -> Unit, block: Driver.() -> R): IDEStartResult {
+  override fun <R> useDriverAndCloseIde(closeIdeTimeout: Duration, takeScreenshot: Boolean, shutdownHook: Driver.() -> Unit, block: Driver.() -> R): IDEStartResult {
     try {
       waitAndPrepareForTest()
 
@@ -32,7 +30,7 @@ class RemoteDevBackgroundRun(
     }
     finally {
       catchAll { shutdownHook(driver) }
-      closeIdeAndWait(closeIdeTimeout)
+      closeIdeAndWait(closeIdeTimeout, takeScreenshot)
     }
     @Suppress("SSBasedInspection")
     return runBlocking {
@@ -47,7 +45,6 @@ class RemoteDevBackgroundRun(
     awaitBackendIsConnected()
     awaitVisibleFrameFrontend()
     driver.awaitLuxInitialized()
-    flushEdt()
   }
 
   private fun awaitBackendIsConnected() {
@@ -58,20 +55,22 @@ class RemoteDevBackgroundRun(
     waitFor("Frontend has a visible IDE frame", timeout = 100.seconds) { driver.hasVisibleWindow() }
   }
 
-  private fun flushEdt() {
-    // FrontendToolWindowHost should finish it's work to avoid https://youtrack.jetbrains.com/issue/GTW-9730/Some-UI-tests-are-flaky-because-sometimes-actions-are-not-executed
-    driver.withContext(OnDispatcher.EDT) {
-      driver.utility(IdeEventQueue::class).getInstance().flushQueue()
-    }
-  }
-
-  @Remote("com.jetbrains.thinclient.lux.LuxClientService")
+  @Remote("com.jetbrains.thinclient.lux.LuxClientService", plugin = "com.jetbrains.performancePlugin/intellij.performanceTesting.frontend.split")
   interface LuxClientService {
     fun getMaybeInstance(): LuxClientService?
   }
 
+  /**
+   * Needed for compatibility of 262 driver with older version of IDE.
+   * e.g. for update tests.
+   */
+  @Remote("com.jetbrains.thinclient.lux.LuxClientService", plugin = "com.intellij.jetbrains.client.performanceTesting")
+  private interface LuxClientServiceFallback: LuxClientService
+
   fun Driver.awaitLuxInitialized() {
-    waitFor("Lux is initialized", timeout = 30.seconds) { utility(LuxClientService::class).getMaybeInstance() != null }
+    val luxClientServiceUtility = runCatching { utility(LuxClientService::class).also { it.getMaybeInstance() } }
+      .getOrElse { utility(LuxClientServiceFallback::class).also { it.getMaybeInstance() } }
+    waitFor("Lux is initialized", timeout = 30.seconds) { luxClientServiceUtility.getMaybeInstance() != null }
   }
 
   override fun closeIdeAndWait(closeIdeTimeout: Duration, takeScreenshot: Boolean) {

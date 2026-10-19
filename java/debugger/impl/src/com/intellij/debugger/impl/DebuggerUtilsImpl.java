@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.debugger.impl;
 
 import com.intellij.configurationStore.XmlSerializer;
@@ -72,6 +72,7 @@ import com.intellij.util.SmartList;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.io.URLUtil;
 import com.intellij.util.net.NetUtils;
+import com.intellij.xdebugger.DapMode;
 import com.intellij.xdebugger.XDebugSession;
 import com.intellij.xdebugger.XExpression;
 import com.intellij.xdebugger.impl.XDebugSessionImpl;
@@ -547,6 +548,13 @@ public final class DebuggerUtilsImpl extends DebuggerUtilsEx {
         Enumeration<URL> urls = aClass.getClassLoader().getResources(resourcePath);
         while (urls.hasMoreElements()) {
           URL url = urls.nextElement();
+          // try to exclude idea_rt.jar
+          if (url.getProtocol().equals(URLUtil.JAR_PROTOCOL) && !url.getFile().contains("idea_rt.jar")) {
+            Pair<String, String> jarUrl = URLUtil.splitJarUrl(url.toString());
+            if (jarUrl != null) {
+              return jarUrl.first;
+            }
+          }
           // prefer dir
           if (url.getProtocol().equals(URLUtil.FILE_PROTOCOL)) {
             String path = URLUtil.urlToFile(url).getPath();
@@ -600,7 +608,7 @@ public final class DebuggerUtilsImpl extends DebuggerUtilsEx {
   public static @NotNull CompletableFuture<List<NodeRenderer>> getApplicableRenderers(List<? extends NodeRenderer> renderers, Type type) {
     DebuggerManagerThreadImpl.assertIsManagerThread();
     CompletableFuture<Boolean>[] futures = renderers.stream().map(r -> r.isApplicableAsync(type)).toArray(CompletableFuture[]::new);
-    return CompletableFuture.allOf(futures).thenApply(__ -> {
+    return CompletableFuture.allOf(futures).thenApply(_ -> {
       List<NodeRenderer> res = new SmartList<>();
       for (int i = 0; i < futures.length; i++) {
         try {
@@ -730,6 +738,9 @@ public final class DebuggerUtilsImpl extends DebuggerUtilsEx {
 
   @ApiStatus.Internal
   public static boolean askAboutPauseOnException(Project project, String displayName, String exceptionMessage, @NotNull @NlsContexts.DialogTitle String title) {
+    if (DapMode.isDap()) {
+      return false; // Don't stop — continue execution, error is printed to console by the caller
+    }
     final boolean[] considerRequestHit = new boolean[]{true};
     DebuggerInvocationUtil.invokeAndWait(project, () -> {
       final String message = JavaDebuggerBundle.message("error.evaluating.breakpoint.condition.or.action", displayName, exceptionMessage);

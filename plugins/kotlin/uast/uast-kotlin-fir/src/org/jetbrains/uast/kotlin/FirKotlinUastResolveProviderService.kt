@@ -50,7 +50,6 @@ import org.jetbrains.kotlin.analysis.api.symbols.receiverType
 import org.jetbrains.kotlin.analysis.api.types.KaErrorType
 import org.jetbrains.kotlin.analysis.api.types.KaType
 import org.jetbrains.kotlin.analysis.api.types.KaTypeMappingMode
-import org.jetbrains.kotlin.analysis.api.types.KaTypeNullability
 import org.jetbrains.kotlin.analysis.api.types.symbol
 import org.jetbrains.kotlin.asJava.toLightAnnotation
 import org.jetbrains.kotlin.descriptors.Modality
@@ -109,6 +108,7 @@ import org.jetbrains.uast.UastCallKind
 import org.jetbrains.uast.UastErrorType
 import org.jetbrains.uast.UastLanguagePlugin
 import org.jetbrains.uast.analysis.KotlinExtensionConstants.LAMBDA_THIS_PARAMETER_NAME
+import org.jetbrains.uast.analysis.UNullability
 import org.jetbrains.uast.convertWithParent
 import org.jetbrains.uast.kotlin.internal.FirKotlinUastConstantEvaluator
 import org.jetbrains.uast.kotlin.internal.analyzeForUast
@@ -626,13 +626,15 @@ interface FirKotlinUastResolveProviderService : BaseKotlinUastResolveProviderSer
             fun resolveToPsiClassOrEnumEntry(classOrObject: KtClassOrObject): PsiElement? {
                 val ktType = when (classOrObject) {
                     is KtEnumEntry -> {
-                        classOrObject.symbol.callableId?.classId?.let(::buildClassType)
+                        @OptIn(KaExperimentalApi::class)
+                        classOrObject.symbol.callableId?.classId?.let(typeCreator::classType)
                     }
                     else -> {
                         // NB: Avoid symbol creation/retrieval
-                        classOrObject.getClassId()?.let(::buildClassType)
+                        @OptIn(KaExperimentalApi::class)
+                        classOrObject.getClassId()?.let(typeCreator::classType)
                         // Fallback option for local class
-                            ?: classOrObject.classSymbol?.let(::buildClassType)
+                            ?: classOrObject.classSymbol?.let(typeCreator::classType)
                     }
                 } ?: return null
                 val psiClass = toPsiClass(ktType, source = null, classOrObject, classOrObject.typeOwnerKind)
@@ -664,7 +666,8 @@ interface FirKotlinUastResolveProviderService : BaseKotlinUastResolveProviderSer
                 }
 
                 is KtTypeParameter -> {
-                    val ktType = buildTypeParameterType(resolvedTargetElement.symbol)
+                    @OptIn(KaExperimentalApi::class)
+                    val ktType = typeCreator.typeParameterType(resolvedTargetElement.symbol)
                     toPsiClass(
                         ktType,
                         ktExpression.toUElement(),
@@ -896,7 +899,10 @@ interface FirKotlinUastResolveProviderService : BaseKotlinUastResolveProviderSer
         analyzeForUast(suspendFunction) {
             val symbol = suspendFunction.symbol as? KaNamedFunctionSymbol ?: return null
             if (!symbol.isSuspend) return null
-            val continuationType = buildClassType(StandardClassIds.Continuation) { argument(symbol.returnType) }
+            @OptIn(KaExperimentalApi::class)
+            val continuationType = typeCreator.classType(StandardClassIds.Continuation) {
+                invariantTypeArgument(symbol.returnType)
+            }
             return toPsiType(
                 continuationType,
                 containingLightDeclaration,
@@ -930,7 +936,7 @@ interface FirKotlinUastResolveProviderService : BaseKotlinUastResolveProviderSer
         }
     }
 
-    override fun nullability(psiElement: PsiElement): KaTypeNullability? {
+    override fun nullability(psiElement: PsiElement): UNullability? {
         return getTargetType(psiElement, null) { ktType ->
             nullability(ktType)
         }

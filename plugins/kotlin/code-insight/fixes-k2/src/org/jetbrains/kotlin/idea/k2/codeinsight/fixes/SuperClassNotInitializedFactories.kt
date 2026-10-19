@@ -118,7 +118,7 @@ internal object SuperClassNotInitializedFactories {
         }
 
         override fun getFamilyName(): String = KotlinBundle.message("change.to.constructor.invocation")
-        override fun getPresentation(context: ActionContext, element: KtSuperTypeEntry): Presentation =
+        override fun getActionPresentation(context: ActionContext, element: KtSuperTypeEntry): Presentation =
             Presentation.of(familyName).withPriority(PriorityAction.Priority.HIGH)
     }
 
@@ -146,7 +146,6 @@ internal object SuperClassNotInitializedFactories {
         NotVararg, VarargNoSpread, VarargWithSpread;
     }
 
-    @OptIn(KaExperimentalApi::class)
     private class AddParametersFix(
         element: KtSuperTypeEntry,
         context: AddParametersContext,
@@ -183,7 +182,7 @@ internal object SuperClassNotInitializedFactories {
             return KotlinBundle.message("add.constructor.parameters.from.superclass")
         }
 
-        override fun getPresentation(context: ActionContext, element: KtSuperTypeEntry): Presentation {
+        override fun getActionPresentation(context: ActionContext, element: KtSuperTypeEntry): Presentation {
             return Presentation.of(
                 KotlinBundle.message("add.constructor.parameters.from.0.1", superClassName, renderedTypesForName)
             )
@@ -194,8 +193,8 @@ internal object SuperClassNotInitializedFactories {
         return superTypeEntry.parents.match(KtSuperTypeList::class, last = KtClass::class)
     }
 
-    context(_: KaSession)
     @OptIn(KaExperimentalApi::class)
+    context(_: KaSession)
     private fun createAddParametersFixes(superTypeEntry: KtSuperTypeEntry, superClassSymbol: KaNamedClassSymbol): List<AddParametersFix> {
         val containingClass = getContainingClass(superTypeEntry) ?: return emptyList()
         val containingClassSymbol = containingClass.classSymbol ?: return emptyList()
@@ -211,7 +210,6 @@ internal object SuperClassNotInitializedFactories {
     }
 
     context(_: KaSession)
-    @OptIn(KaExperimentalApi::class)
     private fun createSingleConstructorFix(
         superClassSymbol: KaNamedClassSymbol,
         superTypeEntry: KtSuperTypeEntry,
@@ -244,8 +242,8 @@ internal object SuperClassNotInitializedFactories {
         )
     }
 
-    context(_: KaSession)
     @OptIn(KaExperimentalApi::class)
+    context(_: KaSession)
     private fun prepareParameterInfo(
         superParameter: KaVariableSignature<KaValueParameterSymbol>,
         primaryConstructorParameters: List<KaValueParameterSymbol>,

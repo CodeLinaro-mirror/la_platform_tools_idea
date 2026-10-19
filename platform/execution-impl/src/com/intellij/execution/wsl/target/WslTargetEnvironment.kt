@@ -9,7 +9,6 @@ import com.intellij.execution.target.ResolvedPortBinding
 import com.intellij.execution.target.TargetEnvironment
 import com.intellij.execution.target.TargetPlatform
 import com.intellij.execution.target.TargetedCommandLine
-import com.intellij.execution.target.VolumeCopyingRequest
 import com.intellij.execution.target.value.TargetValue
 import com.intellij.execution.wsl.WSLDistribution
 import com.intellij.execution.wsl.applyWslOptions
@@ -18,7 +17,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.runBlockingCancellable
 import com.intellij.platform.eel.EelExecPosixApi
-import com.intellij.platform.eel.EelExecPosixApi.PosixEnvironmentVariablesOptions.Mode
+import com.intellij.platform.eel.EelExecApi.EnvironmentVariablesOptions.Mode
 import com.intellij.platform.eel.EelPosixApi
 import com.intellij.platform.eel.LocalEelApi
 import com.intellij.platform.eel.PosixEnvironmentVariablesOptionsBuilder
@@ -38,7 +37,7 @@ import java.nio.file.Path
  * Migration Notes:
  * - Port forwarding is now handled by EelTargetEnvironment, which uses EelTunnelsApi
  * - The legacy WslProxy mechanism for WSL2 port forwarding is replaced by EEL's native tunneling
- * - Volume synchronization uses EelPathUtils.walkingTransfer instead of WslSync
+ * - Volume synchronization uses EelPathTransfer.walkingTransfer instead of WslSync
  * - Process creation goes through EelApi.exec instead of WSLDistribution.patchCommandLine
  *
  * Known Differences:
@@ -83,8 +82,6 @@ class WslTargetEnvironment(
     request.localPortBindings.forEach { portBinding ->
       this.localPortBindings.add(portBinding)
     }
-
-    this.shouldCopyVolumes = (request as? VolumeCopyingRequest)?.shouldCopyVolumes ?: false
   }
 
   private val delegate = EelTargetEnvironment(eelRequest)

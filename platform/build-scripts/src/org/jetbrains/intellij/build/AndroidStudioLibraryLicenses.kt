@@ -15,6 +15,8 @@
  */
 package org.jetbrains.intellij.build
 
+import com.intellij.platform.buildScripts.licenses.LibraryLicense
+
 object AndroidStudioLibraryLicenses {
   @JvmStatic
   val LICENSES_LIST: List<LibraryLicense> = listOf(

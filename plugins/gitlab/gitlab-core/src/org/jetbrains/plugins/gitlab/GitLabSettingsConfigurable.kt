@@ -2,6 +2,7 @@
 package org.jetbrains.plugins.gitlab
 
 import com.intellij.collaboration.auth.ui.AccountsPanelFactory
+import com.intellij.collaboration.auth.ui.AccountsPanelFactory.Companion.addWarningForEnabledCredentialHelper
 import com.intellij.collaboration.auth.ui.AccountsPanelFactory.Companion.addWarningForMemoryOnlyPasswordSafeAndGet
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.EDT
@@ -20,6 +21,7 @@ import com.intellij.ui.dsl.builder.Align
 import com.intellij.ui.dsl.builder.AlignX
 import com.intellij.ui.dsl.builder.bindSelected
 import com.intellij.ui.dsl.builder.panel
+import git4idea.config.GitVcsApplicationSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.serialization.Serializable
 import org.jetbrains.annotations.ApiStatus
@@ -47,7 +49,7 @@ internal class GitLabSettingsConfigurable(private val project: Project)
       accountsModel.newCredentials.getOrElse(account) {
         accountManager.findCredentials(account)
       }?.let {
-        service<GitLabApiManager>().getClient(account.server, it)
+        service<GitLabApiManager>().getClient(account.server, it.accessToken)
       }
     }
     val actionsController = GitLabAccountsPanelActionsController(project, accountsModel)
@@ -75,7 +77,10 @@ internal class GitLabSettingsConfigurable(private val project: Project)
         scope,
         service<GitLabAccountManager>().canPersistCredentials,
         ::panel
-      ).align(AlignX.RIGHT)
+      ).align(AlignX.LEFT)
+
+      addWarningForEnabledCredentialHelper(GitVcsApplicationSettings.getInstance().isUseCredentialHelper, ::panel)
+        .align(AlignX.LEFT)
     }
   }
 }

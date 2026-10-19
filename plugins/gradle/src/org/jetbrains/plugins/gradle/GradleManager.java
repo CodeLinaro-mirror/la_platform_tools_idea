@@ -43,6 +43,7 @@ import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.search.ExecutionSearchScopes;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.util.Function;
+import com.intellij.util.PlatformUtils;
 import com.intellij.util.containers.JBIterable;
 import com.intellij.util.execution.ParametersListUtil;
 import com.intellij.util.messages.MessageBusConnection;
@@ -164,7 +165,14 @@ public final class GradleManager
       }
       GradleSystemSettings systemSettings = GradleSystemSettings.getInstance();
       String vmOptions = Objects.requireNonNullElse(daemonVmOptions, "");
-      if (vmOptions.contains("-Didea.gradle.download.sources.force=false")) {
+      if (PlatformUtils.isQodana()) {
+        result.withVmOptions(List.of(
+          "-Didea.gradle.download.sources.force=false",
+          "-Didea.gradle.download.javadocs.force=false"
+        ));
+        result.setDownloadSources(false);
+      }
+      else if (vmOptions.contains("-Didea.gradle.download.sources.force=false")) {
         result.setDownloadSources(false);
       } else {
         result.setDownloadSources(systemSettings.isDownloadSources());
@@ -306,6 +314,11 @@ public final class GradleManager
   @Override
   public @Nullable String getAffectedExternalProjectPath(@NotNull String changedFileOrDirPath, @NotNull Project project) {
     return myAutoImportDelegate.getAffectedExternalProjectPath(changedFileOrDirPath, project);
+  }
+
+  @Override
+  public @NotNull List<Path> getAffectedExternalProjectFilePaths(String projectPath, @NotNull Project project) {
+    return myAutoImportDelegate.getAffectedExternalProjectFilePaths(projectPath, project);
   }
 
   @Override

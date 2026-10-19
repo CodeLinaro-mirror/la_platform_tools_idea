@@ -1,24 +1,42 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.kotlin.idea.core.script.k2
 
+import com.intellij.openapi.vfs.VfsUtil
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.platform.workspace.storage.EntitySource
 import com.intellij.platform.workspace.storage.MutableEntityStorage
 import com.intellij.util.lang.Xxh3
 import org.jetbrains.kotlin.idea.core.script.k2.modules.ScriptCompilationConfigurationData
 import org.jetbrains.kotlin.idea.core.script.k2.modules.ScriptCompilationConfigurationEntity
-import org.jetbrains.kotlin.idea.core.script.k2.modules.ScriptCompilationConfigurationIdentity
+import org.jetbrains.kotlin.idea.core.script.k2.modules.ScriptCompilationConfigurationId
 import org.jetbrains.kotlin.idea.core.script.k2.modules.ScriptEvaluationConfigurationEntity
 import org.jetbrains.kotlin.idea.core.script.k2.modules.ScriptingHostConfigurationEntity
+import org.jetbrains.kotlin.idea.core.script.shared.KotlinBaseScriptingBundle
+import org.jetbrains.kotlin.idea.core.script.v1.kotlinScriptTemplate
+import org.jetbrains.kotlin.scripting.definitions.isNonScript
+import org.jetbrains.kotlin.scripting.resolve.VirtualFileScriptSource
 import org.jetbrains.kotlin.utils.exceptions.errorWithAttachment
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.ObjectInputStream
 import java.io.ObjectOutputStream
+import kotlin.script.experimental.api.IdeScriptCompilationConfigurationKeys
 import kotlin.script.experimental.api.ScriptCompilationConfiguration
 import kotlin.script.experimental.api.ScriptEvaluationConfiguration
+import kotlin.script.experimental.api.SourceCode
+import kotlin.script.experimental.api.fileExtension
+import kotlin.script.experimental.api.ide
+import kotlin.script.experimental.host.FileScriptSource
 import kotlin.script.experimental.host.ScriptingHostConfiguration
 import kotlin.script.experimental.util.PropertiesCollection
 import kotlin.script.experimental.util.PropertiesCollection.Key
+
+val IdeScriptCompilationConfigurationKeys.kotlinScriptDefinitionInlayHint: Key<((ScriptCompilationConfiguration) -> String)?>
+        by PropertiesCollection.key({ configuration ->
+            val title = configuration[ScriptCompilationConfiguration.ide.kotlinScriptTemplate]?.title
+            val displayName = title ?: ".${configuration[ScriptCompilationConfiguration.fileExtension] ?: "kts"}"
+            KotlinBaseScriptingBundle.message("hints.codevision.script.definition", displayName)
+        })
 
 fun ScriptCompilationConfiguration.asEntity(): ScriptCompilationConfigurationData = ScriptCompilationConfigurationData(this.asBytes())
 
@@ -107,33 +125,42 @@ fun ScriptingHostConfigurationEntity.deserialize(): ScriptingHostConfiguration? 
  * - If exists, performs byte-level comparison to distinguish true duplicates from hash collisions
  * - If content matches, returns existing ID; if different (collision), tries next tag
  *
- * @param configuration The script compilation configuration to store in workspace model
- * @param entitySource The entity source for tracking changes in the workspace model
  * @return The entity ID (existing if content matches, newly created otherwise)
  * @throws IllegalStateException if all tags (0..[Short.MAX_VALUE]) are exhausted for the given hash
  *         (extremely unlikely in practice)
  */
-fun MutableEntityStorage.getOrCreateScriptConfigurationIdentity(
-    configuration: ScriptCompilationConfiguration,
+fun ScriptCompilationConfiguration.getOrCreateScriptConfigurationId(
+    storage: MutableEntityStorage,
     entitySource: EntitySource
-): ScriptCompilationConfigurationIdentity {
-    val data = configuration.asBytes()
+): ScriptCompilationConfigurationId {
+    val data = asBytes()
     val hash = Xxh3.hash(data)
 
-    for (tagInt in 0..<Short.MAX_VALUE) {
+    for (tagInt in Byte.MIN_VALUE..Byte.MAX_VALUE) {
         val tag = tagInt.toByte()
-        val identity = ScriptCompilationConfigurationIdentity(hash = hash, tag = tag)
-        val existingEntity = this.resolve(identity)
+        val configurationId = ScriptCompilationConfigurationId(hash = hash, tag = tag)
+        val existingEntity = storage.resolve(configurationId)
         if (existingEntity == null) {
-            this addEntity ScriptCompilationConfigurationEntity(data, identity, entitySource)
-            return identity
+            storage addEntity ScriptCompilationConfigurationEntity(data, configurationId, entitySource)
+            return configurationId
         } else {
             val existingBytes = existingEntity.data
             if (existingBytes.contentEquals(data)) {
-                return identity
+                return configurationId
             }
         }
     }
 
-    errorWithAttachment("Exhausted tags for configuration=$configuration")
+    errorWithAttachment("Exhausted tags for script compilation configuration") {
+        notTransientData.forEach { (key, value) ->
+            withEntry(key.name, value?.toString())
+        }
+    }
 }
+
+@Suppress("IO_FILE_USAGE")
+fun getVirtualFile(scriptSourceCode: SourceCode): VirtualFile? = when (scriptSourceCode) {
+    is VirtualFileScriptSource -> scriptSourceCode.virtualFile
+    is FileScriptSource -> VfsUtil.findFileByIoFile(scriptSourceCode.file, false)
+    else -> null
+}?.takeIf { !it.isNonScript() }

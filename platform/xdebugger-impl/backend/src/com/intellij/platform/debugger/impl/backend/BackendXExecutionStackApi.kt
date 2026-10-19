@@ -1,6 +1,7 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.platform.debugger.impl.backend
 
+import com.intellij.ide.ui.colors.rpcId
 import com.intellij.ide.ui.icons.rpcId
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.util.NlsContexts
@@ -12,7 +13,6 @@ import com.intellij.platform.debugger.impl.rpc.XStackFrameId
 import com.intellij.platform.debugger.impl.rpc.XStackFramePresentation
 import com.intellij.platform.debugger.impl.rpc.XStackFramePresentationFragment
 import com.intellij.platform.debugger.impl.rpc.XStackFramesEvent
-import com.intellij.platform.debugger.impl.rpc.toRpc
 import com.intellij.xdebugger.frame.XStackFrame
 import com.intellij.xdebugger.impl.frame.XStackFrameContainerEx
 import com.intellij.xdebugger.impl.rpc.models.findValue
@@ -22,7 +22,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ProducerScope
-import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.channelFlow
@@ -42,6 +41,7 @@ internal class BackendXExecutionStackApi : XExecutionStackApi {
     return channelFlow {
       val executionStack = executionStackModel.executionStack
       val pendingPresentationJobs = mutableListOf<Job>()
+      val events = Channel<suspend () -> Unit>(Channel.UNLIMITED)
 
       executionStack.computeStackFrames(firstFrameIndex, object : XStackFrameContainerEx {
         override fun addStackFrames(stackFrames: List<XStackFrame>, last: Boolean) {
@@ -53,20 +53,22 @@ internal class BackendXExecutionStackApi : XExecutionStackApi {
           toSelect: XStackFrame?,
           last: Boolean,
         ) {
-          // Create a copy of stackFrames to avoid concurrent modification
-          val framesCopy = stackFrames.toList()
+          events.trySend {
+            // Create a copy of stackFrames to avoid concurrent modification
+            val framesCopy = stackFrames.toList()
 
-          val session = executionStackModel.session
-          val frameDtos = framesCopy.map { frame ->
-            frame.toRpc(executionStackModel.coroutineScope, session)
+            val session = executionStackModel.session
+            val frameDtos = framesCopy.map { frame ->
+              frame.toRpc(executionStackModel.coroutineScope, session)
+            }
+            val frameToSelectId = toSelect?.let {
+              val index = framesCopy.indexOf(it)
+              if (index >= 0) frameDtos[index].stackFrameId else null
+            }
+            this@channelFlow.send(XStackFramesEvent.XNewStackFrames(frameDtos, frameToSelectId, last))
+            val framesWithIds = frameDtos.zip(framesCopy) { dto, frame -> dto.stackFrameId to frame }
+            subscribeToPresentationUpdates(executionStackId, framesWithIds, last)
           }
-          val frameToSelectId = toSelect?.let {
-            val index = framesCopy.indexOf(it)
-            if (index >= 0) frameDtos[index].stackFrameId else null
-          }
-          trySend(XStackFramesEvent.XNewStackFrames(frameDtos, frameToSelectId, last))
-          val framesWithIds = frameDtos.zip(framesCopy) { dto, frame -> dto.stackFrameId to frame }
-          subscribeToPresentationUpdates(executionStackId, framesWithIds, last)
         }
 
         private fun ProducerScope<XStackFramesEvent>.subscribeToPresentationUpdates(executionStackId: XExecutionStackId,
@@ -77,11 +79,11 @@ internal class BackendXExecutionStackApi : XExecutionStackApi {
               frame.customizePresentation().collectLatest { presentation ->
                 val fragments = buildList {
                   presentation.fragments.forEach { (text, attributes) ->
-                    add(XStackFramePresentationFragment(text, attributes.toRpc()))
+                    add(XStackFramePresentationFragment(text, attributes.rpcId()))
                   }
                 }
                 val newPresentation = XStackFramePresentation(fragments, presentation.icon?.rpcId(), presentation.tooltipText)
-                this@channelFlow.trySend(XStackFramesEvent.NewPresentation(id, newPresentation))
+                this@channelFlow.send(XStackFramesEvent.NewPresentation(id, newPresentation))
               }
             }
           })
@@ -91,17 +93,20 @@ internal class BackendXExecutionStackApi : XExecutionStackApi {
             // 2. XStackFrame.customizePresentation() returns a finite flow, as stated in its doc.
             launch(CoroutineName("computeStackFrames finisher for $executionStackId")) {
               pendingPresentationJobs.joinAll()
-              this@channelFlow.close()
+              events.close()
             }
           }
         }
 
         override fun errorOccurred(errorMessage: @NlsContexts.DialogMessage String) {
-          trySend(XStackFramesEvent.ErrorOccurred(errorMessage))
+          events.trySend { XStackFramesEvent.ErrorOccurred(errorMessage) }
         }
       })
-      awaitClose()
-    }.buffer(Channel.UNLIMITED)
+
+      for (eventComputation in events) {
+        eventComputation()
+      }
+    }.buffer(Channel.BUFFERED)
   }
 
   override suspend fun canDrop(sessionId: XDebugSessionId, stackFrameId: XStackFrameId): Boolean {

@@ -76,13 +76,15 @@ class PluginMainDescriptor(
   override val pluginAliases: List<PluginId> = super.pluginAliases.let(::addCorePluginAliases)
 
   /**
-   * Explicitly set namespace for content modules of the plugin
+   * An implicit namespace temporarily used for the plugin descriptor module.
+   * Namespaces are specified only for content modules. However, currently there are some plugins that declare dependencies on internal modules directly in their `plugin.xml`
+   * files (IJPL-245093). To make this work, the first namespace of a `content` tag is used as an implicit namespace for the plugin descriptor module.
    */
-  val namespace: String? = raw.namespace
+  val implicitNamespaceForPluginDescriptorModule: String? = raw.firstNamespaceOfContentTag
 
   /**
-   * Implicit namespace used in [PluginModuleId] instances for dependencies between plugins modules if the explicit [namespace] is not set.
-   * Currently, it's not necessary to specify the namespace explicitly if all modules are private and don't depend on internal modules, but it's still convenient to have some
+   * Implicit namespace used in [PluginModuleId] instances if the explicit [ContentModuleElement.namespace] is not set.
+   * Currently, it's not necessary to specify the namespace explicitly if a module is private and doesn't depend on internal modules, but it's still convenient to have some
    * namespace for debugging and logging.
    */
   internal val implicitNamespaceForPrivateModules by lazy { $$"$${id.idString}_$implicit" }
@@ -92,13 +94,15 @@ class PluginMainDescriptor(
    */
   @VisibleForTesting
   val content: PluginContentDescriptor =
-    raw.contentModules.takeIf { it.isNotEmpty() }?.let { convertContentModules(it, namespace ?: implicitNamespaceForPrivateModules) }
+    raw.contentModules.takeIf { it.isNotEmpty() }?.let { convertContentModules(it) }
     ?: PluginContentDescriptor.EMPTY
 
   val contentModules: List<ContentModuleDescriptor>
     get() = content.modules.map { it.descriptor }
 
   override val moduleDependencies: ModuleDependencies = convertDependencies(raw.dependencies, this)
+
+  override var ownClassPath: List<Path>? = null
 
   init {
     reportMainDescriptorUnexpectedElements(raw) { logUnexpectedElement(this@PluginMainDescriptor, it) }
@@ -107,9 +111,6 @@ class PluginMainDescriptor(
   override fun getPluginId(): PluginId = id
 
   override fun getName(): String {
-    PluginCardOverrides.getNameOverride(id)?.let {
-      return it
-    }
     return name
   }
 
@@ -142,10 +143,6 @@ class PluginMainDescriptor(
     var result = loadedDescriptionText
     if (result != null) {
       return result
-    }
-    PluginCardOverrides.getDescriptionOverride(pluginId)?.let {
-      loadedDescriptionText = it
-      return it
     }
     result = fromPluginBundle("plugin.$pluginId.description", rawDescription)
     loadedDescriptionText = result
@@ -196,7 +193,7 @@ class PluginMainDescriptor(
            productModeAliasesForCorePlugin()
   }
 
-  private fun convertContentModules(contentElements: List<ContentModuleElement>, namespace: String): PluginContentDescriptor {
+  private fun convertContentModules(contentElements: List<ContentModuleElement>): PluginContentDescriptor {
     val modules = contentElements.map { elem ->
       val index = elem.name.lastIndexOf('/')
       val configFile: String? = if (index == -1) {
@@ -205,6 +202,7 @@ class PluginMainDescriptor(
       else {
         "${elem.name.substring(0, index)}.${elem.name.substring(index + 1)}.xml"
       }
+      val namespace = elem.namespace ?: implicitNamespaceForPrivateModules
       val moduleId = PluginModuleId(elem.name, namespace)
       PluginContentDescriptor.ModuleItem(
         moduleId = moduleId,
@@ -215,10 +213,10 @@ class PluginMainDescriptor(
       )
     }
     if (modules.size > 1) {
-      val duplicates = HashSet<PluginModuleId>()
+      val moduleNames = HashSet<String>()
       for (item in modules) {
-        require(duplicates.add(item.moduleId)) {
-          "Duplicate content module declaration: '${item.moduleId}' in plugin '${id}' located at $pluginPath"
+        require(moduleNames.add(item.moduleId.name)) {
+          "Multiple content modules with the same name '${item.moduleId.name}' in plugin '${id}' located at $pluginPath"
         }
       }
     }
@@ -234,7 +232,7 @@ class PluginMainDescriptor(
     raw = subBuilder.build(),
     moduleId = module.moduleId,
     moduleLoadingRule = module.determineLoadingRule( // FIXME this call should happen in init phase, not while parsing
-      initContextForLoadingRuleDetermination,
+      PluginInitContextFactory.getInstance().getContextForEffectiveModuleLoadingRuleDetermination(),
       id
     ),
     descriptorPath = descriptorPath
@@ -288,23 +286,6 @@ fun reportMainDescriptorUnexpectedElements(raw: RawPluginDescriptor, reporter: (
   }
 }
 
-// FIXME this should not exist
-@Volatile
-private var initContextForLoadingRuleDetermination: PluginInitializationContext = ProductPluginInitContext()
-
-// FIXME this should not exist
-@Internal
-@TestOnly
-fun <T> withInitContextForLoadingRuleDetermination(initContext: PluginInitializationContext, body: () -> T): T {
-  val prev = initContextForLoadingRuleDetermination
-  initContextForLoadingRuleDetermination = initContext
-  try {
-    return body()
-  } finally {
-    initContextForLoadingRuleDetermination = prev
-  }
-}
-
 @Internal
 @TestOnly
 fun PluginMainDescriptor.createContentModuleInTest(
@@ -312,3 +293,8 @@ fun PluginMainDescriptor.createContentModuleInTest(
   descriptorPath: String,
   module: PluginContentDescriptor.ModuleItem,
 ): ContentModuleDescriptor = createContentModule(subBuilder, descriptorPath, module)
+
+@Internal
+fun PluginMainDescriptor.sequenceAllDescriptors(): Sequence<IdeaPluginDescriptorImpl> = sequence {
+  yieldAllDescriptors(this@sequenceAllDescriptors)
+}

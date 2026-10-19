@@ -52,6 +52,7 @@ import com.intellij.ide.actions.RevealFileAction;
 import com.intellij.ide.plugins.PluginNode;
 import com.intellij.ide.plugins.marketplace.MarketplaceRequests;
 import com.intellij.notification.Notification;
+import com.intellij.notification.NotificationGroupManager;
 import com.intellij.notification.NotificationListener;
 import com.intellij.notification.NotificationType;
 import com.intellij.openapi.actionSystem.ActionGroup;
@@ -434,17 +435,17 @@ public class GridUtil extends GridUtilCore {
     return result;
   }
 
-  public static boolean canInsertBlob(@NotNull DataGrid grid, @NotNull ModelIndex<GridRow> row, @NotNull ModelIndex<GridColumn> column) {
-    int type = GridCellEditorHelper.get(grid).guessJdbcTypeForEditing(grid, row, column);
+  public static boolean canInsertBlob(@NotNull GridCellRequest<GridRow, GridColumn> request) {
+    int type = GridCellEditorHelper.get(request.getGrid()).guessJdbcTypeForEditing(request);
     return type == Types.BINARY || type == Types.BLOB || type == Types.LONGVARBINARY || type == Types.VARBINARY;
   }
 
-  public static @Nullable TextCompletionProvider createCompletionProvider(@NotNull DataGrid grid,
-                                                                          @NotNull ModelIndex<GridRow> row,
-                                                                          @NotNull ModelIndex<GridColumn> column) {
+  public static @Nullable TextCompletionProvider createCompletionProvider(@NotNull GridCellRequest<GridRow, GridColumn> request) {
+    DataGrid grid = (DataGrid)request.getGrid();
     GridModel<GridRow, GridColumn> model = grid.getDataModel(DATA_WITH_MUTATIONS);
-    GridColumn c = model.getColumn(column);
-    if (c == null || !canComplete(grid, row, column)) return null;
+    ModelIndex<GridColumn> column = request.getColumnIdx();
+    GridColumn c = request.getColumn();
+    if (c == null || !canComplete(request)) return null;
     return new TextFieldWithAutoCompletion.StringsCompletionProvider(null, null) {
       @Override
       public String getPrefix(@NotNull String text, int offset) {
@@ -475,28 +476,25 @@ public class GridUtil extends GridUtilCore {
     };
   }
 
-  private static boolean canComplete(@NotNull DataGrid grid,
-                                     @NotNull ModelIndex<GridRow> row,
-                                     @NotNull ModelIndex<GridColumn> column) {
-    GridModel<GridRow, GridColumn> model = grid.getDataModel(DATA_WITH_MUTATIONS);
-    GridColumn c = model.getColumn(column);
-    if (c == null || canInsertBlob(grid, row, column)) return false;
+  private static boolean canComplete(@NotNull GridCellRequest<GridRow, GridColumn> request) {
+    GridColumn c = request.getColumn();
+    if (c == null || canInsertBlob(request)) return false;
     if (ObjectFormatterUtil.isNumberType(c.getType())) return true;
-    String className = c instanceof JdbcColumnDescriptor ? ((JdbcColumnDescriptor)c).getJavaClassName() : null;
+    String className = c instanceof JdbcColumnDescriptor cd ? cd.getJavaClassName() : null;
     return className != null && !className.equals(CommonClassNames.JAVA_LANG_INTEGER) || ObjectFormatterUtil.isStringType(c.getType());
   }
 
   public static @Nullable DataGrid getDataGrid(DataContext dataContext) {
     FileEditor editor = PlatformCoreDataKeys.FILE_EDITOR.getData(dataContext);
-    if (editor instanceof DataGridContainer) {
-      return ((DataGridContainer)editor).getDataGrid();
+    if (editor instanceof DataGridContainer dgc) {
+      return dgc.getDataGrid();
     }
     DataGrid grid = editor == null ? null : editor.getUserData(GRID_KEY);
     return grid != null ? grid : DatabaseDataKeys.DATA_GRID_KEY.getData(dataContext);
   }
 
-  public static boolean canInsertClob(@NotNull DataGrid grid, @NotNull ModelIndex<GridRow> row, @NotNull ModelIndex<GridColumn> column) {
-    int type = GridCellEditorHelper.get(grid).guessJdbcTypeForEditing(grid, row, column);
+  public static boolean canInsertClob(@NotNull GridCellRequest<GridRow, GridColumn> request) {
+    int type = GridCellEditorHelper.get(request.getGrid()).guessJdbcTypeForEditing(request); //todo: maybe pass null?
     return type == Types.CLOB || type == Types.NCLOB || type == Types.LONGVARCHAR || type == Types.LONGNVARCHAR ||
            type == Types.NCHAR || type == Types.CHAR || type == Types.VARCHAR || type == Types.NVARCHAR || type == Types.SQLXML;
   }
@@ -1040,10 +1038,11 @@ public class GridUtil extends GridUtilCore {
       ApplicationManager.getApplication().executeOnPooledThread(() -> {
         VirtualFile virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(file);
         if (virtualFile == null) {
-          DataGridNotifications.EXTRACTORS_GROUP.createNotification(
-            DataGridBundle.message("notification.content.can.t.access.file", myPath),
-            NotificationType.WARNING
-          ).setDisplayId("FileNotificationListener.cant.access").notify(myProject);
+          NotificationGroupManager.getInstance().getNotificationGroup(DataGridNotifications.EXTRACTORS_GROUP_ID)
+            .createNotification(
+              DataGridBundle.message("notification.content.can.t.access.file", myPath),
+              NotificationType.WARNING
+            ).setDisplayId("FileNotificationListener.cant.access").notify(myProject);
           return;
         }
         VfsUtil.markDirtyAndRefresh(false, false, false, virtualFile);

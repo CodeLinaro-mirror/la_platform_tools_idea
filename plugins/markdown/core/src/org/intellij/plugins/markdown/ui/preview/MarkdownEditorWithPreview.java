@@ -6,36 +6,48 @@ import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.event.VisibleAreaEvent;
 import com.intellij.openapi.editor.event.VisibleAreaListener;
 import com.intellij.openapi.editor.impl.EditorImpl;
+import com.intellij.openapi.fileEditor.FileEditorState;
 import com.intellij.openapi.fileEditor.TextEditor;
 import com.intellij.openapi.fileEditor.TextEditorWithPreview;
 import com.intellij.openapi.project.Project;
+import com.intellij.ui.JBSplitter;
 import org.intellij.plugins.markdown.MarkdownBundle;
 import org.intellij.plugins.markdown.settings.MarkdownSettings;
 import org.jetbrains.annotations.NotNull;
 
 import java.awt.Point;
 
-/**
- * @author Konstantin Bulenkov
- */
 public final class MarkdownEditorWithPreview extends TextEditorWithPreview {
+  private final MarkdownSettings settings;
   private boolean autoScrollPreview;
 
+  /**
+   * @deprecated use constructor overload with {@link MarkdownSettings} parameter
+   */
+  @Deprecated
   public MarkdownEditorWithPreview(@NotNull TextEditor editor, @NotNull MarkdownPreviewFileEditor preview, @NotNull Project project) {
+    this(editor, preview, project, MarkdownSettings.getInstance(project));
+  }
+
+  public MarkdownEditorWithPreview(@NotNull TextEditor editor,
+                                   @NotNull MarkdownPreviewFileEditor preview,
+                                   @NotNull Project project,
+                                   @NotNull MarkdownSettings settings) {
     super(
       editor,
       preview,
       MarkdownBundle.message("markdown.editor.name"),
       Layout.SHOW_EDITOR_AND_PREVIEW,
-      !MarkdownSettings.getInstance(project).isVerticalSplit()
+      !settings.isVerticalSplit()
     );
+
+    this.settings = settings;
 
     // allow launching actions while in preview mode;
     // FIXME: better solution IDEA-354102
     editor.getEditor().getContentComponent().putClientProperty(ActionUtil.ALLOW_ACTION_PERFORM_WHEN_HIDDEN, true);
     preview.setMainEditor(editor.getEditor());
 
-    MarkdownSettings settings = MarkdownSettings.getInstance(project);
     autoScrollPreview = settings.isAutoScrollEnabled();
 
     project.getMessageBus().connect(this).subscribe(MarkdownSettings.ChangeListener.TOPIC, new MarkdownSettings.ChangeListener() {
@@ -55,6 +67,22 @@ public final class MarkdownEditorWithPreview extends TextEditorWithPreview {
       }
     });
     editor.getEditor().getScrollingModel().addVisibleAreaListener(new MyVisibleAreaListener(), this);
+  }
+
+  @Override
+  protected @NotNull JBSplitter createSplitter() {
+    JBSplitter splitter = super.createSplitter();
+    // "Preview layout" must apply to a freshly created editor, not just to an already open one.
+    splitter.setOrientation(!settings.isVerticalSplit());
+    return splitter;
+  }
+
+  @Override
+  public void setState(@NotNull FileEditorState state) {
+    super.setState(state);
+    // "Preview layout" is a global default, so it must win over the per-file orientation
+    // that super.setState() restores from the editor state. See IJPL-253568.
+    handleLayoutChange(!settings.isVerticalSplit());
   }
 
   @Override

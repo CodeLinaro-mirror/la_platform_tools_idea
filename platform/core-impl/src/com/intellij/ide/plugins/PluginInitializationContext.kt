@@ -1,20 +1,18 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.ide.plugins
 
-import com.intellij.core.CoreBundle
-import com.intellij.ide.plugins.ProductPluginInitContext.Companion.configureProductModeModules
+import com.intellij.ide.plugins.PluginDependencyAnalysis.DependencyRef
+import com.intellij.ide.plugins.ProductRulesImposedExclusion.ProductRulesImposedExclusionReason
 import com.intellij.idea.AppMode
 import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.util.BuildNumber
 import org.jetbrains.annotations.ApiStatus
-import org.jetbrains.annotations.TestOnly
 
 @ApiStatus.Internal
 interface PluginInitializationContext {
   val productBuildNumber: BuildNumber
   val essentialPlugins: Set<PluginId>
   fun isPluginDisabled(id: PluginId): Boolean
-  fun isPluginExpired(id: PluginId): Boolean
   fun isPluginBroken(id: PluginId, version: String?): Boolean
 
   /**
@@ -59,47 +57,72 @@ interface PluginInitializationContext {
     val isAvailable: Boolean get() = unavailabilityReason == null
   }
 
-  @ApiStatus.Internal
-  companion object {
-    @TestOnly
-    fun buildForTest(
-      essentialPlugins: Set<PluginId>,
-      disabledPlugins: Set<PluginId>,
-      expiredPlugins: Set<PluginId>,
-      brokenPluginVersions: Map<PluginId, Set<String?>>,
-      getProductBuildNumber: () -> BuildNumber,
-      requirePlatformAliasDependencyForLegacyPlugins: Boolean,
-      checkEssentialPlugins: Boolean,
-      explicitPluginSubsetToLoad: Set<PluginId>?,
-      disablePluginLoadingCompletely: Boolean,
-      currentProductModeId: String,
-    ): PluginInitializationContext =
-      object : PluginInitializationContext {
-        override val productBuildNumber: BuildNumber get() = getProductBuildNumber()
-        override val essentialPlugins: Set<PluginId> = essentialPlugins
-        override fun isPluginDisabled(id: PluginId): Boolean = id in disabledPlugins
-        override fun isPluginExpired(id: PluginId): Boolean = id in expiredPlugins
-        override fun isPluginBroken(id: PluginId, version: String?): Boolean = brokenPluginVersions[id]?.contains(version) == true
-        override val requirePlatformAliasDependencyForLegacyPlugins: Boolean = requirePlatformAliasDependencyForLegacyPlugins
-        override val checkEssentialPlugins: Boolean = checkEssentialPlugins
-        override val explicitPluginSubsetToLoad: Set<PluginId>? = explicitPluginSubsetToLoad
-        override val disablePluginLoadingCompletely: Boolean = disablePluginLoadingCompletely
-        override val pluginsPerProjectConfig: PluginsPerProjectConfig? = null
-        override val currentProductModeId: String = currentProductModeId
-        override val environmentConfiguredModules: Map<PluginModuleId, EnvironmentConfiguredModuleData> = buildMap {
-          configureProductModeModules(currentProductModeId)
-        }
-      }
+  /**
+   * Produces a sequence of modules that should be deemed as additional dependencies of a given [descriptor].
+   * Note that the generated dependency is "strict", meaning that if the target gets excluded (e.g., if the target is a plugin that is marked disabled),
+   * then [descriptor] will also be excluded.
+   *
+   * Called for all possible modules and "depends" sub-descriptors independently.
+   *
+   * TODO Ideally, [pluginSet] should not be used, but it's required in the current [ProductPluginInitContext] implementation.
+   *
+   * @see [provideCompatibilityDependenciesForRemainingCandidates]
+   */
+  fun provideCompatibilityDependencies(descriptor: IdeaPluginDescriptorImpl, pluginSet: UnambiguousPluginSet): Sequence<DependencyRef>
+
+  /**
+   * This method is different from [provideCompatibilityDependencies] in that it allows generating "soft" compatibility dependencies:
+   * imagine that several modules were extracted from the IDE's core and now form a separate plugin that can be disabled.
+   * Previously, these modules were available to external plugins via the Core classloader, i.e. without any explicit dependency,
+   * but now they are not available without an explicit dependency, which breaks compatibility.
+   * To remedy this, we want to supply additional dependencies on extracted modules. Producing a "strict" dependency
+   * (as in [provideCompatibilityDependencies]) may sometimes be too strict, e.g., if that new extracted plugin is disabled, external plugins
+   * that receive such a compatibility dependency (even those that don't actually need it) will be excluded since the dependency is "strict".
+   * However, this method is called when the preliminary set of remaining candidates is already constructed, i.e. when all regular module
+   * exclusion rules are processed, and it allows skipping generation of compatibility dependencies if the dependency target is already excluded.
+   *
+   * This method is called for every remaining candidate descriptor.
+   *
+   * Dependencies produced by this method bypass content module visibility checks. This is intentional: the method is a product-level compatibility
+   * mechanism which may restore access that existed before a module was extracted. Implementations are responsible for only providing dependencies
+   * for which bypassing visibility is appropriate.
+   *
+   * Note that producing additional dependencies here still may cause exclusions (e.g., if a dependency cycle appears).
+   *
+   * Note that eventually every implicit dependency that is added through this method should become explicit in the affected plugins.
+   * This method should only work as a temporary compatibility mechanism, it should not grow indefinitely.
+   */
+  fun provideCompatibilityDependenciesForRemainingCandidates(descriptor: IdeaPluginDescriptorImpl, remainingCandidates: RemainingCandidatesView): Sequence<DependencyRef>
+
+  interface RemainingCandidatesView {
+    fun resolvePluginId(id: PluginId): PluginModuleDescriptor?
+    fun resolveContentModuleId(id: PluginModuleId): ContentModuleDescriptor?
   }
+
+  fun provideModuleExclusionsImposedByProductRules(pluginSet: UnambiguousPluginSet): Sequence<Pair<PluginModuleDescriptor, ProductRulesImposedExclusionReason>>
+
+  /**
+   * Tells the plugin set resolver that [module] should belong to the same [RuntimeModuleGroup] (the same classloader) as the returned result (if not null).
+   */
+  fun provideCustomRuntimeModuleGroupAffiliation(module: PluginModuleDescriptor, pluginSet: UnambiguousPluginSet): PluginModuleDescriptor?
+
+  /**
+   * To preserve compatibility, all "active" `<depends>` dependencies imply extra dependencies on all "active" content modules of the target.
+   * This method allows controlling this mechanism.
+   * @return `false` if additional edges to content modules should not be generated when there is a `<depends>` edge to the [resolvedTarget].
+   */
+  fun shouldIncludeContentModulesForDependsEdgeTarget(resolvedTarget: PluginMainDescriptor): Boolean
+
+  /**
+   * Only is called once during the startup initialization
+   */
+  fun runConfigurationDuringStartup(totalPluginSet: AmbiguousPluginSet)
+
+  companion object
 }
 
 @ApiStatus.Internal
 fun PluginInitializationContext.validatePluginIsCompatible(plugin: PluginMainDescriptor): PluginNonLoadReason? {
-  if (isPluginWhichDependsOnKotlinPluginAndItsIncompatibleWithIt(plugin)) {
-    // disable plugins which are incompatible with the Kotlin Plugin K1/K2 Modes KTIJ-24797, KTIJ-30474
-    val mode = if (isKotlinPluginK1Mode()) CoreBundle.message("plugin.loading.error.k1.mode") else CoreBundle.message("plugin.loading.error.k2.mode")
-    return PluginIsIncompatibleWithKotlinMode(plugin, mode)
-  }
   if (plugin.isBundled) {
     return null
   }
@@ -121,3 +144,11 @@ fun PluginInitializationContext.validatePluginIsCompatible(plugin: PluginMainDes
 
 @ApiStatus.Internal
 data class PluginsPerProjectConfig(val isMainProcess: Boolean)
+
+@ApiStatus.Internal
+fun PluginInitializationContext.RemainingCandidatesView.resolveReference(ref: DependencyRef): PluginModuleDescriptor? {
+  return when (ref) {
+    is DependencyRef.Plugin -> resolvePluginId(ref.pluginId)
+    is DependencyRef.ContentModule -> resolveContentModuleId(ref.moduleId)
+  }
+}

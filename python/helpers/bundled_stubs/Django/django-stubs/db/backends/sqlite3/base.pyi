@@ -1,11 +1,12 @@
 from collections.abc import Callable, Iterable
 from datetime import date, datetime
+from re import Pattern
 from sqlite3 import dbapi2 as Database
 from types import ModuleType
-from typing import Any, TypeVar
+from typing import Any
 
 from django.db.backends.base.base import BaseDatabaseWrapper
-from typing_extensions import override
+from typing_extensions import TypeVar, override
 
 from .client import DatabaseClient
 from .creation import DatabaseCreation
@@ -41,7 +42,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
 
     def is_in_memory_db(self) -> bool: ...
 
-FORMAT_QMARK_REGEX: Any
+FORMAT_QMARK_REGEX: Pattern[str]
 
 class SQLiteCursorWrapper(Database.Cursor):
     @override

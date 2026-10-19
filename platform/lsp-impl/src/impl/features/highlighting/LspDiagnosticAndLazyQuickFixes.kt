@@ -15,7 +15,21 @@ import org.jetbrains.annotations.ApiStatus
 data class DiagnosticAndQuickFixes(
   val diagnostic: Diagnostic,
   val quickFixes: List<IntentionAction>,
-)
+) {
+  @ApiStatus.Internal
+  companion object {
+    fun build(
+      client: LspClientImpl,
+      virtualFile: VirtualFile,
+      diagnostic: Diagnostic,
+      documentId: TextDocumentIdentifier,
+    ): DiagnosticAndQuickFixes {
+      return DiagnosticAndQuickFixes(diagnostic, LspDiagnosticAndLazyQuickFixes(diagnostic, documentId)
+        .getQuickFixes(client, virtualFile)
+      )
+    }
+  }
+}
 
 internal fun copyDiagnosticWithRange(diagnostic: Diagnostic, range: Range): Diagnostic = Diagnostic().apply {
   this.range = range

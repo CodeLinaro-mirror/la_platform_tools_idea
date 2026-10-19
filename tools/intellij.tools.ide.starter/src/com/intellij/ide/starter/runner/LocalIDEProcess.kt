@@ -21,6 +21,7 @@ import com.intellij.ide.starter.runner.events.StopProfilerEvent
 import com.intellij.ide.starter.telemetry.TestTelemetryService
 import com.intellij.ide.starter.telemetry.computeWithSpan
 import com.intellij.openapi.util.io.NioFiles
+import com.intellij.platform.testFramework.teamCity.TeamCityReporter
 import com.intellij.tools.ide.starter.bus.EventsBus
 import com.intellij.tools.ide.util.common.logError
 import com.intellij.tools.ide.util.common.logOutput
@@ -29,6 +30,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.runInterruptible
 import java.io.Closeable
 import java.nio.file.Path
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.measureTimedValue
 
 class LocalIDEProcess : IDEProcess {
@@ -47,9 +49,9 @@ class LocalIDEProcess : IDEProcess {
 
       try {
         testContext.setProviderMemoryOnlyOnLinux()
-        @Suppress("SSBasedInspection")
+        @Suppress("SSBasedInspection", "RunBlockingInSuspendFunction")
         val jdkHome = runBlocking(Dispatchers.Default) {
-          resolveAndDownloadSameJDK()
+          testContext.ide.resolveAndDownloadTheSameJDKOrFallback()
         }
 
         val vmOptions: VMOptions = calculateVmOptions()
@@ -84,15 +86,14 @@ class LocalIDEProcess : IDEProcess {
             errorDiagnosticFiles = startConfig.errorDiagnosticFiles,
             stdoutRedirect = stdout,
             stderrRedirect = stderr,
-            onProcessCreated = { process, pid ->
+            onProcessCreated = { process, _ ->
               span.addEvent("process created")
               runInterruptible {
-                EventsBus.postAndWaitProcessing(IdeLaunchEvent(runContext = this, ideProcess = IDEProcessHandle(process.toHandle())))
+                EventsBus.postAndWaitProcessing(IdeLaunchEvent(runContext = this, ideProcess = IDEProcessHandle(process)))
               }
               getIdeProcessIdWithRetry(process.toProcessInfo(), runContext)?.let {
                 ideProcessId = it
-                startCollectThreadDumpsLoop(logsDir, IDEProcessHandle(process.toHandle()), jdkHome,
-                                            startConfig.workDir, it, "ide")
+                startCollectThreadDumpsLoop(logsDir, IDEProcessHandle(process), jdkHome, startConfig.workDir, it, "ide")
               }
             },
             onBeforeKilled = { process, pid ->
@@ -101,7 +102,7 @@ class LocalIDEProcess : IDEProcess {
                 logOutput("BeforeKilled: $processPresentableName")
                 (ideProcessId ?: getIdeProcessIdWithRetry(process.toProcessInfo(), runContext))?.let {
                   ideProcessId = it
-                  captureDiagnosticOnKill(logsDir, jdkHome, startConfig, it, snapshotsDir, runContext = this)
+                  captureDiagnosticOnKill(logsDir, jdkHome, startConfig, it, snapshotsDir)
                 }
                 EventsBus.postAndWaitProcessing(IdeBeforeKillEvent(this, process, pid))
                 if (testContext.profilerType != ProfilerType.NONE) {
@@ -139,6 +140,11 @@ class LocalIDEProcess : IDEProcess {
           }
         }
       }
+      catch (ce: CancellationException) {
+        isRunSuccessful = false
+        logOutput("Local ide process was cancelled", ce)
+        throw ce
+      }
       catch (exception: Throwable) {
         isRunSuccessful = false
         throw Exception(getErrorMessage(exception, ciFailureDetails), exception)
@@ -154,10 +160,8 @@ class LocalIDEProcess : IDEProcess {
             ideProcessId?.let { testContext.collectJBRDiagnosticFiles(it) }
 
             val link = FailureDetailsOnCI.instance.getLinkToCIArtifacts(this)
-            TeamCityCIServer.addTestMetadata(testName = null, TeamCityCIServer.TeamCityMetadataType.LINK, flowId = null, name = "Link to Logs and artifacts", value = link.toString())
-            (CIServer.instance as? TeamCityCIServer)?.buildId?.let {
-              TeamCityCIServer.addTestMetadata(testName = null, TeamCityCIServer.TeamCityMetadataType.LINK, flowId = null, name = "Start bisect", value = "https://ij-perf.labs.jb.gg/bisect/launcher?buildId=${it}")
-            }
+            TeamCityReporter.reportTestMetadata(testName = null, type = TeamCityReporter.MetadataType.LINK, flowId = null, name = "Link to Logs and artifacts", value = link.toString())
+            (CIServer.instance as? TeamCityCIServer)?.addBisectMetadata()
             ErrorReporter.instance.reportErrorsAsFailedTests(this)
           }
         }

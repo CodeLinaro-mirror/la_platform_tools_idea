@@ -34,6 +34,7 @@ kotlin {
     "-progressive",
   )
   jvm {}
+  sourceSets.jvmTest.configure { resources.srcDir(layout.projectDirectory.dir("../resources")) }
   sourceSets.jvmTest.configure { kotlin.srcDir(layout.projectDirectory.dir("../src")) }
   configureAtMostOneJvmTargetOrThrow { compilations.named("test") { withJavaSourceSet { javaSourceSet -> javaSourceSet.java.srcDir(layout.projectDirectory.dir("../src")) } } }
   sourceSets.commonMain.configure { kotlin.srcDir(layout.projectDirectory.dir("../srcCommonMain")) }
@@ -59,7 +60,6 @@ kotlin {
     implementation(project(":fleet.test.runtime"))
     implementation(project(":fleet.codecache"))
     implementation(project(":fleet.bundles"))
-    implementation(project(":fleet.util.network"))
     implementation(project(":fleet.ktor.client.core"))
   }
   // KOTLIN__MARKER_END

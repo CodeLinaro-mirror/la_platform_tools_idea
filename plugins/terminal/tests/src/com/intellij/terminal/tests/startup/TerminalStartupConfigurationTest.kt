@@ -24,12 +24,9 @@ import com.intellij.platform.eel.provider.asNioPath
 import com.intellij.platform.eel.provider.getEelDescriptor
 import com.intellij.platform.eel.provider.localEel
 import com.intellij.platform.eel.provider.toEelApi
-import com.intellij.platform.testFramework.junit5.eel.params.api.Docker
 import com.intellij.platform.testFramework.junit5.eel.params.api.EelHolder
 import com.intellij.platform.testFramework.junit5.eel.params.api.EelType
-import com.intellij.platform.testFramework.junit5.eel.params.api.Local
 import com.intellij.platform.testFramework.junit5.eel.params.api.TestApplicationWithEel
-import com.intellij.platform.testFramework.junit5.eel.params.api.Wsl
 import com.intellij.terminal.tests.reworked.util.TerminalTestUtil.setValueInTest
 import com.intellij.terminal.tests.reworked.util.withShellIntegration
 import com.intellij.testFramework.ExtensionTestUtil
@@ -124,7 +121,7 @@ internal class TerminalStartupConfigurationTest(private val eelHolder: EelHolder
 
   @TestFactory
   fun `convert wsl_exe to Linux command (WSL filesystem)`() = withShellIntegration(TIMEOUT) { allowShellIntegration, _ ->
-    Assumptions.assumeTrue(eelHolder.type is Wsl)
+    Assumptions.assumeTrue(eelHolder.type == EelType.Wsl)
     val distribName = WslPath.parseWindowsUncPath(tempDir.pathString)!!.distributionId
     val bashInWsl = "/my/custom/bin/bash"
     registerShellForDetection(bashInWsl)
@@ -141,7 +138,7 @@ internal class TerminalStartupConfigurationTest(private val eelHolder: EelHolder
 
   @TestFactory
   fun `convert wsl_exe to Linux command (Windows drive mounted in WSL)`() = withShellIntegration(TIMEOUT) { allowShellIntegration, _ ->
-    Assumptions.assumeTrue(eelHolder.type is Wsl)
+    Assumptions.assumeTrue(eelHolder.type == EelType.Wsl)
     val distribName = WslPath.parseWindowsUncPath(tempDir.pathString)!!.distributionId
     val defaultShellInWsl = "/my/custom/bin/bash"
     registerShellForDetection(defaultShellInWsl)
@@ -160,7 +157,7 @@ internal class TerminalStartupConfigurationTest(private val eelHolder: EelHolder
   @TestFactory
   fun `LocalTerminalCustomizer is not applied when shell process is local and working directory is WSL`(
   ) = withShellIntegration(TIMEOUT) { allowShellIntegration, testDisposable ->
-    Assumptions.assumeTrue(eelHolder.type is Wsl)
+    Assumptions.assumeTrue(eelHolder.type == EelType.Wsl)
     var called = false
     register(localTerminalCustomizer { called = true }, parentDisposable = testDisposable)
 
@@ -182,7 +179,7 @@ internal class TerminalStartupConfigurationTest(private val eelHolder: EelHolder
   @TestFactory
   fun `LocalTerminalCustomizer is not applied when shell process is WSL and working directory is local`(
   ) = withShellIntegration(TIMEOUT) { allowShellIntegration, testDisposable ->
-    Assumptions.assumeTrue(eelHolder.type is Local)
+    Assumptions.assumeTrue(eelHolder.type == EelType.Local)
     Assumptions.assumeTrue(OS.current() == OS.WINDOWS)
     val localWindowsDir = tempDir
     Assertions.assertThat(localWindowsDir.getEelDescriptor()).isEqualTo(LocalEelDescriptor)
@@ -321,7 +318,7 @@ internal class TerminalStartupConfigurationTest(private val eelHolder: EelHolder
       if (allowShellIntegration) {
         addAll(listOf("--rcfile", PATH_TO_SHELL_INTEGRATION_PLACEHOLDER))
       }
-      if (!allowShellIntegration && (eelApi.platform.isMac || eelHolder.type is Wsl || eelHolder.type is Docker)) {
+      if (!allowShellIntegration && (eelApi.platform.isMac || eelHolder.type in listOf(EelType.Wsl, EelType.Docker))) {
         add(LOGIN_CLI_OPTION)
       }
       add(INTERACTIVE_CLI_OPTION)

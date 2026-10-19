@@ -1,4 +1,5 @@
-// "Remove single lambda parameter declaration" "false"
+// "Remove parameter 'i'" "false"
+// TOOL: org.jetbrains.kotlin.idea.codeInsight.inspections.UnusedSymbolInspection
 // ACTION: Convert to also
 // ACTION: Convert to anonymous function
 // ACTION: Convert to apply

@@ -2,12 +2,18 @@
 package org.intellij.plugins.markdown.wrap;
 
 import com.intellij.application.options.CodeStyle;
+import com.intellij.codeInsight.highlighting.BackgroundHighlighter;
+import com.intellij.openapi.actionSystem.IdeActions;
+import com.intellij.openapi.ide.CopyPasteManager;
 import com.intellij.psi.codeStyle.CodeStyleSettings;
 import com.intellij.psi.codeStyle.CommonCodeStyleSettings;
+import com.intellij.testFramework.EditorTestUtil;
 import com.intellij.testFramework.fixtures.BasePlatformTestCase;
 import org.intellij.plugins.markdown.MarkdownTestingUtil;
 import org.intellij.plugins.markdown.lang.MarkdownLanguage;
 import org.jetbrains.annotations.NotNull;
+
+import java.awt.datatransfer.StringSelection;
 
 public class MarkdownWrapTest extends BasePlatformTestCase {
   private boolean myOldWrap;
@@ -57,6 +63,11 @@ public class MarkdownWrapTest extends BasePlatformTestCase {
     doTest("a b c");
   }
 
+  /** Fence content is literal, so a `#` at the start of a fenced line is not a header and the line is wrappable. */
+  public void testWrapInCodeFenceWithHash() {
+    doTest("a b c");
+  }
+
   public void testWrapInCodeFenceInQuotes() {
     doTest("a b c d e f");
   }
@@ -69,9 +80,40 @@ public class MarkdownWrapTest extends BasePlatformTestCase {
     doTest("synchronization");
   }
 
+  public void testWrapInSetextHeader() {
+    doTest("synchronization");
+  }
+
 
   public void testWrapInTable() {
     doTest("synchronization");
+  }
+
+  /** A `|` outside of a table does not make the line a table row, so wrapping is still allowed. */
+  public void testWrapWithPipeInText() {
+    doTest("a b c");
+  }
+
+  public void testWrapDoesNotBreakLink() {
+    doTest("a");
+  }
+
+  public void testWrapDoesNotBreakBareUrl() {
+    doTest("a");
+  }
+
+  public void testWrapDoesNotBreakLinkWhenTypingInsideLink() {
+    doTest("X");
+  }
+
+  public void testPasteIntoLineWithLinkDoesNotAssert() {
+    myFixture.configureByFile("pasteIntoLineWithLinkDoesNotAssert.md");
+    EditorTestUtil.configureSoftWraps(myFixture.getEditor(), 40);
+
+    CopyPasteManager.getInstance().setContents(new StringSelection("aaaa"));
+    BackgroundHighlighter.Companion.runWithEnabledListenersInTest(getProject(), () -> {
+      myFixture.performEditorAction(IdeActions.ACTION_EDITOR_PASTE);
+    });
   }
 
   public void testWrapRightMargin() {

@@ -12,8 +12,6 @@ import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.openapi.extensions.ProjectExtensionPointName
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.ProgressManager
-import com.intellij.openapi.project.DumbService.Companion.DUMB_MODE
-import com.intellij.openapi.project.DumbService.Companion.isDumb
 import com.intellij.openapi.project.DumbService.Companion.isDumbAware
 import com.intellij.openapi.roots.FileIndexFacade
 import com.intellij.openapi.util.Computable
@@ -147,6 +145,12 @@ abstract class DumbService {
     - `NonBlockingReadAction(...).inSmartMode()` 
   """)
   fun <T> runReadActionInSmartMode(r: Computable<T>): T {
+    if (ApplicationManager.getApplication().isReadAccessAllowed) {
+      // we can't wait for smart mode to begin (it'd result in a deadlock),
+      // so let's just pretend it's already smart and fail with IndexNotReadyException if not
+      return r.compute()
+    }
+
     val result = Ref<T>()
     runReadActionInSmartMode { result.set(r.compute()) }
     return result.get()
@@ -214,12 +218,12 @@ abstract class DumbService {
     }
     while (true) {
       waitForSmartMode()
-      val success = ReadAction.compute<Boolean, RuntimeException> {
+      val success = ReadAction.computeBlocking<Boolean, RuntimeException> {
         if (project.isDisposed) {
           throw ProcessCanceledException()
         }
         if (isDumb) {
-          return@compute false
+          return@computeBlocking false
         }
         r.run()
         true

@@ -6,8 +6,9 @@ package com.intellij.platform.workspace.storage.testEntities.entities.cacheVersi
 import com.intellij.platform.workspace.storage.EntitySource
 import com.intellij.platform.workspace.storage.EntityType
 import com.intellij.platform.workspace.storage.GeneratedCodeApiVersion
-import com.intellij.platform.workspace.storage.WorkspaceEntityBuilder
 import com.intellij.platform.workspace.storage.MutableEntityStorage
+import com.intellij.platform.workspace.storage.WorkspaceEntityBuilder
+import com.intellij.platform.workspace.storage.testEntities.entities.cacheVersion.impl.SubsetSealedClassEntityImpl
 
 @GeneratedCodeApiVersion(3)
 interface SubsetSealedClassEntityBuilder : WorkspaceEntityBuilder<SubsetSealedClassEntity> {
@@ -17,6 +18,7 @@ interface SubsetSealedClassEntityBuilder : WorkspaceEntityBuilder<SubsetSealedCl
 
 internal object SubsetSealedClassEntityType : EntityType<SubsetSealedClassEntity, SubsetSealedClassEntityBuilder>() {
   override val entityClass: Class<SubsetSealedClassEntity> get() = SubsetSealedClassEntity::class.java
+  override val entityImplBuilderClass: Class<*> get() = SubsetSealedClassEntityImpl.Builder::class.java
   operator fun invoke(
     someData: SubsetSealedClass,
     entitySource: EntitySource,

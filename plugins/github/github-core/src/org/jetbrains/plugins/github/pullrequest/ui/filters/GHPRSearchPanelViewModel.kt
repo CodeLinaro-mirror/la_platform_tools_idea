@@ -2,18 +2,30 @@
 package org.jetbrains.plugins.github.pullrequest.ui.filters
 
 import com.intellij.collaboration.async.launchNow
+import com.intellij.collaboration.async.withInitial
 import com.intellij.collaboration.ui.codereview.list.search.ReviewListQuickFilter
 import com.intellij.collaboration.ui.codereview.list.search.ReviewListSearchPanelViewModelBase
+import com.intellij.collaboration.util.IncrementallyComputedValue
+import com.intellij.collaboration.util.collectIncrementallyTo
 import com.intellij.openapi.project.Project
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.transformLatest
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.plugins.github.api.data.GHLabel
+import org.jetbrains.plugins.github.api.data.GHRepositoryPermissionLevel
 import org.jetbrains.plugins.github.api.data.GHUser
 import org.jetbrains.plugins.github.pullrequest.GHPRStatisticsCollector
 import org.jetbrains.plugins.github.pullrequest.data.service.GHPRRepositoryDataService
+import org.jetbrains.plugins.github.pullrequest.data.service.GHPRSecurityService
 import org.jetbrains.plugins.github.pullrequest.ui.filters.GHPRListQuickFilter.AssignedToYou
 import org.jetbrains.plugins.github.pullrequest.ui.filters.GHPRListQuickFilter.Open
 import org.jetbrains.plugins.github.pullrequest.ui.filters.GHPRListQuickFilter.ReviewRequests
@@ -24,22 +36,22 @@ class GHPRSearchPanelViewModel internal constructor(
   scope: CoroutineScope,
   private val project: Project,
   private val repositoryDataService: GHPRRepositoryDataService,
+  private val securityService: GHPRSecurityService,
   historyViewModel: GHPRSearchHistoryModel,
-  currentUser: GHUser
 ) :
   ReviewListSearchPanelViewModelBase<GHPRListSearchValue, GHPRListQuickFilter>(
     scope, historyViewModel,
     emptySearch = GHPRListSearchValue.EMPTY,
-    defaultFilter = AssignedToYou(currentUser).filter
+    defaultFilter = AssignedToYou(securityService.currentUser).filter
   ) {
 
   override fun GHPRListSearchValue.withQuery(query: String?) = copy(searchQuery = query)
 
   override val quickFilters: List<GHPRListQuickFilter> = listOf(
-    Open(currentUser),
-    YourPullRequests(currentUser),
-    AssignedToYou(currentUser),
-    ReviewRequests(currentUser)
+    Open(securityService.currentUser),
+    YourPullRequests(securityService.currentUser),
+    AssignedToYou(securityService.currentUser),
+    ReviewRequests(securityService.currentUser)
   )
 
   val stateFilterState = searchState.partialState(GHPRListSearchValue::state) {
@@ -76,9 +88,37 @@ class GHPRSearchPanelViewModel internal constructor(
     }
   }
 
-  suspend fun getAuthors(): List<GHUser> = repositoryDataService.loadCollaborators()
-  suspend fun getAssignees(): List<GHUser> = repositoryDataService.loadIssuesAssignees()
-  suspend fun getLabels(): List<GHLabel> = repositoryDataService.loadLabels()
+  val authors: StateFlow<IncrementallyComputedValue<List<GHUser>>> = createIncrementalDataState(scope) {
+    if (securityService.currentUserHasPermissionLevel(GHRepositoryPermissionLevel.WRITE)) {
+      repositoryDataService.loadBatchedCollaborators().map {
+        it.map { user ->
+          GHUser(user.nodeId, user.login, user.htmlUrl, user.avatarUrl ?: "", null)
+        }
+      }
+    }
+    else { // users without push access cannot query the collaborators API, so we fall back to fetching contributors
+      repositoryDataService.loadBatchedContributors()
+    }
+  }
+
+  val assignees: StateFlow<IncrementallyComputedValue<List<GHUser>>> = createIncrementalDataState(scope) {
+    repositoryDataService.loadBatchedPotentialIssuesAssignees()
+  }
+
+  val labels: StateFlow<IncrementallyComputedValue<List<GHLabel>>> = createIncrementalDataState(scope) {
+    repositoryDataService.loadBatchedLabels()
+  }
+
+  @OptIn(ExperimentalCoroutinesApi::class)
+  private fun <T> createIncrementalDataState(
+    cs: CoroutineScope,
+    loader: () -> Flow<List<T>>,
+  ): StateFlow<IncrementallyComputedValue<List<T>>> =
+    repositoryDataService.dataReloadSignal.withInitial(Unit)
+      .transformLatest {
+        loader().collectIncrementallyTo(this)
+      }
+      .stateIn(cs, SharingStarted.Lazily, IncrementallyComputedValue.loading())
 }
 
 @ApiStatus.Experimental

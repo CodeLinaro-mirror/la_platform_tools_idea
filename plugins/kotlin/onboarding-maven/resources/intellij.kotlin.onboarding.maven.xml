@@ -1,11 +1,11 @@
 <idea-plugin package="org.jetbrains.kotlin.onboarding.maven">
-  <!-- region Generated dependencies - run `Generate Product Layouts` to regenerate -->
   <dependencies>
-    <plugin id="org.jetbrains.idea.maven"/>
+    <!-- region Generated dependencies - run `Generate Product Layouts` to regenerate -->
     <module name="intellij.kotlin.maven"/>
     <module name="intellij.kotlin.onboarding"/>
+    <module name="intellij.maven"/>
+    <!-- endregion -->
   </dependencies>
-  <!-- endregion -->
 
   <resource-bundle>messages.MavenFeedbackBundle</resource-bundle>
 

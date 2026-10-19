@@ -63,6 +63,17 @@ class _AbstractVariable(object):
 
         attributes = []
 
+        if _type_qualifier:
+            attributes.append(f"qualifiedType: {_type_qualifier}.{type_name}")
+
+        try:
+            import inspect
+            src_file = inspect.getfile(self.value.__class__)
+            if src_file:
+                attributes.append(f"typeSourceFile: {src_file}")
+        except (TypeError, OSError):
+            pass
+
         if is_raw_string:
             attributes.append("rawString")
 
@@ -410,15 +421,26 @@ class _FramesTracker(object):
 
             frame_ids_from_thread = self._thread_id_to_frame_ids.setdefault(coroutine_or_main_thread_id, [])
 
-            self._thread_id_to_frames_list[coroutine_or_main_thread_id] = frames_list
-            for frame in frames_list:
+            def _register_frame(frame):
                 frame_id = id(frame)
                 self._frame_id_to_frame[frame_id] = frame
                 _FrameVariable(self.py_db, frame, self._register_variable)  # Instancing is enough to register.
                 self._suspended_frames_manager._variable_reference_to_frames_tracker[frame_id] = self
                 frame_ids_from_thread.append(frame_id)
-
                 self._frame_id_to_main_thread_id[frame_id] = thread_id
+
+            self._thread_id_to_frames_list[coroutine_or_main_thread_id] = frames_list
+            for frame in frames_list:
+                _register_frame(frame)
+
+            # Also track frames from chained exceptions (e.g. __cause__ / __context__)
+            # so that variable evaluation works for chained exception frames displayed
+            # in the call stack.
+            chained = getattr(frames_list, 'chained_frames_list', None)
+            while chained is not None and len(chained) > 0:
+                for frame in chained:
+                    _register_frame(frame)
+                chained = getattr(chained, 'chained_frames_list', None)
 
             frame = None
 

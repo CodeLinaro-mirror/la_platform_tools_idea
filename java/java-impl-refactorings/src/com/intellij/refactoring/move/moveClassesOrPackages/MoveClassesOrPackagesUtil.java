@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.refactoring.move.moveClassesOrPackages;
 
 import com.intellij.lang.java.JavaFindUsagesProvider;
@@ -6,7 +6,6 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.roots.PackageIndex;
 import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.vfs.VfsUtilCore;
@@ -224,7 +223,7 @@ public final class MoveClassesOrPackagesUtil {
   }
 
   // Does not process non-code usages!
-  public static PsiClass doMoveClass(PsiClass aClass, PsiDirectory moveDestination, boolean moveAllClassesInFile) throws IncorrectOperationException {
+  public static @NotNull PsiClass doMoveClass(@NotNull PsiClass aClass, @NotNull PsiDirectory moveDestination, boolean moveAllClassesInFile) throws IncorrectOperationException {
     PsiClass newClass;
     if (!moveAllClassesInFile) {
       for (MoveClassHandler handler : MoveClassHandler.EP_NAME.getExtensions()) {
@@ -236,8 +235,7 @@ public final class MoveClassesOrPackagesUtil {
     PsiFile file = aClass.getContainingFile();
     Project project = moveDestination.getProject();
     VirtualFile dstDir = moveDestination.getVirtualFile();
-    String pkgName = PackageIndex.getInstance(project).getPackageNameByDirectory(dstDir);
-    PsiPackage newPackage = pkgName == null ? null : new PsiPackageImpl(moveDestination.getManager(), pkgName);
+    PsiPackage newPackage = JavaDirectoryService.getInstance().getPackage(moveDestination);
 
     newClass = aClass;
     final PsiDirectory containingDirectory = file.getContainingDirectory();
@@ -251,7 +249,7 @@ public final class MoveClassesOrPackagesUtil {
         documentManager.commitDocument(document);
       }
 
-      file = moveDestination.findFile(file.getName());
+      file = MoveFileInvalidationStrategy.invalidate(moveDestination, file);
 
     }
 

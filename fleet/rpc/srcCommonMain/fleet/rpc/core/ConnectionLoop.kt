@@ -21,7 +21,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.jetbrains.annotations.ApiStatus
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
 
 private object ConnectionLoop {
   val logger = logger<ConnectionLoop>()
@@ -32,11 +36,15 @@ sealed class ConnectionStatus<T> {
   class Connecting<T> : ConnectionStatus<T>()
 
   data class Connected<T>(val value: T) : ConnectionStatus<T>()
-  data class TemporarilyDisconnected<T>(val connectionScheduledFor: Long, val delayJob: Job, val reason: Throwable?) : ConnectionStatus<T>()
+  data class TemporarilyDisconnected<T>(
+    val connectionScheduledFor: Instant,
+    val delayJob: Job,
+    val reason: Throwable?,
+  ) : ConnectionStatus<T>()
 }
 
-private const val minReconnectDelay = 1L
-private const val maxReconnectDelay = 30_000L
+private val minReconnectDelay = 1.milliseconds
+private val maxReconnectDelay = 30.seconds
 internal val Exponential = DelayStrategy.exponential(minReconnectDelay, maxReconnectDelay)
 
 @ApiStatus.Internal
@@ -52,11 +60,11 @@ fun <T> connectionLoop(
     val coroutineName = coroutineNameAppended(debugName ?: "unnamed connection")
     launch(coroutineName) {
       var attempt = 0
-      var curDelayMs = delayStrategy.nextDelay(0)
+      var curDelay = delayStrategy.nextDelay(Duration.ZERO)
       while (coroutineContext.isActive) {
         val ex = try {
           transportFactory.connect(transportStats) { transport ->
-            curDelayMs = delayStrategy.nextDelay(0)
+            curDelay = delayStrategy.nextDelay(Duration.ZERO)
             client(transport).use { value ->
               status.value = ConnectionStatus.Connected(value)
               awaitCancellation()
@@ -69,15 +77,15 @@ fun <T> connectionLoop(
         }
         attempt++
         val delayJob = launch {
-          ConnectionLoop.logger.info { "Reconnect by <${coroutineName.name}> attempt #$attempt in ${curDelayMs}ms" }
-          delay(curDelayMs)
+          ConnectionLoop.logger.info { "Reconnect by <${coroutineName.name}> attempt #$attempt in $curDelay" }
+          delay(curDelay)
         }
         status.value = ConnectionStatus.TemporarilyDisconnected(
-          connectionScheduledFor = Clock.System.now().toEpochMilliseconds() + curDelayMs,
+          connectionScheduledFor = Clock.System.now() + curDelay,
           delayJob = delayJob,
           reason = ex.causeOfType<TransportDisconnectedException>() ?: ex)
         delayJob.join()
-        curDelayMs = delayStrategy.nextDelay(curDelayMs)
+        curDelay = delayStrategy.nextDelay(curDelay)
       }
     }.use {
       cc(status)
@@ -94,12 +102,12 @@ suspend fun <T> serviceConnectionLoop(
   service: ServiceFn<T>,
 ): Nothing {
   var attempt = 0
-  var curDelayMs = delayStrategy.nextDelay(0)
+  var curDelay = delayStrategy.nextDelay(Duration.ZERO)
   while (true) {
     currentCoroutineContext().ensureActive()
     val ex = try {
       transportFactory { transport ->
-        curDelayMs = delayStrategy.nextDelay(0)
+        curDelay = delayStrategy.nextDelay(Duration.ZERO)
         service(transport)
       }
     }
@@ -109,8 +117,8 @@ suspend fun <T> serviceConnectionLoop(
     val reason = ex.causeOfType<TransportDisconnectedException>() ?: ex
     ConnectionLoop.logger.debug(reason) { "Connection broken <${debugName}>" }
     attempt++
-    ConnectionLoop.logger.info { "Reconnect by <${debugName}> attempt #$attempt in ${curDelayMs}ms" }
-    delay(curDelayMs)
-    curDelayMs = delayStrategy.nextDelay(curDelayMs)
+    ConnectionLoop.logger.info { "Reconnect by <${debugName}> attempt #$attempt in $curDelay" }
+    delay(curDelay)
+    curDelay = delayStrategy.nextDelay(curDelay)
   }
 }

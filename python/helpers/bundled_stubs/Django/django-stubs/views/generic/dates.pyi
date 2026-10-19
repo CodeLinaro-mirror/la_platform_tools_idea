@@ -1,6 +1,6 @@
 import datetime
 from collections.abc import Sequence
-from typing import Any, TypeAlias, TypeVar
+from typing import Any, TypeAlias
 
 from django.db import models
 from django.db.models.query import QuerySet, _OrderByFieldName
@@ -10,7 +10,7 @@ from django.utils.functional import _Getter
 from django.views.generic.base import View
 from django.views.generic.detail import BaseDetailView, SingleObjectTemplateResponseMixin
 from django.views.generic.list import MultipleObjectMixin, MultipleObjectTemplateResponseMixin
-from typing_extensions import override
+from typing_extensions import TypeVar, override
 
 _M = TypeVar("_M", bound=models.Model)
 _DatedItems: TypeAlias = tuple[_IndexableCollection[datetime.date] | None, _IndexableCollection[_M], dict[str, Any]]
@@ -57,21 +57,21 @@ class DateMixin:
 class BaseDateListView(MultipleObjectMixin[_M], DateMixin, View):
     date_list_period: str
     def get(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse: ...
-    def get_dated_items(self) -> _DatedItems: ...
+    def get_dated_items(self) -> _DatedItems[_M]: ...
     @override
     def get_ordering(self) -> str | Sequence[_OrderByFieldName]: ...
     def get_dated_queryset(self, **lookup: Any) -> models.query.QuerySet[_M]: ...
     def get_date_list_period(self) -> str: ...
     def get_date_list(
-        self, queryset: models.query.QuerySet, date_type: str | None = ..., ordering: str = ...
-    ) -> models.query.QuerySet: ...
+        self, queryset: models.query.QuerySet[_M], date_type: str | None = ..., ordering: str = ...
+    ) -> models.query.QuerySet[_M]: ...
 
 class BaseArchiveIndexView(BaseDateListView[_M]):
     context_object_name: str
     @override
     def get_dated_items(self) -> _DatedItems[_M]: ...
 
-class ArchiveIndexView(MultipleObjectTemplateResponseMixin, BaseArchiveIndexView):
+class ArchiveIndexView(MultipleObjectTemplateResponseMixin, BaseArchiveIndexView[_M]):
     template_name_suffix: str
 
 class BaseYearArchiveView(YearMixin, BaseDateListView[_M]):
@@ -81,7 +81,7 @@ class BaseYearArchiveView(YearMixin, BaseDateListView[_M]):
     def get_dated_items(self) -> _DatedItems[_M]: ...
     def get_make_object_list(self) -> bool: ...
 
-class YearArchiveView(MultipleObjectTemplateResponseMixin, BaseYearArchiveView):
+class YearArchiveView(MultipleObjectTemplateResponseMixin, BaseYearArchiveView[_M]):
     template_name_suffix: str
 
 class BaseMonthArchiveView(YearMixin, MonthMixin, BaseDateListView[_M]):
@@ -89,35 +89,35 @@ class BaseMonthArchiveView(YearMixin, MonthMixin, BaseDateListView[_M]):
     @override
     def get_dated_items(self) -> _DatedItems[_M]: ...
 
-class MonthArchiveView(MultipleObjectTemplateResponseMixin, BaseMonthArchiveView):
+class MonthArchiveView(MultipleObjectTemplateResponseMixin, BaseMonthArchiveView[_M]):
     template_name_suffix: str
 
 class BaseWeekArchiveView(YearMixin, WeekMixin, BaseDateListView[_M]):
     @override
     def get_dated_items(self) -> _DatedItems[_M]: ...
 
-class WeekArchiveView(MultipleObjectTemplateResponseMixin, BaseWeekArchiveView):
+class WeekArchiveView(MultipleObjectTemplateResponseMixin, BaseWeekArchiveView[_M]):
     template_name_suffix: str
 
 class BaseDayArchiveView(YearMixin, MonthMixin, DayMixin, BaseDateListView[_M]):
     @override
     def get_dated_items(self) -> _DatedItems[_M]: ...
 
-class DayArchiveView(MultipleObjectTemplateResponseMixin, BaseDayArchiveView):
+class DayArchiveView(MultipleObjectTemplateResponseMixin, BaseDayArchiveView[_M]):
     template_name_suffix: str
 
 class BaseTodayArchiveView(BaseDayArchiveView[_M]):
     @override
     def get_dated_items(self) -> _DatedItems[_M]: ...
 
-class TodayArchiveView(MultipleObjectTemplateResponseMixin, BaseTodayArchiveView):
+class TodayArchiveView(MultipleObjectTemplateResponseMixin, BaseTodayArchiveView[_M]):
     template_name_suffix: str
 
 class BaseDateDetailView(YearMixin, MonthMixin, DayMixin, DateMixin, BaseDetailView[_M]):
     @override
     def get_object(self, queryset: QuerySet[_M] | None = ...) -> _M: ...
 
-class DateDetailView(SingleObjectTemplateResponseMixin, BaseDateDetailView):
+class DateDetailView(SingleObjectTemplateResponseMixin, BaseDateDetailView[_M]):
     template_name_suffix: str
 
 def timezone_today() -> datetime.date: ...

@@ -1,9 +1,9 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.platform.recentFiles.frontend
 
 import com.intellij.ide.IdeBundle.message
 import com.intellij.openapi.actionSystem.AnActionEvent
-import com.intellij.openapi.application.EDT
+import com.intellij.openapi.application.UiWithModelAccess
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.platform.recentFiles.frontend.Switcher.SwitcherPanel
@@ -65,7 +65,8 @@ private suspend fun createAndShow(
   val remoteApi = FileSwitcherApi.getInstance()
   val frontendModel = FrontendRecentFilesModel.getInstanceAsync(project)
 
-  return withContext(Dispatchers.EDT) {
+  // IJPL-242053
+  return withContext(Dispatchers.UiWithModelAccess) {
     SwitcherPanel(project = project,
                   title = title,
                   launchParameters = parameters,

@@ -1,9 +1,8 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package org.jetbrains.fir.uast.test;
 
 import com.intellij.testFramework.TestDataPath;
-import org.jetbrains.kotlin.idea.base.plugin.KotlinPluginMode;
 import org.jetbrains.kotlin.idea.base.test.TestRoot;
 import org.jetbrains.kotlin.idea.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils;
@@ -20,14 +19,13 @@ import org.junit.runner.RunWith;
 @RunWith(JUnit3RunnerWithInners.class)
 @TestMetadata("../../uast-kotlin/tests/testData")
 public class FirLegacyUastDeclarationTestGenerated extends AbstractFirLegacyUastDeclarationTest {
-    @java.lang.Override
-    @org.jetbrains.annotations.NotNull
-    public final KotlinPluginMode getPluginMode() {
-        return KotlinPluginMode.K2;
-    }
-
     private void runTest(String testDataFilePath) throws Exception {
         KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
+    }
+
+    @TestMetadata("AnnotatedBlockStringTemplateEntry.kt")
+    public void testAnnotatedBlockStringTemplateEntry() throws Exception {
+        runTest("../../uast-kotlin/tests/testData/AnnotatedBlockStringTemplateEntry.kt");
     }
 
     @TestMetadata("AnnotatedExpressions.kt")
@@ -243,6 +241,11 @@ public class FirLegacyUastDeclarationTestGenerated extends AbstractFirLegacyUast
     @TestMetadata("NonTrivialIdentifiers.kt")
     public void testNonTrivialIdentifiers() throws Exception {
         runTest("../../uast-kotlin/tests/testData/NonTrivialIdentifiers.kt");
+    }
+
+    @TestMetadata("ObjectExpressionExplicitTypeReference.kt")
+    public void testObjectExpressionExplicitTypeReference() throws Exception {
+        runTest("../../uast-kotlin/tests/testData/ObjectExpressionExplicitTypeReference.kt");
     }
 
     @TestMetadata("ObjectExpressionMultipleInterfaces.kt")

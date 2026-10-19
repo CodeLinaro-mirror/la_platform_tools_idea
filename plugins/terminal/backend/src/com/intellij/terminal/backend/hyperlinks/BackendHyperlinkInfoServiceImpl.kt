@@ -1,16 +1,16 @@
 package com.intellij.terminal.backend.hyperlinks
 
-import com.intellij.terminal.backend.StateAwareTerminalSession
-import com.intellij.terminal.backend.TerminalSessionsManager
-import org.jetbrains.plugins.terminal.block.reworked.session.rpc.TerminalSessionId
-import org.jetbrains.plugins.terminal.hyperlinks.BackendHyperlinkInfo
-import org.jetbrains.plugins.terminal.hyperlinks.BackendHyperlinkInfoService
-import org.jetbrains.plugins.terminal.session.impl.TerminalHyperlinkId
+import org.jetbrains.plugins.terminal.hyperlinks.TerminalHyperlinkId
+import org.jetbrains.plugins.terminal.hyperlinks.menu.BackendHyperlinkInfo
+import org.jetbrains.plugins.terminal.hyperlinks.menu.BackendHyperlinkInfoService
+import org.jetbrains.plugins.terminal.hyperlinks.session.TerminalHyperlinksSessionId
 
 internal class BackendHyperlinkInfoServiceImpl : BackendHyperlinkInfoService {
-  override fun getHyperlinkInfo(sessionId: TerminalSessionId, isAlternateBuffer: Boolean, hyperlinkId: TerminalHyperlinkId): BackendHyperlinkInfo? {
-    val session = TerminalSessionsManager.getInstance().getSession(sessionId) as? StateAwareTerminalSession? ?: return null
-    val hyperlinkFacade = session.getHyperlinkFacade(isAlternateBuffer) ?: return null
-    return hyperlinkFacade.getHyperlink(hyperlinkId)
+  override fun getHyperlinkInfo(
+    sessionId: TerminalHyperlinksSessionId,
+    hyperlinkId: TerminalHyperlinkId,
+  ): BackendHyperlinkInfo? {
+    val session = BackendTerminalHyperlinksSessionsManager.getInstance().getSession(sessionId) ?: return null
+    return session.hyperlinksFacade.getHyperlink(hyperlinkId)
   }
 }

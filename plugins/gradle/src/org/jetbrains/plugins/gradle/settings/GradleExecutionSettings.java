@@ -2,22 +2,34 @@
 package org.jetbrains.plugins.gradle.settings;
 
 import com.intellij.openapi.externalSystem.model.settings.ExternalSystemExecutionSettings;
+import com.intellij.openapi.util.Key;
+import com.intellij.openapi.util.io.NioPathUtil;
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.SystemProperties;
 import com.intellij.util.execution.ParametersListUtil;
+import org.gradle.util.GradleVersion;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.plugins.gradle.service.execution.GradleCommandLineUtil;
 import org.jetbrains.plugins.gradle.service.execution.GradleInitScriptUtil;
-import org.jetbrains.plugins.gradle.service.execution.GradleRunConfiguration;
+import org.jetbrains.plugins.gradle.service.task.VersionSpecificInitScript;
 import org.jetbrains.plugins.gradle.util.GradleConstants;
 import org.jetbrains.plugins.gradle.util.cmd.node.GradleCommandLine;
 
+import java.nio.file.Path;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
+import static org.jetbrains.plugins.gradle.service.task.VersionSpecificInitScriptKt.DEFAULT_INIT_SCRIPT_NAME;
+
 public class GradleExecutionSettings extends ExternalSystemExecutionSettings {
+
+  public static final Key<Boolean> DEBUG_ALL_KEY = Key.create("DEBUG_ALL_TASKS");
+  public static final Key<Boolean> RUN_AS_TEST_KEY = Key.create("RUN_AS_TEST");
+  public static final Key<Boolean> IS_TEST_TASK_RERUN_KEY = Key.create("IS_TEST_TASK_RERUN");
 
   private static final @NotNull String USE_VERBOSE_GRADLE_API_KEY = "gradle.api.verbose";
   private static final boolean USE_VERBOSE_GRADLE_API_DEFAULT = false;
@@ -45,7 +57,7 @@ public class GradleExecutionSettings extends ExternalSystemExecutionSettings {
   /**
    * @deprecated use default constructor instead
    */
-  @Deprecated
+  @Deprecated(forRemoval = true)
   public GradleExecutionSettings(
     @Nullable String gradleHome,
     @Nullable String serviceDirectory,
@@ -63,7 +75,7 @@ public class GradleExecutionSettings extends ExternalSystemExecutionSettings {
   /**
    * @deprecated use default constructor instead
    */
-  @Deprecated
+  @Deprecated(forRemoval = true)
   public GradleExecutionSettings(
     @Nullable String gradleHome,
     @Nullable String serviceDirectory,
@@ -192,7 +204,7 @@ public class GradleExecutionSettings extends ExternalSystemExecutionSettings {
   }
 
   public boolean isDebugAllEnabled() {
-    var value = getUserData(GradleRunConfiguration.DEBUG_ALL_KEY);
+    var value = getUserData(DEBUG_ALL_KEY);
     return ObjectUtils.chooseNotNull(value, false);
   }
 
@@ -200,16 +212,16 @@ public class GradleExecutionSettings extends ExternalSystemExecutionSettings {
    * Flag that shows if tasks are treated as tests invocation by the IDE (e.g., test events are expected)
    */
   public boolean isRunAsTest() {
-    var value = getUserData(GradleRunConfiguration.RUN_AS_TEST_KEY);
+    var value = getUserData(RUN_AS_TEST_KEY);
     return ObjectUtils.chooseNotNull(value, false);
   }
 
   public void setRunAsTest(boolean isRunAsTest) {
-    putUserData(GradleRunConfiguration.RUN_AS_TEST_KEY, isRunAsTest);
+    putUserData(RUN_AS_TEST_KEY, isRunAsTest);
   }
 
   public boolean isTestTaskRerun() {
-    var value = getUserData(GradleRunConfiguration.IS_TEST_TASK_RERUN_KEY);
+    var value = getUserData(IS_TEST_TASK_RERUN_KEY);
     return ObjectUtils.chooseNotNull(value, false);
   }
 
@@ -251,9 +263,20 @@ public class GradleExecutionSettings extends ExternalSystemExecutionSettings {
     return GradleCommandLineUtil.parseCommandLine(getTasks(), getArguments());
   }
 
+  public void addInitScript(@NotNull GradleVersion gradleVersion, @NotNull Collection<? extends VersionSpecificInitScript> initScripts) {
+    for (var initScript : initScripts) {
+      if (initScript.isApplicableTo(gradleVersion) && StringUtil.isNotEmpty(initScript.getScript())) {
+        addInitScript(StringUtil.notNullize(initScript.getFilePrefix(), DEFAULT_INIT_SCRIPT_NAME), initScript.getScript());
+      }
+    }
+  }
+
   public void addInitScript(@NotNull String namePrefix, @NotNull String content) {
-    var initScriptPath = GradleInitScriptUtil.createInitScript(namePrefix, content);
-    withArguments(GradleConstants.INIT_SCRIPT_CMD_OPTION, initScriptPath.toString());
+    addInitScript(GradleInitScriptUtil.createInitScript(namePrefix, content));
+  }
+
+  public void addInitScript(@NotNull Path initScript) {
+    withArguments(GradleConstants.INIT_SCRIPT_CMD_OPTION, NioPathUtil.toCanonicalPath(initScript));
   }
 
   @Override

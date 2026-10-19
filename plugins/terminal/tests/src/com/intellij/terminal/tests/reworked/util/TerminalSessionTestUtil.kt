@@ -5,9 +5,9 @@ import com.intellij.execution.configurations.PathEnvironmentVariableUtil
 import com.intellij.openapi.project.Project
 import com.intellij.platform.eel.isWindows
 import com.intellij.platform.eel.provider.LocalEelDescriptor
-import com.intellij.terminal.backend.TerminalSessionsManager
-import com.intellij.terminal.backend.createTerminalSession
-import com.intellij.terminal.backend.startTerminalProcess
+import com.intellij.terminal.frontend.session.TerminalSessionsManager
+import com.intellij.terminal.frontend.session.createTerminalSession
+import com.intellij.terminal.frontend.session.startTerminalProcess
 import com.intellij.terminal.tests.reworked.util.TerminalSessionTestUtil.createShellCommand
 import com.intellij.util.EnvironmentUtil
 import com.intellij.util.PathUtil
@@ -20,6 +20,10 @@ import com.pty4j.windows.winpty.WinPtyProcess
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.assertj.core.api.Assertions.assertThat
 import org.jetbrains.plugins.terminal.JBTerminalSystemSettingsProvider
@@ -30,6 +34,7 @@ import org.jetbrains.plugins.terminal.runner.LocalShellIntegrationInjector
 import org.jetbrains.plugins.terminal.runner.LocalTerminalStartCommandBuilder
 import org.jetbrains.plugins.terminal.session.impl.TerminalOutputEvent
 import org.jetbrains.plugins.terminal.session.impl.TerminalSession
+import org.jetbrains.plugins.terminal.startup.TerminalProcessType
 import org.jetbrains.plugins.terminal.util.ShellEelProcess
 import org.junit.Assert
 import org.junit.Assume
@@ -84,8 +89,8 @@ internal object TerminalSessionTestUtil {
       TestTerminalSessionResult(session, ttyConnector)
     }
     else {
-      val manager = TerminalSessionsManager.getInstance()
-      val sessionStartResult = manager.startSession(allOptions, project, coroutineScope)
+      val manager = TerminalSessionsManager.getInstance(project)
+      val sessionStartResult = manager.startSession(allOptions, coroutineScope)
       val session = manager.getSession(sessionStartResult.sessionId)!!
       TestTerminalSessionResult(session, sessionStartResult.ttyConnector)
     }
@@ -93,6 +98,27 @@ internal object TerminalSessionTestUtil {
 
   fun createShellCommand(shellPath: String): List<String> {
     return LocalTerminalStartCommandBuilder.convertShellPathToCommand(shellPath)
+  }
+
+  /**
+   * Creates the production [TerminalSession] backed by an in-memory [LoopbackTtyConnector]
+   * instead of a real shell process. Write raw ANSI/VT sequences to [LoopbackTtyConnector.feed]
+   * and observe the resulting events in [TerminalSession.getOutputFlow].
+   *
+   * The session uses [TerminalProcessType.NON_SHELL], so shell integration and working directory
+   * tracking are disabled. Cancel [coroutineScope] to terminate the session.
+   */
+  fun createLoopbackTerminalSession(
+    project: Project,
+    coroutineScope: CoroutineScope,
+  ): Pair<TerminalSession, LoopbackTtyConnector> {
+    val connector = LoopbackTtyConnector()
+    val options = ShellStartupOptions.Builder()
+      .initialTermSize(TermSize(80, 24))
+      .processType(TerminalProcessType.NON_SHELL)
+      .build()
+    val session = createTerminalSession(project, connector, options, JBTerminalSystemSettingsProvider(), coroutineScope)
+    return session to connector
   }
 
   suspend fun TerminalSession.awaitOutputEvent(targetEvent: TerminalOutputEvent) {
@@ -155,7 +181,7 @@ internal object TerminalSessionTestUtil {
       descriptor.osFamily.isWindows && descriptor != LocalEelDescriptor,
       "Remote Windows may not support shell integration (latest ConPTY is required)"
     )
-    val javaProcess = shellEelProcess.process
+    val javaProcess = shellEelProcess.ptyProcess
     if (javaProcess is WinPtyProcess || javaProcess is CygwinPtyProcess) {
       Assert.fail("Shell integration on Windows requires ConPTY, but ${javaProcess::class.java} was supplied")
     }
@@ -171,3 +197,37 @@ internal class TestTerminalSessionResult(
   val session: TerminalSession,
   val ttyConnector: TtyConnector,
 )
+
+/**
+ * Subscribes to [TerminalSession.getOutputFlow] once (for the whole lifetime of [scope]) and accumulates every
+ * emitted [TerminalOutputEvent], so tests can await specific events with [awaitEvent] without losing earlier ones
+ * or churning subscriptions.
+ *
+ * Keeping a single active subscription also keeps the emulation running: the session only reads its output while
+ * there is at least one collector of the output flow.
+ */
+internal class TerminalOutputEventCollector(
+  session: TerminalSession,
+  scope: CoroutineScope,
+) {
+  private val mutableEvents = MutableSharedFlow<TerminalOutputEvent>(replay = Int.MAX_VALUE)
+
+  val events: SharedFlow<TerminalOutputEvent> = mutableEvents
+
+  init {
+    scope.launch {
+      session.getOutputFlow().collect { batch ->
+        for (event in batch) {
+          mutableEvents.emit(event)
+        }
+      }
+    }
+  }
+}
+
+/** Suspends until an event of type [T] matching [predicate] is emitted (checking already-received events too). */
+internal suspend inline fun <reified T : TerminalOutputEvent> TerminalOutputEventCollector.awaitEvent(
+  crossinline predicate: (T) -> Boolean = { true },
+): T {
+  return events.filterIsInstance<T>().first { predicate(it) }
+}

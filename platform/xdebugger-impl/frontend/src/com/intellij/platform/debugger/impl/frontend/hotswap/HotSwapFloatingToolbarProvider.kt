@@ -139,6 +139,7 @@ private class HotSwapToolbarComponent(action: AnAction, presentation: Presentati
     setHorizontalTextPosition(SwingConstants.LEADING)
     tooltip.installOn(this)
     installPopupMenu()
+    accessibleContext.accessibleName = HotSwapUiExtension.computeSafeIfAvailable { it.hotSwapButtonAccessibleName }
   }
 
   init {
@@ -219,9 +220,10 @@ internal class HotSwapFloatingToolbarProvider : FloatingToolbarProvider {
 
   override fun register(dataContext: DataContext, component: FloatingToolbarComponent, parentDisposable: Disposable) {
     val project = dataContext.getData(CommonDataKeys.PROJECT) ?: return
-    val editorTag = dataContext.editorTag
+    val editorTag = if (logger.isDebugEnabled) dataContext.editorTag else ""
     if (component is JComponent) {
       component.installPopupMenu()
+      component.accessibleContext.accessibleName = HotSwapUiExtension.computeSafeIfAvailable { it.toolbarAccessibleName }
     }
     val manager = FrontendHotSwapManager.getInstance(project)
     val job = manager.coroutineScope.launch {
@@ -255,6 +257,9 @@ internal class HotSwapFloatingToolbarProvider : FloatingToolbarProvider {
 
       if (logger.isDebugEnabled) {
         logger.debug("Button status changed: $status ($editorTag)")
+      }
+      if (status != null) {
+        HotSwapUiExtension.computeSafeIfAvailable { it.announceHotSwapStatus(project, status) }
       }
       when (status) {
         HotSwapVisibleStatus.IN_PROGRESS -> {

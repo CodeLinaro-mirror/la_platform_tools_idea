@@ -2,46 +2,41 @@
 // Apache 2.0 license.
 package org.jetbrains.jewel.detekt.rules
 
-import io.gitlab.arturbosch.detekt.api.CodeSmell
-import io.gitlab.arturbosch.detekt.api.Config
-import io.gitlab.arturbosch.detekt.api.CorrectableCodeSmell
-import io.gitlab.arturbosch.detekt.api.Debt
-import io.gitlab.arturbosch.detekt.api.Entity
-import io.gitlab.arturbosch.detekt.api.Issue
-import io.gitlab.arturbosch.detekt.api.Rule
-import io.gitlab.arturbosch.detekt.api.Severity
-import io.gitlab.arturbosch.detekt.api.config
-import org.jetbrains.kotlin.com.intellij.psi.PsiWhiteSpace
-import org.jetbrains.kotlin.com.intellij.psi.impl.source.tree.LeafPsiElement
+import com.intellij.psi.PsiWhiteSpace
+import com.intellij.psi.impl.source.tree.LeafPsiElement
+import dev.detekt.api.Config
+import dev.detekt.api.Configuration
+import dev.detekt.api.Entity
+import dev.detekt.api.Finding
+import dev.detekt.api.config
+import dev.detekt.api.internal.AutoCorrectable
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtFunction
 import org.jetbrains.kotlin.psi.KtNameReferenceExpression
 import org.jetbrains.kotlin.psi.KtNamedFunction
+import org.jetbrains.kotlin.psi.KtObjectDeclaration
 import org.jetbrains.kotlin.psi.KtPsiFactory
 import org.jetbrains.kotlin.psi.psiUtil.findDescendantOfType
+
+private const val RULE_DESCRIPTION = "This rule detects missing or incomplete equals/hashCode/toString functions."
 
 /**
  * This rule ensures that classes annotated with specific annotations (e.g., `@GenerateDataFunctions`) have correct
  * `equals()`, `hashCode()`, and `toString()` implementations.
  *
  * It checks if these functions are present and if they correctly use all the class's properties. If a function is
- * missing or incorrect, this rule will report a [CodeSmell].
+ * missing or incorrect, this rule will report a [Finding].
  *
  * This rule also supports auto-correction. It can generate the missing or incorrect functions, ensuring they are
  * correctly implemented based on the class's properties. Formatting of the auto-corrected code is left to the IDE's
  * formatter/ktfmt.
  */
-class EqualityMembersRule(config: Config) : Rule(config) {
-    override val issue: Issue =
-        Issue(
-            javaClass.simpleName,
-            Severity.Defect,
-            "This rule detects missing or incomplete equals/hashCode/toString functions.",
-            Debt.FIVE_MINS,
-        )
-
+@AutoCorrectable(since = "0.40.0")
+class EqualityMembersRule(config: Config) : JewelBaseRule(config, RULE_DESCRIPTION) {
     private val functionsToCheck: List<String> by config(defaultValue = listOf("equals", "hashCode", "toString"))
+
+    @Configuration("Only check classes annotated with these annotations")
     private val annotated: List<String> by config(defaultValue = listOf("GenerateDataFunctions"))
 
     override fun visitClass(klass: KtClass) {
@@ -57,7 +52,9 @@ class EqualityMembersRule(config: Config) : Rule(config) {
         if (properties.isEmpty()) return
         val methodsToRegenerate = analyzeEqualityMembers(klass, functionsToCheck.toSet(), properties)
 
-        withAutoCorrect { generateEqualityMembers(klass, methodsToRegenerate.sorted(), properties) }
+        if (autoCorrect && methodsToRegenerate.isNotEmpty()) {
+            generateEqualityMembers(klass, methodsToRegenerate.sorted(), properties)
+        }
     }
 
     private fun hasAnnotations(klass: KtClass, requiredAnnotations: Set<String>): Boolean {
@@ -94,11 +91,9 @@ class EqualityMembersRule(config: Config) : Rule(config) {
         if (missingFunctionNames.isNotEmpty()) {
             val functionNames = missingFunctionNames.joinToString(", ")
             report(
-                CorrectableCodeSmell(
-                    issue = issue,
-                    entity = Entity.from(klass),
+                Finding(
+                    entity = Entity.atName(klass),
                     message = "${klass.name} is missing required functions: $functionNames.",
-                    autoCorrectEnabled = autoCorrect,
                 )
             )
         }
@@ -116,9 +111,8 @@ class EqualityMembersRule(config: Config) : Rule(config) {
                             if (it == null) {
                                 hasAll = false
                                 report(
-                                    CodeSmell(
-                                        issue,
-                                        Entity.from(declaredFunction),
+                                    Finding(
+                                        Entity.atName(declaredFunction),
                                         "Function ${declaredFunction.name} is missing property $prop.",
                                     )
                                 )
@@ -156,7 +150,17 @@ class EqualityMembersRule(config: Config) : Rule(config) {
         // Clean up class code after the fixes
         val factory = KtPsiFactory(klass.project)
         val body = checkNotNull(klass.body)
-        if (body.lastChild is LeafPsiElement && (body.lastChild as LeafPsiElement).elementType == KtTokens.RBRACE) {
+        val companionObject =
+            klass.declarations.filterIsInstance<KtObjectDeclaration>().firstOrNull { it.isCompanion() }
+
+        if (companionObject != null) {
+            // Ensure a blank line separates the last generated function from the companion object
+            if (companionObject.prevSibling is KtFunction) {
+                body.addBefore(factory.createWhiteSpace("\n\n"), companionObject)
+            }
+        } else if (
+            body.lastChild is LeafPsiElement && (body.lastChild as LeafPsiElement).elementType == KtTokens.RBRACE
+        ) {
             when (val prevSibling = body.lastChild.prevSibling) {
                 is KtFunction -> {
                     // Missing newline before rbrace
@@ -221,9 +225,17 @@ class EqualityMembersRule(config: Config) : Rule(config) {
     private fun generateToStringFunction(klass: KtClass, props: Set<String>) {
         generateFunction(klass) {
             appendLine("override fun toString(): String {")
-            append("    return \"${klass.name}(")
-            append(props.joinToString(", ") { "$it=$$it" })
-            appendLine(")\"")
+            appendLine("    return \"${klass.name}(\" +")
+            val propsList = props.toList()
+            for ((index, prop) in propsList.withIndex()) {
+                val isLast = index == propsList.lastIndex
+                if (isLast) {
+                    appendLine("        \"$prop=$$prop\" +")
+                } else {
+                    appendLine("        \"$prop=$$prop, \" +")
+                }
+            }
+            appendLine("        \")\"")
             appendLine("}")
         }
     }
@@ -232,10 +244,17 @@ class EqualityMembersRule(config: Config) : Rule(config) {
         val factory = KtPsiFactory(klass.project)
         val newFunction = factory.createFunction(buildString(builder))
 
-        // 1. Add the function itself to the class body
-        val addedElement = klass.addDeclaration(newFunction)
+        // Insert before the companion object if present, otherwise append (addDeclaration creates
+        // the body block if the class currently has none).
+        val companionObject =
+            klass.declarations.filterIsInstance<KtObjectDeclaration>().firstOrNull { it.isCompanion() }
+        val addedElement: KtNamedFunction =
+            if (companionObject != null) {
+                checkNotNull(klass.body).addBefore(newFunction, companionObject) as KtNamedFunction
+            } else {
+                klass.addDeclaration(newFunction)
+            }
 
-        // 2. Add two newlines before the function we just added for nice formatting.
         checkNotNull(klass.body).addBefore(factory.createWhiteSpace("\n\n"), addedElement)
     }
 }

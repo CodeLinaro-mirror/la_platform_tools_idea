@@ -3,17 +3,16 @@ package org.jetbrains.kotlin
 
 import com.intellij.testFramework.LightProjectDescriptor
 import com.intellij.testFramework.PsiTestUtil
-import junit.framework.TestCase
-import org.jetbrains.kotlin.idea.base.plugin.KotlinPluginMode
 import org.jetbrains.kotlin.idea.base.test.IgnoreTests
 import org.jetbrains.kotlin.idea.base.test.InTextDirectivesUtils
+import org.jetbrains.kotlin.idea.base.test.configureCodeStyleAndRun
 import org.jetbrains.kotlin.idea.core.formatter.KotlinPackageEntry
 import org.jetbrains.kotlin.idea.formatter.kotlinCustomSettings
 import org.jetbrains.kotlin.idea.test.KotlinLightCodeInsightFixtureTestCase
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils
 import org.jetbrains.kotlin.idea.test.KotlinWithJdkAndRuntimeLightProjectDescriptor
-import org.jetbrains.kotlin.idea.test.configureCodeStyleAndRun
 import org.jetbrains.kotlin.idea.test.withCustomCompilerOptions
+import org.jetbrains.kotlin.idea.util.ClassImportFilter
 import org.jetbrains.kotlin.idea.util.application.executeWriteCommand
 import org.jetbrains.kotlin.psi.KtFile
 import java.io.File
@@ -26,12 +25,10 @@ abstract class AbstractImportsTest : KotlinLightCodeInsightFixtureTestCase() {
     private fun findAfterFile(testPath: File): File {
         val regularAfterFile = testPath.resolveSibling(testPath.name + ".after")
 
-        if (pluginMode == KotlinPluginMode.K2) {
-            val k2AfterFileName = IgnoreTests.deriveK2FileName(regularAfterFile.name, IgnoreTests.FileExtension.K2)
-            val k2AfterFile = testPath.resolveSibling(k2AfterFileName)
+        val k2AfterFileName = IgnoreTests.deriveK2FileName(regularAfterFile.name, IgnoreTests.FileExtension.K2)
+        val k2AfterFile = testPath.resolveSibling(k2AfterFileName)
 
-            if (k2AfterFile.exists()) return k2AfterFile
-        }
+        if (k2AfterFile.exists()) return k2AfterFile
 
         return regularAfterFile
     }
@@ -82,7 +79,11 @@ abstract class AbstractImportsTest : KotlinLightCodeInsightFixtureTestCase() {
                     codeStyleSettings.PACKAGES_TO_USE_STAR_IMPORTS.addEntry(KotlinPackageEntry(it.trim(), true))
                 }
 
-                registerClassImportFilterExtensions(InTextDirectivesUtils.findLinesWithPrefixesRemoved(fileText, "// CLASS_IMPORT_FILTER_VETO_REGEX:"))
+                InTextDirectivesUtils.findLinesWithPrefixesRemoved(fileText, "// CLASS_IMPORT_FILTER_VETO_REGEX:").forEach {
+                    val regex = Regex(".*${it.trim()}.*")
+                    val filterExtension = ClassImportFilter { classInfo, _ -> !classInfo.fqName.asString().matches(regex) }
+                    ClassImportFilter.EP_NAME.point.registerExtension(filterExtension, this.testRootDisposable)
+                }
 
                 val log = if (runTestInWriteCommand) {
                     project.executeWriteCommand<String?>("") { doTest(file) }
@@ -97,7 +98,7 @@ abstract class AbstractImportsTest : KotlinLightCodeInsightFixtureTestCase() {
                     if (log.isNotEmpty()) {
                         KotlinTestUtils.assertEqualsToFile(logFile, log)
                     } else {
-                        TestCase.assertFalse(logFile.exists())
+                        assertFalse(logFile.exists())
                     }
                 }
 
@@ -115,8 +116,6 @@ abstract class AbstractImportsTest : KotlinLightCodeInsightFixtureTestCase() {
     }
 
     protected open fun updateScriptDependencies(psiFile: KtFile) {}
-
-    protected abstract fun registerClassImportFilterExtensions(classImportFilterVetoRegexRules: MutableList<String>)
 
     // returns test log
     protected abstract fun doTest(file: KtFile): String?

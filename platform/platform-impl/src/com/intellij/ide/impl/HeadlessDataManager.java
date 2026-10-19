@@ -23,6 +23,7 @@ import java.util.function.Supplier;
 
 // not final - used in Google's bazel plugin (in tests)
 @ApiStatus.NonExtendable
+@ApiStatus.Internal
 public class HeadlessDataManager extends DataManagerImpl {
 
   private volatile DataProvider myTestDataProvider;
@@ -58,6 +59,12 @@ public class HeadlessDataManager extends DataManagerImpl {
       manager.myUseProductionDataManager = false;
     });
     manager.myUseProductionDataManager = true;
+  }
+
+  @TestOnly
+  @ApiStatus.Internal
+  public static boolean isFallbackProductionDataManagerEnabled() {
+    return ((HeadlessDataManager)getInstance()).myUseProductionDataManager;
   }
 
   @Override

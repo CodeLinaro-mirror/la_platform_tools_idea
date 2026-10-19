@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.psi.impl;
 
 import com.intellij.ide.IdeEventQueue;
@@ -40,6 +40,7 @@ import java.util.List;
 
 //todo listen & notifyListeners readonly events?
 public final class PsiDocumentManagerImpl extends PsiDocumentManagerBase {
+
   public PsiDocumentManagerImpl(@NotNull Project project) {
     super(project);
 
@@ -63,7 +64,9 @@ public final class PsiDocumentManagerImpl extends PsiDocumentManagerBase {
   @Override
   public void assertFileIsFromCorrectProject(@NotNull VirtualFile virtualFile) {
     if (myUnitTestMode && virtualFile.isValid()) {
-      Collection<Project> projects = ProjectLocator.getInstance().getProjectsForFile(virtualFile);
+      Project preferredProject = ProjectLocator.getPreferredProject(virtualFile);
+      Collection<Project> projects = preferredProject == null ? ProjectLocator.getInstance().getProjectsForFile(virtualFile)
+                                                              : Collections.singleton(preferredProject);
       boolean isMyProject = projects.isEmpty() || projects.contains(myProject)
                             // set aside the use-case for lazy developers who just don't care to retrieve the correct project for the file
                             // and use DefaultProjectFactory.getDefaultProject() because why bother

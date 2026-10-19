@@ -1,6 +1,9 @@
 package com.jetbrains.python.psi.types
 
-import com.jetbrains.python.PyNames.isPrivate
+import com.jetbrains.python.ProtectionLevel
+import com.jetbrains.python.PyPsiBundle
+import com.jetbrains.python.inspections.PyInspectionMessages.ProblemMessage
+import com.jetbrains.python.psi.impl.ParamHelper
 import org.jetbrains.annotations.ApiStatus
 import java.util.ArrayDeque
 
@@ -31,9 +34,6 @@ object PyCallableParameterMapping {
 
     val acceptsPositionalArgument =
       kind == ParameterKind.POSITIONAL_ONLY || kind == ParameterKind.POSITIONAL_OR_KEYWORD || kind == ParameterKind.POSITIONAL_CONTAINER
-
-    val acceptsKeywordArgument =
-      kind == ParameterKind.KEYWORD_ONLY || kind == ParameterKind.POSITIONAL_OR_KEYWORD || kind == ParameterKind.KEYWORD_CONTAINER
   }
 
   /**
@@ -43,17 +43,36 @@ object PyCallableParameterMapping {
    * @param expectedCallableParameters a list of callable parameters from the expected Callable.
    * @param actualCallableParameters a list of callable parameters from the actual Callable.
    * @param context TypeEvalContext.
+   * @param mismatch optional sink, invoked at most once with a localized reason when the signatures do not match
+   *        by structure. Pass `null` (the default) during normal matching for zero overhead; supply a collector
+   *        only when building a [PyTypeChecker.explainMismatch] breakdown.
+   * @param parameterNames optional out-list collecting the name of the parameter behind each mapped type pair, in the
+   *        same order they are added to the type lists. Populated only for plain positional/keyword parameters; when a
+   *        container (`*args`/`**kwargs`) or variadic is involved the list is left shorter than the mapping so callers
+   *        can detect the misalignment by size and fall back to a generic, position-less message. Pass `null` (the
+   *        default) during normal matching for zero overhead.
    * @return a `PyCallableParameterMapping` object representing the result of the parameter mapping,
    *         or `null` if one of the signatures is specified incorrectly, or they do not match by structure
    */
   @JvmStatic
+  @JvmOverloads
   fun mapCallableParameters(
     expectedCallableParameters: List<PyCallableParameter>,
     actualCallableParameters: List<PyCallableParameter>,
     context: TypeEvalContext,
+    mismatch: ((ProblemMessage) -> Unit)? = null,
+    parameterNames: MutableList<String?>? = null,
   ): PyTypeParameterMapping? {
+    if (!handleUnwrappedTypedDict(expectedCallableParameters, actualCallableParameters, context)) return null
+
     val expectedCategorizedParameters = categorizeParameters(expectedCallableParameters, context) ?: return null
     val actualCategorizedParameters = categorizeParameters(actualCallableParameters, context) ?: return null
+
+    // Special handling for wildcard signatures (*args, **kwargs)
+    // Wildcard signatures match with any other signature
+    if (ParamHelper.isWildcardSignature(expectedCallableParameters, context)) {
+      return PyTypeParameterMapping.mapByShape(emptyList(), emptyList())
+    }
 
     val expectedParameters = ArrayDeque(expectedCategorizedParameters)
     val actualParameters = ArrayDeque(actualCategorizedParameters)
@@ -99,14 +118,17 @@ object PyCallableParameterMapping {
           }
           else if (actualParameter.acceptsPositionalArgument) {
             if (expectedParameter.hasDefault && !actualParameter.hasDefault) {
+              mismatch?.invoke(defaultRequired(expectedParameter.name))
               return null
             }
             expectedTypes.add(expectedParameter.getArgumentType(context))
             expectedParameters.pop()
             actualTypes.add(actualParameter.getArgumentType(context))
             actualParameters.pop()
+            parameterNames?.add(actualParameter.name ?: expectedParameter.name)
           }
           else {
+            mismatch?.invoke(incompatibleKind(expectedParameter.name))
             return null
           }
         }
@@ -114,14 +136,20 @@ object PyCallableParameterMapping {
         ParameterKind.POSITIONAL_OR_KEYWORD -> {
           if (actualParameter.kind == ParameterKind.POSITIONAL_OR_KEYWORD) {
             when {
-              expectedParameter.parameter.isSelf && actualParameter.parameter.isSelf -> continue
-              expectedParameter.name != actualParameter.name -> return null
-              expectedParameter.hasDefault && !actualParameter.hasDefault -> return null
+              expectedParameter.name != actualParameter.name -> {
+                mismatch?.invoke(nameMismatch(expectedParameter.name, actualParameter.name))
+                return null
+              }
+              expectedParameter.hasDefault && !actualParameter.hasDefault -> {
+                mismatch?.invoke(defaultRequired(expectedParameter.name))
+                return null
+              }
             }
             expectedTypes.add(expectedParameter.getArgumentType(context))
             expectedParameters.pop()
             actualTypes.add(actualParameter.getArgumentType(context))
             actualParameters.pop()
+            parameterNames?.add(actualParameter.name ?: expectedParameter.name)
           }
           else if (actualParameter.kind == ParameterKind.POSITIONAL_CONTAINER && actualKeywordContainer != null) {
             expectedTypes.add(expectedParameter.getArgumentType(context))
@@ -129,6 +157,7 @@ object PyCallableParameterMapping {
             expectedParameters.pop()
           }
           else {
+            mismatch?.invoke(incompatibleKind(expectedParameter.name))
             return null
           }
         }
@@ -138,12 +167,14 @@ object PyCallableParameterMapping {
           val actualKwOnlyOrPositionalParam = actualKeywordOrPositional.remove(expectedParameter.name)
           if (actualKwOnlyOrPositionalParam != null) {
             if (expectedParameter.hasDefault && !actualKwOnlyOrPositionalParam.hasDefault) {
+              mismatch?.invoke(defaultRequired(expectedParameter.name))
               return null
             }
             expectedTypes.add(expectedParameter.getArgumentType(context))
             expectedParameters.pop()
             actualTypes.add(actualKwOnlyOrPositionalParam.getArgumentType(context))
             require(actualParameters.remove(actualKwOnlyOrPositionalParam))
+            parameterNames?.add(actualKwOnlyOrPositionalParam.name ?: expectedParameter.name)
           }
           else if (actualKeywordContainer != null) {
             expectedTypes.add(expectedParameter.getArgumentType(context))
@@ -152,16 +183,18 @@ object PyCallableParameterMapping {
             expectedParameters.pop()
           }
           else {
+            mismatch?.invoke(missingParameter(expectedParameter.name))
             return null
           }
         }
         // *args can consume multiple positional parameters
         ParameterKind.POSITIONAL_CONTAINER -> {
           val argsType = expectedParameter.getArgumentType(context)
-          // Consume all remaining positional parameters
+          // Consume all remaining parameters until we meet the corresponding *args container (error otherwise)
           var actualPositional = actualParameters.pop()
           while (actualParameters.isNotEmpty() && !actualPositional.parameter.isPositionalContainer) {
-            if (!actualPositional.acceptsPositionalArgument || !actualPositional.hasDefault) {
+            // Parameter can't be omitted, or there can't possibly be *args in the actual signature after it
+            if (!actualPositional.hasDefault || !actualPositional.acceptsPositionalArgument) {
               return null
             }
             expectedTypes.add(argsType)
@@ -176,19 +209,26 @@ object PyCallableParameterMapping {
             // All positional parameters and the corresponding container are consumed, so we can pop the container
             expectedParameters.pop()
           }
+          else {
+            // Positional container must be present in the actual signature
+            return null
+          }
         }
         // **kwargs can consume multiple keyword parameters
         ParameterKind.KEYWORD_CONTAINER -> {
           val kwargsType = expectedParameter.getArgumentType(context)
-          // Consume all remaining keyword parameters
+          // Consume all remaining parameters until we meet the corresponding **kwargs container (error otherwise)
           var actualKeywordParam = actualParameters.pop()
           while (actualParameters.isNotEmpty() && !actualKeywordParam.parameter.isKeywordContainer) {
-            if (!(actualKeywordParam.acceptsKeywordArgument) || !actualKeywordParam.hasDefault) {
+            // Parameter can't be omitted
+            if (!actualKeywordParam.hasDefault && actualKeywordParam.kind != ParameterKind.POSITIONAL_CONTAINER) {
               return null
             }
-            expectedTypes.add(kwargsType)
-            actualTypes.add(actualKeywordParam.getArgumentType(context))
-
+            // skip the types of positional-only parameters with defaults and positional container
+            if (actualKeywordParam.kind == ParameterKind.KEYWORD_ONLY || actualKeywordParam.kind == ParameterKind.POSITIONAL_OR_KEYWORD) {
+              expectedTypes.add(kwargsType)
+              actualTypes.add(actualKeywordParam.getArgumentType(context))
+            }
             actualKeywordParam = actualParameters.pop()
           }
           // match keyword containers themselves
@@ -196,6 +236,10 @@ object PyCallableParameterMapping {
             expectedTypes.add(kwargsType)
             actualTypes.add(actualKeywordParam.getArgumentType(context))
             expectedParameters.pop()
+          }
+          else {
+            // Keyword container must be present in the actual signature
+            return null
           }
         }
         // TypeVarTuple (*Ts) consumes a calculated number of positional parameters
@@ -233,7 +277,10 @@ object PyCallableParameterMapping {
             expectedTypes.add(type)
           }
         }
-        else -> return null
+        else -> {
+          mismatch?.invoke(missingParameter(parameter.name))
+          return null
+        }
       }
     }
     // Handle unmatched actual parameters (extra in actual)
@@ -242,30 +289,59 @@ object PyCallableParameterMapping {
       when {
         parameter.parameter.isPositionalContainer || parameter.parameter.isKeywordContainer -> continue
         parameter.hasDefault -> continue
-        else -> return null
+        else -> {
+          mismatch?.invoke(unexpectedParameter(parameter.name))
+          return null
+        }
       }
     }
 
     return PyTypeParameterMapping.mapByShape(expectedTypes, actualTypes)
   }
 
-  // Unwraps *args: *tuple[T, T1] to a sequence of positional parameters: T, T1 for matching purposes
-  private fun flattenPositionalContainer(parameters: List<Parameter>, context: TypeEvalContext): List<Parameter> {
-    val flattenedParameters = mutableListOf<Parameter>()
-    for (parameter in parameters) {
-      val parameterType = parameter.getArgumentType(context)
-      if (parameter.parameter.isPositionalContainer && parameterType is PyUnpackedTupleType && !parameterType.isUnbound()) {
-        val flattenedTypes = parameterType.getElementTypes()
-        val unwrappedArgParameters = flattenedTypes.map { type ->
-          Parameter(PyCallableParameterImpl.nonPsi(type), ParameterKind.POSITIONAL_ONLY)
-        }
-        flattenedParameters.addAll(unwrappedArgParameters)
-      }
-      else {
-        flattenedParameters.add(parameter)
-      }
-    }
-    return flattenedParameters
+  // Localized reasons for the breakdown shown by PyTypeChecker.explainMismatch. Each falls back to the generic
+  // "parameter lists are incompatible" line when there is no usable parameter name to point at.
+  private fun parameterListIncompatible(): ProblemMessage =
+    PyPsiBundle.problemMessage("INSP.type.checker.breakdown.parameter.list.incompatible")
+
+  private fun defaultRequired(name: String?): ProblemMessage =
+    if (name != null) PyPsiBundle.problemMessage("INSP.type.checker.breakdown.parameter.default.required", name)
+    else parameterListIncompatible()
+
+  private fun nameMismatch(expected: String?, actual: String?): ProblemMessage =
+    if (expected != null && actual != null) PyPsiBundle.problemMessage("INSP.type.checker.breakdown.parameter.name.mismatch", expected, actual)
+    else parameterListIncompatible()
+
+  private fun missingParameter(name: String?): ProblemMessage =
+    if (name != null) PyPsiBundle.problemMessage("INSP.type.checker.breakdown.parameter.missing", name)
+    else parameterListIncompatible()
+
+  private fun unexpectedParameter(name: String?): ProblemMessage =
+    if (name != null) PyPsiBundle.problemMessage("INSP.type.checker.breakdown.parameter.unexpected", name)
+    else parameterListIncompatible()
+
+  private fun incompatibleKind(name: String?): ProblemMessage =
+    if (name != null) PyPsiBundle.problemMessage("INSP.type.checker.breakdown.parameter.kind.incompatible", name)
+    else parameterListIncompatible()
+
+  /**
+   * Special handling for keyword containers annotated with `Unpacked[TypedDict]` type:
+   *
+   * We must check if the actual input signature also contains a keyword container
+   * before unwrapping TypedDict from the expected signature into a series of keyword-only parameters.
+   * See the [spec](https://typing.python.org/en/latest/spec/callables.html#source-contains-kwargs-and-destination-doesn-t)
+   */
+  private fun handleUnwrappedTypedDict(
+    expectedCallableParameters: List<PyCallableParameter>,
+    actualCallableParameters: List<PyCallableParameter>,
+    context: TypeEvalContext,
+  ): Boolean {
+    val expectedHasUnpackedTD = expectedCallableParameters.lastOrNull()
+      ?.takeIf { it.isKeywordContainer && it.getType(context) is PyUnpackedTypedDictType } != null
+    val actualHasKeywordContainer = actualCallableParameters.lastOrNull()
+      ?.takeIf { it.isKeywordContainer } != null
+
+    return !(expectedHasUnpackedTD && !actualHasKeywordContainer)
   }
 
   private enum class ParameterState {
@@ -280,13 +356,14 @@ object PyCallableParameterMapping {
    */
   private fun categorizeParameters(callableParameters: List<PyCallableParameter>, context: TypeEvalContext): List<Parameter>? {
     val parameters = mutableListOf<Parameter>()
+    val unwrappedParameters = ParamHelper.unpackContainerParameters(callableParameters, context)
 
     var positionalContainer: Parameter? = null
     var keywordContainer: Parameter? = null
     var typeVarTupleType: PyTypeVarTupleType? = null
 
     var state = ParameterState.POSITIONAL_OR_KEYWORD
-    for (param in callableParameters) {
+    for (param in unwrappedParameters) {
       val argumentType = param.getArgumentType(context)
       if (param.isPositionOnlySeparator) {
         parameters.replaceAll { p -> p.copy(kind = ParameterKind.POSITIONAL_ONLY) }
@@ -321,14 +398,7 @@ object PyCallableParameterMapping {
       else {
         if (state == ParameterState.POSITIONAL_OR_KEYWORD) {
           val paramName = param.name
-          val isPositionalOnly = paramName == null || isPrivate(paramName)
-          if (isPositionalOnly) {
-            parameters.lastOrNull()?.let {
-              if (it.kind != ParameterKind.POSITIONAL_ONLY && it.kind != ParameterKind.TYPE_VAR_TUPLE) {
-                // Previous parameter should also be positional-only in this case
-                return null
-              }
-            }
+          if (paramName == null || param.protectionLevel == ProtectionLevel.PRIVATE) {
             parameters.add(Parameter(param, ParameterKind.POSITIONAL_ONLY))
           }
           else {
@@ -340,10 +410,15 @@ object PyCallableParameterMapping {
           if (name == null) {
             return null
           }
-          parameters.add(Parameter(param, ParameterKind.KEYWORD_ONLY))
+          if (state == ParameterState.POSITIONAL_CONTAINER && param.protectionLevel == ProtectionLevel.PRIVATE) {
+            parameters.add(Parameter(param, ParameterKind.POSITIONAL_ONLY))
+          }
+          else {
+            parameters.add(Parameter(param, ParameterKind.KEYWORD_ONLY))
+          }
         }
       }
     }
-    return flattenPositionalContainer(parameters, context)
+    return parameters
   }
 }

@@ -8,9 +8,11 @@ import com.intellij.openapi.ui.DialogPanel
 import com.intellij.openapi.util.NlsContexts
 import com.intellij.ui.dsl.builder.panel
 import com.intellij.ui.dsl.gridLayout.UnscaledGaps
+import org.jetbrains.annotations.ApiStatus
 import java.awt.Component
 
-internal fun createConfigurablesListPanel(description: @NlsContexts.Label String?,
+@ApiStatus.Internal
+fun createConfigurablesListPanel(description: @NlsContexts.Label String?,
                                           configurables: List<Configurable>,
                                           configurableEditor: ConfigurableEditor?): DialogPanel {
   return panel {
@@ -24,7 +26,7 @@ internal fun createConfigurablesListPanel(description: @NlsContexts.Label String
     indent {
       for (configurable in configurables) {
         row {
-          link(configurable.displayName) { event ->
+          link(configurable.displayName ?: "") { event ->
             if (configurableEditor == null) {
               val component = event.source as? Component
               val settings = Settings.KEY.getData(DataManager.getInstance().getDataContext(component))

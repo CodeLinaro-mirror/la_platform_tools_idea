@@ -10,14 +10,13 @@ import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.application.EDT
-import com.intellij.openapi.application.writeAction
+import com.intellij.openapi.application.edtWriteAction
 import com.intellij.openapi.diagnostic.ControlFlowException
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.progress.coroutineToIndicator
 import com.intellij.openapi.project.ProjectBundle
 import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.openapi.projectRoots.SdkType
-import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.platform.eel.provider.getEelDescriptor
 import com.intellij.platform.eel.provider.toEelApi
@@ -50,12 +49,13 @@ private val LOG = logger<JdkUpdateNotification>()
  *    - the JDK update is completed
  */
 @ApiStatus.Internal
-class JdkUpdateNotification(val jdk: Sdk,
-                            val oldItem: JdkItem,
-                            val newItem: JdkItem,
-                            private val whenComplete: (JdkUpdateNotification) -> Unit,
-                            private val showVendorVersion: Boolean = false,
-                            val scope: CoroutineScope
+class JdkUpdateNotification(
+  val jdk: Sdk,
+  val oldItem: JdkItem,
+  val newItem: JdkItem,
+  private val whenComplete: (JdkUpdateNotification) -> Unit,
+  private val showVendorVersion: Boolean = false,
+  val scope: CoroutineScope,
 ) {
   private val lock = ReentrantLock()
 
@@ -68,7 +68,7 @@ class JdkUpdateNotification(val jdk: Sdk,
   /**
    * Can be either suggestion or error notification
    */
-  private var myRetryNotification : Notification? = null
+  private var myRetryNotification: Notification? = null
 
   val persistentId: String = "${jdk.name}-${oldItem.fullPresentationText}-${newItem.fullPresentationText}-${jdk.homePath}"
 
@@ -144,7 +144,10 @@ class JdkUpdateNotification(val jdk: Sdk,
                                                         jdk.name,
                                                         if (showVendorVersion) newItem.fullPresentationWithVendorText else newItem.fullPresentationText,
                                                         oldItem.versionPresentationText)
-      templatePresentation.description = ProjectBundle.message("action.description.jdk.update.found", jdk.name, newItem.fullPresentationText, oldItem.versionPresentationText)
+      templatePresentation.description = ProjectBundle.message("action.description.jdk.update.found",
+                                                               jdk.name,
+                                                               newItem.fullPresentationText,
+                                                               oldItem.versionPresentationText)
     }
 
     override fun update(e: AnActionEvent) {
@@ -158,7 +161,7 @@ class JdkUpdateNotification(val jdk: Sdk,
     }
   }
 
-  private fun showUpdateErrorNotification(feedItem: JdkItem) : Unit = lock.withLock {
+  private fun showUpdateErrorNotification(feedItem: JdkItem): Unit = lock.withLock {
     NotificationGroupManager.getInstance().getNotificationGroup("JDK Update Error")
       .createNotification(
         ProjectBundle.message("progress.title.updating.jdk.0.to.1", jdk.name, feedItem.fullPresentationText),
@@ -184,9 +187,11 @@ class JdkUpdateNotification(val jdk: Sdk,
         withBackgroundProgress(project, title) {
           doUpdate(e)
         }
-      } else if (application.isUnitTestMode) { // We might not have a project in tests
+      }
+      else if (application.isUnitTestMode) { // We might not have a project in tests
         doUpdate(e)
-      } else {
+      }
+      else {
         LOG.warn("Failed to update $jdk to $newItem (no project)")
         fail()
       }
@@ -197,7 +202,7 @@ class JdkUpdateNotification(val jdk: Sdk,
     val newJdkHome = try {
       val installer = JdkInstaller.getInstance()
 
-      val eel = if (Registry.`is`("java.home.finder.use.eel")) jdk.homePath?.let { Path.of(it).getEelDescriptor().toEelApi() } else null
+      val eel = jdk.homePath?.let { Path.of(it).getEelDescriptor().toEelApi() }
       val wsl = jdk.homePath?.let { WslPath.getDistributionByWindowsUncPath(it) }
       val request = installer.prepareJdkInstallation(newItem, installer.defaultInstallDir(newItem, eel, wsl))
 
@@ -206,7 +211,7 @@ class JdkUpdateNotification(val jdk: Sdk,
 
         //make sure VFS sees the files and sets up the JDK correctly
         indicator.text = ProjectBundle.message("progress.text.updating.jdk.setting.up")
-        VfsUtil.markDirtyAndRefresh(false, true, true, request.installDir.toFile())
+        VfsUtil.markDirtyAndRefresh(false, true, true, request.installDir)
         request.javaHome
       }
     }
@@ -223,7 +228,7 @@ class JdkUpdateNotification(val jdk: Sdk,
 
     try {
       withContext(Dispatchers.EDT) {
-        writeAction {
+        edtWriteAction {
           jdk.sdkModificator.apply {
             removeAllRoots()
             homePath = newJdkHome.invariantSeparatorsPathString

@@ -1,6 +1,6 @@
 import logging
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from typing import Any, ClassVar, Literal, NamedTuple, TypeVar
+from typing import Any, ClassVar, Literal, NamedTuple
 
 from _typeshed import Incomplete
 from django.db.backends.base.base import BaseDatabaseWrapper
@@ -15,8 +15,11 @@ from django.db.models.sql.query import Query
 from django.db.models.sql.where import WhereNode
 from django.utils import tree
 from django.utils.functional import cached_property
+from typing_extensions import TypeVar
 
 logger: logging.Logger
+
+PROHIBITED_FILTER_KWARGS: frozenset[str]
 
 class class_or_instance_method:
     class_method: Callable[..., Any]
@@ -25,10 +28,10 @@ class class_or_instance_method:
     def __get__(self, instance: Any, owner: Any) -> Callable[..., Any]: ...
 
 class PathInfo(NamedTuple):
-    from_opts: Options
-    to_opts: Options
-    target_fields: tuple[Field, ...]
-    join_field: Field
+    from_opts: Options[Model]
+    to_opts: Options[Model]
+    target_fields: tuple[Field[Any, Any], ...]
+    join_field: Field[Any, Any]
     m2m: bool
     direct: bool
     filtered_relation: FilteredRelation | None
@@ -66,9 +69,11 @@ class Q(tree.Node):
     def referenced_base_fields(self) -> set[str]: ...
 
 class DeferredAttribute:
-    field: Field
-    def __init__(self, field: Field) -> None: ...
+    field: Field[Any, Any]
+    def __init__(self, field: Field[Any, Any]) -> None: ...
     def __get__(self, instance: Model | None, cls: type[Model] | None = None) -> Any: ...
+    def fetch_one(self, instance: Model) -> None: ...
+    def fetch_many(self, instances: Iterable[Model]) -> None: ...
 
 _R = TypeVar("_R", bound=type)
 
@@ -95,10 +100,10 @@ class RegisterLookupMixin:
     def _unregister_lookup(cls, lookup: type[Lookup], lookup_name: str | None = None) -> None: ...
 
 def select_related_descend(
-    field: Field,
+    field: Field[Any, Any],
     restricted: bool,
     requested: Mapping[str, Any] | None,
-    select_mask: set[Field] | None,
+    select_mask: set[Field[Any, Any]] | None,
 ) -> bool: ...
 
 _E = TypeVar("_E", bound=BaseExpression)

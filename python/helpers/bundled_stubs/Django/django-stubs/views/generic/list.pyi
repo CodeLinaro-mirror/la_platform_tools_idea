@@ -1,12 +1,12 @@
 from collections.abc import Sequence
-from typing import Any, Generic, Protocol, TypeVar, overload, type_check_only
+from typing import Any, Generic, Protocol, overload, type_check_only
 
 from django.core.paginator import Page, Paginator, _SupportsPagination
 from django.db.models import Model, QuerySet
 from django.db.models.query import _OrderByFieldName
 from django.http import HttpRequest, HttpResponse
 from django.views.generic.base import ContextMixin, TemplateResponseMixin, View
-from typing_extensions import override
+from typing_extensions import TypeVar, override
 
 _M = TypeVar("_M", bound=Model)
 
@@ -22,14 +22,14 @@ class MultipleObjectMixin(ContextMixin, Generic[_M]):
     paginate_by: int | None
     paginate_orphans: int
     context_object_name: str | None
-    paginator_class: type[Paginator]
+    paginator_class: type[Paginator[Any]]
     page_kwarg: str
     ordering: str | Sequence[_OrderByFieldName] | None
     def get_queryset(self) -> QuerySet[_M]: ...
     def get_ordering(self) -> str | Sequence[_OrderByFieldName] | None: ...
     def paginate_queryset(
         self, queryset: _SupportsPagination[_M], page_size: int
-    ) -> tuple[Paginator, Page, _SupportsPagination[_M], bool]: ...
+    ) -> tuple[Paginator[Any], Page[Any], _SupportsPagination[_M], bool]: ...
     def get_paginate_by(self, queryset: QuerySet[_M]) -> int | None: ...
     def get_paginator(
         self,
@@ -38,7 +38,7 @@ class MultipleObjectMixin(ContextMixin, Generic[_M]):
         orphans: int = ...,
         allow_empty_first_page: bool = ...,
         **kwargs: Any,
-    ) -> Paginator: ...
+    ) -> Paginator[Any]: ...
     def get_paginate_orphans(self) -> int: ...
     def get_allow_empty(self) -> bool: ...
     @overload

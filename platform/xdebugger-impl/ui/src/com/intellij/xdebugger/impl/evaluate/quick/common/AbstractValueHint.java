@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.xdebugger.impl.evaluate.quick.common;
 
 import com.intellij.codeInsight.hint.HintManager;
@@ -34,6 +34,7 @@ import com.intellij.openapi.ui.popup.LightweightWindowEvent;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.TextRange;
+import com.intellij.platform.debugger.impl.ui.evaluate.quick.common.ValueLookupManager;
 import com.intellij.ui.AppUIUtil;
 import com.intellij.ui.ClickListener;
 import com.intellij.ui.HintHint;
@@ -44,6 +45,7 @@ import com.intellij.ui.SimpleColoredComponent;
 import com.intellij.ui.SimpleColoredComponentWithProgress;
 import com.intellij.ui.SimpleColoredText;
 import com.intellij.ui.awt.RelativePoint;
+import com.intellij.ui.codeFloatingToolbar.CodeFloatingToolbar;
 import com.intellij.util.DocumentUtil;
 import com.intellij.util.ui.EDT;
 import com.intellij.util.ui.JBUI;
@@ -54,13 +56,12 @@ import com.intellij.xdebugger.frame.XFullValueEvaluator;
 import com.intellij.xdebugger.frame.XValue;
 import com.intellij.xdebugger.frame.presentation.XValuePresentation;
 import com.intellij.xdebugger.impl.actions.XDebuggerActions;
-import com.intellij.xdebugger.impl.evaluate.ValueLookupManagerController;
 import com.intellij.xdebugger.impl.evaluate.quick.XDebuggerTreeCreator;
 import com.intellij.xdebugger.impl.ui.DebuggerUIUtil;
 import com.intellij.xdebugger.impl.ui.ExecutionPointHighlighter;
 import com.intellij.xdebugger.impl.ui.tree.nodes.HeadlessValueEvaluationCallbackBase;
 import com.intellij.xdebugger.ui.DebuggerColors;
-import org.intellij.lang.annotations.JdkConstants;
+import com.intellij.util.ui.JdkConstants;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -93,7 +94,7 @@ public abstract class AbstractValueHint {
     @Override
     public void keyReleased(KeyEvent e) {
       if (!isAltMask(e.getModifiers())) {
-        ValueLookupManagerController.getInstance(myProject).hideHint();
+        ValueLookupManager.getInstance(myProject).hideHint();
       }
     }
   };
@@ -497,6 +498,10 @@ public abstract class AbstractValueHint {
       JBPopup popup = popupPresenter.apply(point);
       if (popup != null) {
         myCurrentPopup = popup;
+        CodeFloatingToolbar floatingToolbar = CodeFloatingToolbar.getToolbar(myEditor);
+        if (floatingToolbar != null) {
+          floatingToolbar.hideWhilePopupVisible(popup);
+        }
         myEditor.getScrollingModel().addVisibleAreaListener(e -> {
           if (!Objects.equals(e.getOldRectangle(), e.getNewRectangle())) {
             hideCurrentHint();

@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 @file:Suppress("ReplaceGetOrSet", "OVERRIDE_DEPRECATION", "LoggingSimilarMessage")
 
 package com.intellij.openapi.extensions.impl
@@ -22,7 +22,9 @@ import com.intellij.openapi.extensions.PluginDescriptor
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.util.Disposer
 import com.intellij.util.ThreeState
+import com.intellij.util.containers.ContainerUtil
 import com.intellij.util.containers.Java11Shim
+import com.intellij.util.ui.EDT
 import kotlinx.collections.immutable.PersistentList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.CancellationException
@@ -41,6 +43,7 @@ import java.util.function.BiPredicate
 import java.util.function.Function
 import java.util.function.Predicate
 import kotlin.concurrent.Volatile
+import kotlin.time.measureTime
 
 private val LOG: Logger = logger<ExtensionPointImpl<*>>()
 
@@ -61,13 +64,13 @@ sealed class ExtensionPointImpl<T : Any>(@JvmField val name: String,
   private var adapters: List<ExtensionComponentAdapter> = Java11Shim.INSTANCE.listOf()
 
   @Volatile
-  private var adaptersAreSorted = true
+  private var adaptersAreSorted: Boolean = true
 
   @Volatile
   private var listeners = persistentListOf<ExtensionPointListener<T>>()
 
   @Volatile
-  private var keyMapperToCache: ConcurrentMap<*, Map<*, *>>? = null
+  private var keyMapperToCache: ConcurrentMap<*, *>? = null
 
   companion object {
     // XmlExtensionAdapter.createInstance takes a lock on itself.
@@ -75,9 +78,11 @@ sealed class ExtensionPointImpl<T : Any>(@JvmField val name: String,
     // (EP->adapter in one thread, adapter->EP in the other thread).
     // Could happen if an extension constructor calls addExtensionPointListener on EP.
     // So, updating of listeners is a lock-free as a solution.
-    private val listenerUpdater =
-      AtomicReferenceFieldUpdater.newUpdater(ExtensionPointImpl::class.java, PersistentList::class.java, "listeners")
-    private val keyMapperToCacheUpdater =
+    @Suppress("UNCHECKED_CAST")
+    private val listenerUpdater: AtomicReferenceFieldUpdater<ExtensionPointImpl<*>, PersistentList<ExtensionPointListener<*>>> =
+      AtomicReferenceFieldUpdater.newUpdater(ExtensionPointImpl::class.java, PersistentList::class.java as Class<PersistentList<ExtensionPointListener<*>>>, "listeners")
+
+    private val keyMapperToCacheUpdater: AtomicReferenceFieldUpdater<ExtensionPointImpl<*>, ConcurrentMap<*, *>> =
       AtomicReferenceFieldUpdater.newUpdater(ExtensionPointImpl::class.java, ConcurrentMap::class.java, "keyMapperToCache")
 
     fun setCheckCanceledAction(checkCanceled: Runnable) {
@@ -95,10 +100,9 @@ sealed class ExtensionPointImpl<T : Any>(@JvmField val name: String,
     }
   }
 
-  fun <CACHE_KEY : Any, V : Any?> getCacheMap(): ConcurrentMap<CACHE_KEY, V> {
+  fun <CACHE_KEY : Any, V : Any> getCacheMap(): ConcurrentMap<CACHE_KEY, V> {
     @Suppress("UNCHECKED_CAST")
-    return (keyMapperToCache ?: keyMapperToCacheUpdater.updateAndGet(this) { ConcurrentHashMap<Any, Map<*, *>>() })
-      as ConcurrentMap<CACHE_KEY, V>
+    return (keyMapperToCache ?: keyMapperToCacheUpdater.updateAndGet(this) { ConcurrentHashMap<Any, V>() }) as ConcurrentMap<CACHE_KEY, V>
   }
 
   final override fun isDynamic(): Boolean = isDynamic
@@ -316,15 +320,11 @@ sealed class ExtensionPointImpl<T : Any>(@JvmField val name: String,
 
   internal inline fun processWithPluginDescriptor(shouldBeSorted: Boolean, consumer: (T, PluginDescriptor) -> Unit) {
     for (adapter in if (shouldBeSorted) sortedAdapters else adapters) {
-      try {
-        val extension = adapter.createInstance<T>(componentManager) ?: continue
-        consumer(extension, adapter.pluginDescriptor)
-      }
-      catch (e: ProcessCanceledException) {
-        throw e
-      }
-      catch (e: Throwable) {
-        LOG.error(componentManager.createError(e, adapter.pluginDescriptor.pluginId))
+      runSafelyPluginCode(componentManager, pluginDescriptor) {
+        val extension = adapter.createInstance<T>(componentManager)
+        if (extension != null) {
+          consumer(extension, adapter.pluginDescriptor)
+        }
       }
     }
   }
@@ -370,7 +370,6 @@ sealed class ExtensionPointImpl<T : Any>(@JvmField val name: String,
     else if (totalSize == 1) {
       val extension = processAdapter(adapter = adapters.get(0),
                                      listeners = listeners,
-                                     result = null,
                                      duplicates = null,
                                      extensionClassForCheck = extensionClass,
                                      adapters = adapters) ?: return Java11Shim.INSTANCE.listOf()
@@ -380,30 +379,16 @@ sealed class ExtensionPointImpl<T : Any>(@JvmField val name: String,
     val duplicates = if (this is BeanExtensionPoint<*>) null else Collections.newSetFromMap<T>(IdentityHashMap(totalSize))
     val listeners = listeners
 
-    val result = arrayOfNulls<Any>(totalSize)
-    var index = 0
-    for (adapter in adapters) {
-      val extension = processAdapter(adapter = adapter,
-                                     listeners = listeners,
-                                     result = result,
-                                     duplicates = duplicates,
-                                     extensionClassForCheck = extensionClass,
-                                     adapters = adapters)
-      if (extension != null) {
-        result[index++] = extension
-      }
-    }
-    @Suppress("UNCHECKED_CAST")
-    return Java11Shim.INSTANCE.listOf(result, index) as List<T>
+    val result = adapters.mapNotNull { processAdapter(it, listeners, duplicates, extensionClass, adapters) }
+    return Java11Shim.INSTANCE.copyOfList(result)
   }
 
   private fun processAdapter(adapter: ExtensionComponentAdapter,
                              listeners: List<ExtensionPointListener<T>>?,
-                             result: Array<*>?,
                              duplicates: MutableSet<T>?,
                              extensionClassForCheck: Class<T>,
                              adapters: List<ExtensionComponentAdapter>): T? {
-    try {
+    runSafely {
       if (!checkThatClassloaderIsActive(adapter)) {
         return null
       }
@@ -429,23 +414,16 @@ sealed class ExtensionPointImpl<T : Any>(@JvmField val name: String,
   prev extension:  $duplicate;
   adapter:         $adapter;
   extension class: $extensionClassForCheck;
-  result:          $result;
   adapters:        $adapters"""
         )
       }
       else {
         checkExtensionType(extension = extension, extensionClass = extensionClassForCheck, adapter = adapter)
         if (isNotifyThatAdded) {
-          notifyListeners(isRemoved = false, adapters = listOf(adapter), listeners = listeners ?: emptyList())
+          notifyListeners(isRemoved = false, adapters = listOf(adapter), listeners = listeners)
         }
         return extension
       }
-    }
-    catch (e: ProcessCanceledException) {
-      throw e
-    }
-    catch (e: Throwable) {
-      LOG.error(e)
     }
     return null
   }
@@ -524,31 +502,19 @@ sealed class ExtensionPointImpl<T : Any>(@JvmField val name: String,
   private fun doNotifyListeners(isRemoved: Boolean, extensions: List<T>, listeners: List<ExtensionPointListener<T>>) {
     for (listener in listeners) {
       if (listener is ExtensionPointAdapter<*>) {
-        try {
+        runSafely {
           listener.extensionListChanged()
-        }
-        catch (e: ProcessCanceledException) {
-          throw e
-        }
-        catch (e: Throwable) {
-          LOG.error(e)
         }
       }
       else {
         for (extension in extensions) {
-          try {
+          runSafely {
             if (isRemoved) {
               listener.extensionRemoved(extension, extensionPointPluginDescriptor)
             }
             else {
               listener.extensionAdded(extension, extensionPointPluginDescriptor)
             }
-          }
-          catch (e: ProcessCanceledException) {
-            throw e
-          }
-          catch (e: Throwable) {
-            LOG.error(e)
           }
         }
       }
@@ -613,7 +579,7 @@ sealed class ExtensionPointImpl<T : Any>(@JvmField val name: String,
       adapters = mutateAdapters(adapters) { it.removeAt(i) }
 
       if (!listeners.isEmpty()) {
-        removedAdapters = removedAdapters.add(adapter)
+        removedAdapters = removedAdapters.adding(adapter)
       }
 
       if (stopAfterFirstMatch) {
@@ -652,13 +618,23 @@ sealed class ExtensionPointImpl<T : Any>(@JvmField val name: String,
   private fun notifyListeners(isRemoved: Boolean,
                               adapters: List<ExtensionComponentAdapter>,
                               listeners: List<ExtensionPointListener<T>>) {
+    fun withEdtTimeQuotaCheck(listener: ExtensionPointListener<*>, body: () -> Unit) {
+      val duration = measureTime { body() }
+      if (duration.inWholeMilliseconds > 50 && EDT.isCurrentThreadEdt()) {
+        val listenerSource = (listener as? ExtensionPointListenerOrigin)?.getOriginObject() ?: listener
+        val pluginId = (listenerSource::class.java.classLoader as? PluginAwareClassLoader)?.pluginId?.toString()
+        val msg = "(EDT) ExtensionPoint listener notification took too long: ${duration} for ${listenerSource::class.java.name}" +
+                  (pluginId?.let { " (plugin: $it)" } ?: "")
+        LOG.warn(msg)
+      }
+    }
     for (listener in listeners) {
       if (listener is ExtensionPointAdapter<*>) {
         try {
-          (listener as ExtensionPointAdapter<T>).extensionListChanged()
+          withEdtTimeQuotaCheck(listener) { listener.extensionListChanged() }
         }
         catch (ce: CancellationException) {
-          LOG.warn("Cancellation while notifying `${listener}`", ce)
+          LOG.warn("Cancellation while notifying `${listener}` ($ce)", ce.cause)
         }
         catch (e: Throwable) {
           LOG.error("Exception while notifying `$listener`", e)
@@ -673,19 +649,21 @@ sealed class ExtensionPointImpl<T : Any>(@JvmField val name: String,
           try {
             val extension = adapter.createInstance<T>(componentManager)
             if (extension != null) {
-              if (isRemoved) {
-                listener.extensionRemoved(extension, adapter.pluginDescriptor)
-              }
-              else {
-                listener.extensionAdded(extension, adapter.pluginDescriptor)
+              withEdtTimeQuotaCheck(listener) {
+                if (isRemoved) {
+                  listener.extensionRemoved(extension, adapter.pluginDescriptor)
+                }
+                else {
+                  listener.extensionAdded(extension, adapter.pluginDescriptor)
+                }
               }
             }
           }
           catch (ce: CancellationException) {
-            LOG.warn("Cancellation while notifying `$listener`", ce)
+            LOG.warn("Cancellation while notifying `$listener` about $adapter ($ce)", ce.cause)
           }
           catch (e: Throwable) {
-            LOG.error("Exception while notifying `$listener`", e)
+            LOG.error("Exception while notifying `$listener`about $adapter", e)
           }
         }
       }
@@ -737,7 +715,7 @@ sealed class ExtensionPointImpl<T : Any>(@JvmField val name: String,
     listenerUpdater.updateAndGet(this) {
       @Suppress("UNCHECKED_CAST")
       val list = it as PersistentList<ExtensionPointListener<T>>
-      if (listener is ExtensionPointPriorityListener) list.add(0, listener) else list.add(listener)
+      if (listener is ExtensionPointPriorityListener) list.addingAt(0, listener) else list.adding(listener)
     }
     return true
   }
@@ -757,15 +735,17 @@ sealed class ExtensionPointImpl<T : Any>(@JvmField val name: String,
   }
 
   private fun doAddChangeListener(listener: Runnable): ExtensionPointAdapter<T> {
-    val listenerAdapter = object : ExtensionPointAdapter<T>() {
+    val listenerAdapter = object : ExtensionPointAdapter<T>(), ExtensionPointListenerOrigin {
+      private val handle = listener
       override fun extensionListChanged() {
-        listener.run()
+        handle.run()
       }
+      override fun getOriginObject(): Any = handle
     }
 
     listenerUpdater.updateAndGet(this) {
       @Suppress("UNCHECKED_CAST")
-      (it as PersistentList<ExtensionPointListener<T>>).add(listenerAdapter)
+      (it as PersistentList<ExtensionPointListener<T>>).adding(listenerAdapter)
     }
     return listenerAdapter
   }
@@ -773,7 +753,7 @@ sealed class ExtensionPointImpl<T : Any>(@JvmField val name: String,
   final override fun removeExtensionPointListener(listener: ExtensionPointListener<T>) {
     listenerUpdater.updateAndGet(this) {
       @Suppress("UNCHECKED_CAST")
-      (it as PersistentList<ExtensionPointListener<T>>).remove(listener)
+      (it as PersistentList<ExtensionPointListener<T>>).removing(listener)
     }
   }
 
@@ -788,8 +768,17 @@ sealed class ExtensionPointImpl<T : Any>(@JvmField val name: String,
     }
 
     // help GC
-    listenerUpdater.updateAndGet(this) { it.clear() }
+    listenerUpdater.updateAndGet(this) { it.cleared() }
     extensionClass = null
+  }
+
+  @TestOnly
+  @Synchronized
+  fun dropInstances() {
+    clearCache()
+    for (adapter in adapters) {
+      adapter.dropInstance()
+    }
   }
 
   fun getExtensionClass(): Class<T> {
@@ -851,20 +840,14 @@ sealed class ExtensionPointImpl<T : Any>(@JvmField val name: String,
     adaptersAreSorted = false
 
     val oldAdapters = adapters
-    val oldSize = oldAdapters.size
-    val newAdapters = arrayOfNulls<ExtensionComponentAdapter>(oldAdapters.size + descriptors.size)
-    var newSize = oldSize
-    for ((index, item) in oldAdapters.withIndex()) {
-      newAdapters[index] = item
-    }
-    for (descriptor in descriptors) {
-      if (descriptor.os == null || descriptor.os.isSuitableForOs()) {
-        newAdapters[newSize++] = createAdapter(descriptor = descriptor, pluginDescriptor = pluginDescriptor, componentManager = componentManager)
+    val newAdapters = descriptors.mapNotNull {
+      if (it.os == null || it.os.isSuitableForOs()) {
+        createAdapter(it, pluginDescriptor, componentManager)
       }
+      else null
     }
 
-    @Suppress("UNCHECKED_CAST")
-    adapters = Java11Shim.INSTANCE.listOf(newAdapters as Array<ExtensionComponentAdapter>, newSize)
+    adapters = Java11Shim.INSTANCE.copyOfList(ContainerUtil.concat(oldAdapters, newAdapters))
 
     clearCache()
     val listeners = listeners
@@ -879,7 +862,7 @@ sealed class ExtensionPointImpl<T : Any>(@JvmField val name: String,
       }
 
       // must be reported in order
-      val newlyAddedUnsortedList = adapters.subList(oldSize, newSize)
+      val newlyAddedUnsortedList = newAdapters
       val newlyAddedSet = Collections.newSetFromMap<ExtensionComponentAdapter>(IdentityHashMap(newlyAddedUnsortedList.size))
       newlyAddedSet.addAll(newlyAddedUnsortedList)
       addedAdapters = ArrayList(newlyAddedSet.size)
@@ -944,7 +927,7 @@ sealed class ExtensionPointImpl<T : Any>(@JvmField val name: String,
     if (isRequired) {
       var message: @NonNls String = "cannot find extension implementation $aClass(epName=$name, extensionCount=${size()}"
       cachedExtensions?.let {
-        message += ", cachedExtensions=$cachedExtensions"
+        message += ", cachedExtensions=$it"
       }
       if (isInReadOnlyMode) {
         message += ", point in read-only mode"
@@ -1070,18 +1053,38 @@ private fun <T : Any> getOrCreateExtensionInstance(adapter: ExtensionComponentAd
     return null
   }
 
-  try {
+  runSafelyPluginCode(componentManager, adapter.pluginDescriptor) {
     val instance = adapter.createInstance<T>(componentManager)
     if (instance == null) {
       LOG.debug { "$adapter not loaded because it reported that not applicable" }
     }
     return instance
   }
-  catch (e: ProcessCanceledException) {
-    throw e
+  return null
+}
+
+private inline fun runSafelyPluginCode(
+  componentManager: ComponentManager,
+  descriptor: PluginDescriptor,
+  block: () -> Unit,
+) = runSafely(loggingErrorAdapter = { e -> componentManager.createError(e, descriptor.pluginId) }, block = block)
+
+private inline fun runSafely(
+  loggingErrorAdapter: (Throwable) -> Throwable = { e -> e },
+  block: () -> Unit,
+) {
+  try {
+    block()
   }
   catch (e: Throwable) {
-    LOG.error(componentManager.createError(e, adapter.pluginDescriptor.pluginId))
+    if (e is CancellationException) {
+      throw e
+    }
+
+    LOG.error(loggingErrorAdapter(e))
   }
-  return null
+}
+
+private interface ExtensionPointListenerOrigin {
+  fun getOriginObject(): Any
 }

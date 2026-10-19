@@ -1,7 +1,8 @@
 // "Change use-site target to 'property'" "true"
+// LANGUAGE_VERSION: 2.3
 // ACTION "Add use-site target 'param'"
 // COMPILER_ARGUMENTS: -XXLanguage:+AnnotationDefaultTargetMigrationWarning
-// IGNORE_K1
+
 
 @Target(AnnotationTarget.VALUE_PARAMETER, AnnotationTarget.PROPERTY)
 @Retention(AnnotationRetention.RUNTIME)

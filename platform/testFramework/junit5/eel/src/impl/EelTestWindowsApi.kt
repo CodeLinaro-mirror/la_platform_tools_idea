@@ -10,8 +10,9 @@ import com.intellij.platform.eel.EelTunnelsWindowsApi
 import com.intellij.platform.eel.EelUserWindowsInfo
 import com.intellij.platform.eel.EelWindowsApi
 import com.intellij.platform.eel.fs.EelFileSystemApi
-import com.intellij.platform.eel.impl.fs.WindowsNioBasedEelFileSystemApi
+import com.intellij.platform.eel.impl.local.WindowsNioBasedEelFileSystemApi
 import com.intellij.platform.eel.impl.local.EelLocalExecWindowsApi
+import com.intellij.platform.eel.impl.local.LocalEelArchiveApiImpl
 import com.intellij.platform.eel.path.EelPath
 import com.intellij.platform.eel.provider.asEelPath
 import com.intellij.platform.eel.provider.utils.toEelArch
@@ -27,8 +28,7 @@ internal class EelTestWindowsApi(override val descriptor: EelTestDescriptor, fil
 
   override val fs: WindowsNioBasedEelFileSystemApi = EelTestFileSystemWindowsApi(descriptor, fileSystem)
 
-  override val archive: EelArchiveApi
-    get() = TODO()
+  override val archive: EelArchiveApi = LocalEelArchiveApiImpl
   override val tunnels: EelTunnelsWindowsApi
     get() = TODO()
   override val exec: EelExecWindowsApi = EelLocalExecWindowsApi()

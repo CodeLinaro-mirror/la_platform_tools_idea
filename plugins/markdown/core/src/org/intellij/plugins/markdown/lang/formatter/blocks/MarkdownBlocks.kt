@@ -31,25 +31,29 @@ internal object MarkdownBlocks {
     spacing: SpacingBuilder,
     align: (ASTNode) -> Alignment?
   ): Sequence<MarkdownFormattingBlock> {
-    return filterFromWhitespaces(nodes).map { create(it, settings, spacing, align) }
+    return filterFromWhitespaces(nodes).map { create(it, settings, spacing, null, align) }
   }
 
   /**
    * Create formatting block from node.
    * Would not ignore real whitespace blocks
    */
-  fun create(node: ASTNode, settings: CodeStyleSettings, spacing: SpacingBuilder, align: (ASTNode) -> Alignment?): MarkdownFormattingBlock {
+  @JvmOverloads
+  fun create(node: ASTNode, settings: CodeStyleSettings, spacing: SpacingBuilder, wrap: Wrap? = null, align: (ASTNode) -> Alignment?): MarkdownFormattingBlock {
     return when (node.elementType) {
       in MarkdownTokenTypeSets.LIST_MARKERS, in MarkdownTokenTypeSets.WHITE_SPACES, MarkdownTokenTypes.BLOCK_QUOTE -> {
-        MarkdownRangedFormattingBlock.trimmed(node, settings, spacing, align(node), null)
+        MarkdownRangedFormattingBlock.trimmed(node, settings, spacing, align(node), wrap)
       }
-      MarkdownElementTypes.CODE_SPAN -> MarkdownFormattingBlock(node, settings, spacing, align(node), Wrap.createWrap(WrapType.NORMAL, false))
-      in emphasisLikeElements -> EmphasisFormattingBlock(settings, spacing, node, align(node))
+      MarkdownElementTypes.CODE_SPAN -> MarkdownFormattingBlock(
+        node, settings, spacing, align(node),
+        wrap ?: Wrap.createWrap(if (shouldWrapCodeSpan(settings)) WrapType.NORMAL else WrapType.NONE, false)
+      )
+      in emphasisLikeElements -> EmphasisFormattingBlock(settings, spacing, node, align(node), wrap)
       MarkdownElementTypes.PARAGRAPH -> when {
-        isInsideBlockquote(node) && !shouldWrapInsideBlockquote(settings) -> MarkdownFormattingBlock(node, settings, spacing, align(node))
-        else -> MarkdownWrappingFormattingBlock(settings, spacing, node, align(node))
+        isInsideBlockquote(node) && !shouldWrapInsideBlockquote(settings) -> MarkdownFormattingBlock(node, settings, spacing, align(node), wrap)
+        else -> MarkdownWrappingFormattingBlock(settings, spacing, node, align(node), wrap)
       }
-      else -> MarkdownFormattingBlock(node, settings, spacing, align(node))
+      else -> MarkdownFormattingBlock(node, settings, spacing, align(node), wrap)
     }
   }
 
@@ -60,6 +64,10 @@ internal object MarkdownBlocks {
   private fun shouldWrapInsideBlockquote(settings: CodeStyleSettings): Boolean {
     val customSettings = settings.getCustomSettings(MarkdownCustomCodeStyleSettings::class.java)
     return customSettings.WRAP_TEXT_IF_LONG && customSettings.WRAP_TEXT_INSIDE_BLOCKQUOTES
+  }
+
+  private fun shouldWrapCodeSpan(settings: CodeStyleSettings): Boolean {
+    return settings.getCustomSettings(MarkdownCustomCodeStyleSettings::class.java).WRAP_TEXT_IF_LONG
   }
 
   /** Filter out real whitespace blocks from sequence */

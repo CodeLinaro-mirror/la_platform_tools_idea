@@ -9,6 +9,7 @@ import com.intellij.formatting.WrapType
 import com.intellij.lang.ASTNode
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.codeStyle.CodeStyleSettings
+import org.intellij.plugins.markdown.lang.MarkdownTokenTypeSets
 import org.intellij.plugins.markdown.lang.MarkdownTokenTypes
 import org.intellij.plugins.markdown.lang.formatter.blocks.MarkdownBlocks
 import org.intellij.plugins.markdown.lang.formatter.blocks.MarkdownFormattingBlock
@@ -32,13 +33,41 @@ internal open class MarkdownWrappingFormattingBlock(
     get() = node.text.count { it == '\n' }
 
   override fun buildChildren(): List<Block> {
-    val filtered = MarkdownBlocks.filterFromWhitespaces(node.children())
+    val filtered = MarkdownBlocks.filterFromWhitespaces(node.children()).toList()
     val childWrap = createWrapForChildren()
-    val result = ArrayList<Block>()
-    for (node in filtered) {
-      when (node.elementType) {
-        MarkdownTokenTypes.TEXT -> processTextElement(result, node, childWrap, wrapFirstElement = true)
-        else -> result.add(MarkdownBlocks.create(node, settings, spacing) { alignment })
+    val result = ArrayList<Block>(filtered.size)
+
+    filtered.forEachIndexed { index, child ->
+      val previous = filtered.getOrNull(index - 1)
+      val isAfterOpeningParenthesis = previous?.elementType == MarkdownTokenTypes.LPAREN
+      val isAdjacentToPreviousQuote = previous != null
+                                      && (previous.elementType == MarkdownTokenTypes.SINGLE_QUOTE
+                                          || previous.elementType == MarkdownTokenTypes.DOUBLE_QUOTE)
+                                      && previous.textRange.endOffset == child.textRange.startOffset
+      when (child.elementType) {
+        MarkdownTokenTypes.LPAREN -> {
+          result.add(MarkdownFormattingBlock(child, settings, spacing, alignment, childWrap))
+        }
+
+        MarkdownTokenTypes.TEXT -> {
+          processTextElement(result, child, childWrap, !isAfterOpeningParenthesis && !isAdjacentToPreviousQuote)
+        }
+
+        MarkdownTokenTypes.SINGLE_QUOTE, MarkdownTokenTypes.DOUBLE_QUOTE -> {
+          val isAttachedToPreviousText = previous?.elementType == MarkdownTokenTypes.TEXT
+                                         && previous.textRange.endOffset == child.textRange.startOffset
+          val wrap = if (isAttachedToPreviousText) Wrap.createWrap(WrapType.NONE, false) else childWrap
+          result.add(MarkdownFormattingBlock(child, settings, spacing, alignment, wrap))
+        }
+
+        in MarkdownTokenTypeSets.WHITE_SPACES -> {
+          result.add(MarkdownFormattingBlock(child, settings, spacing, alignment, Wrap.createWrap(WrapType.NONE, false)))
+        }
+
+        else -> {
+          val wrap = if (isAfterOpeningParenthesis) Wrap.createWrap(WrapType.NONE, false) else null
+          result.add(MarkdownBlocks.create(child, settings, spacing, wrap) { alignment })
+        }
       }
     }
     return result
@@ -74,6 +103,7 @@ internal open class MarkdownWrappingFormattingBlock(
       result.add(block)
     }
   }
+
 }
 
 private fun splitTextForWrapping(text: String): Sequence<TextRange> {
@@ -81,7 +111,7 @@ private fun splitTextForWrapping(text: String): Sequence<TextRange> {
     var start = -1
     var length = -1
     for ((index, char) in text.withIndex()) {
-      if (char.isWhitespace()) {
+      if (char.isFormatterWhitespace()) {
         if (length > 0) {
           yield(TextRange.from(start, length))
         }
@@ -100,4 +130,8 @@ private fun splitTextForWrapping(text: String): Sequence<TextRange> {
       yield(TextRange.from(start, length))
     }
   }
+}
+
+private fun Char.isFormatterWhitespace(): Boolean {
+  return this == ' ' || this == '\t' || this == '\n'
 }

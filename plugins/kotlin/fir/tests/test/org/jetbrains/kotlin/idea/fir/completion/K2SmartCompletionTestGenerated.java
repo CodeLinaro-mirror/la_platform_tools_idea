@@ -3,7 +3,6 @@
 package org.jetbrains.kotlin.idea.fir.completion;
 
 import com.intellij.testFramework.TestDataPath;
-import org.jetbrains.kotlin.idea.base.plugin.KotlinPluginMode;
 import org.jetbrains.kotlin.idea.base.test.TestRoot;
 import org.jetbrains.kotlin.idea.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils;
@@ -23,12 +22,6 @@ public abstract class K2SmartCompletionTestGenerated extends AbstractK2SmartComp
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../completion/testData/smart/afterAs")
     public static class AfterAs extends AbstractK2SmartCompletionTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -52,12 +45,6 @@ public abstract class K2SmartCompletionTestGenerated extends AbstractK2SmartComp
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../completion/testData/smart/anonymousObject")
     public static class AnonymousObject extends AbstractK2SmartCompletionTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -91,12 +78,6 @@ public abstract class K2SmartCompletionTestGenerated extends AbstractK2SmartComp
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../completion/testData/smart/callableReference")
     public static class CallableReference extends AbstractK2SmartCompletionTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -220,12 +201,6 @@ public abstract class K2SmartCompletionTestGenerated extends AbstractK2SmartComp
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../completion/testData/smart/constructor")
     public static class Constructor extends AbstractK2SmartCompletionTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -270,6 +245,11 @@ public abstract class K2SmartCompletionTestGenerated extends AbstractK2SmartComp
             runTest("../../completion/testData/smart/constructor/InnerClass.kt");
         }
 
+        @TestMetadata("InternalConstructorForOpenSameModule.kt")
+        public void testInternalConstructorForOpenSameModule() throws Exception {
+            runTest("../../completion/testData/smart/constructor/InternalConstructorForOpenSameModule.kt");
+        }
+
         @TestMetadata("JavaClass.kt")
         public void testJavaClass() throws Exception {
             runTest("../../completion/testData/smart/constructor/JavaClass.kt");
@@ -295,9 +275,19 @@ public abstract class K2SmartCompletionTestGenerated extends AbstractK2SmartComp
             runTest("../../completion/testData/smart/constructor/PrivateConstructorForAbstract.kt");
         }
 
+        @TestMetadata("PrivateConstructorForOpen.kt")
+        public void testPrivateConstructorForOpen() throws Exception {
+            runTest("../../completion/testData/smart/constructor/PrivateConstructorForOpen.kt");
+        }
+
         @TestMetadata("ProtectedConstructorForAbstract.kt")
         public void testProtectedConstructorForAbstract() throws Exception {
             runTest("../../completion/testData/smart/constructor/ProtectedConstructorForAbstract.kt");
+        }
+
+        @TestMetadata("ProtectedConstructorForOpen.kt")
+        public void testProtectedConstructorForOpen() throws Exception {
+            runTest("../../completion/testData/smart/constructor/ProtectedConstructorForOpen.kt");
         }
 
         @TestMetadata("Simple.kt")
@@ -324,12 +314,6 @@ public abstract class K2SmartCompletionTestGenerated extends AbstractK2SmartComp
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../completion/testData/smart/forLoopRange")
     public static class ForLoopRange extends AbstractK2SmartCompletionTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -373,12 +357,6 @@ public abstract class K2SmartCompletionTestGenerated extends AbstractK2SmartComp
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../completion/testData/smart/frontendAgnostic")
     public static class FrontendAgnostic extends AbstractK2SmartCompletionTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -412,12 +390,6 @@ public abstract class K2SmartCompletionTestGenerated extends AbstractK2SmartComp
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../completion/testData/smart/functionLiterals")
     public static class FunctionLiterals extends AbstractK2SmartCompletionTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -516,12 +488,6 @@ public abstract class K2SmartCompletionTestGenerated extends AbstractK2SmartComp
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../completion/testData/smart/generics")
     public static class Generics extends AbstractK2SmartCompletionTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -560,12 +526,6 @@ public abstract class K2SmartCompletionTestGenerated extends AbstractK2SmartComp
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../completion/testData/smart/heuristicSignatures")
     public static class HeuristicSignatures extends AbstractK2SmartCompletionTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -639,12 +599,6 @@ public abstract class K2SmartCompletionTestGenerated extends AbstractK2SmartComp
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../completion/testData/smart/ifValue")
     public static class IfValue extends AbstractK2SmartCompletionTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -683,12 +637,6 @@ public abstract class K2SmartCompletionTestGenerated extends AbstractK2SmartComp
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../completion/testData/smart/inElvisOperator")
     public static class InElvisOperator extends AbstractK2SmartCompletionTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -727,12 +675,6 @@ public abstract class K2SmartCompletionTestGenerated extends AbstractK2SmartComp
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../completion/testData/smart/inOperator")
     public static class InOperator extends AbstractK2SmartCompletionTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -794,14 +736,18 @@ public abstract class K2SmartCompletionTestGenerated extends AbstractK2SmartComp
         @RunWith(JUnit3RunnerWithInners.class)
         @TestMetadata("../../completion/testData/smart/inheritors/throwable")
         public static class Throwable extends AbstractK2SmartCompletionTest {
-            @java.lang.Override
-            @org.jetbrains.annotations.NotNull
-            public final KotlinPluginMode getPluginMode() {
-                return KotlinPluginMode.K2;
-            }
-
             private void runTest(String testDataFilePath) throws Exception {
                 KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
+            }
+
+            @TestMetadata("JavaStdlib.kt")
+            public void testJavaStdlib() throws Exception {
+                runTest("../../completion/testData/smart/inheritors/throwable/JavaStdlib.kt");
+            }
+
+            @TestMetadata("KotlinAndJava.kt")
+            public void testKotlinAndJava() throws Exception {
+                runTest("../../completion/testData/smart/inheritors/throwable/KotlinAndJava.kt");
             }
 
             @TestMetadata("KotlinOnly.kt")
@@ -813,12 +759,6 @@ public abstract class K2SmartCompletionTestGenerated extends AbstractK2SmartComp
         @RunWith(JUnit3RunnerWithInners.class)
         @TestMetadata("../../completion/testData/smart/inheritors")
         public static class Uncategorized extends AbstractK2SmartCompletionTest {
-            @java.lang.Override
-            @org.jetbrains.annotations.NotNull
-            public final KotlinPluginMode getPluginMode() {
-                return KotlinPluginMode.K2;
-            }
-
             private void runTest(String testDataFilePath) throws Exception {
                 KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
             }
@@ -873,12 +813,6 @@ public abstract class K2SmartCompletionTestGenerated extends AbstractK2SmartComp
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../completion/testData/smart/lambdaSignature")
     public static class LambdaSignature extends AbstractK2SmartCompletionTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -922,12 +856,6 @@ public abstract class K2SmartCompletionTestGenerated extends AbstractK2SmartComp
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../completion/testData/smart/multipleArgsItem")
     public static class MultipleArgsItem extends AbstractK2SmartCompletionTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -1007,6 +935,11 @@ public abstract class K2SmartCompletionTestGenerated extends AbstractK2SmartComp
             runTest("../../completion/testData/smart/multipleArgsItem/notFirstArgumentBrackets.kt");
         }
 
+        @TestMetadata("notForExistingNamedArguments.kt")
+        public void testNotForExistingNamedArguments() throws Exception {
+            runTest("../../completion/testData/smart/multipleArgsItem/notForExistingNamedArguments.kt");
+        }
+
         @TestMetadata("notForExistingNamedArguments2.kt")
         public void testNotForExistingNamedArguments2() throws Exception {
             runTest("../../completion/testData/smart/multipleArgsItem/notForExistingNamedArguments2.kt");
@@ -1026,12 +959,6 @@ public abstract class K2SmartCompletionTestGenerated extends AbstractK2SmartComp
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../completion/testData/smart/propertyDelegate")
     public static class PropertyDelegate extends AbstractK2SmartCompletionTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -1158,14 +1085,86 @@ public abstract class K2SmartCompletionTestGenerated extends AbstractK2SmartComp
     }
 
     @RunWith(JUnit3RunnerWithInners.class)
-    @TestMetadata("../../completion/testData/smart/smartCasts")
-    public static class SmartCasts extends AbstractK2SmartCompletionTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
+    @TestMetadata("../../completion/testData/smart/SAM")
+    public static class SAM extends AbstractK2SmartCompletionTest {
+        private void runTest(String testDataFilePath) throws Exception {
+            KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
 
+        @TestMetadata("GenericKotlinFunInterface.kt")
+        public void testGenericKotlinFunInterface() throws Exception {
+            runTest("../../completion/testData/smart/SAM/GenericKotlinFunInterface.kt");
+        }
+
+        @TestMetadata("JavaConsumer.kt")
+        public void testJavaConsumer() throws Exception {
+            runTest("../../completion/testData/smart/SAM/JavaConsumer.kt");
+        }
+
+        @TestMetadata("KotlinFunInterface.kt")
+        public void testKotlinFunInterface() throws Exception {
+            runTest("../../completion/testData/smart/SAM/KotlinFunInterface.kt");
+        }
+
+        @TestMetadata("KotlinFunInterfaceMultiParam.kt")
+        public void testKotlinFunInterfaceMultiParam() throws Exception {
+            runTest("../../completion/testData/smart/SAM/KotlinFunInterfaceMultiParam.kt");
+        }
+
+        @TestMetadata("KotlinFunInterfaceWithDefaultMethod.kt")
+        public void testKotlinFunInterfaceWithDefaultMethod() throws Exception {
+            runTest("../../completion/testData/smart/SAM/KotlinFunInterfaceWithDefaultMethod.kt");
+        }
+
+        @TestMetadata("KotlinFunInterfaceWithParam.kt")
+        public void testKotlinFunInterfaceWithParam() throws Exception {
+            runTest("../../completion/testData/smart/SAM/KotlinFunInterfaceWithParam.kt");
+        }
+
+        @TestMetadata("KotlinSamSubtypeExpected.kt")
+        public void testKotlinSamSubtypeExpected() throws Exception {
+            runTest("../../completion/testData/smart/SAM/KotlinSamSubtypeExpected.kt");
+        }
+
+        @TestMetadata("KotlinSamSubtypeExpectedSam.kt")
+        public void testKotlinSamSubtypeExpectedSam() throws Exception {
+            runTest("../../completion/testData/smart/SAM/KotlinSamSubtypeExpectedSam.kt");
+        }
+
+        @TestMetadata("SAMConstructorForTypeAlias.kt")
+        public void testSAMConstructorForTypeAlias() throws Exception {
+            runTest("../../completion/testData/smart/SAM/SAMConstructorForTypeAlias.kt");
+        }
+
+        @TestMetadata("SAMExpected1.kt")
+        public void testSAMExpected1() throws Exception {
+            runTest("../../completion/testData/smart/SAM/SAMExpected1.kt");
+        }
+
+        @TestMetadata("SAMExpected2.kt")
+        public void testSAMExpected2() throws Exception {
+            runTest("../../completion/testData/smart/SAM/SAMExpected2.kt");
+        }
+
+        @TestMetadata("SamAsArgument.kt")
+        public void testSamAsArgument() throws Exception {
+            runTest("../../completion/testData/smart/SAM/SamAsArgument.kt");
+        }
+
+        @TestMetadata("SamInReturnStatement.kt")
+        public void testSamInReturnStatement() throws Exception {
+            runTest("../../completion/testData/smart/SAM/SamInReturnStatement.kt");
+        }
+
+        @TestMetadata("SamInheritor.kt")
+        public void testSamInheritor() throws Exception {
+            runTest("../../completion/testData/smart/SAM/SamInheritor.kt");
+        }
+    }
+
+    @RunWith(JUnit3RunnerWithInners.class)
+    @TestMetadata("../../completion/testData/smart/smartCasts")
+    public static class SmartCasts extends AbstractK2SmartCompletionTest {
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -1224,12 +1223,6 @@ public abstract class K2SmartCompletionTestGenerated extends AbstractK2SmartComp
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../completion/testData/smart/this")
     public static class This extends AbstractK2SmartCompletionTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -1278,12 +1271,6 @@ public abstract class K2SmartCompletionTestGenerated extends AbstractK2SmartComp
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../completion/testData/smart")
     public static class Uncategorized extends AbstractK2SmartCompletionTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -1653,6 +1640,21 @@ public abstract class K2SmartCompletionTestGenerated extends AbstractK2SmartComp
             runTest("../../completion/testData/smart/ParameterWithDefaultValue.kt");
         }
 
+        @TestMetadata("PreferInstantiationOverAnonymousObject.kt")
+        public void testPreferInstantiationOverAnonymousObject() throws Exception {
+            runTest("../../completion/testData/smart/PreferInstantiationOverAnonymousObject.kt");
+        }
+
+        @TestMetadata("PreferNonDeprecated.kt")
+        public void testPreferNonDeprecated() throws Exception {
+            runTest("../../completion/testData/smart/PreferNonDeprecated.kt");
+        }
+
+        @TestMetadata("PreferNonDeprecatedObjects.kt")
+        public void testPreferNonDeprecatedObjects() throws Exception {
+            runTest("../../completion/testData/smart/PreferNonDeprecatedObjects.kt");
+        }
+
         @TestMetadata("PreviousArgError.kt")
         public void testPreviousArgError() throws Exception {
             runTest("../../completion/testData/smart/PreviousArgError.kt");
@@ -1671,21 +1673,6 @@ public abstract class K2SmartCompletionTestGenerated extends AbstractK2SmartComp
         @TestMetadata("QualifiedOverloadedMethodCallArgument2.kt")
         public void testQualifiedOverloadedMethodCallArgument2() throws Exception {
             runTest("../../completion/testData/smart/QualifiedOverloadedMethodCallArgument2.kt");
-        }
-
-        @TestMetadata("SAMConstructorForTypeAlias.kt")
-        public void testSAMConstructorForTypeAlias() throws Exception {
-            runTest("../../completion/testData/smart/SAMConstructorForTypeAlias.kt");
-        }
-
-        @TestMetadata("SAMExpected1.kt")
-        public void testSAMExpected1() throws Exception {
-            runTest("../../completion/testData/smart/SAMExpected1.kt");
-        }
-
-        @TestMetadata("SAMExpected2.kt")
-        public void testSAMExpected2() throws Exception {
-            runTest("../../completion/testData/smart/SAMExpected2.kt");
         }
 
         @TestMetadata("SealedMembers.kt")
@@ -1777,12 +1764,6 @@ public abstract class K2SmartCompletionTestGenerated extends AbstractK2SmartComp
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../completion/testData/smart/vararg")
     public static class Vararg extends AbstractK2SmartCompletionTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -1826,12 +1807,6 @@ public abstract class K2SmartCompletionTestGenerated extends AbstractK2SmartComp
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../../completion/testData/smart/whenEntry")
     public static class WhenEntry extends AbstractK2SmartCompletionTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }

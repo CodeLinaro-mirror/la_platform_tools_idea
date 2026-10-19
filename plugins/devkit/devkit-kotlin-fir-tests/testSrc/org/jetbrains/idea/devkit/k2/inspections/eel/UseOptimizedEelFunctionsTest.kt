@@ -25,7 +25,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.intellij.lang.annotations.Language
 import org.jetbrains.idea.devkit.inspections.eel.UseOptimizedEelFunctions
-import org.jetbrains.kotlin.idea.test.UseK2PluginMode
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
@@ -33,7 +32,7 @@ import org.junit.jupiter.api.Test
 import java.nio.file.Path
 
 @Suppress("ClassName", "TestFunctionName")
-@UseK2PluginMode
+
 @TestApplication
 class UseOptimizedEelFunctionsTest {
   private lateinit var myFixture: JavaCodeInsightTestFixture
@@ -676,7 +675,7 @@ class UseOptimizedEelFunctionsTest {
         commit()
       }
 
-      for (directory in listOf("platform/eel/src", "platform/util/src", "platform/util-rt/src", "platform/platform-api/src")) {
+      for (directory in listOf("platform/eel/src", "platform/eel-nioFs/src", "platform/util/src", "platform/util-rt/src", "platform/platform-api/src")) {
         PsiTestUtil.addSourceContentToRoots(
           module,
           Path.of(PathManager.getCommunityHomePath(), directory).refreshAndGetVirtualDirectory(),

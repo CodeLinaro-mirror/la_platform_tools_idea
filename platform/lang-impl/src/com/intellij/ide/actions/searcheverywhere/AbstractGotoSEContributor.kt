@@ -29,6 +29,7 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.actionSystem.DataProvider
+import com.intellij.openapi.actionSystem.DataSink
 import com.intellij.openapi.actionSystem.impl.SimpleDataContext
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
@@ -53,6 +54,7 @@ import com.intellij.util.indexing.FindSymbolParameters
 import it.unimi.dsi.fastutil.ints.IntArrayList
 import org.jetbrains.annotations.ApiStatus
 import java.util.EnumSet
+import java.util.function.BiConsumer
 import java.util.regex.Pattern
 import javax.swing.ListCellRenderer
 
@@ -120,6 +122,7 @@ abstract class AbstractGotoSEContributor @ApiStatus.Internal protected construct
   protected val project: Project
     get() = myProject
 
+  @ApiStatus.Internal
   companion object {
     @JvmStatic
     fun createContext(project: Project?, psiContext: SmartPsiElementPointer<PsiElement?>?): DataContext {
@@ -344,25 +347,35 @@ abstract class AbstractGotoSEContributor @ApiStatus.Internal protected construct
         })
       }
 
+      val diagEmittedCount = java.util.concurrent.atomic.AtomicInteger(0)
       when (provider) {
         is ChooseByNameInScopeItemProvider -> {
           val parameters = FindSymbolParameters.wrap(pattern, scope)
           provider.filterElementsWithWeights(viewModel, parameters, progressIndicator
           ) { item: FoundItemDescriptor<*> ->
+            diagEmittedCount.incrementAndGet()
             processElement(progressIndicator, consumer, model, item.item, item.weight)
           }
         }
         is ChooseByNameWeightedItemProvider -> {
           provider.filterElementsWithWeights(viewModel, pattern, everywhere, progressIndicator
           ) { item: FoundItemDescriptor<*> ->
+            diagEmittedCount.incrementAndGet()
             processElement(progressIndicator, consumer, model, item.item, item.weight)
           }
         }
         else -> {
           provider.filterElements(viewModel, pattern, everywhere, progressIndicator) { element: Any ->
+            diagEmittedCount.incrementAndGet()
             processElement(progressIndicator, consumer, model, element, getElementPriority(element, pattern))
           }
         }
+      }
+      if (LOG.isDebugEnabled) {
+        LOG.debug(
+          "[symbol-se-diag] $searchProviderId finished: pattern='$pattern'," +
+          " scope='${scope.displayName}', everywhere=$everywhere, elementsFromModel=${diagEmittedCount.get()}"
+        )
       }
     }
 
@@ -371,13 +384,22 @@ abstract class AbstractGotoSEContributor @ApiStatus.Internal protected construct
       fetchRunnable.run()
     }
     else {
-      // IJPL-176529
-      if (ModalityState.defaultModalityState() == ModalityState.nonModal()) {
+      try {
+        // IJPL-176529
+        if (ModalityState.defaultModalityState() == ModalityState.nonModal()) {
+          @Suppress("UsagesOfObsoleteApi", "DEPRECATION")
+          ProgressIndicatorUtils.yieldToPendingWriteActions()
+        }
         @Suppress("UsagesOfObsoleteApi", "DEPRECATION")
-        ProgressIndicatorUtils.yieldToPendingWriteActions()
+        ProgressIndicatorUtils.runInReadActionWithWriteActionPriority(fetchRunnable, progressIndicator)
       }
-      @Suppress("UsagesOfObsoleteApi", "DEPRECATION")
-      ProgressIndicatorUtils.runInReadActionWithWriteActionPriority(fetchRunnable, progressIndicator)
+      catch (_: IllegalStateException) {
+        // Happens when danced around with coroutineToIndicator calls
+        if (progressIndicator.isCanceled) {
+          LOG.warn("Got cancelled while trying to start a progress; rethrowing a CancelledException")
+          progressIndicator.checkCanceled()
+        }
+      }
     }
   }
 
@@ -471,15 +493,15 @@ abstract class AbstractGotoSEContributor @ApiStatus.Internal protected construct
     return true
   }
 
-  override fun getDataForItem(element: Any, dataId: String): Any? {
-    if (CommonDataKeys.PSI_ELEMENT.`is`(dataId)) {
+  override fun getDataProviders(): List<BiConsumer<Any, DataSink>> = super.getDataProviders() + BiConsumer { element, sink ->
+    sink.lazy(CommonDataKeys.PSI_ELEMENT) {
       when (element) {
-        is PsiElement -> return element
-        is DataProvider -> return element.getData(dataId)
-        is PsiElementNavigationItem -> return element.targetElement
+        is PsiElement -> element
+        is DataProvider -> element.getData(CommonDataKeys.PSI_ELEMENT.name) as? PsiElement
+        is PsiElementNavigationItem -> element.targetElement
+        else -> null
       }
     }
-    return null
   }
 
   override fun getItemDescription(element: Any): String? {
@@ -539,4 +561,3 @@ private fun getSelectedScopes(project: Project): MutableMap<String, String?> {
   }
   return map
 }
-

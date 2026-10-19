@@ -1,9 +1,8 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package org.jetbrains.kotlin.parcelize.ide.test;
 
 import com.intellij.testFramework.TestDataPath;
-import org.jetbrains.kotlin.idea.base.plugin.KotlinPluginMode;
 import org.jetbrains.kotlin.idea.base.test.TestRoot;
 import org.jetbrains.kotlin.idea.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils;
@@ -23,12 +22,6 @@ public abstract class ParcelizeK2QuickFixTestGenerated extends AbstractParcelize
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../testData/quickfix/addPrimaryConstructor")
     public static class AddPrimaryConstructor extends AbstractParcelizeK2QuickFixTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -52,12 +45,6 @@ public abstract class ParcelizeK2QuickFixTestGenerated extends AbstractParcelize
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../testData/quickfix/cantBeInnerClass")
     public static class CantBeInnerClass extends AbstractParcelizeK2QuickFixTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -71,12 +58,6 @@ public abstract class ParcelizeK2QuickFixTestGenerated extends AbstractParcelize
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../testData/quickfix/classShouldBeAnnotated")
     public static class ClassShouldBeAnnotated extends AbstractParcelizeK2QuickFixTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -90,12 +71,6 @@ public abstract class ParcelizeK2QuickFixTestGenerated extends AbstractParcelize
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../testData/quickfix/deleteIncompatible")
     public static class DeleteIncompatible extends AbstractParcelizeK2QuickFixTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -114,12 +89,6 @@ public abstract class ParcelizeK2QuickFixTestGenerated extends AbstractParcelize
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../testData/quickfix/migrations")
     public static class Migrations extends AbstractParcelizeK2QuickFixTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -163,12 +132,6 @@ public abstract class ParcelizeK2QuickFixTestGenerated extends AbstractParcelize
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../testData/quickfix/noParcelableSupertype")
     public static class NoParcelableSupertype extends AbstractParcelizeK2QuickFixTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -187,12 +150,6 @@ public abstract class ParcelizeK2QuickFixTestGenerated extends AbstractParcelize
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../testData/quickfix/propertyWontBeSerialized")
     public static class PropertyWontBeSerialized extends AbstractParcelizeK2QuickFixTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
@@ -206,12 +163,6 @@ public abstract class ParcelizeK2QuickFixTestGenerated extends AbstractParcelize
     @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("../testData/quickfix/removeDuplicatingTypeParcelerAnnotation")
     public static class RemoveDuplicatingTypeParcelerAnnotation extends AbstractParcelizeK2QuickFixTest {
-        @java.lang.Override
-        @org.jetbrains.annotations.NotNull
-        public final KotlinPluginMode getPluginMode() {
-            return KotlinPluginMode.K2;
-        }
-
         private void runTest(String testDataFilePath) throws Exception {
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }

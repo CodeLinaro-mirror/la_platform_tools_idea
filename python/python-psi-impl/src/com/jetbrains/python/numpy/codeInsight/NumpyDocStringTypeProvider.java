@@ -47,6 +47,7 @@ import com.jetbrains.python.psi.resolve.PyResolveImportUtil;
 import com.jetbrains.python.psi.types.PyClassTypeImpl;
 import com.jetbrains.python.psi.types.PyType;
 import com.jetbrains.python.psi.types.PyTypeProviderBase;
+import com.jetbrains.python.psi.types.PyTypeUtil;
 import com.jetbrains.python.psi.types.TypeEvalContext;
 import com.jetbrains.python.toolbox.Substring;
 import org.jetbrains.annotations.NotNull;
@@ -62,6 +63,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import static com.jetbrains.python.psi.types.PyTypeUtilKt.isUnknown;
 
 /**
  * Provides type information extracted from NumPy docstring format.
@@ -199,7 +202,47 @@ public final class NumpyDocStringTypeProvider extends PyTypeProviderBase {
     if (index >= 0) {
       return typeString.substring(0, index);
     }
+
+    // Match ", default None" with various separators and spacings:
+    //   ", default None", ", default=None", ", default:None",
+    //   ", default: None", ", default = None", etc.
+    int defaultIndex = findDefaultSuffixStart(typeString);
+    if (defaultIndex >= 0 && isDefaultValueNone(typeString, defaultIndex)) {
+      return typeString.substring(0, defaultIndex);
+    }
+
     return null;
+  }
+
+  /**
+   * Strips ", default <value>" from the type string regardless of the default value.
+   * Returns the original string when no such suffix is present.
+   * Unlike {@link #cleanupOptional}, this does not imply the parameter is Optional.
+   */
+  public static @NotNull String stripDefaultValue(@NotNull String typeString) {
+    int index = findDefaultSuffixStart(typeString);
+    return index >= 0 ? typeString.substring(0, index) : typeString;
+  }
+
+  private static int findDefaultSuffixStart(@NotNull String typeString) {
+    int index = typeString.indexOf(", default");
+    if (index < 0) return -1;
+    int after = index + ", default".length();
+    if (after >= typeString.length()) return -1;
+    char nextChar = typeString.charAt(after);
+    return (nextChar == ' ' || nextChar == '=' || nextChar == ':') ? index : -1;
+  }
+
+  private static boolean isDefaultValueNone(@NotNull String typeString, int defaultStart) {
+    int pos = defaultStart + ", default".length();
+    while (pos < typeString.length() && Character.isWhitespace(typeString.charAt(pos))) pos++;
+    if (pos < typeString.length() && (typeString.charAt(pos) == '=' || typeString.charAt(pos) == ':')) {
+      pos++;
+      while (pos < typeString.length() && Character.isWhitespace(typeString.charAt(pos))) pos++;
+    }
+    if (!typeString.startsWith("None", pos)) return false;
+    if (pos + 4 == typeString.length()) return true;
+    return !Character.isJavaIdentifierPart(typeString.charAt(pos + 4));
   }
 
   public static @NotNull List<String> getNumpyUnionType(@NotNull String typeString) {
@@ -211,7 +254,27 @@ public final class NumpyDocStringTypeProvider extends PyTypeProviderBase {
     if (matcher.matches()) {
       typeString = matcher.group(1);
     }
-    return Arrays.asList(typeString.split(" *, *"));
+    return splitTopLevelByComma(typeString);
+  }
+
+  private static @NotNull List<String> splitTopLevelByComma(@NotNull String typeString) {
+    final List<String> result = new ArrayList<>();
+    int depth = 0;
+    int start = 0;
+    for (int i = 0; i < typeString.length(); i++) {
+      switch (typeString.charAt(i)) {
+        case '[', '(', '{' -> depth++;
+        case ']', ')', '}' -> depth = Math.max(0, depth - 1);
+        case ',' -> {
+          if (depth == 0) {
+            result.add(typeString.substring(start, i).trim());
+            start = i + 1;
+          }
+        }
+      }
+    }
+    result.add(typeString.substring(start).trim());
+    return result;
   }
 
   @Override
@@ -219,6 +282,9 @@ public final class NumpyDocStringTypeProvider extends PyTypeProviderBase {
                                            @NotNull PyCallSiteExpression callSite,
                                            @NotNull TypeEvalContext context) {
     if (isApplicable(function)) {
+      if (PyTypingTypeProvider.getReturnTypeAnnotation(function, context) != null) {
+        return null;
+      }
       final PyExpression callee = callSite instanceof PyCallExpression ? ((PyCallExpression)callSite).getCallee() : null;
       final NumpyDocString docString = forFunction(function, callee);
       if (docString != null) {
@@ -321,13 +387,25 @@ public final class NumpyDocStringTypeProvider extends PyTypeProviderBase {
   private static @Nullable PyType parseSingleNumpyDocType(@NotNull PsiElement anchor, @NotNull String typeString) {
     final PyPsiFacade facade = getPsiFacade(anchor);
     final String realTypeName = getNumpyRealTypeName(typeString);
-    PyType type = facade.parseTypeAnnotation(realTypeName, anchor);
-    if (type != null) {
-      return type;
+
+    if (!realTypeName.equals(typeString) || typeString.contains(" or ")) {
+      PyType type = facade.parseTypeAnnotation(realTypeName, anchor);
+      if (!isUnknown(type)) {
+        return type;
+      }
     }
 
-    type = facade.parseTypeAnnotation(typeString, anchor);
-    if (type != null) {
+    final PyExpression expression = PyUtil.createExpressionFromFragment(typeString, anchor);
+    if (expression != null) {
+      PyType type = PyTypeUtil.derefOrUnknown(
+        PyTypingTypeProvider.getType(expression, TypeEvalContext.codeInsightFallback(anchor.getProject())));
+      if (!isUnknown(type)) {
+        return type;
+      }
+    }
+
+    PyType type = facade.parseTypeAnnotation(typeString, anchor);
+    if (!isUnknown(type)) {
       return type;
     }
     return getNominalType(anchor, typeString);
@@ -370,6 +448,9 @@ public final class NumpyDocStringTypeProvider extends PyTypeProviderBase {
     final Set<PyType> types = new LinkedHashSet<>();
     if (withoutOptional != null) {
       typeString = withoutOptional;
+    }
+    else {
+      typeString = stripDefaultValue(typeString);
     }
     for (String typeName : getNumpyUnionType(typeString)) {
       PyType parsedType = parseSingleNumpyDocType(anchor, typeName);

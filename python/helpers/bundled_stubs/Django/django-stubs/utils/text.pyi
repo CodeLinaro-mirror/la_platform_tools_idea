@@ -3,11 +3,11 @@ from collections.abc import AsyncIterable, AsyncIterator, Iterable, Iterator
 from html.parser import HTMLParser
 from io import BytesIO
 from re import Pattern
-from typing import Any, ClassVar, TypeVar, overload
+from typing import Any, ClassVar, overload
 
 from django.db.models.base import Model
 from django.utils.functional import SimpleLazyObject, _StrOrPromise, _StrPromise, cached_property
-from typing_extensions import override
+from typing_extensions import TypeVar, override
 
 _StrOrPromiseT = TypeVar("_StrOrPromiseT", bound=_StrOrPromise)
 _StrOrPromiseOrNoneT = TypeVar("_StrOrPromiseOrNoneT", bound=_StrOrPromise | None)
@@ -39,7 +39,7 @@ class TruncateCharsHTMLParser(TruncateHTMLParser):
 class TruncateWordsHTMLParser(TruncateHTMLParser):
     def process(self, data: str) -> tuple[str, str]: ...
 
-class Truncator(SimpleLazyObject):
+class Truncator(SimpleLazyObject[str]):
     def __init__(self, text: Model | str) -> None: ...
     def chars(self, num: int, truncate: str | None = None, html: bool = False) -> str: ...
     def words(self, num: int, truncate: str | None = None, html: bool = False) -> str: ...

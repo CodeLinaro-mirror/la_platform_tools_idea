@@ -82,10 +82,10 @@ private fun calculateRootsSet(module: Module, sourceRootKind: SourceRootKind): L
                 when (sourceFolder.rootType) {
                     is JavaResourceRootType -> false
                     is JavaSourceRootType, is KotlinSourceRootType -> {
-                            when (sourceRootKind) {
-                                SourceRootKind.PRODUCTION -> !sourceFolder.isTestSource
-                                SourceRootKind.TESTS -> sourceFolder.isTestSource
-                            }
+                        when (sourceRootKind) {
+                            SourceRootKind.PRODUCTION -> !sourceFolder.isTestSource
+                            SourceRootKind.TESTS -> sourceFolder.isTestSource
+                        }
                     }
                     else -> false
                 }

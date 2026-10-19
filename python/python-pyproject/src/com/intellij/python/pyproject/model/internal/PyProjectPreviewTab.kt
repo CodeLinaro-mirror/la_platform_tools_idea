@@ -45,6 +45,7 @@ import com.intellij.ui.JBColor
 import com.intellij.ui.PopupHandler
 import com.intellij.ui.RoundedLineBorder
 import com.intellij.ui.SimpleTextAttributes
+import com.intellij.ui.components.Badge
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.dsl.builder.AlignX
 import com.intellij.ui.dsl.builder.BottomGap
@@ -130,7 +131,7 @@ private class PyProjectPreviewContent(
       label(PyProjectTomlBundle.message("pyproject.preview.header"))
         .applyToComponent { font = JBFont.h1() }
         .gap(RightGap.SMALL)
-      icon(AllIcons.General.Beta)
+      icon(Badge.beta)
     }
     row {
       text(PyProjectTomlBundle.message("pyproject.preview.description"))

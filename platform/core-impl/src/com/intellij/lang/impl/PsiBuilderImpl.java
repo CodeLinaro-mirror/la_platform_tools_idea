@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.lang.impl;
 
 import com.intellij.lang.ASTFactory;
@@ -873,6 +873,11 @@ public class PsiBuilderImpl extends UnprotectedUserDataHolder implements PsiBuil
   }
 
   @Override
+  public void advanceToEOF() {
+    rawAdvanceLexer(myLexemeCount - myCurrentLexeme);
+  }
+
+  @Override
   public void setWhitespaceSkippedCallback(@Nullable WhitespaceSkippedCallback callback) {
     myWhitespaceSkippedCallback = callback;
   }
@@ -971,9 +976,12 @@ public class PsiBuilderImpl extends UnprotectedUserDataHolder implements PsiBuil
       DIAGNOSTICS.registerRollback(myCurrentLexeme - marker.myLexemeIndex);
     }
 
-    NavigableMap<Integer, IElementType> remapped = myTokenTypesToRestoreOnRollback.tailMap(marker.myLexemeIndex, true);
-    remapped.forEach((index, type) -> myLexTypes[index] = type);
-    remapped.clear();
+    // Empty unless remapCurrentTokenAndRestoreOnRollback was used; skip the tail-submap allocation on the common path.
+    if (!myTokenTypesToRestoreOnRollback.isEmpty()) {
+      NavigableMap<Integer, IElementType> remapped = myTokenTypesToRestoreOnRollback.tailMap(marker.myLexemeIndex, true);
+      remapped.forEach((index, type) -> myLexTypes[index] = type);
+      remapped.clear();
+    }
 
     myCurrentLexeme = marker.myLexemeIndex;
     myTokenTypeChecked = true;

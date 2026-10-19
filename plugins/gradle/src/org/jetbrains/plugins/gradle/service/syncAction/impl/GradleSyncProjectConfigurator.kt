@@ -1,6 +1,8 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.plugins.gradle.service.syncAction.impl
 
+import com.intellij.gradle.toolingExtension.impl.modelAction.GradleModelFetchFailure
+import com.intellij.gradle.toolingExtension.impl.modelAction.GradleModelFetchFailureResult
 import com.intellij.gradle.toolingExtension.modelAction.GradleModelFetchPhase
 import com.intellij.openapi.externalSystem.autolink.forEachExtensionSafeAsync
 import com.intellij.openapi.externalSystem.autolink.forEachExtensionSafeOrdered
@@ -14,7 +16,9 @@ import com.intellij.platform.workspace.storage.MutableEntityStorage
 import com.intellij.platform.workspace.storage.toBuilder
 import com.intellij.util.application
 import io.opentelemetry.api.trace.Tracer
-import org.jetbrains.annotations.ApiStatus
+import org.jetbrains.annotations.ApiStatus.Internal
+import org.jetbrains.annotations.VisibleForTesting
+import org.jetbrains.plugins.gradle.issue.GradleIssueFailure
 import org.jetbrains.plugins.gradle.service.modelAction.GradleModelFetchActionListener
 import org.jetbrains.plugins.gradle.service.project.ProjectResolverContext
 import org.jetbrains.plugins.gradle.service.syncAction.GradleSyncContributor
@@ -30,7 +34,7 @@ private val TELEMETRY: Tracer
 private val SYNC_LISTENER: GradleSyncListener
   get() = application.messageBus.syncPublisher(GradleSyncListener.TOPIC)
 
-@ApiStatus.Internal
+@Internal
 object GradleSyncProjectConfigurator {
 
   @JvmStatic
@@ -41,20 +45,15 @@ object GradleSyncProjectConfigurator {
   }
 
   @JvmStatic
-  fun runScriptBasePhase(context: ProjectResolverContext) {
-    require(!application.isWriteAccessAllowed) {
-      "Must not execute inside write action"
-    }
-    runBlockingCancellable {
-      GradleSyncActionRunner().performSyncContributors(context) { it is GradleSyncPhase.BaseScript }
-    }
-  }
-
-  @JvmStatic
   fun createModelFetchResultHandler(context: ProjectResolverContext): GradleModelFetchActionListener {
     return object : GradleModelFetchActionListener {
 
+      // Model fetch callbacks can cover overlapping phase ranges.
+      // The shared runner keeps phase execution ordered and at most once.
+      // If retry support is introduced in the future, it should be explicit in this handler.
       private val syncRunner = GradleSyncActionRunner()
+
+      private val syncFailureHandler = GradleSyncFailureHandler()
 
       override suspend fun onModelFetchPhaseCompleted(phase: GradleModelFetchPhase) {
         syncRunner.performSyncContributors(context) {
@@ -80,13 +79,17 @@ object GradleSyncProjectConfigurator {
       override suspend fun onModelFetchFailed(exception: Throwable) {
         SYNC_LISTENER.onModelFetchFailed(context, exception)
       }
+
+      override suspend fun onModelFetchFailures(failureResult: GradleModelFetchFailureResult) {
+        syncFailureHandler.reportSyncFailures(context, failureResult)
+      }
     }
   }
 }
 
 private class GradleSyncActionRunner {
 
-  private var lastCompletedPhase: GradleSyncPhase? = null
+  private var lastClaimedPhase: GradleSyncPhase? = null
   private var storage = ImmutableEntityStorage.empty()
 
   fun performSyncContributorsBlocking(
@@ -108,8 +111,9 @@ private class GradleSyncActionRunner {
     val phases = GradleSyncContributor.EP_NAME.mapExtensionSafe { it.phase }
       .filterTo(TreeSet(), predicate)
     for (phase in phases) {
-      if (lastCompletedPhase.let { it != null && it >= phase }) continue
-      lastCompletedPhase = phase
+      // Claim each phase before execution. Later callbacks skip already claimed phases.
+      if (lastClaimedPhase.let { it != null && it >= phase }) continue
+      lastClaimedPhase = phase
 
       performSyncContributors(context, phase)
     }
@@ -152,4 +156,33 @@ private class GradleSyncActionRunner {
       |  projectPath = ${context.projectPath}
     """.trimMargin(), updater)
   }
+}
+
+@Internal
+const val GRADLE_SYNC_FAILURE_GROUP: String = "gradle.sync.failure.group"
+
+@Internal
+class GradleSyncFailureHandler {
+
+  private val issueFailureCache = HashMap<GradleModelFetchFailure, GradleIssueFailure>()
+
+  fun reportSyncFailures(context: ProjectResolverContext, failureResult: GradleModelFetchFailureResult) {
+    for (failure in failureResult.failures) {
+      context.reporter.failure(createIssueFailure(failure))
+        .withSuppressed(true)
+        .withGroup(GRADLE_SYNC_FAILURE_GROUP)
+        .withTargetPath(failureResult.targetPath?.toPath())
+        .report()
+    }
+  }
+
+  @VisibleForTesting
+  fun createIssueFailure(failure: GradleModelFetchFailure): GradleIssueFailure =
+    issueFailureCache.getOrPut(failure) {
+      GradleIssueFailure.createIssueFailure(
+        message = failure.message,
+        description = failure.description,
+        causes = failure.causes.map { createIssueFailure(it) }
+      )
+    }
 }

@@ -9,8 +9,9 @@ import com.intellij.openapi.util.Disposer;
 import com.intellij.packageDependencies.DependencyValidationManager;
 import com.intellij.psi.search.scope.packageSet.NamedScope;
 import com.intellij.psi.search.scope.packageSet.PackageSet;
-import com.intellij.ui.SimpleListCellRenderer;
 import com.intellij.ui.components.editors.JBComboBoxTableCellEditorComponent;
+import com.intellij.ui.dsl.listCellRenderer.BuilderKt;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.DefaultComboBoxModel;
@@ -23,6 +24,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Map;
 
+@ApiStatus.Internal
 public class PackageSetChooserCombo extends ComponentWithBrowseButton<JComponent> {
   private static final Logger LOG = Logger.getInstance(PackageSetChooserCombo.class);
 
@@ -86,7 +88,7 @@ public class PackageSetChooserCombo extends ComponentWithBrowseButton<JComponent
     }
 
     if (component instanceof JComboBox) {
-      ((JComboBox<NamedScope>)component).setRenderer(SimpleListCellRenderer.create("", NamedScope::getPresentableName));
+      ((JComboBox<NamedScope>)component).setRenderer(BuilderKt.textListCellRenderer("", NamedScope::getPresentableName));
     }
     else {
       ((JBComboBoxTableCellEditorComponent)component).setToString(o -> o == null ? "" : ((NamedScope)o).getPresentableName());

@@ -23,12 +23,20 @@ fleetModule {
 @OptIn(org.jetbrains.kotlin.gradle.ExperimentalWasmDsl::class)
 kotlin {
   // KOTLIN__MARKER_START
+  compilerOptions.freeCompilerArgs = listOf(
+    "-Xlambdas=class",
+    "-Xconsistent-data-class-copy-visibility",
+    "-Xcontext-parameters",
+    "-XXLanguage:+AllowEagerSupertypeAccessibilityChecks",
+    "-progressive",
+  )
   jvm {}
   wasmJs {
     browser {}
   }
   iosArm64 {}
   iosSimulatorArm64 {}
+  sourceSets.jvmMain.configure { resources.srcDir(layout.projectDirectory.dir("../resources")) }
   sourceSets.commonMain.configure { kotlin.srcDir(layout.projectDirectory.dir("../srcCommonMain")) }
   sourceSets.commonMain.configure { resources.srcDir(layout.projectDirectory.dir("../resourcesCommonMain")) }
   sourceSets.commonTest.configure { kotlin.srcDir(layout.projectDirectory.dir("../srcCommonTest")) }

@@ -2,11 +2,12 @@ package com.jetbrains.python.sdk
 
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.WriteAction
 import com.intellij.openapi.application.runInEdt
 import com.intellij.openapi.diagnostic.fileLogger
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.projectRoots.Sdk
-import com.intellij.openapi.roots.ModuleRootModificationUtil
+import com.intellij.util.concurrency.annotations.RequiresBackgroundThread
 import com.jetbrains.python.module.PyModuleService
 import com.jetbrains.python.sdk.legacy.PythonSdkUtil
 import org.jetbrains.annotations.ApiStatus
@@ -17,6 +18,7 @@ import org.jetbrains.annotations.ApiStatus
  * Unlike [pythonSdk], this method suspends until the project model is fully loaded
  * before resolving the SDK, so it is safe to call during startup.
  */
+@ApiStatus.Experimental
 suspend fun Module.findPythonSdk(): Sdk? {
   return PyModuleService.getInstance(getProject()).findPythonSdkWaitingForProjectModel(this)
 }
@@ -31,12 +33,20 @@ suspend fun Module.findPythonSdk(): Sdk? {
 var Module.pythonSdk: Sdk?
   @ApiStatus.Obsolete
   get() = PythonSdkUtil.findPythonSdk(this)
+
+  /**
+   * Must be called under [withSdkConfigurationLock] to prevent concurrent Module/SDK changes.
+   */
   @ApiStatus.Internal
+  @RequiresBackgroundThread(generateAssertion = false)
   set(newSdk) {
     val prevSdk = pythonSdk
     thisLogger.info("Setting PythonSDK $newSdk to module $this")
-    ModuleRootModificationUtil.setModuleSdk(this, newSdk)
-    runInEdt {
+    newSdk?.pyRichSdk(forceRefresh = true)
+    ApplicationManager.getApplication().invokeAndWait {
+      WriteAction.runAndWait<Throwable> {
+        PyModuleService.getInstance(project).setPythonSdk(this, newSdk)
+      }
       DaemonCodeAnalyzer.getInstance(project).restart("Setting PythonSDK $newSdk to module $this")
     }
     ApplicationManager.getApplication().messageBus.syncPublisher(PySdkListener.TOPIC).moduleSdkUpdated(this, prevSdk, newSdk)

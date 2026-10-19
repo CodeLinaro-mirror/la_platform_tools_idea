@@ -9,22 +9,22 @@ import com.intellij.pom.java.LanguageLevel
 import com.intellij.testFramework.LightProjectDescriptor
 import com.intellij.testFramework.PsiTestUtil
 import com.intellij.util.PathUtil
-import org.jetbrains.kotlin.idea.test.ExpectedPluginModeProvider
-import org.jetbrains.kotlin.idea.test.setUpWithKotlinPlugin
 import java.io.File
 
-abstract class KotlinTestCaseWithConstructorInspectionTest : TestCaseWithConstructorInspectionTestBase(), ExpectedPluginModeProvider {
-  override fun setUp() {
-    setUpWithKotlinPlugin(testRootDisposable) { super.setUp() }
-  }
+abstract class KotlinTestCaseWithConstructorInspectionTest : TestCaseWithConstructorInspectionTestBase() {
+  
 
-  override fun getProjectDescriptor(): LightProjectDescriptor = object : JUnitProjectDescriptor(LanguageLevel.HIGHEST) {
-    override fun configureModule(module: Module, model: ModifiableRootModel, contentEntry: ContentEntry) {
-      super.configureModule(module, model, contentEntry)
-      val jar = File(PathUtil.getJarPathForClass(JvmStatic::class.java))
-      PsiTestUtil.addLibrary(model, "kotlin-stdlib", jar.parent, jar.name)
+  companion object {
+    private val descriptor = object : JUnitProjectDescriptor(LanguageLevel.HIGHEST) {
+      override fun configureModule(module: Module, model: ModifiableRootModel, contentEntry: ContentEntry) {
+        super.configureModule(module, model, contentEntry)
+        val jar = File(PathUtil.getJarPathForClass(JvmStatic::class.java))
+        PsiTestUtil.addLibrary(model, "kotlin-stdlib", jar.parent, jar.name)
+      }
     }
   }
+
+  override fun getProjectDescriptor(): LightProjectDescriptor = descriptor
 
   fun `test no highlighting parameterized test case`() {
     myFixture.testHighlighting(JvmLanguage.KOTLIN, """

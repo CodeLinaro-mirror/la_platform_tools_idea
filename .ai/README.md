@@ -6,7 +6,7 @@ This directory (`community/.ai`) contains the templates and documentation source
 node community/.ai/render-guides.mjs
 ```
 
-The renderer produces guide files (`AGENTS.md`, `CLAUDE.md`), skill stubs, and OpenCode config/skills.
+The renderer produces guide files (`AGENTS.md`, `CLAUDE.md`, `.junie/AGENTS.md`), skill stubs, and OpenCode config/skills.
 
 ## Quick run
 
@@ -26,9 +26,10 @@ AI_GUIDE_EDITION=ULTIMATE  node community/.ai/render-guides.mjs
 - `AGENTS.md`
 - `community/AGENTS.md` (generated in ultimate workspace)
 - `CLAUDE.md` (ultimate only)
+- `.junie/AGENTS.md`
 - `opencode.json` (from `.mcp.json`)
 - `.opencode/skill/*` (mirrored from `.codex/skills/*`)
-- Skill stubs in `.agents/skills/*`, `.claude/skills/*`, `community/.claude/skills/*`
+- Skill stubs in `.agents/skills/*`, `.claude/skills/*`, `.junie/skills/*`, `community/.claude/skills/*`
 
 ## High-level render pipeline
 
@@ -49,6 +50,7 @@ AI_GUIDE_EDITION=ULTIMATE  node community/.ai/render-guides.mjs
                              +--> AGENTS.md
                              +--> community/AGENTS.md (ultimate workspace)
                              +--> CLAUDE.md (ultimate only)
+                             +--> .junie/AGENTS.md
                              +--> opencode.json
                              +--> .opencode/skill/*
                              +--> skill stubs (see next section)
@@ -75,12 +77,14 @@ PASS 1 (community source skills)
 community/.agents/skills/<name>/SKILL.md
    |--> .agents/skills/<name>/SKILL.md
    |--> .claude/skills/<name>/SKILL.md
+   |--> .junie/skills/<name>/SKILL.md
    '--> community/.claude/skills/<name>/SKILL.md
 
 PASS 2 (ultimate-only manual skills)
 ------------------------------------
 .agents/skills/<name>/SKILL.md   [manual, non-generated]
-   '--> .claude/skills/<name>/SKILL.md   [ULTIMATE only]
+   |--> .claude/skills/<name>/SKILL.md   [ULTIMATE only]
+   '--> .junie/skills/<name>/SKILL.md    [ULTIMATE only]
 
 Cleanup
 -------
@@ -101,17 +105,16 @@ Accepted values: `COMMUNITY`, `ULTIMATE`.
 Edition impact:
 
 - `ULTIMATE`
-  - pass-2 runs (ultimate-only skills can generate `.claude/skills/*` stubs)
+  - pass-2 runs (ultimate-only skills can generate `.claude/skills/*` and `.junie/skills/*` stubs)
 - `COMMUNITY`
   - pass-2 is skipped
-  - stale generated ultimate-only stubs are pruned from `.claude/skills/`
+  - stale generated ultimate-only stubs are pruned from `.claude/skills/` and `.junie/skills/`
 
 ## Template model
 
 - Main template: `community/.ai/guide.md`
 - Local partials: `community/.ai/partials/*.md`
 - Shared partial overrides: `.ai/partials/*.md`
-- Compilation rule template: `community/.ai/compilation.md`
 
 ### Template directives
 
@@ -121,6 +124,10 @@ Tool gating:
 <!-- IF_TOOL:CODEX -->
 ... only in Codex outputs ...
 <!-- /IF_TOOL:CODEX -->
+
+<!-- IF_TOOL:JUNIE -->
+... only in Junie outputs ...
+<!-- /IF_TOOL:JUNIE -->
 ```
 
 Edition gating:
@@ -141,7 +148,6 @@ internal notes only
 
 ## Required placeholders
 
-- `{{COMPILATION_RULE}}` must remain in `guide.md`.
 - `{{FORBIDDEN_TOOLS_SUFFIX}}` is filled per output target.
 
 If placeholders remain after rendering, the renderer fails fast.

@@ -5,6 +5,7 @@ import com.intellij.testFramework.junit5.SystemProperty
 import org.gradle.util.GradleVersion
 import org.jetbrains.plugins.gradle.frameworkSupport.buildscript.getJunit4Version
 import org.jetbrains.plugins.gradle.frameworkSupport.buildscript.getJunit5Version
+import org.jetbrains.plugins.gradle.frameworkSupport.buildscript.getJunit6Version
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 
@@ -278,6 +279,7 @@ class GradleBuildScriptBuilderTest : GradleBuildScriptBuilderTestCase() {
   fun `test junit dependency generation`() {
     val junit4 = getJunit4Version()
     val junit5 = getJunit5Version()
+    val junit6 = getJunit6Version()
 
     assertBuildScript(
       GradleVersion.version("8.2") to ("""
@@ -301,6 +303,36 @@ class GradleBuildScriptBuilderTest : GradleBuildScriptBuilderTestCase() {
         
         dependencies {
             testImplementation(platform("org.junit:junit-bom:$junit5"))
+            testImplementation("org.junit.jupiter:junit-jupiter")
+            testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+        }
+        
+        tasks.test {
+            useJUnitPlatform()
+        }
+      """.trimIndent()),
+
+      GradleVersion.version("9.0") to ("""
+        repositories {
+            mavenCentral()
+        }
+        
+        dependencies {
+            testImplementation platform('org.junit:junit-bom:$junit6')
+            testImplementation 'org.junit.jupiter:junit-jupiter'
+            testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+        }
+        
+        test {
+            useJUnitPlatform()
+        }
+      """.trimIndent() to """
+        repositories {
+            mavenCentral()
+        }
+        
+        dependencies {
+            testImplementation(platform("org.junit:junit-bom:$junit6"))
             testImplementation("org.junit.jupiter:junit-jupiter")
             testRuntimeOnly("org.junit.platform:junit-platform-launcher")
         }
@@ -363,7 +395,7 @@ class GradleBuildScriptBuilderTest : GradleBuildScriptBuilderTestCase() {
             testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:$junit5")
         }
         
-        tasks.test {
+        tasks.named<Test>("test") {
             useJUnitPlatform()
         }
       """.trimIndent()),
@@ -506,15 +538,26 @@ class GradleBuildScriptBuilderTest : GradleBuildScriptBuilderTestCase() {
 
     @Test
     fun `test predefined task configuration`() {
-      assertBuildScript("""
+      assertBuildScript(
+        GradleVersion.version("4.6") to ("""
         |test {
         |    myConfiguration()
         |}
-      """.trimMargin(), """
+      """.trimMargin() to """
+        |tasks.named<Test>("test") {
+        |    myConfiguration()
+        |}
+      """.trimMargin()),
+        GradleVersion.version("5.0") to ("""
+        |test {
+        |    myConfiguration()
+        |}
+      """.trimMargin() to """
         |tasks.test {
         |    myConfiguration()
         |}
-      """.trimMargin()) {
+      """.trimMargin())
+      ) {
         configureTask("test", "Test") {
           call("myConfiguration")
         }

@@ -138,8 +138,11 @@ import com.intellij.openapi.wm.WindowManager;
 import com.intellij.openapi.wm.impl.IdeFrameImpl;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiFile;
+import com.intellij.psi.PsiManager;
 import com.intellij.psi.codeStyle.CommonCodeStyleSettings;
+import com.intellij.psi.impl.PsiManagerEx;
 import com.intellij.testFramework.LightVirtualFile;
+import com.intellij.testFramework.LightVirtualFileBase;
 import com.intellij.ui.ClientProperty;
 import com.intellij.ui.ColorUtil;
 import com.intellij.ui.ComponentUtil;
@@ -158,6 +161,7 @@ import com.intellij.util.concurrency.NonUrgentExecutor;
 import com.intellij.util.concurrency.annotations.RequiresEdt;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.Convertor;
+import com.intellij.util.ui.JBInsets;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.JBValue;
 import com.intellij.util.ui.SingleComponentCenteringLayout;
@@ -166,6 +170,7 @@ import com.intellij.util.ui.components.BorderLayoutPanel;
 import com.intellij.util.ui.update.Activatable;
 import com.intellij.util.ui.update.UiNotifyConnector;
 import icons.PlatformDiffImplIcons;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NonNls;
@@ -185,9 +190,11 @@ import javax.swing.border.Border;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.Frame;
 import java.awt.Image;
+import java.awt.Insets;
 import java.awt.KeyboardFocusManager;
 import java.awt.Point;
 import java.awt.Rectangle;
@@ -216,7 +223,8 @@ public final class DiffUtil {
 
   public static final Key<Boolean> TEMP_FILE_KEY = Key.create("Diff.TempFile");
   public static final @NotNull @NonNls String DIFF_CONFIG = "diff.xml";
-  public static final JBValue TITLE_GAP = new JBValue.Float(2);
+  @ApiStatus.Internal
+  public static final JBValue CONTENT_TITLE_GAP = new JBValue.UIInteger("Diff.ContentTitle.gap", 2);
 
   public static final NotNullLazyValue<@Unmodifiable List<Image>> DIFF_FRAME_ICONS = NotNullLazyValue.createValue(() -> {
     return ContainerUtil.skipNulls(
@@ -233,7 +241,7 @@ public final class DiffUtil {
   }
 
   private static CharSequence getDocumentCharSequence(DocumentContent documentContent) {
-    return ReadAction.compute(() -> {
+    return ReadAction.computeBlocking(() -> {
       return documentContent.getDocument().getImmutableCharSequence();
     });
   }
@@ -359,11 +367,25 @@ public final class DiffUtil {
     editor.getColorsScheme().setAttributes(EditorColors.FOLDED_TEXT_ATTRIBUTES, null);
   }
 
-  public static @NotNull EditorEx createEditor(@NotNull Document document, @Nullable Project project, boolean isViewer) {
-    return createEditor(document, project, isViewer, false);
+  public static @NotNull EditorEx createEditor(@NotNull Document document,
+                                               @Nullable Project project,
+                                               boolean isViewer) {
+    return createEditor(document, project, isViewer, false, null, null);
   }
 
-  public static @NotNull EditorEx createEditor(@NotNull Document document, @Nullable Project project, boolean isViewer, boolean enableFolding) {
+  public static @NotNull EditorEx createEditor(@NotNull Document document,
+                                               @Nullable Project project,
+                                               boolean isViewer,
+                                               boolean enableFolding) {
+    return createEditor(document, project, isViewer, enableFolding, null, null);
+  }
+
+  public static @NotNull EditorEx createEditor(@NotNull Document document,
+                                               @Nullable Project project,
+                                               boolean isViewer,
+                                               boolean enableFolding,
+                                               @Nullable Cursor forcedCursor,
+                                               @Nullable Integer additionalEditorLinesAfterEnd) {
     EditorFactory factory = EditorFactory.getInstance();
     EditorKind kind = EditorKind.DIFF;
     EditorEx editor = (EditorEx)(isViewer ? factory.createViewer(document, project, kind) : factory.createEditor(document, project, kind));
@@ -378,6 +400,16 @@ public final class DiffUtil {
     else {
       editor.getSettings().setFoldingOutlineShown(false);
       editor.getFoldingModel().setFoldingEnabled(false);
+    }
+
+    // Some other places in the diff view attempt to force cursors over the editor.
+    // When we create an editor with this flag, we should avoid doing that.
+    if (forcedCursor != null) {
+      editor.setCustomCursor(DiffUtil.class, forcedCursor);
+    }
+
+    if (additionalEditorLinesAfterEnd != null) {
+      editor.getSettings().setAdditionalLinesCount(additionalEditorLinesAfterEnd);
     }
 
     UIUtil.removeScrollBorder(editor.getComponent());
@@ -774,7 +806,7 @@ public final class DiffUtil {
     }
 
     if (components.isEmpty()) return null;
-    return createStackedComponents(components, TITLE_GAP);
+    return createStackedTitleComponents(components);
   }
 
   private static @Nullable JComponent createTitle(@NotNull DiffViewer viewer,
@@ -819,8 +851,10 @@ public final class DiffUtil {
                                                  boolean readOnly,
                                                  @Nullable DiffEditorTitleCustomizer titleCustomizer) {
     JPanel panel = new JPanel(new BorderLayout());
-    panel.setBorder(JBUI.Borders.empty(0, 4));
-    BorderLayoutPanel labelWithIcon = new BorderLayoutPanel();
+    panel.setName("Diff Editor Title Panel");
+    panel.setOpaque(false);
+    BorderLayoutPanel labelWithIcon = new BorderLayoutPanel().andTransparent();
+    labelWithIcon.setName("Diff Editor Title Label Panel");
     JComponent titleLabel = titleCustomizer != null ? titleCustomizer.getLabel()
                                                     : new JBLabel(StringUtil.notNullize(title)).setCopyable(true);
     if (titleCustomizer != null && titleLabel instanceof Disposable disposableTitleLabel) {
@@ -839,6 +873,8 @@ public final class DiffUtil {
     panel.add(labelWithIcon, BorderLayout.CENTER);
     if (charset != null || separator != null) {
       JPanel panel2 = new JPanel();
+      panel2.setName("Diff Editor Title Status Panel");
+      panel2.setOpaque(false);
       panel2.setLayout(new BoxLayout(panel2, BoxLayout.X_AXIS));
       if (charset != null) {
         panel2.add(Box.createRigidArea(JBUI.size(4, 0)));
@@ -851,6 +887,17 @@ public final class DiffUtil {
       panel.add(panel2, BorderLayout.EAST);
     }
     return panel;
+  }
+
+  @ApiStatus.Internal
+  public static @NotNull Insets getContentTitleBorderInsets() {
+    return JBInsets.create("Diff.ContentTitle.insets", new Insets(2, 4, 0, 4));
+  }
+
+  @ApiStatus.Internal
+  public static @NotNull Color getContentTitleSeparatorColor() {
+    Color lineColor = EditorColorsManager.getInstance().getGlobalScheme().getColor(EditorColors.TEARLINE_COLOR);
+    return lineColor != null ? lineColor : JBColor.border();
   }
 
   private static @NotNull JComponent createCharsetPanel(@NotNull Charset charset, @Nullable Boolean bom) {
@@ -896,8 +943,11 @@ public final class DiffUtil {
     return SyncHeightComponent.createSyncHeightComponents(components);
   }
 
-  public static @NotNull JComponent createStackedComponents(@NotNull List<? extends JComponent> components, @NotNull JBValue vGap) {
-    JPanel panel = new JBPanel<>(new VerticalLayout(vGap, VerticalLayout.FILL));
+  @ApiStatus.Internal
+  public static @NotNull JComponent createStackedTitleComponents(@NotNull List<? extends JComponent> components) {
+    JPanel panel = new JBPanel<>(new VerticalLayout(CONTENT_TITLE_GAP, VerticalLayout.FILL));
+    panel.setName("Diff Editor Titles Stack");
+    panel.setOpaque(false);
     for (JComponent component : components) {
       panel.add(component);
     }
@@ -969,6 +1019,16 @@ public final class DiffUtil {
     if (diffComputer != null) return new SimpleTextDiffProvider(settings, rediff, disposable, diffComputer);
 
     return SmartTextDiffProvider.create(project, request, settings, rediff, disposable);
+  }
+
+  @ApiStatus.Internal
+  public static @NotNull TwosideTextDiffProvider.NoIgnore createDefaultDiffComputerNoIgnoreDiffProvider(@Nullable Project project,
+                                                                                                        @NotNull DiffContent content1,
+                                                                                                        @NotNull DiffContent content2,
+                                                                                                        @NotNull TextDiffSettings settings,
+                                                                                                        @NotNull Runnable rediff,
+                                                                                                        @NotNull Disposable disposable) {
+    return SmartTextDiffProvider.createNoIgnore(project, content1, content2, settings, rediff, disposable);
   }
 
   public static @NotNull TwosideTextDiffProvider.NoIgnore createNoIgnoreTextDiffProvider(@Nullable Project project,
@@ -1158,7 +1218,7 @@ public final class DiffUtil {
       return ((FileSystemInterface)fs).getInputStream(file);
     }
     // can't use VirtualFile.getInputStream here, as it will strip BOM
-    byte[] content = ReadAction.compute(() -> file.contentsToByteArray());
+    byte[] content = ReadAction.computeBlocking(() -> file.contentsToByteArray());
     return new ByteArrayInputStream(content);
   }
 
@@ -1591,10 +1651,10 @@ public final class DiffUtil {
   @RequiresEdt
   public static boolean makeWritable(@Nullable Project project, @NotNull VirtualFile file) {
     Project projectOrDefault = project == null ? ProjectManager.getInstance().getDefaultProject() : project;
-    return ReadAction.compute(() ->
-                                !ReadonlyStatusHandler.getInstance(projectOrDefault)
-                                  .ensureFilesWritable(Collections.singletonList(file))
-                                  .hasReadonlyFiles());
+    return ReadAction.computeBlocking(() ->
+                                        !ReadonlyStatusHandler.getInstance(projectOrDefault)
+                                          .ensureFilesWritable(Collections.singletonList(file))
+                                          .hasReadonlyFiles());
   }
 
   public static void putNonundoableOperation(@Nullable Project project, @NotNull Document document) {
@@ -1608,6 +1668,25 @@ public final class DiffUtil {
   public static void refreshOnFrameActivation(VirtualFile @NotNull ... files) {
     if (GeneralSettings.getInstance().isSyncOnFrameActivation()) {
       markDirtyAndRefresh(true, false, false, files);
+    }
+  }
+
+  /**
+   * Prevent memory leaks caused by {@link Project} being reachable via {@link UserDataHolder} of the file.
+   * <p>
+   * We expect the file itself still being usable after.
+   */
+  @ApiStatus.Internal
+  public static void cleanCachesAfterUse(@Nullable Project project, VirtualFile @NotNull ... files) {
+    if (project == null) return;
+
+    for (VirtualFile file : files) {
+      if (file instanceof LightVirtualFileBase) {
+        PsiManager psiManager = project.getServiceIfCreated(PsiManager.class);
+        if (psiManager instanceof PsiManagerEx psiManagerEx) {
+          psiManagerEx.getFileManager().setViewProvider(file, null);
+        }
+      }
     }
   }
 

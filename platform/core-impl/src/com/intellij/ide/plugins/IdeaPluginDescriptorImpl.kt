@@ -8,7 +8,6 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.extensions.ExtensionDescriptor
 import com.intellij.openapi.extensions.LoadingOrder
 import com.intellij.openapi.extensions.PluginId
-import com.intellij.openapi.extensions.impl.ExtensionPointImpl
 import com.intellij.openapi.util.NlsSafe
 import com.intellij.platform.pluginSystem.parser.impl.PluginDescriptorBuilder
 import com.intellij.platform.pluginSystem.parser.impl.PluginXmlConst
@@ -17,7 +16,6 @@ import com.intellij.platform.pluginSystem.parser.impl.elements.ActionElement
 import com.intellij.platform.pluginSystem.parser.impl.elements.DependenciesElement
 import com.intellij.platform.pluginSystem.parser.impl.elements.DependsElement
 import com.intellij.platform.pluginSystem.parser.impl.elements.ExtensionElement
-import com.intellij.util.PlatformUtils
 import org.jetbrains.annotations.ApiStatus.Internal
 import org.jetbrains.annotations.Nls
 import org.jetbrains.annotations.VisibleForTesting
@@ -52,8 +50,7 @@ sealed class IdeaPluginDescriptorImpl(
 
   var isDeleted: Boolean = false
 
-  @Transient
-  var jarFiles: List<Path>? = null
+  abstract val ownClassPath: List<Path>?
 
   /** **DO NOT USE** outside plugin subsystem internal code. It is public now due to an unfinished migration */
   var isMarkedForLoading: Boolean = true
@@ -80,26 +77,15 @@ sealed class IdeaPluginDescriptorImpl(
   @Deprecated("Deprecated in Java")
   override fun isEnabled(): Boolean = isMarkedForLoading
 
-  @Deprecated("Deprecated in Java")
-  override fun setEnabled(enabled: Boolean) {
-    if (setEnabledLogCount++ < 10) {
-      LOG.error("no-op deprecated method call on $this", Throwable())
-    }
-  }
-
-  override fun equals(other: Any?): Boolean {
-    return this === other || other is IdeaPluginDescriptorImpl && pluginId == other.pluginId && descriptorPath == other.descriptorPath
-  }
-
-  override fun hashCode(): Int = 31 * pluginId.hashCode() + (descriptorPath?.hashCode() ?: 0)
-
   internal fun createDependsSubDescriptor(
     subBuilder: PluginDescriptorBuilder,
     descriptorPath: String,
+    dependsTargetId: PluginId,
   ): DependsSubDescriptor = DependsSubDescriptor(
     parent = this,
     raw = subBuilder.build(),
-    descriptorPath = descriptorPath
+    descriptorPath = descriptorPath,
+    dependsTargetId = dependsTargetId,
   )
 }
 
@@ -147,9 +133,6 @@ internal fun reportSubDescriptorUnexpectedElements(raw: RawPluginDescriptor, rep
   if (raw.incompatibleWith.isNotEmpty()) reporter(PluginXmlConst.INCOMPATIBLE_WITH_ELEM)
 }
 
-@Volatile
-private var setEnabledLogCount = 0
-
 /**
  * Either [PluginMainDescriptor] or [ContentModuleDescriptor].
  * Both of them can be referenced either by plugin id or a module name (while [DependsSubDescriptor] can't be referenced).
@@ -163,6 +146,7 @@ class DependsSubDescriptor(
   val parent: IdeaPluginDescriptorImpl,
   raw: RawPluginDescriptor,
   private val descriptorPath: String,
+  val dependsTargetId: PluginId,
 ) : IdeaPluginDescriptorImpl(raw) {
   init {
     check(parent is PluginMainDescriptor || parent is DependsSubDescriptor)
@@ -172,9 +156,11 @@ class DependsSubDescriptor(
     get() = parent.useCoreClassLoader
   override val isIndependentFromCoreClassLoader: Boolean = raw.isIndependentFromCoreClassLoader
 
-  override val moduleDependencies: ModuleDependencies = convertDependencies(raw.dependencies, null)
+  override val moduleDependencies: ModuleDependencies = ModuleDependencies.EMPTY
 
   private val rawResourceBundleBaseName: String? = raw.resourceBundleBaseName
+
+  override val ownClassPath: List<Path>? = null
 
   override fun getDescriptorPath(): String = descriptorPath
 
@@ -182,6 +168,7 @@ class DependsSubDescriptor(
 
   override fun toString(): String =
     "DependsSubDescriptor(" +
+    "target=$dependsTargetId, " +
     "descriptorPath=$descriptorPath" +
     (if (packagePrefix == null) "" else ", package=$packagePrefix") +
     ") <- $parent"
@@ -283,12 +270,16 @@ class ContentModuleDescriptor(
 
   override val moduleDependencies: ModuleDependencies = convertDependencies(raw.dependencies, parent)
 
+  override val pluginAliases: List<PluginId> = filterBackendRdClientAlias(super.pluginAliases, parent.pluginId)
+
   override val useCoreClassLoader: Boolean
     get() = parent.useCoreClassLoader
   override val useIdeaClassLoader: Boolean = raw.isUseIdeaClassLoader
   override val isIndependentFromCoreClassLoader: Boolean = raw.isIndependentFromCoreClassLoader
 
   private val resourceBundleBaseName: String? = raw.resourceBundleBaseName
+
+  override var ownClassPath: List<Path>? = null
 
   /** java helper */
   fun getModuleNameString(): String = moduleId.name
@@ -406,8 +397,23 @@ val IdeaPluginDescriptorImpl.contentModules: List<ContentModuleDescriptor>
 val IdeaPluginDescriptorImpl.isLoaded: Boolean
   get() = pluginClassLoader != null
 
-private val ULTIMATE_PLUGIN_ID = PluginId.getId("com.intellij.modules.ultimate")
-private val DATABASE_PLUGIN_ID = PluginId.getId("com.intellij.database")
+@Internal
+suspend fun SequenceScope<IdeaPluginDescriptorImpl>.yieldAllDescriptors(plugin: PluginMainDescriptor) {
+  yield(plugin)
+  yieldAllDependsSubDescriptors(plugin)
+  yieldAll(plugin.contentModules)
+}
+
+/** does not include [descriptor] itself */
+@Internal
+suspend fun SequenceScope<IdeaPluginDescriptorImpl>.yieldAllDependsSubDescriptors(descriptor: IdeaPluginDescriptorImpl) {
+  for (dep in descriptor.pluginDependencies) {
+    dep.subDescriptor?.let {
+      yield(it)
+      yieldAllDependsSubDescriptors(it)
+    }
+  }
+}
 
 internal fun convertDependencies(dependencies: List<DependenciesElement>, parent: PluginMainDescriptor?): ModuleDependencies {
   if (dependencies.isEmpty()) {
@@ -416,7 +422,7 @@ internal fun convertDependencies(dependencies: List<DependenciesElement>, parent
 
   val moduleDeps = ArrayList<PluginModuleId>()
   val pluginDeps = ArrayList<PluginId>()
-  var cachedContentModuleNames: Set<String>? = null
+  var cachedContentModuleNameToNamespace: Map<String, String>? = null
   for (dep in dependencies) {
     when (dep) {
       is DependenciesElement.PluginDependency -> pluginDeps.add(PluginId.getId(dep.pluginId))
@@ -424,19 +430,17 @@ internal fun convertDependencies(dependencies: List<DependenciesElement>, parent
         val namespace =
           dep.namespace
           ?: run {
-            if (cachedContentModuleNames == null) {
-              cachedContentModuleNames = parent?.content?.modules?.mapTo(HashSet()) { it.moduleId.name } ?: emptySet()
+            if (cachedContentModuleNameToNamespace == null) {
+              //PluginMainDescriptor.convertContentModules checks that there are no modules with the same name, so it's safe to use 'associateBy' instead of 'groupBy'
+              cachedContentModuleNameToNamespace = parent?.content?.modules?.associateBy({ it.moduleId.name }, { it.moduleId.namespace }) ?: emptyMap()
             }
-            if (dep.moduleName in cachedContentModuleNames) parent!!.namespace ?: parent.implicitNamespaceForPrivateModules else null
+            cachedContentModuleNameToNamespace[dep.moduleName]
           }
           ?: PluginModuleId.JETBRAINS_NAMESPACE
         moduleDeps.add(PluginModuleId(dep.moduleName, namespace))
       }
       else -> LOG.error("Unknown dependency type: $dep")
     }
-  }
-  if (PlatformUtils.isPyCharmPro() && parent?.pluginId == DATABASE_PLUGIN_ID) {
-    pluginDeps.add(ULTIMATE_PLUGIN_ID)
   }
   return ModuleDependencies(moduleDeps, pluginDeps)
 }
@@ -500,3 +504,41 @@ private fun convertExtensions(rawMap: Map<String, List<ExtensionElement>>): Map<
     }
   }
 }
+
+@get:Internal
+val IdeaPluginDescriptorImpl.shortLogDescription: String get() = when (this) {
+  is PluginMainDescriptor -> "plugin '$name' ($pluginId, $version)"
+  is DependsSubDescriptor -> "<depends> config '${descriptorPath}' of plugin ${pluginId}"
+  is ContentModuleDescriptor -> "module ${moduleId.displayName}"
+}
+
+/**
+ * Workaround for the `com.intellij.rd.client.capable` alias being declared in two plugins (IJPL-220139):
+ * in frontend-like modes the JetBrains Client core plugin declares it, while the dual-mode clion-radler plugin
+ * declares it in its backend-only marker module (`intellij.clion.radler.backend.marker`). That marker can never
+ * load in such modes, but its alias still conflicts with the core plugin's and would exclude the whole clion-radler
+ * plugin — so drop it from non-core content modules when `intellij.platform.backend` is unavailable.
+ *
+ * TODO remove once on-demand module loading (IJPL-242789) makes this alias-based loading of `intellij.rd.client` unnecessary
+ */
+private fun filterBackendRdClientAlias(aliases: List<PluginId>, pluginId: PluginId): List<PluginId> {
+  if (pluginId != PluginManagerCore.CORE_ID &&
+      aliases.contains(RD_CLIENT_CAPABLE_ALIAS_ID) &&
+      !isPlatformBackendModuleAvailable()) {
+    LOG.info("Plugin alias '$RD_CLIENT_CAPABLE_ALIAS_ID' is removed from a content module of plugin '$pluginId' " +
+             "because '${PLATFORM_BACKEND_MODULE_ID.displayName}' is unavailable in the current product mode")
+    return aliases.filterNot { it == RD_CLIENT_CAPABLE_ALIAS_ID }
+  }
+
+  return aliases
+}
+
+private fun isPlatformBackendModuleAvailable(): Boolean {
+  // The following logic is copied from PluginContentDescriptor.ModuleItem.determineLoadingRule
+  val initContext = PluginInitContextFactory.getInstance().getContextForEffectiveModuleLoadingRuleDetermination()
+  val backendModuleData = initContext.environmentConfiguredModules[PLATFORM_BACKEND_MODULE_ID]
+  return backendModuleData != null && backendModuleData.isAvailable
+}
+
+private val RD_CLIENT_CAPABLE_ALIAS_ID: PluginId = PluginId.getId("com.intellij.rd.client.capable")
+private val PLATFORM_BACKEND_MODULE_ID = PluginModuleId("intellij.platform.backend", PluginModuleId.JETBRAINS_NAMESPACE)

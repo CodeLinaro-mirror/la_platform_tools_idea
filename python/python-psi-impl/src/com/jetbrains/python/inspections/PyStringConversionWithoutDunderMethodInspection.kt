@@ -5,6 +5,7 @@ import com.intellij.codeInsight.intention.preview.IntentionPreviewInfo
 import com.intellij.codeInspection.LocalInspectionToolSession
 import com.intellij.codeInspection.LocalQuickFix
 import com.intellij.codeInspection.ProblemDescriptor
+import com.intellij.codeInspection.ProblemHighlightType
 import com.intellij.codeInspection.ProblemsHolder
 import com.intellij.codeInspection.ex.modifyAndCommitProjectProfile
 import com.intellij.codeInspection.options.OptPane
@@ -17,15 +18,20 @@ import com.jetbrains.python.PyNames
 import com.jetbrains.python.PyPsiBundle
 import com.jetbrains.python.PyTokenTypes
 import com.jetbrains.python.codeInsight.parseDataclassParameters
+import com.jetbrains.python.inspections.quickfix.PyAddDunderMethodQuickFix
+import com.jetbrains.python.inspections.PyInspectionMessages.CodifiedParam
 import com.jetbrains.python.psi.PyCallExpression
+import com.jetbrains.python.psi.PyClass
 import com.jetbrains.python.psi.PyExpression
 import com.jetbrains.python.psi.PyFormattedStringElement
 import com.jetbrains.python.psi.PyFunction
 import com.jetbrains.python.psi.PyKeywordArgument
 import com.jetbrains.python.psi.PyQualifiedNameOwner
 import com.jetbrains.python.psi.PyReferenceExpression
+import com.jetbrains.python.psi.PyStringDunderUtil
 import com.jetbrains.python.psi.resolve.PyResolveContext
 import com.jetbrains.python.psi.resolve.PyResolveUtil
+import com.jetbrains.python.psi.types.PyClassLikeType
 import com.jetbrains.python.psi.types.PyClassType
 import com.jetbrains.python.psi.types.PyFunctionType
 import com.jetbrains.python.psi.types.PyIntersectionType
@@ -33,6 +39,8 @@ import com.jetbrains.python.psi.types.PyType
 import com.jetbrains.python.psi.types.PyUnionType
 import com.jetbrains.python.psi.types.PyUnsafeUnionType
 import com.jetbrains.python.psi.types.TypeEvalContext
+import com.jetbrains.python.pyi.PyiFile
+import com.jetbrains.python.pyi.PyiUtil
 
 /**
  * Warns when a type that doesn't define __str__, __repr__, or __format__
@@ -40,16 +48,11 @@ import com.jetbrains.python.psi.types.TypeEvalContext
  */
 class PyStringConversionWithoutDunderMethodInspection : PyInspection() {
   @JvmField
-  val ignoredTypes: MutableList<String> = mutableListOf(
-    "types.NoneType", "_io.TextIOWrapper",
-    // the definitions for these types don't include their `__str__`/`__repr__`, so we have to explicitly ignore them
-    "str", "int", "float", "complex", "set", "frozenset", "bytes", "bytearray", "memoryview",
-    "slice", "list", "dict", "bool", "range", "tuple", "pathlib.PurePath", "uuid.UUID", "decimal.Decimal", "fractions.Fraction"
-  )
+  val ignoredTypes: MutableList<String> = mutableListOf()
 
   @JvmField
   val reportedTypes: MutableList<String> = mutableListOf(
-    "object", "types.FunctionType", "type"
+    PyNames.FQN.OBJECT, PyNames.FQN.FUNCTION_TYPE, PyNames.FQN.TYPE
   )
 
   override fun getOptionsPane(): OptPane {
@@ -77,22 +80,26 @@ class PyStringConversionWithoutDunderMethodInspection : PyInspection() {
 
       val callee = node.callee as? PyReferenceExpression ?: return
 
+      // `str(x)` resolves to `builtins.str.__new__`, and so does an explicit `str.__new__(cls)` or a
+      // `super().__new__(cls)` in a `str` subclass. Only the first one converts a value to a string.
+      if (callee.name == PyNames.NEW) return
+
       // TODO: use `calleeType?.declarationElement?.qualifiedName` when overloads aren't union types PY-83781
       val resolvedCallee =
         PyResolveUtil.resolveDeclaration(callee.reference, PyResolveContext.defaultContext(myTypeEvalContext))
         ?: return
 
-      val qualifiedCalleeName = (resolvedCallee as? PyQualifiedNameOwner)?.qualifiedName
+      val qualifiedCalleeName = PyNames.FQN.unqualifyBuiltinName((resolvedCallee as? PyQualifiedNameOwner)?.qualifiedName)
 
       when (qualifiedCalleeName) {
-        "${PyNames.TYPE_STR}.__new__" -> node.arguments.firstOrNull()?.checkStringConversion(DUNDER_STR)
-        "repr" -> node.arguments.firstOrNull()?.checkStringConversion(DUNDER_REPR)
-        "format" -> node.arguments.firstOrNull()?.checkStringConversion(DUNDER_FORMAT)
+        "${PyNames.TYPE_STR}.${PyNames.NEW}" -> node.arguments.firstOrNull()?.checkStringConversion(PyNames.DUNDER_STR)
+        "repr" -> node.arguments.firstOrNull()?.checkStringConversion(PyNames.DUNDER_REPR)
+        "format" -> node.arguments.firstOrNull()?.checkStringConversion(PyNames.DUNDER_FORMAT)
         "print" -> {
           // Check all arguments to print()
           for (argument in node.arguments) {
             if (argument is PyKeywordArgument) continue
-            argument.checkStringConversion(DUNDER_STR)
+            argument.checkStringConversion(PyNames.DUNDER_STR)
           }
         }
       }
@@ -114,10 +121,10 @@ class PyStringConversionWithoutDunderMethodInspection : PyInspection() {
 
         fragment.expression?.checkStringConversion(
           when (fragment.typeConversion?.text) {
-            null if isDebug -> DUNDER_REPR
-            null -> DUNDER_FORMAT
-            "!s" -> DUNDER_STR
-            "!r", "!a" -> DUNDER_REPR
+            null if isDebug -> PyNames.DUNDER_REPR
+            null -> PyNames.DUNDER_FORMAT
+            "!s" -> PyNames.DUNDER_STR
+            "!r", "!a" -> PyNames.DUNDER_REPR
             else -> continue
           }
         )
@@ -146,37 +153,41 @@ class PyStringConversionWithoutDunderMethodInspection : PyInspection() {
             registerProblem(type, requiredMethod)
           }
         }
-        type is PyFunctionType && "types.FunctionType" in inspection.reportedTypes -> {
-          registerProblem(this, PyPsiBundle.message("INSP.string.not.helpful", "FunctionType"),
-                          RemoveFromReportedTypesQuickFix("types.FunctionType", "FunctionType"))
+        type is PyFunctionType && PyNames.FQN.FUNCTION_TYPE in inspection.reportedTypes -> {
+          registerProblem(this, PyPsiBundle.problemMessage("INSP.string.not.helpful", "FunctionType"),
+                          ProblemHighlightType.GENERIC_ERROR_OR_WARNING,
+                          RemoveFromReportedTypesQuickFix(PyNames.FQN.FUNCTION_TYPE, "FunctionType"))
         }
         type !is PyClassType -> return
         type.classQName in inspection.reportedTypes -> {
-          val classQName = type.classQName ?: return
+          val classQName = PyNames.FQN.unqualifyBuiltinName(type.classQName) ?: return
           val typeName = type.name ?: return
-          registerProblem(this, PyPsiBundle.message("INSP.string.not.helpful", typeName),
+          registerProblem(this, PyPsiBundle.problemMessage("INSP.string.not.helpful", CodifiedParam.ofReference(type.pyClass, typeName)),
+                          ProblemHighlightType.GENERIC_ERROR_OR_WARNING,
                           RemoveFromReportedTypesQuickFix(classQName, typeName))
         }
-        type.isDefinition && "type" in inspection.reportedTypes -> {
-          registerProblem(this, PyPsiBundle.message("INSP.string.not.helpful", "type"),
-                          RemoveFromReportedTypesQuickFix("type", "type"))
+        type.isDefinition && PyNames.FQN.TYPE in inspection.reportedTypes -> {
+          registerProblem(this, PyPsiBundle.problemMessage("INSP.string.not.helpful", "type"),
+                          ProblemHighlightType.GENERIC_ERROR_OR_WARNING,
+                          RemoveFromReportedTypesQuickFix(PyNames.FQN.TYPE, PyNames.TYPE))
         }
         type.shouldWarnForType(requiredMethod) -> registerProblem(type, requiredMethod)
       }
     }
 
     private fun PyExpression.registerProblem(type: PyType, requiredMethod: String) {
-      val typeName = if (type is PyClassType && type.isDefinition) "type[${type.name}]" else type.name
+      val param = CodifiedParam.ofType(type, this, myTypeEvalContext)
       val message = when (requiredMethod) {
-        DUNDER_REPR -> PyPsiBundle.message("INSP.string.conversion.without.dunder.repr", typeName)
-        DUNDER_STR -> PyPsiBundle.message("INSP.string.conversion.without.dunder.str", typeName)
-        DUNDER_FORMAT -> PyPsiBundle.message("INSP.string.conversion.without.dunder.format", typeName)
+        PyNames.DUNDER_REPR -> PyPsiBundle.problemMessage("INSP.string.conversion.without.dunder.repr", param)
+        PyNames.DUNDER_STR -> PyPsiBundle.problemMessage("INSP.string.conversion.without.dunder.str", param)
+        PyNames.DUNDER_FORMAT -> PyPsiBundle.problemMessage("INSP.string.conversion.without.dunder.format", param)
         else -> return
       }
       if (type is PyClassType) {
-        val classQName = type.classQName ?: return
+        val classQName = PyNames.FQN.unqualifyBuiltinName(type.classQName) ?: return
         registerProblem(this, message,
-                        AddToIgnoredTypesQuickFix(classQName, classQName.split(".").last()))
+                        ProblemHighlightType.GENERIC_ERROR_OR_WARNING,
+                        AddToIgnoredTypesQuickFix(classQName, classQName.split(".").last()), PyAddDunderMethodQuickFix(type.pyClass, requiredMethod))
       }
       else registerProblem(this, message)
     }
@@ -184,44 +195,98 @@ class PyStringConversionWithoutDunderMethodInspection : PyInspection() {
     private fun PyClassType.shouldWarnForType(requiredMethod: String): Boolean {
       if (classQName in inspection.ignoredTypes) return false
 
-      // Check if any ancestor is in ignored types (e.g., class A(int) should be ignored
-      // because int defines __str__ even though it's not in stubs)
-      val pyClass = pyClass
+      // Check if any ancestor is in ignored types (e.g., class A(B) is ignored when B is ignored)
       if (pyClass.getAncestorTypes(myTypeEvalContext).any { it?.classQName in inspection.ignoredTypes }) {
         return false
       }
 
       val hasSyntheticRepr = parseDataclassParameters(pyClass, myTypeEvalContext)?.repr == true
 
-      val hasRepr = hasSyntheticRepr || hasCustomStringMethod(DUNDER_REPR)
-      val hasStr by lazy { hasCustomStringMethod(DUNDER_STR) }
-      val hasFormat by lazy { hasCustomStringMethod(DUNDER_FORMAT) }
+      val repr = if (hasSyntheticRepr) DunderMethodPresence.DEFINED else presenceOfDunderMethod(PyNames.DUNDER_REPR)
+      val str by lazy { presenceOfDunderMethod(PyNames.DUNDER_STR) }
+      val format by lazy { presenceOfDunderMethod(PyNames.DUNDER_FORMAT) }
 
+      // Report only when every method that the conversion can use is absent. An unknown answer never reports.
       return when (requiredMethod) {
-        DUNDER_REPR -> !hasRepr
-        DUNDER_STR -> !hasRepr && !hasStr
-        DUNDER_FORMAT -> !hasRepr && !hasStr && !hasFormat
+        PyNames.DUNDER_REPR -> repr.isAbsent
+        PyNames.DUNDER_STR -> repr.isAbsent && str.isAbsent
+        PyNames.DUNDER_FORMAT -> repr.isAbsent && str.isAbsent && format.isAbsent
         else -> false
       }
     }
 
-    private fun PyClassType.hasCustomStringMethod(
-      methodName: String,
-    ): Boolean {
-      return findMember(methodName, PyResolveContext.defaultContext(myTypeEvalContext))
-               .firstOrNull()
-               ?.element
-               ?.let {
-                 (it as? PyFunction)?.qualifiedName != "${PyNames.OBJECT}.$methodName"
-               }
-             ?: false
+    /**
+     * The classes of the MRO, without `object`. A method of `object` is never a custom string conversion.
+     * A `null` entry is an ancestor that does not resolve to a class.
+     */
+    private fun PyClassType.mroWithoutObject(): List<PyClass?> =
+      (listOf<PyClassLikeType?>(this) + pyClass.getAncestorTypes(myTypeEvalContext))
+        .filter { it?.classQName != PyNames.FQN.OBJECT }
+        .map { (it as? PyClassType)?.pyClass }
+
+    private fun PyClassType.presenceOfDunderMethod(methodName: String): DunderMethodPresence {
+      // special case: no skeleton and no stubs
+      if (classQName in PyNames.FQN.NONES) return DunderMethodPresence.DEFINED
+
+      val objectMethodQName = "${PyNames.FQN.OBJECT}.$methodName"
+
+      val memberInStub = findMember(methodName, PyResolveContext.defaultContext(myTypeEvalContext))
+        .firstOrNull()
+        ?.element
+      if (memberInStub != null && (memberInStub as? PyFunction)?.qualifiedName != objectMethodQName) {
+        return DunderMethodPresence.DEFINED
+      }
+
+      // A type stub keeps `__str__` and `__repr__` only when they change the signature of the `object` ones, so a
+      // stub alone never proves that a class has no custom string conversion. Ask the runtime class of every class
+      // of the MRO, and answer UNKNOWN when a stub has no runtime class and no known answer.
+      var unknown = false
+      var knownAbsent = false
+      for (mroClass in mroWithoutObject()) {
+        if (mroClass == null) {
+          if (!knownAbsent) unknown = true
+          continue
+        }
+        if (mroClass.findMethodByName(methodName, false, myTypeEvalContext) != null) return DunderMethodPresence.DEFINED
+
+        // A known type answers for itself and for every ancestor of it. The MRO puts those ancestors after it, so a
+        // stub among them adds nothing. A base of a subclass can also come later, and the walk must still see it.
+        if (mroClass.qualifiedName in PyStringDunderUtil.TYPES_WITHOUT_USEFUL_STRING_CONVERSION) {
+          knownAbsent = true
+          continue
+        }
+
+        val implementation = PyiUtil.getOriginalElement(mroClass) as? PyClass
+        if (implementation == null) {
+          if (!knownAbsent && mroClass.containingFile is PyiFile) unknown = true
+          continue
+        }
+        // A stub often hides a private base that the runtime module declares, so search the implementation ancestors.
+        val implementationMethod = implementation.findMethodInImplementations(methodName, myTypeEvalContext)
+        if (implementationMethod != null &&
+            implementationMethod.qualifiedName != objectMethodQName &&
+            implementationMethod.qualifiedName != "builtins.$objectMethodQName") {
+          return DunderMethodPresence.DEFINED
+        }
+      }
+      return if (unknown) DunderMethodPresence.UNKNOWN else DunderMethodPresence.NOT_DEFINED
     }
   }
 }
 
-private const val DUNDER_STR = "__str__"
-private const val DUNDER_REPR = "__repr__"
-private const val DUNDER_FORMAT = "__format__"
+/** What the IDE knows about a dunder method of a class. */
+private enum class DunderMethodPresence {
+  /** A class of the MRO, `object` apart, defines the method. */
+  DEFINED,
+
+  /** No class of the MRO defines the method, and every class of the MRO gives a reliable answer. */
+  NOT_DEFINED,
+
+  /** A class of the MRO comes from a type stub that has no runtime class, so the IDE cannot answer. */
+  UNKNOWN;
+
+  val isAbsent: Boolean get() = this == NOT_DEFINED
+}
 
 private class RemoveFromReportedTypesQuickFix(private val key: String, private val displayName: String) : LocalQuickFix {
   override fun getFamilyName(): String =

@@ -31,6 +31,7 @@ import org.gradle.tooling.internal.consumer.connection.ParameterValidatingConsum
 import org.gradle.tooling.internal.consumer.loader.CachingToolingImplementationLoader
 import org.gradle.tooling.internal.consumer.loader.SynchronizedToolingImplementationLoader
 import org.gradle.tooling.internal.consumer.loader.ToolingImplementationLoader
+import org.gradle.util.GradleVersion
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.plugins.gradle.settings.GradleSettings
 import java.io.ByteArrayInputStream
@@ -40,7 +41,6 @@ import java.io.ObjectInputStream
 import java.io.ObjectOutputStream
 import java.io.Serializable
 import java.lang.reflect.Method
-import java.nio.file.Path
 import java.util.function.BiConsumer
 
 private val LOG = Logger.getInstance("org.jetbrains.plugins.gradle.internal.daemon.GradleDaemonServices")
@@ -67,11 +67,11 @@ fun gracefulStopDaemons(knownGradleUserHomes: Set<String?> = findKnownGradleUser
 
 @JvmOverloads
 fun getDaemonsStatus(knownGradleUserHomes: Set<String?> = findKnownGradleUserHomes()): List<DaemonState> {
-  val result: MutableList<DaemonState?> = ArrayList<DaemonState?>()
+  val result: MutableList<DaemonState?> = ArrayList()
   forEachConnection(knownGradleUserHomes) { connection: ConsumerConnection, gradleUserHome: String? ->
     val daemonStates = runAction(gradleUserHome, connection, DaemonStatusAction::class.java,
                                  null) as List<DaemonState>?
-    if (daemonStates != null && !daemonStates.isEmpty()) {
+    if (!daemonStates.isNullOrEmpty()) {
       result.addAll(daemonStates)
     }
   }
@@ -86,7 +86,7 @@ private fun runActionWithDaemonClient(
   arg: Any?
 ): Any? {
   val daemonClientClassLoader = UrlClassLoader.build()
-    .files(listOf<Path?>(
+    .files(listOf(
       PathManager.getJarForClass(actionClass),  // jars required for Gradle runtime utils
 
       PathManager.getJarForClass(GradleToolingExtensionClass::class.java),
@@ -98,16 +98,16 @@ private fun runActionWithDaemonClient(
       PathManager.getJarForClass(Hash::class.java),
       PathManager.getJarForClass(Function::class.java)
     ))
-    .parent(daemonClientFactory.javaClass.getClassLoader())
+    .parent(daemonClientFactory.javaClass.classLoader)
     .allowLock(false)
     .get()
 
   val myRawArgData = getSerialized(arg)
   var myRawResultData: ByteArray? = null
-  val oldClassLoader = Thread.currentThread().getContextClassLoader()
+  val oldClassLoader = Thread.currentThread().contextClassLoader
   try {
-    Thread.currentThread().setContextClassLoader(daemonClientClassLoader)
-    val loadedActionClazz = daemonClientClassLoader.loadClass(actionClass.getName())
+    Thread.currentThread().contextClassLoader = daemonClientClassLoader
+    val loadedActionClazz = daemonClientClassLoader.loadClass(actionClass.name)
     val argWithContextClassloader = getObject(myRawArgData)
     val runMethod = findRunMethod(loadedActionClazz, daemonClientFactory, argWithContextClassloader)
     val actionInstance: Any = loadedActionClazz.getDeclaredConstructor(String::class.java).newInstance(gradleUserHome)
@@ -119,7 +119,7 @@ private fun runActionWithDaemonClient(
     }
   }
   finally {
-    Thread.currentThread().setContextClassLoader(oldClassLoader)
+    Thread.currentThread().contextClassLoader = oldClassLoader
   }
   if (myRawResultData != null) {
     return getObject(myRawResultData)
@@ -156,13 +156,9 @@ private fun findRunMethod(clazz: Class<*>, daemonClientFactory: Any, arg: Any?):
 private fun getSerialized(obj: Any?): ByteArray? {
   if (obj is Serializable) {
     val bOut = ByteArrayOutputStream()
-    val oOut = ObjectOutputStream(bOut)
-    try {
+    ObjectOutputStream(bOut).use { oOut ->
       oOut.writeObject(obj)
       return bOut.toByteArray()
-    }
-    finally {
-      oOut.close()
     }
   }
   return null
@@ -236,21 +232,53 @@ private fun runAction(gradleUserHome: String?, connection: ConsumerConnection, a
 private fun obtainDaemonClientFactory(connection: ConsumerConnection?): Any? {
   // connection.delegate.delegate.connection.daemonClientFactory
   if (connection is ParameterValidatingConsumerConnection) {
-    val delegate = getField<ConsumerConnection?>(ParameterValidatingConsumerConnection::class.java, connection,
-                                                 ConsumerConnection::class.java, "delegate")
+    val delegate = getField(ParameterValidatingConsumerConnection::class.java, connection,
+                            ConsumerConnection::class.java, "delegate")
     if (delegate is AbstractConsumerConnection) {
       val connectionVersion4 = delegate.delegate
-      val providerConnectionField = connectionVersion4.javaClass.getDeclaredField("connection")
-      providerConnectionField.setAccessible(true)
-      val providerConnection = getFieldValue<Any?>(providerConnectionField, connectionVersion4)
+      val providerConnection = obtainProviderConnection(connectionVersion4) ?: return null
 
-      val daemonClientFactoryField = providerConnection!!.javaClass.getDeclaredField("daemonClientFactory")
-      daemonClientFactoryField.setAccessible(true)
+      val daemonClientFactoryField = providerConnection.javaClass.getDeclaredField("daemonClientFactory")
+      daemonClientFactoryField.isAccessible = true
 
       return getFieldValue<Any>(daemonClientFactoryField, providerConnection)!!
     }
   }
   return null
+}
+
+private fun obtainProviderConnection(connectionVersion4: Any): Any? {
+  val gradleVersion = getGradleVersionFromDaemonSideClass(connectionVersion4) ?: GradleVersion.current()
+  return if (GradleVersionUtil.isGradleOlderThan(gradleVersion, "9.5")) {
+    obtainProviderConnection94(connectionVersion4)
+  }
+  else {
+    obtainProviderConnectionAfter94(connectionVersion4)
+  }
+}
+
+private fun obtainProviderConnection94(connectionVersion4: Any): Any? {
+  val providerConnectionField = connectionVersion4.javaClass.declaredFields.find { it.name == "connection" }
+  if (providerConnectionField != null) {
+    providerConnectionField.isAccessible = true
+    return getFieldValue(providerConnectionField, connectionVersion4)
+  }
+  return null
+}
+
+/**
+ * Since Gradle 9.5 it is looked up from the
+ * `clientServices` service registry, which is created lazily on the first (non-embedded) operation.
+ */
+private fun obtainProviderConnectionAfter94(connectionVersion4: Any): Any? {
+  val clientServicesField = connectionVersion4.javaClass.getDeclaredField("clientServices")
+  clientServicesField.isAccessible = true
+  val clientServices = getFieldValue<Any?>(clientServicesField, connectionVersion4) ?: return null
+
+  val classLoader = connectionVersion4.javaClass.classLoader
+  val serviceRegistryClass = classLoader.loadClass("org.gradle.internal.service.ServiceRegistry")
+  val providerConnectionClass = classLoader.loadClass("org.gradle.tooling.internal.provider.ProviderConnection")
+  return serviceRegistryClass.getMethod("get", Class::class.java).invoke(clientServices, providerConnectionClass)
 }
 
 private fun forEachConnection(knownGradleUserHomes: Set<String?>, closure: BiConsumer<ConsumerConnection, String?>) {
@@ -263,11 +291,37 @@ private fun forEachConnection(knownGradleUserHomes: Set<String?>, closure: BiCon
 }
 
 private fun findKnownGradleUserHomes(): Set<String> {
-  val projectManager = ProjectManager.getInstanceIfCreated() ?: return setOf<String>("")
+  val projectManager = ProjectManager.getInstanceIfCreated() ?: return setOf("")
   val gradleUserHomes = projectManager.openProjects
     .filter { !it.isDisposed }
     .map { GradleSettings.getInstance(it).serviceDirectoryPath ?: "" }
 
   // add "" to always search for Gradle connections in the default Gradle user home
   return (gradleUserHomes + "").toSet()
+}
+
+private fun getGradleVersionFromDaemonSideClass(classFromDaemonSide: Any): GradleVersion? {
+  val toolingImplementationLoader = classFromDaemonSide.javaClass.classLoader
+  try {
+    val gradleVersionClass = toolingImplementationLoader.loadClass("org.gradle.util.GradleVersion")
+    val currentVersionHandle = gradleVersionClass.getDeclaredMethod("current")
+    val currentGradleVersion = currentVersionHandle(gradleVersionClass)
+
+    // it's impossible to cast a class from the daemon side to the class loaded by the current classloader
+    // we have to go through version.toString() chain just to get rid of inter-classloader value
+    return gradleVersionClass.run {
+      declaredFields.find { it.name == "version" }?.let {
+        it.isAccessible = true
+        val version = it.get(currentGradleVersion) as String
+        return@let GradleVersion.version(version)
+      }
+      ?: declaredMethods.find { it.name == "getVersion" }?.let {
+        val version = it(currentGradleVersion) as String
+        return@let GradleVersion.version(version)
+      }
+    }
+  }
+  catch (__: Exception) {
+    return null
+  }
 }

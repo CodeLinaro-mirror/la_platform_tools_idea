@@ -6,16 +6,15 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.Unmodifiable;
 
 import java.io.Serializable;
 import java.util.AbstractList;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.RandomAccess;
@@ -43,18 +42,6 @@ public final class ContainerUtilRt {
     ArrayList<T> list = new ArrayList<>(elements.length);
     Collections.addAll(list, elements);
     return list;
-  }
-
-  /**
-   * @deprecated Use {@link com.intellij.util.containers.ContainerUtil#newLinkedHashSet(Object[])}
-   */
-  @SafeVarargs
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval
-  @NotNull
-  @Contract(value = "_ -> new", pure = true)
-  public static <T> LinkedHashSet<T> newLinkedHashSet(T... elements) {
-    return new LinkedHashSet<>(Arrays.asList(elements));
   }
 
   /**
@@ -181,6 +168,7 @@ public final class ContainerUtilRt {
   @ApiStatus.ScheduledForRemoval
   @NotNull
   @Contract(pure=true)
+  @Unmodifiable
   public static <T> List<T> emptyList() {
     //noinspection unchecked
     return (List<T>)EmptyList.INSTANCE;

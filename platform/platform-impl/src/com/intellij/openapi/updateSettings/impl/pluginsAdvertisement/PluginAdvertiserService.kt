@@ -36,13 +36,13 @@ import com.intellij.openapi.updateSettings.impl.PluginDownloader
 import com.intellij.openapi.updateSettings.impl.pluginsAdvertisement.PluginAdvertiserService.Companion.DEPENDENCY_SUPPORT_TYPE
 import com.intellij.openapi.updateSettings.impl.pluginsAdvertisement.PluginAdvertiserService.Companion.EXECUTABLE_DEPENDENCY_KIND
 import com.intellij.openapi.updateSettings.impl.pluginsAdvertisement.PluginAdvertiserService.Companion.ideaUltimate
-import com.intellij.openapi.util.IntellijInternalApi
 import com.intellij.openapi.util.NlsContexts
 import com.intellij.openapi.util.NlsContexts.NotificationContent
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.EditorNotificationPanel
 import com.intellij.ui.EditorNotifications
 import com.intellij.util.concurrency.annotations.RequiresBackgroundThread
+import com.intellij.util.concurrency.annotations.RequiresEdt
 import com.intellij.util.containers.MultiMap
 import com.intellij.util.io.computeDetached
 import com.intellij.util.system.CpuArch
@@ -58,7 +58,6 @@ import org.jetbrains.annotations.Nls
 import kotlin.coroutines.coroutineContext
 
 @ApiStatus.Internal
-@IntellijInternalApi
 sealed interface PluginAdvertiserService {
 
   companion object {
@@ -161,8 +160,8 @@ sealed interface PluginAdvertiserService {
   fun rescanDependencies(block: suspend CoroutineScope.() -> Unit = {})
 }
 
-@OptIn(IntellijInternalApi::class, DelicateCoroutinesApi::class)
-@IntellijInternalApi
+@OptIn(DelicateCoroutinesApi::class)
+@ApiStatus.Internal
 open class PluginAdvertiserServiceImpl(
   private val project: Project,
   private val cs: CoroutineScope,
@@ -203,7 +202,7 @@ open class PluginAdvertiserServiceImpl(
 
       launch {
         val dependencies = serviceAsync<PluginFeatureCacheService>().dependencies.get()
-        withContext(Dispatchers.EDT) {
+        val hasOwnOffer = withContext(Dispatchers.EDT) {
           notifyUser(
             bundledPlugins = getBundledPluginToInstall(plugins, descriptorsById),
             suggestionPlugins = suggestToInstall,
@@ -213,6 +212,9 @@ open class PluginAdvertiserServiceImpl(
             dependencies = dependencies,
             includeIgnored = includeIgnored,
           )
+        }
+        if (!hasOwnOffer) {
+          showPluginSuggestionNotification(project)
         }
       }
     }
@@ -403,6 +405,13 @@ open class PluginAdvertiserServiceImpl(
       .toList()
   }
 
+  /**
+   * @return whether the advertiser has an offer of its own for this project. False is the verdict a
+   *   [PluginSuggestionNotificationProvider] is asked on. True says the advertiser reached
+   *   `notify`, which raises no balloon while an earlier balloon of the group is visible and none
+   *   at all for a group the user set to no popup.
+   */
+  @RequiresEdt
   private fun notifyUser(
     bundledPlugins: List<String>,
     suggestionPlugins: List<PluginDownloader>,
@@ -411,7 +420,7 @@ open class PluginAdvertiserServiceImpl(
     allUnknownFeatures: Collection<UnknownFeature>,
     dependencies: PluginFeatureMap?,
     includeIgnored: Boolean,
-  ) {
+  ): Boolean {
     for (plugin in suggestionPlugins) {
       FUSEventSource.NOTIFICATION.logPluginSuggested(project, plugin.id)
     }
@@ -471,13 +480,15 @@ open class PluginAdvertiserServiceImpl(
           .createNotification(IdeBundle.message("plugins.advertiser.no.suggested.plugins"), NotificationType.INFORMATION)
           .setDisplayId("advertiser.no.plugins")
           .notify(project)
+        return true
       }
-      return
+      return false
     }
 
     notificationManager.notify("", notificationMessage, project) {
       it.setSuggestionType(true).addActions(notificationActions as Collection<AnAction>)
     }
+    return true
   }
 
   private fun createIgnoreUnknownFeaturesAction(
@@ -622,7 +633,6 @@ open class PluginAdvertiserServiceImpl(
 }
 
 @ApiStatus.Internal
-@IntellijInternalApi
 open class HeadlessPluginAdvertiserServiceImpl : PluginAdvertiserService {
 
   final override suspend fun run(

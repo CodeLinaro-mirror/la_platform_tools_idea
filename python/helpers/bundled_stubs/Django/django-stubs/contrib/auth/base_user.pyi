@@ -1,10 +1,12 @@
+import datetime as dt
 from collections.abc import Iterable
-from typing import Any, ClassVar, Literal, TypeVar, overload
+from typing import Any, ClassVar, Literal, overload
 
 from django.db import models
 from django.db.models.base import Model
 from django.db.models.expressions import Combinable
 from django.db.models.fields import BooleanField
+from typing_extensions import TypeVar
 
 _T = TypeVar("_T", bound=Model)
 
@@ -20,8 +22,8 @@ class AbstractBaseUser(models.Model):
     class Meta:
         abstract: ClassVar[bool]
 
-    password = models.CharField(max_length=128)
-    last_login = models.DateTimeField(blank=True, null=True)
+    password: models.CharField[str | int | Combinable, str]
+    last_login: models.DateTimeField[str | dt.datetime | dt.date | Combinable | None, dt.datetime | None]
     is_active: bool | BooleanField[bool | Combinable, bool]
     backend: str  # Set dynamically by authenticate(), used by login()
 

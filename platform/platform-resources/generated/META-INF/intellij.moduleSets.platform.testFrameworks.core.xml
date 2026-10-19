@@ -4,10 +4,14 @@
 <!-- Note: Files are kept under VCS to support running products without dev mode (deprecated) -->
 <idea-plugin>
   <content namespace="jetbrains">
+    <module name="intellij.platform.testExtensions"/>
     <module name="intellij.platform.testFramework"/>
     <module name="intellij.platform.testFramework.common"/>
     <module name="intellij.platform.testFramework.core"/>
     <module name="intellij.platform.testFramework.impl"/>
     <module name="intellij.platform.testFramework.teamCity"/>
+    <module name="intellij.codeowners"/>
+    <module name="intellij.codeowners.monorepo.resolver"/>
+    <module name="intellij.codeowners.runtime.resolver"/>
   </content>
 </idea-plugin>

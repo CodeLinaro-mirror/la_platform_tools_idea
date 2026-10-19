@@ -8,20 +8,17 @@ import com.intellij.codeInsight.completion.CompletionParameters
 import com.intellij.codeInsight.completion.CompletionProvider
 import com.intellij.codeInsight.completion.CompletionResultSet
 import com.intellij.codeInsight.completion.CompletionType
+import com.intellij.codeInsight.lookup.LookupElementBuilder
+import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.project.DumbAware
 import com.intellij.patterns.PlatformPatterns
-import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.util.ProcessingContext
 import com.jetbrains.python.PyNames
-import com.jetbrains.python.PyNames.PREPARE
-import com.jetbrains.python.ast.PyAstFunction
+import com.jetbrains.python.codeInsight.imports.AddImportHelper
 import com.jetbrains.python.extensions.afterDefInFunction
 import com.jetbrains.python.psi.LanguageLevel
-import com.jetbrains.python.psi.PyClass
 import com.jetbrains.python.psi.PyFile
-import com.jetbrains.python.psi.PyFunction
-import com.jetbrains.python.psi.PyUtil
-import com.jetbrains.python.psi.types.TypeEvalContext
+import com.jetbrains.python.psi.impl.PyBuiltinCache
 
 class PySpecialMethodNamesCompletionContributor : CompletionContributor(), DumbAware {
   override fun handleAutoCompletionPossibility(context: AutoCompletionContext): AutoCompletionDecision = autoInsertSingleItem(context)
@@ -31,22 +28,26 @@ class PySpecialMethodNamesCompletionContributor : CompletionContributor(), DumbA
   }
 
   private object MyCompletionProvider : CompletionProvider<CompletionParameters>() {
+    // Dunders that only make sense on a metaclass (a subclass of `type`). They are suppressed here so they aren't suggested in
+    // ordinary classes; metaclasses still get them through the regular base-method override completion. Operator/protocol dunders
+    // that `type` happens to implement (`__call__`, `__or__`, `__ror__`, ...) are intentionally NOT listed, since they are
+    // legitimate to define on ordinary classes (PY-90275).
+    private val metaclassOnlyMethods = setOf(PyNames.PREPARE, "__instancecheck__", "__subclasscheck__")
+
     override fun addCompletions(parameters: CompletionParameters, context: ProcessingContext, result: CompletionResultSet) {
       val typeEvalContext = parameters.getTypeEvalContext()
 
       val pyClass = parameters.getPyClass()
       if (pyClass != null) {
+        val builtins = PyBuiltinCache.getInstance(pyClass)
+        val fromObject = builtins.getClass(PyNames.OBJECT)?.methods?.toSet()?.map { it.name }.orEmpty()
         PyNames.getBuiltinMethods(LanguageLevel.forElement(pyClass))
-          ?.forEach {
-            val name = it.key
-            val signature = it.value.signature
+          .asSequence()
+          .filter { it.key !in fromObject && it.key !in metaclassOnlyMethods }
+          .forEach { (name, description) ->
+            val signature = description.signature
 
-            if (name == PREPARE) {
-              handlePrepare(result, pyClass, typeEvalContext, signature)
-            }
-            else {
-              addMethodToResult(result, pyClass, typeEvalContext, name, signature) { it.withTypeText("predefined") }
-            }
+            addMethodToResult(result, pyClass, typeEvalContext, name, signature) { postProcessCompletion(it, name, description) }
           }
       }
       else {
@@ -54,26 +55,30 @@ class PySpecialMethodNamesCompletionContributor : CompletionContributor(), DumbA
         if (file != null) {
           PyNames
             .getModuleBuiltinMethods(LanguageLevel.forElement(file))
-            .forEach {
-              addFunctionToResult(result, file as? PyFile, it.key, it.value.signature) {
-                it.withTypeText("predefined")
-              }
+            .forEach { (name, description) ->
+              addFunctionToResult(result, file as? PyFile, name, description.signature) { postProcessCompletion(it, name, description) }
             }
         }
       }
     }
 
-    private fun handlePrepare(result: CompletionResultSet, pyClass: PyClass, context: TypeEvalContext, signature: String) {
-      addMethodToResult(result, pyClass, context, PREPARE, signature) {
-        it.withTypeText("predefined")
-        it.withInsertHandler { context, _ ->
-          val function = PsiTreeUtil.getParentOfType(context.file.findElementAt(context.startOffset), PyFunction::class.java)
-
-          if (function != null && function.modifier != PyAstFunction.Modifier.CLASSMETHOD) {
-            PyUtil.addDecorator(function, "@${PyNames.CLASSMETHOD}")
+    private fun postProcessCompletion(lookupElementBuilder: LookupElementBuilder, name: String, description: PyNames.BuiltinDescription) =
+      lookupElementBuilder
+        .withTypeText("predefined")
+        .withInsertHandler { insertionContext, _ ->
+          WriteCommandAction.writeCommandAction(insertionContext.file).run<Exception> {
+            description.imports.forEach {
+              val dotIndex = it.lastIndexOf('.')
+              AddImportHelper.addFromImportStatement(
+                insertionContext.file,
+                it.take(dotIndex),
+                it.drop(dotIndex + 1),
+                null,
+                null,
+                null,
+              )
+            }
           }
         }
-      }
-    }
   }
 }

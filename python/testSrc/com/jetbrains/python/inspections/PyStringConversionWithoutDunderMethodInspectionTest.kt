@@ -10,8 +10,12 @@ class PyStringConversionWithoutDunderMethodInspectionTest : PyInspectionTestCase
 
   override fun getInspectionClass() = PyStringConversionWithoutDunderMethodInspection::class.java
 
+  fun `test None`() = doTestByText("""
+    f"{None}"  
+  """.trimIndent())
+
   fun `test generator`() = doTestByText("""
-    f"{<weak_warning descr="Type 'Generator' doesn't define '__str__', '__repr__', or '__format__', so the result might not be useful">(_ for _ in range(10))</weak_warning>}"
+    f"{<weak_warning descr="Type 'Generator[int, Any, None]' doesn't define '__str__', '__repr__', or '__format__', so the result might not be useful">(_ for _ in range(10))</weak_warning>}"
   """.trimIndent())
 
   fun `test function`() = doTestByText("""
@@ -21,12 +25,12 @@ class PyStringConversionWithoutDunderMethodInspectionTest : PyInspectionTestCase
 
   fun `test zip`() = doTestByText("""
     def f(): ...
-    f"{<weak_warning descr="Type 'zip' doesn't define '__str__', '__repr__', or '__format__', so the result might not be useful">zip()</weak_warning>}"
+    f"{<weak_warning descr="Type 'zip[Any]' doesn't define '__str__', '__repr__', or '__format__', so the result might not be useful">zip()</weak_warning>}"
   """.trimIndent())
 
   fun `test super`() = doTestByText("""
     def f(): ...
-    f"{<weak_warning descr="Type 'super' doesn't define '__str__', '__repr__', or '__format__', so the result might not be useful">super()</weak_warning>}"
+    f"{super()}"
   """.trimIndent())
 
   fun `test str call without dunder methods`() = doTestByText("""
@@ -92,8 +96,8 @@ class PyStringConversionWithoutDunderMethodInspectionTest : PyInspectionTestCase
     str(Derived())
     """.trimIndent())
 
+  @TestFor(issues = ["PY-91292"])
   fun `test should not warn for builtin types`() = doTestByText("""
-    # see default ignore list for explanation
     repr(42)
     repr((1, 2, 3))
     repr([1, 2, 3])
@@ -105,9 +109,8 @@ class PyStringConversionWithoutDunderMethodInspectionTest : PyInspectionTestCase
 
   @TestFor(issues = ["PY-89082"])
   fun `test should not warn for pathlib`() = doTestByText("""
-    # see default ignore list for explanation
     from pathlib import PurePath
-    
+
     repr(PurePath())
     str(PurePath())
     format(PurePath())
@@ -269,10 +272,26 @@ class PyStringConversionWithoutDunderMethodInspectionTest : PyInspectionTestCase
         str(ab)
     """.trimIndent())
 
-  fun `test derived from ignored`() = doTestByText("""
+  fun `test derived from a builtin`() = doTestByText("""
     class A(int): ...
     
     str(A())    
+    """.trimIndent())
+
+  // The MRO puts a base of the subclass after `zip`, so the walk must not stop at `zip`.
+  // A parameter gives the type `MyZip`, because `zip.__new__` in typeshed returns a plain `zip`.
+  @TestFor(issues = ["PY-89986"])
+  fun `test derived from a reported type and a base with dunder str`() = doTestByText("""
+    class Named:
+        def __str__(self): ...
+
+    class MyZip(zip, Named): ...
+
+    class PlainZip(zip): ...
+
+    def f(named: MyZip, plain: PlainZip):
+        str(named)
+        str(<weak_warning descr="Type 'PlainZip' doesn't define '__str__' or '__repr__', so the result might not be useful">plain</weak_warning>)
     """.trimIndent())
 
   fun `test quickfix add to ignored types removes warning`() {
@@ -320,5 +339,70 @@ class PyStringConversionWithoutDunderMethodInspectionTest : PyInspectionTestCase
     class ReprTrue: ...
 
     print(ReprTrue())
+    """.trimIndent())
+
+  @TestFor(issues = ["PY-91292"])
+  fun `test should not warn for a string literal`() = doTestByText("""
+    print("hello world")
+    str(123456)
+    f"{1.5}"
+    print([1, 2, 3])
+    """.trimIndent())
+
+  @TestFor(issues = ["PY-89218"])
+  fun `test should not warn for a regular expression`() = doTestByText("""
+    import re
+
+    regex = re.compile("")
+    print(regex)
+    print(regex.search(""))
+    """.trimIndent())
+
+  @TestFor(issues = ["PY-89986"])
+  fun `test should not warn for an ip address`() = doTestByText("""
+    from ipaddress import IPv4Address, IPv6Address
+
+    str(IPv4Address("127.0.0.1"))
+    str(IPv6Address("::1"))
+    """.trimIndent())
+
+  @TestFor(issues = ["PY-89483"])
+  fun `test dunder new call is not a string conversion`() = doTestByText("""
+    class A(str):
+        def __new__(cls):
+            return super().__new__(cls)
+
+    str.__new__(A)
+    """.trimIndent())
+
+  // A class declared in a .pyi stub usually omits __str__/__repr__/__format__ that the runtime .py defines.
+  @TestFor(issues = ["PY-89004"])
+  fun testStubMethodResolvedToImplementation() = doMultiFileTestByText("""
+      from mod import A, B
+    
+      class C(B): ...
+    
+      str(A())
+      str(B())
+      str(C())
+    """.trimIndent())
+
+  // A .pyi stub often flattens a private base that only the runtime .py declares.
+  @TestFor(issues = ["PY-89986"])
+  fun testStubHidesImplementationBase() = doMultiFileTestByText("""
+      from mod import A
+
+      str(A())
+    """.trimIndent())
+
+  @TestFor(issues = ["PY-89004"])
+  fun testStubMethodMissingInImplementation() = doMultiFileTestByText("""
+    from mod import A, B
+    
+    class C(B): ...
+    
+    str(<weak_warning descr="Type 'A' doesn't define '__str__' or '__repr__', so the result might not be useful">A()</weak_warning>)
+    str(<weak_warning descr="Type 'B' doesn't define '__str__' or '__repr__', so the result might not be useful">B()</weak_warning>)
+    str(<weak_warning descr="Type 'C' doesn't define '__str__' or '__repr__', so the result might not be useful">C()</weak_warning>)
     """.trimIndent())
 }

@@ -6,11 +6,13 @@ package com.intellij.platform.workspace.storage.testEntities.entities
 import com.intellij.platform.workspace.storage.EntitySource
 import com.intellij.platform.workspace.storage.EntityType
 import com.intellij.platform.workspace.storage.GeneratedCodeApiVersion
-import com.intellij.platform.workspace.storage.WorkspaceEntityBuilder
 import com.intellij.platform.workspace.storage.MutableEntityStorage
+import com.intellij.platform.workspace.storage.WorkspaceEntityBuilder
+import com.intellij.platform.workspace.storage.testEntities.entities.impl.ChildSingleSecondEntityImpl
 
 @GeneratedCodeApiVersion(3)
-interface ChildSingleSecondEntityBuilder : WorkspaceEntityBuilder<ChildSingleSecondEntity>, ChildSingleAbstractBaseEntityBuilder<ChildSingleSecondEntity> {
+interface ChildSingleSecondEntityBuilder : WorkspaceEntityBuilder<ChildSingleSecondEntity>,
+                                           ChildSingleAbstractBaseEntityBuilder<ChildSingleSecondEntity> {
   override var entitySource: EntitySource
   override var commonData: String
   override var parentEntity: ParentSingleAbEntityBuilder
@@ -19,6 +21,7 @@ interface ChildSingleSecondEntityBuilder : WorkspaceEntityBuilder<ChildSingleSec
 
 internal object ChildSingleSecondEntityType : EntityType<ChildSingleSecondEntity, ChildSingleSecondEntityBuilder>() {
   override val entityClass: Class<ChildSingleSecondEntity> get() = ChildSingleSecondEntity::class.java
+  override val entityImplBuilderClass: Class<*> get() = ChildSingleSecondEntityImpl.Builder::class.java
   operator fun invoke(
     commonData: String,
     secondData: String,

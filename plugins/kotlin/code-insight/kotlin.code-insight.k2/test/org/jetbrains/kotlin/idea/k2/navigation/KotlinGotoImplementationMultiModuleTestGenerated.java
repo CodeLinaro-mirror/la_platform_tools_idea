@@ -1,9 +1,8 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package org.jetbrains.kotlin.idea.k2.navigation;
 
 import com.intellij.testFramework.TestDataPath;
-import org.jetbrains.kotlin.idea.base.plugin.KotlinPluginMode;
 import org.jetbrains.kotlin.idea.base.test.TestRoot;
 import org.jetbrains.kotlin.idea.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils;
@@ -21,14 +20,13 @@ import org.jetbrains.kotlin.idea.navigation.AbstractKotlinGotoImplementationMult
 @RunWith(JUnit3RunnerWithInners.class)
 @TestMetadata("../../idea/tests/testData/navigation/implementations/multiModule")
 public class KotlinGotoImplementationMultiModuleTestGenerated extends AbstractKotlinGotoImplementationMultiModuleTest {
-    @java.lang.Override
-    @org.jetbrains.annotations.NotNull
-    public final KotlinPluginMode getPluginMode() {
-        return KotlinPluginMode.K2;
-    }
-
     private void runTest(String testDataFilePath) throws Exception {
         KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
+    }
+
+    @TestMetadata("actualClass")
+    public void testActualClass() throws Exception {
+        runTest("../../idea/tests/testData/navigation/implementations/multiModule/actualClass/");
     }
 
     @TestMetadata("actualFunction")
@@ -49,6 +47,11 @@ public class KotlinGotoImplementationMultiModuleTestGenerated extends AbstractKo
     @TestMetadata("expectClassFun")
     public void testExpectClassFun() throws Exception {
         runTest("../../idea/tests/testData/navigation/implementations/multiModule/expectClassFun/");
+    }
+
+    @TestMetadata("expectClassMultiplePlatforms")
+    public void testExpectClassMultiplePlatforms() throws Exception {
+        runTest("../../idea/tests/testData/navigation/implementations/multiModule/expectClassMultiplePlatforms/");
     }
 
     @TestMetadata("expectClassProperty")

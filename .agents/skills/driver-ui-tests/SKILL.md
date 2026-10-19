@@ -1,6 +1,6 @@
 ---
 name: driver-ui-tests
-description: Guide for writing UI tests using IDE Starter and UI Driver frameworks. Use when creating or modifying UI tests.
+description: Guide for writing UI tests using IDE Starter and UI Driver frameworks. Use when creating or modifying UI tests or when user ask to implement test case from testops.
 ---
 
 # Driver UI Tests Guide
@@ -108,6 +108,18 @@ val detailPane = ui.x { byClass("PluginDetailsPageComponent") }
 detailPane.x { byClass("InstallButton") }.click()
 ```
 
+## Finding toolbar / title-bar actions
+
+Toolbar and tool-window title actions that show their text (`presentation.putClientProperty(ActionUtil.SHOW_TEXT_IN_TOOLBAR, true)`) render as **`ActionButtonWithText`**, not `ActionButton`. The SDK `actionButton(text)` helper searches `@class='ActionButton'` only, so it silently never matches them. Match by visible text across both variants:
+
+```kotlin
+// Matches both icon-only and text-bearing action buttons
+fun Finder.statusButton(text: String) =
+  x("//div[(@class='ActionButtonWithText' or @class='ActionButton') and @visible_text='$text']")
+```
+
+The visible text is itself a reliable assertion signal — you usually do not need to read the backing service/state.
+
 ## Keyboard Interactions
 
 ```kotlin
@@ -118,13 +130,65 @@ ui.keyboard { hotKey(KeyEvent.VK_META, KeyEvent.VK_COMMA) }  // Cmd+,
 
 ## Writing Tests
 
+### Required Annotations
+
+Every UI test **must** have the following annotations at the class level:
+
+| Annotation | Purpose | TestOps Custom Field |
+|------------|---------|---------------------|
+| `@Subsystems.*` | Categorizes the test by subsystem | `Subsystem` |
+| `@Features.*` | Specifies the feature being tested | `Feature` |
+| `@Components.*` | Identifies the component under test | `Component` |
+
+**For tests linked to TestOps test cases**, also add:
+- `@AllureId("test_case_id")` - Links the test to the TestOps test case ID
+
+The annotation values should match the corresponding TestOps custom fields (Subsystem, Feature, Component).
+
+**Available annotations:** See `tests/intellij.ide.starter.extended.allure/src/com/intellij/ide/starter/extended/allure/Annotations.kt`
+
+**Example with TestOps test case:**
+
+```kotlin
+@Subsystems.Java
+@Features.Completion
+@Components.Editor
+class MyTestFromTestOps {
+
+    @Test
+    @AllureId("318541")  // Required when test case exists in TestOps
+    fun `my test from testops`(testInfo: TestInfo) {
+        // ...
+    }
+}
+```
+
+**Example for new test (not yet in TestOps):**
+
+```kotlin
+@Subsystems.UI
+@Features.PluginManager
+@Components.Miscellaneous
+class MyNewTest {
+
+    @Test
+    fun `my new test`(testInfo: TestInfo) {
+        // ...
+    }
+}
+```
+
 ### Basic Test Structure
 
 ```kotlin
+@Subsystems.Java
+@Features.Completion
+@Components.Editor
 class MyTest {
     val testCase = TestCase(IdeProductProvider.IU, myProject)
 
     @Test
+    @AllureId("123456")  // Required if test case exists in TestOps
     fun `my test name`(testInfo: TestInfo) {
         val context = Starter.newContext(testName = "TestName", testCase = testCase)
 
@@ -134,7 +198,7 @@ class MyTest {
 
         context.runIdeTest(testName = testInfo.displayName) {
             waitForIndicators(5.minutes)  // Wait for indexing to complete
-            
+
             step("Step description") {
                 // Test actions here
             }
@@ -198,6 +262,38 @@ waitFor("text to appear", 10.seconds) {
 }
 ```
 
+## Reading IDE state via `@Remote`
+
+To read state from a service or model in the IDE under test, declare a `@Remote` interface and call it via `driver.service(...)` / `driver.utility(...)`.
+
+- **Plugin classes need the `plugin` field.** Without it the class resolves against the platform/core classloader → `DriverIllegalStateException: No such class '<fqn>' in plugin null`.
+  - Class in a plugin **content module**: `@Remote("<fqn>", plugin = "<plugin.id>/<content.module>")` (e.g. `com.intellij.figma/intellij.figma.core`).
+  - Class in the **main / embedded** plugin module: `@Remote("<fqn>", plugin = "<plugin.id>")`.
+- **Method dispatch resolves against the DECLARED `@Remote` class, not the runtime object.** A method declared on a sealed/abstract supertype ref is "not found" at runtime — declare it on the concrete subtype, or expose it via a top-level type. (The `jvm-class-name` injection also cannot resolve a nested `Foo$Bar` name → a cosmetic "Cannot resolve class" inspection error; prefer top-level types.)
+- Add the plugin module as a TEST dependency so the FQNs resolve for code-insight.
+
+```kotlin
+@Remote("com.example.MyAppService", plugin = "com.example.myplugin/com.example.myplugin.core")
+interface MyAppServiceRef {
+  fun getConfig(): MyConfigRef
+}
+// driver.service(MyAppServiceRef::class).getConfig()...
+```
+
+## Enabling a registry flag at startup
+
+Seed a registry key before the IDE starts with a `-D` VM option — `RegistryValue` falls back to `System.getProperty`. Required when a startup `ProjectActivity` or `ToolWindowFactory.shouldBeAvailable` reads the flag (setting it via the driver after start is too late):
+
+```kotlin
+context.applyVMOptionsPatch {
+  addSystemProperty("my.feature.enabled", "true")
+}
+```
+
+## Driving a real browser (Playwright)
+
+Playwright runs in the **test JVM**, alongside the driver-driven IDE (both on localhost) — useful when the IDE's client is a web app/plugin. `page.onConsoleMessage { ... }` captures the page **and its iframes** (a strong diagnostic). Put custom screenshots/files under `context.paths.testHome.resolve("log")` so they are collected as test artifacts. See `plugins/figma/integrationTests` for a full example.
+
 ## Running Tests from Terminal
 
 Driver tests require a fully built IDE. There are several ways to run them:
@@ -209,19 +305,19 @@ The `tests.cmd` script builds the IDE from sources and runs tests. **Recommended
 Example:
 ```bash
 ./tests.cmd \
-  -Dintellij.build.test.patterns=com.intellij.driver.tests.idea.java.FindAndGoToTest \
-  -Dintellij.build.test.main.module=intellij.driver.tests
+  --module intellij.driver.tests \
+  --test com.intellij.driver.tests.idea.java.FindAndGoToTest
 ```
 
 **Key parameters:**
-- `-Dintellij.build.test.patterns` - fully qualified test class name (or pattern)
-- `-Dintellij.build.test.main.module=intellij.driver.tests` - **required** for driver tests
+- `--test` - fully qualified test class name (or pattern)
+- `--module intellij.driver.tests` - **required** for driver tests
 
 **Example with specific test:**
 ```bash
 ./tests.cmd \
-  -Dintellij.build.test.patterns=com.intellij.driver.tests.idea.ultimate.httpclient.BuiltInHttpClientBrotliCompressionUiTest \
-  -Dintellij.build.test.main.module=intellij.driver.tests
+  --module intellij.driver.tests \
+  --test com.intellij.driver.tests.idea.ultimate.httpclient.BuiltInHttpClientBrotliCompressionUiTest
 ```
 
 ## Debugging Test Failures

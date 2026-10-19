@@ -42,6 +42,7 @@ import com.intellij.util.PlatformIcons;
 import com.intellij.util.containers.ComparatorUtil;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.update.UiNotifyConnector;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -477,14 +478,6 @@ public final class SwingHelper {
    * @deprecated use {@link com.intellij.ui.components.BrowserLink} instead
    */
   @Deprecated(forRemoval = true)
-  public static @NotNull HyperlinkLabel createWebHyperlink(@NlsSafe @NotNull String url) {
-    return createWebHyperlink(url, url);
-  }
-
-  /**
-   * @deprecated use {@link com.intellij.ui.components.BrowserLink} instead
-   */
-  @Deprecated(forRemoval = true)
   public static @NotNull HyperlinkLabel createWebHyperlink(@NlsContexts.LinkLabel @NotNull String text, @NotNull String url) {
     HyperlinkLabel hyperlink = new HyperlinkLabel(text);
     hyperlink.setHyperlinkTarget(url);
@@ -788,11 +781,13 @@ public final class SwingHelper {
     });
   }
 
+  @ApiStatus.Internal
   public interface WidthCalculator {
     int stringWidth(final String s);
     int charWidth(final char c);
   }
 
+  @ApiStatus.Internal
   public static @Nls String truncateStringWithEllipsis(final @Nls @NotNull String text, final int maxWidth, final WidthCalculator fm) {
     final int error = fm.stringWidth(ERROR_STR);
     final int wholeWidth = fm.stringWidth(text) + error;

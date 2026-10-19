@@ -1,5 +1,5 @@
 from collections.abc import Iterable, Sequence
-from typing import Any, Generic, Literal, TypeVar
+from typing import Any, Generic, Literal
 
 from django.db.backends.base.base import BaseDatabaseWrapper
 from django.db.models.expressions import Combinable, Expression, Func
@@ -8,7 +8,7 @@ from django.db.models.query_utils import RegisterLookupMixin
 from django.db.models.sql.compiler import SQLCompiler, _AsSqlType, _ParamT
 from django.utils.datastructures import OrderedSet
 from django.utils.functional import cached_property
-from typing_extensions import override
+from typing_extensions import TypeVar, override
 
 _T = TypeVar("_T", default=Any)
 
@@ -22,7 +22,7 @@ class Lookup(Expression, Generic[_T]):
     def __init__(self, lhs: Any, rhs: Any) -> None: ...
     def apply_bilateral_transforms(self, value: Expression) -> Expression: ...
     def batch_process_rhs(
-        self, compiler: SQLCompiler, connection: BaseDatabaseWrapper, rhs: OrderedSet | None = None
+        self, compiler: SQLCompiler, connection: BaseDatabaseWrapper, rhs: OrderedSet[Any] | None = None
     ) -> tuple[list[str], list[str]]: ...
     @override
     def get_source_expressions(self) -> list[Expression]: ...
@@ -39,7 +39,7 @@ class Lookup(Expression, Generic[_T]):
     def as_oracle(self, compiler: SQLCompiler, connection: BaseDatabaseWrapper) -> _AsSqlType: ...
     @cached_property
     @override
-    def output_field(self) -> BooleanField: ...
+    def output_field(self) -> BooleanField[Any, Any]: ...
     @property
     @override
     def identity(self) -> tuple[type[Lookup], Any, Any]: ...
@@ -72,7 +72,7 @@ class FieldGetDbPrepValueIterableMixin(FieldGetDbPrepValueMixin):
         self, compiler: SQLCompiler, connection: BaseDatabaseWrapper, sql: str, param: Any
     ) -> _AsSqlType: ...
     def batch_process_rhs(
-        self, compiler: SQLCompiler, connection: BaseDatabaseWrapper, rhs: OrderedSet | None = None
+        self, compiler: SQLCompiler, connection: BaseDatabaseWrapper, rhs: OrderedSet[Any] | None = None
     ) -> tuple[list[str], list[str]]: ...
 
 class PostgresOperatorLookup(Lookup[_T]):
@@ -105,13 +105,15 @@ class IntegerGreaterThanOrEqual(IntegerFieldOverflow, IntegerFieldFloatRounding,
 class IntegerLessThan(IntegerFieldOverflow, IntegerFieldFloatRounding, LessThan[int | float]): ...
 class IntegerLessThanOrEqual(IntegerFieldOverflow, LessThanOrEqual[int | float]): ...
 
-class In(FieldGetDbPrepValueIterableMixin, BuiltinLookup[_T]):
+class In(FieldGetDbPrepValueIterableMixin, BuiltinLookup[Iterable[_T]]):
     def split_parameter_list_as_sql(self, compiler: SQLCompiler, connection: BaseDatabaseWrapper) -> Any: ...
 
 class PatternLookup(BuiltinLookup[str]):
     param_pattern: str
     @override
     def process_rhs(self, qn: SQLCompiler, connection: BaseDatabaseWrapper) -> _AsSqlType: ...
+    @property
+    def is_simple_lookup(self) -> bool: ...
 
 class Contains(PatternLookup): ...
 class IContains(Contains): ...

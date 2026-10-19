@@ -2,18 +2,24 @@
 
 package org.jetbrains.kotlin.idea.coverage
 
-import com.intellij.openapi.application.runWriteAction
-import com.intellij.openapi.util.io.FileUtil
+import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.vfs.VirtualFileManager
 import org.jetbrains.kotlin.idea.test.KotlinLightCodeInsightFixtureTestCase
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils
 import org.jetbrains.kotlin.psi.KtFile
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.Path
+import java.util.Comparator
+import java.util.jar.JarEntry
+import java.util.jar.JarOutputStream
 
 abstract class AbstractKotlinCoverageOutputFilesTest : KotlinLightCodeInsightFixtureTestCase() {
     fun doTest(unused: String) {
         val kotlinFile = myFixture.configureByFile(fileName()) as KtFile
-        val outDir = myFixture.tempDirFixture.findOrCreateDir("coverageTestOut")
+        val outDirPath = Files.createTempDirectory("coverageTestOut")
+        val jarPath = Files.createTempFile("coverageTestOut", ".jar")
 
         val testFile = dataFile()
 
@@ -21,30 +27,53 @@ abstract class AbstractKotlinCoverageOutputFilesTest : KotlinLightCodeInsightFix
             val classesFile = File(testFile.parent, testFile.nameWithoutExtension + ".classes.txt")
             val expectedFile = File(testFile.parent, testFile.nameWithoutExtension + ".expected.txt")
 
-            for (line in FileUtil.loadLines(classesFile)) {
-                runWriteAction {
-                    createEmptyFile(outDir, line)
-                }
+            for (line in Files.readAllLines(classesFile.toPath())) {
+                createEmptyFile(outDirPath, line)
             }
 
-            val actualClasses = KotlinCoverageExtension.collectGeneratedClassQualifiedNames(outDir, kotlinFile)
-            KotlinTestUtils.assertEqualsToFile(expectedFile, actualClasses!!.joinToString("\n"))
+            val outDir = VirtualFileManager.getInstance().refreshAndFindFileByUrl(VfsUtilCore.pathToUrl(outDirPath.toString()))!!
+            assertGeneratedClassNames(outDir, kotlinFile, expectedFile)
+
+            createJarFromDirectory(outDirPath, jarPath)
+            val jarRootUrl = "jar://" + jarPath.toString().replace('\\', '/') + "!/"
+            val jarRoot = VirtualFileManager.getInstance().refreshAndFindFileByUrl(jarRootUrl)!!
+            assertGeneratedClassNames(jarRoot, kotlinFile, expectedFile)
         } finally {
-            runWriteAction {
-                outDir.delete(null)
-            }
+            deleteRecursively(outDirPath)
+            Files.deleteIfExists(jarPath)
         }
     }
 }
 
-private fun createEmptyFile(dir: VirtualFile, relativePath: String) {
-    var currentDir = dir
-    val segments = relativePath.split('/')
-    segments.forEachIndexed { i, s ->
-        if (i < segments.size - 1) {
-            currentDir = currentDir.createChildDirectory(null, s)
-        } else {
-            currentDir.createChildData(null, s)
+private fun assertGeneratedClassNames(outputRoot: VirtualFile, kotlinFile: KtFile, expectedFile: File) {
+    val actualClasses = KotlinCoverageExtension.collectGeneratedClassQualifiedNames(outputRoot, kotlinFile)
+    KotlinTestUtils.assertEqualsToFile(expectedFile, actualClasses.sortedBy { it.replace('$', '.') }.joinToString("\n"))
+}
+
+private fun createJarFromDirectory(sourceDir: Path, targetJar: Path) {
+    JarOutputStream(Files.newOutputStream(targetJar)).use { output ->
+        Files.walk(sourceDir).use { paths ->
+            paths
+                .filter { Files.isRegularFile(it) }
+                .forEach { file ->
+                    val relativePath = sourceDir.relativize(file).toString().replace('\\', '/')
+                    output.putNextEntry(JarEntry(relativePath))
+                    Files.copy(file, output)
+                    output.closeEntry()
+                }
         }
+    }
+}
+
+private fun createEmptyFile(dir: Path, relativePath: String) {
+    val file = dir.resolve(relativePath)
+    Files.createDirectories(file.parent)
+    Files.createFile(file)
+}
+
+private fun deleteRecursively(path: Path) {
+    if (!Files.exists(path)) return
+    Files.walk(path).use { children ->
+        children.sorted(Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) }
     }
 }

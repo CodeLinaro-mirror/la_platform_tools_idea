@@ -55,7 +55,6 @@ import com.intellij.openapi.ui.popup.util.PopupUtil
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.NlsContexts
-import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.wm.ToolWindowAnchor
 import com.intellij.platform.ide.CoreUiCoroutineScopeHolder
 import com.intellij.ui.AnimatedIcon
@@ -555,6 +554,12 @@ open class ActionToolbarImpl @JvmOverloads constructor(
       }
       presentation.putClientProperty(CustomComponentAction.COMPONENT_KEY, customComponent)
       ClientProperty.put(customComponent, CustomComponentAction.ACTION_KEY, anAction)
+      // A custom component is named the same way an ActionButton is, so one action-side declaration serves
+      // both kinds of control and a surface that swaps between them stays addressable. The action's own
+      // createCustomComponent still wins: it names the component it built, and this only fills in the gap.
+      ActionUtil.getComponentName(anAction, presentation)?.let { componentName ->
+        if (customComponent.name == null) customComponent.name = componentName
+      }
       action.updateCustomComponent(customComponent, presentation)
     }
 
@@ -1132,7 +1137,7 @@ open class ActionToolbarImpl @JvmOverloads constructor(
       else {
         val icon = AnimatedIcon.Default.INSTANCE
         label.setIcon(EmptyIcon.create(icon.iconWidth, icon.iconHeight))
-        EdtScheduler.getInstance().schedule(Registry.intValue("actionSystem.toolbar.progress.icon.delay", 500), CoroutineSupport.UiDispatcherKind.RELAX) {
+        EdtScheduler.getInstance().schedule(500, CoroutineSupport.UiDispatcherKind.RELAX) {
           label.setIcon(icon)
         }
       }

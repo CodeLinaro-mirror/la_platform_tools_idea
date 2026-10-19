@@ -10,13 +10,21 @@
 
   <dependencies>
     <plugin id="com.intellij.modules.lang"/>
-    <module name="intellij.xml.psi.impl"/>
+    <!-- region Generated dependencies - run `Generate Product Layouts` to regenerate -->
+    <!-- endregion -->
   </dependencies>
 
   <content namespace="jetbrains">
+    <module name="intellij.platform.images.jcef" loading="optional"/>
     <module name="intellij.platform.images.copyright"/>
     <module name="intellij.platform.images.xdebugger"/>
   </content>
+
+  <extensionPoints>
+    <extensionPoint qualifiedName="org.intellij.images.svgImageViewerProvider"
+                    interface="org.intellij.images.editor.impl.SvgImageViewerProvider"
+                    dynamic="true"/>
+  </extensionPoints>
 
   <extensions defaultExtensionNs="com.intellij">
     <fileEditorProvider implementation="org.intellij.images.editor.impl.ImageFileEditorProvider"/>
@@ -34,7 +42,8 @@
     <lang.parserDefinition language="SVG" implementationClass="org.intellij.images.fileTypes.impl.SvgParserDefinition"/>
     <fileLookupInfoProvider implementation="org.intellij.images.completion.ImageLookupInfoProvider"/>
     <documentationProvider implementation="org.intellij.images.fileTypes.ImageDocumentationProvider"/>
-    <ApplicationLoadListener implementation="org.intellij.images.util.imageio.ImageReaderSpiRegistrar"/>
+    <imageReaderWriterSpi type="read" implementationClass="org.intellij.images.util.imageio.CommonsImagingImageReaderSpi"/>
+    <imageReaderWriterSpi type="read" implementationClass="org.intellij.images.util.imageio.svg.SvgImageReaderSpi"/>
 
     <filePasteProvider implementation="org.intellij.images.ide.ImagePasteProvider" order="last"/>
 
@@ -50,6 +59,7 @@
     <registryKey key="ide.images.sci.mode.channels.operations" defaultValue="true"
                  description="Show combobox for image channels operations"/>
     <statistics.counterUsagesCollector implementationClass="org.intellij.images.scientific.statistics.ScientificImageActionsCollector"/>
+    <applicationSettings service="org.intellij.images.options.impl.OptionsManagerImpl"/>
   </extensions>
 
   <actions>

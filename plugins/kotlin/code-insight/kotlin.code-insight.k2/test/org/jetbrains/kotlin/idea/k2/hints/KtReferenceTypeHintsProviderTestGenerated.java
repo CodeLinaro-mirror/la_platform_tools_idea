@@ -1,9 +1,8 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package org.jetbrains.kotlin.idea.k2.hints;
 
 import com.intellij.testFramework.TestDataPath;
-import org.jetbrains.kotlin.idea.base.plugin.KotlinPluginMode;
 import org.jetbrains.kotlin.idea.base.test.TestRoot;
 import org.jetbrains.kotlin.idea.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils;
@@ -20,12 +19,6 @@ import org.junit.runner.RunWith;
 @RunWith(JUnit3RunnerWithInners.class)
 @TestMetadata("../../idea/tests/testData/codeInsight/hints/types")
 public class KtReferenceTypeHintsProviderTestGenerated extends AbstractKtReferenceTypeHintsProviderTest {
-    @java.lang.Override
-    @org.jetbrains.annotations.NotNull
-    public final KotlinPluginMode getPluginMode() {
-        return KotlinPluginMode.K2;
-    }
-
     private void runTest(String testDataFilePath) throws Exception {
         KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
     }
@@ -53,6 +46,11 @@ public class KtReferenceTypeHintsProviderTestGenerated extends AbstractKtReferen
     @TestMetadata("ConstInitializerType.kt")
     public void testConstInitializerType() throws Exception {
         runTest("../../idea/tests/testData/codeInsight/hints/types/ConstInitializerType.kt");
+    }
+
+    @TestMetadata("ConstructorLikeFunctionCall.kt")
+    public void testConstructorLikeFunctionCall() throws Exception {
+        runTest("../../idea/tests/testData/codeInsight/hints/types/ConstructorLikeFunctionCall.kt");
     }
 
     @TestMetadata("ConstructorWithExplicitTypeParametersType.kt")
@@ -158,6 +156,11 @@ public class KtReferenceTypeHintsProviderTestGenerated extends AbstractKtReferen
     @TestMetadata("ImportedEnumEntry.kt")
     public void testImportedEnumEntry() throws Exception {
         runTest("../../idea/tests/testData/codeInsight/hints/types/ImportedEnumEntry.kt");
+    }
+
+    @TestMetadata("InnerClassWithGenerics.kt")
+    public void testInnerClassWithGenerics() throws Exception {
+        runTest("../../idea/tests/testData/codeInsight/hints/types/InnerClassWithGenerics.kt");
     }
 
     @TestMetadata("JavaFQName.kt")

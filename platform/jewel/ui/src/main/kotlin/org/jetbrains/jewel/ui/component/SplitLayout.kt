@@ -35,13 +35,13 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import java.awt.Cursor
 import kotlin.math.roundToInt
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.Orientation.Horizontal
 import org.jetbrains.jewel.ui.Orientation.Vertical
 import org.jetbrains.jewel.ui.component.styling.DividerStyle
 import org.jetbrains.jewel.ui.theme.dividerStyle
-import org.jetbrains.skiko.Cursor
 
 /**
  * A customizable horizontal split layout Composable function that allows you to divide the available space between two
@@ -52,11 +52,11 @@ import org.jetbrains.skiko.Cursor
  * @param second The Composable function representing the second component, that will be placed on the other side of the
  *   divider, typically on the right or below.
  * @param modifier The modifier to be applied to the layout.
+ * @param dividerStyle The divider style to be applied to the layout.
  * @param draggableWidth The width of the draggable area around the divider. This is a invisible, wider area around the
  *   divider that can be dragged by the user to resize the panes.
  * @param firstPaneMinWidth The minimum size of the first component.
  * @param secondPaneMinWidth The minimum size of the second component.
- * @param dividerStyle The divider style to be applied to the layout.
  * @param state The [SplitLayoutState] object that will be used to store the split state.
  */
 @Composable
@@ -92,11 +92,11 @@ public fun HorizontalSplitLayout(
  * @param second The Composable function representing the second component, that will be placed on the other side of the
  *   divider, typically on the right or below.
  * @param modifier The modifier to be applied to the layout.
+ * @param dividerStyle The divider style to be applied to the layout.
  * @param draggableWidth The width of the draggable area around the divider. This is a invisible, wider area around the
  *   divider that can be dragged by the user to resize the panes.
  * @param firstPaneMinWidth The minimum size of the first component.
  * @param secondPaneMinWidth The minimum size of the second component.
- * @param dividerStyle The divider style to be applied to the layout.
  * @param state The [SplitLayoutState] object that will be used to store the split state.
  */
 @Composable
@@ -225,11 +225,11 @@ private fun SplitLayoutImpl(
             )
 
             Box(
-                Modifier.let { modifier ->
+                Modifier.let { dragModifier ->
                         if (strategy.isHorizontal()) {
-                            modifier.fillMaxHeight().width(draggableWidth)
+                            dragModifier.fillMaxHeight().width(draggableWidth)
                         } else {
-                            modifier.fillMaxWidth().height(draggableWidth)
+                            dragModifier.fillMaxWidth().height(draggableWidth)
                         }
                     }
                     .draggable(

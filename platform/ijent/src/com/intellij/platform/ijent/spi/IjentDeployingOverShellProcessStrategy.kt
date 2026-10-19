@@ -1,19 +1,17 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.platform.ijent.spi
 
-import com.intellij.execution.CommandLineUtil.posixQuote
-import com.intellij.openapi.diagnostic.debug
-import com.intellij.openapi.diagnostic.logger
-import com.intellij.openapi.diagnostic.trace
-import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.platform.eel.EelPlatform
+import com.intellij.platform.eel.SafeDeferred
+import com.intellij.platform.ijent.IjentLog
+import com.intellij.platform.ijent.IjentScope
 import com.intellij.platform.ijent.IjentUnavailableException
+import com.intellij.platform.ijent.ParentOfIjentScopes
 import com.intellij.platform.ijent.getIjentGrpcArgv
 import com.intellij.platform.ijent.tcp.TcpDeployInfo
 import com.intellij.util.io.copyToAsync
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.DelicateCoroutinesApi
@@ -32,20 +30,15 @@ import java.io.InputStream
 import java.nio.file.Path
 import kotlin.io.path.fileSize
 import kotlin.io.path.inputStream
-import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.measureTime
 
 // The timeout is based on internal measurements done on CI (max: 21.5s, p98: 12.2s)
 private const val SHELL_INIT_TIMEOUT_MILLS = "30000"
 
-private val EP_NAME = ExtensionPointName<IjentDeploymentListener>("com.intellij.ijent.deploymentListener")
-
-interface IjentDeploymentListener {
-  fun shellInitialized(initializationTime: Duration)
-}
-
-abstract class IjentDeployingOverShellProcessStrategy(scope: CoroutineScope, currentDispatcher: CoroutineDispatcher) : IjentControlledEnvironmentDeployingStrategy() {
+abstract class IjentDeployingOverShellProcessStrategy(
+  scope: ParentOfIjentScopes,
+  currentDispatcher: CoroutineDispatcher,
+) : IjentControlledEnvironmentDeployingStrategy() {
   protected abstract val ijentLabel: String
 
   /**
@@ -54,7 +47,16 @@ abstract class IjentDeployingOverShellProcessStrategy(scope: CoroutineScope, cur
    */
   protected abstract suspend fun mapPath(path: Path): String?
 
-  protected abstract suspend fun createShellProcess(): Process
+  protected abstract suspend fun createShellProcessFacade(ijentProcessScope: IjentScope): IjentSessionProcessMediator.ProcessFacade
+
+  abstract class JavaProcessBasedStrategy(protected val scope: ParentOfIjentScopes, currentDispatcher: CoroutineDispatcher) :
+    IjentDeployingOverShellProcessStrategy(scope, currentDispatcher) {
+    protected abstract suspend fun createShellProcess(): Process
+
+    override suspend fun createShellProcessFacade(ijentProcessScope: IjentScope): IjentSessionProcessMediator.ProcessFacade {
+      return IjentSessionProcessMediator.JavaProcessFacade(ijentProcessScope, createShellProcess())
+    }
+  }
 
   protected sealed interface ExecutionStrategy {
     data object Default : ExecutionStrategy
@@ -65,32 +67,32 @@ abstract class IjentDeployingOverShellProcessStrategy(scope: CoroutineScope, cur
 
   private val myContext: Deferred<DeployingContextAndShell> = run {
     var createdShellProcess: ShellProcessWrapper? = null
-    val context = scope.async(currentDispatcher, start = CoroutineStart.LAZY) {
-      val shellProcess = ShellProcessWrapper(IjentSessionProcessMediator.create(
+    val context = scope.s.async(currentDispatcher, start = CoroutineStart.LAZY) {
+      val ijentProcessScope = IjentSessionMediatorUtils.createProcessScope(scope, ijentLabel, LOG)
+      val processFacade = createShellProcessFacade(ijentProcessScope)
+      val mediator = IjentSessionProcessMediator.create(
         parentScope = scope,
-        process = createShellProcess(),
+        ijentProcessScope = ijentProcessScope,
+        process = processFacade,
         ijentLabel = ijentLabel,
         isExpectedProcessExit = ::isExpectedProcessExit,
-      ))
+      )
+      val shellProcess = ShellProcessWrapper(processFacade, mediator)
       createdShellProcess = shellProcess
       createDeployingContext(shellProcess.apply {
-        val initializationTime = measureTime {
-          val timeout = System.getProperty("ijent.shell.initialization.timeout", SHELL_INIT_TIMEOUT_MILLS).toInt()
-          withTimeout(timeout.milliseconds) {
-            val debugOption = if (LOG.isDebugEnabled) "x" else ""
-            write("set -e$debugOption")
-            ensureActive()
-            filterOutBanners()
-          }
+        val timeout = System.getProperty("ijent.shell.initialization.timeout", SHELL_INIT_TIMEOUT_MILLS).toInt()
+        withTimeout(timeout.milliseconds) {
+          val debugOption = if (LOG.isDebugEnabled) "x" else ""
+          write("set -e$debugOption")
+          ensureActive()
+          filterOutBanners()
         }
-
-        EP_NAME.forEachExtensionSafe { extension -> extension.shellInitialized(initializationTime) }
       })
     }
     context
   }
 
-  private val myTargetPlatform = scope.async(currentDispatcher, start = CoroutineStart.LAZY) {
+  private val myTargetPlatform = scope.s.async(currentDispatcher, start = CoroutineStart.LAZY) {
     getMyContext().execCommand {
       getTargetPlatform()
     }
@@ -138,11 +140,9 @@ abstract class IjentDeployingOverShellProcessStrategy(scope: CoroutineScope, cur
 
   override suspend fun getConnectionStrategy(): IjentConnectionStrategy = IjentConnectionStrategy.Default
 
-  internal class ShellProcessWrapper(private var mediator: IjentSessionProcessMediator?) {
+  internal class ShellProcessWrapper(private val processFacade: IjentSessionProcessMediator.ProcessFacade, private var mediator: IjentSessionProcessMediator?) {
     @OptIn(DelicateCoroutinesApi::class)
     suspend fun write(data: String) {
-      val process = mediator!!.process
-
       @Suppress("NAME_SHADOWING")
       val data = if (data.endsWith("\n")) data else "$data\n"
       LOG.debug {
@@ -150,9 +150,9 @@ abstract class IjentDeployingOverShellProcessStrategy(scope: CoroutineScope, cur
         "Executing a script inside the shell: $debugData"
       }
       withContext(Dispatchers.IO) {
-        process.outputStream.write(data.toByteArray())
+        processFacade.outputStream.write(data.toByteArray())
         ensureActive()
-        process.outputStream.flush()
+        processFacade.outputStream.flush()
         ensureActive()
       }
     }
@@ -161,14 +161,18 @@ abstract class IjentDeployingOverShellProcessStrategy(scope: CoroutineScope, cur
     suspend fun readLineWithoutBuffering(): String =
       withContext(Dispatchers.IO) {
         val buffer = StringBuilder()
-        val stream = mediator!!.process.inputStream
+        val stream = processFacade.inputStream
         while (true) {
           ensureActive()
           while (stream.available() == 0) {
-            if (mediator!!.processExit.isCompleted) {
-              throw IOException("Shell process exited instead of reading a line.")
+            when (mediator!!.processExit.state) {
+              is SafeDeferred.State.Finished -> {
+                throw IOException("Shell process exited instead of reading a line.")
+              }
+              SafeDeferred.State.Active -> {
+                delay(1.milliseconds)
+              }
             }
-            delay(1.milliseconds)
           }
           val c = stream.read()
           if (c < 0 || c == '\n'.code) {
@@ -183,19 +187,18 @@ abstract class IjentDeployingOverShellProcessStrategy(scope: CoroutineScope, cur
       }
 
     suspend fun copyDataFrom(stream: InputStream) {
-      val process = mediator!!.process
       withContext(Dispatchers.IO) {
-        stream.copyToAsync(process.outputStream)
+        stream.copyToAsync(processFacade.outputStream)
         ensureActive()
-        process.outputStream.flush()
+        processFacade.outputStream.flush()
       }
     }
 
     @OptIn(InternalCoroutinesApi::class)
     suspend fun destroyForciblyAndGetError(): Throwable {
-      mediator!!.process.destroyForcibly()
+      processFacade.destroyForcibly()
       try {
-        val job = mediator!!.ijentProcessScope.coroutineContext.job
+        val job = mediator!!.ijentProcessScope.s.coroutineContext.job
         job.join()
         throw job.getCancellationException()
       }
@@ -474,4 +477,18 @@ private suspend fun DeployingContextAndShell.execIjentWithTcp(remotePathToBinary
  * we see the situation of compiling a shell with a problematic version and increased global buffer as improbable.
  */
 private val BUGGY_DASH_BUFFER_FILLER: String get() = "\n".repeat(8192)
-private val LOG = logger<IjentDeployingOverShellProcessStrategy>()
+private val LOG = IjentLog.getInstance<IjentDeployingOverShellProcessStrategy>()
+
+private val SHELL_UNSAFE_CHARACTERS: Set<Char> = setOf(
+  '|', '&', ';', '<', '>', '(', ')', '$', '`', '\\', '"', '\'', ' ', '\t', '\n', '*', '?', '[', '#', '~', '=', '%',
+)
+
+/**
+ * Wraps [argument] in single quotes for safe use as a single token in a POSIX shell command line, escaping any
+ * embedded single quote as `'"'"'`. Returns [argument] unchanged when it has no shell-unsafe characters.
+ */
+private fun posixQuote(argument: String): String =
+  if (argument.isEmpty() || argument.any { it in SHELL_UNSAFE_CHARACTERS })
+    "'" + argument.replace("'", "'\"'\"'") + "'"
+  else
+    argument

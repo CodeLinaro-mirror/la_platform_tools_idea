@@ -1,11 +1,12 @@
 from collections.abc import Callable, Sequence
-from typing import Any, TypeVar, overload
+from typing import Any, overload
 
-from django.contrib.admin import ModelAdmin
+from django.contrib.admin import ActionLocation, ModelAdmin
 from django.contrib.admin.sites import AdminSite
 from django.db.models.base import Model
 from django.db.models.expressions import BaseExpression, Combinable
 from django.utils.functional import _StrOrPromise
+from typing_extensions import TypeVar
 
 _ModelAdmin = TypeVar("_ModelAdmin", bound=ModelAdmin[Any])
 _F = TypeVar("_F", bound=Callable[..., Any])
@@ -16,6 +17,8 @@ def action(
     *,
     permissions: Sequence[str] | None = ...,
     description: _StrOrPromise | None = ...,
+    description_plural: _StrOrPromise | None = ...,
+    location: ActionLocation = ...,
 ) -> _F: ...
 @overload
 def action(
@@ -23,6 +26,8 @@ def action(
     *,
     permissions: Sequence[str] | None = ...,
     description: _StrOrPromise | None = ...,
+    description_plural: _StrOrPromise | None = ...,
+    location: ActionLocation = ...,
 ) -> Callable[[_F], _F]: ...
 @overload
 def display(

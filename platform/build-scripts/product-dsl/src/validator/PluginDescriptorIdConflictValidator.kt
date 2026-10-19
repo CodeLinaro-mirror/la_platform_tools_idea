@@ -1,20 +1,18 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.intellij.build.productLayout.validator
 
-import com.intellij.platform.pluginGraph.ContentModuleName
 import com.intellij.platform.pluginGraph.PluginGraph
 import com.intellij.platform.pluginGraph.PluginId
+import com.intellij.platform.pluginGraph.PluginModuleId
 import com.intellij.platform.pluginGraph.PluginNode
 import com.intellij.platform.pluginGraph.ProductNode
+import com.intellij.platform.pluginGraph.contentName
 import org.jetbrains.intellij.build.productLayout.model.error.PluginDescriptorIdConflictError
 import org.jetbrains.intellij.build.productLayout.model.error.ValidationError
 import org.jetbrains.intellij.build.productLayout.pipeline.ComputeContext
 import org.jetbrains.intellij.build.productLayout.pipeline.DataSlot
 import org.jetbrains.intellij.build.productLayout.pipeline.NodeIds
 import org.jetbrains.intellij.build.productLayout.pipeline.PipelineNode
-
-// Keep in sync with ModelBuildingStage alias node naming.
-private const val ALIAS_NODE_PREFIX = "__alias__:"
 
 /**
  * Validates that test plugins do not declare descriptor IDs already provided by production plugins.
@@ -44,22 +42,24 @@ private fun validateDescriptorIdConflictsForProduct(
     isTest: Boolean,
     target: MutableMap<PluginId, LinkedHashSet<PluginDescriptorIdConflictError.DescriptorOwner>>,
   ) {
-    val pluginName = plugin.name()
-    if (pluginName.value.startsWith(ALIAS_NODE_PREFIX)) {
+    if (plugin.isAlias) {
       return
     }
 
+    val pluginName = plugin.name()
     val pluginIdValue = plugin.pluginIdOrNull ?: return
     target.computeIfAbsent(pluginIdValue) { LinkedHashSet() }
       .add(PluginDescriptorIdConflictError.DescriptorOwner(pluginName, contentModule = null, isTestPlugin = isTest))
 
-    fun recordModule(moduleName: ContentModuleName) {
-      target.computeIfAbsent(PluginId(moduleName.value)) { LinkedHashSet() }
-        .add(PluginDescriptorIdConflictError.DescriptorOwner(pluginName, contentModule = moduleName, isTestPlugin = isTest))
+    fun recordModule(moduleId: PluginModuleId) {
+      if (moduleId.namespace == PluginModuleId.DEFAULT_NAMESPACE) {
+        target.computeIfAbsent(PluginId(moduleId.name)) { LinkedHashSet() }
+          .add(PluginDescriptorIdConflictError.DescriptorOwner(pluginName, contentModule = moduleId.contentName(), isTestPlugin = isTest))
+      }
     }
 
-    plugin.containsContent { module, _ -> recordModule(module.contentName()) }
-    plugin.containsContentTest { module, _ -> recordModule(module.contentName()) }
+    plugin.containsContentWithNamespace { module, _ -> recordModule(module.moduleId()) }
+    plugin.containsContentWithNamespaceTest { module, _ -> recordModule(module.moduleId()) }
   }
 
   productV.bundles { plugin -> recordPlugin(plugin, isTest = false, target = productionOwners) }

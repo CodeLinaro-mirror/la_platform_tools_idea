@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.idea
 
 import com.intellij.diagnostic.VMOptions
@@ -36,6 +36,7 @@ import com.intellij.platform.ide.progress.runWithModalProgressBlocking
 import com.intellij.util.SystemProperties
 import com.intellij.util.currentJavaVersion
 import com.intellij.util.system.CpuArch
+import com.intellij.util.system.LowLevelLocalMachineAccess
 import com.intellij.util.system.OS
 import com.intellij.util.ui.IoErrorText
 import kotlinx.coroutines.CoroutineScope
@@ -54,6 +55,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
+@OptIn(LowLevelLocalMachineAccess::class)
 internal object SystemHealthMonitor {
   private const val NOTIFICATION_GROUP_ID = "System Health"
 
@@ -235,11 +237,13 @@ internal object SystemHealthMonitor {
       ?.let { NotificationAction.createExpiring(IdeBundle.message("vm.options.edit.action.cap")) { e, _ -> it.actionPerformed(e!!) } }
 
   private suspend fun checkEnvironment() {
-    val usedVars = sequenceOf("_JAVA_OPTIONS", "JDK_JAVA_OPTIONS", "JAVA_TOOL_OPTIONS")
-      .filter { `var` -> !System.getenv(`var`).isNullOrEmpty() }
-      .toList()
-    if (!usedVars.isEmpty()) {
-      showNotification("vm.options.env.vars", suppressable = true, action = null, usedVars.joinToString(separator = ", "))
+    if (!System.getProperty("ide.native.launcher").toBoolean()) {
+      val usedVars = sequenceOf("_JAVA_OPTIONS", "JDK_JAVA_OPTIONS", "JAVA_TOOL_OPTIONS")
+        .filter { `var` -> !System.getenv(`var`).isNullOrEmpty() }
+        .toList()
+      if (!usedVars.isEmpty()) {
+        showNotification("vm.options.env.vars", suppressable = true, action = null, usedVars.joinToString(separator = ", "))
+      }
     }
 
     try {
@@ -257,7 +261,7 @@ internal object SystemHealthMonitor {
 
   private fun checkLauncher() {
     if (
-      (OS.CURRENT == OS.Windows || OS.CURRENT == OS.Linux) &&
+      OS.CURRENT != OS.macOS &&
       System.getProperty("ide.native.launcher") == null &&
       !ExternalUpdateManager.isCreatingDesktopEntries()
     ) {
@@ -276,13 +280,19 @@ internal object SystemHealthMonitor {
     if (OS.isGenericUnix()) {
       try {
         val probe = Files.createTempFile(PathManager.getTempDir(), "ij-exec-check-", ".sh")
-        NioFiles.setExecutable(probe)
-        val process = ProcessBuilder(probe.toString()).start()
-        if (!process.waitFor(1, TimeUnit.MINUTES)) throw IOException("${probe} timed out")
-        if (process.exitValue() != 0) throw IOException("${probe} returned ${process.exitValue()}")
+        try {
+          Files.writeString(probe, "#!/bin/sh\n")
+          NioFiles.setExecutable(probe)
+          val process = ProcessBuilder(probe.toString()).start()
+          if (!process.waitFor(1, TimeUnit.MINUTES)) throw IOException("${probe} timed out")
+          if (process.exitValue() != 0) throw IOException("${probe} returned ${process.exitValue()}")
+        }
+        finally {
+          Files.delete(probe)
+        }
       }
       catch (e: Exception) {
-        LOG.debug(e)
+        LOG.info(e)
         showNotification("temp.dir.exec.failed", suppressable = false, action = null, shorten(PathManager.getTempDir()))
       }
     }
@@ -321,7 +331,7 @@ internal object SystemHealthMonitor {
     val changedOptions = MultiRoutingFileSystemVmOptionsSetter.ensureInVmOptions()
     when {
       changedOptions.isEmpty() -> Unit
-      
+
       PluginManagerCore.isRunningFromSources() || AppMode.isRunningFromDevBuild() -> {
         logger<MultiRoutingFileSystemVmOptionsSetter>().warn(
           changedOptions.joinToString(

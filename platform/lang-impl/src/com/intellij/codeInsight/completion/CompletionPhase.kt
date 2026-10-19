@@ -5,7 +5,6 @@ import com.intellij.codeInsight.completion.CompletionPhase.CommittingDocuments.C
 import com.intellij.codeInsight.completion.CompletionPhase.CommittingDocuments.CommittingState.Disposed
 import com.intellij.codeInsight.completion.CompletionPhase.CommittingDocuments.CommittingState.InProgress
 import com.intellij.codeInsight.completion.CompletionPhase.CommittingDocuments.CommittingState.Success
-import com.intellij.codeInsight.completion.CompletionPhase.Companion.NoCompletion
 import com.intellij.codeInsight.completion.impl.CompletionServiceImpl
 import com.intellij.codeInsight.completion.impl.CompletionServiceImpl.Companion.assertPhase
 import com.intellij.codeWithMe.ClientId
@@ -34,7 +33,6 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.Pair
 import com.intellij.patterns.ElementPattern
-import com.intellij.platform.ide.productMode.IdeProductMode
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiFile
 import com.intellij.psi.impl.source.tree.injected.InjectedLanguageEditorUtil
@@ -77,6 +75,29 @@ sealed class CompletionPhase @ApiStatus.Internal constructor(
   val indicator: CompletionProgressIndicator?
 ) : Disposable {
 
+  /**
+   * Called by [CodeCompletionHandlerBase] when a new completion is about to start while this phase
+   * is the current one. The implementation must perform any teardown required by its state (cancel
+   * the current indicator, close the lookup, restore the prefix, transition to [NoCompletion], etc.)
+   * so that the caller can install a fresh completion session on top of [NoCompletion] or
+   * [CommittingDocuments].
+   *
+   * The return value is the effective invocation count to use for the new session.
+   * When [repeated] is `true`, phases that own a live indicator promote the count via
+   * [CompletionProgressIndicator.nextInvocationCount] (`max(prev + 1, 2)`), so pressing the same
+   * completion shortcut a second time produces the next completion level (Basic → Second-Basic).
+   * Otherwise, the supplied [invocationCount] is returned unchanged.
+   *
+   * @param invocationCount invocation count requested by the caller — `0` for autopopup,
+   *                        `1` for the first user-triggered completion, `>=2` for explicit
+   *                        higher-level completion.
+   *
+   * @param repeated        `true` iff the new completion targets the same editor and
+   *                        [CompletionType] as the current indicator and the existing lookup
+   *                        is at least noticeable; see [CompletionProgressIndicator.isRepeatedInvocation].
+   *
+   * @return the invocation count to use for the new session.
+   */
   abstract fun newCompletionStarted(invocationCount: Int, repeated: Boolean): Int
 
   override fun dispose() {}
@@ -326,15 +347,15 @@ sealed class CompletionPhase @ApiStatus.Internal constructor(
         editor: Editor,
         invocationCount: Int,
       ) {
-        if (NewRdCompletionSupport.isFrontendRdCompletionOn() && IdeProductMode.isBackend) {
-          // todo we can set up backend completion session right away without doing round trip to frontend
-          NewRdCompletionSupport.getInstance().scheduleAutopopup(project, editor, completionType)
+
+        // todo we can set up backend completion session right away without doing round trip to frontend
+        if (NewRdCompletionSupport.getInstance().scheduleAutopopupOnFrontend(project, editor, completionType)) {
           CompletionServiceImpl.setCompletionPhase(NoCompletion)
+          return
         }
-        else {
-          val handler = CodeCompletionHandlerBase.createHandler(completionType, false, isAutopopup, false)
-          handler.invokeCompletion(project, editor, invocationCount, false)
-        }
+
+        val handler = CodeCompletionHandlerBase.createHandler(completionType, false, isAutopopup, false)
+        handler.invokeCompletion(project, editor, invocationCount, false)
       }
 
       @RequiresEdt
@@ -363,7 +384,7 @@ sealed class CompletionPhase @ApiStatus.Internal constructor(
       @JvmStatic
       fun loadContributorsOutsideEdt(editor: Editor, file: PsiFile) {
         ThreadingAssertions.assertBackgroundThread()
-        CompletionContributor.forLanguage(PsiUtilCore.getLanguageAtOffset(file, editor.getCaretModel().offset))
+        CompletionContributor.forLanguage(PsiUtilCore.getLanguageAtOffset(file, editor.getCaretModel().offset), editor)
       }
 
       @ApiStatus.Internal
@@ -403,6 +424,7 @@ sealed class CompletionPhase @ApiStatus.Internal constructor(
   }
 
   /** see doc of [CompletionPhase] */
+  @ApiStatus.Internal
   class Synchronous internal constructor(indicator: CompletionProgressIndicator) : CompletionPhase(indicator) {
     override fun newCompletionStarted(invocationCount: Int, repeated: Boolean): Int {
       assertPhase(NoCompletion.javaClass) // will fail and log valuable info
@@ -412,6 +434,7 @@ sealed class CompletionPhase @ApiStatus.Internal constructor(
   }
 
   /** see doc of [CompletionPhase] */
+  @ApiStatus.Internal
   class BgCalculation internal constructor(indicator: CompletionProgressIndicator) : CompletionPhase(indicator) {
     @JvmField
     internal var modifiersChanged: Boolean = false
@@ -473,6 +496,7 @@ sealed class CompletionPhase @ApiStatus.Internal constructor(
   }
 
   /** see doc of [CompletionPhase] */
+  @ApiStatus.Internal
   class ItemsCalculated internal constructor(indicator: CompletionProgressIndicator) : CompletionPhase(indicator) {
     override fun newCompletionStarted(invocationCount: Int, repeated: Boolean): Int {
       requireNotNull(indicator) { "`ItemsCalculated#indicator` is not-null as its constructor accepts not-null `indicator`" }.closeAndFinish(false)
@@ -501,6 +525,7 @@ sealed class CompletionPhase @ApiStatus.Internal constructor(
   }
 
   /** see doc of [CompletionPhase] */
+  @ApiStatus.Internal
   class InsertedSingleItem internal constructor(
     indicator: CompletionProgressIndicator,
     @JvmField
@@ -520,6 +545,7 @@ sealed class CompletionPhase @ApiStatus.Internal constructor(
   }
 
   /** see doc of [CompletionPhase] */
+  @ApiStatus.Internal
   class NoSuggestionsHint internal constructor(hint: LightweightHint?, indicator: CompletionProgressIndicator) : ZombiePhase(indicator) {
     init {
       expireOnAnyEditorChange(indicator.editor)

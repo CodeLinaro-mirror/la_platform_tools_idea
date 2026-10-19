@@ -3,11 +3,16 @@
 
 package com.intellij.grazie.ide.language
 
+import ai.grazie.spell.GrazieSplittingSpeller
 import com.intellij.grazie.GrazieConfig
 import com.intellij.grazie.GrazieTestBase
 import com.intellij.grazie.jlanguage.Lang
 import com.intellij.grazie.spellcheck.engine.GrazieSpellCheckerEngine
+import com.intellij.grazie.text.TextContent
+import com.intellij.grazie.text.TextContentTest
+import com.intellij.grazie.text.TextExtractor
 import com.intellij.grazie.utils.TextStyleDomain
+import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.spellchecker.ProjectDictionaryLayer
 import com.intellij.spellchecker.SpellCheckerManager
@@ -19,6 +24,7 @@ import com.intellij.testFramework.PerformanceUnitTest
 import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase
 import com.intellij.testFramework.fixtures.impl.CodeInsightTestFixtureImpl
 import com.intellij.tools.ide.metrics.benchmark.Benchmark
+import org.junit.Assert.assertArrayEquals
 import org.junit.jupiter.api.assertDoesNotThrow
 import java.util.function.Consumer
 
@@ -59,6 +65,18 @@ class JavaSupportTest : GrazieTestBase() {
     myFixture.checkResultByFile("ide/language/java/AccidentalMerge_after.java")
   }
 
+  fun `test escape sequences in string literals`() {
+    myFixture.configureByText("a.java", """
+      class Scratch {
+          public static void main(String[] args) {
+              var value1 = ""${'"'}
+                      wrong object class\nexpected 1\nactual: 2""${'"'};
+          }
+      }
+    """.trimIndent())
+    myFixture.checkHighlighting()
+  }
+
   @PerformanceUnitTest
   fun `test long comment performance`() {
     Benchmark.newBenchmark("highlighting") {
@@ -94,42 +112,45 @@ class JavaSupportTest : GrazieTestBase() {
   }
 
   fun `test multiline compounds`() {
-    enableProofreadingFor(setOf(Lang.GERMANY_GERMAN))
     doTest(
       """
         public class Main {
           /**
-           * I use {@code awaitility} to poll any eve<caret>ntually-      
-           * consistent results for a short period.
+           * It is a very good number: twent<caret>y-
+           * one.
            */
-          int consistency;
+          int number;
         }
       """.trimIndent(),
       """
         public class Main {
           /**
-           * I use {@code awaitility} to poll any eventually-consistent results for a short period.
+           * It is a very good number: twenty-one.
            */
-          int consistency;
+          int number;
         }
       """.trimIndent(),
-      "eventually-consistent"
+      "twenty-one"
     )
     doTest(
       """
         public class Main {
-          // Du bestellst ein Paket bei einem Online         
-          // -Sh<caret>op. Direkt nach der Bestellung steht auf der Website.
-          double onlineShop;
+          /**
+           * It is a very good number: twenty
+           * -o<caret>ne.
+           */
+          int number;
         }
       """.trimIndent(),
       """
         public class Main {
-          // Du bestellst ein Paket bei einem Online-Shop. Direkt nach der Bestellung steht auf der Website.
-          double onlineShop;
+          /**
+           * It is a very good number: twenty-one.
+           */
+          int number;
         }
       """.trimIndent(),
-      "Online-Shop"
+      "twenty-one"
     )
   }
 
@@ -183,6 +204,32 @@ class JavaSupportTest : GrazieTestBase() {
     runHighlightTestForFile("ide/language/java/MarkdownCode.java")
   }
 
+  fun `test text extraction from markdown doc reference link`() {
+    val text = """
+      class A {
+        /// Please do not use directly; use [EventFields#Class(String)] instead.
+        void foo() {}
+      }
+    """.trimIndent()
+    val file = myFixture.configureByText("a.java", text)
+    val content = TextExtractor.findTextAt(file, text.indexOf("Please"), TextContent.TextDomain.ALL)
+    assertEquals("Please do not use directly; use | instead.", TextContentTest.unknownOffsets(content))
+    assertEmpty(content!!.markupOffsets().toList())
+  }
+
+  fun `test text extraction from markdown doc inline link preserves label`() {
+    val text = """
+      class A {
+        /// Please read [the manual](https://example.com/manual) before use.
+        void foo() {}
+      }
+    """.trimIndent()
+    val file = myFixture.configureByText("a.java", text)
+    val content = TextExtractor.findTextAt(file, text.indexOf("Please"), TextContent.TextDomain.ALL)
+    assertEquals("Please read the manual before use.", TextContentTest.unknownOffsets(content))
+    assertArrayEquals(intArrayOf("Please read ".length, "Please read the manual".length), content!!.markupOffsets())
+  }
+
   fun `test java keeps trailing spaces properly`() {
     runHighlightTestForFile("ide/language/java/Trailing.java")
   }
@@ -211,6 +258,16 @@ class JavaSupportTest : GrazieTestBase() {
     })
 
     myFixture.configureByText("a.java", "// wexwex, Wexwex, WEXWEX")
+    myFixture.checkHighlighting()
+  }
+
+  fun `test mixed words can be added via SaveTo action`() {
+    assertTrue(getSpeller(project).isMisspelled("typppoStatusChanged"))
+    myFixture.configureByText("a.java", "// <TYPO descr=\"Typo: In word 'typppoStatusChanged'\">typppoStatusChanged</TYPO>")
+    myFixture.checkHighlighting()
+
+    SpellCheckerManager.getInstance(project).acceptWordAsCorrect("typppoStatusChanged", project)
+    myFixture.configureByText("a.java", "// typppoStatusChanged")
     myFixture.checkHighlighting()
   }
 
@@ -322,5 +379,13 @@ class JavaSupportTest : GrazieTestBase() {
     assertNotNull(intentionAction)
     myFixture.launchAction(intentionAction)
     myFixture.checkResult(afterText)
+  }
+
+  private fun getSpeller(project: Project): GrazieSplittingSpeller {
+    val speller = GrazieSpellCheckerEngine.getInstance(project).getSpeller()
+    if (speller == null) {
+      fail("`GrazieSplittingSpeller` should be initialized")
+    }
+    return speller as GrazieSplittingSpeller
   }
 }

@@ -6,13 +6,11 @@ import com.intellij.ide.plugins.PluginDependency
 import com.intellij.ide.plugins.PluginDependencyImpl
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.extensions.PluginId
-import com.intellij.openapi.util.IntellijInternalApi
 import com.intellij.openapi.util.NlsSafe
 import org.jetbrains.annotations.Nls
 import java.nio.file.Path
 import java.util.Date
 
-@IntellijInternalApi
 internal class PluginDtoDescriptorWrapper(private val pluginDto: PluginDto) : IdeaPluginDescriptor {
 
   private val dependenciesList: List<PluginDependency> by lazy {
@@ -100,11 +98,6 @@ internal class PluginDtoDescriptorWrapper(private val pluginDto: PluginDto) : Id
 
   @Deprecated("Deprecated in Java")
   override fun isEnabled(): Boolean = pluginDto.isEnabled
-
-  @Deprecated("see com.intellij.openapi.extensions.PluginDescriptor.setEnabled")
-  override fun setEnabled(enabled: Boolean) {
-    LOG.error("Write operations are not allowed here")
-  }
 
   companion object {
     private val LOG = Logger.getInstance(PluginDtoDescriptorWrapper::class.java)

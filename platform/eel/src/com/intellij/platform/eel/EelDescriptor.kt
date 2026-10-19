@@ -4,7 +4,6 @@ package com.intellij.platform.eel
 import com.intellij.platform.eel.path.EelPath.OS
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.NonNls
-import java.nio.file.Path
 
 /**
  * A marker interface that indicates an environment where native file chooser dialogs should be disabled.
@@ -20,6 +19,21 @@ import java.nio.file.Path
 @ApiStatus.OverrideOnly
 @ApiStatus.Internal
 interface EelDescriptorWithoutNativeFileChooserSupport : EelDescriptor
+
+/**
+ * Marker interface enforcing an isolated workspace for the project located in a container. The workspace file located under config/workspace
+ * is shared by default if the project is both opened locally and mounted, which may cause undesirable side effects.
+ */
+@ApiStatus.OverrideOnly
+@ApiStatus.Internal
+interface EelDescriptorWithIsolatedWorkspace : EelDescriptor
+
+/**
+ * Marker interface that indicates ssh agent forwarding by default
+ */
+@ApiStatus.OverrideOnly
+@ApiStatus.Internal
+interface EelDescriptorWithSshForwardingEnabled : EelDescriptor
 
 /**
  * Identifies a specific machine — such as a Docker container, WSL distribution, or SSH host.
@@ -41,31 +55,13 @@ interface EelMachine {
 
   /**
    * Converts this machine into a [EelApi] — starts or reuses a running environment.
+   * @throws EelUnavailableException if eel is unavailable (i.e. remote machine is gone, docker container removed e.t.c.). Show it to a user, ask to fix and try again.
    */
   @ApiStatus.Experimental
+  @Throws(EelUnavailableException::class)
   suspend fun toEelApi(descriptor: EelDescriptor): EelApi
 
-  fun ownsPath(path: Path): Boolean
-}
-
-/**
- * Specialization of [EelDescriptor] that resolves to a path-based environment.
- *
- * These descriptors are tied to a concrete filesystem root (e.g. `\\wsl$\Ubuntu` or `/docker-xyz`).
- * Different paths to the same logical environment yield different descriptors — even if they point to the same [EelMachine].
- *
- * This allows tools to distinguish between environments even if the underlying host is the same.
- */
-@ApiStatus.Experimental
-interface EelPathBoundDescriptor : EelDescriptor {
-  /**
-   * A platform-specific base path representing the environment's root.
-   *
-   * Examples:
-   * - `\\wsl$\Ubuntu` for a WSL distribution
-   * - `/docker-12345/` for Docker containers
-   */
-  val rootPath: Path
+  fun ownsDescriptor(descriptor: EelDescriptor): Boolean
 }
 
 /**

@@ -1,6 +1,7 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.idea.devkit.inspections
 
+import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.psi.PsiFile
 import com.intellij.testFramework.PsiTestUtil
 import com.intellij.testFramework.fixtures.CodeInsightTestFixture
@@ -175,7 +176,9 @@ internal class MissingFrontendOrBackendRuntimeDependencyFixTest : JavaCodeInsigh
   fun testAddingFrontendDependency() = testAddingDependency("frontend")
   fun testAddingBackendDependency() = testAddingDependency("backend")
 
-  fun testAddingFrontendDependencyWhenDependenciesElementDoesNotExist() = testAddingDependencyWhenDependenciesElementDoesNotExist("frontend")
+  fun testAddingFrontendDependencyWhenDependenciesElementDoesNotExist() =
+    testAddingDependencyWhenDependenciesElementDoesNotExist("frontend")
+
   fun testAddingBackendDependencyWhenDependenciesElementDoesNotExist() = testAddingDependencyWhenDependenciesElementDoesNotExist("backend")
 
   private fun testAddingDependency(frontendOrBackend: String) {
@@ -186,13 +189,6 @@ internal class MissingFrontendOrBackendRuntimeDependencyFixTest : JavaCodeInsigh
       <idea-plugin>
           <depend<caret>encies>
               <!-- no dependency -->
-          </dependencies>
-      </idea-plugin>
-      """.trimIndent(), """
-      <idea-plugin>
-          <dependencies>
-              <!-- no dependency -->
-              <module name="intellij.platform.$frontendOrBackend"/>
           </dependencies>
       </idea-plugin>
       """.trimIndent()
@@ -207,13 +203,6 @@ internal class MissingFrontendOrBackendRuntimeDependencyFixTest : JavaCodeInsigh
       <idea-<caret>plugin>
           <!-- no dependency -->
       </idea-plugin>
-      """.trimIndent(), """
-      <idea-plugin>
-          <!-- no dependency -->
-          <dependencies>
-              <module name="intellij.platform.$frontendOrBackend"/>
-          </dependencies>
-      </idea-plugin>
       """.trimIndent()
     )
   }
@@ -222,17 +211,23 @@ internal class MissingFrontendOrBackendRuntimeDependencyFixTest : JavaCodeInsigh
     frontendOrBackend: String,
     fileName: String,
     @Language("XML") before: String,
-    @Language("XML") after: String,
   ) {
     val testedFile = myFixture.addXmlFile(fileName, before)
     myFixture.configureFromExistingVirtualFile(testedFile.virtualFile)
-    val intention = myFixture.findSingleIntention("Add the 'intellij.platform.$frontendOrBackend' dependency")
+    val intention = myFixture.findSingleIntention(addRuntimeDependencyFixName(frontendOrBackend))
     myFixture.checkPreviewAndLaunchAction(intention)
-    myFixture.checkResult(after, true)
-  }
 
+    val fileText = FileDocumentManager.getInstance().getDocument(testedFile.virtualFile)!!.text
+    assertTrue(fileText.contains("<!-- no dependency -->"))
+    assertTrue(fileText.contains("<dependencies>"))
+    assertTrue(fileText.contains("intellij.platform.$frontendOrBackend"))
+  }
 }
 
 private fun CodeInsightTestFixture.addXmlFile(relativePath: String, @Language("XML") fileText: String): PsiFile {
   return this.addFileToProject(relativePath, fileText)
+}
+
+private fun addRuntimeDependencyFixName(frontendOrBackend: String): String {
+  return "Make module 'intellij.test.feature.$frontendOrBackend' work in '$frontendOrBackend' only"
 }

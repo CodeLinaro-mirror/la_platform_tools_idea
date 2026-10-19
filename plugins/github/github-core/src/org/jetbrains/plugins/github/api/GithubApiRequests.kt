@@ -449,6 +449,27 @@ object GithubApiRequests {
           .withOperationName("add collaborator")
     }
 
+    object Contributors : Entity("/contributors") {
+      @JvmStatic
+      fun pages(server: GithubServerPath, username: String, repoName: String): GithubApiPagesLoader.Request<GithubUser> =
+        GithubApiPagesLoader.Request(get(server, username, repoName), ::get)
+
+      @JvmStatic
+      fun get(
+        server: GithubServerPath,
+        username: String,
+        repoName: String,
+        pagination: GithubRequestPagination? = null,
+      ): GithubApiRequest<GithubResponsePage<GithubUser>> =
+        get(getUrl(server, Repos.urlSuffix, "/$username/$repoName", urlSuffix, paginationQuery(pagination)))
+
+      @JvmStatic
+      private fun get(url: String): GithubApiRequest<GithubResponsePage<GithubUser>> =
+        Get.jsonPage<GithubUser>(url)
+          .withOperation(GithubApiRequestOperation.RestGetRepositoryContributors)
+          .withOperationName("get contributors")
+    }
+
     object Issues : Entity("/issues") {
 
       @JvmStatic
@@ -646,15 +667,6 @@ object GithubApiRequests {
                        GithubPullRequestMergeRebaseRequest(headSha))
           .withOperation(GithubApiRequestOperation.RestRebaseMergePullRequest)
           .withOperationName("rebase and merge pull request ${number}")
-
-      @JvmStatic
-      fun getListETag(server: GithubServerPath, repoPath: GHRepositoryPath): GithubApiRequest<String?> =
-        object : Get<String?>(getUrl(server, Repos.urlSuffix, "/$repoPath", urlSuffix,
-                                     urlQuery { param(GithubRequestPagination(pageSize = 1)) })) {
-          override fun extractResult(response: GithubApiResponse) = response.findHeader("ETag")
-        }
-          .withOperation(GithubApiRequestOperation.RestGetPullRequestListETag)
-          .withOperationName("get pull request list ETag")
 
       @JvmStatic
       fun getDiffFiles(repository: GHRepositoryCoordinates, id: GHPRIdentifier): GithubApiRequest<GithubResponsePage<GHCommitFile>> =

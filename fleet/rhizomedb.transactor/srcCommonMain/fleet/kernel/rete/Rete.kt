@@ -31,7 +31,7 @@ import fleet.util.async.use
 import fleet.util.channels.channels
 import fleet.util.logging.KLogger
 import fleet.util.logging.logger
-import fleet.util.openmap.merge
+import fleet.openmap.merge
 import fleet.util.singleOrNullOrThrow
 import kotlinx.collections.immutable.PersistentList
 import kotlinx.collections.immutable.persistentListOf
@@ -229,8 +229,7 @@ suspend fun <T, U> Match<T>.withMatch(body: suspend CoroutineScope.(T) -> U): Wi
   }
 
 /**
- * Ensures [Rete] has processed all changes up until the timestamp of the [targetDb] or,
- * if not given, until the timestamp of the currently bound db.
+ * Ensures [Rete] has processed all changes up until the timestamp of the [targetDb].
  * It rarely makes sense to use this, see [Match.withMatch] instead
  * */
 suspend fun waitForReteToCatchUp(targetDb: Q, cancellable: Boolean = true) {
@@ -528,20 +527,6 @@ fun <T, R> Flow<Match<T>>.flatMapLatestMatch(transform: suspend (value: T) -> Fl
   }
 
 /**
- * Returns a flow that applies the given [transform] function to each emitted [Match] value under [Match.withMatch]
- * and flattens the resulting flow.
- * When new match arrives, the previous work is cancelled, see [Flow.collectLatest]
- */
-fun <T, R> Flow<Match<T>>.flatMapMatchLatestMatch(transform: suspend (value: T) -> Flow<Match<R>>): Flow<Match<R>> =
-  transformLatest { outerMatch ->
-    outerMatch.withMatch {
-      transform(it).collect { match ->
-        emit(outerMatch.combine(match) { _, v -> v })
-      }
-    }
-  }
-
-/**
  * Runs collector with each match, under [Match.withMatch]
  * */
 suspend fun <T> Flow<Match<T>>.collectMatches(collector: suspend CoroutineScope.(T) -> Unit) {
@@ -552,7 +537,7 @@ suspend fun <T> Flow<Match<T>>.collectMatches(collector: suspend CoroutineScope.
  * Runs collector with each match, under [Match.withMatch]
  * when new match arrives, the previous work is cancelled, see [Flow.collectLatest]
  * */
-suspend fun <T> Flow<Match<T>>.collectLatestMatch(collector: suspend CoroutineScope.(T) -> Unit) {
+private suspend fun <T> Flow<Match<T>>.collectLatestMatch(collector: suspend CoroutineScope.(T) -> Unit) {
   collectLatest { match -> match.withMatch(collector) }
 }
 

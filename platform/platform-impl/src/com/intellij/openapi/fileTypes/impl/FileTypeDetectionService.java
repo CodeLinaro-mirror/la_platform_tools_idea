@@ -5,8 +5,10 @@ import com.intellij.ide.scratch.ScratchUtil;
 import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.extensions.impl.ExtensionComponentAdapter;
 import com.intellij.openapi.extensions.impl.ExtensionPointImpl;
+import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.fileEditor.impl.LoadTextUtil;
 import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.fileTypes.FileTypeRegistry;
@@ -126,7 +128,7 @@ public final class FileTypeDetectionService {
     myFileTypeManager = fileTypeManager;
     scope = coroutineScope;
 
-    JobKt.getJob(coroutineScope.getCoroutineContext()).invokeOnCompletion(throwable -> {
+    JobKt.getJob(coroutineScope.getCoroutineContext()).invokeOnCompletion(_ -> {
       LOG.info(String.format("%s auto-detected files. Detection took %s ms", counterAutoDetect, elapsedAutoDetect));
       return null;
     });
@@ -146,7 +148,9 @@ public final class FileTypeDetectionService {
     reDetectExecutor = AppJavaExecutorUtil.createBoundedTaskExecutor("FileTypeManager Redetect", coroutineScope);
   }
 
-  @Nullable AsyncFileListener.ChangeApplier prepareChange(@NotNull List<? extends @NotNull VFileEvent> events) {
+  @ApiStatus.Internal
+  @VisibleForTesting
+  public @Nullable AsyncFileListener.ChangeApplier prepareChange(@NotNull List<? extends @NotNull VFileEvent> events) {
     Collection<VirtualFile> files = ContainerUtil.map2SetNotNull(events, event -> {
       if (event instanceof VFileContentChangeEvent changeEvent) {
         VirtualFile file = changeEvent.getFile();
@@ -239,7 +243,7 @@ public final class FileTypeDetectionService {
     // while vfs events are processing do not access cache, it can be in invalid state;
     if (!myCanUseCachedDetectedFileType) {
       try {
-        return detectFromContent(file, getFirstBytes(file, content), fileTypeByName);
+        return detectFromContent(file, getFirstBytes(file, content), fileTypeByName, true);
       }
       catch (IOException e) {
         return UnknownFileType.INSTANCE;
@@ -483,8 +487,8 @@ public final class FileTypeDetectionService {
       if (toLog()) {
         log("F: reDetect(" + file.getName() + ") " + file.getName());
       }
-      int id = ((VirtualFileWithId)file).getId();
-      long flags = packedFlags.get(id);
+      int id = file instanceof VirtualFileWithId ? ((VirtualFileWithId)file).getId() : -1;
+      long flags = id == -1 ? 0 : packedFlags.get(id);
 
       FileType before = ObjectUtils.notNull(textOrBinaryFromCachedFlags(flags),
                                             ObjectUtils.notNull(getFileTypeDetectedFromContent(file), PlainTextFileType.INSTANCE));
@@ -514,7 +518,9 @@ public final class FileTypeDetectionService {
         // detected by conventional methods, no need to run detect-from-content
         file.putUserData(DETECTED_FROM_CONTENT_FILE_TYPE_KEY, null);
         flags = 0;
-        packedFlags.set(id, flags);
+        if (id != -1) {
+          packedFlags.set(id, flags);
+        }
       }
       if (toLog()) {
         log("F: reDetect(" + file.getName() + ") before: " + before.getName() + "; after: " + after.getName() +
@@ -550,8 +556,18 @@ public final class FileTypeDetectionService {
 
   private @NotNull FileType detectFromContentAndCache(@NotNull VirtualFile file, byte @Nullable [] content, @Nullable FileType fileTypeByName) throws IOException {
     long start = System.currentTimeMillis();
+    boolean saveDetectedSeparators = true;
+    if (content == null) {
+      Document document = FileDocumentManager.getInstance().getCachedDocument(file);
+      if (document != null) {
+        content = document.getText().getBytes(file.getCharset());
+        // separators already detected, since the Document is live. Detecting them again would reset them to LF (because document normalizes line separators to \n)
+        saveDetectedSeparators = false;
+      }
+    }
+
     ByteArraySequence bytes = getFirstBytes(file, content);
-    FileType fileType = detectFromContent(file, bytes, fileTypeByName);
+    FileType fileType = detectFromContent(file, bytes, fileTypeByName, saveDetectedSeparators);
     cacheAutoDetectedFileType(file, fileType);
     counterAutoDetect.incrementAndGet();
     long elapsed = System.currentTimeMillis() - start;
@@ -564,24 +580,24 @@ public final class FileTypeDetectionService {
     int n = stream.read(buffer, 0, length);
     if (n <= 0) {
       // maybe locked because someone else is writing to it
-      // repeat inside read action to guarantee all writes are finished
       if (toLog()) {
-        log("F: readSafely(): inputStream.read(" +length+ ") returned "+n+"; retrying with read action. stream="+ streamInfo(stream));
+        log("F: readSafely(): inputStream.read(" +length+ ") returned "+n+"; retrying. stream="+ streamInfo(stream));
       }
       n = stream.read(buffer, 0, length);
       if (toLog()) {
-        log("F: readSafely(): under read action inputStream.read(" +length+ ") returned "+n+"; stream="+ streamInfo(stream));
+        log("F: readSafely(): 2nd inputStream.read(" +length+ ") returned "+n+"; stream="+ streamInfo(stream));
       }
     }
     return n;
   }
 
-  private @NotNull FileType detectFromContent(@NotNull VirtualFile file, @NotNull ByteArraySequence bytes, @Nullable FileType fileTypeByName) throws IOException {
+  private @NotNull FileType detectFromContent(@NotNull VirtualFile file, @NotNull ByteArraySequence bytes, @Nullable FileType fileTypeByName,
+                                              boolean saveDetectedSeparators) throws IOException {
     List<FileTypeRegistry.FileTypeDetector> detectors = FileTypeRegistry.FileTypeDetector.EP_NAME.getExtensionList();
     // use PlainTextFileType because it doesn't supply its own charset detector
     // help set charset in the process to avoid double charset detection from content
     FileType fileType = LoadTextUtil.processTextFromBinaryPresentationOrNull(bytes,
-                                                                             file, true, true,
+                                                                             file, saveDetectedSeparators, true,
                                                                              PlainTextFileType.INSTANCE, (@Nullable CharSequence text) -> {
         if (toLog()) {
           log("F: detectFromContentAndCache.processFirstBytes(" + file.getName() + "): bytes length=" + bytes.length() +

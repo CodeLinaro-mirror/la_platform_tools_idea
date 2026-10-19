@@ -13,8 +13,9 @@ plugins {
   // GRADLE_PLUGINS__MARKER_START
   id("fleet-module")
   alias(jps.plugins.kotlin.serialization)
-  alias(jps.plugins.rhizomedb)
-  alias(jps.plugins.rpc)
+  alias(jps.plugins.ksp)
+  id("fleet-ksp-plugin")
+  id("rpc")
   // GRADLE_PLUGINS__MARKER_END
 }
 
@@ -70,6 +71,7 @@ kotlin {
     }
     api(project(":fleet.rhizomedb.transactor"))
     api(project(":fleet.rhizomedb.transactor.rebase"))
+    implementation(project(":fleet.rhizomedb"))
   }
   // KOTLIN__MARKER_END
 }

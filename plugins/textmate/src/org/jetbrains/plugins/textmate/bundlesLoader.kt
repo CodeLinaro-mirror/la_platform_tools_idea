@@ -6,14 +6,12 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.util.ProgressIndicatorUtils
-import com.intellij.openapi.util.IntellijInternalApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.future.asCompletableFuture
 import kotlinx.coroutines.launch
 import java.util.function.Consumer
 
-@IntellijInternalApi
 @JvmOverloads
 internal fun registerBundlesInParallel(scope: CoroutineScope,
                                        bundlesToLoad: List<TextMateBundleToLoad>,
@@ -47,7 +45,9 @@ internal fun registerBundlesInParallel(scope: CoroutineScope,
       }
     }
   }
+  TextMateService.LOG.debug("Starting textmate bundle initialization with ${bundlesToLoad.size} bundles")
   ProgressIndicatorUtils.awaitWithCheckCanceled(initializationJob.asCompletableFuture())
+  TextMateService.LOG.debug("Starting textmate bundle initialization completed")
 }
 
 data class TextMateBundleToLoad(val name: String, val path: String)

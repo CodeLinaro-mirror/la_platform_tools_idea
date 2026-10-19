@@ -3,31 +3,48 @@ package org.jetbrains.idea.maven.externalSystemIntegration.output.quickfixes
 
 import com.intellij.build.events.MessageEvent
 import com.intellij.build.issue.BuildIssue
-import com.intellij.maven.testFramework.MavenMultiVersionImportingTestCase
+import com.intellij.maven.testFramework.fixtures.MavenVersionArguments
+import com.intellij.maven.testFramework.fixtures.assumeModel_4_0_0
+import com.intellij.maven.testFramework.fixtures.createProjectPom
+import com.intellij.maven.testFramework.fixtures.importProjectAsync
+import com.intellij.maven.testFramework.fixtures.mavenImportingFixture
 import com.intellij.openapi.util.SystemInfo
+import com.intellij.testFramework.junit5.TestApplication
 import kotlinx.coroutines.runBlocking
 import org.jetbrains.idea.maven.buildtool.MavenBuildIssueHandler
 import org.jetbrains.idea.maven.model.MavenProjectProblem
-import org.junit.Assume
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedClass
+import org.junit.jupiter.params.provider.ArgumentsSource
 import java.nio.file.Path
-import kotlin.io.path.pathString
+import kotlin.io.path.absolute
 
-class Maven4ModelVersionErrorParserTest : MavenMultiVersionImportingTestCase() {
+@TestApplication
+@ParameterizedClass
+@ArgumentsSource(MavenVersionArguments::class)
+class Maven4ModelVersionErrorParserTest(mavenVersion: String, modelVersion: String) {
+
+  private val maven by mavenImportingFixture(
+    mavenVersion = mavenVersion,
+    modelVersion = modelVersion
+  )
+  
 
   @Test
   fun testShouldCreateBuildIssue() = runBlocking {
-    assumeModel_4_0_0("test is applicable for model 4.0 only")
-    Assume.assumeTrue("hard to mock the path check on windows, we test only strings", SystemInfo.isUnix)
-    createProjectPom("""
+    maven.assumeModel_4_0_0("test is applicable for model 4.0 only")
+    val pomFilePath = maven.createProjectPom("""
       <groupId>test</groupId>
       <artifactId>test</artifactId>
       <version>1.0.0</version>
       
-""")
-    val issues = testString("[ERROR] Maven model problem: 'subprojects' unexpected subprojects element at ${projectPom.path}:-1:-1",
-                            TRIGGER_LINES_UNIX) {
-      it.pathString == projectPom.path
+""").toNioPath()
+    val issues = testString("[ERROR] Maven model problem: 'subprojects' unexpected subprojects element at $pomFilePath:-1:-1",
+                            if (SystemInfo.isWindows) TRIGGER_LINES_WINDOWS else TRIGGER_LINES_UNIX) {
+      it == pomFilePath
     }
     assertEquals(1, issues.size)
     assertEquals(MessageEvent.Kind.ERROR, issues[0].second)
@@ -35,8 +52,8 @@ class Maven4ModelVersionErrorParserTest : MavenMultiVersionImportingTestCase() {
 
   @Test
   fun testShouldCreateBuildIssueForProblem() = runBlocking {
-    assumeModel_4_0_0("test is applicable for model 4.0 only")
-    createProjectPom("""
+    maven.assumeModel_4_0_0("test is applicable for model 4.0 only")
+    maven.createProjectPom("""
       <groupId>test</groupId>
       <artifactId>test</artifactId>
       <version>1.0.0</version>
@@ -51,26 +68,13 @@ class Maven4ModelVersionErrorParserTest : MavenMultiVersionImportingTestCase() {
           }
         }
       }, { true }, listOf())
-      .processProjectProblem(project,
-                             MavenProjectProblem.createStructureProblem("/path/to/file:-1:-1",
+      .processProjectProblem(maven.project,
+                             MavenProjectProblem.createStructureProblem("${Path.of("path", "to", "file").absolute()}:-1:-1",
                                                                         "'subprojects' unexpected subprojects element",
                                                                         false))
     assertEquals(1, issues.size)
     assertEquals(MessageEvent.Kind.ERROR, issues[0].second)
   }
-
-
-  @Test
-  fun testShouldCreateBuildIssueForWindowsPath() = runBlocking {
-    assumeModel_4_0_0("test is applicable for model 4.0 only")
-    Assume.assumeTrue("hard to mock the path check on windows, we test only strings", SystemInfo.isUnix)
-    testString("[ERROR] Maven model problem: 'subprojects' unexpected subprojects element at C:\\Users\\User.Name\\IdeaProjects\\spring-petclinic\\pom.xml:-1:-1",
-               TRIGGER_LINES_WINDOWS) {
-      it.pathString == "C:\\Users\\User.Name\\IdeaProjects\\spring-petclinic\\pom.xml"
-    }
-    Unit
-  }
-
 
   private suspend fun testString(
     message: String,
@@ -79,7 +83,7 @@ class Maven4ModelVersionErrorParserTest : MavenMultiVersionImportingTestCase() {
   ): ArrayList<Pair<BuildIssue, MessageEvent.Kind>> {
     val issues = ArrayList<Pair<BuildIssue, MessageEvent.Kind>>()
 
-    importProjectAsync("""
+    maven.importProjectAsync("""
       <groupId>com.example</groupId>
       <artifactId>my-project</artifactId>
       <version>1.0.0</version>
@@ -97,14 +101,14 @@ class Maven4ModelVersionErrorParserTest : MavenMultiVersionImportingTestCase() {
       pathChecker,
       triggerLines
     ).processLogLine(
-      project,
+      maven.project,
       message,
       null,
     ) {}
 
-    assertEquals("Expected 1 event, ", 1, issues.size)
-    assertNotNull("No message error events received", issues[0])
-    assertTrue("No quickfixes available", issues[0].first.quickFixes.isNotEmpty())
+    assertEquals(1, issues.size, "Expected 1 event, ")
+    assertNotNull(issues[0], "No message error events received")
+    assertTrue(issues[0].first.quickFixes.isNotEmpty(), "No quickfixes available")
     return issues
   }
 }

@@ -25,6 +25,9 @@
     <module name="intellij.platform.vcs"/>
     <module name="intellij.platform.vcs.impl"/>
   </dependencies>
+  <content>
+    <module name="intellij.libraries.sshd.osgi" loading="embedded"/>
+  </content>
 
   <extensions defaultExtensionNs="com.intellij">
     <ApplicationLoadListener implementation="org.jetbrains.settingsRepository.IcsApplicationLoadListener"/>
@@ -34,6 +37,7 @@
 
     <statistics.counterUsagesCollector implementationClass="org.jetbrains.settingsRepository.IcsActionsLogger"/>
     <notificationGroup id="Settings Repository" displayType="BALLOON" bundle="messages.IcsBundle" key="notification.group.settings.repository"/>
+    <projectSettings service="org.jetbrains.settingsRepository.ProjectId"/>
   </extensions>
 
   <actions>

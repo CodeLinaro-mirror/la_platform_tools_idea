@@ -4,10 +4,14 @@
     <module name="intellij.python.community.execService"/>
     <module name="intellij.python.community.execService.python"/>
     <module name="intellij.python.sdk"/>
-    <module name="intellij.python.common"/>
+    <module name="intellij.python.community.common"/>
   </dependencies>
 
   <extensions defaultExtensionNs="com.intellij">
-    <python.common.toolToIconMapper implementation="com.intellij.python.venv.PyReqToolIdToIconMapper"/>
+    <python.community.common.toolToIconMapper implementation="com.intellij.python.venv.PyReqToolIdToIconMapper"/>
+  </extensions>
+
+  <extensions defaultExtensionNs="Pythonid">
+    <pythonSdkFlavor implementation="com.intellij.python.venv.sdk.flavors.VirtualEnvSdkFlavor"/>
   </extensions>
 </idea-plugin>

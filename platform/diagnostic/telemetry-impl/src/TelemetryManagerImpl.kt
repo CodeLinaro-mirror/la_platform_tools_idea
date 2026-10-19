@@ -26,6 +26,7 @@ import com.intellij.platform.diagnostic.telemetry.exporters.IdeaOtlpMeterProvide
 import com.intellij.platform.diagnostic.telemetry.exporters.JaegerJsonSpanExporter
 import com.intellij.platform.diagnostic.telemetry.exporters.OtlpSpanExporter
 import com.intellij.platform.util.coroutines.childScope
+import com.intellij.util.text.nullize
 import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.api.metrics.Meter
 import io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator
@@ -52,7 +53,11 @@ import kotlin.time.Duration.Companion.seconds
  */
 @ApiStatus.Experimental
 @ApiStatus.Internal
-class TelemetryManagerImpl(coroutineScope: CoroutineScope, isUnitTestMode: Boolean) : TelemetryManager {
+class TelemetryManagerImpl(
+  coroutineScope: CoroutineScope,
+  isUnitTestMode: Boolean,
+  loadExporterExtensions: Boolean = !isUnitTestMode,
+) : TelemetryManager {
   // for the unit (performance) tests that use Application
   @TestOnly
   @Suppress("unused")
@@ -61,6 +66,9 @@ class TelemetryManagerImpl(coroutineScope: CoroutineScope, isUnitTestMode: Boole
   private val sdk: OpenTelemetrySdk
 
   override var verboseMode: Boolean = false
+
+  private val detailedScopes: Set<String> = System.getProperty("idea.diagnostic.opentelemetry.detailed.scopes").orEmpty()
+      .split(',').mapNotNullTo(HashSet()) { it.nullize(nullizeSpaces = true) }
 
   private val aggregatedMetricExporter: AggregatedMetricExporter
   private val hasSpanExporters: Boolean
@@ -76,7 +84,7 @@ class TelemetryManagerImpl(coroutineScope: CoroutineScope, isUnitTestMode: Boole
     otlpService = OtlpService.getInstance()
 
     var otlJob: Job? = null
-    val spanExporters = createSpanExporters(configurator.resource, isUnitTestMode = isUnitTestMode)
+    val spanExporters = createSpanExporters(configurator.resource, loadExporterExtensions = loadExporterExtensions)
     hasSpanExporters = !spanExporters.isEmpty()
     var otlpServiceCoroutineScope = coroutineScope
     batchSpanProcessor = if (hasSpanExporters) {
@@ -146,7 +154,7 @@ class TelemetryManagerImpl(coroutineScope: CoroutineScope, isUnitTestMode: Boole
     }
 
     val name = scope.toString()
-    return wrapTracer(scopeName = name, tracer = sdk.getTracer(name), verbose = scope.verbose, verboseMode = verboseMode)
+    return wrapTracer(scopeName = name, tracer = sdk.getTracer(name), verbose = scope.verbose, verboseMode = verboseMode, detailedTracers = detailedScopes)
   }
 
   override fun getSimpleTracer(scope: Scope): IntelliJTracer {
@@ -236,7 +244,7 @@ private fun normalizeTelemetryFile(file: Path): Path {
   }
 }
 
-private fun createSpanExporters(resource: Resource, isUnitTestMode: Boolean = false): MutableList<AsyncSpanExporter> {
+private fun createSpanExporters(resource: Resource, loadExporterExtensions: Boolean = true): MutableList<AsyncSpanExporter> {
   val spanExporters = mutableListOf<AsyncSpanExporter>()
   System.getProperty("idea.diagnostic.opentelemetry.file")?.let { traceFile ->
     spanExporters.add(JaegerJsonSpanExporter(
@@ -251,8 +259,8 @@ private fun createSpanExporters(resource: Resource, isUnitTestMode: Boolean = fa
     spanExporters.add(OtlpSpanExporter(it))
   }
 
-  // Extension points for "com.intellij.openTelemetryExporterProvider" isn't available in unit tests
-  if (isUnitTestMode) {
+  // Some hosts initialize telemetry before extension area/analyzer context is available.
+  if (!loadExporterExtensions) {
     return spanExporters
   }
 

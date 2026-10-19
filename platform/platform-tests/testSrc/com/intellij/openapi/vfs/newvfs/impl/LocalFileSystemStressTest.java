@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.vfs.newvfs.impl;
 
 import com.intellij.openapi.application.ApplicationManager;
@@ -38,18 +38,16 @@ public class LocalFileSystemStressTest extends BareTestFixtureTestCase {
       UIUtil.pump();
       StringBuilder expectedPath = new StringBuilder(N_LEVELS*4+100);
       expectedPath.append(testDir.getPath());
+      VfsData[] vfsDataHolder = new VfsData[1];
       VirtualFile nested = WriteAction.computeAndWait(() -> {
         VirtualFile v = testDir;
-        VfsData.Segment segment = new VfsData.Segment(0, new VfsData(ApplicationManager.getApplication(), (PersistentFSImpl)PersistentFS.getInstance()));
+        VfsData vfsData = new VfsData(ApplicationManager.getApplication(), (PersistentFSImpl)PersistentFS.getInstance());
+        vfsDataHolder[0] = vfsData;
+        VfsData.Segment segment = new VfsData.Segment(0, vfsData);
         VfsData.DirectoryData directoryData = new VfsData.DirectoryData();
         for (int i = 1; i < N_LEVELS; i++) {
           // create VirtualDirectory manually instead of calling "createChildDirectory" to avoid filling persistence with garbage, which is slow and harmful for other tests
           v = new VirtualDirectoryImpl(i, segment, directoryData, (VirtualDirectoryImpl)v, TempFileSystem.getInstance()){
-            @Override
-            public @NotNull CharSequence getNameSequence() {
-              return "dir";
-            }
-
             @Override
             public @NotNull String getName() {
               return "dir";
@@ -64,6 +62,10 @@ public class LocalFileSystemStressTest extends BareTestFixtureTestCase {
         assertEquals(expectedPath.toString(), nested.getPath());
       }
       finally {
+        VfsData vfsData = vfsDataHolder[0];
+        if (vfsData != null) {
+          vfsData.close();
+        }
         WriteAction.runAndWait(() -> testDir.delete(this));
       }
     }).attempts(1).start();

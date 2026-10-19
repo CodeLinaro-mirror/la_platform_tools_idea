@@ -4,9 +4,11 @@ package com.intellij.testFramework;
 import com.intellij.find.ngrams.TrigramIndex;
 import com.intellij.ide.IdeEventQueue;
 import com.intellij.ide.ProhibitAWTEvents;
+import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.AccessToken;
 import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.application.impl.LaterInvocator;
 import com.intellij.openapi.application.impl.NonBlockingReadActionImpl;
 import com.intellij.openapi.application.impl.TestOnlyThreading;
@@ -17,6 +19,7 @@ import com.intellij.openapi.project.ex.ProjectEx;
 import com.intellij.openapi.project.impl.ProjectImpl;
 import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.util.Disposer;
+import com.intellij.openapi.util.ObjectTree;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.platform.diagnostic.telemetry.TelemetryManager;
@@ -34,6 +37,7 @@ import com.intellij.util.io.PersistentEnumeratorCache;
 import com.intellij.util.ref.DebugReflectionUtil;
 import com.intellij.util.ref.GCUtil;
 import com.intellij.util.ref.IgnoredTraverseEntry;
+import com.jetbrains.JBR;
 import com.intellij.util.ui.EDT;
 import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.NotNull;
@@ -42,17 +46,22 @@ import org.jetbrains.annotations.TestOnly;
 
 import javax.swing.SwingUtilities;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.ref.SoftReference;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Vector;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 @TestOnly
 public final class LeakHunter {
+  private static final Logger LOG = Logger.getInstance(LeakHunter.class);
+  private static final List<Runnable> ourProjectCleanups = new CopyOnWriteArrayList<>();
+
   @TestOnly
   private static @NotNull String getCreationPlace(@NotNull Project project) {
     String creationTrace = project instanceof ProjectEx ? ((ProjectEx)project).getCreationTrace() : null;
@@ -144,7 +153,7 @@ public final class LeakHunter {
       if (!leakDetected.get()) {
         return true;
       }
-        runAdditionalCleanup();
+      runAdditionalCleanup();
       try (AccessToken ignored = ProhibitAWTEvents.start("checking for leaks")) {
         return runDetectorPass(rootsSupplier, suspectClass, isReallyLeak, leakBackLinkProcessor, processor);
       }
@@ -158,7 +167,7 @@ public final class LeakHunter {
                                        @Nullable Predicate<? super T> isReallyLeak,
                                        @Nullable Predicate<? super DebugReflectionUtil.BackLink<?>> leakBackLinkProcessor,
                                        @NotNull PairProcessor<? super T, Object> processor) {
-    return DebugReflectionUtil.walkObjects(1_000, 1_000_000, rootsSupplier.get(), suspectClass, __ -> true, (leaked, backLink) -> {
+    return DebugReflectionUtil.walkObjects(1_000, 1_000_000, rootsSupplier.get(), suspectClass, _ -> true, (leaked, backLink) -> {
       if (leakBackLinkProcessor != null && leakBackLinkProcessor.test(backLink)) {
         return true;
       }
@@ -265,6 +274,24 @@ public final class LeakHunter {
     NonBlockingReadActionImpl.dropTestTasks();
     PersistentEnumeratorCache.clearCacheForTests();
     flushTelemetry();
+    tryGcSoftlyReachableObjects();
+  }
+
+  /**
+   * Tries to clear softly reachable objects using JBR's fullGC if available,
+   * falling back to {@link GCUtil#tryGcSoftlyReachableObjects()} otherwise.
+   */
+  @TestOnly
+  private static void tryGcSoftlyReachableObjects() {
+    if (JBR.isSystemUtilsSupported()) {
+      SoftReference<Object> sentinel = new SoftReference<>(new Object());
+      JBR.getSystemUtils().fullGC();
+      if (sentinel.get() == null) {
+        // Soft references were cleared by JBR.fullGC(), we can return
+        return;
+      }
+      LOG.warn("JBR.fullGC() did not clear soft references, falling back to GCUtil");
+    }
     GCUtil.tryGcSoftlyReachableObjects();
   }
 
@@ -273,7 +300,7 @@ public final class LeakHunter {
                                                        @Nullable Object backLink,
                                                        boolean detailedErrorDescription) {
     int hashCode = System.identityHashCode(leaked);
-    // please update together with com.intellij.tests.JUnit5TeamCityRunnerForTestsOnClasspath#isLeak
+    // please update together with com.intellij.tests.JUnit5TeamCityRunner#assertNoUnhandledExceptions_isLeak
     String result = "Found a leaked instance of "+leaked.getClass()
                     +"\nInstance: "+leaked
                     +"\nHashcode: "+hashCode;
@@ -284,11 +311,33 @@ public final class LeakHunter {
       result += "\nExisting strong reference path to the instance:\n" +backLink.toString().indent(2);
     }
 
+    if (backLink instanceof DebugReflectionUtil.BackLink<?>) {
+      Disposable anchor = findObjectTreeAnchor((DebugReflectionUtil.BackLink<?>)backLink);
+      if (anchor != null) {
+        String path = Disposer.getTree().printParentChainToRoot(anchor);
+        if (path != null) {
+          result += "\n\nThe leaked object is reachable via a Disposable in the Disposer tree." +
+                    "\nPath from that Disposable up to the Disposer ROOT:\n" + path;
+        }
+      }
+    }
+
     String creationPlace = leaked instanceof Project ? getCreationPlace((Project)leaked) : null;
     if (creationPlace != null) {
       result += "\nThe instance was created at: "+creationPlace;
     }
     return result;
+  }
+
+  private static @Nullable Disposable findObjectTreeAnchor(@NotNull DebugReflectionUtil.BackLink<?> start) {
+    ObjectTree tree = Disposer.getTree();
+    for (DebugReflectionUtil.BackLink<?> link = start; link != null; link = link.prev()) {
+      Object value = link.getValue();
+      if (value instanceof Disposable && tree.printParentChainToRoot((Disposable)value) != null) {
+        return (Disposable)value;
+      }
+    }
+    return null;
   }
 
   @TestOnly
@@ -328,5 +377,16 @@ public final class LeakHunter {
   // Here we forcibly flush the batch and avoid a leak of component managers.
   private static void flushTelemetry() {
     TelemetryManager.getInstance().forceFlushMetricsBlocking();
+  }
+
+  public static void registerProjectCleanup(@NotNull Runnable cleanup) {
+    ourProjectCleanups.add(cleanup);
+  }
+
+  public static void cleanupAllProjects() {
+    for (var each : ourProjectCleanups) {
+      each.run();
+    }
+    ourProjectCleanups.clear();
   }
 }

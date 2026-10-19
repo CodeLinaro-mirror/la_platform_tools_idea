@@ -11,8 +11,8 @@ plugins {
   alias(libs.plugins.dokka)
   // GRADLE_PLUGINS__MARKER_START
   id("fleet-module")
-  alias(jps.plugins.expects)
   alias(jps.plugins.kotlin.serialization)
+  id("fleet-multiplatform-expects-module")
   // GRADLE_PLUGINS__MARKER_END
 }
 
@@ -101,7 +101,7 @@ kotlin {
   sourceSets {
     wasmJsMain {
       dependencies {
-        implementation("org.jetbrains.kotlinx:kotlinx-browser:0.3")
+        implementation(libs.kotlin.wrappers.browser)
       }
     }
   }

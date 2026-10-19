@@ -5,7 +5,7 @@ import com.intellij.driver.client.Remote
 import com.intellij.driver.client.service
 import com.intellij.driver.model.OnDispatcher
 import com.intellij.driver.model.RdTarget
-import com.intellij.driver.sdk.remoteDev.GuestNavigationService
+import com.intellij.driver.sdk.remoteDev.FrontendGuestNavigationService
 import com.intellij.driver.sdk.ui.remote.ColorRef
 import java.awt.Point
 import java.awt.Rectangle
@@ -178,6 +178,7 @@ interface FileEditor {
 @Remote("com.intellij.openapi.fileEditor.FileEditorManager")
 interface FileEditorManager {
   fun openFile(file: VirtualFile, focusEditor: Boolean, searchForOpen: Boolean): Array<FileEditor>
+  fun closeFile(file: VirtualFile)
   fun getSelectedTextEditor(): Editor?
   fun setSelectedEditor(editor: FileEditor)
   fun getAllEditors(): Array<FileEditor>
@@ -204,7 +205,9 @@ interface TextAttributes {
 }
 
 @Remote("com.intellij.openapi.editor.markup.EffectType")
-interface EffectType
+interface EffectType {
+  fun name(): String
+}
 
 fun Driver.openEditor(file: VirtualFile, project: Project? = null): Array<FileEditor> {
   return withContext(OnDispatcher.EDT) {
@@ -215,26 +218,23 @@ fun Driver.openEditor(file: VirtualFile, project: Project? = null): Array<FileEd
 fun Driver.openFile(relativePath: String, project: Project = singleProject(), waitForCodeAnalysis: Boolean = true, isTextEditor: Boolean = true) {
   step("Open file $relativePath") {
     val openedFile = if (!isRemDevMode) {
-      val fileToOpen = findFile(relativePath = relativePath, project = project)
-      if (fileToOpen == null) {
-        throw IllegalArgumentException("Fail to find file $relativePath")
-      }
-      openEditor(fileToOpen, project)
+      val fileToOpen = waitFor(message = "File is opened: $relativePath",
+                               errorMessage = { "Fail to find file $relativePath" },
+                               timeout = 10.seconds,
+                               getter = { findFile(relativePath = relativePath, project = project) },
+                               checker = { virtualFile ->
+                                 virtualFile != null &&
+                                 Path.of(virtualFile.getPath()).endsWith(Path.of(relativePath))
+                               })
+
+      openEditor(fileToOpen!!, project)
       fileToOpen
     }
     else {
-      val service = service(GuestNavigationService::class, project)
+      val service = service(FrontendGuestNavigationService::class, project)
       withContext(OnDispatcher.EDT) {
         service.navigateViaBackend(relativePath, 0)
-        waitFor(message = "File is opened: $relativePath", timeout = 30.seconds,
-                getter = {
-                  if (isTextEditor) service<FileEditorManager>(project).getSelectedTextEditor()?.getVirtualFile()
-                  else service<FileEditorManager>(project).getCurrentFile()
-                },
-                checker = { virtualFile ->
-                  virtualFile != null &&
-                  Path.of(virtualFile.getPath()).endsWith(Path.of(relativePath))
-                })!!
+        findCurrentEditorFile(relativePath = relativePath, project = project, isTextEditor = isTextEditor)!!
       }
     }
     if (waitForCodeAnalysis) {
@@ -242,3 +242,20 @@ fun Driver.openFile(relativePath: String, project: Project = singleProject(), wa
     }
   }
 }
+
+fun Driver.findCurrentEditorFile(relativePath: String, project: Project, isTextEditor: Boolean = true): VirtualFile? {
+  return waitFor(message = "File is opened: $relativePath", timeout = 30.seconds,
+                 getter = {
+                   if (isTextEditor) service<FileEditorManager>(project).getSelectedTextEditor()?.getVirtualFile()
+                   else service<FileEditorManager>(project).getCurrentFile()
+                 },
+                 checker = { virtualFile -> virtualFile != null && Path.of(virtualFile.getPath()).endsWith(Path.of(relativePath)) })
+}
+
+fun Driver.findOpenFile(relativePath: String, project: Project = singleProject(), isTextEditor: Boolean = true): VirtualFile? =
+  if (!isRemDevMode) {
+    findFile(relativePath = relativePath, project = project)
+  }
+  else {
+    findCurrentEditorFile(relativePath = relativePath, project = project, isTextEditor = isTextEditor)
+  }

@@ -3,7 +3,7 @@ package com.jetbrains.rhizomedb
 
 import fleet.fastutil.longs.LongArrayList
 import fleet.fastutil.longs.toArray
-import fleet.util.computeShim
+import fleet.multiplatform.shims.computeShim
 import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.PersistentSet
 import kotlinx.collections.immutable.persistentHashMapOf
@@ -24,7 +24,7 @@ class QueryCache private constructor(private val cache: AtomicReference<QueryCac
       oldPatterns?.forEach { oldPattern ->
         if (!result.patterns.contains(oldPattern)) {
           val queries = patternToQueryPrime[oldPattern]!!
-          val queriesPrime = queries.remove(query)
+          val queriesPrime = queries.removing(query)
           when {
             queriesPrime.isEmpty() -> patternToQueryPrime.remove(oldPattern)
             else -> patternToQueryPrime[oldPattern] = queriesPrime
@@ -35,12 +35,12 @@ class QueryCache private constructor(private val cache: AtomicReference<QueryCac
       result.patterns.forEach { newPattern ->
         if (oldPatterns == null || !oldPatterns.contains(newPattern)) {
           patternToQueryPrime.computeShim(newPattern) { _, queries ->
-            (queries ?: persistentHashSetOf()).add(query)
+            (queries ?: persistentHashSetOf()).adding(query)
           }
         }
       }
       return QueryCacheData(patternToQuery = patternToQueryPrime.build(),
-                            queryToResult = queryToResult.put(query, result))
+                            queryToResult = queryToResult.putting(query, result))
     }
 
     fun invalidate(novelty: Iterable<Datom>): QueryCacheData {

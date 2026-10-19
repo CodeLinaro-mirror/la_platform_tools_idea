@@ -77,7 +77,7 @@ public abstract class AbstractExternalFilter {
         prev = matcher.end(1) + 1;
         ready.append(before);
         ready.append("\"");
-        ready.append(ReadAction.compute(() -> convertReference(root, href.toString())));
+        ready.append(ReadAction.computeBlocking(() -> convertReference(root, href.toString())));
         ready.append("\"");
       }
 
@@ -277,6 +277,7 @@ public abstract class AbstractExternalFilter {
            StringUtil.containsIgnoreCase(read, "<li class=\"blockList\">");
   }
 
+  @ApiStatus.Internal
   protected @NotNull ParseSettings getParseSettings(@NotNull String url) {
     Pattern startSection = CLASS_DATA_START;
     Pattern endSection = CLASS_DATA_END;
@@ -390,6 +391,7 @@ public abstract class AbstractExternalFilter {
     }
   }
 
+  @ApiStatus.Internal
   protected static final class MyReader extends InputStreamReader {
     private final ByteArrayInputStream myInputStream;
 
@@ -413,6 +415,7 @@ public abstract class AbstractExternalFilter {
   /**
    * Settings used for parsing of external documentation
    */
+  @ApiStatus.Internal
   protected static final class ParseSettings {
     /**
      * Pattern defining the start of target fragment.

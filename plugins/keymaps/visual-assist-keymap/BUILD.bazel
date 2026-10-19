@@ -1,16 +1,39 @@
-### auto-generated section `build intellij.keymap.visualAssist` start
-load("@rules_jvm//:jvm.bzl", "jvm_library", "resourcegroup")
+load("@rules_jvm//:jvm.bzl", "jvm_library")
 
-resourcegroup(
-  name = "keymap-visualAssist_resources",
-  srcs = glob(["resources/**/*"]),
-  strip_prefix = "resources"
+### auto-generated section `build intellij.keymap.visualAssist` start
+
+jvm_library(
+    name = "keymap-visualAssist",
+    srcs = glob(
+        [],
+        allow_empty = True,
+    ),
+    module_name = "intellij.keymap.visualAssist",
+    resource_strip_prefix = "resources",
+    resources = glob(
+        ["resources/**/*"],
+    ),
+    visibility = ["//visibility:public"],
 )
 
 jvm_library(
-  name = "keymap-visualAssist",
-  visibility = ["//visibility:public"],
-  srcs = glob([], allow_empty = True),
-  resources = [":keymap-visualAssist_resources"]
+    name = "keymap-visualAssist_test_lib",
+    testonly = True,
+    srcs = glob(
+        [],
+        allow_empty = True,
+    ),
+    module_name = "intellij.keymap.visualAssist",
+    visibility = ["//visibility:public"],
+    runtime_deps = [":keymap-visualAssist"],
 )
 ### auto-generated section `build intellij.keymap.visualAssist` end
+
+### auto-generated section `iml intellij.keymap.visualAssist` start
+exports_files(
+    [
+        "intellij.keymap.visualAssist.iml",
+    ],
+    visibility = ["//visibility:public"],
+)
+### auto-generated section `iml intellij.keymap.visualAssist` end

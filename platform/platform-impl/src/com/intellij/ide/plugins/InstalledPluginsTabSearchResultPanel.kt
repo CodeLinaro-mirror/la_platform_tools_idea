@@ -38,7 +38,7 @@ import java.util.function.Consumer
 import java.util.function.Supplier
 
 @ApiStatus.Internal
-internal class InstalledPluginsTabSearchResultPanel(
+class InstalledPluginsTabSearchResultPanel(
   coroutineScope: CoroutineScope,
   installedController: SearchUpDownPopupController,
   panel: PluginsGroupComponentWithProgress,
@@ -189,9 +189,9 @@ internal class InstalledPluginsTabSearchResultPanel(
         result.mainAction = LinkLabelButton<Any?>(
           IdeBundle.message("plugin.manager.update.all"),
           null,
-          LinkListener { _, _ ->
+          LinkListener<Any?> { _, _ ->
             result.mainAction!!.setEnabled(false)
-            for (plugin in result.ui.plugins) {
+            for (plugin in result.ui!!.plugins) {
               plugin.updatePlugin()
             }
           })
@@ -200,7 +200,7 @@ internal class InstalledPluginsTabSearchResultPanel(
         PluginModelAsyncOperationsExecutor.loadUpdates().let { updates ->
           if (!ContainerUtil.isEmpty(updates)) {
             withContext(Dispatchers.EDT + ModalityState.any().asContextElement()) {
-              PluginManagerConfigurablePanel.applyUpdates(myPanel, updates)
+              PluginManagerConfigurablePanel.setUpdateDescriptors(myPanel, updates)
               mySelectionListener.accept(myInstalledPanelSupplier.get())
               mySelectionListener.accept(panel)
               fullRepaint()

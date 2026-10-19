@@ -44,9 +44,10 @@ import static com.intellij.grazie.text.TextExtractor.findAllTextContents;
 
 public final class HighlightingUtil {
 
-  public static final Comparator<TextContent> BY_TEXT_START = Comparator.comparing(tc -> tc.textOffsetToFile(0));
   private final static Logger LOGGER = Logger.getInstance(HighlightingUtil.class);
   private static final Key<Object> LOCK = Key.create("grazie reliable language detection cache lock");
+
+  public static final Comparator<TextContent> BY_TEXT_START = Comparator.comparing(tc -> tc.textOffsetToFile(0));
 
   public static Set<TextDomain> checkedDomains() {
     return GrazieInspection.Companion.checkedDomains();
@@ -62,6 +63,10 @@ public final class HighlightingUtil {
 
   public static boolean isTooLargeText(List<TextContent> texts) {
     return texts.stream().mapToInt(t -> t.length()).sum() > MAX_TEXT_LENGTH_IN_PSI_ELEMENT;
+  }
+
+  public static boolean isTooLargeText(TextContent text) {
+    return text.length() > MAX_TEXT_LENGTH_IN_PSI_ELEMENT;
   }
 
   public static void applyTextChanges(Document document, List<StringOperation> changes) {

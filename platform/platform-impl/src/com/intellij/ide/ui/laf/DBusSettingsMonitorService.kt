@@ -2,9 +2,11 @@
 package com.intellij.ide.ui.laf
 
 import com.intellij.ide.AppLifecycleListener
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.asContextElement
+import com.intellij.openapi.application.ex.ApplicationManagerEx
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
@@ -13,6 +15,7 @@ import com.intellij.openapi.wm.impl.ExecResult
 import com.intellij.openapi.wm.impl.LinuxUiUtil
 import com.intellij.openapi.wm.impl.output
 import com.intellij.util.concurrency.ThreadingAssertions
+import com.intellij.util.ui.UnixDesktopEnv
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -50,6 +53,10 @@ private val QUERY_COLOR_SCHEME = arrayOf(
   "string:org.freedesktop.appearance",
   "string:color-scheme")
 
+private val UNSUPPORTED_DESKTOPS = setOf(
+  UnixDesktopEnv.CINNAMON // Doesn't support DBus events during theme auto switching
+)
+
 @Service
 internal class DBusSettingsMonitorService(private val scope: CoroutineScope) {
 
@@ -63,6 +70,9 @@ internal class DBusSettingsMonitorService(private val scope: CoroutineScope) {
 
   val isServiceAllowed: Boolean
     get() = SystemInfoRt.isLinux
+            && !UNSUPPORTED_DESKTOPS.contains(UnixDesktopEnv.CURRENT)
+            && !ApplicationManager.getApplication().isUnitTestMode()
+            && !ApplicationManagerEx.isInIntegrationTest()
 
   val darkScheme: StateFlow<Boolean?> = darkSchemeFlow.asStateFlow()
 
@@ -91,6 +101,12 @@ internal class DBusSettingsMonitorService(private val scope: CoroutineScope) {
         }
       }
     }
+    else {
+      val current = UnixDesktopEnv.CURRENT
+      if (current != null && UNSUPPORTED_DESKTOPS.contains(current)) {
+        LOG.info("DBus is not fully supported on ${current.presentableName}. Theme synchronization will be disabled.")
+      }
+    }
   }
 
   fun setDarkSchemeListener(listener: (Boolean) -> Unit) {
@@ -103,8 +119,10 @@ internal class DBusSettingsMonitorService(private val scope: CoroutineScope) {
     }
 
     scope.launch(Dispatchers.EDT + ModalityState.any().asContextElement()) {
-      darkScheme.collect {
-        listener?.invoke(it ?: false)
+      darkScheme.collect { isDark ->
+        if (isDark != null) {
+          listener?.invoke(isDark)
+        }
       }
     }
   }

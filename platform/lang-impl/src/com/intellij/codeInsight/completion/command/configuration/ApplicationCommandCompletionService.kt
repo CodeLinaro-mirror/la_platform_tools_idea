@@ -91,11 +91,10 @@ class CommandCompletionSettingsService {
   }
 }
 
-@ApiStatus.Internal
 internal class AppCommandCompletionSettings(
   var showCounts: Int = 0,
   var myEnabled: CommandCompletionEnabled = CommandCompletionEnabled.FROM_REGISTRY,
-  var myReadOnlyEnabled: Boolean = false,
+  var myReadOnlyEnabled: Boolean = true,
   var useGroup: Boolean = true,
 ) {
 
@@ -118,6 +117,9 @@ internal class AppCommandCompletionSettings(
     myEnabled = if (enabled) CommandCompletionEnabled.ENABLED else CommandCompletionEnabled.DISABLED
   }
 
+  /**
+   * @see com.intellij.codeInsight.completion.group.GroupedCompletionImpl.isEnabled
+   */
   private fun calculateFromRegistry(): Boolean {
     // unit tests
     if (ApplicationManager.getApplication().isUnitTestMode() &&
@@ -128,7 +130,7 @@ internal class AppCommandCompletionSettings(
     // production
     if (
       PlatformUtils.isIntelliJ() ||
-      NewRdCompletionSupport.isFrontendRdCompletionOn() && NewRdCompletionSupport.isFrontendForIntelliJBackend()
+      NewRdCompletionSupport.isFrontendRdCompletionOn(null) && NewRdCompletionSupport.getInstance().isFrontendForIntelliJBackend()
     ) {
       if (Registry.`is`("ide.completion.command.force.enabled")) {
         return true

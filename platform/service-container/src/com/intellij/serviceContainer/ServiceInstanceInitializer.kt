@@ -10,7 +10,6 @@ import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.ServiceDescriptor
 import com.intellij.openapi.extensions.PluginDescriptor
 import com.intellij.openapi.extensions.PluginId
-import com.intellij.openapi.util.Disposer
 import com.intellij.platform.instanceContainer.instantiation.InstantiationException
 import com.intellij.platform.instanceContainer.instantiation.instantiate
 import com.intellij.platform.instanceContainer.internal.InstanceInitializer
@@ -23,12 +22,6 @@ internal abstract class ServiceInstanceInitializer(
   private val pluginId: PluginId,
   private val serviceDescriptor: ServiceDescriptor,
 ) : InstanceInitializer {
-  // In the ideal world, we should create the proxy for any "open=true" service. Unfortunately, at the moment "open" services are not
-  // truly open: they are cast to "impl" classes in different places. Unchecked casts throw exceptions. Checked casts silently
-  // disable some functionality. To work around the problem, we introduce the "allowlist" of services that are allowed to be proxied.
-  private val proxiedServicesList: Set<String> by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-    javaClass.classLoader.getResourceAsStream("proxied-services.list")?.bufferedReader()?.useLines { it.toSet() } ?: emptySet()
-  }
 
   override val overridable: Boolean
     get() = serviceDescriptor.open
@@ -65,7 +58,7 @@ internal abstract class ServiceInstanceInitializer(
     }
 
     if (instance is Disposable) {
-      Disposer.register(componentManager.serviceParentDisposable, instance)
+      registerWithServiceParent(componentManager, instance, instanceClass)
     }
 
     // do not call Cancellation.withNonCancelableSection or perform any other setup if the service doesn't need to be initialized
@@ -90,7 +83,7 @@ internal abstract class ServiceInstanceInitializer(
   }
 
   private fun canBeDynamicallyOverridden(serviceInterfaceName: String): Boolean {
-    return componentManager.useProxiesForOpenServices && overridable &&
+    return overridable && componentManager.useProxiesForOpenServices &&
            proxiedServicesList.contains(serviceInterfaceName)
   }
 }

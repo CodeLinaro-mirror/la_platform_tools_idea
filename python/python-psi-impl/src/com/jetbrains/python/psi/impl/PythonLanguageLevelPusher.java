@@ -47,6 +47,7 @@ import com.jetbrains.python.PythonCodeStyleService;
 import com.jetbrains.python.PythonFileType;
 import com.jetbrains.python.PythonRuntimeService;
 import com.jetbrains.python.codeInsight.typing.PyTypeShed;
+import com.jetbrains.python.module.PyModuleService;
 import com.jetbrains.python.psi.LanguageLevel;
 import com.jetbrains.python.psi.PyUtil;
 import com.jetbrains.python.psi.resolve.PythonSdkPathCache;
@@ -418,6 +419,11 @@ public final class PythonLanguageLevelPusher implements FilePropertyPusher<Langu
     }
 
     private Boolean visitFileToPush(@NotNull VirtualFile file, PushedFilePropertiesUpdater propertiesUpdater) {
+      // Copied from `com.intellij.openapi.roots.impl.PushedFilePropertiesUpdaterImpl.applyPushersToFile`.
+      // Preload children outside read action to avoid freezes.
+      if (file.isDirectory()) {
+        file.getChildren();
+      }
       return ReadAction.compute(() -> {
         if (!file.isValid() || FileTypeManager.getInstance().isFileIgnored(file)) {
           return false;

@@ -2,12 +2,16 @@
 package com.intellij.modcompletion;
 
 import com.intellij.codeInsight.completion.BaseCompletionParameters;
+import com.intellij.codeInsight.completion.CompletionContributor;
+import com.intellij.codeInsight.completion.CompletionParameters;
+import com.intellij.codeInsight.completion.CompletionProcess;
 import com.intellij.codeInsight.completion.CompletionSorter;
 import com.intellij.codeInsight.completion.CompletionType;
 import com.intellij.codeInsight.completion.PrefixMatcher;
 import com.intellij.lang.Language;
 import com.intellij.lang.LanguageExtension;
 import com.intellij.lang.LanguageExtensionWithAny;
+import com.intellij.openapi.project.PossiblyDumbAware;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.psi.PsiElement;
@@ -15,15 +19,15 @@ import com.intellij.psi.PsiFile;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.List;
-import java.util.function.Consumer;
 
 /**
  * A language-specific provider for {@link ModCompletionItem} completion options 
  */
 @NotNullByDefault
-public interface ModCompletionItemProvider {
+public interface ModCompletionItemProvider extends PossiblyDumbAware {
   LanguageExtension<ModCompletionItemProvider> EP_NAME = new LanguageExtensionWithAny<>("com.intellij.modcompletion.completionItemProvider");
 
   /**
@@ -32,7 +36,16 @@ public interface ModCompletionItemProvider {
    * @param context context to use
    * @param sink a consumer to pass completion items to
    */
-  void provideItems(CompletionContext context, Consumer<ModCompletionItem> sink);
+  void provideItems(CompletionContext context, ModCompletionResult sink);
+
+  /**
+   * @return true if provider is enabled in general. By default, this is controlled by a registry key 
+   * (see {@link #modCommandCompletionEnabled()}), given the experimental nature of {@link ModCompletionItemProvider}.
+   * One may override this method to return {@code true} unconditionally for contributors that are known to be stable.
+   */
+  default boolean isEnabled() {
+    return modCommandCompletionEnabled();
+  }
 
   /**
    * @param context context to use
@@ -43,10 +56,22 @@ public interface ModCompletionItemProvider {
   }
 
   /**
+   * @return the completion contributor class to attach this provider to;
+   * the completion items from this provider will be contributed right before the supplied contributor.
+   * This may help to retain the order in complex cases with different sorters when migration to {@link ModCompletionItemProvider} 
+   * is in progress and this provider was extracted from the specified anchor contributor, but the contributor still exists.
+   * Returns null if no anchor contributor is specified; in this case the provider will be executed before any classic contributors.
+   */
+  @ApiStatus.Internal
+  default @Nullable Class<? extends CompletionContributor> getAnchorContributor() {
+    return null;
+  }
+
+  /**
    * @param language language to get providers for
    * @return language-specific completion providers
    */
-  static List<ModCompletionItemProvider> forLanguage(Language language) {
+  static @Unmodifiable List<ModCompletionItemProvider> forLanguage(Language language) {
     return EP_NAME.forKey(language);
   }
 
@@ -69,13 +94,15 @@ public interface ModCompletionItemProvider {
    * @param type completion type
    */
   record CompletionContext(
+    CompletionProcess process,
     PsiFile originalFile,
     int offset,
     @Nullable PsiElement original,
     PsiElement element,
     PrefixMatcher matcher,
     int invocationCount,
-    CompletionType type
+    CompletionType type,
+    @Nullable CompletionParameters oldParameters
   )
     implements BaseCompletionParameters {
     /**
@@ -129,8 +156,19 @@ public interface ModCompletionItemProvider {
     }
 
     @Override
+    public CompletionProcess getProcess() {
+      return process;
+    }
+
+    @Override
     public int getInvocationCount() {
       return invocationCount();
+    }
+
+    @Override
+    public CompletionParameters asCompletionParameters() {
+      if (oldParameters != null) return oldParameters;
+      throw new UnsupportedOperationException("No CompletionParameters object available. Try to use BaseCompletionParameters instead.");
     }
   }
 }

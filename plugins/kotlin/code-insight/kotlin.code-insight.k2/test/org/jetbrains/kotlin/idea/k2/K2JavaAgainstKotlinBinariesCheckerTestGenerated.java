@@ -1,9 +1,8 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package org.jetbrains.kotlin.idea.k2;
 
 import com.intellij.testFramework.TestDataPath;
-import org.jetbrains.kotlin.idea.base.plugin.KotlinPluginMode;
 import org.jetbrains.kotlin.idea.base.test.TestRoot;
 import org.jetbrains.kotlin.idea.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils;
@@ -21,12 +20,6 @@ import org.jetbrains.kotlin.checkers.AbstractJavaAgainstKotlinBinariesCheckerTes
 @RunWith(JUnit3RunnerWithInners.class)
 @TestMetadata("../../idea/tests/testData/kotlinAndJavaChecker/javaAgainstKotlin")
 public class K2JavaAgainstKotlinBinariesCheckerTestGenerated extends AbstractJavaAgainstKotlinBinariesCheckerTest {
-    @java.lang.Override
-    @org.jetbrains.annotations.NotNull
-    public final KotlinPluginMode getPluginMode() {
-        return KotlinPluginMode.K2;
-    }
-
     private void runTest(String testDataFilePath) throws Exception {
         KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
     }
@@ -64,6 +57,11 @@ public class K2JavaAgainstKotlinBinariesCheckerTestGenerated extends AbstractJav
     @TestMetadata("EnumEntriesInSwitch.kt")
     public void testEnumEntriesInSwitch() throws Exception {
         runTest("../../idea/tests/testData/kotlinAndJavaChecker/javaAgainstKotlin/EnumEntriesInSwitch.kt");
+    }
+
+    @TestMetadata("enumEntryAndCompanionProperty.kt")
+    public void testEnumEntryAndCompanionProperty() throws Exception {
+        runTest("../../idea/tests/testData/kotlinAndJavaChecker/javaAgainstKotlin/enumEntryAndCompanionProperty.kt");
     }
 
     @TestMetadata("EnumStaticImportInJava.kt")

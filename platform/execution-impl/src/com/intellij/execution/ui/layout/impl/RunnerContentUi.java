@@ -959,11 +959,16 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
         ApplicationManager.getApplication().invokeLater(() -> {
           if (Disposer.isDisposed(content)) {
             AnAction[] actions = myViewActions.getChildren(ActionManager.getInstance());
+            boolean modified = false;
             for (AnAction action : actions) {
               if (action instanceof ViewLayoutModificationAction && ((ViewLayoutModificationAction)action).getContent() == content) {
                 myViewActions.remove(action);
+                modified = true;
                 break;
               }
+            }
+            if (modified) {
+              rebuildMinimizedActions();
             }
           }
         });
@@ -1925,6 +1930,10 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
   public void minimize(final Content content, final CellTransform.Restore restore) {
     getStateFor(content).setMinimizedInGrid(true);
     myManager.removeContent(content, false);
+    // The minimized content is removed from the content manager but only parked (it is re-added by restore()).
+    // When it is removed, its lifetime is not tied to anything,
+    // so let's register it as a child of the ContentManager disposable to avoid leaks.
+    Disposer.register(myManager, content);
     saveUiState();
   }
 

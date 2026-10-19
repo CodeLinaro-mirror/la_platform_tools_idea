@@ -22,6 +22,8 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 
+import static com.intellij.util.containers.ContainerUtil.mapNotNull;
+
 final class FileRecursiveIterator {
   private final @NotNull Project myProject;
   private final @NotNull Collection<? extends VirtualFile> myRoots;
@@ -57,22 +59,22 @@ final class FileRecursiveIterator {
     return directories;
   }
 
-  boolean processAll(@NotNull Processor<? super PsiFile> processor) {
+  @NotNull VirtualFileSet collectAll() {
     VirtualFileSet visited = VfsUtilCore.createCompactVirtualFileSet();
     for (VirtualFile root : myRoots) {
-      if (!ProjectRootManager.getInstance(myProject).getFileIndex().iterateContentUnderDirectory(root, fileOrDir -> {
-        if (fileOrDir.isDirectory() || !visited.add(fileOrDir)) {
-          return true;
+      ProjectRootManager.getInstance(myProject).getFileIndex().iterateContentUnderDirectory(root, fileOrDir -> {
+        if (!fileOrDir.isDirectory()) {
+          visited.add(fileOrDir);
         }
-        PsiFile psiFile = ReadAction.compute(() -> myProject.isDisposed() ? null : PsiManager.getInstance(myProject).findFile(fileOrDir));
-        return psiFile == null || processor.process(psiFile);
-      })) return false;
+        return true;
+      });
     }
-    return true;
+    return visited;
   }
+
 
   static @NotNull List<PsiDirectory> collectModuleDirectories(Module module) {
     VirtualFile[] contentRoots = ModuleRootManager.getInstance(module).getContentRoots();
-    return ReadAction.compute(() -> ContainerUtil.mapNotNull(contentRoots, root -> PsiManager.getInstance(module.getProject()).findDirectory(root)));
+    return ReadAction.computeBlocking(() -> mapNotNull(contentRoots, root -> PsiManager.getInstance(module.getProject()).findDirectory(root)));
   }
 }

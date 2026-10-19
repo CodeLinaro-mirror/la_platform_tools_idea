@@ -13,8 +13,7 @@ import com.jetbrains.python.psi.PyKnownDecoratorUtil
 import com.jetbrains.python.psi.PyPossibleClassMember
 import com.jetbrains.python.psi.PyTypeParameter
 import com.jetbrains.python.psi.PyTypedElement
-import com.jetbrains.python.psi.impl.getImplicitlyInvokedMethod
-import com.jetbrains.python.psi.impl.resolveImplicitlyInvokedMethods
+import com.jetbrains.python.psi.impl.PyCallExpressionHelper
 import com.jetbrains.python.psi.resolve.PyResolveContext
 import com.jetbrains.python.psi.types.PyClassLikeType
 import com.jetbrains.python.psi.types.PyClassType
@@ -45,39 +44,23 @@ fun inspectProtocolSubclass(protocol: PyClassType, subclass: PyClassType, contex
   val resolveContext = PyResolveContext.defaultContext(context)
   val result = mutableListOf<Pair<PyTypeMember, List<PyTypeMember>>>()
 
-  val superClassesMembers = protocol.toInstance().getSuperClassTypes(context)
-    .filterNotNull()
-    .filter { it.isProtocol(context) }
-    .flatMap { it.toInstance().getAllMembers(resolveContext).asIterable() }
-  val protocolMembers = protocol.toInstance().getAllMembers(resolveContext) + superClassesMembers
+  val protocolMembers = protocol.getProtocolMembers(context)
 
   for (protocolMember in protocolMembers) {
     val protocolElement = protocolMember.element ?: continue
-    if (protocolElement is PyPossibleClassMember) {
-      val cls = protocolElement.containingClass
-      if (cls != null && !cls.isProtocol(context)) {
-        continue
-      }
-    }
-    if (protocolElement is PyTypeParameter) {
-      continue
-    }
-
     if (protocolElement.contextOfType<PyFunction>()?.containingClass == protocol.pyClass) {
       continue
     }
 
     when (val name = protocolMember.name) {
       null -> continue
-      PyNames.SLOTS -> continue // __slots__ in a protocol definition are not considered to be a part of the protocol
-      PyNames.CLASS_GETITEM -> continue
       PyNames.CALL -> {
-        val invokedMethods = subclass.getImplicitlyInvokedMethod(resolveContext)
+        val invokedMethods = PyCallExpressionHelper.getImplicitlyInvokedMethod(subclass, resolveContext)
         if (invokedMethods.isNotEmpty()) {
           result.add(Pair(protocolMember, invokedMethods))
         }
         else {
-          val fallbackTypes = subclass.resolveImplicitlyInvokedMethods(null, resolveContext)
+          val fallbackTypes = PyCallExpressionHelper.resolveImplicitlyInvokedMethods(subclass, null, resolveContext)
             .mapNotNull { it.element }
             .filterIsInstance<PyTypedElement>()
             .mapNotNull {
@@ -93,20 +76,55 @@ fun inspectProtocolSubclass(protocol: PyClassType, subclass: PyClassType, contex
         }
       }
       else -> {
-        if (subclass.isDefinition) {
-          val metaClassType = subclass.getMetaClassType(context, true)
-          if (metaClassType is PyClassType && PyNames.TYPE != metaClassType.name) {
-            val memberInMetaClass = metaClassType.findMember(name, resolveContext)
-            if (memberInMetaClass.isNotEmpty()) {
-              result.add(Pair(protocolMember, memberInMetaClass))
-              continue
-            }
-          }
-        }
-        val subclassMembers = subclass.findMember(name, resolveContext)
-        result.add(Pair(protocolMember, subclassMembers))
+        result.add(Pair(protocolMember, subclass.findProtocolMember(name, context)))
       }
     }
+  }
+
+  return result
+}
+
+private fun PyClassType.findProtocolMember(name: String, context: TypeEvalContext): List<PyTypeMember> {
+  val resolveContext = PyResolveContext.defaultContext(context)
+  if (this.isDefinition) {
+    val metaClassType = this.getMetaClassType(context, true)
+    if (metaClassType != null) {
+      val memberInMetaClass = metaClassType.findMember(name, resolveContext)
+      if (memberInMetaClass.isNotEmpty()) {
+        return memberInMetaClass
+      }
+    }
+  }
+  return this.findMember(name, resolveContext)
+}
+
+fun PyClassLikeType.getProtocolMembers(context: TypeEvalContext): List<PyTypeMember> {
+  val resolveContext = PyResolveContext.defaultContext(context)
+  val result = mutableListOf<PyTypeMember>()
+
+  val superClassesMembers = toInstance().getSuperClassTypes(context)
+    .filterNotNull()
+    .filter { it.isProtocol(context) }
+    .flatMap { it.toInstance().getAllMembers(resolveContext).asIterable() }
+  val protocolMembers = toInstance().getAllMembers(resolveContext) + superClassesMembers
+
+
+  for (protocolMember in protocolMembers) {
+    val protocolElement = protocolMember.element ?: continue
+    if (protocolElement is PyPossibleClassMember) {
+      val cls = protocolElement.containingClass
+      if (cls != null && !cls.isProtocol(context)) {
+        continue
+      }
+    }
+    if (protocolElement is PyTypeParameter) {
+      continue
+    }
+
+    val name = protocolMember.name
+    if (name == null) continue
+    if (name in ignoredNamesForProtocolMatching) continue
+    result.add(protocolMember)
   }
 
   return result
@@ -116,3 +134,6 @@ private fun containsProtocol(types: List<PyClassLikeType?>) = types.any { type -
   val classQName = type?.classQName
   PyTypingTypeProvider.PROTOCOL == classQName || PyTypingTypeProvider.PROTOCOL_EXT == classQName
 }
+
+private val ignoredNamesForProtocolMatching =
+  setOf(PyNames.CLASS_GETITEM, PyNames.SLOTS, PyNames.NAME, PyNames.QUALNAME, PyNames.MODULE, PyNames.ANNOTATIONS)

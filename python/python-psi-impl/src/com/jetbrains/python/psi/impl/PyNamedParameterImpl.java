@@ -54,13 +54,11 @@ import com.jetbrains.python.psi.types.PyCallableParameter;
 import com.jetbrains.python.psi.types.PyCallableParameterImpl;
 import com.jetbrains.python.psi.types.PyClassTypeImpl;
 import com.jetbrains.python.psi.types.PyFunctionType;
-import com.jetbrains.python.psi.types.PyLiteralType;
 import com.jetbrains.python.psi.types.PySelfType;
 import com.jetbrains.python.psi.types.PyStructuralType;
 import com.jetbrains.python.psi.types.PyTupleType;
 import com.jetbrains.python.psi.types.PyType;
 import com.jetbrains.python.psi.types.PyTypeUtil;
-import com.jetbrains.python.psi.types.PyTypeUtilKt;
 import com.jetbrains.python.psi.types.PyUnionType;
 import com.jetbrains.python.psi.types.TypeEvalContext;
 import one.util.streamex.StreamEx;
@@ -244,15 +242,15 @@ public class PyNamedParameterImpl extends PyBaseElementImpl<PyNamedParameterStub
           }
         }
         if (isKeywordContainer()) {
-          return PyTypeUtil.toKeywordContainerType(this, null);
+          return PyTypeUtil.toKeywordContainerType(this, PyAnyType.getUnknown());
         }
         if (isPositionalContainer()) {
-          return PyTypeUtil.toPositionalContainerType(this, null);
+          return PyTypeUtil.toPositionalContainerType(this, PyAnyType.getUnknown());
         }
         if (context.maySwitchToAST(this)) {
           final PyExpression defaultValue = getDefaultValue();
           if (defaultValue != null) {
-            final PyType type = PyLiteralType.upcastLiteralToClass(PyTypeUtilKt.widenTupleLiterals(context.getType(defaultValue)));
+            final PyType type = PyTypeUtil.widenLiteralAndNumeric(context.getType(defaultValue));
             if (type != null && !isNoneType(type)) {
               if (type instanceof PyTupleType) {
                 return PyUnionType.createWeakType(type);
@@ -262,7 +260,7 @@ public class PyNamedParameterImpl extends PyBaseElementImpl<PyNamedParameterStub
           }
         }
         // Guess the type under an assumed type to prevent recursion
-        final PyType assumedResult = context.assumeType(this, null, ctx -> {
+        final PyType assumedResult = context.assumeType(this, PyAnyType.getUnknown(), ctx -> {
           // Guess the type from file-local calls
           if (ctx.allowCallContext(this)) {
             final List<PyType> types = new ArrayList<>();

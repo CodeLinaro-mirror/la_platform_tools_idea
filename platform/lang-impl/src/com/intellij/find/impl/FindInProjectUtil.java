@@ -79,6 +79,7 @@ import com.intellij.usages.UsageView;
 import com.intellij.usages.UsageViewPresentation;
 import com.intellij.util.PatternUtil;
 import com.intellij.util.Processor;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -300,10 +301,10 @@ public final class FindInProjectUtil {
                                      @NotNull FindModel findModel,
                                      @NotNull Processor<? super UsageInfo> consumer) {
     if (findModel.getStringToFind().isEmpty()) {
-      return ReadAction.compute(() -> consumer.process(new UsageInfo(psiFile)));
+      return ReadAction.computeBlocking(() -> consumer.process(new UsageInfo(psiFile)));
     }
     if (virtualFile.getFileType().isBinary()) return true; // do not decompile .class files
-    Document document = ReadAction.compute(() -> virtualFile.isValid() ? FileDocumentManager.getInstance().getDocument(virtualFile) : null);
+    Document document = ReadAction.computeBlocking(() -> virtualFile.isValid() ? FileDocumentManager.getInstance().getDocument(virtualFile) : null);
     if (document == null) return true;
     ProgressIndicator current = ProgressManager.getInstance().getProgressIndicator();
     if (current == null) throw new IllegalStateException("must find usages under progress");
@@ -312,10 +313,10 @@ public final class FindInProjectUtil {
     int before;
     int[] offsetRef = {0};
     do {
-      tooManyUsagesStatus.pauseProcessingIfTooManyUsages(); // wait for user out of read action
+      tooManyUsagesStatus.pauseProcessingIfTooManyUsages(); // wait for user out-of-read action
       before = offsetRef[0];
-      boolean success = ReadAction.compute(() -> !psiFile.isValid() ||
-                                             processSomeOccurrencesInFile(document, findModel, psiFile, offsetRef, consumer));
+      boolean success = ReadAction.computeBlocking(() -> !psiFile.isValid() ||
+                                                         processSomeOccurrencesInFile(document, findModel, psiFile, offsetRef, consumer));
       if (!success) {
         return false;
       }
@@ -451,15 +452,6 @@ public final class FindInProjectUtil {
     presentation.setReplaceMode(findModel.isReplaceState());
   }
 
-  /** @deprecated please use {@link #setupProcessPresentation(boolean, UsageViewPresentation)} instead */
-  @Deprecated(forRemoval = true)
-  @SuppressWarnings("unused")
-  public static @NotNull FindUsagesProcessPresentation setupProcessPresentation(@NotNull Project project,
-                                                                                boolean showPanelIfOnlyOneUsage,
-                                                                                @NotNull UsageViewPresentation presentation) {
-    return setupProcessPresentation(showPanelIfOnlyOneUsage, presentation);
-  }
-
   public static @NotNull FindUsagesProcessPresentation setupProcessPresentation(@NotNull UsageViewPresentation presentation) {
     return setupProcessPresentation(!FindSettings.getInstance().isSkipResultsWithOneUsage(), presentation);
   }
@@ -493,7 +485,7 @@ public final class FindInProjectUtil {
   }
 
   public static @NotNull String extractStringToFind(@NotNull String regexp, @NotNull Project project) {
-    return ReadAction.compute(() -> {
+    return ReadAction.computeBlocking(() -> {
       List<PsiElement> topLevelRegExpChars = getTopLevelRegExpChars("a", project);
       if (topLevelRegExpChars.size() != 1) return " ";
 
@@ -525,6 +517,7 @@ public final class FindInProjectUtil {
     }
   }
 
+  @ApiStatus.Internal
   public static class StringUsageTarget implements ConfigurableUsageTarget, ItemPresentation, UiDataProvider {
     protected final @NotNull Project myProject;
     protected final @NotNull FindModel myFindModel;
@@ -680,7 +673,7 @@ public final class FindInProjectUtil {
     fileFilter.setEnabled(false);
 
     useFileFilter.addActionListener(
-      __ -> {
+      _ -> {
         if (useFileFilter.isSelected()) {
           fileFilter.setEnabled(true);
           fileFilter.getEditor().selectAll();

@@ -3,7 +3,12 @@
 
 package com.intellij.platform.workspace.storage.testEntities.entities
 
-import com.intellij.platform.workspace.storage.*
+import com.intellij.platform.workspace.storage.EntitySource
+import com.intellij.platform.workspace.storage.EntityType
+import com.intellij.platform.workspace.storage.GeneratedCodeApiVersion
+import com.intellij.platform.workspace.storage.MutableEntityStorage
+import com.intellij.platform.workspace.storage.WorkspaceEntityBuilder
+import com.intellij.platform.workspace.storage.testEntities.entities.impl.NamedEntityImpl
 
 @GeneratedCodeApiVersion(3)
 interface NamedEntityBuilder : WorkspaceEntityBuilder<NamedEntity> {
@@ -15,6 +20,7 @@ interface NamedEntityBuilder : WorkspaceEntityBuilder<NamedEntity> {
 
 internal object NamedEntityType : EntityType<NamedEntity, NamedEntityBuilder>() {
   override val entityClass: Class<NamedEntity> get() = NamedEntity::class.java
+  override val entityImplBuilderClass: Class<*> get() = NamedEntityImpl.Builder::class.java
   operator fun invoke(
     myName: String,
     entitySource: EntitySource,

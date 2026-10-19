@@ -4,13 +4,20 @@ import com.intellij.grazie.GrazieTestBase
 import com.intellij.grazie.jlanguage.Lang
 import com.intellij.grazie.spellcheck.GrazieCheckers
 import com.intellij.openapi.components.service
+import com.intellij.openapi.progress.ProgressManager
+import com.intellij.openapi.progress.util.ProgressIndicatorBase
+import com.intellij.openapi.util.Computable
 import com.intellij.spellchecker.SpellCheckerManager.Companion.getInstance
 import com.intellij.spellchecker.dictionary.Dictionary
 import com.intellij.spellchecker.dictionary.Dictionary.LookupStatus.Alien
 import com.intellij.spellchecker.dictionary.Dictionary.LookupStatus.Present
+import org.junit.jupiter.api.assertDoesNotThrow
 
 object GrazieSpellchecker {
-  fun lookup(word: String): Dictionary.LookupStatus = service<GrazieCheckers>().lookup(word)
+  fun lookup(word: String): Dictionary.LookupStatus = ProgressManager.getInstance().runProcess(
+    Computable {
+      service<GrazieCheckers>().lookup(word)
+    }, ProgressIndicatorBase())
 
   /**
    * Checks text for spelling mistakes.
@@ -83,5 +90,12 @@ class SpellCheckerTest : GrazieTestBase() {
     enableProofreadingFor(setOf(Lang.RUSSIAN))
     doSuggestionTest("Врядтли", "Вряд ли")
     doSuggestionTest("Грейзи", "Грацие")
+  }
+
+  fun `test unavailable enabled language is ignored`() {
+    enableProofreadingFor(setOf(Lang.ARABIC))
+    assertDoesNotThrow {
+      GrazieSpellchecker.lookup("مرحبا")
+    }
   }
 }

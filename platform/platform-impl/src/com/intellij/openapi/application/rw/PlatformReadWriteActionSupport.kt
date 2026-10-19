@@ -14,12 +14,12 @@ import com.intellij.openapi.application.ReadWriteActionSupport
 import com.intellij.openapi.application.ThreadingSupport
 import com.intellij.openapi.application.impl.AsyncExecutionServiceImpl
 import com.intellij.openapi.application.impl.InternalThreading
+import com.intellij.openapi.application.lambdaToComputable
 import com.intellij.openapi.application.useBackgroundWriteAction
 import com.intellij.openapi.application.useTrueSuspensionForWriteAction
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.Computable
 import com.intellij.openapi.util.Ref
 import com.intellij.openapi.util.ThrowableComputable
 import com.intellij.util.ObjectUtils
@@ -49,6 +49,7 @@ class PlatformReadWriteActionSupport : ReadWriteActionSupport {
   private val retryMarker: Any = ObjectUtils.sentinel("rw action")
 
   private val backgroundWriteActionDispatcher = Dispatchers.IO.limitedParallelism(1, "Background write action dispatcher")
+  private val backgroundWriteActionDumpDispatcher = Dispatchers.IO.limitedParallelism(1, "Dispatcher for dumping threads and coroutines for background write action")
 
   init {
     // init the write action counter listener
@@ -81,6 +82,17 @@ class PlatformReadWriteActionSupport : ReadWriteActionSupport {
     }
   }
 
+
+  private sealed interface ReadResultImpl<out R> : ReadResult<R> {
+    class WriteAction<out V>(val action: () -> V) : ReadResultImpl<V>
+    class Value<out V>(val value: V) : ReadResultImpl<V>
+  }
+
+  private object ReadAndWriteScopeImpl : ReadAndWriteScope {
+    override fun <R> value(value: R): ReadResultImpl<R> = ReadResultImpl.Value(value)
+    override fun <R> writeAction(action: () -> R): ReadResultImpl<R> = ReadResultImpl.WriteAction(action)
+  }
+
   override suspend fun <X> executeReadAndWriteAction(
     constraints: Array<out ReadConstraint>,
     runWriteActionOnEdt: Boolean,
@@ -89,13 +101,16 @@ class PlatformReadWriteActionSupport : ReadWriteActionSupport {
   ): X {
     while (true) {
       val (readResult: ReadResult<X>, stamp: Long) = executeReadAction(constraints.toList(), undispatched = undispatched, blocking = false) {
-        Pair(ReadResult.Companion.action(), AsyncExecutionServiceImpl.getWriteActionCounter())
+        Pair(ReadAndWriteScopeImpl.action(), AsyncExecutionServiceImpl.getWriteActionCounter())
+      }
+      require(readResult is ReadResultImpl<X>) {
+        "Unexpected implementation of `ReadResult`: Expected ReadResultImpl, got ${readResult::class.simpleName}"
       }
       when (readResult) {
-        is ReadResult.Value -> {
+        is ReadResultImpl.Value -> {
           return readResult.value
         }
-        is ReadResult.WriteAction -> {
+        is ReadResultImpl.WriteAction -> {
           val lock = application.threadingSupport
           val writeResult = if (runWriteActionOnEdt || lock == null) {
             executeWriteActionOnEdt(stamp, readResult.action)
@@ -121,9 +136,7 @@ class PlatformReadWriteActionSupport : ReadWriteActionSupport {
     return withContext(Dispatchers.EDT) {
       val writeStamp = AsyncExecutionServiceImpl.getWriteActionCounter()
       if (originalStamp == writeStamp) {
-        application.runWriteAction(Computable {
-          action()
-        })
+        application.runWriteAction(lambdaToComputable(action))
       }
       else {
         retryMarker
@@ -167,7 +180,7 @@ class PlatformReadWriteActionSupport : ReadWriteActionSupport {
     }
 
     return withContext(context) {
-      val dumpJob = if (useBackgroundWriteAction) launch {
+      val dumpJob = if (useBackgroundWriteAction) launch(backgroundWriteActionDumpDispatcher) {
         delay(10.seconds)
         val dump = ThreadDumper.getThreadDumpInfo(ThreadDumper.getThreadInfos(), false)
         val dumpDir = PathManager.getLogDir().resolve("bg-wa")
@@ -195,9 +208,7 @@ ${dump.rawDump}""")
           InternalThreading.incrementBackgroundWriteActionCount()
           try {
             executeWriteActionWithPossibleRetry {
-              lock.runWriteAction {
-                action()
-              }
+              lock.runWriteAction(action)
             }
           } finally {
             InternalThreading.decrementBackgroundWriteActionCount()
@@ -205,7 +216,7 @@ ${dump.rawDump}""")
         }
         else {
           @Suppress("ForbiddenInSuspectContextMethod")
-          application.runWriteAction(ThrowableComputable(action))
+          application.runWriteAction(lambdaToComputable(action))
         }
       }
       finally {

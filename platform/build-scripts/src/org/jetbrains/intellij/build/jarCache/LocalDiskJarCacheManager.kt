@@ -17,13 +17,14 @@ import kotlin.time.Duration.Companion.days
 
 private val keyLocks = StripedMutex(256)
 // Bump this version when build scripts semantics affecting cache contents change.
-private const val CACHE_VERSION = 0
+private const val CACHE_VERSION = 1
 
 class LocalDiskJarCacheManager(
   cacheDir: Path,
-  private val productionClassOutDir: Path,
+  private val classesOutputDirectory: Path,
   private val maxAccessTimeAge: Duration = 3.days,
   metadataTouchInterval: Duration = metadataTouchMinInterval,
+  private val cleanupInterval: Duration = defaultCleanupEveryDuration,
 ) : JarCacheManager {
   private val versionedCacheDir = cacheDir.resolve("v$CACHE_VERSION")
   private val entriesDir = versionedCacheDir.resolve(entriesDirName)
@@ -48,10 +49,11 @@ class LocalDiskJarCacheManager(
     cleanupLocalDiskJarCache(
       entriesDir = entriesDir,
       lastCleanupMarkerFile = lastCleanupMarkerFile,
+      cleanupInterval = cleanupInterval,
       maxAccessTimeAge = maxAccessTimeAge,
       cleanupCandidateIndex = cleanupCandidateIndex,
       metadataTouchTracker = metadataTouchTracker,
-      withCacheEntryLock = { lockSlot, task -> withCacheEntryLock(lockSlot, task) },
+      withCacheEntryLock = { lockHash, task -> withCacheEntryLock(lockHash, task) },
     )
   }
 
@@ -62,7 +64,7 @@ class LocalDiskJarCacheManager(
     span: Span,
     producer: SourceBuilder,
   ): Path {
-    val items = createSourceAndCacheStrategyList(sources = sources, productionClassOutDir = productionClassOutDir)
+    val items = createSourceAndCacheStrategyList(sources = sources, classesOutputDirectory = classesOutputDirectory)
     val targetFileName = targetFile.fileName?.toString() ?: targetFile.toString()
     val hash = Hashing.xxh3_128().hashStream()
     for (source in items) {
@@ -75,7 +77,6 @@ class LocalDiskJarCacheManager(
     val hashValue128 = hash.get()
     val leastSignificantBits = hashValue128.leastSignificantBits
     val key = "${longToString(leastSignificantBits)}-${longToString(hashValue128.mostSignificantBits)}"
-    val lockSlot = getLockSlot(leastSignificantBits)
     val paths = getCacheEntryPaths(entriesDir = entriesDir, key = key, targetFileName = targetFileName)
 
     val optimisticCacheResult = tryUseCacheEntry(
@@ -96,7 +97,7 @@ class LocalDiskJarCacheManager(
       return optimisticCacheResult
     }
 
-    return withCacheEntryLock(lockSlot = lockSlot) {
+    return withCacheEntryLock(lockHash = leastSignificantBits) {
       tryUseCacheEntry(
         key = key,
         paths = paths,
@@ -123,7 +124,7 @@ class LocalDiskJarCacheManager(
     }
   }
 
-  private suspend fun <T> withCacheEntryLock(lockSlot: Long, task: suspend () -> T): T {
-    return keyLocks.getLockByHash(lockSlot).withLock { task() }
+  private suspend fun <T> withCacheEntryLock(lockHash: Long, task: suspend () -> T): T {
+    return keyLocks.getLockByHash(lockHash).withLock { task() }
   }
 }

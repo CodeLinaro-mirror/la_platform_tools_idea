@@ -165,7 +165,9 @@ public class ActionButton extends JComponent implements ActionButtonComponent, A
     addKeyListener(new KeyAdapter() {
       @Override
       public void keyReleased(KeyEvent e) {
-        if (e.getModifiers() == 0 && e.getKeyCode() == KeyEvent.VK_SPACE) {
+        if (e.getModifiersEx() == 0 &&
+            (e.getKeyCode() == KeyEvent.VK_SPACE ||
+             (e.getKeyCode() == KeyEvent.VK_DOWN && shallPaintDownArrow()))) {
           click();
         }
       }
@@ -183,6 +185,14 @@ public class ActionButton extends JComponent implements ActionButtonComponent, A
     });
 
     putClientProperty(UIUtil.CENTER_TOOLTIP_DEFAULT, Boolean.TRUE);
+
+    // Re-applied on every construction on purpose: a toolbar rebuild replaces this button with a new one built
+    // from the same action, and a name that did not come along would leave the control unaddressable exactly
+    // when the toolbar changed. See ActionUtil.COMPONENT_NAME.
+    String componentName = ActionUtil.getComponentName(myAction, myPresentation);
+    if (componentName != null) {
+      setName(componentName);
+    }
   }
 
   private void updateMinimumSize() {
@@ -348,7 +358,7 @@ public class ActionButton extends JComponent implements ActionButtonComponent, A
   public void addNotify() {
     super.addNotify();
     if (ActionToolbar.findToolbarBy(this) == null) {
-      ActionManagerEx.withLazyActionManager(null, __ -> { update(); return Unit.INSTANCE; });
+      ActionManagerEx.withLazyActionManager(null, _ -> { update(); return Unit.INSTANCE; });
     }
     else {
       updateToolTipText();
@@ -554,7 +564,9 @@ public class ActionButton extends JComponent implements ActionButtonComponent, A
 
   @Override
   protected void processMouseEvent(MouseEvent e) {
-    IdeMouseEventDispatcher.requestFocusInNonFocusedWindow(e);
+    if (isRequestFocusEnabled()) {
+      IdeMouseEventDispatcher.requestFocusInNonFocusedWindow(e);
+    }
     super.processMouseEvent(e);
     if (e.isConsumed()) return;
     boolean skipPress = checkSkipPressForEvent(e);
@@ -662,12 +674,11 @@ public class ActionButton extends JComponent implements ActionButtonComponent, A
 
   @Override
   public @NotNull AccessibleContext getAccessibleContext() {
-    AccessibleContext context = accessibleContext;
-    if(context == null) {
-      accessibleContext = context = new AccessibleActionButton();
+    if (accessibleContext == null) {
+      accessibleContext = new AccessibleActionButton();
     }
 
-    return context;
+    return accessibleContext;
   }
 
   protected class AccessibleActionButton extends JComponent.AccessibleJComponent implements AccessibleAction, AccessibleValue {
@@ -731,7 +742,7 @@ public class ActionButton extends JComponent implements ActionButtonComponent, A
       //  var1.add(AccessibleState.?);
       //}
 
-      if (state == ActionButtonComponent.PUSHED) {
+      if (state == PUSHED) {
         accessibleStateSet.add(AccessibleState.PRESSED);
       }
       if (isSelected()) {
@@ -740,6 +751,10 @@ public class ActionButton extends JComponent implements ActionButtonComponent, A
 
       if (isFocusOwner()) {
         accessibleStateSet.add(AccessibleState.FOCUSED);
+      }
+
+      if (shallPaintDownArrow()) {
+        accessibleStateSet.add(AccessibleState.EXPANDABLE);
       }
     }
 

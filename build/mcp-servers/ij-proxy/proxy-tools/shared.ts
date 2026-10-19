@@ -110,23 +110,24 @@ function coerceSearchItem(value: unknown): SearchItem | null {
     if (typeof value[0] !== 'string') return null
     const item: SearchItem = {filePath: value[0]}
     if (typeof value[1] === 'number') {
-      item.lineNumber = value[1]
-      if (typeof value[2] === 'string') {
-        item.lineText = value[2]
-      }
+      item.startLine = value[1]
     }
     return item
   }
   if (isRecord(value)) {
     const filePath = typeof value.filePath === 'string' ? value.filePath : null
     if (!filePath) return null
-    const item: SearchItem = {filePath}
-    if (typeof value.lineNumber === 'number') {
-      item.lineNumber = value.lineNumber
-    }
-    if (typeof value.lineText === 'string') {
-      item.lineText = value.lineText
-    }
+    const item: SearchItem = {...value, filePath}
+    if (typeof value.startLine === 'number') item.startLine = value.startLine
+    else if (typeof value.lineNumber === 'number') item.startLine = value.lineNumber
+    else delete item.startLine
+    if (typeof value.startColumn !== 'number') delete item.startColumn
+    if (typeof value.endLine !== 'number') delete item.endLine
+    if (typeof value.endColumn !== 'number') delete item.endColumn
+    delete item.lineNumber
+    delete item.lineText
+    delete item.startOffset
+    delete item.endOffset
     return item
   }
   return null
@@ -160,8 +161,7 @@ function extractItemsFromValue(value: unknown): SearchItem[] | null {
 function itemsToEntries(items: SearchItem[]): SearchEntry[] {
   return items.map((item) => ({
     filePath: item.filePath,
-    lineNumber: item.lineNumber,
-    lineText: item.lineText
+    lineNumber: item.startLine,
   }))
 }
 
@@ -266,45 +266,6 @@ export function normalizeLineEndings(text: string): string {
   return text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
 }
 
-export async function readFileText(
-  relativePath: string,
-  {maxLinesCount, truncateMode}: ReadFileTextOptions = {},
-  callUpstreamTool: UpstreamToolCaller
-): Promise<string> {
-  const args: Record<string, unknown> = {pathInProject: relativePath}
-  const resolvedMaxLinesCount = maxLinesCount !== undefined && maxLinesCount !== null
-    ? maxLinesCount
-    : truncateMode === 'NONE'
-      ? FULL_READ_MAX_LINES
-      : undefined
-  if (resolvedMaxLinesCount !== undefined && resolvedMaxLinesCount !== null) {
-    args.maxLinesCount = resolvedMaxLinesCount
-  }
-  if (truncateMode) {
-    args.truncateMode = truncateMode
-  }
-  const result = await callUpstreamTool('get_file_text_by_path', args)
-  const text = extractTextFromResult(result)
-  if (typeof text !== 'string') {
-    throw new Error('Failed to read file contents')
-  }
-  return text
-}
-
-export function splitLines(text: string): string[] {
-  const normalized = normalizeLineEndings(text)
-  const lines = normalized.split('\n')
-  if (lines.length > 0 && lines[lines.length - 1] === '') {
-    lines.pop()
-  }
-  return lines
-}
-
-// === Helpers ported from master for new apply_patch / read_file implementations ===
-// readFileTextLegacy: kept alias matching master's naming so ported handlers compile.
-// 261's existing readFileText() and the legacy variant have identical wire behaviour.
-export const readFileTextLegacy = readFileText
-
 export function formatReadLine(line: string): string {
   if (line.length <= READ_FILE_MAX_LINE_LENGTH) return line
   const boundaryIndex = READ_FILE_MAX_LINE_LENGTH - 1
@@ -334,6 +295,31 @@ export async function readFileTextExact(
   }
 
   return readFileTextLegacy(relativePath, {truncateMode: 'NONE'}, callUpstreamTool)
+}
+
+export async function readFileTextLegacy(
+  relativePath: string,
+  {maxLinesCount, truncateMode}: ReadFileTextOptions = {},
+  callUpstreamTool: UpstreamToolCaller
+): Promise<string> {
+  const args: Record<string, unknown> = {pathInProject: relativePath}
+  const resolvedMaxLinesCount = maxLinesCount !== undefined && maxLinesCount !== null
+    ? maxLinesCount
+    : truncateMode === 'NONE'
+      ? FULL_READ_MAX_LINES
+      : undefined
+  if (resolvedMaxLinesCount !== undefined && resolvedMaxLinesCount !== null) {
+    args.maxLinesCount = resolvedMaxLinesCount
+  }
+  if (truncateMode) {
+    args.truncateMode = truncateMode
+  }
+  const result = await callUpstreamTool('get_file_text_by_path', args)
+  const text = extractTextFromResult(result)
+  if (typeof text !== 'string') {
+    throw new Error('Failed to read file contents')
+  }
+  return text
 }
 
 export function renderRawTextFromReadOutput(text: string): string {
@@ -370,4 +356,13 @@ function parseNumberedReadOutput(text: string): Array<{lineNumber: number; lineT
       lineText: match[2] ?? ''
     }
   })
+}
+
+export function splitLines(text: string): string[] {
+  const normalized = normalizeLineEndings(text)
+  const lines = normalized.split('\n')
+  if (lines.length > 0 && lines[lines.length - 1] === '') {
+    lines.pop()
+  }
+  return lines
 }

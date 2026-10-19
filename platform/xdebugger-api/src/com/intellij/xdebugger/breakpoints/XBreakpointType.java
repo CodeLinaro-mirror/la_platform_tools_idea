@@ -170,7 +170,7 @@ public abstract class XBreakpointType<B extends XBreakpoint<P>, P extends XBreak
   /**
    * @deprecated override {@link #getEditorsProvider(B, Project)} instead
    */
-  @Deprecated
+  @Deprecated(forRemoval = true)
   public @Nullable XDebuggerEditorsProvider getEditorsProvider() {
     return null;
   }
@@ -237,6 +237,17 @@ public abstract class XBreakpointType<B extends XBreakpoint<P>, P extends XBreak
    */
   public @Nls String getShortText(B breakpoint) {
     return getDisplayText(breakpoint);
+  }
+
+  /**
+   * Returns true if the given breakpoint has an additional custom condition
+   * independent from {@link XBreakpoint#getConditionExpression()}.
+   * <p/>
+   * Breakpoints for which this method returns true get a question mark badge
+   * for their icon in the gutter.
+   */
+  public boolean hasCustomCondition(B breakpoint) {
+    return false;
   }
 
   public interface XBreakpointCreator<P extends XBreakpointProperties> {

@@ -16,11 +16,14 @@ import org.jetbrains.kotlin.analysis.api.symbols.KaFunctionSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaNamedClassSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.receiverType
 import org.jetbrains.kotlin.analysis.api.types.KaType
+import org.jetbrains.kotlin.analysis.api.types.KaTypeParameterType
 import org.jetbrains.kotlin.analysis.api.types.abbreviationOrSelf
 import org.jetbrains.kotlin.analysis.api.types.symbol
 import org.jetbrains.kotlin.psi.KtCallableDeclaration
 import org.jetbrains.kotlin.psi.KtClassOrObject
 import org.jetbrains.kotlin.psi.KtElement
+import org.jetbrains.kotlin.psi.KtEnumEntry
+import org.jetbrains.kotlin.psi.KtExpression
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.KtFunctionLiteral
 import org.jetbrains.kotlin.psi.KtTypeAlias
@@ -54,15 +57,17 @@ internal class KotlinTypeDeclarationProvider : TypeDeclarationPlaceAwareProvider
                 }
                 PsiElement.EMPTY_ARRAY
             }
+
             is KtFunctionLiteral -> getFunctionalLiteralTarget(symbol)
             is KtTypeReference -> {
                 val declaration = symbol.parent
                 if (declaration is KtCallableDeclaration && declaration.receiverTypeReference == symbol) {
                     // Navigate to function receiver type, works with the help of KotlinTargetElementEvaluator for the 'this' in extension declaration
                     declaration.getTypeDeclarationFromCallable { callableSymbol -> callableSymbol.receiverType }
-                }
-                else PsiElement.EMPTY_ARRAY
+                } else PsiElement.EMPTY_ARRAY
             }
+
+            is KtEnumEntry -> getEnumEntryTypeDeclaration(symbol)
             is KtCallableDeclaration -> {
                 symbol.getTypeDeclarationFromCallable(callSiteReferenceProvider = {
                     if (editor != null && offset != null) {
@@ -72,6 +77,7 @@ internal class KotlinTypeDeclarationProvider : TypeDeclarationPlaceAwareProvider
                     }
                 }) { callableSymbol -> callableSymbol.returnType }
             }
+
             is KtClassOrObject -> getClassTypeDeclaration(symbol)
             is KtTypeAlias -> getTypeAliasDeclaration(symbol)
             else -> PsiElement.EMPTY_ARRAY
@@ -83,6 +89,12 @@ internal class KotlinTypeDeclarationProvider : TypeDeclarationPlaceAwareProvider
             (callableSymbol as? KaFunctionSymbol)?.valueParameters?.firstOrNull()?.returnType ?: callableSymbol.receiverType
         }
     }
+
+    private fun getEnumEntryTypeDeclaration(symbol: KtEnumEntry): Array<PsiElement> =
+        analyze(symbol) {
+            symbol.symbol.returnType.symbol?.psi?.let { return arrayOf(it) }
+        } ?: PsiElement.EMPTY_ARRAY
+
 
     private fun getClassTypeDeclaration(symbol: KtClassOrObject): Array<PsiElement> {
         analyze(symbol) {
@@ -101,12 +113,20 @@ internal class KotlinTypeDeclarationProvider : TypeDeclarationPlaceAwareProvider
         return PsiElement.EMPTY_ARRAY
     }
 
-    private fun KtCallableDeclaration.getTypeDeclarationFromCallable(callSiteReferenceProvider: (() -> PsiReference?)? = null, typeFromSymbol: (KaCallableSymbol) -> KaType?): Array<PsiElement> {
-        analyze(this) {
+    private fun KtCallableDeclaration.getTypeDeclarationFromCallable(
+        callSiteReferenceProvider: (() -> PsiReference?)? = null,
+        typeFromSymbol: (KaCallableSymbol) -> KaType?
+    ): Array<PsiElement> {
+        val callSiteReferenceElement = callSiteReferenceProvider?.invoke()?.element as? KtElement
+
+        analyze(callSiteReferenceElement ?: this) {
+            val smartCastType = (callSiteReferenceElement as? KtExpression)?.smartCastInfo?.smartCastType
             val symbol = symbol as? KaCallableSymbol ?: return PsiElement.EMPTY_ARRAY
-            val type = typeFromSymbol(symbol) ?: return PsiElement.EMPTY_ARRAY
-            val targetPsiElement = type.upperBoundIfFlexible().abbreviationOrSelf.symbol?.psi
-                ?: (callSiteReferenceProvider?.invoke()?.element as? KtElement)?.resolvePsiOfTypeAtCallSite()
+            val type = smartCastType ?: typeFromSymbol(symbol) ?: return PsiElement.EMPTY_ARRAY
+            val unwrappedType = type.upperBoundIfFlexible().abbreviationOrSelf
+            val targetPsiElement = unwrappedType.symbol?.psi
+                ?: callSiteReferenceElement?.resolvePsiOfTypeAtCallSite()
+                ?: (unwrappedType as? KaTypeParameterType)?.symbol?.psi
             targetPsiElement?.let { return arrayOf(it) }
         }
         return PsiElement.EMPTY_ARRAY

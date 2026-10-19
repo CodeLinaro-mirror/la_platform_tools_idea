@@ -136,10 +136,10 @@ abstract class GitBranchesPopupBase<T : GitBranchesPopupStepBase>(
   final override var userResized: Boolean
     private set
 
-  final override var groupByPrefix: Boolean
-    get() = treeStep.treeModel.isPrefixGrouping
+  final override var groupByDirectory: Boolean
+    get() = treeStep.treeModel.isDirectoryGrouping
     set(value) {
-      treeStep.treeModel.isPrefixGrouping = value
+      treeStep.treeModel.isDirectoryGrouping = value
     }
 
   private val expandedPaths = HashSet<TreePath>()
@@ -450,7 +450,7 @@ abstract class GitBranchesPopupBase<T : GitBranchesPopupStepBase>(
 
     isRootVisible = false
     showsRootHandles = true
-    visibleRowCount = min(calculateTopLevelVisibleRows(), 20)
+    visibleRowCount = min(calculateTopLevelVisibleRows() + 1, 20)
 
     cellRenderer = renderer
 

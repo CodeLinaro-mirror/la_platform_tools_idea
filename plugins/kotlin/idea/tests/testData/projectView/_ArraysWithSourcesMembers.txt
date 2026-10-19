@@ -36,6 +36,7 @@ Navigation item file #0: kotlin-stdlib-sources.jar!/commonMain/generated/_Arrays
       +ByteIterator
       +CharIterator
       +collections.kotlin_builtins
+      +DetachedMapEntry.class
       +DoubleIterator
       +EmptyIterator
       +EmptyList
@@ -94,6 +95,8 @@ Navigation item file #0: kotlin-stdlib-sources.jar!/commonMain/generated/_Arrays
        Array<out Short>.sum(): Int
        Array<out Short>.toShortArray(): ShortArray
        Array<out T>.all(predicate: (T) -> Boolean): Boolean
+       Array<out T>.allEqual(): Boolean
+       Array<out T>.allEqualBy(selector: (T) -> K): Boolean
        Array<out T>.any(): Boolean
        Array<out T>.any(predicate: (T) -> Boolean): Boolean
        Array<out T>.asIterable(): Iterable<T>
@@ -167,6 +170,11 @@ Navigation item file #0: kotlin-stdlib-sources.jar!/commonMain/generated/_Arrays
        Array<out T>.intersect(other: Iterable<T>): Set<T>
        Array<out T>.isEmpty(): Boolean
        Array<out T>.isNotEmpty(): Boolean
+       Array<out T>.isSorted(): Boolean
+       Array<out T>.isSortedBy(selector: (T) -> R?): Boolean
+       Array<out T>.isSortedByDescending(selector: (T) -> R?): Boolean
+       Array<out T>.isSortedDescending(): Boolean
+       Array<out T>.isSortedWith(comparator: Comparator<in T>): Boolean
        Array<out T>.joinTo(buffer: A, separator: CharSequence, prefix: CharSequence, postfix: CharSequence, limit: Int, truncated: CharSequence, transform: ((T) -> CharSequence)?): A
        Array<out T>.joinToString(separator: CharSequence, prefix: CharSequence, postfix: CharSequence, limit: Int, truncated: CharSequence, transform: ((T) -> CharSequence)?): String
        Array<out T>.last(): T
@@ -306,6 +314,8 @@ Navigation item file #0: kotlin-stdlib-sources.jar!/commonMain/generated/_Arrays
        Array<T>.sortedArrayDescending(): Array<T>
        Array<T?>.requireNoNulls(): Array<T>
        BooleanArray.all(predicate: (Boolean) -> Boolean): Boolean
+       BooleanArray.allEqual(): Boolean
+       BooleanArray.allEqualBy(selector: (Boolean) -> K): Boolean
        BooleanArray.any(): Boolean
        BooleanArray.any(predicate: (Boolean) -> Boolean): Boolean
        BooleanArray.asIterable(): Iterable<Boolean>
@@ -376,6 +386,11 @@ Navigation item file #0: kotlin-stdlib-sources.jar!/commonMain/generated/_Arrays
        BooleanArray.intersect(other: Iterable<Boolean>): Set<Boolean>
        BooleanArray.isEmpty(): Boolean
        BooleanArray.isNotEmpty(): Boolean
+       BooleanArray.isSorted(): Boolean
+       BooleanArray.isSortedBy(selector: (Boolean) -> R?): Boolean
+       BooleanArray.isSortedByDescending(selector: (Boolean) -> R?): Boolean
+       BooleanArray.isSortedDescending(): Boolean
+       BooleanArray.isSortedWith(comparator: Comparator<in Boolean>): Boolean
        BooleanArray.joinTo(buffer: A, separator: CharSequence, prefix: CharSequence, postfix: CharSequence, limit: Int, truncated: CharSequence, transform: ((Boolean) -> CharSequence)?): A
        BooleanArray.joinToString(separator: CharSequence, prefix: CharSequence, postfix: CharSequence, limit: Int, truncated: CharSequence, transform: ((Boolean) -> CharSequence)?): String
        BooleanArray.last(): Boolean
@@ -485,6 +500,8 @@ Navigation item file #0: kotlin-stdlib-sources.jar!/commonMain/generated/_Arrays
        BooleanArray?.contentHashCode(): Int
        BooleanArray?.contentToString(): String
        ByteArray.all(predicate: (Byte) -> Boolean): Boolean
+       ByteArray.allEqual(): Boolean
+       ByteArray.allEqualBy(selector: (Byte) -> K): Boolean
        ByteArray.any(): Boolean
        ByteArray.any(predicate: (Byte) -> Boolean): Boolean
        ByteArray.asIterable(): Iterable<Byte>
@@ -556,6 +573,11 @@ Navigation item file #0: kotlin-stdlib-sources.jar!/commonMain/generated/_Arrays
        ByteArray.intersect(other: Iterable<Byte>): Set<Byte>
        ByteArray.isEmpty(): Boolean
        ByteArray.isNotEmpty(): Boolean
+       ByteArray.isSorted(): Boolean
+       ByteArray.isSortedBy(selector: (Byte) -> R?): Boolean
+       ByteArray.isSortedByDescending(selector: (Byte) -> R?): Boolean
+       ByteArray.isSortedDescending(): Boolean
+       ByteArray.isSortedWith(comparator: Comparator<in Byte>): Boolean
        ByteArray.joinTo(buffer: A, separator: CharSequence, prefix: CharSequence, postfix: CharSequence, limit: Int, truncated: CharSequence, transform: ((Byte) -> CharSequence)?): A
        ByteArray.joinToString(separator: CharSequence, prefix: CharSequence, postfix: CharSequence, limit: Int, truncated: CharSequence, transform: ((Byte) -> CharSequence)?): String
        ByteArray.last(): Byte
@@ -678,6 +700,8 @@ Navigation item file #0: kotlin-stdlib-sources.jar!/commonMain/generated/_Arrays
        ByteArray?.contentHashCode(): Int
        ByteArray?.contentToString(): String
        CharArray.all(predicate: (Char) -> Boolean): Boolean
+       CharArray.allEqual(): Boolean
+       CharArray.allEqualBy(selector: (Char) -> K): Boolean
        CharArray.any(): Boolean
        CharArray.any(predicate: (Char) -> Boolean): Boolean
        CharArray.asIterable(): Iterable<Char>
@@ -748,6 +772,11 @@ Navigation item file #0: kotlin-stdlib-sources.jar!/commonMain/generated/_Arrays
        CharArray.intersect(other: Iterable<Char>): Set<Char>
        CharArray.isEmpty(): Boolean
        CharArray.isNotEmpty(): Boolean
+       CharArray.isSorted(): Boolean
+       CharArray.isSortedBy(selector: (Char) -> R?): Boolean
+       CharArray.isSortedByDescending(selector: (Char) -> R?): Boolean
+       CharArray.isSortedDescending(): Boolean
+       CharArray.isSortedWith(comparator: Comparator<in Char>): Boolean
        CharArray.joinTo(buffer: A, separator: CharSequence, prefix: CharSequence, postfix: CharSequence, limit: Int, truncated: CharSequence, transform: ((Char) -> CharSequence)?): A
        CharArray.joinToString(separator: CharSequence, prefix: CharSequence, postfix: CharSequence, limit: Int, truncated: CharSequence, transform: ((Char) -> CharSequence)?): String
        CharArray.last(): Char
@@ -869,6 +898,8 @@ Navigation item file #0: kotlin-stdlib-sources.jar!/commonMain/generated/_Arrays
        CharArray?.contentHashCode(): Int
        CharArray?.contentToString(): String
        DoubleArray.all(predicate: (Double) -> Boolean): Boolean
+       DoubleArray.allEqual(): Boolean
+       DoubleArray.allEqualBy(selector: (Double) -> K): Boolean
        DoubleArray.any(): Boolean
        DoubleArray.any(predicate: (Double) -> Boolean): Boolean
        DoubleArray.asIterable(): Iterable<Double>
@@ -940,6 +971,11 @@ Navigation item file #0: kotlin-stdlib-sources.jar!/commonMain/generated/_Arrays
        DoubleArray.intersect(other: Iterable<Double>): Set<Double>
        DoubleArray.isEmpty(): Boolean
        DoubleArray.isNotEmpty(): Boolean
+       DoubleArray.isSorted(): Boolean
+       DoubleArray.isSortedBy(selector: (Double) -> R?): Boolean
+       DoubleArray.isSortedByDescending(selector: (Double) -> R?): Boolean
+       DoubleArray.isSortedDescending(): Boolean
+       DoubleArray.isSortedWith(comparator: Comparator<in Double>): Boolean
        DoubleArray.joinTo(buffer: A, separator: CharSequence, prefix: CharSequence, postfix: CharSequence, limit: Int, truncated: CharSequence, transform: ((Double) -> CharSequence)?): A
        DoubleArray.joinToString(separator: CharSequence, prefix: CharSequence, postfix: CharSequence, limit: Int, truncated: CharSequence, transform: ((Double) -> CharSequence)?): String
        DoubleArray.last(): Double
@@ -1062,6 +1098,8 @@ Navigation item file #0: kotlin-stdlib-sources.jar!/commonMain/generated/_Arrays
        DoubleArray?.contentHashCode(): Int
        DoubleArray?.contentToString(): String
        FloatArray.all(predicate: (Float) -> Boolean): Boolean
+       FloatArray.allEqual(): Boolean
+       FloatArray.allEqualBy(selector: (Float) -> K): Boolean
        FloatArray.any(): Boolean
        FloatArray.any(predicate: (Float) -> Boolean): Boolean
        FloatArray.asIterable(): Iterable<Float>
@@ -1133,6 +1171,11 @@ Navigation item file #0: kotlin-stdlib-sources.jar!/commonMain/generated/_Arrays
        FloatArray.intersect(other: Iterable<Float>): Set<Float>
        FloatArray.isEmpty(): Boolean
        FloatArray.isNotEmpty(): Boolean
+       FloatArray.isSorted(): Boolean
+       FloatArray.isSortedBy(selector: (Float) -> R?): Boolean
+       FloatArray.isSortedByDescending(selector: (Float) -> R?): Boolean
+       FloatArray.isSortedDescending(): Boolean
+       FloatArray.isSortedWith(comparator: Comparator<in Float>): Boolean
        FloatArray.joinTo(buffer: A, separator: CharSequence, prefix: CharSequence, postfix: CharSequence, limit: Int, truncated: CharSequence, transform: ((Float) -> CharSequence)?): A
        FloatArray.joinToString(separator: CharSequence, prefix: CharSequence, postfix: CharSequence, limit: Int, truncated: CharSequence, transform: ((Float) -> CharSequence)?): String
        FloatArray.last(): Float
@@ -1264,6 +1307,8 @@ Navigation item file #0: kotlin-stdlib-sources.jar!/commonMain/generated/_Arrays
        indices: IntRange
        indices: IntRange
        IntArray.all(predicate: (Int) -> Boolean): Boolean
+       IntArray.allEqual(): Boolean
+       IntArray.allEqualBy(selector: (Int) -> K): Boolean
        IntArray.any(): Boolean
        IntArray.any(predicate: (Int) -> Boolean): Boolean
        IntArray.asIterable(): Iterable<Int>
@@ -1335,6 +1380,11 @@ Navigation item file #0: kotlin-stdlib-sources.jar!/commonMain/generated/_Arrays
        IntArray.intersect(other: Iterable<Int>): Set<Int>
        IntArray.isEmpty(): Boolean
        IntArray.isNotEmpty(): Boolean
+       IntArray.isSorted(): Boolean
+       IntArray.isSortedBy(selector: (Int) -> R?): Boolean
+       IntArray.isSortedByDescending(selector: (Int) -> R?): Boolean
+       IntArray.isSortedDescending(): Boolean
+       IntArray.isSortedWith(comparator: Comparator<in Int>): Boolean
        IntArray.joinTo(buffer: A, separator: CharSequence, prefix: CharSequence, postfix: CharSequence, limit: Int, truncated: CharSequence, transform: ((Int) -> CharSequence)?): A
        IntArray.joinToString(separator: CharSequence, prefix: CharSequence, postfix: CharSequence, limit: Int, truncated: CharSequence, transform: ((Int) -> CharSequence)?): String
        IntArray.last(): Int
@@ -1466,6 +1516,8 @@ Navigation item file #0: kotlin-stdlib-sources.jar!/commonMain/generated/_Arrays
        lastIndex: Int
        lastIndex: Int
        LongArray.all(predicate: (Long) -> Boolean): Boolean
+       LongArray.allEqual(): Boolean
+       LongArray.allEqualBy(selector: (Long) -> K): Boolean
        LongArray.any(): Boolean
        LongArray.any(predicate: (Long) -> Boolean): Boolean
        LongArray.asIterable(): Iterable<Long>
@@ -1537,6 +1589,11 @@ Navigation item file #0: kotlin-stdlib-sources.jar!/commonMain/generated/_Arrays
        LongArray.intersect(other: Iterable<Long>): Set<Long>
        LongArray.isEmpty(): Boolean
        LongArray.isNotEmpty(): Boolean
+       LongArray.isSorted(): Boolean
+       LongArray.isSortedBy(selector: (Long) -> R?): Boolean
+       LongArray.isSortedByDescending(selector: (Long) -> R?): Boolean
+       LongArray.isSortedDescending(): Boolean
+       LongArray.isSortedWith(comparator: Comparator<in Long>): Boolean
        LongArray.joinTo(buffer: A, separator: CharSequence, prefix: CharSequence, postfix: CharSequence, limit: Int, truncated: CharSequence, transform: ((Long) -> CharSequence)?): A
        LongArray.joinToString(separator: CharSequence, prefix: CharSequence, postfix: CharSequence, limit: Int, truncated: CharSequence, transform: ((Long) -> CharSequence)?): String
        LongArray.last(): Long
@@ -1659,6 +1716,8 @@ Navigation item file #0: kotlin-stdlib-sources.jar!/commonMain/generated/_Arrays
        LongArray?.contentHashCode(): Int
        LongArray?.contentToString(): String
        ShortArray.all(predicate: (Short) -> Boolean): Boolean
+       ShortArray.allEqual(): Boolean
+       ShortArray.allEqualBy(selector: (Short) -> K): Boolean
        ShortArray.any(): Boolean
        ShortArray.any(predicate: (Short) -> Boolean): Boolean
        ShortArray.asIterable(): Iterable<Short>
@@ -1730,6 +1789,11 @@ Navigation item file #0: kotlin-stdlib-sources.jar!/commonMain/generated/_Arrays
        ShortArray.intersect(other: Iterable<Short>): Set<Short>
        ShortArray.isEmpty(): Boolean
        ShortArray.isNotEmpty(): Boolean
+       ShortArray.isSorted(): Boolean
+       ShortArray.isSortedBy(selector: (Short) -> R?): Boolean
+       ShortArray.isSortedByDescending(selector: (Short) -> R?): Boolean
+       ShortArray.isSortedDescending(): Boolean
+       ShortArray.isSortedWith(comparator: Comparator<in Short>): Boolean
        ShortArray.joinTo(buffer: A, separator: CharSequence, prefix: CharSequence, postfix: CharSequence, limit: Int, truncated: CharSequence, transform: ((Short) -> CharSequence)?): A
        ShortArray.joinToString(separator: CharSequence, prefix: CharSequence, postfix: CharSequence, limit: Int, truncated: CharSequence, transform: ((Short) -> CharSequence)?): String
        ShortArray.last(): Short

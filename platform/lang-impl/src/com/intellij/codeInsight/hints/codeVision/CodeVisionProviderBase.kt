@@ -1,4 +1,4 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.hints.codeVision
 
 import com.intellij.codeInsight.codeVision.BypassBasedPlaceholderCollector
@@ -7,6 +7,8 @@ import com.intellij.codeInsight.codeVision.CodeVisionEntry
 import com.intellij.codeInsight.codeVision.CodeVisionHost
 import com.intellij.codeInsight.codeVision.CodeVisionPlaceholderCollector
 import com.intellij.codeInsight.codeVision.ui.model.ClickableTextCodeVisionEntry
+import com.intellij.codeInsight.daemon.impl.analysis.FileHighlightingSetting
+import com.intellij.codeInsight.daemon.impl.analysis.HighlightingSettingsPerFile
 import com.intellij.codeInsight.hints.InlayHintsUtils
 import com.intellij.codeInsight.hints.settings.language.isInlaySettingsEditor
 import com.intellij.openapi.application.ApplicationManager
@@ -17,6 +19,7 @@ import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.SmartPointerManager
 import com.intellij.psi.SyntaxTraverser
+import com.intellij.workspaceModel.core.fileIndex.WorkspaceFileIndex
 import org.jetbrains.annotations.Nls
 import java.awt.event.MouseEvent
 
@@ -57,12 +60,15 @@ abstract class CodeVisionProviderBase : DaemonBoundCodeVisionProvider {
   override fun computeForEditor(editor: Editor, file: PsiFile): List<Pair<TextRange, CodeVisionEntry>> {
     if (file.project.isDefault) return emptyList()
     if (!acceptsFile(file)) return emptyList()
+    val highlightingSettingForRoot = HighlightingSettingsPerFile.getInstance(file.project).getHighlightingSettingForRoot(file)
+    if (highlightingSettingForRoot != FileHighlightingSetting.FORCE_HIGHLIGHTING) return emptyList()
 
     // we want to let this provider work only in tests dedicated for code vision, otherwise they harm performance
     if (ApplicationManager.getApplication().isUnitTestMode && !CodeVisionHost.isCodeLensTest()) return emptyList()
 
     val virtualFile = file.viewProvider.virtualFile
     if (ProjectFileIndex.getInstance(file.project).isInLibrarySource(virtualFile)) return emptyList()
+    if (!WorkspaceFileIndex.getInstance(file.project).isIndexable(virtualFile)) return emptyList()
 
     val lenses = ArrayList<Pair<TextRange, CodeVisionEntry>>()
     val traverser = SyntaxTraverser.psiTraverser(file)

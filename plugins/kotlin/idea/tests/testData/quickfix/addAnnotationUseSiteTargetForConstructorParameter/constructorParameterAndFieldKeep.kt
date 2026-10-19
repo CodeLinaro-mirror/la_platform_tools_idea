@@ -1,7 +1,8 @@
 // "Add use-site target 'param'" "true"
+// LANGUAGE_VERSION: 2.3
 // ACTION "Change use-site target to 'field'"
 // COMPILER_ARGUMENTS: -XXLanguage:+AnnotationDefaultTargetMigrationWarning
-// IGNORE_K1
+
 
 @Target(AnnotationTarget.VALUE_PARAMETER, AnnotationTarget.FIELD)
 @Retention(AnnotationRetention.RUNTIME)

@@ -1,14 +1,19 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.platform.searchEverywhere.frontend.resultsProcessing
 
+import com.intellij.ide.rpc.DataContextId
 import com.intellij.ide.rpc.rpcId
 import com.intellij.idea.AppMode
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.DataContext
+import com.intellij.openapi.actionSystem.DataKey
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.readAction
+import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.intellij.platform.project.projectId
+import com.intellij.platform.rpc.RemoteApiProviderService
 import com.intellij.platform.scopes.SearchScopesInfo
 import com.intellij.platform.searchEverywhere.SeItemData
 import com.intellij.platform.searchEverywhere.SeItemsProviderFactory
@@ -71,11 +76,11 @@ class SeTabDelegate(
   private val session: SeSession,
   private val logLabel: String,
   private val providerIds: List<SeProviderId>,
-  private val initEvent: AnActionEvent,
+  private val dataContextId: DataContextId,
   val scope: CoroutineScope,
 ) : Disposable {
   private val providers = initAsync(scope) {
-    initializeProviders(project, providerIds, initEvent, session, logLabel)
+    initializeProviders(project, providerIds, dataContextId, session, logLabel)
   }
 
   suspend fun getProvidersIdToName(): Map<SeProviderId, @Nls String> = providers.getValue().getProvidersIdToName()
@@ -163,15 +168,11 @@ class SeTabDelegate(
   suspend fun openInFindToolWindow(
     session: SeSession,
     params: SeParams,
-    initEvent: AnActionEvent,
     isAllTab: Boolean,
     disabledProviders: List<SeProviderId>? = null,
   ): Boolean {
     if (project == null) return false
 
-    val dataContextId = readAction {
-      initEvent.dataContext.rpcId()
-    }
     return SeRemoteApi.getInstance().openInFindToolWindow(project.projectId(),
                                                           session,
                                                           dataContextId,
@@ -345,31 +346,32 @@ class SeTabDelegate(
   }
 
   companion object {
+    suspend fun create(
+      project: Project?,
+      session: SeSession,
+      logLabel: String,
+      providerIds: List<SeProviderId>,
+      initEvent: AnActionEvent,
+      scope: CoroutineScope,
+    ): SeTabDelegate = SeTabDelegate(project, session, logLabel, providerIds, initEvent.dataContextId(), scope)
+
     suspend fun shouldShowLegacyContributorInSeparateTab(
       project: Project,
       providerId: SeProviderId,
       initEvent: AnActionEvent,
       session: SeSession,
-    ): Boolean {
-      val dataContextId = readAction {
-        initEvent.dataContext.rpcId()
-      }
-      return SeFrontendService.getInstance(project).localProvidersHolder?.getLegacyContributor(providerId, false)?.isShownInSeparateTab == true ||
-             SeRemoteApi.getInstance().isShownInSeparateTab(project.projectId(), session, dataContextId, providerId)
-    }
+    ): Boolean =
+      SeFrontendService.getInstance(project).localProvidersHolder?.getLegacyContributor(providerId, false)?.isShownInSeparateTab == true ||
+      SeRemoteApi.getInstance().isShownInSeparateTab(project.projectId(), session, initEvent.dataContextId(), providerId)
 
     private suspend fun initializeProviders(
       project: Project?,
       providerIds: List<SeProviderId>,
-      initEvent: AnActionEvent,
+      dataContextId: DataContextId,
       session: SeSession,
       logLabel: String,
     ): Providers = coroutineScope {
       val projectId = project?.projectId()
-      val dataContextId = readAction {
-        initEvent.dataContext.rpcId()
-      }
-
 
       ensureActive()
       val localProvidersHolder = SeFrontendService.getInstance(project).localProvidersHolder
@@ -381,7 +383,11 @@ class SeTabDelegate(
       val localFactories = SeItemsProviderFactory.EP_NAME.extensionList.associateBy { SeProviderId(it.id) }
       val frontendOnlyIds = localFactories.filter { it.value is SeFrontendOnlyItemsProviderFactory }.map { it.key }.toSet()
 
-      val availableRemoteProviders = if (projectId != null) SeRemoteApi.getInstance().getAvailableProviderIds(projectId, session, dataContextId) else null
+      val availableRemoteProviders = when {
+        projectId == null -> null
+        !service<RemoteApiProviderService>().isServiceOperational() -> null
+        else -> SeRemoteApi.getInstance().getAvailableProviderIds(projectId, session, dataContextId)
+      }
 
       val essentialRemoteProviderIds = availableRemoteProviders?.essential?.filter {
         !frontendOnlyIds.contains(it)
@@ -419,7 +425,7 @@ class SeTabDelegate(
         }
       }.toMap()
 
-      val frontendProvidersFacade = if (project != null) {
+      val frontendProvidersFacade = if (project != null && remoteProviderIds.isNotEmpty()) {
         val remoteProviderIdToName =
           SeRemoteApi.getInstance().getDisplayNameForProviders(project.projectId(), session, dataContextId, remoteProviderIds.toList())
 
@@ -440,4 +446,20 @@ class SeTabDelegate(
       Providers(localProviders, frontendProvidersFacade, allEssentials)
     }
   }
+}
+
+private suspend fun AnActionEvent.dataContextId(): DataContextId =
+  (dataContext as? DataContextWithRpcId)?.dataContextId
+  ?: run {
+    SeLog.warn("DataContextWithRpcId is expected in the action event to get the data context id immediately. Using rpcId instead.")
+    readAction {
+      dataContext.rpcId()
+    }
+  }
+
+@ApiStatus.Internal
+class DataContextWithRpcId(val dataContext: DataContext, val dataContextId: DataContextId): DataContext {
+  @Suppress("OVERRIDE_DEPRECATION", "DEPRECATION")
+  override fun getData(dataId: String): Any? = dataContext.getData(dataId)
+  override fun <T> getData(key: DataKey<T?>): T? = dataContext.getData(key)
 }

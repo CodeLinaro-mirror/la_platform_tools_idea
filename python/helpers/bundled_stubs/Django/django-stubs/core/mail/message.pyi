@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from email.message import EmailMessage as _StdlibEmailMessage
 from email.message import Message, MIMEPart
 from email.mime.base import MIMEBase
 from email.mime.message import MIMEMessage
@@ -8,6 +9,7 @@ from email.policy import Policy
 from email.utils import make_msgid as make_msgid
 from typing import Any, NamedTuple, TypeAlias, overload
 
+from django.core.mail.backends.base import BaseEmailBackend
 from django.utils.functional import _StrOrPromise
 
 utf8_charset: Any
@@ -69,7 +71,7 @@ class EmailMessage:
     body: _StrOrPromise
     attachments: list[Any]
     extra_headers: dict[Any, Any]
-    connection: Any
+    connection: BaseEmailBackend | None
     def __init__(
         self,
         subject: _StrOrPromise = "",
@@ -78,17 +80,15 @@ class EmailMessage:
         to: Sequence[str] | None = None,
         *,
         bcc: Sequence[str] | None = None,
-        connection: Any | None = None,
+        connection: BaseEmailBackend | None = None,
         attachments: Sequence[MIMEBase | _AttachmentTuple] | None = None,
         headers: dict[str, str] | None = None,
         cc: Sequence[str] | None = None,
         reply_to: Sequence[str] | None = None,
     ) -> None: ...
-    def get_connection(self, fail_silently: bool = False) -> Any: ...
-    # TODO: when typeshed gets more types for email.Message, move it to MIMEMessage, now it has too many false-positives
-    def message(self, *, policy: Policy | None = ...) -> Any: ...
+    def message(self, *, policy: Policy | None = ...) -> _StdlibEmailMessage: ...
     def recipients(self) -> list[str]: ...
-    def send(self, fail_silently: bool = False) -> int: ...
+    def send(self, fail_silently: bool = False, *, using: str | None = None) -> int: ...
     @overload
     def attach(self, filename: MIMEBase | None = None, content: None = None, mimetype: None = None) -> None: ...
     @overload

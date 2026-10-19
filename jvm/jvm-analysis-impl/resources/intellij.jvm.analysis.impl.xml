@@ -1,19 +1,19 @@
 <idea-plugin visibility="public">
+  <!-- region Generated dependencies - run `Generate Product Layouts` to regenerate -->
   <dependencies>
-    <module name="intellij.java.indexing"/>
-    <module name="intellij.jvm.analysis"/>
-    <module name="intellij.java"/>
-    <module name="intellij.java.impl"/>
-    <module name="intellij.jvm.analysis.refactoring"/>
-    <module name="intellij.java.impl.refactorings"/>
-    <module name="intellij.jvm.analysis.quickFix"/>
-    <module name="intellij.java.codeserver.core"/>
-
     <module name="intellij.platform.backend"/>
-
-    <module name="intellij.platform.analysis" />
-
+    <module name="intellij.java"/>
+    <module name="intellij.java.codeserver.core"/>
+    <module name="intellij.java.impl"/>
+    <module name="intellij.java.impl.refactorings"/>
+    <module name="intellij.java.indexing"/>
+    <module name="intellij.java.psi"/>
+    <module name="intellij.java.syntax"/>
+    <module name="intellij.jvm.analysis"/>
+    <module name="intellij.jvm.analysis.quickFix"/>
+    <module name="intellij.jvm.analysis.refactoring"/>
   </dependencies>
+  <!-- endregion -->
 
   <extensionPoints>
     <extensionPoint qualifiedName="com.intellij.codeInsight.blockingMethodChecker"
@@ -195,8 +195,6 @@
                       level="WARNING" implementationClass="com.intellij.codeInspection.emptyMethod.EmptyMethodInspection"
                       key="inspection.empty.method.display.name" bundle="messages.JvmAnalysisBundle"/>
     <notificationGroup id="UAST" displayType="BALLOON" hideFromSettings="true"/>
-
-    <inspectionCustomComponent implementation="com.intellij.codeInsight.options.JavaInspectionButtons"/>
 
     <annotator language="UAST" implementationClass="com.intellij.analysis.logging.highlighting.LoggingPlaceholderAnnotator"/>
 

@@ -5,6 +5,7 @@ package org.jetbrains.intellij.build.productLayout.dependency
 
 import com.intellij.platform.pluginGraph.ContentModuleName
 import com.intellij.platform.pluginGraph.PluginId
+import com.intellij.platform.pluginGraph.PluginModuleId
 import com.intellij.platform.pluginGraph.TargetName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
@@ -13,6 +14,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.jetbrains.intellij.build.productLayout.TestFailureLogger
 import org.jetbrains.intellij.build.productLayout.config.ContentModuleSuppression
 import org.jetbrains.intellij.build.productLayout.config.SuppressionConfig
+import org.jetbrains.intellij.build.productLayout.generator.computeExistingDependencyHandling
 import org.jetbrains.intellij.build.productLayout.model.ErrorSink
 import org.jetbrains.intellij.build.productLayout.model.error.DslTestPluginDependencyError
 import org.jetbrains.intellij.build.productLayout.model.error.ErrorCategory
@@ -23,6 +25,7 @@ import org.jetbrains.intellij.build.productLayout.stats.SuppressionUsage
 import org.jetbrains.intellij.build.productLayout.validator.rule.createResolutionQuery
 import org.jetbrains.intellij.build.productLayout.validator.rule.existsAnywhere
 import org.jetbrains.intellij.build.productLayout.validator.rule.forProductionPlugin
+import org.jetbrains.intellij.build.productLayout.xml.extractDependenciesEntries
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import org.junit.jupiter.api.io.TempDir
@@ -192,6 +195,43 @@ class PluginDependencyGeneratorTest {
         .describedAs("Should have at most one diff for shared content module (was duplicated before fix)")
         .hasSizeLessThanOrEqualTo(1)
     }
+  }
+
+  @Test
+  fun `update suppressions ignores manual plugin xml dependencies outside generated region`() {
+    val content = """
+      <idea-plugin>
+        <dependencies>
+          <plugin id="manual.plugin"/>
+          <module name="manual.module"/>
+          <!-- region Generated dependencies - run `Generate Product Layouts` to regenerate -->
+          <plugin id="generated.plugin"/>
+          <module name="generated.module"/>
+          <!-- endregion -->
+        </dependencies>
+      </idea-plugin>
+    """.trimIndent()
+
+    val entries = extractDependenciesEntries(content)!!
+    val moduleHandling = computeExistingDependencyHandling(
+      updateSuppressions = true,
+      existingXmlDeps = entries.moduleNames.mapTo(HashSet(), ::ContentModuleName),
+      jpsDeps = emptySet(),
+      suppressedDeps = emptySet(),
+      xmlOnlySuppressionCandidateDeps = entries.managedModuleNames.mapTo(HashSet(), ::ContentModuleName),
+    )
+    val pluginHandling = computeExistingDependencyHandling(
+      updateSuppressions = true,
+      existingXmlDeps = entries.pluginIds.mapTo(HashSet(), ::PluginId),
+      jpsDeps = emptySet(),
+      suppressedDeps = emptySet(),
+      xmlOnlySuppressionCandidateDeps = entries.managedPluginIds.mapTo(HashSet(), ::PluginId),
+    )
+
+    assertThat(moduleHandling.effectiveSuppressedDeps)
+      .containsExactly(ContentModuleName("generated.module"))
+    assertThat(pluginHandling.effectiveSuppressedDeps)
+      .containsExactly(PluginId("generated.plugin"))
   }
 
   // --- ON_DEMAND deps with productAllowedMissing test ---
@@ -536,7 +576,7 @@ class PluginDependencyGeneratorTest {
       )
 
       // Call the REAL function (graph is the source of truth for descriptor existence)
-      val descriptorCache = ModuleDescriptorCache(jps.outputProvider, this)
+      val descriptorCache = ModuleDescriptorCache(jps.outputProvider)
       val graph = pluginGraphWithDescriptors(descriptorCache) {
         moduleWithScopedDeps("intellij.python.processOutput.impl", "intellij.platform.jewel.intUi.standalone" to "COMPILE")
         product("TestProduct") { }
@@ -552,11 +592,464 @@ class PluginDependencyGeneratorTest {
       )
 
       // Verify: dependency module with descriptor is auto-added to contentModules
-      val contentModuleNames = result.contentModules.map { it.name }
+      val contentModuleNames = result.contentModules.map { ContentModuleName(it.moduleId.name) }
       assertThat(contentModuleNames)
         .describedAs("computePluginContentFromDslSpec should auto-add JPS deps with module descriptors")
         .contains(ContentModuleName("intellij.python.processOutput.impl"))  // explicitly declared
         .contains(ContentModuleName("intellij.platform.jewel.intUi.standalone"))  // auto-added
+    }
+  }
+
+  @Test
+  fun `computePluginContentFromDslSpec auto-adds private library deps without explicit namespace`(@TempDir tempDir: Path) {
+    runBlocking(Dispatchers.Default) {
+      val jps = jpsProject(tempDir) {
+        module("intellij.consumer.module") {
+          resourceRoot()
+          moduleDep("intellij.libraries.private")
+        }
+        module("intellij.libraries.private") {
+          resourceRoot()
+        }
+      }
+
+      val consumerResourcesDir = tempDir.resolve("intellij/consumer/module/resources")
+      java.nio.file.Files.createDirectories(consumerResourcesDir)
+      java.nio.file.Files.writeString(
+        consumerResourcesDir.resolve("intellij.consumer.module.xml"),
+        """<idea-plugin package="com.intellij.consumer"/>"""
+      )
+
+      val libraryResourcesDir = tempDir.resolve("intellij/libraries/private/resources")
+      java.nio.file.Files.createDirectories(libraryResourcesDir)
+      java.nio.file.Files.writeString(
+        libraryResourcesDir.resolve("intellij.libraries.private.xml"),
+        """<idea-plugin/>"""
+      )
+
+      val spec = org.jetbrains.intellij.build.productLayout.TestPluginSpec(
+        pluginId = PluginId("intellij.consumer.test.plugin"),
+        name = "Consumer Test Plugin",
+        pluginXmlPath = "consumer/testResources/META-INF/plugin.xml",
+        spec = org.jetbrains.intellij.build.productLayout.productModules {
+          requiredModule("intellij.consumer.module")
+        }
+      )
+
+      val descriptorCache = ModuleDescriptorCache(jps.outputProvider)
+      val graph = pluginGraphWithDescriptors(descriptorCache) {
+        moduleWithScopedDeps("intellij.consumer.module", "intellij.libraries.private" to "COMPILE")
+        product("TestProduct") { }
+      }
+      val result = org.jetbrains.intellij.build.productLayout.discovery.computePluginContentFromDslSpec(
+        testPluginSpec = spec,
+        projectRoot = tempDir,
+        resolvableModules = emptySet(),
+        productName = "TestProduct",
+        pluginGraph = graph,
+        errorSink = ErrorSink(),
+        descriptorCache = descriptorCache,
+      )
+
+      val privateLibrary = result.contentModules.single { it.moduleId.name == "intellij.libraries.private" }
+      assertThat(privateLibrary.moduleId.namespace)
+        .describedAs("Private library modules included in several plugins must use implicit plugin namespace")
+        .isNull()
+
+      val consumerModule = result.contentModules.single { it.moduleId.name == "intellij.consumer.module" }
+      assertThat(consumerModule.moduleId.namespace).isEqualTo(PluginModuleId.DEFAULT_NAMESPACE)
+    }
+  }
+
+  @Test
+  fun `computePluginContentFromDslSpec skips resolvable private library JPS deps`(@TempDir tempDir: Path) {
+    runBlocking(Dispatchers.Default) {
+      val jps = jpsProject(tempDir) {
+        module("intellij.consumer.module") {
+          resourceRoot()
+          moduleDep("intellij.libraries.private")
+        }
+        module("intellij.libraries.private") {
+          resourceRoot()
+        }
+      }
+
+      val consumerResourcesDir = tempDir.resolve("intellij/consumer/module/resources")
+      java.nio.file.Files.createDirectories(consumerResourcesDir)
+      java.nio.file.Files.writeString(
+        consumerResourcesDir.resolve("intellij.consumer.module.xml"),
+        """<idea-plugin package="com.intellij.consumer"/>"""
+      )
+
+      val libraryResourcesDir = tempDir.resolve("intellij/libraries/private/resources")
+      java.nio.file.Files.createDirectories(libraryResourcesDir)
+      java.nio.file.Files.writeString(
+        libraryResourcesDir.resolve("intellij.libraries.private.xml"),
+        """<idea-plugin/>"""
+      )
+
+      val spec = org.jetbrains.intellij.build.productLayout.TestPluginSpec(
+        pluginId = PluginId("intellij.consumer.test.plugin"),
+        name = "Consumer Test Plugin",
+        pluginXmlPath = "consumer/testResources/META-INF/plugin.xml",
+        spec = org.jetbrains.intellij.build.productLayout.productModules {
+          requiredModule("intellij.consumer.module")
+        }
+      )
+
+      val descriptorCache = ModuleDescriptorCache(jps.outputProvider)
+      val graph = pluginGraphWithDescriptors(descriptorCache) {
+        moduleWithScopedDeps("intellij.consumer.module", "intellij.libraries.private" to "COMPILE")
+        product("TestProduct") { }
+      }
+      val result = org.jetbrains.intellij.build.productLayout.discovery.computePluginContentFromDslSpec(
+        testPluginSpec = spec,
+        projectRoot = tempDir,
+        resolvableModules = setOf(ContentModuleName("intellij.libraries.private")),
+        productName = "TestProduct",
+        pluginGraph = graph,
+        errorSink = ErrorSink(),
+        descriptorCache = descriptorCache,
+      )
+
+      assertThat(result.contentModules.map { it.moduleId.name })
+        .describedAs("Resolvable private library deps are already provided by the product graph")
+        .contains("intellij.consumer.module")
+        .doesNotContain("intellij.libraries.private")
+    }
+  }
+
+  @Test
+  fun `computePluginContentFromDslSpec auto-adds resolvable private library descriptor deps without explicit namespace`(@TempDir tempDir: Path) {
+    runBlocking(Dispatchers.Default) {
+      val jps = jpsProject(tempDir) {
+        module("intellij.consumer.module") {
+          resourceRoot()
+          moduleDep("intellij.libraries.private")
+        }
+        module("intellij.libraries.private") {
+          resourceRoot()
+        }
+      }
+
+      val consumerResourcesDir = tempDir.resolve("intellij/consumer/module/resources")
+      java.nio.file.Files.createDirectories(consumerResourcesDir)
+      java.nio.file.Files.writeString(
+        consumerResourcesDir.resolve("intellij.consumer.module.xml"),
+        """
+          <idea-plugin package="com.intellij.consumer">
+            <dependencies>
+              <module name="intellij.libraries.private"/>
+            </dependencies>
+          </idea-plugin>
+        """.trimIndent()
+      )
+
+      val libraryResourcesDir = tempDir.resolve("intellij/libraries/private/resources")
+      java.nio.file.Files.createDirectories(libraryResourcesDir)
+      java.nio.file.Files.writeString(
+        libraryResourcesDir.resolve("intellij.libraries.private.xml"),
+        """<idea-plugin/>"""
+      )
+
+      val spec = org.jetbrains.intellij.build.productLayout.TestPluginSpec(
+        pluginId = PluginId("intellij.consumer.test.plugin"),
+        name = "Consumer Test Plugin",
+        pluginXmlPath = "consumer/testResources/META-INF/plugin.xml",
+        spec = org.jetbrains.intellij.build.productLayout.productModules {
+          requiredModule("intellij.consumer.module")
+        }
+      )
+
+      val descriptorCache = ModuleDescriptorCache(jps.outputProvider)
+      val graph = pluginGraphWithDescriptors(descriptorCache) {
+        moduleWithScopedDeps("intellij.consumer.module")
+        moduleWithScopedDeps("intellij.libraries.private")
+        product("TestProduct") { }
+      }
+      val result = org.jetbrains.intellij.build.productLayout.discovery.computePluginContentFromDslSpec(
+        testPluginSpec = spec,
+        projectRoot = tempDir,
+        resolvableModules = setOf(ContentModuleName("intellij.libraries.private")),
+        productName = "TestProduct",
+        pluginGraph = graph,
+        errorSink = ErrorSink(),
+        descriptorCache = descriptorCache,
+      )
+
+      val privateLibrary = result.contentModules.single { it.moduleId.name == "intellij.libraries.private" }
+      assertThat(privateLibrary.moduleId.namespace)
+        .describedAs("Private descriptor deps need a copy in the test plugin to satisfy module visibility")
+        .isNull()
+    }
+  }
+
+  @Test
+  fun `computePluginContentFromDslSpec skips resolvable public library descriptor deps`(@TempDir tempDir: Path) {
+    runBlocking(Dispatchers.Default) {
+      val jps = jpsProject(tempDir) {
+        module("intellij.consumer.module") {
+          resourceRoot()
+        }
+        module("intellij.libraries.public") {
+          resourceRoot()
+        }
+      }
+
+      val consumerResourcesDir = tempDir.resolve("intellij/consumer/module/resources")
+      java.nio.file.Files.createDirectories(consumerResourcesDir)
+      java.nio.file.Files.writeString(
+        consumerResourcesDir.resolve("intellij.consumer.module.xml"),
+        """
+          |<idea-plugin package="com.intellij.consumer">
+          |  <dependencies>
+          |    <module name="intellij.libraries.public"/>
+          |  </dependencies>
+          |</idea-plugin>
+        """.trimMargin()
+      )
+
+      val libraryResourcesDir = tempDir.resolve("intellij/libraries/public/resources")
+      java.nio.file.Files.createDirectories(libraryResourcesDir)
+      java.nio.file.Files.writeString(
+        libraryResourcesDir.resolve("intellij.libraries.public.xml"),
+        """<idea-plugin visibility="public" package="com.intellij.libraries.public"/>"""
+      )
+
+      val spec = org.jetbrains.intellij.build.productLayout.TestPluginSpec(
+        pluginId = PluginId("intellij.consumer.test.plugin"),
+        name = "Consumer Test Plugin",
+        pluginXmlPath = "consumer/testResources/META-INF/plugin.xml",
+        spec = org.jetbrains.intellij.build.productLayout.productModules {
+          requiredModule("intellij.consumer.module")
+        }
+      )
+
+      val descriptorCache = ModuleDescriptorCache(jps.outputProvider)
+      val graph = pluginGraphWithDescriptors(descriptorCache) {
+        moduleWithScopedDeps("intellij.consumer.module")
+        moduleWithScopedDeps("intellij.libraries.public")
+        product("TestProduct") { }
+      }
+      val result = org.jetbrains.intellij.build.productLayout.discovery.computePluginContentFromDslSpec(
+        testPluginSpec = spec,
+        projectRoot = tempDir,
+        resolvableModules = setOf(ContentModuleName("intellij.libraries.public")),
+        productName = "TestProduct",
+        pluginGraph = graph,
+        errorSink = ErrorSink(),
+        descriptorCache = descriptorCache,
+      )
+
+      assertThat(result.contentModules.map { it.moduleId.name })
+        .describedAs("Resolvable public descriptor deps are already provided by the product graph")
+        .contains("intellij.consumer.module")
+        .doesNotContain("intellij.libraries.public")
+    }
+  }
+
+  @Test
+  fun `computePluginContentFromDslSpec keeps private library deps with module dependencies in default namespace`(@TempDir tempDir: Path) {
+    runBlocking(Dispatchers.Default) {
+      val jps = jpsProject(tempDir) {
+        module("intellij.consumer.module") {
+          resourceRoot()
+          moduleDep("intellij.libraries.private.with.deps")
+        }
+        module("intellij.libraries.private.with.deps") {
+          resourceRoot()
+        }
+        module("intellij.libraries.internal.dep") {
+          resourceRoot()
+        }
+      }
+
+      val consumerResourcesDir = tempDir.resolve("intellij/consumer/module/resources")
+      java.nio.file.Files.createDirectories(consumerResourcesDir)
+      java.nio.file.Files.writeString(
+        consumerResourcesDir.resolve("intellij.consumer.module.xml"),
+        """<idea-plugin package="com.intellij.consumer"/>"""
+      )
+
+      val privateLibraryResourcesDir = tempDir.resolve("intellij/libraries/private/with/deps/resources")
+      java.nio.file.Files.createDirectories(privateLibraryResourcesDir)
+      java.nio.file.Files.writeString(
+        privateLibraryResourcesDir.resolve("intellij.libraries.private.with.deps.xml"),
+        """
+          |<idea-plugin>
+          |  <dependencies>
+          |    <module name="intellij.libraries.internal.dep"/>
+          |  </dependencies>
+          |</idea-plugin>
+        """.trimMargin()
+      )
+
+      val internalDependencyResourcesDir = tempDir.resolve("intellij/libraries/internal/dep/resources")
+      java.nio.file.Files.createDirectories(internalDependencyResourcesDir)
+      java.nio.file.Files.writeString(
+        internalDependencyResourcesDir.resolve("intellij.libraries.internal.dep.xml"),
+        """<idea-plugin visibility="internal"/>"""
+      )
+
+      val spec = org.jetbrains.intellij.build.productLayout.TestPluginSpec(
+        pluginId = PluginId("intellij.consumer.test.plugin"),
+        name = "Consumer Test Plugin",
+        pluginXmlPath = "consumer/testResources/META-INF/plugin.xml",
+        spec = org.jetbrains.intellij.build.productLayout.productModules {
+          requiredModule("intellij.consumer.module")
+        }
+      )
+
+      val descriptorCache = ModuleDescriptorCache(jps.outputProvider)
+      val graph = pluginGraphWithDescriptors(descriptorCache) {
+        moduleWithScopedDeps("intellij.consumer.module", "intellij.libraries.private.with.deps" to "COMPILE")
+        moduleWithScopedDeps("intellij.libraries.internal.dep")
+        moduleWithScopedDeps("intellij.libraries.internal.dep")
+        product("TestProduct") { }
+      }
+      val result = org.jetbrains.intellij.build.productLayout.discovery.computePluginContentFromDslSpec(
+        testPluginSpec = spec,
+        projectRoot = tempDir,
+        resolvableModules = emptySet(),
+        productName = "TestProduct",
+        pluginGraph = graph,
+        errorSink = ErrorSink(),
+        descriptorCache = descriptorCache,
+      )
+
+      val privateLibrary = result.contentModules.single { it.moduleId.name == "intellij.libraries.private.with.deps" }
+      assertThat(privateLibrary.moduleId.namespace)
+        .describedAs("Private library modules with descriptor module dependencies must stay in the default namespace")
+        .isEqualTo(PluginModuleId.DEFAULT_NAMESPACE)
+
+      val internalDependency = result.contentModules.single { it.moduleId.name == "intellij.libraries.internal.dep" }
+      assertThat(internalDependency.moduleId.namespace).isEqualTo(PluginModuleId.DEFAULT_NAMESPACE)
+    }
+  }
+
+  @Test
+  fun `computePluginContentFromDslSpec remaps JPS deps to test descriptor modules when only _test descriptor exists`(@TempDir tempDir: Path) {
+    runBlocking(Dispatchers.Default) {
+      val jps = jpsProject(tempDir) {
+        module("intellij.consumer.module") {
+          resourceRoot()
+          moduleDep("intellij.platform.testFramework.junit5.wsl")
+        }
+        module("intellij.platform.testFramework.junit5.wsl") {
+          resourceRoot()
+        }
+      }
+
+      val consumerResourcesDir = tempDir.resolve("intellij/consumer/module/resources")
+      java.nio.file.Files.createDirectories(consumerResourcesDir)
+      java.nio.file.Files.writeString(
+        consumerResourcesDir.resolve("intellij.consumer.module.xml"),
+        """<idea-plugin package="com.intellij.consumer.module"/>"""
+      )
+
+      val wslResourcesDir = tempDir.resolve("intellij/platform/testFramework/junit5/wsl/resources")
+      java.nio.file.Files.createDirectories(wslResourcesDir)
+      java.nio.file.Files.writeString(
+        wslResourcesDir.resolve("intellij.platform.testFramework.junit5.wsl._test.xml"),
+        """<idea-plugin package="com.intellij.testFramework.junit5.wsl._test"/>"""
+      )
+
+      val spec = org.jetbrains.intellij.build.productLayout.TestPluginSpec(
+        pluginId = PluginId("test.plugin"),
+        name = "Test Plugin",
+        pluginXmlPath = "test/plugin.xml",
+        spec = org.jetbrains.intellij.build.productLayout.productModules {
+          module("intellij.consumer.module")
+        }
+      )
+
+      val descriptorCache = ModuleDescriptorCache(jps.outputProvider)
+      val graph = pluginGraphWithDescriptors(descriptorCache) {
+        moduleWithScopedDeps("intellij.consumer.module", "intellij.platform.testFramework.junit5.wsl" to "COMPILE")
+        product("TestProduct") { }
+      }
+      val errorSink = ErrorSink()
+      val result = org.jetbrains.intellij.build.productLayout.discovery.computePluginContentFromDslSpec(
+        testPluginSpec = spec,
+        projectRoot = tempDir,
+        resolvableModules = emptySet(),
+        productName = "TestProduct",
+        pluginGraph = graph,
+        errorSink = errorSink,
+        descriptorCache = descriptorCache,
+      )
+
+      val contentModuleNames = result.contentModules.map { ContentModuleName(it.moduleId.name) }
+      assertThat(contentModuleNames)
+        .describedAs("JPS deps should resolve to *_test module when only *_test descriptor exists")
+        .contains(ContentModuleName("intellij.consumer.module"))
+        .contains(ContentModuleName("intellij.platform.testFramework.junit5.wsl._test"))
+        .doesNotContain(ContentModuleName("intellij.platform.testFramework.junit5.wsl"))
+      assertThat(errorSink.getErrors()).isEmpty()
+    }
+  }
+
+  @Test
+  fun `computePluginContentFromDslSpec keeps base module when both base and _test descriptors exist`(@TempDir tempDir: Path) {
+    runBlocking(Dispatchers.Default) {
+      val jps = jpsProject(tempDir) {
+        module("intellij.consumer.module") {
+          resourceRoot()
+          moduleDep("intellij.platform.testFramework.junit5.wsl")
+        }
+        module("intellij.platform.testFramework.junit5.wsl") {
+          resourceRoot()
+        }
+      }
+
+      val consumerResourcesDir = tempDir.resolve("intellij/consumer/module/resources")
+      java.nio.file.Files.createDirectories(consumerResourcesDir)
+      java.nio.file.Files.writeString(
+        consumerResourcesDir.resolve("intellij.consumer.module.xml"),
+        """<idea-plugin package="com.intellij.consumer.module"/>"""
+      )
+
+      val wslResourcesDir = tempDir.resolve("intellij/platform/testFramework/junit5/wsl/resources")
+      java.nio.file.Files.createDirectories(wslResourcesDir)
+      java.nio.file.Files.writeString(
+        wslResourcesDir.resolve("intellij.platform.testFramework.junit5.wsl.xml"),
+        """<idea-plugin package="com.intellij.testFramework.junit5.wsl"/>"""
+      )
+      java.nio.file.Files.writeString(
+        wslResourcesDir.resolve("intellij.platform.testFramework.junit5.wsl._test.xml"),
+        """<idea-plugin package="com.intellij.testFramework.junit5.wsl._test"/>"""
+      )
+
+      val spec = org.jetbrains.intellij.build.productLayout.TestPluginSpec(
+        pluginId = PluginId("test.plugin"),
+        name = "Test Plugin",
+        pluginXmlPath = "test/plugin.xml",
+        spec = org.jetbrains.intellij.build.productLayout.productModules {
+          module("intellij.consumer.module")
+        }
+      )
+
+      val descriptorCache = ModuleDescriptorCache(jps.outputProvider)
+      val graph = pluginGraphWithDescriptors(descriptorCache) {
+        moduleWithScopedDeps("intellij.consumer.module", "intellij.platform.testFramework.junit5.wsl" to "COMPILE")
+        product("TestProduct") { }
+      }
+      val result = org.jetbrains.intellij.build.productLayout.discovery.computePluginContentFromDslSpec(
+        testPluginSpec = spec,
+        projectRoot = tempDir,
+        resolvableModules = emptySet(),
+        productName = "TestProduct",
+        pluginGraph = graph,
+        errorSink = ErrorSink(),
+        descriptorCache = descriptorCache,
+      )
+
+      val contentModuleNames = result.contentModules.map { ContentModuleName(it.moduleId.name) }
+      assertThat(contentModuleNames)
+        .describedAs("Base descriptor should be preferred when both base and *_test descriptors exist")
+        .contains(ContentModuleName("intellij.consumer.module"))
+        .contains(ContentModuleName("intellij.platform.testFramework.junit5.wsl"))
+        .doesNotContain(ContentModuleName("intellij.platform.testFramework.junit5.wsl._test"))
     }
   }
 
@@ -602,7 +1095,7 @@ class PluginDependencyGeneratorTest {
       )
 
       coroutineScope {
-        val descriptorCache = ModuleDescriptorCache(jps.outputProvider, this)
+        val descriptorCache = ModuleDescriptorCache(jps.outputProvider)
         val graph = pluginGraphWithDescriptors(descriptorCache) {
           target("intellij.foo")
           target("intellij.bar")
@@ -618,7 +1111,7 @@ class PluginDependencyGeneratorTest {
           descriptorCache = descriptorCache,
         )
 
-        val contentModuleNames = result.contentModules.map { it.name }
+        val contentModuleNames = result.contentModules.map { ContentModuleName(it.moduleId.name) }
         assertThat(contentModuleNames)
           .describedAs("computePluginContentFromDslSpec should auto-add test descriptor deps")
           .contains(ContentModuleName("intellij.foo._test"))
@@ -663,7 +1156,7 @@ class PluginDependencyGeneratorTest {
         }
       )
 
-      val descriptorCache = ModuleDescriptorCache(jps.outputProvider, this)
+      val descriptorCache = ModuleDescriptorCache(jps.outputProvider)
       val graph = pluginGraphWithDescriptors(descriptorCache) {
         plugin("intellij.dep.plugin") {
           content("intellij.dep.with.descriptor")
@@ -689,7 +1182,7 @@ class PluginDependencyGeneratorTest {
         ),
       )
 
-      val contentModuleNames = result.contentModules.map { it.name }
+      val contentModuleNames = result.contentModules.map { ContentModuleName(it.moduleId.name) }
       assertThat(contentModuleNames)
         .describedAs("Suppressed JPS module deps with a content source should not be auto-added")
         .contains(ContentModuleName("intellij.test.module"))
@@ -733,7 +1226,7 @@ class PluginDependencyGeneratorTest {
         }
       )
 
-      val descriptorCache = ModuleDescriptorCache(jps.outputProvider, this)
+      val descriptorCache = ModuleDescriptorCache(jps.outputProvider)
       val graph = pluginGraphWithDescriptors(descriptorCache) {
         moduleWithScopedDeps("intellij.test.module", "intellij.dep.with.descriptor" to "COMPILE")
         moduleWithScopedDeps("intellij.dep.with.descriptor")
@@ -756,7 +1249,7 @@ class PluginDependencyGeneratorTest {
         ),
       )
 
-      val contentModuleNames = result.contentModules.map { it.name }
+      val contentModuleNames = result.contentModules.map { ContentModuleName(it.moduleId.name) }
       assertThat(contentModuleNames)
         .describedAs("Suppressed JPS module deps without content source should be auto-added")
         .contains(ContentModuleName("intellij.test.module"))
@@ -793,7 +1286,7 @@ class PluginDependencyGeneratorTest {
         }
       )
 
-      val descriptorCache = ModuleDescriptorCache(jps.outputProvider, this)
+      val descriptorCache = ModuleDescriptorCache(jps.outputProvider)
       val graph = pluginGraphWithDescriptors(descriptorCache) {
         plugin("intellij.java.plugin") {
           content("intellij.java.impl")
@@ -858,7 +1351,7 @@ class PluginDependencyGeneratorTest {
         }
       )
 
-      val descriptorCache = ModuleDescriptorCache(jps.outputProvider, this)
+      val descriptorCache = ModuleDescriptorCache(jps.outputProvider)
       val graph = pluginGraphWithDescriptors(descriptorCache) {
         plugin("intellij.java.plugin") {
           content("intellij.java.impl")
@@ -927,7 +1420,7 @@ class PluginDependencyGeneratorTest {
         }
       )
 
-      val descriptorCache = ModuleDescriptorCache(jps.outputProvider, this)
+      val descriptorCache = ModuleDescriptorCache(jps.outputProvider)
       val graph = pluginGraphWithDescriptors(descriptorCache) {
         moduleWithScopedDeps("intellij.test.module", "intellij.libraries.junit4" to "COMPILE")
         moduleWithScopedDeps("intellij.libraries.junit4")
@@ -943,7 +1436,7 @@ class PluginDependencyGeneratorTest {
         descriptorCache = descriptorCache,
       )
 
-      val contentModuleNames = result.contentModules.map { it.name }
+      val contentModuleNames = result.contentModules.map { ContentModuleName(it.moduleId.name) }
       assertThat(contentModuleNames)
         .describedAs("Library deps should resolve to library modules and be auto-added")
         .contains(ContentModuleName("intellij.test.module"))
@@ -988,7 +1481,7 @@ class PluginDependencyGeneratorTest {
       )
 
       val errorSink = ErrorSink()
-      val descriptorCache = ModuleDescriptorCache(jps.outputProvider, this)
+      val descriptorCache = ModuleDescriptorCache(jps.outputProvider)
       val graph = pluginGraphWithDescriptors(descriptorCache) {
         moduleWithScopedDeps("intellij.test.module", "intellij.libraries.junit4" to "COMPILE")
         product("TestProduct") { }
@@ -1004,7 +1497,7 @@ class PluginDependencyGeneratorTest {
         descriptorCache = descriptorCache,
       )
 
-      val contentModuleNames = result.contentModules.map { it.name }
+      val contentModuleNames = result.contentModules.map { ContentModuleName(it.moduleId.name) }
       assertThat(contentModuleNames)
         .describedAs("Library modules should be auto-added even when owned by a plugin")
         .contains(ContentModuleName("intellij.test.module"))
@@ -1049,7 +1542,7 @@ class PluginDependencyGeneratorTest {
         }
       )
 
-      val descriptorCache = ModuleDescriptorCache(jps.outputProvider, this)
+      val descriptorCache = ModuleDescriptorCache(jps.outputProvider)
       val graph = pluginGraphWithDescriptors(descriptorCache) {
         moduleWithScopedDeps("intellij.content.module", "intellij.dep.resolvable" to "COMPILE")
         product("TestProduct") { }
@@ -1064,7 +1557,7 @@ class PluginDependencyGeneratorTest {
         descriptorCache = descriptorCache,
       )
 
-      val contentModuleNames = result.contentModules.map { it.name }
+      val contentModuleNames = result.contentModules.map { ContentModuleName(it.moduleId.name) }
       assertThat(contentModuleNames)
         .describedAs("Resolvable deps should not be auto-added")
         .contains(ContentModuleName("intellij.content.module"))
@@ -1108,7 +1601,7 @@ class PluginDependencyGeneratorTest {
         }
       )
 
-      val descriptorCache = ModuleDescriptorCache(jps.outputProvider, this)
+      val descriptorCache = ModuleDescriptorCache(jps.outputProvider)
       val graph = pluginGraphWithDescriptors(descriptorCache) {
         product("TestProduct") { bundlesPlugin("intellij.owner.plugin") }
         plugin("intellij.owner.plugin") { content("intellij.owner.module") }
@@ -1124,7 +1617,7 @@ class PluginDependencyGeneratorTest {
         descriptorCache = descriptorCache,
       )
 
-      val contentModuleNames = result.contentModules.map { it.name }
+      val contentModuleNames = result.contentModules.map { ContentModuleName(it.moduleId.name) }
       assertThat(contentModuleNames)
         .describedAs("Bundled production plugin-owned modules should not be auto-added as test plugin content")
         .contains(ContentModuleName("intellij.test.content"))
@@ -1169,7 +1662,7 @@ class PluginDependencyGeneratorTest {
         additionalBundledPluginTargetNames = listOf(TargetName("intellij.owner.plugin")),
       )
 
-      val descriptorCache = ModuleDescriptorCache(jps.outputProvider, this)
+      val descriptorCache = ModuleDescriptorCache(jps.outputProvider)
       val graph = pluginGraphWithDescriptors(descriptorCache) {
         product("TestProduct") { }
         plugin("intellij.owner.plugin") { content("intellij.owner.module") }
@@ -1185,7 +1678,7 @@ class PluginDependencyGeneratorTest {
         descriptorCache = descriptorCache,
       )
 
-      val contentModuleNames = result.contentModules.map { it.name }
+      val contentModuleNames = result.contentModules.map { ContentModuleName(it.moduleId.name) }
       assertThat(contentModuleNames)
         .describedAs("Additional bundled plugin-owned modules should not be auto-added")
         .contains(ContentModuleName("intellij.test.content"))
@@ -1229,7 +1722,7 @@ class PluginDependencyGeneratorTest {
         }
       )
 
-      val descriptorCache = ModuleDescriptorCache(jps.outputProvider, this)
+      val descriptorCache = ModuleDescriptorCache(jps.outputProvider)
       val graph = pluginGraphWithDescriptors(descriptorCache) {
         product("TestProduct") { bundlesTestPlugin("intellij.owner.plugin") }
         testPlugin("intellij.owner.plugin") { content("intellij.owner.module") }
@@ -1246,7 +1739,7 @@ class PluginDependencyGeneratorTest {
         descriptorCache = descriptorCache,
       )
 
-      val contentModuleNames = result.contentModules.map { it.name }
+      val contentModuleNames = result.contentModules.map { ContentModuleName(it.moduleId.name) }
       assertThat(contentModuleNames)
         .describedAs("Modules owned by bundled test plugins should be auto-added")
         .contains(ContentModuleName("intellij.test.content"), ContentModuleName("intellij.owner.module"))
@@ -1294,7 +1787,7 @@ class PluginDependencyGeneratorTest {
         }
       )
 
-      val descriptorCache = ModuleDescriptorCache(jps.outputProvider, this)
+      val descriptorCache = ModuleDescriptorCache(jps.outputProvider)
       val graph = pluginGraphWithDescriptors(descriptorCache) {
         product("TestProduct") { }
         testPlugin("intellij.owner.plugin") { content("intellij.owner.module") }
@@ -1311,7 +1804,7 @@ class PluginDependencyGeneratorTest {
         descriptorCache = descriptorCache,
       )
 
-      val contentModuleNames = result.contentModules.map { it.name }
+      val contentModuleNames = result.contentModules.map { ContentModuleName(it.moduleId.name) }
       assertThat(contentModuleNames)
         .describedAs("Unbundled test-plugin ownership should be ignored for auto-add")
         .contains(ContentModuleName("intellij.test.content"), ContentModuleName("intellij.owner.module"))
@@ -1369,7 +1862,7 @@ class PluginDependencyGeneratorTest {
       )
 
       // Call the REAL function (graph is the source of truth for descriptor existence)
-      val descriptorCache = ModuleDescriptorCache(jps.outputProvider, this)
+      val descriptorCache = ModuleDescriptorCache(jps.outputProvider)
       val graph = pluginGraphWithDescriptors(descriptorCache) {
         moduleWithScopedDeps(
           "intellij.content.module",
@@ -1388,7 +1881,7 @@ class PluginDependencyGeneratorTest {
         descriptorCache = descriptorCache,
       )
 
-      val contentModuleNames = result.contentModules.map { it.name }
+      val contentModuleNames = result.contentModules.map { ContentModuleName(it.moduleId.name) }
       assertThat(contentModuleNames)
         .describedAs("Only deps WITH module descriptors should be auto-added")
         .contains(ContentModuleName("intellij.content.module"))  // explicitly declared
@@ -1481,7 +1974,173 @@ class PluginDependencyGeneratorTest {
       if (pluginXmlDiff != null) {
         assertThat(pluginXmlDiff.expectedContent)
           .describedAs("Plugin XML should skip globally embedded module dependency")
-        .doesNotContain("""<module name="intellij.platform.core"/>""")
+          .doesNotContain("""<module name="intellij.platform.core"/>""")
+      }
+    }
+  }
+
+  @Test
+  fun `plugin dependency embedded only in subset of products is kept`(@TempDir tempDir: Path) {
+    runBlocking(Dispatchers.Default) {
+      val setup = pluginTestSetup(tempDir) {
+        contentModule("intellij.platform.frontend.split") {
+          descriptor = """<idea-plugin package="com.intellij.frontend.split"/>"""
+        }
+
+        contentModule("intellij.my.content") {
+          descriptor = """<idea-plugin package="com.intellij.content"/>"""
+          jpsDependency("intellij.platform.frontend.split")
+        }
+
+        plugin("intellij.my.plugin") {
+          content("intellij.my.content")
+        }
+
+        product("Idea") {
+          bundlesPlugin("intellij.my.plugin")
+        }
+
+        product("JetBrainsClient") {
+          bundlesPlugin("intellij.my.plugin")
+          moduleSet("client.set") {
+            module("intellij.platform.frontend.split", com.intellij.platform.pluginSystem.parser.impl.elements.ModuleLoadingRuleValue.EMBEDDED)
+          }
+        }
+      }
+
+      setup.generateDependencies(listOf("intellij.my.plugin"))
+
+      val diffs = setup.strategy.getDiffs()
+      val pluginXmlDiff = diffs.find { it.path.toString().contains("intellij.my.plugin") && it.path.toString().endsWith("plugin.xml") }
+
+      if (pluginXmlDiff != null) {
+        assertThat(pluginXmlDiff.expectedContent)
+          .describedAs("Dependency must be kept when target is not globally embedded")
+          .contains("""<module name="intellij.platform.frontend.split"/>""")
+      }
+    }
+  }
+
+  @Test
+  fun `plugin dependency embedded in all bundled products is skipped`(@TempDir tempDir: Path) {
+    runBlocking(Dispatchers.Default) {
+      val setup = pluginTestSetup(tempDir) {
+        contentModule("intellij.platform.frontend.split") {
+          descriptor = """<idea-plugin package="com.intellij.frontend.split"/>"""
+        }
+
+        contentModule("intellij.my.content") {
+          descriptor = """<idea-plugin package="com.intellij.content"/>"""
+          jpsDependency("intellij.platform.frontend.split")
+        }
+
+        plugin("intellij.my.plugin") {
+          content("intellij.my.content")
+        }
+
+        product("Idea") {
+          // Plugin is not bundled in Idea.
+        }
+
+        product("JetBrainsClient") {
+          bundlesPlugin("intellij.my.plugin")
+          moduleSet("client.set") {
+            module("intellij.platform.frontend.split", com.intellij.platform.pluginSystem.parser.impl.elements.ModuleLoadingRuleValue.EMBEDDED)
+          }
+        }
+      }
+
+      setup.generateDependencies(listOf("intellij.my.plugin"))
+
+      val diffs = setup.strategy.getDiffs()
+      val pluginXmlDiff = diffs.find { it.path.toString().contains("intellij.my.plugin") && it.path.toString().endsWith("plugin.xml") }
+
+      if (pluginXmlDiff != null) {
+        assertThat(pluginXmlDiff.expectedContent)
+          .describedAs("Dependency should be skipped when embedded in all products where plugin is bundled")
+          .doesNotContain("""<module name="intellij.platform.frontend.split"/>""")
+      }
+    }
+  }
+
+  @Test
+  fun `plugin dependency is kept when only bundled owner plugin provides target`(@TempDir tempDir: Path) {
+    runBlocking(Dispatchers.Default) {
+      val setup = pluginTestSetup(tempDir) {
+        contentModule("intellij.platform.ide.impl") {
+          descriptor = """<idea-plugin package="com.intellij.ide.impl"/>"""
+        }
+
+        contentModule("intellij.my.content") {
+          descriptor = """<idea-plugin package="com.intellij.content"/>"""
+          jpsDependency("intellij.platform.ide.impl")
+        }
+
+        plugin("intellij.platform.owner") {
+          content("intellij.platform.ide.impl", com.intellij.platform.pluginSystem.parser.impl.elements.ModuleLoadingRuleValue.EMBEDDED)
+        }
+
+        plugin("intellij.my.plugin") {
+          content("intellij.my.content")
+        }
+
+        product("CodeServer") {
+          bundlesPlugin("intellij.my.plugin")
+        }
+
+        product("Idea") {
+          bundlesPlugin("intellij.my.plugin")
+          bundlesPlugin("intellij.platform.owner")
+        }
+      }
+
+      setup.generateDependencies(listOf("intellij.my.plugin", "intellij.platform.owner"))
+
+      val diffs = setup.strategy.getDiffs()
+      val pluginXmlDiff = diffs.find { it.path.toString().contains("intellij.my.plugin") && it.path.toString().endsWith("plugin.xml") }
+
+      if (pluginXmlDiff != null) {
+        assertThat(pluginXmlDiff.expectedContent)
+          .describedAs("Bundled plugin content alone does not make the target globally embedded")
+          .contains("""<module name="intellij.platform.ide.impl"/>""")
+      }
+    }
+  }
+
+  @Test
+  fun `plugin dependency on globally embedded module is skipped for non-bundled plugin`(@TempDir tempDir: Path) {
+    runBlocking(Dispatchers.Default) {
+      val setup = pluginTestSetup(tempDir) {
+        contentModule("intellij.platform.core") {
+          descriptor = """<idea-plugin package="com.intellij.core"/>"""
+        }
+
+        contentModule("intellij.my.content") {
+          descriptor = """<idea-plugin package="com.intellij.content"/>"""
+          jpsDependency("intellij.platform.core")
+        }
+
+        plugin("intellij.my.plugin") {
+          content("intellij.my.content")
+        }
+
+        // Plugin intentionally remains non-bundled.
+        product("TestProduct") {
+          moduleSet("essential") {
+            module("intellij.platform.core", com.intellij.platform.pluginSystem.parser.impl.elements.ModuleLoadingRuleValue.EMBEDDED)
+          }
+        }
+      }
+
+      setup.generateDependencies(listOf("intellij.my.plugin"))
+
+      val diffs = setup.strategy.getDiffs()
+      val pluginXmlDiff = diffs.find { it.path.toString().contains("intellij.my.plugin") && it.path.toString().endsWith("plugin.xml") }
+
+      if (pluginXmlDiff != null) {
+        assertThat(pluginXmlDiff.expectedContent)
+          .describedAs("Non-bundled plugin should skip globally embedded dependency")
+          .doesNotContain("""<module name="intellij.platform.core"/>""")
       }
     }
   }
@@ -1526,7 +2185,7 @@ class PluginDependencyGeneratorTest {
       if (pluginXmlDiff != null) {
         assertThat(pluginXmlDiff.expectedContent)
           .describedAs("Module in another plugin is NOT globally embedded, should be kept")
-        .contains("""<module name="intellij.vcs.core"/>""")
+          .contains("""<module name="intellij.vcs.core"/>""")
       }
     }
   }
@@ -1566,7 +2225,7 @@ class PluginDependencyGeneratorTest {
       if (pluginXmlDiff != null) {
         assertThat(pluginXmlDiff.expectedContent)
           .describedAs("Module with REQUIRED loading is NOT globally embedded, should be kept")
-        .contains("""<module name="intellij.platform.optional"/>""")
+          .contains("""<module name="intellij.platform.optional"/>""")
       }
     }
   }
@@ -1593,7 +2252,7 @@ class PluginDependencyGeneratorTest {
       }
 
       coroutineScope {
-        val descriptorCache = ModuleDescriptorCache(setup.jps.outputProvider, this)
+        val descriptorCache = ModuleDescriptorCache(setup.jps.outputProvider)
         val info = descriptorCache.getOrAnalyze("intellij.regexp")
 
         assertThat(info).isNotNull()
@@ -1620,17 +2279,15 @@ class PluginDependencyGeneratorTest {
         }
       }
 
-      coroutineScope {
-        val descriptorCache = ModuleDescriptorCache(setup.jps.outputProvider, this)
-        val info = descriptorCache.getOrAnalyze("intellij.nonstandard")
+      val descriptorCache = ModuleDescriptorCache(setup.jps.outputProvider)
+      val info = descriptorCache.getOrAnalyze("intellij.nonstandard")
 
-        assertThat(info).isNotNull()
-        assertThat(info!!.suppressibleError)
-          .describedAs("<dependencies> root should trigger NON_STANDARD_DESCRIPTOR_ROOT")
-          .isNotNull()
-        assertThat(info.suppressibleError!!.category)
-          .isEqualTo(ErrorCategory.NON_STANDARD_DESCRIPTOR_ROOT)
-      }
+      assertThat(info).isNotNull()
+      assertThat(info!!.suppressibleError)
+        .describedAs("<dependencies> root should trigger NON_STANDARD_DESCRIPTOR_ROOT")
+        .isNotNull()
+      assertThat(info.suppressibleError!!.category)
+        .isEqualTo(ErrorCategory.NON_STANDARD_DESCRIPTOR_ROOT)
     }
   }
 
@@ -1652,18 +2309,16 @@ class PluginDependencyGeneratorTest {
         }
       }
 
-      coroutineScope {
-        val descriptorCache = ModuleDescriptorCache(setup.jps.outputProvider, this)
-        val info = descriptorCache.getOrAnalyze("intellij.standard")
+      val descriptorCache = ModuleDescriptorCache(setup.jps.outputProvider)
+      val info = descriptorCache.getOrAnalyze("intellij.standard")
 
-        assertThat(info).isNotNull()
-        assertThat(info!!.suppressibleError)
-          .describedAs("Standard <idea-plugin> with <dependencies> should NOT trigger error")
-          .isNull()
-        // Parser should have extracted dependencies
-        assertThat(info.existingModuleDependencies).contains("intellij.platform.ide")
-        assertThat(info.existingPluginDependencies).contains("com.intellij.copyright")
-      }
+      assertThat(info).isNotNull()
+      assertThat(info!!.suppressibleError)
+        .describedAs("Standard <idea-plugin> with <dependencies> should NOT trigger error")
+        .isNull()
+      // Parser should have extracted dependencies
+      assertThat(info.existingModuleDependencies).contains("intellij.platform.ide")
+      assertThat(info.existingPluginDependencies).contains("com.intellij.copyright")
     }
   }
 }

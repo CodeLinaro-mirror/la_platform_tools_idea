@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 @file:Suppress("ReplaceJavaStaticMethodWithKotlinAnalog")
 
 package com.intellij.codeInsight.daemon.impl
@@ -11,6 +11,7 @@ import com.intellij.codeInsight.daemon.impl.analysis.FileHighlightingSetting
 import com.intellij.codeInsight.daemon.impl.analysis.HighlightLevelUtil
 import com.intellij.codeInsight.daemon.impl.analysis.HighlightingSettingsPerFile
 import com.intellij.codeInsight.multiverse.CodeInsightContext
+import com.intellij.codeInsight.multiverse.CodeInsightContextManager
 import com.intellij.codeInsight.multiverse.EditorContextManager
 import com.intellij.codeInsight.multiverse.codeInsightContext
 import com.intellij.codeInsight.multiverse.defaultContext
@@ -30,6 +31,7 @@ import com.intellij.openapi.actionSystem.Separator
 import com.intellij.openapi.actionSystem.ToggleAction
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.readAction
+import com.intellij.openapi.application.runReadActionBlocking
 import com.intellij.openapi.components.serviceAsync
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.editor.Document
@@ -54,11 +56,11 @@ import com.intellij.openapi.editor.markup.RangeHighlighter
 import com.intellij.openapi.editor.markup.SeverityStatusItem
 import com.intellij.openapi.editor.markup.StatusItem
 import com.intellij.openapi.editor.markup.UIController
+import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.options.ConfigurationException
 import com.intellij.openapi.project.DumbService.Companion.isDumb
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ProjectFileIndex
-import com.intellij.openapi.util.ThrowableComputable
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.psi.PsiCompiledElement
 import com.intellij.psi.PsiDocumentManager
@@ -67,6 +69,7 @@ import com.intellij.util.ArrayUtilRt
 import com.intellij.util.SlowOperations
 import com.intellij.util.UtilBundle.message
 import com.intellij.util.concurrency.ThreadingAssertions
+import com.intellij.util.concurrency.annotations.RequiresBackgroundThread
 import com.intellij.util.concurrency.annotations.RequiresReadLock
 import com.intellij.util.io.storage.HeavyProcessLatch
 import com.intellij.util.ui.EdtInvocationManager
@@ -102,12 +105,12 @@ open class TrafficLightRenderer private constructor(
   @Volatile
   private var highlightingSettingsModificationCount: Long
 
-  constructor(project: Project, document: Document) : this(project, document, null, computeTrafficLightRendererInfo(document, project)
-  )
+  constructor(project: Project, document: Document)
+    : this(project, document, null, computeTrafficLightRendererInfo(document, project))
 
   @ApiStatus.Internal
-  constructor(project: Project, editor: Editor) : this(project, editor.getDocument(), editor, computeTrafficLightRendererInfo(editor.document, project)
-  )
+  constructor(project: Project, editor: Editor)
+    : this(project, editor.getDocument(), editor, computeTrafficLightRendererInfo(editor.document, project))
 
   init {
     // to be able to find PsiFile without "slow op in EDT" exceptions
@@ -128,8 +131,10 @@ open class TrafficLightRenderer private constructor(
     val model = DocumentMarkupModel.forDocument(document, project, true) as MarkupModelEx
     EdtInvocationManager.invokeLaterIfNeeded(Runnable {
       if (isDisposed) return@Runnable
-      for (rangeHighlighter in model.getAllHighlighters()) {
-        incErrorCount(rangeHighlighter, 1)
+      for (highlighter in model.getAllHighlighters()) {
+        if (highlighter.isValid) {
+          incErrorCount(highlighter, 1)
+        }
       }
       model.addMarkupModelListener(this, object : MarkupModelListener {
         override fun afterAdded(highlighter: RangeHighlighterEx) {
@@ -158,13 +163,14 @@ open class TrafficLightRenderer private constructor(
     return PsiDocumentManager.getInstance(project).getPsiFile(document, context)
   }
 
+  @RequiresReadLock
   private fun getContext(): CodeInsightContext {
     return if (editor != null) {
       EditorContextManager.getEditorContext(editor, project)
     }
     else {
-      // todo IJPL-339 choose proper file here?
-      defaultContext()
+      val file = FileDocumentManager.getInstance().getFile(document) ?: return defaultContext()
+      CodeInsightContextManager.getInstance(project).getPreferredContext(file)
     }
   }
 
@@ -174,6 +180,7 @@ open class TrafficLightRenderer private constructor(
      * `errorCount[index]` equals to a number of highlighters of severity with index `idx` in this markup model.
      * Severity index can be obtained via [SeverityRegistrar.getSeverityIdx].
      */
+    @RequiresReadLock
     get() {
       val severities = severityRegistrar.allSeverities
       val cachedErrors = IntArray(severities.size)
@@ -181,6 +188,18 @@ open class TrafficLightRenderer private constructor(
       for (severity in severities) {
         val severityIndex = severityRegistrar.getSeverityIdx(severity)
         cachedErrors[severityIndex] = errorCount.getErrorCount(severity, context)
+      }
+      return cachedErrors
+    }
+
+  val errorCountsForFus: IntArray
+    @ApiStatus.Internal
+    get() {
+      val severities = severityRegistrar.allSeverities
+      val cachedErrors = IntArray(severities.size)
+      for (severity in severities) {
+        val severityIndex = severityRegistrar.getSeverityIdx(severity)
+        cachedErrors[severityIndex] = errorCount.getErrorCountsForAllContexts(severity)
       }
       return cachedErrors
     }
@@ -254,15 +273,17 @@ open class TrafficLightRenderer private constructor(
   @get:ApiStatus.Internal
   val daemonCodeAnalyzerStatus: DaemonCodeAnalyzerStatus
     get() {
-      ApplicationManager.getApplication().assertIsNonDispatchThread()
-      ApplicationManager.getApplication().assertReadAccessAllowed()
+    ThreadingAssertions.assertBackgroundThread()
+    ThreadingAssertions.assertReadAccess()
       return getDaemonCodeAnalyzerStatus(this.severityRegistrar)
     }
 
+  @RequiresBackgroundThread
+  @RequiresReadLock
   protected open fun getDaemonCodeAnalyzerStatus(severityRegistrar: SeverityRegistrar): DaemonCodeAnalyzerStatus {
     // this method is rather expensive and PSI-related, need to execute in BGT and cache the result to show in EDT later
-    ApplicationManager.getApplication().assertIsNonDispatchThread()
-    ApplicationManager.getApplication().assertReadAccessAllowed()
+    ThreadingAssertions.assertBackgroundThread()
+    ThreadingAssertions.assertReadAccess()
     val status = DaemonCodeAnalyzerStatus()
     status.errorAnalyzingFinished = true
     val psiFile = getPsiFile()
@@ -474,6 +495,7 @@ open class TrafficLightRenderer private constructor(
     return if (editor.getEditorKind() == EditorKind.DIFF && !mergeEditor) AbstractUIController() else DefaultUIController()
   }
 
+  @ApiStatus.Internal
   protected open inner class AbstractUIController internal constructor() : UIController {
     private var additionalPanels = mutableListOf<HectorComponentPanel>()
 
@@ -625,6 +647,7 @@ open class TrafficLightRenderer private constructor(
     highlightingSettingsModificationCount = -1
   }
 
+  @ApiStatus.Internal
   companion object {
     internal suspend fun createTrafficLightRenderer(editor: Editor, file: PsiFile, project: Project): TrafficLightRenderer {
       val fileIndex = project.serviceAsync<ProjectFileIndex>()
@@ -647,10 +670,10 @@ open class TrafficLightRenderer private constructor(
     private fun computeTrafficLightRendererInfo(document: Document, project: Project): TrafficLightRendererInfo {
       val psiDocumentManager = PsiDocumentManager.getInstance(project)
       val fileIndex = ProjectFileIndex.getInstance(project)
-      return ApplicationManager.getApplication().runReadAction(ThrowableComputable {
-        val file = psiDocumentManager.getPsiFile(document) ?: return@ThrowableComputable EMPTY_TRAFFIC_LIGHT_INFO
+      return runReadActionBlocking {
+        val file = psiDocumentManager.getPsiFile(document) ?: return@runReadActionBlocking EMPTY_TRAFFIC_LIGHT_INFO
         doComputeTrafficLightRendererInfo(file, project, fileIndex)
-      })
+      }
     }
 
     @RequiresReadLock

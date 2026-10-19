@@ -1,11 +1,13 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.modcompletion;
 
+import com.intellij.codeInsight.lookup.Lookup;
 import com.intellij.modcommand.ActionContext;
 import com.intellij.modcommand.ModCommand;
 import com.intellij.modcommand.ModPsiUpdater;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.util.TextRange;
+import com.intellij.psi.PsiDocumentManager;
 import org.jetbrains.annotations.NotNullByDefault;
 
 /**
@@ -35,24 +37,49 @@ public abstract class PsiUpdateCompletionItem<T> implements ModCompletionItem {
 
   @Override
   public ModCommand perform(ActionContext actionContext, InsertionContext insertionContext) {
-    String lookupString = mainLookupString();
-    int completionStart = actionContext.selection().getStartOffset();
-    int prefixEnd = actionContext.selection().getEndOffset();
-    int updatedCaretPos = completionStart + lookupString.length();
-    ActionContext finalActionContext = actionContext
-      .withSelection(TextRange.create(updatedCaretPos, updatedCaretPos))
-      .withOffset(updatedCaretPos);
-    return ModCommand.psiUpdate(finalActionContext, doc -> {
-      doc.deleteString(completionStart, prefixEnd);
-    }, updater -> {
+    return ModCommand.psiUpdate(actionContext, true, updater -> {
       Document document = updater.getDocument();
-      document.replaceString(completionStart,
+      String lookupString = mainLookupString();
+      TextRange range = TextRange.create(updater.getCaretOffset(), updater.getCaretOffset() + lookupString.length());
+      document.replaceString(range.getStartOffset(),
                              insertionContext.mode() == InsertionMode.OVERWRITE ?
-                             calculateEndOffsetForOverwrite(document, completionStart) : completionStart, lookupString);
-      updater.moveCaretTo(updatedCaretPos);
-      update(actionContext.withOffset(updatedCaretPos)
-               .withSelection(TextRange.create(completionStart, updatedCaretPos)), insertionContext, updater);
+                             calculateEndOffsetForOverwrite(document, range.getStartOffset()) : range.getStartOffset(), lookupString);
+      updater.moveCaretTo(range.getEndOffset());
+      update(actionContext.withOffset(range.getEndOffset())
+               .withSelection(range), insertionContext, updater);
+      addCompletionChar(updater, insertionContext);
     });
+  }
+
+  /**
+   * Inserts a completion character to the document, if necessary.
+   * 
+   * @param updater updater to use
+   * @param context insertion context
+   */
+  private void addCompletionChar(ModPsiUpdater updater, InsertionContext context) {
+    if (!shouldAddCompletionChar(context)) return;
+    PsiDocumentManager.getInstance(updater.getProject()).doPostponedOperationsAndUnblockDocument(updater.getDocument());
+    int offset = updater.getCaretOffset();
+    updater.getDocument().insertString(offset, String.valueOf(context.insertionCharacter()));
+    updater.moveCaretTo(offset + 1);
+  }
+
+  /**
+   * Informs whether the completion character should be inserted to the document.
+   * <p>
+   * @implNote The default implementation inserts any character, except tab and enter. 
+   * The method could be overridden to suppress other characters. 
+   * 
+   * @param context insertion context
+   * @return true if the completion character should be inserted to the document automatically.
+   */
+  protected boolean shouldAddCompletionChar(InsertionContext context) {
+    char c = context.insertionCharacter();
+    return c != Lookup.NORMAL_SELECT_CHAR &&
+           c != Lookup.COMPLETE_STATEMENT_SELECT_CHAR &&
+           c != Lookup.REPLACE_SELECT_CHAR &&
+           c != Lookup.AUTO_INSERT_SELECT_CHAR;
   }
 
   /**

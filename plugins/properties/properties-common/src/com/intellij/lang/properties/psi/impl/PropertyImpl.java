@@ -1,4 +1,4 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.lang.properties.psi.impl;
 
 import com.intellij.lang.ASTFactory;
@@ -12,7 +12,9 @@ import com.intellij.lang.properties.psi.PropertyKeyValueFormat;
 import com.intellij.lang.properties.psi.PropertyStub;
 import com.intellij.navigation.ItemPresentation;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.fileEditor.UniqueVFilePathBuilder;
 import com.intellij.openapi.util.TextRange;
+import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.LiteralTextEscaper;
 import com.intellij.psi.PsiComment;
 import com.intellij.psi.PsiElement;
@@ -409,7 +411,11 @@ public class PropertyImpl extends PropertiesStubElementImpl<PropertyStub> implem
 
       @Override
       public String getLocationString() {
-        return getPropertiesFile().getName();
+        PropertiesFile propertiesFile = getPropertiesFile();
+        VirtualFile virtualFile = propertiesFile.getVirtualFile();
+        if (virtualFile == null) return propertiesFile.getName();
+
+        return UniqueVFilePathBuilder.getInstance().getUniqueVirtualFilePath(getProject(), virtualFile);
       }
 
       @Override

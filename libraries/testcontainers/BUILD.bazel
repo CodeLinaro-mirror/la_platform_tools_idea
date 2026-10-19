@@ -1,26 +1,61 @@
-### auto-generated section `build intellij.libraries.testcontainers` start
-load("@rules_jvm//:jvm.bzl", "jvm_library", "resourcegroup")
+load("@rules_jvm//:jvm.bzl", "jvm_library")
 
-resourcegroup(
-  name = "testcontainers_resources",
-  srcs = glob(["resources/**/*"]),
-  strip_prefix = "resources"
+### auto-generated section `build intellij.libraries.testcontainers` start
+
+jvm_library(
+    name = "testcontainers",
+    srcs = glob(
+        [],
+        allow_empty = True,
+    ),
+    module_name = "intellij.libraries.testcontainers",
+    resource_strip_prefix = "resources",
+    resources = glob(
+        ["resources/**/*"],
+    ),
+    visibility = ["//visibility:public"],
+    exports = [
+        # do not sort,
+        "@lib//:testcontainers",
+        "@lib//:testcontainers-junit-jupiter",
+    ],
+    runtime_deps = [
+        # do not sort,
+        "@lib//:testcontainers",
+        "@lib//:testcontainers-junit-jupiter",
+        "//libraries/junit5",
+        "//libraries/junit4",
+    ],
 )
 
 jvm_library(
-  name = "testcontainers",
-  visibility = ["//visibility:public"],
-  srcs = glob([], allow_empty = True),
-  resources = [":testcontainers_resources"],
-  exports = [
-    "@lib//:testcontainers",
-    "@lib//:testcontainers-junit-jupiter",
-  ],
-  runtime_deps = [
-    "@lib//:testcontainers",
-    "@lib//:testcontainers-junit-jupiter",
-    "//libraries/junit5",
-    "//libraries/junit4",
-  ]
+    name = "testcontainers_test_lib",
+    testonly = True,
+    srcs = glob(
+        [],
+        allow_empty = True,
+    ),
+    module_name = "intellij.libraries.testcontainers",
+    visibility = ["//visibility:public"],
+    exports = [
+        # do not sort,
+        "@lib//:testcontainers",
+        "@lib//:testcontainers-junit-jupiter",
+    ],
+    runtime_deps = [
+        # do not sort,
+        ":testcontainers",
+        "//libraries/junit5:junit5_test_lib",
+        "//libraries/junit4:junit4_test_lib",
+    ],
 )
 ### auto-generated section `build intellij.libraries.testcontainers` end
+
+### auto-generated section `iml intellij.libraries.testcontainers` start
+exports_files(
+    [
+        "intellij.libraries.testcontainers.iml",
+    ],
+    visibility = ["//visibility:public"],
+)
+### auto-generated section `iml intellij.libraries.testcontainers` end

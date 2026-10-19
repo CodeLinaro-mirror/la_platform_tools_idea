@@ -9,6 +9,7 @@ import com.intellij.platform.workspace.storage.WorkspaceEntity
 import com.intellij.platform.workspace.storage.WorkspaceEntityWithSymbolicId
 import com.intellij.platform.workspace.storage.annotations.Parent
 import com.intellij.platform.workspace.storage.url.VirtualFileUrl
+import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.ApiStatus.Internal
 import org.jetbrains.annotations.NonNls
 import java.io.Serializable
@@ -17,6 +18,10 @@ data class LibraryTypeId(val name: @NonNls String)
 /**
  * Describes a [Library][com.intellij.openapi.roots.libraries.Library].
  * See [package documentation](psi_element://com.intellij.platform.workspace.jps.entities) for more details.
+ *
+ * **Do not add new fields to this entity.** New fields are not serialized to the .iml file and will be
+ * lost when the project is reopened. To store additional data, declare a new entity with a
+ * [@Parent][com.intellij.platform.workspace.storage.annotations.Parent] reference to this one.
  */
 interface LibraryEntity : WorkspaceEntityWithSymbolicId {
     val name: @NlsSafe String
@@ -33,6 +38,7 @@ interface LibraryEntity : WorkspaceEntityWithSymbolicId {
   @Deprecated(message = "Use LibraryEntityBuilder instead")
   interface Builder : LibraryEntityBuilder
   companion object : EntityType<LibraryEntity, Builder>() {
+    @ApiStatus.ScheduledForRemoval
     @Deprecated(message = "Use new API instead")
     @JvmOverloads
     @JvmStatic
@@ -50,6 +56,7 @@ interface LibraryEntity : WorkspaceEntityWithSymbolicId {
 }
 
 //region generated code
+@ApiStatus.ScheduledForRemoval
 @Deprecated(message = "Use new API instead")
 fun MutableEntityStorage.modifyLibraryEntity(
   entity: LibraryEntity,

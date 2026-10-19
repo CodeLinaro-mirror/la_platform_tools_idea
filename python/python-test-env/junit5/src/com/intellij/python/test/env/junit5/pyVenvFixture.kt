@@ -9,13 +9,15 @@ import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.python.junit5Tests.framework.env.SdkFixture
 import com.intellij.python.test.env.core.PyEnvironment
 import com.intellij.python.venv.createVenv
+import com.intellij.python.venv.createVenvAdditionalData
 import com.intellij.testFramework.junit5.fixture.TestFixture
 import com.intellij.testFramework.junit5.fixture.testFixture
 import com.jetbrains.python.getOrThrow
-import com.jetbrains.python.sdk.persist
+import com.jetbrains.python.sdk.SdkCreationAdvancedOpts
+import com.jetbrains.python.sdk.add.v2.PathHolder
+import com.jetbrains.python.sdk.createSdk
 import com.jetbrains.python.sdk.pythonSdk
 import com.jetbrains.python.sdk.setAssociationToModule
-import com.jetbrains.python.tools.createSdk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.nio.file.Path
@@ -31,11 +33,16 @@ fun TestFixture<SdkFixture<PyEnvironment>>.pyVenvFixture(
   val env = this@pyVenvFixture.init().env
   withContext(Dispatchers.EDT) {
     val module = moduleFixture?.init()
-    val venvDir = where.init().resolve(".venv")
+    val workingDirectory = where.init()
+    val venvDir = workingDirectory.resolve(".venv")
     val venvPython = createVenv(env.pythonPath, venvDir).getOrThrow()
-    val venvSdk = withContext(Dispatchers.IO) { createSdk(venvPython) }
+    val additionalData = createVenvAdditionalData(workingDirectory)
+    val venvSdk = createSdk(
+      PathHolder.Eel(venvPython),
+      additionalData,
+      advancedOpts = SdkCreationAdvancedOpts(persist = addToSdkTable),
+    ).orThrow()
     if (addToSdkTable) {
-      venvSdk.persist()
       if (module != null) {
         module.pythonSdk = venvSdk
         venvSdk.setAssociationToModule(module)

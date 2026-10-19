@@ -2,26 +2,46 @@
 package com.intellij.openapi.application.impl
 
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.EDT
+import com.intellij.openapi.application.WriteActionListener
+import com.intellij.openapi.application.backgroundWriteAction
 import com.intellij.openapi.application.edtWriteAction
+import com.intellij.openapi.application.ex.ApplicationManagerEx
+import com.intellij.openapi.application.readAction
+import com.intellij.openapi.application.runUndoTransparentWriteAction
+import com.intellij.openapi.application.runWriteAction
 import com.intellij.openapi.progress.Cancellation
+import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.runBlockingCancellable
 import com.intellij.openapi.progress.testExceptions
 import com.intellij.openapi.progress.testNoExceptions
+import com.intellij.openapi.util.Computable
+import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.util.ThrowableComputable
+import com.intellij.openapi.util.use
 import com.intellij.testFramework.common.timeoutRunBlocking
 import com.intellij.testFramework.junit5.TestApplication
+import com.intellij.util.ThrowableRunnable
+import com.intellij.util.application
 import com.intellij.util.ui.EDT
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.RepeatedTest
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 private const val repetitions: Int = 100
 
@@ -103,5 +123,136 @@ class SuspendingWriteActionTest {
     edtWriteAction {
       Assertions.assertSame(coroutineJob, Cancellation.currentJob()?.parent)
     }
+  }
+
+  @OptIn(ExperimentalCoroutinesApi::class)
+  @Test
+  fun testWriteActionListenerMustReceiveCorrectClazz() {
+    Disposer.newDisposable().use { disposable ->
+      val listener = object : WriteActionListener {
+        val expectedClass: AtomicReference<Class<*>?> = AtomicReference<Class<*>?>()
+        val calledLog: StringBuffer = StringBuffer()
+        override fun beforeWriteActionStart(action: Class<*>) {
+          Assertions.assertSame(expectedClass.get(), action)
+          calledLog.append("beforeWriteActionStart;")
+        }
+
+        override fun writeActionStarted(action: Class<*>) {
+          Assertions.assertSame(expectedClass.get(), action)
+          calledLog.append("writeActionStarted;")
+        }
+
+        override fun writeActionFinished(action: Class<*>) {
+          Assertions.assertSame(expectedClass.get(), action)
+          calledLog.append("writeActionFinished;")
+        }
+
+        override fun afterWriteActionFinished(action: Class<*>) {
+          Assertions.assertSame(expectedClass.get(), action)
+          calledLog.append("afterWriteActionFinished;")
+        }
+
+        fun assertCorrectClassPassed(expectedObject: Any, writeAction: ()->Unit) {
+          calledLog.setLength(0)
+          expectedClass.set(expectedObject.javaClass)
+          writeAction.invoke()
+          Assertions.assertEquals("beforeWriteActionStart;writeActionStarted;writeActionFinished;afterWriteActionFinished;",
+                                  calledLog.toString())
+        }
+      }
+      val application = ApplicationManagerEx.getApplicationEx()
+      application.addWriteActionListener(listener, disposable)
+
+      val action: Runnable = {}
+      listener.assertCorrectClassPassed(action) {
+        application.runWriteAction(action)
+      }
+
+      val computation: Computable<String> = { "" }
+      listener.assertCorrectClassPassed(computation) {
+        application.runWriteAction(computation)
+      }
+
+      val t: ThrowableComputable<String, Throwable> = { "" }
+      listener.assertCorrectClassPassed(t) { application.runWriteAction(t) }
+
+      val writeLambda: () -> Unit = {  }
+      listener.assertCorrectClassPassed(writeLambda) {
+        runBlocking {
+          edtWriteAction(writeLambda)
+        }
+      }
+
+      listener.assertCorrectClassPassed(writeLambda) {
+        runWriteAction(writeLambda)
+      }
+      listener.assertCorrectClassPassed(writeLambda) {
+        runBlocking {
+          edtWriteAction(writeLambda)
+        }
+      }
+      listener.assertCorrectClassPassed(writeLambda) {
+        runBlocking {
+          runUndoTransparentWriteAction(writeLambda)
+        }
+      }
+
+      val tr: ThrowableRunnable<RuntimeException> = {}
+      listener.assertCorrectClassPassed(tr) {
+        com.intellij.openapi.application.WriteAction.run(tr)
+      }
+
+      listener.assertCorrectClassPassed(tr) {
+        com.intellij.openapi.application.WriteAction.runAndWait(tr)
+      }
+    }
+  }
+
+  @Test
+  fun foo(): Unit = concurrencyTest {
+    readAction {  } // init internal structures
+    val wasCanceled = AtomicBoolean(false)
+    backgroundWriteAction {
+      ApplicationManagerEx.getApplicationEx().threadingSupport!!.executeSuspendingWriteAction {
+        launch {
+          readAction {
+            checkpoint(1)
+            if (wasCanceled.get()) {
+              checkpoint(4)
+            }
+            try {
+              while (true) {
+                ProgressManager.checkCanceled()
+              }
+            } catch (_: ProcessCanceledException) {
+              wasCanceled.set(true)
+            }
+          }
+        }
+        checkpoint(2)
+      }
+    }
+    checkpoint(3)
+  }
+
+  @Test
+  fun `release of WI inside suspending write action does not lead to broken IDE state`(): Unit = timeoutRunBlocking {
+    readAction {  } // init internal structures
+    edtWriteAction {
+      assertTrue { application.isWriteAccessAllowed }
+      ApplicationManagerEx.getApplicationEx().threadingSupport!!.executeSuspendingWriteAction {
+        assertFalse { application.isWriteAccessAllowed }
+        assertTrue { application.isWriteIntentLockAcquired }
+        TestOnlyThreading.releaseTheAcquiredWriteIntentLockThenExecuteActionAndTakeWriteIntentLockBack {
+          assertFalse { application.isWriteAccessAllowed }
+          assertFalse { application.isWriteIntentLockAcquired }
+        }
+        assertFalse { application.isWriteAccessAllowed }
+        assertTrue { application.isWriteIntentLockAcquired }
+      }
+      assertTrue { application.isWriteAccessAllowed }
+      assertTrue { application.isWriteIntentLockAcquired }
+    }
+    withContext(Dispatchers.EDT) {} // check that WI can be acquired again
   }
 }

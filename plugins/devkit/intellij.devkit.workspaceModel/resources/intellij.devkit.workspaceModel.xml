@@ -1,14 +1,16 @@
-<idea-plugin package="com.intellij.devkit.workspaceModel">
-
+<idea-plugin>
+  <!-- region Generated dependencies - run `Generate Product Layouts` to regenerate -->
   <dependencies>
-    <module name="intellij.java.backend"/>
     <plugin id="org.jetbrains.kotlin"/>
     <plugin id="org.editorconfig.editorconfigjetbrains"/>
+    <module name="intellij.java.backend"/>
+    <plugin id="com.intellij.copyright"/>
     <module name="intellij.devkit.core"/>
-    <!-- region Generated dependencies - run `Generate Product Layouts` to regenerate -->
     <module name="intellij.java.aetherDependencyResolver"/>
-    <!-- endregion -->
+    <module name="intellij.java.psi"/>
+    <module name="intellij.java.ui"/>
   </dependencies>
+  <!-- endregion -->
 
   <resource-bundle>messages.DevKitWorkspaceModelBundle</resource-bundle>
 
@@ -40,6 +42,9 @@
     <notificationGroup id="Incompatible codegen api versions"
                        displayType="BALLOON"
                        key="notification.workspace.incompatible.codegen.api.versions"/>
+    <notificationGroup id="Different codegen api versions"
+                       displayType="BALLOON"
+                       key="notification.workspace.compatible.but.different.codegen.api.versions"/>
     <notificationGroup id="Workspace code generation not available"
                        displayType="BALLOON"
                        key="notification.workspace.code.generation.not.available"/>

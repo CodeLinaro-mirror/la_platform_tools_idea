@@ -13,6 +13,7 @@ plugins {
   // GRADLE_PLUGINS__MARKER_START
   id("fleet-module")
   alias(jps.plugins.kotlin.serialization)
+  id("rpc")
   // GRADLE_PLUGINS__MARKER_END
 }
 
@@ -73,9 +74,6 @@ kotlin {
     }
     implementation(jps.org.jetbrains.annotations1504825916.get())
     implementation(jps.org.jetbrains.intellij.deps.kotlinx.kotlinx.coroutines.core.jvm930800474.get().let { "${it.group}:kotlinx-coroutines-core:${it.version}" }) {
-      isTransitive = false
-    }
-    implementation(jps.org.jetbrains.kotlinx.kotlinx.datetime.jvm1686009755.get().let { "${it.group}:kotlinx-datetime:${it.version}" }) {
       isTransitive = false
     }
     implementation(project(":fleet.reporting.api"))

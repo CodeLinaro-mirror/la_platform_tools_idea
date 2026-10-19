@@ -2,12 +2,15 @@
 package com.intellij.platform.runtime.repository.serialization;
 
 import com.intellij.platform.runtime.repository.RuntimeModuleId;
+import com.intellij.platform.runtime.repository.RuntimePluginHeader;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -18,11 +21,14 @@ import java.util.stream.Collectors;
  */
 public final class RawRuntimeModuleRepositoryData {
   private final Map<RuntimeModuleId, RawRuntimeModuleDescriptor> myModuleDescriptors;
+  private final List<RuntimePluginHeader> myPluginHeaders;
   private final Path myBasePath;
 
   private RawRuntimeModuleRepositoryData(@NotNull Map<RuntimeModuleId, RawRuntimeModuleDescriptor> moduleDescriptors,
+                                         @NotNull List<RuntimePluginHeader> pluginHeaders,
                                          @NotNull Path basePath) {
     myModuleDescriptors = moduleDescriptors;
+    myPluginHeaders = pluginHeaders;
     myBasePath = basePath;
   }
 
@@ -36,6 +42,7 @@ public final class RawRuntimeModuleRepositoryData {
     for (Map.Entry<String, RawRuntimeModuleDescriptor> entry : moduleDescriptors.entrySet()) {
       myModuleDescriptors.put(RuntimeModuleId.raw(entry.getKey()), entry.getValue());
     }
+    myPluginHeaders = Collections.emptyList();
     myBasePath = basePath;
   }
 
@@ -57,6 +64,10 @@ public final class RawRuntimeModuleRepositoryData {
 
   public @NotNull Set<RuntimeModuleId> getAllModuleIds() {
     return myModuleDescriptors.keySet();
+  }
+
+  public @NotNull List<@NotNull RuntimePluginHeader> getPluginHeaders() {
+    return myPluginHeaders;
   }
 
   /**
@@ -83,8 +94,9 @@ public final class RawRuntimeModuleRepositoryData {
   @ApiStatus.Internal
   public static @NotNull RawRuntimeModuleRepositoryData create(
     @NotNull Map<RuntimeModuleId, RawRuntimeModuleDescriptor> moduleDescriptors,
+    @NotNull List<RuntimePluginHeader> pluginHeaders,
     @NotNull Path basePath
   ) {
-    return new RawRuntimeModuleRepositoryData(moduleDescriptors, basePath);
+    return new RawRuntimeModuleRepositoryData(moduleDescriptors, pluginHeaders, basePath);
   }
 }

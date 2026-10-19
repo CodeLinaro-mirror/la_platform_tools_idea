@@ -78,13 +78,17 @@ import java.util.stream.Stream;
 
 @ApiStatus.NonExtendable
 public class AnnotationUtil {
-  public static final String NULLABLE = "org.jetbrains.annotations.Nullable";
-  public static final String UNKNOWN_NULLABILITY = "org.jetbrains.annotations.UnknownNullability";
-  public static final String NOT_NULL = "org.jetbrains.annotations.NotNull";
-  public static final String NOT_NULL_BY_DEFAULT = "org.jetbrains.annotations.NotNullByDefault";
+  public static final @NlsSafe String NULLABLE = "org.jetbrains.annotations.Nullable";
+  public static final @NlsSafe String NULLABLE_SHORT = "Nullable";
+  public static final @NlsSafe String UNKNOWN_NULLABILITY = "org.jetbrains.annotations.UnknownNullability";
+  public static final @NlsSafe String NOT_NULL = "org.jetbrains.annotations.NotNull";
+  public static final @NlsSafe String NOT_NULL_SHORT = "NotNull";
+  public static final @NlsSafe String NOT_NULL_BY_DEFAULT = "org.jetbrains.annotations.NotNullByDefault";
 
   public static final String J_SPECIFY_NON_NULL = "org.jspecify.annotations.NonNull";
   public static final String J_SPECIFY_NULLABLE = "org.jspecify.annotations.Nullable";
+  public static final String J_SPECIFY_NULL_MARKED = "org.jspecify.annotations.NullMarked";
+  public static final String J_SPECIFY_NULL_UNMARKED = "org.jspecify.annotations.NullUnmarked";
 
   public static final String NON_NLS = "org.jetbrains.annotations.NonNls";
   public static final String NLS = "org.jetbrains.annotations.Nls";
@@ -396,8 +400,14 @@ public class AnnotationUtil {
 
     if (BitUtil.isSet(flags, CHECK_EXTERNAL)) {
       Project project = listOwner.getProject();
-      if (ExternalAnnotationsManager.getInstance(project).findExternalAnnotation(listOwner, annotationFQN) != null) {
+      ExternalAnnotationsManager manager = ExternalAnnotationsManager.getInstance(project);
+      if (manager.findExternalAnnotation(listOwner, annotationFQN) != null) {
         return true;
+      }
+      if (BitUtil.isSet(flags, CHECK_TYPE)) {
+        if (manager.findExternalTypeAnnotation(listOwner, "", annotationFQN) != null) {
+          return true;
+        }
       }
     }
 
@@ -505,12 +515,27 @@ public class AnnotationUtil {
     return null;
   }
 
+  /**
+   * @param owner owner to find annotations for
+   * @param inHierarchy if true, the annotations from super-classes, super-methods and the corresponding parameters of super-methods will be returned as well.
+   * @param visited set of already visited owners; use null for fresh run
+   * @return explicit, external, and inferred annotations for a given owner, optionally annotations from the super-elements.
+   * External type annotations for variable type or method return type are not returned.
+   */
   public static PsiAnnotation @NotNull [] getAllAnnotations(@NotNull PsiModifierListOwner owner,
                                                             boolean inHierarchy,
                                                             @Nullable Set<? super PsiModifierListOwner> visited) {
     return getAllAnnotations(owner, inHierarchy, visited, true);
   }
 
+  /**
+   * @param owner owner to find annotations for
+   * @param inHierarchy if true, the annotations from super-classes, super-methods and the corresponding parameters of super-methods will be returned as well.
+   * @param visited set of already visited owners; use null for fresh run
+   * @param withInferred if true, inferred annotations will be returned.
+   * @return explicit and external annotations for a given owner, optionally including inferred annotations and annotations from the super-elements.
+   * External type annotations for variable type or method return type are not returned.
+   */
   public static PsiAnnotation @NotNull [] getAllAnnotations(@NotNull PsiModifierListOwner owner,
                                                             boolean inHierarchy,
                                                             @Nullable Set<? super PsiModifierListOwner> visited, boolean withInferred) {
@@ -600,11 +625,11 @@ public class AnnotationUtil {
   }
 
   public static boolean isInferredAnnotation(@NotNull PsiAnnotation annotation) {
-    return InferredAnnotationsManager.getInstance(annotation.getProject()).isInferredAnnotation(annotation);
+    return InferredAnnotationsManager.isInferredAnnotation(annotation);
   }
 
   public static boolean isExternalAnnotation(@NotNull PsiAnnotation annotation) {
-    return ExternalAnnotationsManager.getInstance(annotation.getProject()).isExternalAnnotation(annotation);
+    return ExternalAnnotationsManager.isExternal(annotation);
   }
 
   public static @Nullable @NlsSafe String getStringAttributeValue(@NotNull PsiAnnotation anno, final @Nullable String attributeName) {
@@ -778,16 +803,6 @@ public class AnnotationUtil {
   @ApiStatus.ScheduledForRemoval
   public static boolean isAnnotated(@NotNull PsiModifierListOwner listOwner, @NotNull String annotationFQN, boolean checkHierarchy) {
     return isAnnotated(listOwner, annotationFQN, flags(checkHierarchy, true, true));
-  }
-
-  /** @deprecated use {@link #isAnnotated(PsiModifierListOwner, String, int)} */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval
-  public static boolean isAnnotated(@NotNull PsiModifierListOwner listOwner,
-                                    @NotNull String annotationFQN,
-                                    boolean checkHierarchy,
-                                    boolean skipExternal) {
-    return isAnnotated(listOwner, annotationFQN, flags(checkHierarchy, skipExternal, skipExternal));
   }
 
   @Flags

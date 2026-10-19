@@ -72,6 +72,10 @@ public final class GroovyConfigUtils extends AbstractConfigUtils {
     return getInstance().isVersionAtLeast(element, GROOVY2_5);
   }
 
+  public static boolean isAtLeastGroovy30(@NotNull PsiElement element) {
+    return getInstance().isVersionAtLeast(element, GROOVY3_0);
+  }
+
   public static boolean isAtLeastGroovy40(@NotNull PsiElement element) {
     return getInstance().isVersionAtLeast(element, GROOVY4_0);
   }
@@ -177,7 +181,7 @@ public final class GroovyConfigUtils extends AbstractConfigUtils {
         try {
           yield Integer.parseInt(part);
         }
-        catch (NumberFormatException __) {
+        catch (NumberFormatException _) {
           yield -4;
         }
       }

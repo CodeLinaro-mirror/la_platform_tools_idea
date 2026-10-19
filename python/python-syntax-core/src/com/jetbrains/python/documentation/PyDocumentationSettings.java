@@ -11,6 +11,7 @@ import com.intellij.psi.PsiFile;
 import com.intellij.psi.impl.source.PsiFileImpl;
 import com.intellij.psi.stubs.StubElement;
 import com.intellij.util.xmlb.annotations.OptionTag;
+import com.intellij.util.xmlb.annotations.Transient;
 import com.jetbrains.python.PyNames;
 import com.jetbrains.python.ast.PyAstClass;
 import com.jetbrains.python.ast.PyAstElsePart;
@@ -35,14 +36,20 @@ public abstract class PyDocumentationSettings
           PyDocumentationSettings.AppService,
           PyDocumentationSettings.ModuleService> {
 
+  static final String MODULE_STATE_COMPONENT = "PyDocumentationSettings";
+
   @ApiStatus.Internal
-  public static final PyDefaultProjectAwareServiceClasses<ServiceState, PyDocumentationSettings, AppService, ModuleService>
-    SERVICE_CLASSES = new PyDefaultProjectAwareServiceClasses<>(AppService.class, ModuleService.class);
+  public static final PyDefaultProjectAwareServiceClasses<ServiceState, PyDocumentationSettings, AppService, ModuleService, PyDocumentationSettingsFactory>
+    SERVICE_CLASSES = new PyDefaultProjectAwareServiceClasses<>(AppService.class, PyDocumentationSettingsFactory.class);
 
   @ApiStatus.Internal public static final DocStringFormat DEFAULT_DOC_STRING_FORMAT = DocStringFormat.REST;
 
   protected PyDocumentationSettings() {
     super(new ServiceState());
+  }
+
+  protected PyDocumentationSettings(Module module) {
+    super(new ServiceState(), MODULE_STATE_COMPONENT, ServiceState.class, module);
   }
 
   public static PyDocumentationSettings getInstance(@Nullable Module module) {
@@ -127,7 +134,11 @@ public abstract class PyDocumentationSettings
   }
 
   public final void setFormat(@NotNull DocStringFormat format) {
-    getState().myDocStringFormat = format;
+    var state = getState();
+    state.myDocStringFormat = format;
+    if (myModule != null) {
+      loadState(state);
+    }
   }
 
 
@@ -136,7 +147,11 @@ public abstract class PyDocumentationSettings
   }
 
   public final void setAnalyzeDoctest(boolean analyze) {
-    getState().myAnalyzeDoctest = analyze;
+    var state = getState();
+    state.myAnalyzeDoctest = analyze;
+    if (myModule != null) {
+      loadState(state);
+    }
   }
 
   public final boolean isRenderExternalDocumentation() {
@@ -144,7 +159,11 @@ public abstract class PyDocumentationSettings
   }
 
   public final void setRenderExternalDocumentation(boolean renderExternalDocumentation) {
-    getState().myRenderExternalDocumentation = renderExternalDocumentation;
+    var state = getState();
+    state.myRenderExternalDocumentation = renderExternalDocumentation;
+    if (myModule != null) {
+      loadState(state);
+    }
   }
 
 
@@ -168,20 +187,12 @@ public abstract class PyDocumentationSettings
       return myDocStringFormat;
     }
 
-    public void setFormat(@NotNull DocStringFormat format) {
-      myDocStringFormat = format;
-    }
-
-    // Legacy name of the field to preserve settings format
-    @SuppressWarnings("unused")
-    @OptionTag("myDocStringFormat")
-    public @NotNull String getFormatName() {
-      return myDocStringFormat.getName();
-    }
-
-    @SuppressWarnings("unused")
-    public void setFormatName(@NotNull String name) {
-      myDocStringFormat = DocStringFormat.fromNameOrPlain(name);
+    public void setFormat(@Nullable DocStringFormat format) {
+      if (format == null) {
+        myDocStringFormat = DocStringFormat.PLAIN;
+      } else {
+        myDocStringFormat = format;
+      }
     }
   }
 
@@ -189,8 +200,9 @@ public abstract class PyDocumentationSettings
   public static final class AppService extends PyDocumentationSettings {
   }
 
-
-  @State(name = "PyDocumentationSettings")
   public static final class ModuleService extends PyDocumentationSettings {
+    ModuleService(Module module) {
+      super(module);
+    }
   }
 }

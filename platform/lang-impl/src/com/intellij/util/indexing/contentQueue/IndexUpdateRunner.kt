@@ -1,10 +1,7 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
-@file:OptIn(IntellijInternalApi::class)
-
 package com.intellij.util.indexing.contentQueue
 
 import com.intellij.openapi.application.readActionUndispatched
-import com.intellij.openapi.diagnostic.ControlFlowException
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.diagnostic.ThrottledLogger
 import com.intellij.openapi.fileTypes.FileTypeRegistry
@@ -13,7 +10,6 @@ import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.runBlockingCancellable
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ProjectRootManager
-import com.intellij.openapi.util.IntellijInternalApi
 import com.intellij.openapi.util.NlsSafe
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.util.io.FileUtilRt
@@ -188,7 +184,7 @@ class IndexUpdateRunner(
 
     val filesToIndexCount = fileSet.size()
     TRACER.spanBuilder("doIndexFiles").setAttribute("files", filesToIndexCount.toLong()).useWithScope {
-      withContext(Dispatchers.IO + CoroutineName("Indexing(${project.locationHash}")) {
+      withContext(Dispatchers.IO + CoroutineName("Indexing(${project.locationHash})")) {
         //Ideally, we should launch a coroutine for each file in a fileSet, and let the coroutine scheduler do it's job
         // of distributing the load across available CPUs.
         // But the fileSet could be quite large (10-100-1000k files), so it could be quite a load for a scheduler.
@@ -218,7 +214,7 @@ class IndexUpdateRunner(
               LOG.debug("Coroutine $workerNo has finished gracefully")
             }
             catch (e: Throwable) {
-              if (e !is ControlFlowException) {
+              if (!Logger.shouldRethrow(e)) {
                 LOG.warn("Coroutine $workerNo finished exceptionally", e)
               }
               else {

@@ -2,15 +2,34 @@
 package org.jetbrains.plugins.gradle.service.syncAction
 
 import com.intellij.gradle.toolingExtension.modelAction.GradleModelFetchPhase
-import org.jetbrains.annotations.ApiStatus
+import org.jetbrains.annotations.ApiStatus.Experimental
+import org.jetbrains.annotations.ApiStatus.Internal
+import org.jetbrains.annotations.ApiStatus.NonExtendable
 import org.jetbrains.plugins.gradle.service.syncAction.GradleSyncPhase.Dynamic.Companion.asSyncPhase
 
-@ApiStatus.Experimental
-@ApiStatus.NonExtendable
+/**
+ * Represents a phase of Gradle sync during which [GradleSyncContributor][org.jetbrains.plugins.gradle.service.syncAction.GradleSyncContributor]s
+ * contribute entities to the workspace model.
+ *
+ * Phases are ordered and grouped into distinct classes ([Static], [Dynamic], [DataServices]).
+ * Each phase class produces a complete, self-contained project model. Models from different
+ * phase classes conflict with each other, so later classes take priority over earlier ones:
+ * a later class replaces the project model produced by all preceding classes entirely.
+ * Earlier classes are faster but less accurate, later classes are slower but more precise.
+ *
+ * To simplify this "replace entirely" semantics, the sync storage accumulates contributed
+ * entities within one phase class and is reset when transitioning to the next class.
+ *
+ * A phase is executed only when at least one [GradleSyncContributor] is registered for it.
+ * [org.jetbrains.plugins.gradle.service.syncAction.impl.GradleSyncProjectConfigurator] is the only
+ * component that owns this guarantee; declaring a phase constant does not schedule it by itself.
+ */
+@Experimental
+@NonExtendable
 sealed interface GradleSyncPhase : Comparable<GradleSyncPhase> {
 
   /**
-   * This name is used for the Gradle model fetch identification.
+   * This name is used for the Gradle sync phase identification.
    * For example, in open telemetry and IntelliJ logs.
    */
   val name: String
@@ -18,6 +37,7 @@ sealed interface GradleSyncPhase : Comparable<GradleSyncPhase> {
   /**
    * In these phases, Gradle sync contributors are executed when the IDE has not yet started execution on the Gradle daemon side.
    */
+  @NonExtendable
   sealed interface Static : GradleSyncPhase {
 
     val order: Int
@@ -30,12 +50,10 @@ sealed interface GradleSyncPhase : Comparable<GradleSyncPhase> {
     }
   }
 
-  @ApiStatus.Internal
-  sealed interface BaseScript: GradleSyncPhase
-
   /**
    * In these phases, Gradle sync contributors are executed when models for [modelFetchPhase] are collected on the Gradle daemon side.
    */
+  @NonExtendable
   sealed interface Dynamic : GradleSyncPhase {
 
     val modelFetchPhase: GradleModelFetchPhase
@@ -52,8 +70,9 @@ sealed interface GradleSyncPhase : Comparable<GradleSyncPhase> {
    * The phase corresponding to IntelliJ Platform data services execution.
    * This is a temporary, internal API for migration purposes.
    */
-  @ApiStatus.Internal
-  sealed interface DataServices: GradleSyncPhase
+  @Internal
+  @NonExtendable
+  sealed interface DataServices : GradleSyncPhase
 
   companion object {
 
@@ -72,11 +91,13 @@ sealed interface GradleSyncPhase : Comparable<GradleSyncPhase> {
     val DECLARATIVE_PHASE: GradleSyncPhase = Static(1000, "DECLARATIVE_PHASE")
 
     /**
-     *
+     * In this phase, Gradle sync contributors provide a base IDE model for Gradle script files
+     * using a lightweight classpath model available before the Gradle daemon runs any tasks.
+     * This enables basic IDE support for open script files early in sync.
      */
     @JvmField
-    @ApiStatus.Internal
-    val BASE_SCRIPT_MODEL_PHASE: GradleSyncPhase = GradleBaseScriptSyncPhase
+    @Internal
+    val BASE_SCRIPT_MODEL_PHASE: GradleSyncPhase = GradleModelFetchPhase.BASE_SCRIPT_MODEL_PHASE.asSyncPhase()
 
     /**
      * In this phase, Gradle sync contributors,
@@ -100,7 +121,10 @@ sealed interface GradleSyncPhase : Comparable<GradleSyncPhase> {
     val DEPENDENCY_MODEL_PHASE: GradleSyncPhase = GradleModelFetchPhase.PROJECT_SOURCE_SET_DEPENDENCY_PHASE.asSyncPhase()
 
     /**
+     * In this phase, Gradle sync contributors contribute the full IDE model for Gradle
+     * script files, collected from the Gradle daemon after all build tasks have run.
      *
+     * This replaces the base model written in [BASE_SCRIPT_MODEL_PHASE] with accurate data.
      */
     @JvmField
     val SCRIPT_MODEL_PHASE: GradleSyncPhase = GradleModelFetchPhase.SCRIPT_MODEL_PHASE.asSyncPhase()
@@ -131,7 +155,6 @@ private class GradleStaticSyncPhase(
   override fun compareTo(other: GradleSyncPhase): Int {
     return when (other) {
       is GradleStaticSyncPhase -> order.compareTo(other.order)
-      is GradleBaseScriptSyncPhase -> -1
       is GradleDynamicSyncPhase,
       is GradleDataServicesSyncPhase -> -1
     }
@@ -162,7 +185,6 @@ private class GradleDynamicSyncPhase(
   override fun compareTo(other: GradleSyncPhase): Int {
     return when (other) {
       is GradleStaticSyncPhase -> 1
-      is GradleBaseScriptSyncPhase -> 1
       is GradleDynamicSyncPhase -> modelFetchPhase.compareTo(other.modelFetchPhase)
       is GradleDataServicesSyncPhase -> -1
     }
@@ -182,26 +204,7 @@ private class GradleDynamicSyncPhase(
   }
 }
 
-private data object GradleBaseScriptSyncPhase: GradleSyncPhase.BaseScript {
-
-  override val name: String = "BASE_SCRIPT_MODEL"
-
-  override fun compareTo(other: GradleSyncPhase): Int {
-    return when (other) {
-      is GradleStaticSyncPhase -> 1
-      is GradleBaseScriptSyncPhase -> 0
-      is GradleDynamicSyncPhase,
-      is GradleDataServicesSyncPhase -> -1
-    }
-  }
-}
-
-/**
- * The implementation of the phase corresponding to IntelliJ Platform data services execution.
- * This is a temporary, internal API for migration purposes.
- */
-@ApiStatus.Internal
-private class GradleDataServicesSyncPhase: GradleSyncPhase.DataServices {
+private class GradleDataServicesSyncPhase : GradleSyncPhase.DataServices {
 
   override val name: String = "DATA_SERVICES"
 

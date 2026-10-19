@@ -12,6 +12,7 @@ import com.intellij.diff.tools.combined.CombinedDiffViewer
 import com.intellij.diff.tools.combined.CombinedPathBlockId
 import com.intellij.diff.util.DiffUserDataKeys
 import com.intellij.openapi.ListSelection
+import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vcs.changes.ChangeViewDiffRequestProcessor.Wrapper
 import com.intellij.openapi.vcs.changes.ui.ChangeDiffRequestChain
@@ -19,18 +20,27 @@ import com.intellij.openapi.vcs.changes.ui.PresentableChange
 import org.jetbrains.annotations.ApiStatus
 
 internal class CombinedDiffManagerImpl(private val project: Project) : CombinedDiffManager {
-  override fun createProcessor(diffPlace: String?): CombinedDiffComponentProcessor {
+  override fun createProcessor(
+    diffPlace: String?,
+    contextActions: List<AnAction>?,
+    goToChangeToolbarActions: List<AnAction>?,
+  ): CombinedDiffComponentProcessor {
     val model = CombinedDiffModel(project)
     model.context.putUserData(DiffUserDataKeys.PLACE, diffPlace)
-    val goToChangePopupAction = MyGoToChangePopupAction(model)
+    model.context.putUserData(DiffUserDataKeys.CONTEXT_ACTIONS, contextActions)
+    val controller = MyGoToChangePopupController(model, goToChangeToolbarActions.orEmpty())
+    val goToChangePopupAction = PresentableGoToChangePopupAction.create({ controller.getChanges() }, controller)
     return CombinedDiffComponentProcessorImpl(model, goToChangePopupAction)
   }
 }
 
-internal class MyGoToChangePopupAction(val model: CombinedDiffModel) : PresentableGoToChangePopupAction.Default<PresentableChange>() {
+private class MyGoToChangePopupController(
+  private val model: CombinedDiffModel,
+  private val toolbarActions: List<AnAction>,
+) : GoToChangePopupController<PresentableChange> {
   private val viewer get() = model.context.getUserData(COMBINED_DIFF_VIEWER_KEY)
 
-  override fun getChanges(): ListSelection<out PresentableChange> {
+  fun getChanges(): ListSelection<out PresentableChange> {
     val changes = model.requests.map { it.producer }.filterIsInstance<PresentableChange>()
 
     val selected = viewer?.getCurrentBlockId() as? CombinedPathBlockId
@@ -44,6 +54,9 @@ internal class MyGoToChangePopupAction(val model: CombinedDiffModel) : Presentab
     }
     return ListSelection.createAt(changes, selectedIndex)
   }
+
+  override fun getPresentation(change: PresentableChange): PresentableChange = change
+  override fun createToolbarActions(): List<AnAction> = toolbarActions
 
   override fun onSelected(change: PresentableChange) {
     viewer?.selectDiffBlock(CombinedPathBlockId(change.filePath, change.fileStatus, change.tag), true,

@@ -4,6 +4,7 @@ package org.jetbrains.intellij.build.impl.compilation
 import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.trace.Span
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withTimeout
@@ -27,9 +28,6 @@ import java.nio.file.StandardOpenOption
 import java.util.EnumSet
 import java.util.concurrent.CancellationException
 import java.util.concurrent.atomic.AtomicLong
-import kotlin.io.path.copyTo
-import kotlin.io.path.createParentDirectories
-import kotlin.io.path.name
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 
@@ -45,7 +43,7 @@ internal suspend fun downloadCompilationCache(
 ) {
   checkMirrorAndConnect(initialServerUri = serverUrl, client = client) { connection, urlPathPrefix ->
     val zstdDecompressContextPool = ZstdDecompressContextPool()
-    toDownload.forEachConcurrent(downloadParallelism) { item ->
+    toDownload.forEachConcurrent(concurrency = downloadParallelism, workerDispatcher = Dispatchers.IO) { item ->
       val urlPath = "$urlPathPrefix/${item.name}/${item.file.fileName}"
       spanBuilder("download").setAttribute("name", item.name).setAttribute("urlPath", urlPath).use { span ->
         try {
@@ -132,15 +130,6 @@ internal class CompilePartDownloadFailedError(@JvmField val item: FetchAndUnpack
 internal class HashMismatchException(message: String) : IOException(message)
 
 internal fun unpackCompilationPartArchive(item: FetchAndUnpackItem, saveHash: Boolean) {
-  if (item.output.name in COMPILATION_PARTS_SPECIAL_FILES) {
-    // no unpack needed, just copy
-    item.file.copyTo(item.output.createParentDirectories(), overwrite = true)
-    if (saveHash) {
-      // save actual hash
-      Files.writeString(item.output.resolveSibling(item.output.name + ".hash"), item.hash)
-    }
-    return
-  }
   unpackTrustedArchive(archiveFile = item.file, outDir = item.output)
   if (saveHash) {
     // save actual hash

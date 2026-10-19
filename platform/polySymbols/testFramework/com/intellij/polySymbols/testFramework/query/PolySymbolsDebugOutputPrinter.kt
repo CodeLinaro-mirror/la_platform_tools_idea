@@ -9,14 +9,14 @@ import com.intellij.polySymbols.PolySymbolApiStatus
 import com.intellij.polySymbols.PolySymbolNameSegment
 import com.intellij.polySymbols.PolySymbolProperty
 import com.intellij.polySymbols.completion.PolySymbolCodeCompletionItem
-import com.intellij.polySymbols.css.PROP_CSS_ARGUMENTS
+import com.intellij.polySymbols.css.CssArgumentProperty
 import com.intellij.polySymbols.documentation.PolySymbolDocumentationTarget
 import com.intellij.polySymbols.html.PolySymbolHtmlAttributeValue
 import com.intellij.polySymbols.html.getHtmlAttributeValue
 import com.intellij.polySymbols.js.JsSymbolKindProperty
 import com.intellij.polySymbols.query.PolySymbolMatch
 import com.intellij.polySymbols.query.PolySymbolWithPattern
-import com.intellij.polySymbols.search.PsiSourcedPolySymbol
+import com.intellij.polySymbols.search.PsiLinkedPolySymbol
 import com.intellij.polySymbols.testFramework.DebugOutputPrinter
 import com.intellij.polySymbols.utils.PolySymbolTypeSupport.TypeSupportProperty
 import com.intellij.polySymbols.utils.completeMatch
@@ -35,7 +35,7 @@ open class PolySymbolsDebugOutputPrinter : DebugOutputPrinter() {
   protected open val propertiesToPrint: List<PolySymbolProperty<*>> =
     listOf(
       HideFromCompletionProperty, DocHidePatternProperty, InjectLanguageProperty,
-      PROP_CSS_ARGUMENTS, JsSymbolKindProperty, WebTypesSymbol.PROP_NO_DOC,
+      CssArgumentProperty, JsSymbolKindProperty, WebTypesSymbol.PROP_NO_DOC,
     )
 
   override fun printValueImpl(builder: StringBuilder, level: Int, value: Any?): StringBuilder =
@@ -97,7 +97,7 @@ open class PolySymbolsDebugOutputPrinter : DebugOutputPrinter() {
       printProperty(level,
                     "origin",
                     "${documentation?.library} ($framework)")
-      printProperty(level, "source", (source as? PsiSourcedPolySymbol)?.source)
+      printProperty(level, "source", (source as? PsiLinkedPolySymbol)?.linkedElement)
       printProperty(level, "type", source[TypeSupportProperty]?.typeProperty?.let { source[it] })
       printProperty(level, "attrValue", source.getHtmlAttributeValue(null))
       printProperty(level, "complete", source.completeMatch)

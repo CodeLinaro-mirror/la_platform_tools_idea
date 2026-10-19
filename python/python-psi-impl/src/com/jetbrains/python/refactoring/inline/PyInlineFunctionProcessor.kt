@@ -47,7 +47,7 @@ import com.jetbrains.python.psi.PyTargetExpression
 import com.jetbrains.python.psi.PyTupleExpression
 import com.jetbrains.python.psi.PyUtil
 import com.jetbrains.python.psi.impl.PyBuiltinCache
-import com.jetbrains.python.psi.impl.mapArguments
+import com.jetbrains.python.psi.impl.PyCallExpressionHelper
 import com.jetbrains.python.psi.resolve.PyResolveContext
 import com.jetbrains.python.psi.resolve.PyResolveUtil
 import com.jetbrains.python.psi.types.TypeEvalContext
@@ -422,7 +422,7 @@ class PyInlineFunctionProcessor(
     context: PyResolveContext,
     selfUsed: Boolean,
   ): Map<String, PyExpression> {
-    val mapping = callSite.mapArguments(context).firstOrNull() ?: error("Can't map arguments for ${reference.name}")
+    val mapping = PyCallExpressionHelper.mapArguments(callSite, context).firstOrNull() ?: error("Can't map arguments for ${reference.name}")
     val mappedParams = mapping.mappedParameters
     val firstImplicit = mapping.implicitParameters.firstOrNull()
 

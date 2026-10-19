@@ -1,6 +1,6 @@
 // FIR_IDENTICAL
 // FIR_COMPARISON
-// COMPILER_ARGUMENTS: -XXLanguage:+SealedInterfaces -XXLanguage:+MultiPlatformProjects
+// COMPILER_ARGUMENTS: -XXLanguage:+SealedInterfaces -XXLanguage:+MultiPlatformProjects -XXLanguage:+CompanionBlocksAndExtensions
 
 enum class Test {
     ;
@@ -19,6 +19,7 @@ enum class Test {
 // EXIST:  protected
 // EXIST:  public
 // EXIST:  companion object
+// EXIST:  companion
 // EXIST:  operator
 // EXIST:  infix
 // EXIST:  sealed class
@@ -31,11 +32,12 @@ enum class Test {
 // EXIST:  external
 // EXIST:  annotation class
 // EXIST:  suspend fun
-// EXIST: fun
+// EXIST:  fun
 // EXIST:  typealias
 // EXIST:  expect
 // EXIST:  actual
-// EXIST: data object
+// EXIST:  data object
+// EXIST:  context
 
 /* TODO: items below are not valid here */
 // EXIST: class

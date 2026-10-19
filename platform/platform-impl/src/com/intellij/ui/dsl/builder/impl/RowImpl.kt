@@ -11,9 +11,18 @@ import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.openapi.util.NlsContexts
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.platform.icons.design.BlendMode
+import com.intellij.platform.icons.design.Color
+import com.intellij.platform.icons.design.IconDesigner
+import com.intellij.platform.icons.filters.ColorFilter
+import com.intellij.platform.icons.filters.tint
+import com.intellij.platform.icons.icon
+import com.intellij.platform.icons.modifiers.IconModifier
+import com.intellij.platform.icons.modifiers.colorFilter
+import com.intellij.platform.icons.scale.IconScale
+import com.intellij.platform.icons.swing.toSwingIcon
 import com.intellij.ui.ExperimentalUI
 import com.intellij.ui.JBIntSpinner
-import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.UIBundle
 import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.BrowserLink
@@ -26,6 +35,7 @@ import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextArea
 import com.intellij.ui.components.JBTextField
 import com.intellij.ui.components.fields.ExpandableTextField
+import com.intellij.ui.components.fields.ExtendableTextField
 import com.intellij.ui.dsl.UiDslException
 import com.intellij.ui.dsl.builder.AlignX
 import com.intellij.ui.dsl.builder.BottomGap
@@ -45,6 +55,7 @@ import com.intellij.ui.dsl.builder.components.DslLabel
 import com.intellij.ui.dsl.builder.components.DslLabelType
 import com.intellij.ui.dsl.gridLayout.UnscaledGaps
 import com.intellij.ui.dsl.gridLayout.UnscaledGapsY
+import com.intellij.ui.dsl.listCellRenderer.textListCellRenderer
 import com.intellij.ui.layout.ComponentPredicate
 import com.intellij.util.Function
 import com.intellij.util.IconUtil
@@ -310,6 +321,18 @@ internal open class RowImpl(private val dialogPanelConfig: DialogPanelConfig,
     return cell(label)
   }
 
+  override fun icon(icon: com.intellij.platform.icons.Icon, scale: IconScale): CellImpl<JLabel> {
+    val label = JBLabel(icon, scale)
+    label.disabledIcon = com.intellij.platform.icons.icon {
+      icon(icon, IconModifier.colorFilter(ColorFilter.tint(Color.Black, BlendMode.Saturation)))
+    }.toSwingIcon()
+    return cell(label)
+  }
+
+  override fun icon(scale: IconScale, designer: IconDesigner.() -> Unit): Cell<JLabel> {
+    return icon(icon(designer), scale)
+  }
+
   override fun contextHelp(description: String, title: String?): CellImpl<JLabel> {
     return cell(createContextHelp(description, title))
   }
@@ -339,11 +362,19 @@ internal open class RowImpl(private val dialogPanelConfig: DialogPanelConfig,
     return result
   }
 
-  override fun expandableTextField(parser: Function<in String, out MutableList<String>>,
-                                   joiner: Function<in MutableList<String>, String>): Cell<ExpandableTextField> {
+  override fun expandableTextField(parser: Function<in String, out List<String>>,
+                                   joiner: Function<in List<String>, String>): Cell<ExpandableTextField> {
     val result = cell(ExpandableTextField(parser, joiner))
     result.columns(COLUMNS_SHORT)
     return result
+  }
+
+  override fun extendableTextField(): Cell<ExtendableTextField> {
+    return cell(ExtendableTextField())
+      .columns(COLUMNS_SHORT)
+      .applyToComponent {
+        isOpaque = false
+      }
   }
 
   override fun intTextField(range: IntRange?, keyboardStep: Int?): CellImpl<JBTextField> {
@@ -409,10 +440,11 @@ internal open class RowImpl(private val dialogPanelConfig: DialogPanelConfig,
 
   override fun <T> comboBox(model: ComboBoxModel<T>, renderer: ListCellRenderer<in T?>?): Cell<ComboBox<T>> {
     val component = ComboBox(model)
+    component.isUsePreferredSizeAsMinimum = false
 
     if (renderer == null) {
       if (!ExperimentalUI.isNewUI()) {
-        component.renderer = SimpleListCellRenderer.create("") { it.toString() }
+        component.renderer = textListCellRenderer("") { it.toString() }
       }
     }
     else {

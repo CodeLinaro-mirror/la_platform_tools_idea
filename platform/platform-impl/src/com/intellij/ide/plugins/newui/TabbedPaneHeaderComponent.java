@@ -51,7 +51,9 @@ import java.awt.event.ComponentEvent;
 @ApiStatus.Internal
 public class TabbedPaneHeaderComponent extends JPanel implements UiDataProvider {
   private final JBValue myHeight = new JBValue.Float(30);
+  private final JBValue myWelcomeScreenHeight = new JBValue.Float(40);
   private final JBValue myGap = new JBValue.Float(10);
+  private boolean myIsWelcomeScreen = false;
 
   private final JBTabbedPane myTabbedPane = new JBTabbedPane() {
     @Override
@@ -78,7 +80,7 @@ public class TabbedPaneHeaderComponent extends JPanel implements UiDataProvider 
         assert parent.getComponentCount() == 2;
 
         int width = parent.getComponent(0).getPreferredSize().width * 2 + myGap.get() + parent.getComponent(1).getPreferredSize().width;
-        return new Dimension(width, myHeight.get());
+        return new Dimension(width, myIsWelcomeScreen ? myWelcomeScreenHeight.get() : myHeight.get());
       }
 
       @Override
@@ -112,6 +114,10 @@ public class TabbedPaneHeaderComponent extends JPanel implements UiDataProvider 
   @Override
   public void uiDataSnapshot(@NotNull DataSink sink) {
 
+  }
+
+  public void setWelcomeScreen(boolean welcomeScreen) {
+    myIsWelcomeScreen = welcomeScreen;
   }
 
   static @NotNull JComponent createToolbar(@NotNull DefaultActionGroup actions,

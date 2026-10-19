@@ -6,6 +6,7 @@ package org.jetbrains.intellij.build
 import kotlinx.collections.immutable.PersistentList
 import kotlinx.collections.immutable.persistentListOf
 import org.jetbrains.intellij.build.dependencies.BuildDependenciesDownloader
+import org.jetbrains.intellij.build.dependencies.BuildDependenciesExtractOptions
 import org.jetbrains.intellij.build.impl.BundledMavenDownloader
 import org.jetbrains.intellij.build.impl.LibraryPackMode
 import org.jetbrains.intellij.build.impl.ModuleItem
@@ -16,6 +17,7 @@ import org.jetbrains.intellij.build.impl.PluginLayout.Companion.pluginAutoWithCu
 import org.jetbrains.intellij.build.impl.PluginVersionEvaluatorResult
 import org.jetbrains.intellij.build.impl.ProjectLibraryData
 import org.jetbrains.intellij.build.impl.SupportedDistribution
+import org.jetbrains.intellij.build.impl.patchOsSpecificPluginXml
 import org.jetbrains.intellij.build.impl.projectStructureMapping.DistributionFileEntry
 import org.jetbrains.intellij.build.impl.projectStructureMapping.ProjectLibraryEntry
 import org.jetbrains.intellij.build.io.copyDir
@@ -25,7 +27,9 @@ import org.jetbrains.intellij.build.python.PythonCommunityPluginModules
 import org.jetbrains.intellij.build.telemetry.TraceManager.spanBuilder
 import org.jetbrains.intellij.build.telemetry.use
 import java.net.URI
+import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.util.Locale
 
 object CommunityRepositoryModules {
@@ -65,6 +69,18 @@ object CommunityRepositoryModules {
       spec.withModule("intellij.java.guiForms.jps", "jps/java-guiForms-jps.jar")
     },
     CommunityKotlinPluginBuilder.kotlinPlugin(),
+    pluginAuto("intellij.grazie") { spec ->
+      spec.withModuleLibrary(
+        libraryName = "org.jetbrains.intellij.deps.languagetool:languagetool-core",
+        moduleName = "intellij.grazie.core",
+        relativeOutputPath = "org.jetbrains.intellij.deps.languagetool-languagetool-core.jar",
+      )
+      spec.withModuleLibrary(
+        libraryName = "org.jetbrains.intellij.deps.languagetool:language-en",
+        moduleName = "intellij.grazie.core",
+        relativeOutputPath = "org.jetbrains.intellij.deps.languagetool-language-en.jar",
+      )
+    },
     pluginAuto(listOf("intellij.vcs.git")) { spec ->
       spec.withModule("intellij.vcs.git.rt", "git4idea-rt.jar")
     },
@@ -77,16 +93,7 @@ object CommunityRepositoryModules {
       spec.withModule("intellij.tasks.compatibility")
       spec.withModule("intellij.tasks.java")
     },
-    pluginAuto(listOf("intellij.xslt.debugger")) { spec ->
-      spec.withModule("intellij.xslt.debugger.rt", "xslt-debugger-rt.jar")
-      spec.withModule("intellij.xslt.debugger.impl.rt", "rt/xslt-debugger-impl-rt.jar")
-      spec.withModuleLibrary("Saxon-6.5.5", "intellij.xslt.debugger.impl.rt", "rt/saxon.jar")
-      spec.withModuleLibrary("Saxon-9HE", "intellij.xslt.debugger.impl.rt", "rt/saxon9he.jar")
-      spec.withModuleLibrary("Xalan-2.7.3", "intellij.xslt.debugger.impl.rt", "rt/xalan-2.7.3.jar")
-      spec.withModuleLibrary("Serializer-2.7.3", "intellij.xslt.debugger.impl.rt", "rt/serializer-2.7.3.jar")
-      spec.withModuleLibrary("RMI Stubs", "intellij.xslt.debugger.rt", "rmi-stubs.jar")
-    },
-    plugin("intellij.maven") { spec ->
+    plugin("intellij.maven.plugin") { spec ->
 
       spec.doNotCopyModuleLibrariesAutomatically(
         listOf(
@@ -165,8 +172,6 @@ object CommunityRepositoryModules {
       }
 
       spec.withModule("intellij.idea.community.build.dependencies")
-      spec.withModule("intellij.maven.jps")
-      spec.withModule("intellij.maven.errorProne.compiler")
       spec.withModule("intellij.maven.artifactResolver.m31", "artifact-resolver-m31.jar")
       spec.withModule("intellij.maven.artifactResolver.common", "artifact-resolver-m31.jar")
       spec.withModule("intellij.maven.server", relativeJarPath = "maven-server.jar")
@@ -176,11 +181,13 @@ object CommunityRepositoryModules {
         "intellij.gradle.plugin",
         "intellij.gradle",
         "intellij.gradle.common",
-        "intellij.gradle.toolingProxy",
       )
     ) { spec ->
+      spec.withModule("intellij.gradle.toolingProxy", "gradle-tooling-proxy.jar")
       spec.withModule("intellij.gradle.toolingExtension", "gradle-tooling-extension-api.jar")
       spec.withModule("intellij.gradle.toolingExtension.impl", "gradle-tooling-extension-impl.jar")
+      spec.withModule("intellij.libraries.groovy", "groovy.jar")
+      spec.withModule("intellij.libraries.groovy.ant", "groovy-ant.jar")
       spec.withProjectLibrary("Gradle", LibraryPackMode.STANDALONE_SEPARATE)
       spec.withProjectLibrary("Ant", "ant", LibraryPackMode.STANDALONE_SEPARATE)
     },
@@ -200,7 +207,6 @@ object CommunityRepositoryModules {
     },
     pluginAuto(listOf("intellij.devkit")) { spec ->
       spec.withModule("intellij.devkit.jps")
-      spec.withModule("intellij.devkit.runtimeModuleRepository.jps")
 
       spec.bundlingRestrictions.includeInDistribution = PluginDistribution.NOT_FOR_PUBLIC_BUILDS
     },
@@ -211,7 +217,7 @@ object CommunityRepositoryModules {
     plugin("intellij.java.coverage") { spec ->
       spec.withModule("intellij.java.coverage.rt")
       // explicitly pack JaCoCo as a separate JAR
-      spec.withModuleLibrary("JaCoCo", "intellij.java.coverage", "jacoco.jar")
+      spec.withModuleLibrary(libraryName = "JaCoCo", moduleName = "intellij.java.coverage", relativeOutputPath = "jacoco.jar")
     },
     plugin("intellij.java.decompiler") { spec ->
       spec.directoryName = "java-decompiler"
@@ -234,13 +240,10 @@ object CommunityRepositoryModules {
     pluginAuto(listOf("intellij.statsCollector")) { spec ->
       spec.bundlingRestrictions.includeInDistribution = PluginDistribution.NOT_FOR_RELEASE
     },
-    pluginAuto(listOf("intellij.lombok", "intellij.lombok.generated")),
-    plugin("intellij.platform.testFramework.ui") { spec ->
-      spec.withModuleLibrary("intellij.remoterobot.remote.fixtures", spec.mainModule, "")
-      spec.withModuleLibrary("intellij.remoterobot.robot.server.core", spec.mainModule, "")
-      spec.withProjectLibrary("okhttp")
+    pluginAuto(listOf("intellij.findUsagesMl")) { spec ->
+      spec.bundlingRestrictions.includeInDistribution = PluginDistribution.NOT_FOR_RELEASE
     },
-    pluginAuto(listOf("intellij.performanceTesting")),
+    pluginAuto(listOf("intellij.lombok", "intellij.lombok.generated")),
     pluginAuto(listOf("intellij.performanceTesting.ui")),
     pluginAuto(listOf("intellij.vcs.github")),
     pluginAuto(listOf("intellij.vcs.gitlab")),
@@ -248,13 +251,13 @@ object CommunityRepositoryModules {
       spec.withModule("intellij.compilation.charts.jps")
     },
     plugin("intellij.repository.search") { spec ->
-      spec.withModule("intellij.maven.model", relativeJarPath = "maven-model.jar")
       spec.withProjectLibrary("package-search-api-client")
     },
     pluginAuto("intellij.java.jshell") { spec ->
       spec.withModule("intellij.java.jshell.protocol", "jshell-protocol.jar")
       spec.withModuleLibrary("jshell-frontend", "intellij.java.jshell.execution", "jshell-frontend.jar")
-    }
+    },
+    *allJcefPlugins()
   )
 
   val CONTRIB_REPOSITORY_PLUGINS: List<PluginLayout> = java.util.List.of(
@@ -308,6 +311,72 @@ object CommunityRepositoryModules {
       //  "//prebuilts/studio/layoutlib:layoutlib",
       //  "//tools/adt/idea/compose-designer:kotlin-compiler-daemon-libs",
       //],
+    }
+  }
+
+  fun allJcefPlugins(): Array<PluginLayout> {
+    val supportedOsArch = listOf(
+      SupportedDistribution(os = OsFamily.MACOS, arch = JvmArchitecture.x64, MacLibcImpl.DEFAULT),
+      SupportedDistribution(os = OsFamily.MACOS, arch = JvmArchitecture.aarch64, MacLibcImpl.DEFAULT),
+      SupportedDistribution(os = OsFamily.WINDOWS, arch = JvmArchitecture.x64, WindowsLibcImpl.DEFAULT),
+      SupportedDistribution(os = OsFamily.WINDOWS, arch = JvmArchitecture.aarch64, WindowsLibcImpl.DEFAULT),
+      SupportedDistribution(os = OsFamily.LINUX, arch = JvmArchitecture.x64, LinuxLibcImpl.GLIBC),
+      SupportedDistribution(os = OsFamily.LINUX, arch = JvmArchitecture.aarch64, LinuxLibcImpl.GLIBC),
+    )
+
+    val allLayouts = ArrayList(supportedOsArch.map { (os, arch, _) -> jcefPlugin(os, arch) })
+    allLayouts += jcefCrossPlatformEmpty()
+    return allLayouts.toTypedArray()
+  }
+
+  private fun jcefCrossPlatformEmpty(): PluginLayout {
+    return plugin("intellij.jcef.plugin") { // cross-platform distribution comes without JCEF binaries
+      it.bundlingRestrictions.includeInDistribution = PluginDistribution.CROSS_PLATFORM_DIST_ONLY
+    }
+  }
+
+  fun jcefPlugin(os: OsFamily, arch: JvmArchitecture): PluginLayout {
+    return plugin("intellij.jcef.plugin") { spec ->
+      spec.bundlingRestrictions.supportedOs = persistentListOf(os)
+      spec.bundlingRestrictions.supportedArch = persistentListOf(arch)
+
+      fun archSuffix(arch: JvmArchitecture): String = when (arch) {
+        JvmArchitecture.x64 -> "x64"
+        JvmArchitecture.aarch64 -> "aarch64"
+      }
+
+      fun jcefArchiveName(os: OsFamily, arch: JvmArchitecture, build: String): String =
+        "jcef-${os.jbrArchiveSuffix}-${archSuffix(arch)}-${build}.tar.gz"
+
+      fun downloadUrlFor(os: OsFamily, arch: JvmArchitecture, build: String): String =
+        "https://cache-redirector.jetbrains.com/intellij-jbr/${jcefArchiveName(os, arch, build)}"
+
+      patchOsSpecificPluginXml(spec, os, arch)
+
+      spec.withCustomVersion { _, ideBuildNumber, _ ->
+        // be careful, Marketplace expects linux/macos/windows for os and x86_64/x86/arm64/arm32 for arch
+        val pluginVersion = "$ideBuildNumber-${os.osId}-${arch.marketplaceName}"
+        PluginVersionEvaluatorResult(pluginVersion)
+      }
+
+      spec.withGeneratedResources { targetDir, context ->
+        val communityRoot = context.paths.communityHomeDirRoot
+        val properties = BuildDependenciesDownloader.getDependencyProperties(communityRoot)
+        val jcefBuildNumber = properties.property("jcefBuild")
+
+        val archivePath = downloadFileToCacheLocation(downloadUrlFor(os, arch, jcefBuildNumber), communityRoot)
+        val subDir = targetDir.resolve("jcef-tmp") // to not clean up root plugin directory on BuildDependenciesDownloader.extractFile
+        Files.createDirectories(subDir)
+
+        BuildDependenciesDownloader.extractFile(archivePath, subDir, communityRoot, BuildDependenciesExtractOptions.STRIP_ROOT)
+
+        // Unix ZIP does not have root `jcef` directory
+        val jcefOutputDir = if (Files.exists(subDir.resolve("jcef"))) subDir.resolve("jcef") else subDir
+        Files.move(jcefOutputDir, targetDir.resolve("jcef"), StandardCopyOption.REPLACE_EXISTING)
+        Files.deleteIfExists(subDir)
+      }
+
+      spec.enableSymlinksAndExecutableResources()
     }
   }
 
@@ -365,7 +434,6 @@ object CommunityRepositoryModules {
       // android-kotlin.jar
       spec.withModule("intellij.android.kotlin.idea", "android-kotlin.jar")
       spec.withModule("intellij.android.kotlin.idea.common", "android-kotlin.jar")
-      spec.withModule("intellij.android.kotlin.idea.k1", "android-kotlin.jar")
       spec.withModule("intellij.android.kotlin.idea.k2", "android-kotlin.jar")
       spec.withModule("intellij.android.kotlin.output.parser", "android-kotlin.jar")
 
@@ -447,7 +515,6 @@ object CommunityRepositoryModules {
       spec.withModule("intellij.android.nav.safeargs", "android.jar")
       spec.withModule("intellij.android.nav.safeargs.common", "android.jar")
       spec.withModule("intellij.android.nav.safeargs.common.gradle", "android.jar")
-      spec.withModule("intellij.android.nav.safeargs.k1", "android.jar")
       spec.withModule("intellij.android.nav.safeargs.k2", "android.jar")
       spec.withModule("intellij.android.android-material", "android.jar")
       spec.withModule("intellij.android.observable.ui", "android.jar")
@@ -545,7 +612,6 @@ object CommunityRepositoryModules {
       val ffmpegVersion = "6.0-1.5.9"
       val javacppVersion = "1.5.9"
 
-      // Add ffmpeg and javacpp
       spec.withModuleLibrary("ffmpeg", "intellij.android.streaming", "ffmpeg-$ffmpegVersion.jar")
       spec.withModuleLibrary("ffmpeg-javacpp", "intellij.android.streaming", "javacpp-$javacppVersion.jar")
 
@@ -653,8 +719,8 @@ object CommunityRepositoryModules {
 
       // here go some differences from original Android Studio layout
 
-      for (entry in additionalModulesToJars.entries) {
-        spec.withModule(entry.key, entry.value)
+      for ((key, value) in additionalModulesToJars) {
+        spec.withModule(key, value)
       }
 
       addition?.invoke(spec)
@@ -669,14 +735,13 @@ object CommunityRepositoryModules {
   }
 
   fun groovyPlugin(additionalModules: List<String> = emptyList(), addition: ((PluginLayout.PluginLayoutSpec) -> Unit)? = null): PluginLayout {
-    return plugin("intellij.groovy") { spec ->
+    return pluginAutoWithCustomDirName("intellij.groovy") { spec ->
       spec.directoryName = "Groovy"
       spec.mainJarName = "Groovy.jar"
       spec.withModules(
         listOf(
           "intellij.groovy.psi",
           "intellij.groovy.structuralSearch",
-          "intellij.groovy.git",
         )
       )
       spec.withModule("intellij.groovy.jps", "groovy-jps.jar")

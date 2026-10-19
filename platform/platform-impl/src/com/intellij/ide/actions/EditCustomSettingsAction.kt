@@ -169,7 +169,9 @@ class EditCustomPropertiesAction : EditCustomSettingsAction() {
   }
 }
 
+@ApiStatus.Internal
 open class EditCustomVmOptionsAction : EditCustomSettingsAction() {
+  @ApiStatus.Internal
   companion object {
     @JvmField val JRE_PATH_KEY: Key<String> = Key.create("JRE_PATH_KEY")
     private val file: Lazy<Path?> = lazy { VMOptions.getUserOptionsFile() }
@@ -192,6 +194,7 @@ open class EditCustomVmOptionsAction : EditCustomSettingsAction() {
     }
   }
 
+  @ApiStatus.Internal
   class AccessExtension : NonProjectFileWritingAccessExtension {
     override fun isWritable(file: VirtualFile): Boolean =
       EditCustomVmOptionsAction.file.value?.let { VfsUtilCore.pathEqualsTo(file, it.toString()) } ?: false

@@ -2,74 +2,41 @@
 package com.intellij.python.hatch.cli
 
 import com.intellij.openapi.util.NlsSafe
-import com.intellij.platform.eel.provider.utils.EelProcessExecutionResultInfo
 import com.intellij.platform.eel.provider.utils.sendWholeText
 import com.intellij.platform.eel.provider.utils.stderrString
 import com.intellij.platform.eel.provider.utils.stdoutString
 import com.intellij.python.community.execService.ProcessOutputTransformer
-import com.intellij.python.hatch.PyHatchBundle
 import com.intellij.python.hatch.runtime.HatchConstants
-import com.intellij.python.hatch.runtime.HatchRuntime
+import com.intellij.python.pytools.runtime.PyToolRuntime
+import com.intellij.python.pytools.runtime.executeAndHandleErrors
+import com.intellij.python.pytools.runtime.executeAndMatch
 import com.jetbrains.python.Result
 import com.jetbrains.python.errorProcessing.PyResult
+import com.jetbrains.python.sdk.add.v2.PathHolder
 import io.github.z4kn4fein.semver.Version
 import io.github.z4kn4fein.semver.VersionFormatException
 import java.io.IOException
 import java.nio.file.InvalidPathException
 import java.nio.file.Path
 
-/**
- * Handles hatch-specific errors, runs [transformer] only on outputs with codes 0 or 1 without tracebacks.
- */
-private suspend fun <T> HatchRuntime.executeAndHandleErrors(vararg arguments: String, transformer: ProcessOutputTransformer<T>): PyResult<T> {
-  val errorHandlerTransformer: ProcessOutputTransformer<T> = { output ->
-    when {
-      output.exitCode !in 0..1 -> Result.failure(null)
-      output.exitCode == 1 && output.stdoutString.substringBefore('\n').contains("Traceback (most recent call last)") -> {
-        val hatchErrorDescription = output.stdoutString.split('\n').lastOrNull { it.isNotEmpty() } ?: ""
-        Result.failure(hatchErrorDescription)
-      }
-      else -> transformer.invoke(output)
-    }
-  }
-
-  return this.execute(*arguments, processOutputTransformer = errorHandlerTransformer)
-}
-
-private suspend fun <T> HatchRuntime.executeAndMatch(
-  vararg arguments: String,
-  expectedOutput: Regex,
-  outputContentSupplier: (EelProcessExecutionResultInfo) -> String = { it.stdoutString },
-  transformer: (MatchResult) -> Result<T, @NlsSafe String?>,
-): PyResult<T> {
-  return this.executeAndHandleErrors(*arguments) { processOutput ->
-    if (processOutput.exitCode != 0) return@executeAndHandleErrors Result.failure(null)
-
-    val output = outputContentSupplier.invoke(processOutput).replace("\r\n", "\n")
-    val matchResult = expectedOutput.matchEntire(output)
-    if (matchResult == null) {
-      Result.failure(PyHatchBundle.message("python.hatch.cli.error.response.out.of.pattern", expectedOutput.toString()))
-    }
-    else {
-      transformer.invoke(matchResult)
-    }
-  }
-}
-
-sealed class HatchCommand(private val command: Array<String>, protected val runtime: HatchRuntime) {
+sealed class HatchCommand<P : PathHolder>(private val command: Array<String>, protected val runtime: PyToolRuntime) {
   @Suppress("unused")
-  constructor(command: String, runtime: HatchRuntime) : this(arrayOf(command), runtime)
+  constructor(command: String, runtime: PyToolRuntime) : this(arrayOf(command), runtime)
 
   protected suspend fun <T> executeAndHandleErrors(vararg arguments: String, transformer: ProcessOutputTransformer<T>): PyResult<T> {
     return runtime.executeAndHandleErrors(*command, *arguments, transformer = transformer)
   }
 
-  protected suspend fun <T> executeAndMatch(vararg arguments: String, expectedOutput: Regex, transformer: (MatchResult) -> Result<T, @NlsSafe String?>): PyResult<T> {
+  protected suspend fun <T> executeAndMatch(
+    vararg arguments: String,
+    expectedOutput: Regex,
+    transformer: (MatchResult) -> Result<T, @NlsSafe String?>,
+  ): PyResult<T> {
     return runtime.executeAndMatch(*command, *arguments, expectedOutput = expectedOutput, transformer = transformer)
   }
 }
 
-class HatchCli(private val runtime: HatchRuntime) {
+class HatchCli<P : PathHolder>(internal val runtime: PyToolRuntime) {
   /**
    * Build a project
    */
@@ -83,17 +50,17 @@ class HatchCli(private val runtime: HatchRuntime) {
   /**
    * Manage the config file
    */
-  fun config(): HatchConfig = HatchConfig(runtime)
+  fun config(): HatchConfig<P> = HatchConfig(runtime)
 
   /**
    * Manage environment dependencies
    */
-  fun dep(): HatchDep = HatchDep(runtime)
+  fun dep(): HatchDep<P> = HatchDep(runtime)
 
   /**
    * Manage project environments
    */
-  fun env(): HatchEnv = HatchEnv(runtime)
+  fun env(): HatchEnv<P> = HatchEnv(runtime)
 
   /**
    * Format and lint source code
@@ -101,45 +68,9 @@ class HatchCli(private val runtime: HatchRuntime) {
   fun fmt(): PyResult<Unit> = TODO()
 
   /**
-   * Create or initialize a project.
-   * Returns projects tree structure in human-readable ascii view:
-   *
-   * {projectName}
-   * ├── src
-   * │   └── {projectName}
-   * │       ├── __about__.py
-   * │       └── __init__.py
-   * ├── tests
-   * │   └── __init__.py
-   * ├── LICENSE.txt
-   * ├── README.md
-   * └── pyproject.toml
-   *
-   * @param[initExistingProject] Initialize an existing project
-   */
-  suspend fun new(projectName: String, location: Path? = null, initExistingProject: Boolean = false): PyResult<String> {
-    val options = listOf(
-      initExistingProject to "--init",
-      true to projectName,
-      (location != null) to location,
-    ).makeOptions()
-    return runtime.executeInteractive("new", *options) { eelProcess, _ ->
-      if (initExistingProject) {
-        try {
-          eelProcess.sendWholeText("$projectName\n")
-        }
-        catch (error: IOException) {
-          return@executeInteractive Result.failure("Failed to write to process: ${error.localizedMessage}")
-        }
-      }
-      Result.success("Created")
-    }
-  }
-
-  /**
    * View project information
    */
-  fun project(): HatchProject = HatchProject(runtime)
+  fun project(): HatchProject<P> = HatchProject(runtime)
 
   /**
    * Publish build artifacts
@@ -149,7 +80,7 @@ class HatchCli(private val runtime: HatchRuntime) {
   /**
    * Manage Python installations
    */
-  fun python(): HatchPython = HatchPython(runtime)
+  fun python(): HatchPython<P> = HatchPython(runtime)
 
   /**
    * Run commands within project environments
@@ -170,7 +101,7 @@ class HatchCli(private val runtime: HatchRuntime) {
   /**
    * Manage Hatch
    */
-  fun self(): HatchSelf = HatchSelf(runtime)
+  fun self(): HatchSelf<P> = HatchSelf(runtime)
 
   /**
    * Enter a shell within a project's environment
@@ -227,7 +158,10 @@ class HatchCli(private val runtime: HatchRuntime) {
   suspend fun setVersion(desiredVersion: String): PyResult<Pair<Version, Version>> {
     val expectedOutput = """^(?:.*\n)*Old: (.*)\nNew: (.*)\n?$""".toRegex()
 
-    return runtime.executeAndMatch("version", desiredVersion, expectedOutput = expectedOutput, outputContentSupplier = { it.stderrString }) { matchResult ->
+    return runtime.executeAndMatch("version",
+                                   desiredVersion,
+                                   expectedOutput = expectedOutput,
+                                   outputContentSupplier = { it.stderrString }) { matchResult ->
       val (oldVersion, newVersion) = matchResult.destructured
       try {
         Result.success(Version.parse(oldVersion) to Version.parse(newVersion))
@@ -236,6 +170,34 @@ class HatchCli(private val runtime: HatchRuntime) {
         Result.failure(e.localizedMessage)
       }
     }
+  }
+}
+
+/**
+ * Create or initialize a project. This is intentionally available only for EEL-backed Hatch CLIs.
+ *
+ * @param[initExistingProject] Initialize an existing project
+ */
+suspend fun HatchCli<PathHolder.Eel>.new(
+  projectName: String,
+  location: Path? = null,
+  initExistingProject: Boolean = false,
+): PyResult<String> {
+  val options = listOf(
+    initExistingProject to "--init",
+    true to projectName,
+    (location != null) to location,
+  ).makeOptions()
+  return runtime.executeInteractive("new", *options) { eelProcess, _ ->
+    if (initExistingProject) {
+      try {
+        eelProcess.sendWholeText("$projectName\n")
+      }
+      catch (error: IOException) {
+        return@executeInteractive Result.failure("Failed to write to process: ${error.localizedMessage}")
+      }
+    }
+    Result.success("Created")
   }
 }
 
