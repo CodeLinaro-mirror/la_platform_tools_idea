@@ -1,6 +1,7 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.debugger.engine;
 
+import com.intellij.debugger.BytecodeInspector;
 import com.intellij.debugger.MultiRequestPositionManager;
 import com.intellij.debugger.NoDataException;
 import com.intellij.debugger.PositionManager;
@@ -59,7 +60,6 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
-import org.jetbrains.org.objectweb.asm.Opcodes;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -203,22 +203,11 @@ public class PositionManagerImpl implements PositionManager, MultiRequestPositio
 
   @ApiStatus.Internal
   public static @Nullable SourcePosition adjustPositionForConditionalReturn(Location location, PsiFile file, int lineNumber) {
-    if (location.virtualMachine().canGetBytecodes()) {
-      PsiElement ret = JavaLineBreakpointType.findSingleConditionalReturn(file, lineNumber);
-      if (ret != null) {
-        byte[] bytecodes = DebuggerUtilsEx.getMethod(location).bytecodes();
-        int bytecodeOffs = Math.toIntExact(location.codeIndex());
-        // Implicit return instruction at the end of bytecode should not be treated as conditional return.
-        // (Note that we also relay on the fact that all return instructions have no operands.)
-        if (0 <= bytecodeOffs && bytecodeOffs < bytecodes.length - 1) {
-          int opcode = bytecodes[bytecodeOffs] & 0xFF;
-          if (Opcodes.IRETURN <= opcode && opcode <= Opcodes.RETURN) {
-            return ReadAction.compute(() -> SourcePosition.createFromOffset(file, ret.getTextOffset()));
-          }
-        }
-      }
-    }
-    return null;
+    PsiElement ret = JavaLineBreakpointType.findSingleConditionalReturn(file, lineNumber);
+    if (ret == null) return null;
+    BytecodeInspector bytecodeInspector = BytecodeInspector.getInstance(location.virtualMachine());
+    if (bytecodeInspector == null || !bytecodeInspector.isConditionalReturnLocation(location)) return null;
+    return ReadAction.compute(() -> SourcePosition.createFromOffset(file, ret.getTextOffset()));
   }
 
   public static class JavaSourcePosition extends RemappedSourcePosition {
