@@ -46,8 +46,8 @@ docker run -it --rm \
 
 sudo chown -R $(id -u):$(id -g) $work_dir
 
-mkdir -p "$script_dir/dist" && rm -rf "$script_dir/dist/*"
-cp $work_dir/dist/* "$script_dir/dist"
+mkdir -p "$script_dir/dist" && rm -rf "$script_dir/dist"/*
+cp -r $work_dir/dist/* "$script_dir/dist"
 
 echo "Tools artifacts are copied to $script_dir/dist "
-ls -lha "$script_dir/dist"
+ls -lha "$script_dir/dist/artifacts"/*

@@ -36,6 +36,11 @@ if errorlevel 1 (
 )
 @echo native_win.cmd time: %time%
 
+:: WinElevator (elevator.exe and its companion launcher.exe in bin\win) is intentionally NOT built here.
+:: Android Studio uses the prebuilt binaries signed by JetBrains from IntelliJ upstream merges.
+
+dir "%DISTDIR%\artifacts\windows-x64" "%DISTDIR%\artifacts\windows-arm"
+
 :: b/369255957
 :: x86_64-pc-windows-gnu toolchain is broken in prebuilts\rust
 :: we will be cross-compiling launcher and restarter on Linux for now (b/363795669)

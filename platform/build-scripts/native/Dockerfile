@@ -13,7 +13,26 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
     pkg-config \
     libssl-dev \
     mingw-w64 \
+    gcc-aarch64-linux-gnu \
+    libc6-dev-arm64-cross \
+    file \
     && rm -rf /var/lib/apt/lists/*
+
+# Ubuntu's mingw-w64 packages only support i686 and x86-64 (GCC lacks Windows ARM64 support).
+# Install llvm-mingw to provide aarch64-w64-mingw32-* for Rust's aarch64-pc-windows-gnullvm target.
+# Append to PATH so Ubuntu's /usr/bin/x86_64-w64-mingw32-gcc remains first for x86_64-pc-windows-gnu.
+RUN curl -fSL \
+    --connect-timeout 120 \
+    --max-time 300 \
+    --retry 5 \
+    --retry-delay 5 \
+    --retry-connrefused \
+    "https://github.com/mstorsjo/llvm-mingw/releases/download/20250402/llvm-mingw-20250402-ucrt-ubuntu-20.04-x86_64.tar.xz" \
+    -o /tmp/llvm-mingw.tar.xz \
+ && mkdir -p /opt/llvm-mingw \
+ && tar -xJf /tmp/llvm-mingw.tar.xz -C /opt/llvm-mingw --strip-components=1 \
+ && rm /tmp/llvm-mingw.tar.xz
+ENV PATH="${PATH}:/opt/llvm-mingw/bin"
 
 RUN useradd -ms /bin/bash builder
 USER builder
@@ -33,7 +52,10 @@ RUN chmod 644 /home/builder/musl-1.2.6.tar.gz
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y -v --default-toolchain stable --default-host x86_64-unknown-linux-gnu --profile minimal; \
     . "$HOME/.cargo/env"; \
     rustup target add x86_64-unknown-linux-musl; \
+    rustup target add aarch64-unknown-linux-musl; \
+    rustup target add aarch64-unknown-linux-gnu; \
     rustup target add x86_64-pc-windows-gnu; \
+    rustup target add aarch64-pc-windows-gnullvm; \
     cargo install --locked cargo-about; \
     rustup show;
 

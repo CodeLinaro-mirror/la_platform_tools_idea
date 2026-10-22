@@ -36,12 +36,36 @@ declare -r re_client="${top}/prebuilts/remoteexecution-client/latest"
     mkdir -p ./tools/idea/platform/build-scripts/native/ && cp ${top}/tools/idea/platform/build-scripts/native/linux_tools.sh ./tools/idea/platform/build-scripts/native/
     mkdir -p ./tools/idea/native/ && cp -r ${top}/tools/idea/native/. ./tools/idea/native/
 
+    declare -r output_files=$(IFS=,; echo "\
+dist/artifacts/linux-x64/fsnotifier,\
+dist/artifacts/linux-x64/restarter,\
+dist/artifacts/linux-x64/launcher,\
+dist/artifacts/linux-x64/xplat-launcher-third-party-licenses.html,\
+dist/artifacts/linux-arm/fsnotifier,\
+dist/artifacts/linux-arm/restarter,\
+dist/artifacts/linux-arm/launcher,\
+dist/artifacts/linux-arm/xplat-launcher-third-party-licenses.html,\
+dist/artifacts/windows-x64/wslhash,\
+dist/artifacts/windows-x64/ttyfix,\
+dist/artifacts/windows-x64/wslproxy,\
+dist/artifacts/windows-x64/restarter.exe,\
+dist/artifacts/windows-x64/launcher.exe,\
+dist/artifacts/windows-x64/launcher-win-con.exe,\
+dist/artifacts/windows-x64/xplat-launcher-third-party-licenses.html,\
+dist/artifacts/windows-arm/wslhash,\
+dist/artifacts/windows-arm/ttyfix,\
+dist/artifacts/windows-arm/wslproxy,\
+dist/artifacts/windows-arm/restarter.exe,\
+dist/artifacts/windows-arm/launcher.exe,\
+dist/artifacts/windows-arm/launcher-win-con.exe,\
+dist/artifacts/windows-arm/xplat-launcher-third-party-licenses.html")
+
     ${re_client}/rewrapper  --labels=type=tool --exec_strategy=remote \
     --cfg=$cfg \
     --inputs=. \
-    --output_files=dist/fsnotifier,dist/wslhash,dist/ttyfix,dist/wslproxy,dist/restarter,dist/restarter.exe,dist/launcher,dist/launcher.exe,dist/launcher-win-con.exe,dist/xplat-launcher-third-party-licenses.html \
+    --output_files=$output_files \
     -- ./tools/idea/platform/build-scripts/native/linux_tools.sh out dist $build_number
   )
 )
 
-cp $out_dir/re_files/dist/* $dist_dir/
+cp -r $out_dir/re_files/dist/* $dist_dir/
