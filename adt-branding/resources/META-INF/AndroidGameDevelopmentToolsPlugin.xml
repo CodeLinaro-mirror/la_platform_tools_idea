@@ -16,7 +16,11 @@
 
 <idea-plugin xmlns:xi="http://www.w3.org/2001/XInclude">
 
-  <xi:include href="/META-INF/PlatformLangPlugin.xml"/>
+  <id>com.intellij</id>
+  <name>IDEA CORE</name>
+  <module value="com.intellij.modules.lang"/>
+  <module value="com.intellij.modules.lang.actions"/>
+  <module value="com.intellij.modules.platform"/>
   <xi:include href="/META-INF/intellij.moduleSets.essential.xml"/>
 
   <xi:include href="/META-INF/game-tools.xml">

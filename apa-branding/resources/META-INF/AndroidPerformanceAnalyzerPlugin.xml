@@ -3,7 +3,12 @@
   <module value="com.intellij.modules.java-capable" />
   <depends>com.intellij.modules.platform</depends>
 
-  <xi:include href="/META-INF/PlatformLangPlugin.xml"/>
+  <id>com.intellij</id>
+  <name>IDEA CORE</name>
+  <module value="com.intellij.modules.lang"/>
+  <module value="com.intellij.modules.lang.actions"/>
+  <module value="com.intellij.modules.platform"/>
   <xi:include href="/META-INF/intellij.moduleSets.ide.common.xml"/>
+  <xi:include href="/META-INF/intellij.moduleSets.compose.runtime.xml"/>
 
 </idea-plugin>

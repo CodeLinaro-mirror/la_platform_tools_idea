@@ -13,19 +13,18 @@
  * limitations under the License.
  ***/
 
-import kotlinx.coroutines.runBlocking
 import org.jetbrains.intellij.build.*
 import org.jetbrains.intellij.build.BuildPaths
 import org.jetbrains.intellij.build.impl.BuildContextImpl
 
-@Suppress("RAW_RUN_BLOCKING", "UNUSED")
+@Suppress("UNUSED")
 object ApaPlatformBuildTarget {
   @JvmStatic
   fun main(args: Array<String>) {
-    runBlocking {
+    BuildLifetime().use { lifetime ->
       val home = BuildPaths.COMMUNITY_ROOT
       val properties = ApaProperties(home.communityRoot)
-      val buildContext = BuildContextImpl.createContext(home.communityRoot, properties)
+      val buildContext = BuildContextImpl.createContext(home.communityRoot, properties, lifetime = lifetime)
       val tasks = createBuildTasks(buildContext)
       tasks.buildDistributions()
     }

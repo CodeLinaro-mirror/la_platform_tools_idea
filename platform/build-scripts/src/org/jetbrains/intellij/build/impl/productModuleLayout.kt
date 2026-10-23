@@ -112,26 +112,27 @@ internal fun processAndGetProductPluginContentModules(
 
   descriptorCache.put(PRODUCT_DESCRIPTOR_META_PATH, data.encodeToByteArray())
 
-  if (context.productProperties.platformPrefix == "AndroidStudio") {
+  if (productProperties.platformPrefix == "AndroidStudio") {
     val gameToolsPluginFileName = "AndroidGameDevelopmentToolsPlugin.xml"
-    val gameToolsPluginFile = requireNotNull(context.findFileInModuleSources(productPluginSourceModuleName, "META-INF/$gameToolsPluginFileName")
+    val gameToolsPluginFile = requireNotNull(outputProvider.findFileInModuleSources(productPluginSourceModule, "META-INF/$gameToolsPluginFileName")
     ) { "Cannot find product plugin descriptor in '$productPluginSourceModuleName' module" }
     val gameToolsPluginXml = JDOMUtil.load(gameToolsPluginFile)
 
     resolveIncludes(element = gameToolsPluginXml, elementResolver = /*gameToolsXIncludeResolver*/ xIncludeResolver)
     val gameToolsModuleItems = LinkedHashSet<ModuleItem>()
-    filterAndProcessContentModules(rootElement = gameToolsPluginXml, pluginMainModuleName = null, context = context) { moduleElement, moduleName, loadingRule ->
+    filterAndProcessContentModules(rootElement = gameToolsPluginXml, pluginMainModuleName = null, contentModuleFilter = contentModuleFilter) { moduleElement, moduleName, loadingRule, _ ->
       processProductModule(
         moduleElement = moduleElement,
         layout = layout,
         result = gameToolsModuleItems,
         moduleToSetChainOverride = moduleToSetChainMapping,
-        moduleToIncludeDependenciesOverride = moduleToIncludeDependenciesMapping,
         descriptorCache = descriptorCache,
         xIncludeResolver = /*gameToolsXIncludeResolver*/ xIncludeResolver,
         moduleName = moduleName,
         isEmbedded = loadingRule != null && loadingRule == ModuleLoadingRuleValue.EMBEDDED.xmlValue,
-        context = context,
+        outputProvider = outputProvider,
+        embedContentModuleDescriptors = embedContentModuleDescriptors,
+        markModuleForScrambling = markModuleForScrambling,
       )
     }
 

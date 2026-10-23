@@ -21,7 +21,6 @@ import java.nio.file.StandardCopyOption
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
 import com.intellij.platform.ijent.community.buildConstants.IJENT_BOOT_CLASSPATH_MODULE
-import org.jetbrains.intellij.build.CommunityRepositoryModules.COMMUNITY_REPOSITORY_PLUGINS
 import org.jetbrains.intellij.build.impl.PatchOverwriteMode
 import org.jetbrains.intellij.build.impl.PlatformJarNames
 import org.jetbrains.intellij.build.impl.PlatformJarNames.PLATFORM_CORE_NIO_FS
@@ -52,7 +51,7 @@ class ApaProperties(private val home: Path) : ProductProperties() {
 
     private val EXCLUDED_PLUGINS = listOf(
       "intellij.dev",
-      "intellij.grid.core.plugin",
+      "intellij.grid.plugin",
       "intellij.jcef.plugin",
       "intellij.platform.bookmarks.plugin",
       "intellij.platform.execution.serviceView.plugin",
@@ -96,7 +95,7 @@ class ApaProperties(private val home: Path) : ProductProperties() {
     // Unlike Android Studio and standard IntelliJ properties, ApaProperties does not call
     // configurePropertiesForAllEditionsOfIntelliJIdea. Therefore, we must manually configure
     // essential platform modules (such as intellij.java.rt) and our custom branding here.
-    productLayout.addPlatformSpec { layout, _ ->
+    productLayout.addPlatformSpec { layout ->
       layout.withModule("com.google.apa.branding", "resources.jar")
       layout.withModule("intellij.java.rt", "idea_rt.jar")
       layout.withModule(IJENT_BOOT_CLASSPATH_MODULE, PLATFORM_CORE_NIO_FS)
@@ -116,24 +115,24 @@ class ApaProperties(private val home: Path) : ProductProperties() {
       layout.withModule("intellij.platform.jewel.markdown.intUiStandaloneStyling", PlatformJarNames.TEST_FRAMEWORK_JAR)
 
       // Required by Studiobot coroutines & ListenableFuture interop:
-      layout.withProjectLibrary("kotlinx-coroutines-guava")
+      layout.withModuleLibrary("kotlinx-coroutines-guava", "intellij.libraries.kotlinx.coroutines.guava", "")
       // Required for ACP/MCP JSON content negotiation:
-      layout.withProjectLibrary("ktor-server-content-negotiation")
+      layout.withModuleLibrary("ktor-server-content-negotiation", "intellij.libraries.ktor.server.content.negotiation", "")
       // Required for Studiobot LLM token streaming via Server-Sent Events (SSE):
-      layout.withProjectLibrary("ktor-server-sse-jvm")
+      layout.withModuleLibrary("ktor-server-sse-jvm", "intellij.libraries.ktor.server.sse", "")
     }
 
     // Include Java plugin layout configuration:
-    productLayout.pluginLayouts = productLayout.pluginLayouts.add(JavaPluginLayout.javaPlugin())
+    productLayout.pluginLayouts = lazyOf(productLayout.pluginLayouts.value.add(JavaPluginLayout.javaPlugin()))
 
     // Fill in the remaining plugin layouts (including "performanceTesting" plugins)
     // so we can correctly patch all plugin layouts below.
-    productLayout.pluginLayouts = getPluginLayoutsByJpsModuleNames(productLayout.bundledPluginModules, productLayout).toPersistentList()
+    productLayout.pluginLayouts = lazyOf(getPluginLayoutsByJpsModuleNames(productLayout.bundledPluginModules, productLayout).toPersistentList())
 
     // Patch plugin.xml files to ensure plugins are non-updatable. We want platform
     // plugins to always come from our own IntelliJ fork (which may have patches, for example).
     // Note: this logic is validated by an assertion in check_plugin.py in our Bazel build.
-    for (pluginLayout in productLayout.pluginLayouts) {
+    for (pluginLayout in productLayout.pluginLayouts.value) {
       val delegatePatcher = pluginLayout.pluginXmlPatcher
       pluginLayout.pluginXmlPatcher = { pluginXml, ctx ->
         delegatePatcher(pluginXml, ctx).replace("allow-bundled-update=\"true\"", "allow-bundled-update=\"false\"")
@@ -141,7 +140,7 @@ class ApaProperties(private val home: Path) : ProductProperties() {
     }
   }
 
-  override suspend fun copyAdditionalFiles(targetDir: Path, context: BuildContext) {
+  override fun copyAdditionalFiles(targetDir: Path, context: BuildContext) {
     super.copyAdditionalFiles(targetDir, context)
     Files.copy(home.resolve("LICENSE.txt"), targetDir.resolve("LICENSE.txt"), StandardCopyOption.REPLACE_EXISTING)
     Files.copy(home.resolve("NOTICE.txt"), targetDir.resolve("NOTICE.txt"), StandardCopyOption.REPLACE_EXISTING)
@@ -158,6 +157,8 @@ class ApaProperties(private val home: Path) : ProductProperties() {
 
     include(CommunityProductFragments.javaIdeBaseFragment())
     moduleSet(CommunityModuleSets.ideCommon())
+    // Since IJ 2026.3, ideCommon() no longer nests the Compose runtime; products bundling the Compose plugin add it.
+    moduleSet(CommunityModuleSets.composeRuntime())
     // Required by Git4Idea and test runner plugins for coverage integration:
     module("intellij.platform.coverage")
     module("intellij.platform.coverage.agent")
@@ -169,7 +170,7 @@ class ApaProperties(private val home: Path) : ProductProperties() {
         buildArtifactWithoutRuntime = true
       }
 
-      override suspend fun copyAdditionalFiles(targetDir: Path, arch: JvmArchitecture, context: BuildContext) {
+      override fun copyAdditionalFiles(targetDir: Path, arch: JvmArchitecture, context: BuildContext) {
         // profiler.sh is added to resources/linux/scripts for Android Studio GameTools and unconditionally
         // copied by LinuxDistributionBuilder; delete it here since APA does not use GameTools.
         Files.deleteIfExists(targetDir.resolve("bin/profiler.sh"))
