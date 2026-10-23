@@ -10,6 +10,7 @@ import com.intellij.util.containers.TreeNodeProcessingResult
 import com.intellij.util.indexing.IndexingBundle
 import com.intellij.util.indexing.roots.kind.ProjectFileOrDirOrigin
 import com.intellij.util.indexing.roots.origin.ProjectFileOrDirOriginImpl
+import com.intellij.util.indexing.unwrapCacheAvoiding
 import com.intellij.workspaceModel.core.fileIndex.impl.WorkspaceFileIndexEx
 import org.jetbrains.annotations.ApiStatus
 
@@ -32,14 +33,14 @@ class ProjectIndexableFilesIteratorImpl(private val fileOrDir: VirtualFile) : Pr
     fileIterator: ContentIterator,
     fileFilter: VirtualFileFilter,
   ): Boolean {
-    val processor = toContentIteratorEx(fileIterator)
+    val processor = toContentIteratorEx(fileIterator).unwrapCacheAvoiding()
     return WorkspaceFileIndexEx.getInstance(project).processIndexableContentUnderDirectory(fileOrDir, processor, fileFilter) {
       !project.isDisposed
     }
   }
 
   override fun getRootUrls(project: Project): Set<String> {
-    throw UnsupportedOperationException()
+    return setOf(fileOrDir.url)
   }
 }
 

@@ -1,15 +1,11 @@
 // Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.markdown.jcef.preview.impl
 
-import com.intellij.ide.trustedProjects.TrustedProjects.isProjectTrusted
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.progress.ProgressManager
-import com.intellij.openapi.util.SystemInfo
-import com.intellij.openapi.util.io.FileUtil
-import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.openapi.vfs.toNioPathOrNull
-import org.intellij.plugins.markdown.ui.preview.PreviewStaticServer
+import org.intellij.plugins.markdown.ui.preview.MarkdownPreviewPathResolver
+import org.intellij.plugins.markdown.ui.preview.MarkdownImageResourceProvider
 import org.intellij.plugins.markdown.ui.preview.ResourceProvider
 import org.intellij.plugins.markdown.ui.preview.html.PreviewEncodingUtil
 import org.intellij.plugins.markdown.ui.preview.html.links.IntelliJImageGeneratingProvider
@@ -22,16 +18,16 @@ import org.jsoup.nodes.TextNode
 import org.jsoup.parser.Parser
 import org.jsoup.parser.Tag
 import org.jsoup.parser.TagSet
-import java.net.URLDecoder
-import java.nio.charset.Charset
 
 @ApiStatus.Internal
 class IncrementalDOMBuilder(
   html: String,
-  private val baseFile: VirtualFile?,
-  private val projectRoot: VirtualFile?,
-  private val fileSchemeResourceProcessor: ResourceProvider? = null,
+  private val sourceFile: VirtualFile?,
+  private val imageResourceProvider: MarkdownImageResourceProvider? = null,
+  private val previewResourceProvider: ResourceProvider? = null,
 ) {
+  /** The sources of the served images. Read it after the build. */
+  val imageSources: MutableSet<String> = LinkedHashSet()
 
   private val document = Jsoup.parse(html, createSelfClosingSpanAwareParser())
   private val builder = StringBuilder()
@@ -107,59 +103,56 @@ class IncrementalDOMBuilder(
     }
   }
 
+  /**
+   * Points the `src` of an image node at [imageResourceProvider], which resolves it later.
+   *
+   * This needs no path of the document, and a Remote Development frontend has none.
+   *
+   * [previewResourceProvider] holds the images that the preview adds itself, such as an alert
+   * icon and a run icon. Their `src` names a resource of the preview, not a file beside the
+   * document, so it stays as it is.
+   */
   private fun preprocessNode(node: Node): Node {
-    if (baseFile != null && projectRoot != null && shouldPreprocessImageNode(node)) {
-      try {
-        actuallyProcessImageNode(node, baseFile, projectRoot)
-      }
-      catch (exception: Throwable) {
-        val originalUrlValue = node.attr("src")
-        thisLogger().error("Failed to process image node\nbasePath: $baseFile\noriginalUrl: $originalUrlValue", exception)
-      }
+    stripReferrerPolicy(node)
+    val provider = imageResourceProvider
+    if (sourceFile == null || provider == null || !shouldPreprocessImageNode(node)) {
+      return node
+    }
+    val source = node.attr("src")
+    if (source.isEmpty() || MarkdownPreviewPathResolver.isBrowserOwned(source)) {
+      return node
+    }
+    if (previewResourceProvider?.canProvide(source) == true) {
+      return node
+    }
+    try {
+      node.attr("data-original-src", source)
+      imageSources += source
+      node.attr("src", provider.imageUrl(source))
+    }
+    catch (exception: Throwable) {
+      thisLogger().warn("Failed to rewrite the source of an image node: $source", exception)
     }
     return node
   }
 
-  private fun actuallyProcessImageNode(node: Node, baseFile: VirtualFile, projectRoot: VirtualFile) {
-    val fileSchemeResourceProcessor = fileSchemeResourceProcessor ?: return
-    val projectPath = projectRoot.toNioPathOrNull() ?: return
-
-    var path = node.attr("src")
-    val hasFileHost = path.startsWith("file:/")
-    if (hasFileHost && !node.hasAttr("from-extension")) {
-      return
-    }
-    if (!hasFileHost) {
-      path = URLDecoder.decode(path, Charset.defaultCharset())
-      if (SystemInfo.isWindows) {
-        path = StringUtil.replace(path, "\\", "/")
-      }
-
-      if (!path.startsWith('/')) {
-        path = findRelativePath(baseFile, path) ?: return
-      }
-      else {
-        if (SystemInfo.isWindows) {
-          path = path.trimStart('/')
-        }
-        path = findRelativePath(projectRoot, path) ?: path
-      }
-      path = FileUtil.toSystemIndependentName(path)
-    }
-
-    if (!hasFileHost && !isProjectTrusted(projectPath) && !path.startsWith(projectPath.toString())) return
-
-    val processed = PreviewStaticServer.getStaticUrl(fileSchemeResourceProcessor, path)
-    node.attr("data-original-src", path)
-    node.attr("src", processed)
-  }
-
-  private fun findRelativePath(baseFile: VirtualFile, relPath: String): String? {
-    return baseFile.findFileByRelativePath(relPath)?.toNioPathOrNull()?.normalize()?.toString()
-  }
-
   private fun shouldPreprocessImageNode(node: Node): Boolean {
     return node.nodeName() == "img" && !node.hasAttr(IntelliJImageGeneratingProvider.ignorePathProcessingAttributeName)
+  }
+
+  /**
+   * An element-level `referrerpolicy` overrides the page's `no-referrer`, which a document can use to send
+   * the page URL - and with it this preview's resource paths - to any host (IJPL-247809).
+   */
+  private fun stripReferrerPolicy(node: Node) {
+    if (node.hasAttr(REFERRER_POLICY_ATTRIBUTE)) {
+      node.removeAttr(REFERRER_POLICY_ATTRIBUTE)
+    }
+  }
+
+  /** A document's `<meta name="referrer">` would replace the page's policy, and renders nothing anyway. */
+  private fun shouldSkipNode(node: Node): Boolean {
+    return node.nodeName() == "meta" && node.attr("name").equals("referrer", ignoreCase = true)
   }
 
   private fun traverse(node: Node) {
@@ -169,6 +162,9 @@ class IncrementalDOMBuilder(
       is DataNode -> textElement { node.wholeData }
       is Comment -> Unit
       else -> {
+        if (shouldSkipNode(node)) {
+          return
+        }
         val preprocessed = preprocessNode(node)
         openTag(preprocessed)
         for (child in preprocessed.childNodes()) {
@@ -179,6 +175,8 @@ class IncrementalDOMBuilder(
     }
   }
 }
+
+private const val REFERRER_POLICY_ATTRIBUTE = "referrerpolicy"
 
 // https://jsoup.org/news/release-1.20.1
 private fun createSelfClosingSpanAwareParser(): Parser {

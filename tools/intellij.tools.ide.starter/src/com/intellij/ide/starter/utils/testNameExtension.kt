@@ -14,18 +14,15 @@ fun String.hyphenateTestName(): String {
   fun hyphenateString(input: String) = input
     .replace(Regex("( )+"), "-")
     .replace(" ", "-").trim()
-    .replaceFirstChar { it.lowercase(Locale.getDefault()) }.toCharArray()
-    .map {
-      if (it.isUpperCase()) "-${it.lowercaseChar()}"
-      else it
-    }
-    .joinToString(separator = "")
+    .replace(Regex("([A-Z]+)([A-Z][a-z])"), "$1-$2")
+    .replace(Regex("([a-z0-9])([A-Z])"), "$1-$2")
+    .lowercase(Locale.getDefault())
 
   val hyphenatedPath = try {
     val originalPath = Path(this)
 
     var convertedPath = Path("")
-    (0 until originalPath.nameCount).map { pathNameIndex ->
+    (0 until originalPath.nameCount).forEach { pathNameIndex ->
       convertedPath = convertedPath.resolve(hyphenateString(originalPath.getName(pathNameIndex).name))
     }
 
@@ -36,4 +33,26 @@ fun String.hyphenateTestName(): String {
   }
 
   return hyphenatedPath.replaceSpecialCharactersWithHyphens()
+}
+
+/** A name as a reporting directory spells it: hyphenated, and its slashes flattened, one name getting one directory. */
+internal fun String.flattened(): String = hyphenateTestName().replace('/', '-')
+
+/** `.` and `..` spelled so that a directory name cannot point at another directory. */
+internal fun String.escapeDotSegment(): String = if (this == "." || this == "..") replace(".", "%2E") else this
+
+/**
+ * Whether this name spells the whole of [name] somewhere in it, at bounds of its own, rather than merely running through it:
+ * `maven-smoke-tests`, `split-maven-smoke-tests`, `maven-smoke-tests-x` and `maven-smoke-tests.x` all spell the whole of
+ * `maven-smoke-tests`, `maven-smoke-testsuite` does not.
+ */
+internal fun String.namesWholeOf(name: String): Boolean {
+  var index = indexOf(name)
+  while (index >= 0) {
+    val isBoundedBefore = getOrNull(index - 1)?.isLetterOrDigit() != true
+    val isBoundedAfter = getOrNull(index + name.length)?.isLetterOrDigit() != true
+    if (isBoundedBefore && isBoundedAfter) return true
+    index = indexOf(name, index + 1)
+  }
+  return false
 }

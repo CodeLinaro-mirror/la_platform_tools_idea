@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.jsp` start
+content_module_jar(module = ":jsp")
+### auto-generated section `dev intellij.jsp` end
 
 ### auto-generated section `build intellij.jsp` start
-
 jvm_library(
     name = "jsp",
     srcs = glob(
@@ -61,6 +65,7 @@ jvm_library(
 exports_files(
     [
         "intellij.jsp.iml",
+        "resources/intellij.jsp.xml",
     ],
     visibility = ["//visibility:public"],
 )

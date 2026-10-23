@@ -1,6 +1,7 @@
 // Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.xdebugger.impl.actions.handlers;
 
+import com.intellij.lang.LanguageUtil;
 import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
@@ -16,6 +17,7 @@ import com.intellij.platform.debugger.impl.shared.SplitDebuggerAction;
 import com.intellij.platform.debugger.impl.shared.proxy.XLineBreakpointProxy;
 import com.intellij.ui.ExperimentalUI;
 import com.intellij.util.ModalityUiUtil;
+import com.intellij.xdebugger.XExpression;
 import com.intellij.xdebugger.XSourcePosition;
 import com.intellij.xdebugger.breakpoints.SuspendPolicy;
 import com.intellij.xdebugger.impl.XSourcePositionImpl;
@@ -31,8 +33,7 @@ import java.awt.Point;
 /**
  * @author Konstantin Bulenkov
  */
-@ApiStatus.Internal
-public class AddLineBreakpointAction extends DumbAwareAction implements SplitDebuggerAction {
+class AddLineBreakpointAction extends DumbAwareAction implements SplitDebuggerAction {
   @Override
   public void actionPerformed(@NotNull AnActionEvent e) {
     Project project = e.getData(CommonDataKeys.PROJECT);
@@ -42,9 +43,12 @@ public class AddLineBreakpointAction extends DumbAwareAction implements SplitDeb
     XSourcePosition position = getLineBreakpointPosition(e);
     assert position != null;
     String selection = editor.getSelectionModel().getSelectedText();
-    XBreakpointUIUtil.toggleLineBreakpointProxy(project, position, false, editor, false, false, true)
+    XExpression selectedExpression = selection == null
+                                     ? null
+                                     : XExpressionImpl.fromTextAndLanguage(selection, LanguageUtil.getFileLanguage(position.getFile()));
+    XBreakpointUIUtil.toggleLineBreakpointAsync(project, position, false, editor, false, false, true)
       .thenAccept(bp -> {
-        if (bp != null && editBreakpointSettings(bp, selection)) {
+        if (bp != null && editBreakpointSettings(bp, selectedExpression)) {
           ModalityUiUtil.invokeLaterIfNeeded(ModalityState.defaultModalityState(), () -> {
             EditorGutterComponentEx gutter = (EditorGutterComponentEx)editor.getGutter();
             int x = -gutter.getWidth() + gutter.getLineNumberAreaOffset() + gutter.getLineNumberAreaWidth() / 2;
@@ -71,8 +75,8 @@ public class AddLineBreakpointAction extends DumbAwareAction implements SplitDeb
     VirtualFile file = e.getData(CommonDataKeys.VIRTUAL_FILE);
     if (project != null && editor != null && file != null) {
       EditorGutter gutter = editor.getGutter();
-      if (gutter instanceof EditorGutterComponentEx) {
-        Object lineNumber = ((EditorGutterComponentEx)gutter).getClientProperty("active.line.number");
+      if (gutter instanceof EditorGutterComponentEx ex) {
+        Object lineNumber = ex.getClientProperty("active.line.number");
         if (!(lineNumber instanceof Integer)) {
           lineNumber = e.getData(DebuggerUIUtil.ACTIVE_LINE_NUMBER);
         }
@@ -90,26 +94,26 @@ public class AddLineBreakpointAction extends DumbAwareAction implements SplitDeb
    * @return true, if a breakpoint editor UI should be shown
    */
   @ApiStatus.OverrideOnly
-  protected boolean editBreakpointSettings(XLineBreakpointProxy bp, @Nullable String editorSelection) {
+  protected boolean editBreakpointSettings(XLineBreakpointProxy bp, @Nullable XExpression editorSelectedExpression) {
     return false;
   }
 
   public static class WithCondition extends AddLineBreakpointAction implements SplitDebuggerAction {
     @Override
-    protected boolean editBreakpointSettings(XLineBreakpointProxy bp, @Nullable String editorSelection) {
+    protected boolean editBreakpointSettings(XLineBreakpointProxy bp, @Nullable XExpression editorSelectedExpression) {
       bp.setConditionEnabled(true);
-      bp.setConditionExpression(XExpressionImpl.fromText(editorSelection));
+      bp.setConditionExpression(editorSelectedExpression);
       return true;
     }
   }
 
   public static class WithLogging extends AddLineBreakpointAction implements SplitDebuggerAction {
     @Override
-    protected boolean editBreakpointSettings(XLineBreakpointProxy bp, @Nullable String editorSelection) {
+    protected boolean editBreakpointSettings(XLineBreakpointProxy bp, @Nullable XExpression editorSelectedExpression) {
       bp.setSuspendPolicy(SuspendPolicy.NONE);
-      if (editorSelection != null) {
+      if (editorSelectedExpression != null) {
         bp.setLogExpressionEnabled(true);
-        bp.setLogExpressionObject(XExpressionImpl.fromText(editorSelection));
+        bp.setLogExpressionObject(editorSelectedExpression);
       }
       else {
         bp.setLogMessage(true);

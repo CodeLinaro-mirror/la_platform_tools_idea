@@ -9,7 +9,7 @@ class MarkdownCodeFenceErrorHighlightingTest : BasePlatformTestCase() {
   private var oldShowErrorsSetting = false
 
   private val settings
-    get() = MarkdownSettings.getInstance(project)
+    get() = MarkdownSettings.getInstance()
 
   override fun setUp() {
     super.setUp()
@@ -28,6 +28,30 @@ class MarkdownCodeFenceErrorHighlightingTest : BasePlatformTestCase() {
   fun testSimpleCodeFenceNoErrors() {
     settings.showProblemsInCodeBlocks = true
     myFixture.testHighlighting(true, false, false, getTestName(true) + ".md")
+  }
+
+  fun testIndentedCodeFenceError() {
+    settings.showProblemsInCodeBlocks = true
+    myFixture.testHighlighting(true, false, false, getTestName(true) + ".md")
+  }
+
+  fun testIndentedCodeFenceErrorsHidden() {
+    settings.showProblemsInCodeBlocks = false
+    myFixture.testHighlighting(true, false, false, getTestName(true) + ".md")
+  }
+
+  fun testIndentedCodeFenceHideProblemsIntention() {
+    settings.showProblemsInCodeBlocks = true
+    myFixture.configureByText(
+      "test.md",
+      """
+            ```json
+            |<caret>
+            ```
+      """.trimIndent(),
+    )
+
+    assertNotNull(myFixture.getAvailableIntention("Hide problems in code fences"))
   }
 
   override fun tearDown() {

@@ -1,7 +1,6 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
 ### auto-generated section `build intellij.platform.testFramework.eelJava` start
-
 jvm_library(
     name = "eelJava",
     srcs = glob(
@@ -18,6 +17,7 @@ jvm_library(
         # do not sort,
         "@lib//:kotlin-stdlib",
         "//platform/eel-provider",
+        "//platform/util/annotations",
         "//platform/core-api:core",
         "//platform/lang-core",
         "//platform/lang-impl",
@@ -37,6 +37,7 @@ jvm_library(
         # do not sort,
         ":eelJava",
         "//platform/eel-provider:eel-provider_test_lib",
+        "//platform/util/annotations:annotations_test_lib",
         "//platform/core-api:core_test_lib",
         "//platform/lang-core:lang-core_test_lib",
         "//platform/lang-impl:lang-impl_test_lib",

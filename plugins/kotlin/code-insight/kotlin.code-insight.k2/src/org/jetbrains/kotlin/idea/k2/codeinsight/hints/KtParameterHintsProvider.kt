@@ -32,17 +32,19 @@ import com.intellij.psi.PsiComment
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiWhiteSpace
 import com.intellij.psi.createSmartPointer
+import com.intellij.psi.impl.light.LightCompactConstructorParameter
+import com.intellij.psi.impl.light.LightRecordCanonicalConstructor.LightRecordConstructorParameter
 import com.intellij.psi.util.endOffset
-import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.analyze
-import org.jetbrains.kotlin.analysis.api.components.containingSymbol
-import org.jetbrains.kotlin.analysis.api.components.resolveToCall
+import org.jetbrains.kotlin.analysis.api.expressions.expressionType
 import org.jetbrains.kotlin.analysis.api.resolution.KaFunctionCall
 import org.jetbrains.kotlin.analysis.api.resolution.KaImplicitReceiverValue
 import org.jetbrains.kotlin.analysis.api.resolution.KaReceiverValue
-import org.jetbrains.kotlin.analysis.api.resolution.singleFunctionCallOrNull
+import org.jetbrains.kotlin.analysis.api.resolution.function
+import org.jetbrains.kotlin.analysis.api.resolution.single
 import org.jetbrains.kotlin.analysis.api.resolution.symbol
+import org.jetbrains.kotlin.analysis.api.resolution.tryResolveCall
+import org.jetbrains.kotlin.analysis.api.session.analyze
 import org.jetbrains.kotlin.analysis.api.signatures.KaVariableSignature
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassKind
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassSymbol
@@ -54,7 +56,7 @@ import org.jetbrains.kotlin.analysis.api.symbols.KaReceiverParameterSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbolOrigin
 import org.jetbrains.kotlin.analysis.api.symbols.KaValueParameterSymbol
-import org.jetbrains.kotlin.analysis.api.symbols.contextParameters
+import org.jetbrains.kotlin.analysis.api.symbols.containingSymbol
 import org.jetbrains.kotlin.analysis.api.types.KaFunctionType
 import org.jetbrains.kotlin.idea.KotlinLanguage
 import org.jetbrains.kotlin.idea.codeInsight.hints.SHOW_COMPILED_PARAMETERS
@@ -101,7 +103,7 @@ class KtParameterHintsProvider : AbstractKtInlayHintsProvider() {
         callElement: KtCallElement,
         sink: InlayTreeSink
     ) {
-        val functionCall: KaFunctionCall<*> = callElement.resolveToCall()?.singleFunctionCallOrNull() ?: return
+        val functionCall: KaFunctionCall<*> = callElement.tryResolveCall()?.single?.function ?: return
         val functionSymbol: KaFunctionSymbol = functionCall.symbol
         val valueParameters: List<KaValueParameterSymbol> = functionSymbol.valueParameters
 
@@ -125,7 +127,7 @@ class KtParameterHintsProvider : AbstractKtInlayHintsProvider() {
         sink.whenOptionEnabled(SHOW_EXCLUDED_PARAMETERS.name) {
             if (excludeListed) {
                 val valueParametersWithNames =
-                    session.calculateValueParametersWithNames(functionSymbol, callElement, valueParameters) ?: return@whenOptionEnabled
+                    calculateValueParametersWithNames(functionSymbol, callElement, valueParameters) ?: return@whenOptionEnabled
 
                 collectFromParameters(callElement, functionCall, valueParametersWithNames, contextMenuPayloads, sink)
             }
@@ -133,7 +135,7 @@ class KtParameterHintsProvider : AbstractKtInlayHintsProvider() {
 
         if (excludeListed) return
 
-        val valueParametersWithNames = session.calculateValueParametersWithNames(functionSymbol, callElement, valueParameters) ?: return
+        val valueParametersWithNames = calculateValueParametersWithNames(functionSymbol, callElement, valueParameters) ?: return
 
         val compiledSource = valueParametersWithNames.any { pair ->
             val psi = pair.first.takeIf { it.origin == KaSymbolOrigin.JAVA_LIBRARY }?.psi ?: return@any false
@@ -150,8 +152,8 @@ class KtParameterHintsProvider : AbstractKtInlayHintsProvider() {
         }
     }
 
-    @OptIn(KaExperimentalApi::class)
-    private fun KaSession.calculateValueParametersWithNames(
+    context(session: KaSession)
+    private fun calculateValueParametersWithNames(
         functionSymbol: KaFunctionSymbol,
         callElement: KtCallElement,
         valueParameters: List<KaValueParameterSymbol>
@@ -180,7 +182,6 @@ class KtParameterHintsProvider : AbstractKtInlayHintsProvider() {
         return valueParametersWithNames
     }
 
-    @OptIn(KaExperimentalApi::class)
     context(session: KaSession)
     private fun collectFromParameters(
         callElement: KtCallElement,
@@ -264,7 +265,6 @@ class KtParameterHintsProvider : AbstractKtInlayHintsProvider() {
         }
     }
 
-    @OptIn(KaExperimentalApi::class)
     context(_: KaSession)
     private fun collectContextParameters(
         callElement: KtCallElement,
@@ -323,7 +323,6 @@ class KtParameterHintsProvider : AbstractKtInlayHintsProvider() {
         if (valueParametersWithNames.isNotEmpty()) text(", ")
     }
 
-    @OptIn(KaExperimentalApi::class)
     context(_: KaSession)
     private fun CollapsiblePresentationTreeBuilder.addContextParameter(
         originalCallElement: KtCallElement,
@@ -413,12 +412,21 @@ class KtParameterHintsProvider : AbstractKtInlayHintsProvider() {
     private fun KaSymbol.asNavigatablePsiLoad(): InlayActionData? =
         psi?.asNavigatablePsiLoad()
 
-    private fun PsiElement.asNavigatablePsiLoad(): InlayActionData =
-        InlayActionData(
-            PsiPointerInlayActionPayload(createSmartPointer()),
+    private fun PsiElement.asNavigatablePsiLoad(): InlayActionData {
+        val target = pointerTarget()
+        return InlayActionData(
+            PsiPointerInlayActionPayload(target.createSmartPointer()),
             PsiPointerInlayActionNavigationHandler.HANDLER_ID
         )
+    }
 
+    private fun PsiElement.pointerTarget(): PsiElement =
+        // LSP-1717: PsiSerializablePointer does not support light PSI elements, so use their physical record components.
+        when (this) {
+            is LightRecordConstructorParameter -> recordComponent ?: this
+            is LightCompactConstructorParameter -> recordComponent
+            else -> this
+        }
 }
 
 private val CONTEXT_HINT_FORMAT = HintFormat.default

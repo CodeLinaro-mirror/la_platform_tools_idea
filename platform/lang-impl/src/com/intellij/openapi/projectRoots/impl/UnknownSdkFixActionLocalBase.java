@@ -2,14 +2,13 @@
 package com.intellij.openapi.projectRoots.impl;
 
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.diagnostic.ControlFlowException;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectBundle;
 import com.intellij.openapi.projectRoots.Sdk;
-import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VfsUtil;
+import com.intellij.openapi.vfs.VirtualFileManager;
 import com.intellij.util.concurrency.ThreadingAssertions;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
@@ -18,6 +17,8 @@ import org.jetbrains.annotations.Nullable;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.concurrent.atomic.AtomicReference;
+
+import static com.intellij.diagnostic.ControlFlowExceptionsKt.rethrowControlFlowException;
 
 @ApiStatus.Internal
 public abstract class UnknownSdkFixActionLocalBase extends UnknownSdkFixActionBase {
@@ -44,7 +45,7 @@ public abstract class UnknownSdkFixActionLocalBase extends UnknownSdkFixActionBa
   private void refreshVfs() {
     //it may yield empty SDK roots or errors, e.g. EA-239592, IDEA-252376
     Path path = Paths.get(getSuggestedSdkHome());
-    VfsUtil.markDirtyAndRefresh(false, true, true, LocalFileSystem.getInstance().findFileByNioFile(path));
+    VfsUtil.markDirtyAndRefresh(false, true, true, VirtualFileManager.getInstance().findFileByNioPath(path));
   }
 
   @Override
@@ -58,7 +59,7 @@ public abstract class UnknownSdkFixActionLocalBase extends UnknownSdkFixActionBa
           ApplicationManager.getApplication().invokeLater(() -> runWithEvents());
         }
         catch (Throwable t) {
-          if (t instanceof ControlFlowException) throw t;
+          rethrowControlFlowException(t);
 
           //must be logged in the applyLocalFix
         }

@@ -7,7 +7,7 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
-import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.vfs.StandardFileSystems
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
@@ -18,6 +18,8 @@ import com.intellij.testFramework.runInEdtAndWait
 import com.intellij.util.ThrowableRunnable
 import com.jetbrains.python.PythonFileType
 import com.jetbrains.python.PythonTestUtil
+import com.jetbrains.python.allure.Layers
+import com.jetbrains.python.allure.Subsystems
 import com.jetbrains.python.fixture.PythonCommonCodeInsightTestFixture
 import com.jetbrains.python.psi.LanguageLevel
 import junit.framework.TestCase.assertNotNull
@@ -35,7 +37,7 @@ class PythonPlatformCodeInsightTestFixture(languageLevel: LanguageLevel) : Pytho
   override val file: PsiFile?
     get() = myDelegateFixture.file
   override val testDataRoot: VirtualFile?
-    get() = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(File(PythonTestUtil.getTestDataPath()))
+    get() = StandardFileSystems.local().refreshAndFindFileByPath(File(PythonTestUtil.getTestDataPath()).absolutePath)
   override val psiManager: PsiManager
     get() = myDelegateFixture.psiManager
   override val tempDirRoot: VirtualFile
@@ -141,6 +143,8 @@ class PythonPlatformCodeInsightTestFixture(languageLevel: LanguageLevel) : Pytho
 }
 
 @Suppress("JUnitTestCaseWithNoTests")
+@Subsystems.CodeInsight
+@Layers.Functional
 class PyDelegateTestCase(private val languageLevel: LanguageLevel = LanguageLevel.getLatest()) : PyTestCase() {
 
   override fun getProjectDescriptor(): LightProjectDescriptor? {

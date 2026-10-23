@@ -1,6 +1,16 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//build:compiler-options.bzl", "create_kotlinc_options")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.platform.ijent.community.impl` start
+content_module_jar(module = ":impl")
+### auto-generated section `dev intellij.platform.ijent.community.impl` end
 
 ### auto-generated section `build intellij.platform.ijent.community.impl` start
+create_kotlinc_options(
+    name = "custom_impl",
+    opt_in = ["com.intellij.platform.eel.channels.EelDelicateApi"],
+)
 
 jvm_library(
     name = "impl",
@@ -12,6 +22,7 @@ jvm_library(
         ],
         allow_empty = True,
     ),
+    kotlinc_opts = ":custom_impl",
     module_name = "intellij.platform.ijent.community.impl",
     resource_strip_prefix = "resources",
     resources = glob(
@@ -38,6 +49,7 @@ jvm_library(
         "//platform/core-ui",
         "//platform/diagnostic",
         "//platform/editor-ui-api:editor-ui",
+        "//platform/statistics",
     ],
 )
 
@@ -48,17 +60,20 @@ jvm_library(
         [],
         allow_empty = True,
     ),
+    kotlinc_opts = ":custom_impl",
     module_name = "intellij.platform.ijent.community.impl",
     visibility = ["//visibility:public"],
     runtime_deps = [
         # do not sort,
         ":impl",
-        "//libraries/junit5",
-        "//libraries/junit5:junit5_test_lib",
-        "//libraries/junit5-params",
-        "//libraries/junit5-params:junit5-params_test_lib",
-        "@lib//:kotlin-test",
-        "@lib//:kotlin-test-assertions-core-jvm",
+        "//libraries/junit6",
+        "//libraries/junit6:junit6_test_lib",
+        "//libraries/junit6-params",
+        "//libraries/junit6-params:junit6-params_test_lib",
+        "//libraries/kotlin/test:libraries-kotlinTest",
+        "//libraries/kotlin/test:libraries-kotlinTest_test_lib",
+        "//libraries/kotlin/test-assertions-core-jvm:libraries-kotlinTestAssertionsCoreJvm",
+        "//libraries/kotlin/test-assertions-core-jvm:libraries-kotlinTestAssertionsCoreJvm_test_lib",
         "//libraries/kotlinx/coroutines/core:core_test_lib",
         "//libraries/kotlinx/coroutines/test",
         "//libraries/kotlinx/coroutines/test:test_test_lib",
@@ -78,6 +93,7 @@ jvm_library(
         "//platform/core-ui:core-ui_test_lib",
         "//platform/diagnostic:diagnostic_test_lib",
         "//platform/editor-ui-api:editor-ui_test_lib",
+        "//platform/statistics:statistics_test_lib",
     ],
 )
 ### auto-generated section `build intellij.platform.ijent.community.impl` end
@@ -86,6 +102,7 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.ijent.community.impl.iml",
+        "resources/intellij.platform.ijent.community.impl.xml",
     ],
     visibility = ["//visibility:public"],
 )

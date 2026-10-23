@@ -28,7 +28,6 @@ import com.intellij.psi.PsiFile;
 import com.intellij.psi.codeStyle.CodeStyleManager;
 import com.intellij.util.DocumentUtil;
 import com.intellij.util.SmartList;
-import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
@@ -45,6 +44,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 public class TemplateImpl extends TemplateBase implements SchemeElement {
   private @NlsSafe String myKey;
@@ -453,7 +453,7 @@ public class TemplateImpl extends TemplateBase implements SchemeElement {
     RangeMarker wholeTemplate = document.createRangeMarker(start, start + text.length());
     wholeTemplate.setGreedyToLeft(true);
     wholeTemplate.setGreedyToRight(true);
-    Map<String, Variable> variableMap = StreamEx.of(getVariables()).toMap(Variable::getName, Function.identity());
+    Map<String, Variable> variableMap = getVariables().stream().collect(Collectors.toMap(Variable::getName, Function.identity()));
     Project project = updater.getProject();
     PsiDocumentManager manager = PsiDocumentManager.getInstance(project);
     List<Segment> segments = getSegments();
@@ -492,9 +492,16 @@ public class TemplateImpl extends TemplateBase implements SchemeElement {
     }
     document.deleteString(endMarker.getStartOffset(), endMarker.getEndOffset());
     manager.commitDocument(document);
+    int endOffset = endMarker.getStartOffset();
     if (isToReformat()) {
-      adjustEndLineIndent(document, endMarker, project, updater);
+      // Indent adjustment may replace the leading whitespace; its return value preserves the logical caret position.
+      endOffset = adjustEndLineIndent(document, endOffset, project, updater);
     }
+    // Anchor at the post-adjustment offset. Registering fields below can make additional document changes,
+    // so the marker must track the final position until the template is built.
+    endMarker.dispose();
+    endMarker = document.createRangeMarker(endOffset, endOffset);
+
     // Done after formatting so that field ranges match the final document state.
     ModTemplateBuilder builder = updater.templateBuilder();
     boolean fieldsCreated = registerEditableFields(builder, markers, indicesByName, manager, updater);
@@ -773,13 +780,13 @@ public class TemplateImpl extends TemplateBase implements SchemeElement {
     }
   }
 
-  private static void adjustEndLineIndent(@NotNull Document document, @NotNull RangeMarker endMarker,
-                                           @NotNull Project project, @NotNull ModPsiUpdater updater) {
-    int offset = endMarker.getStartOffset();
+  private static int adjustEndLineIndent(@NotNull Document document, int offset,
+                                         @NotNull Project project, @NotNull ModPsiUpdater updater) {
     int lineStart = document.getLineStartOffset(document.getLineNumber(offset));
     if (document.getCharsSequence().subSequence(lineStart, offset).toString().trim().isEmpty()) {
-      CodeStyleManager.getInstance(project).adjustLineIndent(updater.getPsiFile(), offset);
+      return CodeStyleManager.getInstance(project).adjustLineIndent(updater.getPsiFile(), offset);
     }
+    return offset;
   }
 
   @Override

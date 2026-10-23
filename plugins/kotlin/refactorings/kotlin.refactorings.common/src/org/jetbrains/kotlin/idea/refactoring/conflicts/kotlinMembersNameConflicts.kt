@@ -14,15 +14,17 @@ import com.intellij.usageView.UsageInfo
 import com.intellij.usageView.UsageViewUtil
 import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.analyze
 import org.jetbrains.kotlin.analysis.api.base.KaContextReceiver
-import org.jetbrains.kotlin.analysis.api.components.combinedDeclaredMemberScope
-import org.jetbrains.kotlin.analysis.api.components.combinedMemberScope
-import org.jetbrains.kotlin.analysis.api.components.containingDeclaration
-import org.jetbrains.kotlin.analysis.api.components.declaredMemberScope
-import org.jetbrains.kotlin.analysis.api.components.packageScope
-import org.jetbrains.kotlin.analysis.api.components.semanticallyEquals
+import org.jetbrains.kotlin.analysis.api.components.compositeScope
+import org.jetbrains.kotlin.analysis.api.components.importingScopeContext
+import org.jetbrains.kotlin.analysis.api.javaInterop.asPsiClass
 import org.jetbrains.kotlin.analysis.api.scopes.KaScope
+import org.jetbrains.kotlin.analysis.api.scopes.combinedDeclaredMemberScope
+import org.jetbrains.kotlin.analysis.api.scopes.combinedMemberScope
+import org.jetbrains.kotlin.analysis.api.scopes.declaredMemberScope
+import org.jetbrains.kotlin.analysis.api.scopes.memberScope
+import org.jetbrains.kotlin.analysis.api.scopes.packageScope
+import org.jetbrains.kotlin.analysis.api.session.analyze
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassifierSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaConstructorSymbol
@@ -38,15 +40,18 @@ import org.jetbrains.kotlin.analysis.api.symbols.KaSymbolLocation
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbolVisibility
 import org.jetbrains.kotlin.analysis.api.symbols.KaTypeParameterSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaValueParameterSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.classSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.containingDeclaration
 import org.jetbrains.kotlin.analysis.api.symbols.findPackage
+import org.jetbrains.kotlin.analysis.api.symbols.namedClassSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.receiverType
 import org.jetbrains.kotlin.analysis.api.symbols.symbol
 import org.jetbrains.kotlin.analysis.api.symbols.typeParameters
 import org.jetbrains.kotlin.analysis.api.types.KaFunctionType
 import org.jetbrains.kotlin.analysis.api.types.KaType
+import org.jetbrains.kotlin.analysis.api.types.semanticallyEquals
 import org.jetbrains.kotlin.asJava.accessorNameByPropertyName
 import org.jetbrains.kotlin.asJava.elements.KtLightMethod
-import org.jetbrains.kotlin.asJava.toLightClass
 import org.jetbrains.kotlin.asJava.toLightMethods
 import org.jetbrains.kotlin.asJava.unwrapped
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
@@ -80,8 +85,8 @@ fun checkRedeclarationConflicts(declaration: KtNamedDeclaration, newName: String
         checkDeclarationNewNameConflicts(declaration, Name.identifier(newName), result) {
             filterCandidates(symbol, it)
         }
+        checkRedeclarationConflictsInInheritors(declaration, newName, result)
     }
-    checkRedeclarationConflictsInInheritors(declaration, newName, result)
 }
 
 context(_: KaSession)
@@ -140,7 +145,6 @@ fun checkDeclarationNewNameConflicts(
     result: MutableList<UsageInfo>,
     filterCandidate: (KaDeclarationSymbol) -> Boolean
 ) {
-    @OptIn(KaExperimentalApi::class)
     fun getPotentialConflictCandidates(symbol: KaDeclarationSymbol, declaration: KtNamedDeclaration, newName: Name): Sequence<KaDeclarationSymbol> {
         val containingSymbol = symbol.containingDeclaration ?: findPackage(declaration.containingKtFile.packageFqName)
 
@@ -167,7 +171,6 @@ fun checkDeclarationNewNameConflicts(
         }
 
         if (symbol is KaTypeParameterSymbol) {
-            @OptIn(KaExperimentalApi::class)
             val typeParameters = (containingSymbol as? KaDeclarationSymbol)?.typeParameters?.filter { it.name == newName }?.asSequence() ?: return emptySequence()
 
             val outerTypeParameters = generateSequence<KtClassOrObject>(declaration.getStrictParentOfType()) {
@@ -267,17 +270,16 @@ fun registerAlreadyDeclaredConflict(candidateSymbol: KaDeclarationSymbol, result
 
     val what = candidate.renderDescription()
     val where = candidate.representativeContainer()?.renderDescription() ?: return
+    @Suppress("HardCodedStringLiteral")
     val message = KotlinBundle.message("text.0.already.declared.in.1", what, where).capitalize()
     result += BasicUnresolvableCollisionUsageInfo(candidate, candidate, message)
 }
 
-@OptIn(KaExperimentalApi::class)
 context(_: KaSession)
 private fun areSameSignatures(candidateSymbol: KaFunctionSymbol, symbol: KaFunctionSymbol) : Boolean {
     return areSameSignatures(candidateSymbol.receiverType, symbol.receiverType, candidateSymbol.valueParameters.map { it.returnType }, symbol.valueParameters.map { it.returnType }, candidateSymbol.contextReceivers, symbol.contextReceivers)
 }
 
-@OptIn(KaExperimentalApi::class)
 context(_: KaSession)
 private fun areSameSignatures(candidateSymbol: KaPropertySymbol, symbol: KaFunctionSymbol) : Boolean {
     val type = candidateSymbol.returnType
@@ -331,12 +333,13 @@ fun PsiNamedElement.renderDescription(): String {
   return "$type '$name'".trim()
 }
 
+context(_: KaSession)
 private fun checkRedeclarationConflictsInInheritors(declaration: KtNamedDeclaration, newName: String, result: MutableList<UsageInfo>) {
     if (!declaration.hasModifier(KtTokens.PRIVATE_KEYWORD)) {
 
         if (declaration.name == newName || !PsiNameHelper.getInstance(declaration.project).isIdentifier(newName)) return
 
-        val initialPsiClass = declaration.containingClassOrObject?.toLightClass()
+        val initialPsiClass = declaration.containingClassOrObject?.classSymbol?.asPsiClass()
         if (initialPsiClass != null) {
             val elementFactory = JavaPsiFacade.getInstance(declaration.project).elementFactory
             val methods = declaration.toLightMethods().map {

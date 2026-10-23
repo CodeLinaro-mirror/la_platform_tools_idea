@@ -31,20 +31,23 @@ import com.intellij.psi.search.searches.MethodReferencesSearch
 import com.intellij.psi.search.searches.ReferencesSearch
 import com.intellij.util.Processor
 import com.siyeh.ig.psiutils.SerializationUtils
-import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.analyze
-import org.jetbrains.kotlin.analysis.api.components.containingDeclaration
-import org.jetbrains.kotlin.analysis.api.components.expandedSymbol
-import org.jetbrains.kotlin.analysis.api.components.importableFqName
-import org.jetbrains.kotlin.analysis.api.components.resolveToCall
-import org.jetbrains.kotlin.analysis.api.components.resolveToSymbol
-import org.jetbrains.kotlin.analysis.api.components.resolveToSymbols
-import org.jetbrains.kotlin.analysis.api.resolution.singleConstructorCallOrNull
-import org.jetbrains.kotlin.analysis.api.resolution.singleFunctionCallOrNull
-import org.jetbrains.kotlin.analysis.api.resolution.successfulFunctionCallOrNull
-import org.jetbrains.kotlin.analysis.api.resolution.successfulVariableAccessCall
+import org.jetbrains.kotlin.analysis.api.javaInterop.asPsiClass
+import org.jetbrains.kotlin.analysis.api.javaInterop.asPsiField
+import org.jetbrains.kotlin.analysis.api.javaInterop.asPsiMethods
+import org.jetbrains.kotlin.analysis.api.javaInterop.asPsiParameters
+import org.jetbrains.kotlin.analysis.api.resolution.constructor
+import org.jetbrains.kotlin.analysis.api.resolution.function
+import org.jetbrains.kotlin.analysis.api.resolution.resolveSuccessfulCall
+import org.jetbrains.kotlin.analysis.api.resolution.resolveSuccessfulSymbol
+import org.jetbrains.kotlin.analysis.api.resolution.resolveSuccessfulSymbols
+import org.jetbrains.kotlin.analysis.api.resolution.simple
+import org.jetbrains.kotlin.analysis.api.resolution.single
 import org.jetbrains.kotlin.analysis.api.resolution.symbol
+import org.jetbrains.kotlin.analysis.api.resolution.tryResolveCall
+import org.jetbrains.kotlin.analysis.api.scopes.memberScope
+import org.jetbrains.kotlin.analysis.api.session.analyze
+import org.jetbrains.kotlin.analysis.api.session.canBeAnalysed
 import org.jetbrains.kotlin.analysis.api.symbols.KaCallableSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassKind
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassSymbol
@@ -52,22 +55,28 @@ import org.jetbrains.kotlin.analysis.api.symbols.KaConstructorSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaDeclarationSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaNamedClassSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaNamedFunctionSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.KaPropertySymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbolModality
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbolVisibility
 import org.jetbrains.kotlin.analysis.api.symbols.KaTypeAliasSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.KaValueParameterSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.classSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.containingDeclaration
+import org.jetbrains.kotlin.analysis.api.symbols.fakeOverrideOriginal
+import org.jetbrains.kotlin.analysis.api.symbols.importableFqName
+import org.jetbrains.kotlin.analysis.api.symbols.intersectionOverriddenSymbols
 import org.jetbrains.kotlin.analysis.api.symbols.nameOrAnonymous
+import org.jetbrains.kotlin.analysis.api.symbols.pointers.restoreSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.receiverType
 import org.jetbrains.kotlin.analysis.api.symbols.symbol
-import org.jetbrains.kotlin.asJava.LightClassUtil
+import org.jetbrains.kotlin.analysis.api.types.expandedSymbol
 import org.jetbrains.kotlin.asJava.classes.KtLightClass
 import org.jetbrains.kotlin.asJava.elements.KtLightMethod
-import org.jetbrains.kotlin.asJava.toLightClass
-import org.jetbrains.kotlin.asJava.toLightMethods
-import org.jetbrains.kotlin.asJava.toPsiParameters
 import org.jetbrains.kotlin.builtins.StandardNames
 import org.jetbrains.kotlin.config.AnalysisFlags
 import org.jetbrains.kotlin.config.ExplicitApiMode
+import org.jetbrains.kotlin.config.LanguageFeature
 import org.jetbrains.kotlin.descriptors.annotations.AnnotationUseSiteTarget
 import org.jetbrains.kotlin.idea.base.codeInsight.KotlinMainFunctionDetector
 import org.jetbrains.kotlin.idea.base.codeInsight.isEnumValuesSoftDeprecateEnabled
@@ -87,7 +96,6 @@ import org.jetbrains.kotlin.idea.codeinsight.utils.isInheritable
 import org.jetbrains.kotlin.idea.codeinsight.utils.isReferenceToBuiltInEnumFunction
 import org.jetbrains.kotlin.idea.codeinsight.utils.isSynthesizedFunction
 import org.jetbrains.kotlin.idea.codeinsights.impl.base.isCheapEnoughToSearchUsages
-import org.jetbrains.kotlin.idea.codeinsights.impl.base.isExplicitlyIgnoredByName
 import org.jetbrains.kotlin.idea.codeinsights.impl.base.quickFix.RemoveUnusedVariableFix
 import org.jetbrains.kotlin.idea.references.mainReference
 import org.jetbrains.kotlin.idea.search.ideaExtensions.KotlinReferencesSearchParameters
@@ -95,6 +103,7 @@ import org.jetbrains.kotlin.idea.searching.inheritors.findAllInheritors
 import org.jetbrains.kotlin.idea.searching.inheritors.hasAnyInheritors
 import org.jetbrains.kotlin.idea.searching.inheritors.hasAnyOverridings
 import org.jetbrains.kotlin.idea.util.findAnnotation
+import org.jetbrains.kotlin.idea.util.resolveSuccessfulExpressionSymbol
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.JvmStandardClassIds
@@ -107,13 +116,12 @@ import org.jetbrains.kotlin.psi.KtCallableReferenceExpression
 import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtClassOrObject
 import org.jetbrains.kotlin.psi.KtConstructor
-import org.jetbrains.kotlin.psi.KtContainerNode
 import org.jetbrains.kotlin.psi.KtContainerNodeForControlStructureBody
+import org.jetbrains.kotlin.psi.KtContextParameterList
 import org.jetbrains.kotlin.psi.KtDeclaration
 import org.jetbrains.kotlin.psi.KtElement
 import org.jetbrains.kotlin.psi.KtEnumEntry
 import org.jetbrains.kotlin.psi.KtExpression
-import org.jetbrains.kotlin.psi.KtFunction
 import org.jetbrains.kotlin.psi.KtFunctionLiteral
 import org.jetbrains.kotlin.psi.KtImportDirective
 import org.jetbrains.kotlin.psi.KtLambdaExpression
@@ -153,9 +161,11 @@ import org.jetbrains.kotlin.psi.psiUtil.hasExpectModifier
 import org.jetbrains.kotlin.psi.psiUtil.isAncestor
 import org.jetbrains.kotlin.psi.psiUtil.isPrivateNestedClassOrObject
 import org.jetbrains.kotlin.psi.psiUtil.parentsWithSelf
-import org.jetbrains.kotlin.psi.psiUtil.referenceExpression
 import org.jetbrains.kotlin.psi.simpleNameExpressionRecursiveVisitor
+import org.jetbrains.kotlin.resolution.KtResolvable
+import org.jetbrains.kotlin.resolution.KtResolvableCall
 import org.jetbrains.kotlin.resolve.DataClassResolver
+import org.jetbrains.kotlin.util.getPsiMethods
 
 object K2UnusedSymbolUtil {
     private val KOTLIN_ADDITIONAL_ANNOTATIONS: List<String> = listOf("kotlin.test.*", "kotlin.js.JsExport")
@@ -167,16 +177,18 @@ object K2UnusedSymbolUtil {
         if (declaration.isScriptTopLevelPublicDeclaration()) return false
         // never mark companion object as unused (there are too many reasons it can be needed for)
         if (declaration is KtObjectDeclaration && declaration.isCompanion()) return false
-
         if (declaration is KtParameter) {
-            // nameless parameters like `(Type) -> Unit` or `_` make no sense to highlight
-            if (declaration.isExplicitlyIgnoredByName()) return false
+            // nameless parameters like `(Type) -> Unit` make no sense to highlight
             // functional type params like `fun foo(u: (usedParam: Type) -> Unit)` shouldn't be highlighted because they could be implicitly used by lambda arguments
+            if (declaration.parent is KtContextParameterList) {
+                val owner = (declaration.parent as KtContextParameterList).ownerDeclaration
+                if (owner !is KtNamedFunction && owner !is KtProperty) return false
+            }
             if (declaration.isFunctionTypeParameter) return false
-            val ownerFunction = declaration.ownerDeclaration
-            if (ownerFunction?.hasModifier(KtTokens.EXTERNAL_KEYWORD) == true) return false
-            var containingClass = ownerFunction?.containingClassOrObject
-            if (ownerFunction is KtConstructor<*>) {
+            val ownerDeclaration = declaration.ownerDeclaration
+            if (ownerDeclaration?.hasModifier(KtTokens.EXTERNAL_KEYWORD) == true) return false
+            var containingClass = ownerDeclaration?.containingClassOrObject
+            if (ownerDeclaration is KtConstructor<*>) {
                 // constructor parameters of data class are considered used because they are implicitly used in equals() (???)
                 if (containingClass != null) {
                     if (containingClass.isData()) return false
@@ -188,15 +200,15 @@ object K2UnusedSymbolUtil {
                     }
                     if (isExpectedOrActual(containingClass)) return false
                 }
-            } else if (ownerFunction is KtFunction) {
-                if (ownerFunction.name == null) {
+            } else if (ownerDeclaration is KtCallableDeclaration) {
+                if (ownerDeclaration.name == null) {
                     return false
                 }
-                if (ownerFunction.hasModifier(KtTokens.OPERATOR_KEYWORD)) {
+                if (ownerDeclaration.hasModifier(KtTokens.OPERATOR_KEYWORD)) {
                     // operator parameters are hardcoded to be used since they can't be removed at will, because operator convention would break
                     return false
                 }
-                if (isEffectivelyAbstractFunction(ownerFunction) || isExpectedOrActual(ownerFunction)) {
+                if (isEffectivelyAbstractCallable(ownerDeclaration) || isExpectedOrActual(ownerDeclaration)) {
                     return false
                 }
 
@@ -229,8 +241,8 @@ object K2UnusedSymbolUtil {
                 modifierList.hasModifier(KtTokens.EXPECT_KEYWORD) || modifierList.hasModifier(KtTokens.ACTUAL_KEYWORD))
     }
 
-    private fun isEffectivelyAbstractFunction(ownerFunction: KtFunction): Boolean {
-        val modifierList = ownerFunction.modifierList
+    private fun isEffectivelyAbstractCallable(ownerDeclaration: KtCallableDeclaration): Boolean {
+        val modifierList = ownerDeclaration.modifierList
         if (modifierList != null && (modifierList.hasModifier(KtTokens.ABSTRACT_KEYWORD)
                     || modifierList.hasModifier(KtTokens.EXPECT_KEYWORD)
                     || modifierList.hasModifier(KtTokens.OVERRIDE_KEYWORD)
@@ -238,7 +250,7 @@ object K2UnusedSymbolUtil {
         ) { // maybe one of the overriders does use this parameter
             return true
         }
-        return ownerFunction.containingClass()?.isInterface() == true
+        return ownerDeclaration.containingClass()?.isInterface() == true
     }
 
     private fun KtNamedDeclaration.isScriptTopLevelPublicDeclaration(): Boolean
@@ -253,10 +265,10 @@ object K2UnusedSymbolUtil {
             useSiteTarget = null,
             withResolve = false,
         ) ?: return false
-        val call = anno.resolveToCall()?.successfulFunctionCallOrNull() ?: return false
-        val levelArgument = call.argumentMapping.entries.find { it.value.symbol.name == DEPRECATION_LEVEL_PARAMETER_NAME } ?: return false
-        val levelArgumentCall = levelArgument.key.resolveToCall()?.successfulVariableAccessCall() ?: return false
-        return levelArgumentCall.symbol.importableFqName == DEPRECATION_LEVEL_HIDDEN
+        val call = anno.resolveSuccessfulCall() ?: return false
+        val levelArgument = call.valueArgumentMapping.entries.find { it.value.symbol.name == DEPRECATION_LEVEL_PARAMETER_NAME } ?: return false
+        val levelArgumentSymbol = levelArgument.key.resolveSuccessfulExpressionSymbol() as? KaCallableSymbol ?: return false
+        return levelArgumentSymbol.importableFqName == DEPRECATION_LEVEL_HIDDEN
     }
 
     fun isLocalDeclaration(declaration: KtNamedDeclaration): Boolean {
@@ -264,7 +276,6 @@ object K2UnusedSymbolUtil {
         return declaration is KtParameter && !(declaration.parent.parent is KtPrimaryConstructor && declaration.hasValOrVar())
     }
 
-    @OptIn(KaExperimentalApi::class)
     context(_: KaSession)
     fun getPsiToReportProblem(declaration: KtNamedDeclaration, isJavaEntryPointInspection: UnusedDeclarationInspectionBase): PsiElement? {
         val symbol = declaration.symbol
@@ -308,18 +319,19 @@ object K2UnusedSymbolUtil {
     private fun KtDeclaration.hasKotlinAdditionalAnnotation(): Boolean =
         this is KtNamedDeclaration && checkAnnotatedUsingPatterns(this, KOTLIN_ADDITIONAL_ANNOTATIONS)
 
+    context(_: KaSession)
     private fun KtProperty.isSerializationImplicitlyUsedField(): Boolean {
-        val ownerObject = getNonStrictParentOfType<KtClassOrObject>() as? KtObjectDeclaration ?: return false
-        val lightClass = if (ownerObject.isCompanion()) {
-            ownerObject.getNonStrictParentOfType<KtClass>()?.toLightClass()
-        } else {
-            ownerObject.toLightClass()
-        } ?: return false
-        return lightClass.fields.any { it.name == name && SerializationUtils.isSerializationImplicitlyUsedField(it) }
+        if (getNonStrictParentOfType<KtObjectDeclaration>() == null) {
+            return false
+        }
+
+        val javaBackingField = (symbol as? KaPropertySymbol)?.backingFieldSymbol?.asPsiField() ?: return false
+        return  SerializationUtils.isSerializationImplicitlyUsedField(javaBackingField)
     }
 
+    context(_: KaSession)
     private fun KtNamedFunction.isSerializationImplicitlyUsedMethod(): Boolean =
-        toLightMethods().any { JavaHighlightUtil.isSerializationRelatedMethod(it, it.containingClass) }
+        symbol.asPsiMethods().any { JavaHighlightUtil.isSerializationRelatedMethod(it, it.containingClass) }
 
 
     private fun isAnnotationParameter(parameter: KtParameter): Boolean {
@@ -332,9 +344,7 @@ object K2UnusedSymbolUtil {
     fun checkAnnotatedUsingPatterns(declaration: KtNamedDeclaration, annotationPatterns: Collection<String>): Boolean {
         if (declaration.annotationEntries.isEmpty()) return false
         val annotationsPresent = declaration.annotationEntries.mapNotNull {
-            val reference = it?.calleeExpression?.constructorReferenceExpression?.mainReference ?: return@mapNotNull null
-            val symbol = reference.resolveToSymbol() ?: return@mapNotNull null
-            val constructorSymbol = symbol as? KaConstructorSymbol ?: return@mapNotNull null
+            val constructorSymbol = it.resolveSuccessfulSymbol() ?: return@mapNotNull null
             constructorSymbol.containingClassId?.asSingleFqName()?.asString()
         }
         if (annotationsPresent.isEmpty()) return false
@@ -503,15 +513,15 @@ object K2UnusedSymbolUtil {
                             val refElement = it.element
                             refElement is KtElement && analyze(refElement) {
                                 refElement.getStrictParentOfType<KtTypeAlias>() != null // ignore unusedness of type aliased classes - they are too hard to trace
-                                        || refElement.getStrictParentOfType<KtCallExpression>()?.resolveToCall()
-                                    ?.singleFunctionCallOrNull()?.partiallyAppliedSymbol?.symbol == symbolPointer?.restoreSymbol()
+                                        || refElement.getStrictParentOfType<KtCallExpression>()
+                                    ?.tryResolveCall()?.single?.function?.symbol == symbolPointer?.restoreSymbol()
                             }
                         })
             ) {
                 return true
             }
             if (declaration is KtCallableDeclaration && declaration.canBeHandledByLightMethods(symbol)) {
-                val lightMethods = declaration.toLightMethods()
+                val lightMethods = (symbol as? KaCallableSymbol)?.getPsiMethods() ?: emptyList()
                 if (lightMethods.isNotEmpty()) {
                     val lightMethodsUsed = lightMethods.any { method ->
                         isTooManyOccurrencesToCheck(method, declaration, project) || !MethodReferencesSearch.search(method)
@@ -589,9 +599,9 @@ object K2UnusedSymbolUtil {
             setOfImportedDeclarations += it
         })
 
-        return setOfImportedDeclarations.mapNotNull { it.referenceExpression() }
-            .filter { symbol in it.mainReference.resolveToSymbols() }
-            .any { !checkReference(it.mainReference.element, declaration, originalDeclaration) }
+        return setOfImportedDeclarations
+            .filter { symbol in it.resolveSuccessfulSymbols() }
+            .any { !checkReference(it, declaration, originalDeclaration) }
     }
 
     // search for references to an element in the scope, satisfying predicate, lazily
@@ -697,7 +707,7 @@ object K2UnusedSymbolUtil {
     private fun KtImportDirective.resolveReferenceToSymbol(): KaSymbol? = when (importedReference) {
         is KtReferenceExpression -> importedReference as KtReferenceExpression
         else -> importedReference?.getChildOfType<KtReferenceExpression>()
-    }?.mainReference?.resolveToSymbol()
+    }?.resolveSuccessfulSymbol()
 
     context(_: KaSession)
     private fun KtImportDirective.isUsedStarImportOfEnumStaticFunctions(): Boolean {
@@ -711,7 +721,9 @@ object K2UnusedSymbolUtil {
         fun KtExpression.isNameInEnumStaticMethods(): Boolean {
             if (getQualifiedExpressionForSelector() != null) return false
             if (((this as? KtNameReferenceExpression)?.parent as? KtCallableReferenceExpression)?.receiverExpression != null) return false
-            val symbol = mainReference?.resolveToSymbol() as? KaCallableSymbol ?: return false
+            val symbol = (this as? KtResolvableCall)?.resolveSuccessfulCall()?.simple?.symbol
+                ?: (this as? KtResolvable)?.resolveSuccessfulSymbol() as? KaCallableSymbol
+                ?: return false
             return symbol.callableId?.asSingleFqName() in enumStaticMethods
         }
 
@@ -781,12 +793,12 @@ object K2UnusedSymbolUtil {
         } ?: return false
 
         return ownerClass.findAllInheritors(useScope).any { element: PsiElement ->
-            when (element) {
-                is KtClassOrObject -> {
-                    analyze(element) {
+            analyze(declaration) {
+                val callableSymbol = declaration.symbol as KaCallableSymbol
+                when (element) {
+                    is KtClassOrObject -> {
                         if (!element.canBeAnalysed()) return@any false
 
-                        val callableSymbol = declaration.symbol as KaCallableSymbol
                         val overridingCallableSymbol = element.classSymbol
                             ?.memberScope
                             ?.callables(callableName)
@@ -797,15 +809,18 @@ object K2UnusedSymbolUtil {
 
                         overridingCallableSymbol != callableSymbol && overridingCallableSymbol.intersectionOverriddenSymbols.any { it != callableSymbol }
                     }
-                }
-                is PsiClass ->
-                    declaration.toLightMethods().any { lightMethod ->
-                        val sameMethods = element.findMethodsBySignature(lightMethod, true)
-                        sameMethods.all { it.containingClass != element } &&
-                                sameMethods.any { it.containingClass != lightMethod.containingClass }
+
+                    is PsiClass -> {
+                        callableSymbol.getPsiMethods().any { lightMethod ->
+                            val sameMethods = element.findMethodsBySignature(lightMethod, true)
+                            sameMethods.all { it.containingClass != element } &&
+                                    sameMethods.any { it.containingClass != lightMethod.containingClass }
+                        }
                     }
-                else ->
-                    false
+
+                    else ->
+                        false
+                }
             }
         }
     }
@@ -836,14 +851,20 @@ object K2UnusedSymbolUtil {
     fun createQuickFixes(declaration: KtNamedDeclaration): List<IntentionAction> {
         if (declaration is KtParameter) {
             if (declaration.isLoopParameter) {
-                return emptyList()
+                return when {
+                    declaration.name == "_" -> {
+                        emptyList()
+                    }
+                    declaration.languageVersionSettings.supportsFeature(LanguageFeature.UnnamedLocalVariables) -> {
+                        listOf(RenameElementFix(declaration, "_"))
+                    }
+                    else -> {
+                        emptyList()
+                    }
+                }
             }
             if (declaration.isCatchParameter) {
-                return if (declaration.name == "_") {
-                    emptyList()
-                } else {
-                    listOf(RenameElementFix(declaration, "_"))
-                }
+                return listOf(RenameElementFix(declaration, "_"))
             }
             val ownerFunction = declaration.ownerFunction
             if (ownerFunction is KtPropertyAccessor && ownerFunction.isSetter) {
@@ -861,7 +882,12 @@ object K2UnusedSymbolUtil {
                 ) {
                     RenameElementFix(declaration, "_")
                 } else {
-                    val fix = RemoveUnusedVariableFix(declaration, true, false)
+                    val fix = RemoveUnusedVariableFix(
+                        element = declaration,
+                        isSimpleCase = true,
+                        couldBeAnExplicitlyIgnoredValue = false,
+                        isNameBasedDestructuringEntry = false
+                    )
                     val descriptor = InspectionManager.getInstance(ownerFunction.project)
                         .createProblemDescriptor(declaration, "", fix, ProblemHighlightType.GENERIC_ERROR_OR_WARNING, true)
                     QuickFixWrapper.wrap(descriptor, fix)
@@ -875,7 +901,7 @@ object K2UnusedSymbolUtil {
         fixes += SafeDeleteFix(declaration)
 
         for (annotationEntry in declaration.annotationEntries) {
-            val annotationClassId = annotationEntry.resolveToCall()?.singleConstructorCallOrNull()?.symbol?.containingClassId ?: continue
+            val annotationClassId = annotationEntry.tryResolveCall()?.single?.constructor?.symbol?.containingClassId ?: continue
             val fqName = annotationClassId.asSingleFqName().asString()
 
             // checks taken from com.intellij.codeInspection.util.SpecialAnnotationsUtilBase.createAddToSpecialAnnotationFixes
@@ -900,22 +926,23 @@ object K2UnusedSymbolUtil {
     ): Boolean {
         if (declaration.hasKotlinAdditionalAnnotation()) return true
         val lightElement: PsiElement = when (declaration) {
-            is KtEnumEntry -> LightClassUtil.getLightClassBackingField(declaration)
+            is KtEnumEntry -> declaration.symbol.asPsiField()
             is KtClass -> {
                 if (declaration.declarations.any { it.hasKotlinAdditionalAnnotation() }) return true
-                declaration.toLightClass()
+                declaration.classSymbol?.asPsiClass()
             }
-            is KtObjectDeclaration -> declaration.toLightClass()
+            is KtObjectDeclaration -> declaration.classSymbol?.asPsiClass()
             is KtNamedFunction -> {
                 // Some of the main-function-cases are covered by 'javaInspection.isEntryPoint(lightElement)' call
                 // but not all of them: light method for parameterless main still points to parameterless name
                 // that is not an actual entry point from Java language point of view
                 // TODO: If we would add options for this inspection, then this call should be conditional.
                 if (KotlinMainFunctionDetector.getInstance().isMain(declaration)) return true
-                LightClassUtil.getLightClassMethod(declaration as KtFunction)
+                declaration.symbol.asPsiMethods().firstOrNull()
             }
-            is KtSecondaryConstructor -> LightClassUtil.getLightClassMethod(declaration as KtFunction)
+            is KtSecondaryConstructor -> declaration.symbol.asPsiMethods().firstOrNull()
             is KtParameter -> {
+                val symbol = declaration.symbol as? KaValueParameterSymbol
                 val ownerFunction = declaration.ownerFunction
                 if (ownerFunction is KtNamedFunction) {
                     if (KotlinMainFunctionDetector.getInstance().isMain(ownerFunction)) {
@@ -923,15 +950,17 @@ object K2UnusedSymbolUtil {
                         return ownerFunction.findAnnotation(JvmStandardClassIds.Annotations.JvmStatic) != null
                     }
 
-                    if ( declaration.toPsiParameters()
-                    .any { isJavaEntryPoint.isEntryPoint(it) }) {
+                    val psiParameters = symbol?.asPsiParameters()
+                    if (psiParameters?.any { isJavaEntryPoint.isEntryPoint(it) } == true) {
                         return true
                     }
                 }
                 if (!declaration.hasValOrVar()) return false
                 // we may handle only annotation parameters so far
                 if (isAnnotationParameter(declaration)) {
-                    val lightAnnotationMethods = LightClassUtil.getLightClassPropertyMethods(declaration).toList()
+                    val generatedProperty = symbol?.primaryConstructorProperty
+                    val lightAnnotationMethods =
+                        generatedProperty?.getPsiMethods().orEmpty()
                     for (javaParameterPsi in lightAnnotationMethods) {
                         if (isJavaEntryPoint.isEntryPoint(javaParameterPsi)) {
                             return true
@@ -946,7 +975,8 @@ object K2UnusedSymbolUtil {
                 )
             }
             is KtProperty -> {
-                val javaFieldPsi = LightClassUtil.getLightClassBackingField(declaration)
+                val propertySymbol = declaration.symbol as? KaPropertySymbol
+                val javaFieldPsi = propertySymbol?.backingFieldSymbol?.asPsiField()
                 if (javaFieldPsi != null && isJavaEntryPoint.isEntryPoint(javaFieldPsi)) {
                     return true
                 }
@@ -957,7 +987,7 @@ object K2UnusedSymbolUtil {
                     target == AnnotationUseSiteTarget.PROPERTY_GETTER || target == AnnotationUseSiteTarget.PROPERTY_SETTER
                 }
                 if (getterOrSetterSiteTargetAnnotationPresent) {
-                    val psiMethods = LightClassUtil.getLightClassPropertyMethods(declaration)
+                    val psiMethods = propertySymbol?.getPsiMethods().orEmpty()
                     if (psiMethods.any { isJavaEntryPoint.isEntryPoint(it) }) {
                         return true
                     }

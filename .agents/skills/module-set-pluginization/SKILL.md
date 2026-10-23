@@ -1,18 +1,17 @@
 ---
 name: module-set-pluginization
-description: Pluginize a Product DSL module set by hand-writing a wrapper plugin module next to its feature modules. Use when promoting modules out of an aggregate module set (e.g. `essential`, `ide.common`) into a bundled plugin so products can include or omit them through normal plugin wiring, when updating bundled plugin registration for such a wrapper, or when fixing tests whose plugin loading logs show a missing wrapper plugin for a former module set.
+description: Convert Product DSL module sets into bundled wrapper plugins.
 ---
 
 # Module Set Pluginization
 
-Use this workflow when a group of platform modules that currently live inside an aggregate Product DSL `ModuleSet` (typically `essential`, `essentialMinimal`, or `ide.common`) should become a standalone bundled plugin wrapper.
+Use this workflow when a group of platform modules that currently live inside an aggregate Product DSL `ModuleSet` (typically `essential`, one of the feature sets that `essential` nests, or `ide.common`) should become a standalone bundled plugin wrapper.
 
 **New canonical pattern:** the wrapper is a **hand-written** JPS module placed **next to the feature modules** — not auto-generated under `community/module-set-plugins/generated/`. Auto-generation is being phased out; legacy wrappers stay in place until migrated. Reference example: `community/platform/navbar/plugin/` (IJPL-245430, commit `9d61ae6803221`).
 
 ## Before Editing
 
-- Read `community/platform/build-scripts/product-dsl/.claude/rules/product-dsl.md` before changing product-dsl sources.
-- Look at `community/platform/navbar/plugin/` as the reference: a sibling `plugin/` directory of the feature modules with its own `.iml`, `resources/META-INF/plugin.xml`, and `plugin-content.yaml`.
+- Look at `community/platform/navbar/plugin/` as the reference: a sibling `plugin/` directory of the feature modules with its own `.iml` and `resources/META-INF/plugin.xml`.
 - Decide whether the modules should still be inlined inside a parent module set in any product. Pluginized wrappers usually stop being emitted through the aggregate `intellij.moduleSets.<name>.xml` and become a bundled plugin instead.
 - For library modules with only a small closed consumer set, do **not** create or keep a shared wrapper just to make the library available. Prefer `visibility="private"` on the library descriptor and register the module as unnamed `<content>` in each consuming plugin, so each copy lives in that plugin's implicit private namespace.
 
@@ -20,7 +19,7 @@ Use this workflow when a group of platform modules that currently live inside an
 
 Create a new JPS module at `<feature-root>/plugin/`, e.g. `community/platform/<feature>/plugin/`:
 
-- `intellij.<feature>.plugin.iml` — resources-only `JAVA_MODULE` inheriting JDK; for example:
+- `intellij.platform.<feature>.plugin.iml` under `community/platform/` — resources-only `JAVA_MODULE` inheriting JDK; for example:
 
   ```xml
   <?xml version="1.0" encoding="UTF-8"?>
@@ -36,11 +35,17 @@ Create a new JPS module at `<feature-root>/plugin/`, e.g. `community/platform/<f
   </module>
   ```
 
-- `resources/META-INF/plugin.xml` — a minimal `<idea-plugin>` listing the content modules. Mirror the navbar wrapper (replace `FEATURE` with the actual short name; the description must be at least 40 characters):
+  After creating the `.iml`, register it with the project-file helper instead of editing `modules.xml` by hand:
+
+  ```bash
+  bun build/jps-module.mjs register community/platform/<feature>/plugin/intellij.platform.<feature>.plugin.iml --fix-iml-eof
+  ```
+
+- `resources/META-INF/plugin.xml` — a minimal `<idea-plugin>` listing the content modules. Mirror the wrapper shape from navbar and use the canonical `com.intellij.*` plugin id (replace `FEATURE` with the actual short name; the description must be at least 40 characters):
 
   ```text
   <idea-plugin>
-    <id>intellij.FEATURE.plugin</id>
+    <id>com.intellij.platform.FEATURE</id>
     <name>FEATURE</name>
     <description>Provides FEATURE platform modules for the IDE.</description>
     <vendor>JetBrains</vendor>
@@ -53,29 +58,15 @@ Create a new JPS module at `<feature-root>/plugin/`, e.g. `community/platform/<f
   </idea-plugin>
   ```
 
-  **Naming:** plugin **id** uses the short `intellij.FEATURE.plugin` form (e.g. `intellij.navbar.plugin`). Do **not** reuse the legacy `com.intellij.moduleSet.FEATURE` prefix — that is the auto-generated wrapper convention being phased out, kept only on existing wrappers under `community/module-set-plugins/generated/`. The plugin **name** is a short human-readable label (e.g. `Navbar`). The JPS **module** name is `intellij.platform.FEATURE.plugin` (or `intellij.FEATURE.plugin` outside the `platform/` subtree).
+  **Naming:** the plugin **id** follows the `com.intellij.*` scheme and is **not** the JPS module name. Use `com.intellij.platform.FEATURE` when the wrapper is platform infrastructure that does nothing on its own and other plugins build on top of it (for example `com.intellij.platform.vcs`, `com.intellij.platform.ssh`, `com.intellij.platform.testRunner`), and `com.intellij.FEATURE` when it is a self-sufficient user-facing feature (for example `com.intellij.bookmarks`, `com.intellij.todo`, `com.intellij.navbar`). Check that the id is free first, it could've been used for another plugin. Do **not** use module-name-style ids (`intellij.platform.FEATURE.plugin`, `intellij.FEATURE.plugin`). Once an id has shipped in a release, any rename must keep the old id as an alias. Do **not** reuse the legacy `com.intellij.moduleSet.FEATURE` prefix — that is the auto-generated wrapper convention being phased out, kept only on existing wrappers under `community/module-set-plugins/generated/`. The plugin **name** is a short human-readable label (e.g. `Tasks and Contexts`).
+
+  No wrapper-specific descriptor marker is needed. Add the JPS wrapper module name to `HAND_WRITTEN_MODULE_SET_PLUGIN_MODULES` in `community/platform/build-scripts/product-dsl/src/ModuleSetPlugins.kt`. Generation intersects that build-time registry with each product's `ProductModulesLayout.bundledPluginModules`, avoiding changes to the runtime plugin descriptor model while keeping complete generated dependencies for wrapper content.
 
   Mark **only the shared/anchor module** (the one that loads in every product mode) as `loading="required"` — `intellij.platform.FEATURE` in the example. Plugin-XML inspection requires at least one required/embedded/required-if-available content module per wrapper, so the anchor satisfies that. Do **not** add `loading="required"` to backend / frontend / monolith modules: in frontend product mode (JetBrains Client) the platform's backend module is unavailable, so a required `FEATURE.backend` excludes itself and takes the whole wrapper plugin down — producing a confusing cascade like "Plugin 'FEATURE' depends on plugin 'IDEA CORE' which failed to load".
 
-- `plugin-content.yaml` — list the JAR layout. Mirror the navbar example:
+- **No JAR-layout file.** The dev distribution derives each member's jar from the plugin's `<content>`. It uses the loading rule, and the member's `package` attribute. A conventional wrapper needs no separate packaging file. After you register the module, run `./build/jpsModelToBazel.cmd`, then `bazel run //platform/buildScripts:plugin-model-tool`.
 
-  ```yaml
-  - name: lib/modules/intellij.platform.<feature>.backend.jar
-    contentModules:
-    - name: intellij.platform.<feature>.backend
-  - name: lib/modules/intellij.platform.<feature>.frontend.jar
-    contentModules:
-    - name: intellij.platform.<feature>.frontend
-  - name: lib/modules/intellij.platform.<feature>.jar
-    contentModules:
-    - name: intellij.platform.<feature>
-  - name: lib/modules/intellij.platform.<feature>.monolith.jar
-    contentModules:
-    - name: intellij.platform.<feature>.monolith
-  - name: lib/platform-<feature>-plugin.jar
-    modules:
-    - name: intellij.platform.<feature>.plugin
-  ```
+  The tool derives the platform layout and compatible published plugins from sources. It writes the plugin's jars, members, and libraries into the `dev` section of the plugin's `BUILD.bazel`. Do not edit generated sections or plan files. `AllProductsPackagingTest` compares the derivation with the build layout and packed jars. Closed-product dist-file observations live in ultimate `build/dev-dist/packaging/<product>.yaml`. Packaging tests report changes as patches for review. These YAML files are test expectations, not generator or assembly inputs.
 
 - Suppress `SplitModeMixedDependencies` and `PluginXmlPluginLogo` in `plugin.xml` only if the inspection actually flags the wrapper.
 
@@ -85,6 +76,7 @@ Remove the now-pluginized modules from the aggregate `ModuleSet`:
 
 - In `community/platform/build-scripts/src/org/jetbrains/intellij/build/productLayout/CommunityModuleSets.kt` (and any product-specific layout file that listed them), delete the `module("intellij.platform.<feature>.…")` / `embeddedModule(...)` calls that the wrapper now owns.
 - Add the wrapper JPS module name to `DEFAULT_BUNDLED_PLUGINS` in `community/platform/build-scripts/src/org/jetbrains/intellij/build/productLayout/ProductModulesLayout.kt`, e.g. `"intellij.platform.<feature>.plugin"`.
+- Add the wrapper JPS module name to `HAND_WRITTEN_MODULE_SET_PLUGIN_MODULES` in `community/platform/build-scripts/product-dsl/src/ModuleSetPlugins.kt`.
 - Check products that override or reset default bundled plugins (Rider's `ReSharperExternalProductProperties`, Gateway, JetBrains Client product-modules XML under `remote-dev/`, etc.) and add the wrapper module name where appropriate.
 
 Do **not** create a new `plugin("<feature>")` DSL block under the old generator path. The wrapper exists as a standalone JPS module instead.
@@ -95,23 +87,23 @@ Pluginization is a good moment to verify that each former direct module declares
 
 - Trim `intellij.platform.<feature>.<backend|frontend|monolith>.xml` so it declares the actual runtime dependencies (e.g. `intellij.platform.backend`, `intellij.platform.frontend`, the shared `intellij.platform.<feature>` module).
 - If any extension point was renamed/qualified, grep the repo for the old short name and update every `<extensionPoint …>` reference accordingly.
-- If a downstream consumer used a module that the new wrapper now hides, switch the consumer's descriptor to depend on the wrapper plugin: `<plugin id="intellij.<feature>.plugin"/>` instead of `<module name="intellij.platform.<feature>.frontend"/>`. Existing references to legacy `com.intellij.moduleSet.<feature>` ids stay valid for the auto-generated wrappers that have not yet been migrated.
+- If a downstream consumer used a module that the new wrapper now hides, switch the consumer's descriptor to depend on the wrapper plugin: `<plugin id="com.intellij.platform.<feature>"/>` instead of `<module name="intellij.platform.<feature>.frontend"/>`. Existing references to legacy `com.intellij.moduleSet.<feature>` ids stay valid for the auto-generated wrappers that have not yet been migrated.
 
 ## Re-run Code Generation
 
 After the source edits, run the generators so the platform descriptors, Bazel files, and `.idea/modules.xml` are updated to match:
 
 ```bash
-bazel run //platform/buildScripts:plugin-model-tool
 ./build/jpsModelToBazel.cmd
+bazel run //platform/buildScripts:plugin-model-tool
 ```
 
 Expected diffs:
 
 - `community/platform/platform-resources/generated/META-INF/intellij.moduleSets.essential.xml`, `…ide.common.xml`, and `licenseCommon/generated/META-INF/intellij.moduleSets.ide.ultimate.xml` no longer list the pluginized modules.
-- `community/.idea/modules.xml` and `.idea/modules.xml` gain the new `intellij.<feature>.plugin.iml` module.
+- `community/.idea/modules.xml` and `.idea/modules.xml` gain the new `intellij.platform.<feature>.plugin.iml` module in helper-generated canonical order.
 - `build/bazel-generated-file-list.txt` and `community/build/bazel-generated-file-list.txt` gain the new plugin directory.
-- Product content snapshots (`build/expected/ultimate-content-platform.yaml`, `dbe/build/datagrip-content.yaml`, etc.) gain the wrapper plugin entry.
+- The wrapper plugin's `BUILD.bazel` gains a `dev` section with its `dev_dist_plugin` call, written by `plugin-model-tool`. The platform layout derives from sources; no platform jar table needs an update.
 - `tests/ideaProjectStructure/testResources/com/intellij/ideaProjectStructure/fast/available-in-idea-free-mode.txt` gains the new module if it is free-mode available.
 - Existing wrappers under `community/module-set-plugins/generated/intellij.moduleSet.plugin.<name>/` are unrelated — do not touch them unless you are migrating one to the new pattern.
 
@@ -142,13 +134,13 @@ Run this suite before relying on TeamCity after pluginization or plugin dependen
 3. Fast project structure/root packages:
    `./tests.cmd --module intellij.projectStructureTests --test com.intellij.ideaProjectStructure.fast.IntelliJProjectPackageNamesTest`
 4. Product packaging baseline:
-   `./tests.cmd --module intellij.idea.ultimate.build.tests --test com.intellij.idea.ultimate.build.smokeTests.AllProductsPackagingTest`
+   `./bazel.cmd test //build:all-products-packaging_test`
 5. CLion packaging baseline:
    `./tests.cmd --module intellij.clion.build.tests --test org.jetbrains.intellij.build.clion.CLionPackagingTest`
 6. Rider packaging baseline:
    `./tests.cmd --module intellij.rider.build.tests --test com.jetbrains.rider.build.RiderPackagingTest`
 7. Database and SQL plugin loading:
-   `./tests.cmd --module intellij.database.tests --test com.intellij.database.DataGripLiteSuite`
+   `./tests.cmd --module intellij.database.tests --test com.intellij.database.DatabaseTestSuite`
    `./tests.cmd --module intellij.database.sql.tests --test com.intellij.sql.SqlFileStructureViewTest`
    `./tests.cmd --module intellij.database.sql.tests --test com.intellij.sql.editor.SqlMultiLineTodoTest`
 8. Code Server DB plugin loading:
@@ -191,7 +183,7 @@ Run this suite before relying on TeamCity after pluginization or plugin dependen
 - Re-render the skill mirrors:
 
 ```bash
-node community/.ai/render-guides.mjs
+bazel run //.ai:render-guides
 ```
 
-  The renderer copies this file to `community/.claude/skills/module-set-pluginization/SKILL.md`, `.agents/skills/module-set-pluginization/SKILL.md`, and `.claude/skills/module-set-pluginization/SKILL.md`. Confirm `git status` shows only those four files diverging.
+  The renderer copies this file to `community/.claude/skills/module-set-pluginization/SKILL.md`, `.agents/skills/module-set-pluginization/SKILL.md`, `.claude/skills/module-set-pluginization/SKILL.md`, and `.junie/skills/module-set-pluginization/SKILL.md`. Confirm `git status` shows only this source file and those generated mirrors diverging.

@@ -18,8 +18,6 @@ import com.intellij.collaboration.ui.util.bindChildIn
 import com.intellij.collaboration.ui.util.bindDisabledIn
 import com.intellij.collaboration.ui.util.bindTextIn
 import com.intellij.openapi.project.Project
-import com.intellij.util.ui.InlineIconButton
-import icons.CollaborationToolsIcons
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
@@ -32,10 +30,8 @@ import org.jetbrains.plugins.gitlab.api.dto.GitLabUserDTO
 import org.jetbrains.plugins.gitlab.data.GitLabImageLoader
 import org.jetbrains.plugins.gitlab.mergerequest.ui.emoji.GitLabReactionsComponentFactory
 import org.jetbrains.plugins.gitlab.mergerequest.ui.emoji.GitLabReactionsPickerComponentFactory
-import org.jetbrains.plugins.gitlab.mergerequest.ui.emoji.GitLabReactionsViewModel
 import org.jetbrains.plugins.gitlab.mergerequest.util.addGitLabHyperlinkListener
 import org.jetbrains.plugins.gitlab.util.GitLabStatistics
-import java.awt.event.ActionListener
 import java.net.URL
 import javax.swing.JComponent
 
@@ -101,8 +97,8 @@ internal object GitLabNoteComponentFactory {
       val actionsVm = vm.actionsVm
       if (vm.isDraft && actionsVm != null) {
         add(CodeReviewCommentUIUtil.createPostNowButton { _ ->
-          actionsVm.submitDraft()
           GitLabStatistics.logMrActionExecuted(project, GitLabStatistics.MergeRequestAction.POST_DRAFT_NOTE, place)
+          actionsVm.submitDraft()
         }.apply {
           isVisible = actionsVm.canSubmit()
           if (actionsVm.canSubmit()) {
@@ -135,8 +131,8 @@ internal object GitLabNoteComponentFactory {
                 }
               }.also(::add)
               CodeReviewCommentUIUtil.createDeleteCommentIconButton { _ ->
-                actionVm.delete()
                 GitLabStatistics.logMrActionExecuted(project, GitLabStatistics.MergeRequestAction.DELETE_NOTE, place)
+                actionVm.delete()
               }.apply {
                 bindDisabledIn(buttonsCs, actionVm.busy)
               }.also(::add)
@@ -144,7 +140,12 @@ internal object GitLabNoteComponentFactory {
 
             val reactionsVm = it.reactionsVm
             if (reactionsVm != null) {
-              createAddReactionButton(buttonsCs, reactionsVm).also(::add)
+              CodeReviewCommentUIUtil.createAddReactionButton {
+                val parentComponent = it.source as JComponent
+                buttonsCs.launch {
+                  GitLabReactionsPickerComponentFactory.showPopup(reactionsVm, parentComponent)
+                }
+              }.also(::add)
             }
 
             revalidate()
@@ -158,21 +159,6 @@ internal object GitLabNoteComponentFactory {
       }
     }
     return panel
-  }
-
-  private fun createAddReactionButton(cs: CoroutineScope, reactionsVm: GitLabReactionsViewModel): InlineIconButton {
-    val button = InlineIconButton(
-      CollaborationToolsIcons.AddEmoji,
-      CollaborationToolsIcons.AddEmojiHovered,
-      tooltip = CollaborationToolsBundle.message("review.comments.reaction.add.tooltip")
-    )
-    button.actionListener = ActionListener {
-      cs.launch {
-        GitLabReactionsPickerComponentFactory.showPopup(reactionsVm, button)
-      }
-    }
-
-    return button
   }
 
   fun createTextPanel(

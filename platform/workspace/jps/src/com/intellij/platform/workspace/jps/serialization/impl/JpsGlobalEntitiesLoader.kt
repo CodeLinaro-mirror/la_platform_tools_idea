@@ -27,7 +27,8 @@ object JpsGlobalEntitiesSerializers {
     val serializers = mutableListOf<JpsFileEntityTypeSerializer<WorkspaceEntity>>()
     serializers.add(createSdkSerializer(virtualFileUrlManager, sortedRootTypes, optionsDir, environmentName) as JpsFileEntityTypeSerializer<WorkspaceEntity>)
     val environmentDir = resolveEnvironmentDir(optionsDir, environmentName)
-    val globalLibrariesFile = virtualFileUrlManager.getOrCreateFromUrl(environmentDir.resolve(GLOBAL_LIBRARIES_FILE_NAME + PathManager.DEFAULT_EXT).absolutePathString())
+    val globalLibrariesFile =
+      virtualFileUrlManager.storeAndGet(environmentDir.resolve(GLOBAL_LIBRARIES_FILE_NAME + PathManager.DEFAULT_EXT).absolutePathString())
     val globalLibrariesEntitySource = JpsGlobalFileEntitySource(globalLibrariesFile)
     serializers.add(JpsGlobalLibrariesFileSerializer(globalLibrariesEntitySource) as JpsFileEntityTypeSerializer<WorkspaceEntity>)
 
@@ -46,7 +47,8 @@ object JpsGlobalEntitiesSerializers {
     environmentName: InternalEnvironmentName,
   ): JpsSdkEntitySerializer {
     val environmentDir = resolveEnvironmentDir(optionsDir, environmentName)
-    val globalSdkFile = virtualFileUrlManager.getOrCreateFromUrl(environmentDir.resolve(SDK_FILE_NAME + PathManager.DEFAULT_EXT).absolutePathString())
+    val globalSdkFile =
+      virtualFileUrlManager.storeAndGet(environmentDir.resolve(SDK_FILE_NAME + PathManager.DEFAULT_EXT).absolutePathString())
     val globalSdkEntitySource = JpsGlobalFileEntitySource(globalSdkFile)
     return JpsSdkEntitySerializer(globalSdkEntitySource, sortedRootTypes)
   }
@@ -54,7 +56,7 @@ object JpsGlobalEntitiesSerializers {
   private fun resolveEnvironmentDir(optionsDir: Path, environmentName: InternalEnvironmentName): Path =
     when (environmentName) {
       InternalEnvironmentName.Local -> optionsDir
-      is InternalEnvironmentName.Custom -> optionsDir.resolve(environmentName.name)
+      is InternalEnvironmentName.Custom -> optionsDir.resolve(environmentName.asDirName())
     }
 }
 

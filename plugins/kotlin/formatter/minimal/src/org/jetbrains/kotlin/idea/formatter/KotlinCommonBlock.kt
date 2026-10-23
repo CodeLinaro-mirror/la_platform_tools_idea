@@ -35,7 +35,6 @@ import org.jetbrains.kotlin.KtNodeTypes.CLASS_BODY
 import org.jetbrains.kotlin.KtNodeTypes.COLLECTION_LITERAL_EXPRESSION
 import org.jetbrains.kotlin.KtNodeTypes.CONDITION
 import org.jetbrains.kotlin.KtNodeTypes.CONTEXT_PARAMETER_LIST
-import org.jetbrains.kotlin.KtNodeTypes.CONTEXT_RECEIVER_LIST
 import org.jetbrains.kotlin.KtNodeTypes.DESTRUCTURING_DECLARATION
 import org.jetbrains.kotlin.KtNodeTypes.DOT_QUALIFIED_EXPRESSION
 import org.jetbrains.kotlin.KtNodeTypes.DO_WHILE
@@ -417,8 +416,7 @@ abstract class KotlinCommonBlock(
             val parentType = childParent.elementType
 
             if (parentType === VALUE_PARAMETER_LIST || parentType === VALUE_ARGUMENT_LIST || parentType === CONTEXT_PARAMETER_LIST) {
-                val prev = getPrevWithoutWhitespace(child)
-                if (childType === RPAR && (prev == null || prev.elementType !== COMMA || !hasDoubleLineBreakBefore(child))) {
+                if (childType === RPAR) {
                     return Indent.getNoneIndent()
                 }
 
@@ -487,20 +485,28 @@ abstract class KotlinCommonBlock(
 
             VALUE_PARAMETER_LIST, VALUE_ARGUMENT_LIST, CONTEXT_PARAMETER_LIST -> {
                 val subBlocks = getSubBlocks()
-                if (newChildIndex != 1 && newChildIndex != 0 && newChildIndex < subBlocks.size) {
-                    val block = subBlocks[newChildIndex]
-                    ChildAttributes(block.indent, block.alignment)
-                } else {
-                    val indent =
+                val parameterIndent =
                         if ((type == VALUE_PARAMETER_LIST && !settings.kotlinCustomSettings.CONTINUATION_INDENT_IN_PARAMETER_LISTS) ||
-                            (type == VALUE_ARGUMENT_LIST && !settings.kotlinCustomSettings.CONTINUATION_INDENT_IN_ARGUMENT_LISTS)||
-                        (type == CONTEXT_PARAMETER_LIST && !settings.kotlinCustomSettings.CONTINUATION_INDENT_IN_CONTEXT_PARAMETER_LISTS)) {
+                            (type == VALUE_ARGUMENT_LIST && !settings.kotlinCustomSettings.CONTINUATION_INDENT_IN_ARGUMENT_LISTS) ||
+                            (type == CONTEXT_PARAMETER_LIST && !settings.kotlinCustomSettings.CONTINUATION_INDENT_IN_CONTEXT_PARAMETER_LISTS)
+                        ) {
                             Indent.getNormalIndent()
                         } else {
                             Indent.getContinuationIndent()
                         }
 
-                    ChildAttributes(indent, null)
+                if (newChildIndex != 1 && newChildIndex != 0 && newChildIndex < subBlocks.size) {
+                    val block = subBlocks[newChildIndex]
+                    if (block is ASTBlock && block.node?.elementType == RPAR) {
+                        // A new line inserted right before the closing bracket is a new parameter/argument position,
+                        // so it gets parameter-level indent and alignment instead of inheriting the un-indented bracket block.
+                        val prevBlock = subBlocks.getOrNull(newChildIndex - 1)
+                        ChildAttributes(parameterIndent, prevBlock?.alignment)
+                    } else {
+                        ChildAttributes(block.indent, block.alignment)
+                    }
+                } else {
+                    ChildAttributes(parameterIndent, null)
                 }
             }
 
@@ -1043,7 +1049,7 @@ private fun getWrapAfterAnnotation(childElement: ASTNode, wrapType: Int): Wrap? 
 }
 
 private fun getWrapAfterContextParameters(childElement: ASTNode, wrapType: Int): Wrap? {
-    return getWrapAfterElementInModifierList(childElement, wrapType) { it?.elementType == CONTEXT_RECEIVER_LIST }
+    return getWrapAfterElementInModifierList(childElement, wrapType) { it?.elementType == CONTEXT_PARAMETER_LIST }
 }
 
 private fun getWrapAfterElementInModifierList(childElement: ASTNode, wrapType: Int, acceptLastChildNode: (ASTNode?) -> Boolean): Wrap? {
@@ -1071,12 +1077,6 @@ private fun hasLineBreakBefore(node: ASTNode): Boolean {
         .firstOrNull()
 
     return prevSibling?.elementType == TokenType.WHITE_SPACE && prevSibling?.textContains('\n') == true
-}
-
-private fun hasDoubleLineBreakBefore(node: ASTNode): Boolean {
-    val prevSibling = node.leaves(false).firstOrNull() ?: return false
-
-    return prevSibling.text.count { it == '\n' } >= 2
 }
 
 fun NodeIndentStrategy.PositionStrategy.continuationIf(
@@ -1191,7 +1191,7 @@ private val INDENT_RULES = arrayOf(
 
     strategy("Indent for parts")
         .within(PROPERTY, FUN, DESTRUCTURING_DECLARATION, SECONDARY_CONSTRUCTOR)
-        .notForType(BLOCK, FUN_KEYWORD, VAL_KEYWORD, VAR_KEYWORD, CONSTRUCTOR_KEYWORD, RBRACKET, RPAR, EOL_COMMENT, CONTEXT_RECEIVER_LIST, MODIFIER_LIST)
+        .notForType(BLOCK, FUN_KEYWORD, VAL_KEYWORD, VAR_KEYWORD, CONSTRUCTOR_KEYWORD, RBRACKET, RPAR, EOL_COMMENT, CONTEXT_PARAMETER_LIST, MODIFIER_LIST)
         .set(Indent.getContinuationWithoutFirstIndent()),
 
     strategy("Chained calls")
@@ -1282,7 +1282,7 @@ private val INDENT_RULES = arrayOf(
         .set(Indent.getNormalIndent()),
 
     strategy("Context Parameters List")
-        .within(CONTEXT_RECEIVER_LIST)
+        .within(CONTEXT_PARAMETER_LIST)
         .forType(VALUE_PARAMETER)
         .set(Indent.getNormalIndent()),
 
@@ -1343,14 +1343,6 @@ private fun getAlignmentForChildInParenthesis(
     return object : CommonAlignmentStrategy() {
         override fun getAlignment(node: ASTNode): Alignment? {
             val childNodeType = node.elementType
-
-            val prev = getPrevWithoutWhitespace(node)
-            val hasTrailingComma = childNodeType === closeBracket && prev?.elementType == COMMA
-
-            if (hasTrailingComma && hasDoubleLineBreakBefore(node)) {
-                // Prefer align to parameters on code with trailing comma (case of line break after comma, when before closing bracket there was a line break)
-                return parameterAlignment
-            }
 
             if (childNodeType === openBracket || childNodeType === closeBracket) {
                 return bracketsAlignment
@@ -1415,7 +1407,7 @@ private fun getWrappingStrategyForModifierList(annotationsWrapType: Int, context
         val prevType = getPrevWithoutWhitespace(childElement)?.elementType
         if (thisType in ANNOTATIONS || prevType in ANNOTATIONS && thisType != EOL_COMMENT && prevType != EOL_COMMENT)
             annotationWrap
-        else if (thisType == CONTEXT_RECEIVER_LIST || prevType == CONTEXT_RECEIVER_LIST && thisType != EOL_COMMENT && prevType != EOL_COMMENT)
+        else if (thisType == CONTEXT_PARAMETER_LIST || prevType == CONTEXT_PARAMETER_LIST && thisType != EOL_COMMENT && prevType != EOL_COMMENT)
             contextParametersWrap
         else
             null

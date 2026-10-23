@@ -58,6 +58,7 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.regex.Pattern;
 
+import static com.intellij.ide.impl.ProjectUtil.isRealProject;
 import static com.intellij.openapi.util.text.StringUtil.splitByLinesKeepSeparators;
 import static com.intellij.openapi.util.text.StringUtil.trimLeading;
 import static git4idea.commands.GitCommand.LockingPolicy.READ;
@@ -175,7 +176,9 @@ public abstract class GitImplBase implements Git {
       try (GitHandlerAuthenticationManager authenticationManager = GitHandlerAuthenticationManager.prepare(project, handler, version)) {
         try (GitHandlerRebaseEditorManager ignored = prepareGeneralPurposeEditor(project, handler)) {
           GitCommandResult result = doRun(handler, version, outputCollector);
-          return GitCommandResult.withAuthentication(result, authenticationManager.isHttpAuthFailed());
+          return GitCommandResult.withAuthentication(result,
+                                                     authenticationManager.isHttpAuthFailed(),
+                                                     authenticationManager.getPresentableAuthFailureMessage(outputCollector.myErrorOutput));
         }
       }
       catch (IOException e) {
@@ -368,7 +371,7 @@ public abstract class GitImplBase implements Git {
     if (handler.isSilent()) return;
 
     Project project = handler.project();
-    if (project != null && !project.isDefault()) {
+    if (project != null && isRealProject(project)) {
       handler.addLineListener(new GitCommandOutputLogger(project, handler));
     }
   }
@@ -417,7 +420,7 @@ public abstract class GitImplBase implements Git {
   private static @NotNull AccessToken lock(@NotNull GitLineHandler handler, boolean canSuppressOptionalLocks) {
     Project project = handler.project();
 
-    if (project == null || project.isDefault() || !shouldTakeWriteLock(handler, canSuppressOptionalLocks)) {
+    if (project == null || !isRealProject(project) || !shouldTakeWriteLock(handler, canSuppressOptionalLocks)) {
       return AccessToken.EMPTY_ACCESS_TOKEN;
     }
 

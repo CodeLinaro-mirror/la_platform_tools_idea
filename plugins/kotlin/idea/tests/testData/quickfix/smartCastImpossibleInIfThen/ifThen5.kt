@@ -1,6 +1,6 @@
 // "Replace 'if' expression with safe access expression" "true"
 // WITH_STDLIB
-// K2_ERROR: Smart cast to 'String' is impossible, because 'x' is a mutable property that could be mutated concurrently.
+// K2_ERROR: SMARTCAST_IMPOSSIBLE
 class Test {
     var x: Any? = null
 
@@ -10,5 +10,4 @@ class Test {
 
     fun foo(s: String) = 1
 }
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.SmartCastImpossibleInIfThenFactory$createQuickFix$1
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.codeInsight.IfThenToSafeAccessFix$asModCommandAction$1
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.codeInsight.IfThenToSafeAccessFix$asModCommandAction$1

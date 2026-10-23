@@ -22,9 +22,11 @@ import org.intellij.markdown.parser.markerblocks.providers.HtmlBlockProvider
 import org.intellij.markdown.parser.markerblocks.providers.ListMarkerProvider
 import org.intellij.markdown.parser.markerblocks.providers.SetextHeaderProvider
 import org.intellij.markdown.parser.sequentialparsers.SequentialParser
+import org.intellij.plugins.markdown.lang.parser.blocks.AdmonitionMarkerProvider
 import org.intellij.plugins.markdown.lang.parser.blocks.CodeFenceMarkerProvider
 import org.intellij.plugins.markdown.lang.parser.blocks.CommentAwareLinkReferenceDefinitionProvider
 import org.intellij.plugins.markdown.lang.parser.blocks.DefinitionListMarkerProvider
+import org.intellij.plugins.markdown.lang.parser.blocks.IndentedCodeFenceMarkerProvider
 import org.intellij.plugins.markdown.lang.parser.blocks.frontmatter.FrontMatterHeaderMarkerProvider
 import kotlin.math.min
 
@@ -69,14 +71,16 @@ open class MarkdownDefaultMarkerProcessor(
 
   override fun getMarkerBlockProviders(): List<MarkerBlockProvider<StateInfo>> {
     return buildList {
+      add(IndentedCodeFenceMarkerProvider())
       add(CodeBlockProvider())
       add(CodeFenceMarkerProvider())
       add(SetextHeaderProvider())
       add(GitHubAlertMarkerProvider())
-      add(BlockQuoteProvider())
+      add(BlockQuoteProvider(lazyContinuation = false))
       add(ListMarkerProvider())
       add(HtmlBlockProvider())
       add(DefinitionListMarkerProvider())
+      add(AdmonitionMarkerProvider())
       add(FrontMatterHeaderMarkerProvider())
       add(HorizontalRuleProvider())
       add(GitHubTableMarkerProvider())

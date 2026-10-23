@@ -1,11 +1,17 @@
 // Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python;
 
+import com.jetbrains.python.allure.Layers;
+import com.jetbrains.python.allure.Subsystems;
+
 import com.intellij.grazie.spellcheck.GrazieSpellCheckingInspection;
+import com.intellij.idea.TestFor;
 import com.jetbrains.python.fixtures.PyTestCase;
 import com.jetbrains.python.psi.LanguageLevel;
 
 
+@Subsystems.IDE
+@Layers.Functional
 public class PySpellCheckerTest extends PyTestCase {
   public void testPlainTextSplitter() {
     doTest();
@@ -66,6 +72,16 @@ public class PySpellCheckerTest extends PyTestCase {
 
   // PY-7711
   public void testTyposInRegexIgnored() {
+    doTest();
+  }
+
+  @TestFor(issues="PY-27635")
+  public void testSphinxRoleInDocstring() {
+    doTest();
+  }
+
+  @TestFor(issues="PY-27635")
+  public void testSphinxRoleInComment() {
     doTest();
   }
 

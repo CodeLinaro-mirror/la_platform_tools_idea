@@ -24,6 +24,7 @@ import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.asContextElement
+import com.intellij.openapi.updateSettings.impl.getPresentableName
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.components.labels.LinkListener
@@ -47,6 +48,7 @@ class InstalledPluginsTabSearchResultPanel(
   private val mySelectionListener: Consumer<in PluginsGroupComponent?>,
   private val mySearchInMarketplaceTabHandler: Consumer<String?>?,
   private val myPluginModelFacade: PluginModelFacade,
+  private val myWaitForInstalledPanelModel: suspend () -> Unit,
 ) : SearchResultPanel(coroutineScope, installedController, panel, false) {
   override fun setupEmptyText() {
     myPanel.getEmptyText().setText(IdeBundle.message("plugins.configurable.nothing.found"))
@@ -79,6 +81,7 @@ class InstalledPluginsTabSearchResultPanel(
     val searchIndex = updateAndGetSearchIndex()
     myPluginModelFacade.getModel().setInvalidFixCallback(null)
     val parser = SearchQueryParser.Installed(query)
+    myWaitForInstalledPanelModel()
     val descriptors = myPluginModelFacade.getModel().installedDescriptors
 
     if (!parser.vendors.isEmpty()) {
@@ -95,6 +98,18 @@ class InstalledPluginsTabSearchResultPanel(
       val I = descriptors.iterator()
       while (I.hasNext()) {
         if (!ContainerUtil.intersects<String>(I.next().calculateTags(sessionId), parser.tags)) {
+          I.remove()
+        }
+      }
+    }
+    if (!parser.updateSources.isEmpty()) {
+      val I = descriptors.iterator()
+      while (I.hasNext()) {
+        val plugin = I.next()
+        val pluginUpdateSource = myPluginModelFacade.getPendingPluginUpdateSource(plugin.pluginId)
+        if (!parser.updateSources.contains(pluginUpdateSource.getPresentableName())) {
+          I.remove()
+        } else if (pluginUpdateSource == null && !plugin.isUpdateable) {
           I.remove()
         }
       }
@@ -149,13 +164,16 @@ class InstalledPluginsTabSearchResultPanel(
     }
 
     result.addModels(descriptors)
+    val pluginIds = descriptors.map { it.pluginId }
     val errors = getInstance()
       .loadErrors(
         myPluginModelFacade.getModel().mySessionId.toString(),
-        descriptors.map(PluginUiModel::pluginId)
+        pluginIds
       )
     result.getPreloadedModel().setErrors(MyPluginModel.getErrors(errors))
+    result.getPreloadedModel().setExpectedExplanations(MyPluginModel.getExpectedExplanations(errors))
     result.getPreloadedModel().setPluginInstallationStates(getInstance().getInstallationStatesSync())
+    result.getPreloadedModel().setPluginUpdateSources(myPluginModelFacade.getPendingPluginUpdateSourcesSync(pluginIds))
     performInstalledTabSearch(
       getActiveProject(), parser, result.getModels(), searchIndex, null
     )

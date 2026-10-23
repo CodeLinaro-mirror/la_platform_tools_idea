@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.searchEverywhereLucene.frontend` start
+content_module_jar(module = ":frontend")
+### auto-generated section `dev intellij.searchEverywhereLucene.frontend` end
 
 ### auto-generated section `build intellij.searchEverywhereLucene.frontend` start
-
 jvm_library(
     name = "frontend",
     srcs = glob(
@@ -72,6 +76,7 @@ jvm_library(
 exports_files(
     [
         "intellij.searchEverywhereLucene.frontend.iml",
+        "resources/intellij.searchEverywhereLucene.frontend.xml",
     ],
     visibility = ["//visibility:public"],
 )

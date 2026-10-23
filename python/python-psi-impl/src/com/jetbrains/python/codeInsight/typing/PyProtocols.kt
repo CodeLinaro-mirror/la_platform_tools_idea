@@ -12,13 +12,13 @@ import com.jetbrains.python.psi.PyKnownDecorator.TYPING_RUNTIME_EXT
 import com.jetbrains.python.psi.PyKnownDecoratorUtil
 import com.jetbrains.python.psi.PyPossibleClassMember
 import com.jetbrains.python.psi.PyTypeParameter
-import com.jetbrains.python.psi.PyTypedElement
 import com.jetbrains.python.psi.impl.PyCallExpressionHelper
 import com.jetbrains.python.psi.resolve.PyResolveContext
 import com.jetbrains.python.psi.types.PyClassLikeType
 import com.jetbrains.python.psi.types.PyClassType
 import com.jetbrains.python.psi.types.PyType
 import com.jetbrains.python.psi.types.PyTypeMember
+import com.jetbrains.python.psi.types.PyTypeUtil
 import com.jetbrains.python.psi.types.TypeEvalContext
 
 
@@ -55,24 +55,17 @@ fun inspectProtocolSubclass(protocol: PyClassType, subclass: PyClassType, contex
     when (val name = protocolMember.name) {
       null -> continue
       PyNames.CALL -> {
-        val invokedMethods = PyCallExpressionHelper.getImplicitlyInvokedMethod(subclass, resolveContext)
+        // A class object matches a callable protocol through its constructor.
+        // When the protocol type is a class object, match `__call__` against the `__call__` of the subclass instance.
+        val callee = if (protocol.isDefinition) subclass.toInstance() else subclass
+        val invokedMethods = PyCallExpressionHelper.getImplicitlyInvokedMethod(callee, resolveContext)
         if (invokedMethods.isNotEmpty()) {
           result.add(Pair(protocolMember, invokedMethods))
         }
         else {
-          val fallbackTypes = PyCallExpressionHelper.resolveImplicitlyInvokedMethods(subclass, null, resolveContext)
-            .mapNotNull { it.element }
-            .filterIsInstance<PyTypedElement>()
-            .mapNotNull {
-              val type = resolveContext.typeEvalContext.getType(it)
-              if (type != null) {
-                it to type
-              }
-              else {
-                null
-              }
-            }
-          result.add(Pair(protocolMember, fallbackTypes.map { PyTypeMember(it.first, it.second) }))
+          val callableType = PyCallExpressionHelper.createCallableFromClass(callee, resolveContext)
+          val fallbackTypes = PyTypeUtil.getCallableItems(callableType).map { PyTypeMember(null, it) } // TODO null
+          result.add(Pair(protocolMember, fallbackTypes))
         }
       }
       else -> {

@@ -9,12 +9,12 @@ import com.intellij.ide.impl.ProjectPaneSelectInTarget;
 import com.intellij.ide.projectView.ProjectView;
 import com.intellij.ide.projectView.ProjectViewSettings;
 import com.intellij.ide.projectView.ViewSettings;
-import com.intellij.ide.projectView.impl.canBeSelected.CanBeSelectedInProjectPaneProvider;
 import com.intellij.ide.projectView.impl.nodes.ModuleGroupNode;
 import com.intellij.ide.projectView.impl.nodes.ProjectViewModuleNode;
 import com.intellij.ide.projectView.impl.nodes.ProjectViewProjectNode;
 import com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode;
 import com.intellij.ide.util.treeView.AbstractTreeNode;
+import com.intellij.openapi.extensions.InternalIgnoreDependencyViolation;
 import com.intellij.openapi.options.advanced.AdvancedSettings;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.registry.Registry;
@@ -32,8 +32,10 @@ import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreeModel;
 import java.awt.Font;
 
+import static com.intellij.ide.projectView.impl.selection.ProjectPaneSelectionKt.isSelectableInProjectPane;
 import static com.intellij.openapi.module.ModuleGrouperKt.isQualifiedModuleNamesEnabled;
 
+@InternalIgnoreDependencyViolation
 public class ProjectViewPane extends AbstractProjectViewPaneWithAsyncSupport {
   public static final @NonNls String ID = "ProjectPane";
 
@@ -154,7 +156,7 @@ public class ProjectViewPane extends AbstractProjectViewPaneWithAsyncSupport {
   }
 
   public static boolean canBeSelectedInProjectView(@NotNull Project project, @NotNull VirtualFile file) {
-    return CanBeSelectedInProjectPaneProvider.canBeSelected(project, file);
+    return isSelectableInProjectPane(project, file);
   }
 
   @Override

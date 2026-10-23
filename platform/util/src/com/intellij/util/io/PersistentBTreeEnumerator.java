@@ -99,7 +99,7 @@ public class PersistentBTreeEnumerator<Data> extends PersistentEnumeratorBase<Da
                                    @NotNull KeyDescriptor<Data> dataDescriptor,
                                    int initialSize,
                                    @Nullable StorageLockContext lockContext) throws IOException {
-    this(file, dataDescriptor, initialSize, lockContext, 0, false, true);
+    this(file, dataDescriptor, initialSize, lockContext, 0, true);
   }
 
   public PersistentBTreeEnumerator(@NotNull Path file,
@@ -107,7 +107,7 @@ public class PersistentBTreeEnumerator<Data> extends PersistentEnumeratorBase<Da
                                    int initialSize,
                                    @Nullable StorageLockContext lockContext,
                                    int version) throws IOException {
-    this(file, dataDescriptor, initialSize, lockContext, version, false, true);
+    this(file, dataDescriptor, initialSize, lockContext, version, true);
   }
 
   PersistentBTreeEnumerator(@NotNull Path file,
@@ -115,7 +115,6 @@ public class PersistentBTreeEnumerator<Data> extends PersistentEnumeratorBase<Da
                             int initialSize,
                             @Nullable StorageLockContext lockContext,
                             int version,
-                            boolean enableWal,
                             boolean registerForStats) throws IOException {
     super(file,
           new ResizeableMappedFile(
@@ -650,9 +649,12 @@ public class PersistentBTreeEnumerator<Data> extends PersistentEnumeratorBase<Da
             if (indexNodeValueAddress > 0) {
               // organize collision type reference
               int duplicatedValueOff = nextDuplicatedValueRecord();
+
+              //insert into collision storage first, btree next -- to improve chances of not having dangled pointer
+              // btree->collision storage in case of incorrect app shutdown
+              myCollisionResolutionStorage.putInt(duplicatedValueOff, indexNodeValueAddress); // we will set collision offset in next if
               myBTree.put(valueHC, -duplicatedValueOff);
 
-              myCollisionResolutionStorage.putInt(duplicatedValueOff, indexNodeValueAddress); // we will set collision offset in next if
               collisionAddress = duplicatedValueOff;
               ++myCollisions;
             }

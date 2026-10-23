@@ -13,7 +13,6 @@ import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
 import org.jetbrains.intellij.build.BuildContext
 import org.jetbrains.intellij.build.BuiltinModulesFileData
-import org.jetbrains.intellij.build.JarPackagerDependencyHelper
 import org.jetbrains.intellij.build.JvmArchitecture
 import org.jetbrains.intellij.build.OsFamily
 import org.jetbrains.intellij.build.impl.Git
@@ -56,7 +55,7 @@ internal fun generateProductInfoJson(
     emptyList()
   }
   val productProperties = context.productProperties
-  val productFlavors = productProperties.getProductFlavors(context).map { ProductFlavorData(it) }
+  val productFlavors = productProperties.getProductFlavors().map { ProductFlavorData(it) }
   val json = ProductInfoData.create(
     name = appInfo.fullProductName,
     version = appInfo.fullVersion,
@@ -125,7 +124,7 @@ internal fun writeProductInfoJson(targetFile: Path, json: String, context: Build
   Files.setLastModifiedTime(targetFile, FileTime.from(context.options.buildDateInSeconds, TimeUnit.SECONDS))
 }
 
-internal suspend fun generateEmbeddedFrontendLaunchData(
+internal fun generateEmbeddedFrontendLaunchData(
   arch: JvmArchitecture,
   os: OsFamily,
   ideContext: BuildContext,
@@ -142,17 +141,16 @@ internal suspend fun generateEmbeddedFrontendLaunchData(
   )
 }
 
-private suspend fun BuildContext.ijLightInitialPluginIds(): List<String> = listOfNotNull(
-  "com.intellij",
-  findFrontendCustomizationPluginId(this),
-  "com.jetbrains.remoteDevelopment",
-  "intellij.platform.ijent.impl",
-  "org.jetbrains.plugins.textmate",
-  "org.jetbrains.plugins.terminal",
-  "com.intellij.modules.jcef",
+/** The JVM arguments the `ijLight` command adds to those of the frontend it starts. */
+internal val IJ_LIGHT_JVM_ARGUMENTS: List<String> = listOf(
+  "-Dintellij.platform.product.mode=light",
+  "-Dintellij.platform.use.proxies.for.open.services=true",
+  "-Didea.vfs.max-file-length-to-cache=0",
+  "-Dcom.intellij.openapi.fileTypes.impl.FileTypeDetectionService.allowDetectionByContent=false",
+  "-Ddisable.implicit.soft.compatibility.dependencies=true",
 )
 
-internal suspend fun generateIjLightLaunchData(
+internal fun generateIjLightLaunchData(
   arch: JvmArchitecture,
   os: OsFamily,
   ideContext: BuildContext,
@@ -162,37 +160,19 @@ internal suspend fun generateIjLightLaunchData(
                       ?: ideContext.takeIf { it.productProperties.platformPrefix == "JetBrainsClient" }
                       ?: return null
 
-  val explicitPluginIds = clientContext.ijLightInitialPluginIds().joinToString(",")
-
   return CustomCommandLaunchData(
     commands = listOf("ijLight"),
     vmOptionsFilePath = vmOptionsFilePath(clientContext),
     bootClassPathJarNames = clientContext.bootClassPathJarNames,
-    additionalJvmArguments = clientContext.getAdditionalJvmArguments(os, arch) +
-                             getAdditionalEmbeddedClientVmOptions(os, ideContext) +
-                             "-Didea.load.plugins.id=$explicitPluginIds" +
-                             "-Dintellij.platform.use.proxies.for.open.services=true" +
-                             "-Didea.vfs.max-file-length-to-cache=0",
+    additionalJvmArguments = buildList {
+      addAll(clientContext.getAdditionalJvmArguments(os, arch))
+      addAll(getAdditionalEmbeddedClientVmOptions(os, ideContext))
+      addAll(IJ_LIGHT_JVM_ARGUMENTS)
+    },
     mainClass = clientContext.ideMainClassName,
     envVarBaseName = "JETBRAINS_CLIENT",
     dataDirectoryName = clientContext.systemSelector,
   )
-}
-
-private suspend fun findFrontendCustomizationPluginId(clientContext: BuildContext): String? {
-  val rootModule = clientContext.productProperties.rootModuleForModularLoader
-  val candidates = clientContext.getBundledPluginModules().filter {
-    it != rootModule && (it.endsWith(".frontend.split.customization") || it.endsWith(".frontend.customization") || it.endsWith(".customization.plugin"))
-  }
-  if (candidates.isEmpty() && rootModule == "intellij.frontend.split.customization") {
-    return null
-  }
-  if (candidates.size != 1) {
-    clientContext.messages.logErrorAndThrow("Expected exactly one frontend customization plugin module for ${clientContext.productProperties.rootModuleForModularLoader}, got $candidates")
-  }
-  val pluginModuleName = candidates.single()
-  val helper = JarPackagerDependencyHelper(clientContext.outputProvider)
-  return helper.getPluginIdByModule(clientContext.outputProvider.findRequiredModule(pluginModuleName))
 }
 
 /**

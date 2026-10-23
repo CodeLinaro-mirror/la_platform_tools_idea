@@ -23,6 +23,7 @@ import com.intellij.openapi.observable.util.toUiPathProperty
 import com.intellij.openapi.observable.util.trim
 import com.intellij.openapi.observable.util.widthProperty
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.project.rootManager
 import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.ui.BrowseFolderDescriptor.Companion.withPathToTextConvertor
@@ -166,10 +167,12 @@ class NewProjectWizardBaseStep(parent: NewProjectWizardStep) : AbstractNewProjec
           .withTitle(message("title.select.project.file.directory", context.presentationName))
           .withPathToTextConvertor(::getPresentablePath)
           .withTextToPathConvertor(::getCanonicalPath)
-        textFieldWithBrowseButton(fileChooserDescriptor, context.project)
+          .withEnvironmentRestricted(true)
+        textFieldWithBrowseButton(fileChooserDescriptor, context.project ?: ProjectManager.getInstance().defaultProject)
           .bindText(pathProperty.toUiPathProperty())
           .align(AlignX.FILL)
           .trimmedTextValidation(CHECK_NON_EMPTY, CHECK_DIRECTORY)
+          .enabled(!context.isProjectLocationLocked)
           .whenTextChangedFromUi { logLocationChanged() }
           .locationComment(context, locationProperty)
       }

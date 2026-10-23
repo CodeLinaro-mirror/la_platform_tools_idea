@@ -3,6 +3,7 @@
 package com.intellij.refactoring.move;
 
 import com.intellij.codeInsight.TargetElementUtilBase;
+import com.intellij.codeInsight.multiverse.EditorContextManager;
 import com.intellij.lang.Language;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.actionSystem.DataContext;
@@ -15,8 +16,8 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.NlsActions;
 import com.intellij.openapi.util.NlsContexts;
+import com.intellij.platform.ide.productMode.IdeProductMode;
 import com.intellij.psi.PsiDirectory;
-import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiReference;
@@ -129,10 +130,11 @@ public final class MoveHandler implements RefactoringActionHandler {
       if (DumbService.isDumb(project)) {
         MoveFilesOrDirectoriesHandler filesOrDirectoriesHandler = MoveHandlerDelegate.EP_NAME.findExtensionOrFail(MoveFilesOrDirectoriesHandler.class);
         if (filesOrDirectoriesHandler.canMove(elements, targetContainer, null)) {
-          int copyDumb = Messages.showYesNoDialog(project,
-                                                  RefactoringBundle.message("move.handler.is.dumb.during.indexing"),
-                                                  getRefactoringName(), Messages.getQuestionIcon());
-          if (copyDumb == Messages.YES) {
+          boolean copyDumb = IdeProductMode.isLight() ||
+                             Messages.showYesNoDialog(project,
+                                                      RefactoringBundle.message("move.handler.is.dumb.during.indexing"),
+                                                      getRefactoringName(), Messages.getQuestionIcon()) == Messages.YES;
+          if (copyDumb) {
             logDelegate(project, filesOrDirectoriesHandler, elements[0].getLanguage());
             filesOrDirectoriesHandler.doMove(project, elements, filesOrDirectoriesHandler.adjustTargetForMove(dataContext, targetContainer), callback);
           }
@@ -188,7 +190,7 @@ public final class MoveHandler implements RefactoringActionHandler {
     if (editor != null) {
       Project project = dataContext.getData(CommonDataKeys.PROJECT);
       if (project == null) return null;
-      PsiFile file = PsiDocumentManager.getInstance(project).getPsiFile(editor.getDocument());
+      PsiFile file = EditorContextManager.getPsiFileForEditor(editor, project);
       if (file == null) return null;
       PsiElement element = file.findElementAt(editor.getCaretModel().getOffset());
       if (element == null) element = file;

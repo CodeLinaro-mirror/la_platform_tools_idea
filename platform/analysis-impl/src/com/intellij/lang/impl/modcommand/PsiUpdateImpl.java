@@ -3,8 +3,11 @@ package com.intellij.lang.impl.modcommand;
 
 import com.intellij.analysis.AnalysisBundle;
 import com.intellij.codeInsight.template.Expression;
+import com.intellij.codeInsight.template.RecalculatableResult;
 import com.intellij.codeInsight.template.Result;
+import com.intellij.codeInsight.template.impl.ModCommandAwareTemplateOptionalProcessor;
 import com.intellij.codeInsight.template.impl.TemplateImpl;
+import com.intellij.codeInsight.template.impl.TemplateOptionalProcessor;
 import com.intellij.injected.editor.DocumentWindow;
 import com.intellij.injected.editor.InjectionEditService;
 import com.intellij.lang.Language;
@@ -57,11 +60,12 @@ import com.intellij.psi.SmartPsiElementPointer;
 import com.intellij.psi.impl.file.PsiDirectoryFactory;
 import com.intellij.psi.impl.file.PsiFileImplUtil;
 import com.intellij.psi.impl.source.PostprocessReformattingAspect;
+import com.intellij.psi.impl.source.tree.injected.InjectedLanguageUtil;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.testFramework.LightVirtualFile;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.containers.ContainerUtil;
-import one.util.streamex.StreamEx;
+import com.intellij.util.containers.JBTreeTraverser;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -125,7 +129,7 @@ final class PsiUpdateImpl {
       Project project = origFile.getProject();
       myCopyFile = copyFile(project, origFile);
       PsiFileImplUtil.setNonPhysicalFileDeleteHandler(myCopyFile, _ -> myDeleted = true);
-      assert !myCopyFile.getViewProvider().isEventSystemEnabled() : "Event system for " + myCopyFile.getName();
+      assert !myCopyFile.getViewProvider().supportsSendingPsiEvents() : "Event system for " + myCopyFile.getName();
       myManager = PsiDocumentManager.getInstance(project);
       myDocument = myCopyFile.getFileDocument();
       InjectedLanguageManager injectionManager = InjectedLanguageManager.getInstance(project);
@@ -136,7 +140,7 @@ final class PsiUpdateImpl {
         PsiFile hostFile = host.getContainingFile();
         FileTracker hostTracker = changedFiles.get(hostFile);
         PsiFile hostFileCopy = hostTracker != null ? hostTracker.myTargetFile : createCopyOfPsiFile(hostFile);
-        PsiFile injectedFileCopy = getInjectedFileCopy(host, hostFileCopy, origFile.getLanguage());
+        PsiFile injectedFileCopy = getInjectedFileCopy(hostCopy(host, hostFileCopy), origFile.getLanguage());
         Disposable disposable = ApplicationManager.getApplication().getService(InjectionEditService.class)
           .synchronizeWithFragment(injectedFileCopy, myDocument);
         myDocument.addDocumentListener(new DocumentListener() {
@@ -150,8 +154,9 @@ final class PsiUpdateImpl {
         }, this);
         Disposer.register(this, disposable);
         if (selectionToDelete != null) {
-          // The supplied selection is in host-document coordinates (completion uses the top-level editor);
-          // map it into the injected copy's coordinate space, as myDocument is the copy of the injected file here.
+          // The supplied selection is in host-document coordinates (ModPsiUpdaterImpl normalizes to them via
+          // ActionContext#mapToHost); map it into the injected copy's coordinate space,
+          // as myDocument is the copy of the injected file here.
           Document injectedDocument = origFile.getFileDocument();
           if (injectedDocument instanceof DocumentWindow window) {
             int start = injectionManager.mapInjectedOffsetToUnescaped(origFile, window.hostToInjected(selectionToDelete.getStartOffset()));
@@ -254,11 +259,21 @@ final class PsiUpdateImpl {
     }
   }
 
-  private static @NotNull PsiFile getInjectedFileCopy(@NotNull PsiLanguageInjectionHost host,
-                                                      @NotNull PsiFile hostFileCopy,
-                                                      @NotNull Language injectedLanguage) {
-    InjectedLanguageManager injectionManager = InjectedLanguageManager.getInstance(hostFileCopy.getProject());
+  /**
+   * @return the copy of the host inside {@code hostFileCopy}, linked to the original host
+   */
+  private static @NotNull PsiLanguageInjectionHost hostCopy(@NotNull PsiLanguageInjectionHost host,
+                                                            @NotNull PsiFile hostFileCopy) {
     PsiLanguageInjectionHost hostCopy = PsiTreeUtil.findSameElementInCopy(host, hostFileCopy);
+    if (hostCopy.getCopyableUserData(InjectedLanguageUtil.FORCE_INJECTED_COPY_ELEMENT_KEY) == null) {
+      hostCopy.putCopyableUserData(InjectedLanguageUtil.FORCE_INJECTED_COPY_ELEMENT_KEY, host);
+    }
+    return hostCopy;
+  }
+
+  private static @NotNull PsiFile getInjectedFileCopy(@NotNull PsiLanguageInjectionHost hostCopy,
+                                                      @NotNull Language injectedLanguage) {
+    InjectedLanguageManager injectionManager = InjectedLanguageManager.getInstance(hostCopy.getProject());
     var visitor = new PsiLanguageInjectionHost.InjectedPsiVisitor() {
       private final Language origLanguage = injectedLanguage;
       PsiFile injectedFileCopy = null;
@@ -348,8 +363,11 @@ final class PsiUpdateImpl {
         ChangedVirtualDirectory root = directory();
         Map<LightVirtualFile, VirtualFile> mapping = new HashMap<>();
         mapping.put(root, root.getOriginalFile());
-        return StreamEx.<LightVirtualFile, ChangedVirtualDirectory>ofTree(
-            root, ChangedVirtualDirectory.class, vf -> StreamEx.ofValues(vf.getAddedChildren()))
+        return JBTreeTraverser.<LightVirtualFile>from(
+            vf -> vf instanceof ChangedVirtualDirectory dir ? dir.getAddedChildren().values() : List.of())
+          .withRoot(root)
+          .preOrderDfsTraversal()
+          .toStream()
           .skip(1) // existing root
           .map(vf -> {
             if (vf.isDirectory()) {
@@ -370,8 +388,9 @@ final class PsiUpdateImpl {
 
     private ModPsiUpdaterImpl(@NotNull ActionContext actionContext, boolean deleteSelection) {
       myActionContext = actionContext;
-      myCaretOffset = myCaretVirtualEnd = actionContext.offset();
-      mySelection = actionContext.selection();
+      ActionContext hostContext = actionContext.mapToHost();
+      myCaretOffset = myCaretVirtualEnd = hostContext.offset();
+      mySelection = hostContext.selection();
       myDeleteSelection = deleteSelection;
     }
 
@@ -471,10 +490,16 @@ final class PsiUpdateImpl {
       if (!element.isValid()) throw new IllegalArgumentException("Element " + element + " is not valid");
       if (myTracker == null || !PsiTreeUtil.isAncestor(myTracker.myCopyFile, element, false)) {
         PsiFile file = element.getContainingFile();
+        SmartPsiElementPointer<PsiElement> newFilePointer = null;
         // allow navigating to the beginning of files
         if (file.getViewProvider().getVirtualFile() instanceof LightVirtualFile lvf &&
             lvf.getParent() instanceof ChangedVirtualDirectory cvd) {
           myNavigationFile = new FutureVirtualFile(resolveParentForFutureVirtualFile(cvd), lvf.getName(), lvf.getFileType());
+          Document document = file.getFileDocument();
+          newFilePointer = SmartPointerManager.createPointer(element);
+          PsiDocumentManager manager = PsiDocumentManager.getInstance(getProject());
+          manager.commitDocument(document);
+          manager.doPostponedOperationsAndUnblockDocument(document);
         }
         else {
           myNavigationFile = file.getOriginalFile().getVirtualFile();
@@ -484,7 +509,10 @@ final class PsiUpdateImpl {
         }
         myTracker = tracker(file.getOriginalFile());
         myTracker.myPositionDocument.addDocumentListener(this, this);
-        return element.getTextRange();
+        if (newFilePointer == null) return element.getTextRange();
+        Segment newFileRange = newFilePointer.getRange();
+        if (newFileRange == null) return null;
+        return TextRange.create(newFileRange);
       }
       SmartPsiElementPointer<PsiElement> pointer = SmartPointerManager.createPointer(element);
       myTracker.unblock();
@@ -544,9 +572,6 @@ final class PsiUpdateImpl {
 
     @Override
     public @NotNull ModTemplateBuilder templateBuilder() {
-      if (!myTemplateFields.isEmpty()) {
-        throw new IllegalStateException("Template was already created");
-      }
       return new ModTemplateBuilder() {
         @Override
         public @NotNull ModTemplateBuilder field(@NotNull PsiElement element, @NotNull Expression expression) {
@@ -574,7 +599,7 @@ final class PsiUpdateImpl {
           }
           TextRange rangeForTemplate = templateRange(elementRange, rangeInElement);
           TextRange range = mapRange(rangeForTemplate);
-          TemplateImpl.DummyContext context = new TemplateImpl.DummyContext(range, element, getPsiFile());
+          TemplateImpl.DummyContext context = new TemplateImpl.DummyContext(rangeForTemplate, element, getPsiFile());
           Result result = varName == null
                           ? expression.calculateResult(context)
                           : myTemplateValues.computeIfAbsent(varName, _ -> expression.calculateResult(context));
@@ -582,8 +607,29 @@ final class PsiUpdateImpl {
           if (result != null) {
             FileTracker tracker = requireNonNull(myTracker); // guarded by getRange call
             String fieldValue = result.toString();
-            tracker.myDocument.replaceString(rangeForTemplate.getStartOffset(), rangeForTemplate.getEndOffset(), fieldValue);
-            range = TextRange.from(range.getStartOffset(), fieldValue.length());
+            int start = rangeForTemplate.getStartOffset();
+            tracker.myDocument.replaceString(start, rangeForTemplate.getEndOffset(), fieldValue);
+            if (result instanceof RecalculatableResult recalc) {
+              // Mirror the interactive TemplateState path: shorten class references (and add imports) in the
+              // just-inserted field, then recalculate type bindings. Otherwise, types end up fully qualified.
+              RangeMarker marker = tracker.myDocument.createRangeMarker(start, start + fieldValue.length());
+              try {
+                range = mapRange(shortenAndRecalc(tracker, recalc, marker));
+              }
+              finally {
+                marker.dispose();
+              }
+            }
+            else {
+              range = TextRange.from(range.getStartOffset(), fieldValue.length());
+            }
+          }
+          else if (tracker().getHostCopy() != null && !rangeForTemplate.isEmpty()) {
+            // Injection only. The variable has no value (result == null), yet its range is non-empty.
+            // Root cause: in an injected fragment the reformat step (TemplateImpl.reformatTemplate) deletes
+            // an empty segment's placeholder together with a formatter-added trailing space. An empty field has no
+            // text, so collapse it to a zero-length caret stop at its start. Scoped to injections for now.
+            range = TextRange.from(range.getStartOffset(), 0);
           }
           myTemplateFields.add(new ModStartTemplate.ExpressionField(range, varName, expression));
           return this;
@@ -677,6 +723,9 @@ final class PsiUpdateImpl {
         myPositionUpdated = true;
         myCaretOffset = range.getStartOffset();
         myCaretVirtualEnd = range.getEndOffset();
+        if (!mySelection.containsOffset(myCaretOffset)) {
+          mySelection = TextRange.create(myCaretOffset, myCaretOffset);
+        }
       }
     }
 
@@ -926,6 +975,47 @@ final class PsiUpdateImpl {
     private @NotNull ModCommand getTemplateCommand() {
       if (myTemplateFields.isEmpty()) return nop();
       return new ModStartTemplate(navigationFile(), myTemplateFields, myTemplateOptional, myTemplateFinishFunction);
+    }
+
+    /**
+     * Mirrors {@code TemplateState.shortenReferences()} followed by {@link RecalculatableResult#handleRecalc} for a freshly
+     * inserted template field: runs the ModCommand-aware optional processors (e.g. FQN shortening and import insertion) over
+     * the field range, then recalculates type bindings. Without this step results such as {@code PsiTypeResult} keep their
+     * fully qualified canonical text in the resulting command (and in the IDEA preview).
+     *
+     * @return the range of the field after the processors ran. A processor can move text into the field from the
+     * left, and the document then keeps that text outside of {@code marker}.
+     */
+    private @NotNull TextRange shortenAndRecalc(@NotNull FileTracker tracker,
+                                                @NotNull RecalculatableResult recalc,
+                                                @NotNull RangeMarker marker) {
+      Document document = tracker.myDocument;
+      PsiFile psiFile = tracker.myCopyFile;
+      Project project = getProject();
+      TemplateImpl stubTemplate = new TemplateImpl("", "", "");
+      stubTemplate.setToShortenLongNames(true);
+      RangeMarker fieldMarker = null;
+      try {
+        for (TemplateOptionalProcessor processor : TemplateOptionalProcessor.EP_NAME.getExtensionList()) {
+          if (processor instanceof ModCommandAwareTemplateOptionalProcessor modProcessor) {
+            TextRange processed = modProcessor.processText(stubTemplate, this, marker);
+            if (!processed.equals(marker.getTextRange())) {
+              if (fieldMarker != null) {
+                fieldMarker.dispose();
+              }
+              fieldMarker = document.createRangeMarker(processed);
+            }
+          }
+        }
+        PsiDocumentManager.getInstance(project).commitDocument(document);
+        recalc.handleRecalc(psiFile, document, marker.getStartOffset(), marker.getEndOffset());
+        return fieldMarker != null && fieldMarker.isValid() ? fieldMarker.getTextRange() : marker.getTextRange();
+      }
+      finally {
+        if (fieldMarker != null) {
+          fieldMarker.dispose();
+        }
+      }
     }
   }
 }

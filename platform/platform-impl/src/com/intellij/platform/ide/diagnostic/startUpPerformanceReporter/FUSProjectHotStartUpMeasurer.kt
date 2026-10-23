@@ -21,6 +21,7 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.editor.impl.DocumentMarkupModel
 import com.intellij.openapi.editor.impl.zombie.SpawnRecipe
+import com.intellij.openapi.fileEditor.FileEditor
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.TextEditor
 import com.intellij.openapi.project.Project
@@ -30,9 +31,7 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.ex.WelcomeScreenProjectProvider
 import com.intellij.platform.ide.diagnostic.startUpPerformanceReporter.FUSProjectHotStartUpMeasurer.EmptyProjectMarker
 import com.intellij.platform.ide.diagnostic.startUpPerformanceReporter.FUSProjectHotStartUpMeasurer.MarkupType
-import com.intellij.platform.ide.diagnostic.startUpPerformanceReporter.FUSProjectHotStartUpMeasurer.getContextElementWithEmptyProjectElementToPass
-import com.intellij.platform.ide.diagnostic.startUpPerformanceReporter.FUSProjectHotStartUpMeasurer.getStartUpContextElementIntoIdeStarter
-import com.intellij.platform.ide.diagnostic.startUpPerformanceReporter.FUSProjectHotStartUpMeasurer.isRemDevTestWorkaround
+import com.intellij.platform.ide.diagnostic.startUpPerformanceReporter.FUSProjectHotStartUpMeasurer.isRemDevFrontend
 import com.intellij.platform.ide.productMode.IdeProductMode
 import com.intellij.util.PlatformUtils
 import com.intellij.util.containers.ComparatorUtil
@@ -42,6 +41,8 @@ import it.unimi.dsi.fastutil.ints.IntSet
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -67,7 +68,7 @@ object FUSProjectHotStartUpMeasurer {
   private val counter = AtomicInteger(0)
   private val handlingStarted = AtomicBoolean(false)
 
-  private data class ProjectId(val projectOrder: Int) {
+  internal data class ProjectId(val projectOrder: Int) {
     constructor() : this(counter.incrementAndGet())
   }
 
@@ -175,23 +176,22 @@ object FUSProjectHotStartUpMeasurer {
     channel.trySend(Event.SplashBecameVisibleEvent())
   }
 
-  fun isReopenStatEnabled(): Boolean {
-    if (AppMode.isMonolith()) return true
-    if (isRemDevTestWorkaround()) return true
-    return false
-  }
+  fun isReopenAndWelcomeScreenStatEnabled(): Boolean =
+    AppMode.isMonolith() || isRemDevFrontend()
 
   /**
-   * See IJPL-206077 and IJPL-200676
-   * For now this collector works in rem dev only for a client in integration tests;
-   * only one project marker - [EmptyProjectMarker] is used in that case.
+   * The collector runs on the frontend (the JetBrains Client and IJ Light) with one project marker, [EmptyProjectMarker].
+   * It does not run on the backend. The split-mode design is IJPL-200676.
    */
-  private fun isRemDevTestWorkaround(): Boolean = PlatformUtils.isJetBrainsClient() && ApplicationManagerEx.isInIntegrationTest()
+  private fun isRemDevFrontend(): Boolean =
+    PlatformUtils.isJetBrainsClient()
 
   fun getStartUpContextElementIntoIdeStarter(close: Boolean): CoroutineContext.Element? {
-    if (close || !isReopenStatEnabled()) {
+    val close = close || !isReopenAndWelcomeScreenStatEnabled()
+    if (close) {
       statsIsWritten = true
       channel.close()
+      WelcomeScreenCollector.shouldNotStart()
       return null
     }
     channel.trySend(Event.IdeStarterStartedEvent)
@@ -224,16 +224,15 @@ object FUSProjectHotStartUpMeasurer {
   }
 
   /**
-   * For IJPL-206077 reopening projects in rem dev mode doesn't get marker from IdeStarter
-   * and uses this method as `I swear it's the project reopening part`. Passing that marker would be a cleaner solution,
-   * but it's still not implemented.
+   * The JetBrains Client opens the project outside the `IdeStarter` coroutine,
+   * so the marker from [getStartUpContextElementIntoIdeStarter] does not reach it.
+   * This method supplies the marker. It does not report the start of the IDE.
+   * Passing the real marker is not implemented (IJPL-200676).
    *
-   * The difference with [getStartUpContextElementIntoIdeStarter] is that this method doesn't notify about beginning of starting an IDE
-   *
-   * @see isRemDevTestWorkaround
+   * @see isRemDevFrontend
    */
   fun getContextElementForRemDevWorkaround(): CoroutineContext {
-    return if (isRemDevTestWorkaround()) {
+    return if (isRemDevFrontend()) {
       MyMarker
     }
     else {
@@ -251,8 +250,23 @@ object FUSProjectHotStartUpMeasurer {
     }
   }
 
-  fun reportWelcomeScreenShown() {
+  /**
+   * This event just reports that the scenario `single project without Welcome Screen` is violated.
+   * There is no guarantee the Welcome screen is visible to user.
+   * This event shouldn't be used for performance investigations for (non-)modal Welcome Screen.
+   */
+  fun reportWelcomeScreenIsGoingToBeShown() {
     channel.trySend(Event.WelcomeScreenEvent())
+  }
+
+  fun reportModalWelcomeScreenBecameVisible() {
+    WelcomeScreenCollector.modalWelcomeScreenBecameVisible()
+  }
+
+  fun reportNonModalWelcomeScreenShown() {
+    withRequiredProjectMarker { projectId ->
+      WelcomeScreenCollector.nonModalWelcomeScreenBecameVisible(projectId)
+    }
   }
 
   fun reportReopeningProjects(openPaths: List<Path>) {
@@ -261,7 +275,7 @@ object FUSProjectHotStartUpMeasurer {
     when {
       size == 0 -> reportViolation(Violation.NoProjectFound)
       size > 1 -> openingMultipleProjects(true, size, false)
-      openPaths[0] == WelcomeScreenProjectProvider.getWelcomeScreenProjectPath() -> reportWelcomeScreenShown()
+      openPaths[0] == WelcomeScreenProjectProvider.getWelcomeScreenProjectPath() -> reportWelcomeScreenIsGoingToBeShown()
       else -> reportProjectType(ProjectsType.Reopened)
       // light edit files are not reopened
     }
@@ -289,8 +303,9 @@ object FUSProjectHotStartUpMeasurer {
       return block.invoke()
     }
 
-    if (projectFile == WelcomeScreenProjectProvider.getWelcomeScreenProjectPath()) {
-      reportWelcomeScreenShown()
+    val isWelcomeScreenProject = projectFile == WelcomeScreenProjectProvider.getWelcomeScreenProjectPath()
+    if (isWelcomeScreenProject) {
+      reportWelcomeScreenIsGoingToBeShown()
     }
 
     val projectId = if (IdeProductMode.isFrontend) {
@@ -302,6 +317,7 @@ object FUSProjectHotStartUpMeasurer {
 
     val hasSettings = ProjectUtil.isValidProjectPath(projectFile)
     channel.trySend(Event.ProjectPathReportEvent(projectId, hasSettings))
+    WelcomeScreenCollector.projectIsOpening(projectId, isWelcomeScreenProject)
     return withContext(MyProjectMarker(projectId)) {
       block.invoke()
     }
@@ -345,17 +361,20 @@ object FUSProjectHotStartUpMeasurer {
 
   fun reportStarterUsed() {
     reportViolation(Violation.ApplicationStarter)
+    WelcomeScreenCollector.shouldNotStart()
   }
 
   fun frameBecameVisible() {
     withRequiredProjectMarker { projectId ->
       channel.trySend(Event.FrameBecameVisibleEvent(projectId))
+      WelcomeScreenCollector.frameBecameVisible(projectId)
     }
   }
 
   fun reportFrameBecameInteractive() {
     withRequiredProjectMarker { projectId ->
       channel.trySend(Event.FrameBecameInteractiveEvent(projectId))
+      WelcomeScreenCollector.frameBecameInteractive(projectId)
     }
   }
 
@@ -363,12 +382,11 @@ object FUSProjectHotStartUpMeasurer {
     channel.trySend(Event.MarkupRestoredEvent(recipe.fileId, type))
   }
 
-  fun firstOpenedEditor(file: VirtualFile, project: Project) {
+  fun firstOpenedEditor(file: VirtualFile, project: Project, fileEditor: FileEditor) {
     withRequiredProjectMarker { projectId ->
       channel.trySend(Event.FirstEditorEvent(SourceOfSelectedEditor.TextEditor, file, System.nanoTime(), projectId))
       if (ApplicationManagerEx.isInIntegrationTest()) {
-        val fileEditorManager = FileEditorManager.getInstance(project)
-        checkEditorHasBasicHighlight(file, project, fileEditorManager)
+        checkEditorHasBasicHighlight(file, project, fileEditor)
       }
     }
   }
@@ -377,9 +395,7 @@ object FUSProjectHotStartUpMeasurer {
    * Unfortunately, the current architecture doesn't allow checking that there is basic highlighting (syntax plus maybe folding) in an editor.
    * Here are some heuristics that may save us from bugs, but that is not guaranteed.
    */
-  private fun checkEditorHasBasicHighlight(file: VirtualFile, project: Project, fileEditorManager: FileEditorManager) {
-    val textEditor = fileEditorManager.getEditors(file)[0]
-
+  private fun checkEditorHasBasicHighlight(file: VirtualFile, project: Project, textEditor: FileEditor) {
     if (textEditor !is TextEditor) {
       thisLogger().warn("The editor is not a TextEditor, but ${textEditor.javaClass.name}. Skipping checkEditorHasBasicHighlight")
       return
@@ -414,8 +430,10 @@ object FUSProjectHotStartUpMeasurer {
           return@withRequiredProjectMarker
         }
         val project = openProjects[0]
-        val fileEditorManager = FileEditorManager.getInstance(project)
-        checkEditorHasBasicHighlight(file, project, fileEditorManager)
+        val editors = FileEditorManager.getInstance(project).getEditors(file)
+        if (!editors.isEmpty()) {
+          checkEditorHasBasicHighlight(file, project, editors[0])
+        }
       }
     }
   }
@@ -458,16 +476,27 @@ object FUSProjectHotStartUpMeasurer {
     if (!handlingStarted.compareAndSet(false, true)) return
 
     withContext(Dispatchers.IO) {
-      try {
-        //ensures non-thread-safe structures work correctly on different threads
-        Mutex().withLock {
-          doHandleStatisticEvents()
+      supervisorScope {
+        launch {
+          startWritingReopenProjectStatistics()
+        }
+        launch {
+          WelcomeScreenCollector.startWritingStatistics()
         }
       }
-      finally {
-        statsIsWritten = true
-        channel.close()
+    }
+  }
+
+  private suspend fun startWritingReopenProjectStatistics() {
+    try {
+      //ensures non-thread-safe structures work correctly on different threads
+      Mutex().withLock {
+        doHandleStatisticEvents()
       }
+    }
+    finally {
+      statsIsWritten = true
+      channel.close()
     }
   }
 
@@ -523,12 +552,11 @@ object FUSProjectHotStartUpMeasurer {
         is Event.WelcomeScreenEvent -> {
           val welcomeScreedDurationForFUS = getDurationFromStart(event.time, reportedFirstUiShownEvent)
           if (splashBecameVisibleEvent == null) {
-            WELCOME_SCREEN_EVENT.log(DURATION.with(welcomeScreedDurationForFUS), SPLASH_SCREEN_WAS_SHOWN.with(false))
+            WelcomeScreenCollector.reportOldWelcomeScreenEvent(welcomeScreedDurationForFUS, null)
           }
           else {
             val splashScreenFUSDuration = getDurationFromStart(splashBecameVisibleEvent.time, reportedFirstUiShownEvent)
-            WELCOME_SCREEN_EVENT.log(DURATION.with(welcomeScreedDurationForFUS), SPLASH_SCREEN_WAS_SHOWN.with(true),
-                                     SPLASH_SCREEN_VISIBLE_DURATION.with(splashScreenFUSDuration))
+            WelcomeScreenCollector.reportOldWelcomeScreenEvent(welcomeScreedDurationForFUS, splashScreenFUSDuration)
           }
           reportViolation(Violation.WelcomeScreenShown, event.time, ideStarterStartedEvent, reportedFirstUiShownEvent)
           throw CancellationException()
@@ -732,20 +760,6 @@ object FUSProjectHotStartUpMeasurer {
   }
 }
 
-private val WELCOME_SCREEN_GROUP = EventLogGroup("welcome.screen.startup.performance", 1)
-
-private val SPLASH_SCREEN_WAS_SHOWN = EventFields.Boolean("splash_screen_was_shown")
-private val SPLASH_SCREEN_VISIBLE_DURATION = createDurationField(DurationUnit.MILLISECONDS, "splash_screen_became_visible_duration_ms")
-private val DURATION = createDurationField(DurationUnit.MILLISECONDS, "duration_ms")
-private val WELCOME_SCREEN_EVENT = WELCOME_SCREEN_GROUP.registerVarargEvent(
-  "welcome.screen.shown",
-  DURATION, SPLASH_SCREEN_WAS_SHOWN, SPLASH_SCREEN_VISIBLE_DURATION,
-)
-
-internal class WelcomeScreenPerformanceCollector : CounterUsagesCollector() {
-  override fun getGroup(): EventLogGroup = WELCOME_SCREEN_GROUP
-}
-
 private val GROUP = EventLogGroup("reopen.project.startup.performance", 3)
 
 private enum class UIResponseType {
@@ -753,6 +767,7 @@ private enum class UIResponseType {
   Frame,
 }
 
+private val DURATION = createDurationField(DurationUnit.MILLISECONDS, "duration_ms")
 private val UI_RESPONSE_TYPE = EventFields.Enum("type", UIResponseType::class.java)
 private val FIRST_UI_SHOWN_EVENT: EventId2<Duration, UIResponseType> = GROUP.registerEvent(
   "first.ui.shown",

@@ -1,16 +1,15 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.inspections.dependencies
 
+import com.intellij.python.pyproject.model.evolution.findEvoPyProjectIfReady
 import com.intellij.codeInspection.LocalInspectionTool
 import com.intellij.codeInspection.LocalInspectionToolSession
 import com.intellij.codeInspection.LocalQuickFix
 import com.intellij.codeInspection.ProblemHighlightType
 import com.intellij.codeInspection.ProblemsHolder
-import com.intellij.lang.injection.InjectedLanguageManager
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiElementVisitor
 import com.intellij.psi.PsiFile
-import com.intellij.psi.util.PsiTreeUtil
 import com.jetbrains.python.PyBundle
 import com.jetbrains.python.conda.ExportDependenciesQuickFix
 import com.jetbrains.python.inspections.quickfix.UpdateLockedDependenciesQuickFix
@@ -19,7 +18,6 @@ import com.jetbrains.python.packaging.PyRequirement
 import com.jetbrains.python.packaging.common.PythonOutdatedPackage
 import com.jetbrains.python.packaging.management.PythonPackageManager
 import com.jetbrains.python.psi.injectionParent
-import com.jetbrains.python.requirements.getPythonSdk
 import com.jetbrains.python.requirements.inspections.quickfixes.InstallAllRequirementsQuickFix
 import com.jetbrains.python.requirements.inspections.quickfixes.InstallRequirementQuickFix
 import com.jetbrains.python.requirements.inspections.quickfixes.UpdateAllRequirementQuickFix
@@ -53,8 +51,8 @@ class DependenciesInspection : LocalInspectionTool() {
       return false
     }
 
-    val sdk = getPythonSdk(file) ?: return false
-    val packageManager = PythonPackageManager.forSdk(file.project, sdk)
+    val interpreter = file.findEvoPyProjectIfReady(mainForOrphans = false)?.interpreter ?: return false
+    val packageManager = PythonPackageManager.forPythonInterpreter(file.project, interpreter)
 
     return file.injectionParent() == null && packageManager.tracksDependencyFile(file)
   }
@@ -64,9 +62,9 @@ class DependenciesInspection : LocalInspectionTool() {
     isOnTheFly: Boolean,
     session: LocalInspectionToolSession,
   ): PsiElementVisitor {
-    val sdk = getPythonSdk(session.file) ?: return PsiElementVisitor.EMPTY_VISITOR
-    val packageManager = PythonPackageManager.forSdk(session.file.project, sdk)
-    return Visitor(holder, packageManager, InjectedLanguageManager.getInstance(session.file.project))
+    val interpreter = session.file.findEvoPyProjectIfReady(mainForOrphans = false)?.interpreter ?: return PsiElementVisitor.EMPTY_VISITOR
+    val packageManager = PythonPackageManager.forPythonInterpreter(session.file.project, interpreter)
+    return Visitor(holder, packageManager)
   }
 
   override fun isDumbAware(): Boolean = true
@@ -74,31 +72,10 @@ class DependenciesInspection : LocalInspectionTool() {
   private class Visitor(
     private val holder: ProblemsHolder,
     private val packageManager: PythonPackageManager,
-    private val injectedLanguageManager: InjectedLanguageManager,
   ) : PsiElementVisitor() {
     override fun visitFile(rootFile: PsiFile) {
-      val dependencyMap = mutableMapOf<PyRequirement, PsiElement>()
-
-      PsiTreeUtil.processElements(rootFile) { element ->
-        val resolvedFile = resolvePsiFile(injectedLanguageManager, element)
-        val file = when (resolvedFile) {
-          is ResolvedPsiFile.File -> resolvedFile.file
-          is ResolvedPsiFile.InjectedFile -> resolvedFile.file
-          ResolvedPsiFile.NonFile -> return@processElements true
-        }
-        val eligibleProviders = DependenciesPsiProviderData.dependenciesForFile(file) ?: return@processElements true
-
-        for ((provider, dependencies) in eligibleProviders) {
-          if (!resolvedFile.isInjected) {
-            verifyNonEmptyFile(file, provider, packageManager)
-          }
-
-          for ((pyRequirement, psiElement) in dependencies) {
-            dependencyMap[pyRequirement] = if (!resolvedFile.isInjected) psiElement else element
-          }
-        }
-
-        true
+      val dependencyMap = PyDependencyDeclarations.collect(rootFile) { file, provider ->
+        verifyNonEmptyFile(file, provider, packageManager)
       }
 
       packageManager.verifyPackageManager(dependencyMap)

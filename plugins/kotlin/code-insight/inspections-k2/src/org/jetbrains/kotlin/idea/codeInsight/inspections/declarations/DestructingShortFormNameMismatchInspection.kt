@@ -7,7 +7,6 @@ import com.intellij.codeInspection.LocalQuickFix
 import com.intellij.codeInspection.ProblemDescriptor
 import com.intellij.codeInspection.ProblemsHolder
 import com.intellij.codeInspection.util.IntentionName
-import com.intellij.modcommand.ModPsiUpdater
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
@@ -15,16 +14,15 @@ import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.refactoring.rename.RenameProcessor
 import com.siyeh.ig.psiutils.PsiElementOrderComparator
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.analyze
+import org.jetbrains.kotlin.analysis.api.session.analyze
 import org.jetbrains.kotlin.config.LanguageFeature
 import org.jetbrains.kotlin.idea.base.projectStructure.languageVersionSettings
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
-import org.jetbrains.kotlin.idea.codeinsight.api.applicable.inspections.KotlinModCommandQuickFix
 import org.jetbrains.kotlin.idea.codeinsight.api.classic.inspections.AbstractKotlinInspection
-import org.jetbrains.kotlin.idea.codeinsight.utils.convertDestructuringToPositionalForm
 import org.jetbrains.kotlin.idea.codeinsight.utils.extractPrimaryParameters
 import org.jetbrains.kotlin.idea.codeinsight.utils.isPositionalDestructuringType
 import org.jetbrains.kotlin.idea.codeinsights.impl.base.applicators.ApplicabilityRanges
+import org.jetbrains.kotlin.idea.codeinsights.impl.base.quickFix.ConvertToPositionalDestructuringFix
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.KtDestructuringDeclaration
 import org.jetbrains.kotlin.psi.KtDestructuringDeclarationEntry
@@ -67,12 +65,10 @@ internal class DestructingShortFormNameMismatchInspection : AbstractKotlinInspec
 
             if (analysisResult.preferPositionalDestructuring) {
                 val highlightRange = ApplicabilityRanges.destructuringDeclarationParens(declaration).singleOrNull() ?: return
-                holder.registerProblem(
-                    declaration,
-                    highlightRange,
-                    KotlinBundle.message("inspection.positional.destructuring.migration"),
-                    ConvertNameBasedDestructuringShortFormToPositionalFix()
-                )
+                holder.problem(declaration, KotlinBundle.message("inspection.positional.destructuring.migration"))
+                    .range(highlightRange)
+                    .fix(ConvertToPositionalDestructuringFix(declaration, supportsFixAll = false))
+                    .register()
             } else {
                 // For regular data classes: offer rename fix on each mismatched entry
                 // (full form conversion is available as a separate intention)
@@ -88,7 +84,8 @@ internal class DestructingShortFormNameMismatchInspection : AbstractKotlinInspec
     }
 }
 
-private fun KaSession.analyzeDestructuringDeclaration(declaration: KtDestructuringDeclaration): DestructuringAnalysisResult? {
+context(session: KaSession)
+private fun analyzeDestructuringDeclaration(declaration: KtDestructuringDeclaration): DestructuringAnalysisResult? {
     val constructorParameters = extractPrimaryParameters(declaration) ?: return null
 
     // Check if the destructured type is intended for positional destructuring (Pair, Triple, IndexedValue)
@@ -165,18 +162,5 @@ private class RenameVariableToMatchPropertiesQuickFix(
 
     override fun startInWriteAction(): Boolean = false
     
-    override fun getFamilyName(): String = KotlinBundle.message("rename.var.to.match.destructing.property")
+    override fun getFamilyName(): String = KotlinBundle.message("rename.var.to.match.destructuring.property")
 }
-
-private class ConvertNameBasedDestructuringShortFormToPositionalFix : KotlinModCommandQuickFix<KtDestructuringDeclaration>() {
-    override fun getFamilyName(): String = KotlinBundle.message("inspection.positional.destructuring.migration.fix")
-
-    override fun applyFix(
-        project: Project,
-        element: KtDestructuringDeclaration,
-        updater: ModPsiUpdater
-    ) {
-        convertDestructuringToPositionalForm(element)
-    }
-}
-

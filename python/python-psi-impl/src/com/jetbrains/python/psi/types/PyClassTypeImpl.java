@@ -23,6 +23,7 @@ import com.intellij.util.ObjectUtils;
 import com.intellij.util.ProcessingContext;
 import com.intellij.util.Processor;
 import com.intellij.util.containers.ContainerUtil;
+import com.jetbrains.python.PyCustomType;
 import com.jetbrains.python.PyNames;
 import com.jetbrains.python.codeInsight.PyCustomMember;
 import com.jetbrains.python.codeInsight.PyCustomMemberUtils;
@@ -256,6 +257,10 @@ public class PyClassTypeImpl extends UserDataHolderBase implements PyClassType {
 
     if (inherited) {
       for (PyClassLikeType type : myClass.getAncestorTypes(context)) {
+        // `typing.Generic` gives the members of `object`, so it must not hide the members of the later bases
+        if (type instanceof PyCustomType customType && PyTypingTypeProvider.GENERIC.equals(customType.getClassQName())) {
+          continue;
+        }
         if (type instanceof PyClassType) {
           if (!myIsDefinition) {
             type = type.toInstance();
@@ -403,16 +408,10 @@ public class PyClassTypeImpl extends UserDataHolderBase implements PyClassType {
   @Override
   public @Nullable List<PyCallableParameter> getParameters(@NotNull TypeEvalContext context) {
     final var resolveContext = PyResolveContext.defaultContext(context);
-
-    return StreamEx
-      .of(PyUtil.filterTopPriorityElements(PyCallExpressionHelper.resolveImplicitlyInvokedMethods(this, null, resolveContext)))
-      .select(PyCallable.class)
-      .map(callable -> callable.getParameters(context))
-      .findFirst()
-      // If resolved parameters are empty, consider them as invalid and return null
-      .filter(parameters -> !parameters.isEmpty())
-      // Skip "self" for __init__/__call__ and "cls" for __new__
-      .map(parameters -> ContainerUtil.subList(parameters, 1))
+    PyType callableType = PyCallExpressionHelper.createCallableFromClass(this, resolveContext);
+    return StreamEx.of(PyTypeUtil.getCallableItems(callableType))
+      .findAny()
+      .map(it -> it.getParameters(context))
       .orElse(null);
   }
 
@@ -664,10 +663,11 @@ public class PyClassTypeImpl extends UserDataHolderBase implements PyClassType {
   public @NotNull List<@NotNull PyTypeMember> getAllMembers(@NotNull PyResolveContext resolveContext) {
     List<@NotNull PyTypeMember> result = new ArrayList<>();
     Set<String> visited = new HashSet<>();
+    TypeEvalContext context = resolveContext.getTypeEvalContext();
     for (Map.Entry<String, Property> entry : myClass.getProperties().entrySet()) {
       visited.add(entry.getKey());
       Property property = entry.getValue();
-      PyType type = property.getType(null, resolveContext.getTypeEvalContext());
+      PyType type = property.getType(this, context);
       result.add(new PyTypeMember(property, type));
     }
 
@@ -676,19 +676,19 @@ public class PyClassTypeImpl extends UserDataHolderBase implements PyClassType {
         if (visited.add(namedElement.getName())) {
           PyType type = null;
           if (element instanceof PyTypedElement typedElement) {
-            type = resolveContext.getTypeEvalContext().getType(typedElement);
+            type = context.getType(typedElement);
           }
 
           boolean isClassVar = false;
           if (element instanceof PyAnnotationOwner && element instanceof PyTypeCommentOwner) {
             isClassVar =
-              PyTypingTypeProvider.isClassVar((PyAnnotationOwner & PyTypeCommentOwner)element, resolveContext.getTypeEvalContext());
+              PyTypingTypeProvider.isClassVar((PyAnnotationOwner & PyTypeCommentOwner)element, context);
           }
           result.add(new PyTypeMember(element, type, isClassVar));
         }
       }
       return true;
-    }, false, resolveContext.getTypeEvalContext());
+    }, false, context);
 
     processProvidedMembers(
       member -> {
@@ -699,7 +699,7 @@ public class PyClassTypeImpl extends UserDataHolderBase implements PyClassType {
         return true;
       },
       null,
-      resolveContext.getTypeEvalContext()
+      context
     );
 
     return result;
@@ -709,7 +709,7 @@ public class PyClassTypeImpl extends UserDataHolderBase implements PyClassType {
   public @NotNull List<@NotNull PyTypeMember> findMember(@NotNull String name, @NotNull PyResolveContext resolveContext) {
     Property property = myClass.findProperty(name, true, resolveContext.getTypeEvalContext());
     if (property != null) {
-      PyType type = property.getType(null, resolveContext.getTypeEvalContext());
+      PyType type = property.getType(this, resolveContext.getTypeEvalContext());
       return List.of(new PyTypeMember(property, type));
     }
     List<PyTypeMember> customMembers = new ArrayList<>();
@@ -900,7 +900,8 @@ public class PyClassTypeImpl extends UserDataHolderBase implements PyClassType {
 
   @Override
   public String toString() {
-    String result = (isValid() ? "" : "[INVALID] ") + "PyClassType: " + getClassQName();
+    String name = getClassQName() == null ? getName() : getClassQName();
+    String result = (isValid() ? "" : "[INVALID] ") + "PyClassType: " + name;
     if (!myTypeArguments.isEmpty()) {
       result += "[" + StringUtil.join(myTypeArguments, String::valueOf, ", ") + "]";
     }

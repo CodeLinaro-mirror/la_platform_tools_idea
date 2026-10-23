@@ -5,16 +5,13 @@ import com.intellij.codeHighlighting.BackgroundEditorHighlighter;
 import com.intellij.codeHighlighting.HighlightingPass;
 import com.intellij.codeHighlighting.Pass;
 import com.intellij.codeHighlighting.TextEditorHighlightingPass;
-import com.intellij.codeHighlighting.TextEditorHighlightingPassRegistrar;
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzerSettings;
-import com.intellij.codeInsight.daemon.LineMarkerInfo;
 import com.intellij.codeInsight.daemon.ReferenceImporter;
 import com.intellij.codeInsight.hint.HintManager;
 import com.intellij.codeInsight.intention.impl.FileLevelIntentionComponent;
 import com.intellij.codeInsight.intention.impl.IntentionHintComponent;
 import com.intellij.codeInsight.multiverse.CodeInsightContext;
 import com.intellij.codeInsight.multiverse.CodeInsightContextHighlightingUtil;
-import com.intellij.codeInsight.multiverse.CodeInsightContextManager;
 import com.intellij.codeInsight.multiverse.CodeInsightContextUtil;
 import com.intellij.codeInsight.multiverse.CodeInsightContexts;
 import com.intellij.codeInsight.multiverse.EditorContextManager;
@@ -22,9 +19,11 @@ import com.intellij.codeInsight.quickfix.LazyQuickFixUpdater;
 import com.intellij.codeInspection.ex.GlobalInspectionContextBase;
 import com.intellij.codeWithMe.ClientId;
 import com.intellij.concurrency.JobLauncher;
+import com.intellij.concurrency.JobLauncherImpl;
 import com.intellij.concurrency.ThreadContext;
 import com.intellij.ide.PowerSaveMode;
 import com.intellij.ide.impl.ProjectUtil;
+import com.intellij.ide.lightEdit.LightEditCompatible;
 import com.intellij.lang.annotation.HighlightSeverity;
 import com.intellij.notebook.editor.BackedVirtualFile;
 import com.intellij.notebook.editor.BackedVirtualFileProvider;
@@ -76,6 +75,7 @@ import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileManager;
+import com.intellij.openapi.wm.ex.WelcomeScreenProjectProvider;
 import com.intellij.packageDependencies.DependencyValidationManager;
 import com.intellij.psi.PsiCompiledElement;
 import com.intellij.psi.PsiDocumentManager;
@@ -123,9 +123,9 @@ import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.Future;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -134,7 +134,6 @@ import java.util.function.Consumer;
 
 import static com.intellij.codeInsight.daemon.impl.FileLevelComponentUtil.doAddFileLevelInfoComponent;
 import static com.intellij.codeInsight.daemon.impl.FileLevelComponentUtil.doRemoveFileLevelInfoComponent;
-import static com.intellij.openapi.wm.ex.ProjectFrameCapabilitiesKt.isBackgroundActivitiesSuppressedSync;
 
 @State(name = "DaemonCodeAnalyzer", storages = @Storage(StoragePathMacros.PRODUCT_WORKSPACE_FILE))
 @ApiStatus.Internal
@@ -172,6 +171,7 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx
    * When it happens that the future has started sooner than this stamp, it will re-schedule itself for later.
    */
   private long myScheduledUpdateTimestamp; // guarded by this
+  private volatile boolean myFirstPassFinished; // the only possible transition: false -> true; the first pass runs without the autoreparse delay
   private volatile boolean completeEssentialHighlightingRequested;
   private final AtomicInteger daemonCancelEventCount = new AtomicInteger();
   private final DaemonListener myDaemonListenerPublisher;
@@ -193,7 +193,6 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx
     //noinspection TestOnlyProblems
     DaemonProgressIndicator.setDebug(LOG.isDebugEnabled());
 
-    myDisposed = false;
     myFileStatusMap.markAllFilesDirty("DaemonCodeAnalyzer init");
     Disposer.register(this, () -> {
       assert !myDisposed : "Double dispose";
@@ -204,7 +203,7 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx
       myDisposed = true;
     });
     myDaemonListenerPublisher = project.getMessageBus().syncPublisher(DAEMON_EVENT_TOPIC);
-    myListeners = new DaemonListeners(project, this);
+    myListeners = new DaemonListeners(project, this, coroutineScope);
     Disposer.register(this, myListeners);
     repaintIconHelper = new DaemonCodeAnalyzerRepaintIconHelper(coroutineScope);
   }
@@ -388,7 +387,7 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx
           Document document = textEditor.getEditor().getDocument();
           MarkupModelEx markupModel = (MarkupModelEx)DocumentMarkupModel.forDocument(document, myProject, true);
           // todo do we need to create a new highlighter if toReuse is not-null?
-          HighlightInfoUpdaterImpl.createOrReuseFakeFileLevelHighlighter(group, info, (RangeHighlighterEx)toReuse, markupModel, myProject, context);
+          ((HighlightInfoUpdaterImpl)HighlightInfoUpdater.getInstance(myProject)).createOrReuseFakeFileLevelHighlighter(group, info, (RangeHighlighterEx)toReuse, markupModel, myProject, context);
           fileLevelInfos.add(info);
           addFileLevelInfoComponentToEditor(info, psiFile, textEditor);
           if (LOG.isDebugEnabled()) {
@@ -427,7 +426,7 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx
         Document document = textEditor.getEditor().getDocument();
         MarkupModelEx markupModel = (MarkupModelEx)DocumentMarkupModel.forDocument(document, myProject, true);
         if (toReuse == null) {
-          HighlightInfoUpdaterImpl.createOrReuseFakeFileLevelHighlighter(newInfo.getGroup(), newInfo, null, markupModel, myProject, context);
+          ((HighlightInfoUpdaterImpl)HighlightInfoUpdater.getInstance(myProject)).createOrReuseFakeFileLevelHighlighter(newInfo.getGroup(), newInfo, null, markupModel, myProject, context);
         }
         fileLevelInfos.add(newInfo);
         addFileLevelInfoComponentToEditor(newInfo, psiFile, textEditor);
@@ -506,7 +505,7 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx
             .instantiateMainPasses(psiFile, document, HighlightInfoProcessor.getEmpty());
 
           JobLauncher.getInstance()
-            .invokeConcurrentlyUnderProgress(mainPasses, progress, true, true, pass -> {
+            .invokeConcurrentlyUnderContextProgress(mainPasses, pass -> {
               pass.doCollectInformation(progress);
               return true;
             });
@@ -606,8 +605,7 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx
       return false;
     }
     assertFileFromMyProject(psiFile.getProject(), psiFile);
-    PsiFile originalFile = psiFile.getOriginalFile();
-    VirtualFile virtualFile = originalFile.getVirtualFile();
+    VirtualFile virtualFile = psiFile.getOriginalFile().getVirtualFile();
     if (virtualFile != null && myDisabledHighlightingFiles.contains(virtualFile)) {
       return false;
     }
@@ -796,6 +794,7 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx
   private long getDelta() {
     long u = updateRequests.get();
     long diff = (queuedRequests(u) - executedRequests(u) + 0x1_0000_0000L/*Assume not more than one wraparound*/) & 0x0000_0000_ffff_ffffL;
+    //noinspection ConstantValue
     assert diff >= 0 : diff + ":" + Long.toHexString(u);
     return diff;
   }
@@ -804,12 +803,12 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx
    * reset {@link #myScheduledUpdateTimestamp} always, but re-schedule {@link #myUpdateRunnable} only rarely because of thread scheduling overhead
    */
   private synchronized void scheduleIfNotRunning() {
-    long autoReparseDelayNanos = TimeUnit.MILLISECONDS.toNanos(mySettings.getEffectiveAutoReparseDelay());
-    myScheduledUpdateTimestamp = System.nanoTime() + autoReparseDelayNanos;
+    long delayMs = myFirstPassFinished ? mySettings.getEffectiveAutoReparseDelay() : 0;
+    myScheduledUpdateTimestamp = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(delayMs);
     // optimization: this check is to avoid too many re-schedules in case of thousands of event spikes
     boolean isDone = myUpdateRunnableFuture.isDone();
     if (LOG.isDebugEnabled()) {
-      LOG.debug("Rescheduling highlighting: isDone: ", isDone+"; delta="+Long.toHexString(getDelta()));
+      LOG.debug("Rescheduling highlighting: isDone: ", isDone+"; delta="+Long.toHexString(getDelta())+"; delayMs="+delayMs);
     }
     if (incrementQueuedRequests() || isDone) {
       scheduleUpdateRunnable();
@@ -1004,6 +1003,11 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx
     }
   }
 
+  @ApiStatus.Internal
+  public static boolean assertHighlightingPassNotRunning() {
+    return PassExecutorService.assertHighlightingPassNotRunning();
+  }
+
   static final class HighlightByOffsetProcessor implements Processor<HighlightInfo> {
     private final List<HighlightInfo> foundInfoList = new SmartList<>();
     private final boolean highestPriorityOnly;
@@ -1055,21 +1059,6 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx
       foundInfoList.sort(Comparator.comparing(HighlightInfo::getSeverity).reversed());
       return HighlightInfo.createComposite(foundInfoList, myProject);
     }
-  }
-
-  public static @NotNull List<LineMarkerInfo<?>> getLineMarkers(@NotNull Document document, @NotNull Project project) {
-    List<LineMarkerInfo<?>> result = new ArrayList<>();
-    MarkupModelEx markupModel = (MarkupModelEx)DocumentMarkupModel.forDocument(document, project, true);
-    markupModel.processRangeHighlightersOverlappingWith(0, document.getTextLength(),
-      highlighter -> {
-        LineMarkerInfo<?> info = LineMarkersUtil.getLineMarkerInfo(highlighter);
-        if (info != null) {
-          result.add(info);
-        }
-        return true;
-      }
-    );
-    return result;
   }
 
   @VisibleForTesting
@@ -1149,7 +1138,8 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx
       // take a number of queued requests to update and pretend we execute them all (they are all the same, so one is enough)
       long requestDelta = analyzer.getDelta();
       try {
-        if (!project.isDefault() && project.isInitialized() && !isBackgroundActivitiesSuppressedSync(project)) {
+        if (!project.isDefault() && project.isInitialized() &&
+            (!(project instanceof LightEditCompatible) || WelcomeScreenProjectProvider.isWelcomeScreenProject(project))) {
           String result = analyzer.runUpdate();
           if (LOG.isDebugEnabled()) {
             LOG.debug("runUpdate result: " + result+"; requestDelta:"+requestDelta);
@@ -1217,6 +1207,7 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx
     }
 
     boolean submitted = false;
+    int sessionCreationAttempts = 0;
     boolean shouldRestart = true;
     ProcessCanceledException pce = null;
     // have to store created indicators because myUpdateProgress removes the canceled indicator immediately
@@ -1257,7 +1248,16 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx
             progressIndicator = null;
           }
           else {
-            progressIndicator = queuePassesCreation(fileEditor, virtualFile, ArrayUtil.EMPTY_INT_ARRAY, mainDocumentPasses);
+            checkPassesCreationAllowed();
+            BackgroundEditorHighlighter backgroundHighlighter = getBackgroundHighlighter(fileEditor);
+            if (backgroundHighlighter == null) {
+              progressIndicator = null;
+            }
+            else {
+              sessionCreationAttempts++;
+              progressIndicator = queuePassesCreation(fileEditor, virtualFile, ArrayUtil.EMPTY_INT_ARRAY, mainDocumentPasses,
+                                                       backgroundHighlighter);
+            }
           }
           submitted |= progressIndicator != null;
           if (progressIndicator != null) {
@@ -1276,7 +1276,7 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx
     }
     finally {
       boolean wasCanceledDuringSubmit = ContainerUtil.exists(createdIndicators, p -> p.isCanceled());
-      if ((!submitted || wasCanceledDuringSubmit) && shouldRestart) {
+      if (((!submitted && sessionCreationAttempts != 0) || wasCanceledDuringSubmit) && shouldRestart) {
         // happens e.g., when we are trying to open a directory and there's a FileEditor supporting this
         // invokeLater is required because we can't stop daemon from inside UpdateRunnable, since its future hasn't been scheduled yet
         // or when PCE happened in queuePassesCreation
@@ -1299,6 +1299,23 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx
     return replacedVirtualFile == null ? virtualFile : replacedVirtualFile;
   }
 
+  private void checkPassesCreationAllowed() {
+    ThreadingAssertions.assertEventDispatchThread();
+
+    // since we are running on EDT under write-intent lock, write action can be either absent or pending (if it was invoked on a background thread)
+    // in this case, the progress indicator needs to be canceled.
+    if (ApplicationManagerEx.getApplicationEx().isWriteActionPending()) {
+      stopProcess(false, "Background write action is pending");
+      throw new ProcessCanceledException();
+    }
+  }
+
+  private static @Nullable BackgroundEditorHighlighter getBackgroundHighlighter(@NotNull FileEditor fileEditor) {
+    try (AccessToken ignored = ClientId.withExplicitClientId(ClientFileEditorManager.getClientId(fileEditor))) {
+      return fileEditor.getBackgroundHighlighter();
+    }
+  }
+
   /**
    * @return HighlightingSession when everything's OK or
    * return null if the session wasn't created because highlighter/document/psiFile wasn't found or
@@ -1308,20 +1325,9 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx
   ProgressIndicator queuePassesCreation(@NotNull FileEditor fileEditor,
                                         @NotNull VirtualFile virtualFile,
                                         int @NotNull [] passesToIgnore,
-                                        @NotNull Map<? super Pair<Document, Class<? extends ProgressableTextEditorHighlightingPass>>, ProgressableTextEditorHighlightingPass> mainDocumentPasses) {
-    ThreadingAssertions.assertEventDispatchThread();
-    BackgroundEditorHighlighter backgroundHighlighter;
-
-    // since we are running on EDT under write-intent lock, write action can be either absent or pending (if it was invoked on a background thread)
-    // in this case, the progress indicator needs to be canceled.
-    if (ApplicationManagerEx.getApplicationEx().isWriteActionPending()) {
-      stopProcess(false, "Background write action is pending");
-      throw new ProcessCanceledException();
-    }
-
-    try (AccessToken ignored = ClientId.withExplicitClientId(ClientFileEditorManager.getClientId(fileEditor))) {
-      backgroundHighlighter = fileEditor.getBackgroundHighlighter();
-    }
+                                        @NotNull Map<? super Pair<Document, Class<? extends ProgressableTextEditorHighlightingPass>>, ProgressableTextEditorHighlightingPass> mainDocumentPasses,
+                                        @Nullable BackgroundEditorHighlighter backgroundHighlighter) {
+    checkPassesCreationAllowed();
     TextEditor textEditor = fileEditor instanceof TextEditor t ? t : null;
     Editor editor = textEditor == null ? null : textEditor.getEditor();
     if (backgroundHighlighter == null) {
@@ -1377,10 +1383,11 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx
       progress = createUpdateProgress(fileEditor);
       // pre-create HighlightingSession in EDT to make visible range available in a background thread
       session = HighlightingSessionImpl.createHighlightingSession(psiFileToSubmit, editor, scheme, progress, daemonCancelEventCount);
-      JobLauncher.getInstance().submitToJobThread(ThreadContext.captureThreadContext(Context.current().wrap(() ->
-            submitInBackground(fileEditor, document, virtualFile, psiFileToSubmit, backgroundHighlighter, passesToIgnore, progress, session, mainDocumentPasses))),
-            // manifest exceptions in EDT to avoid storing them in the Future and abandoning
-            task -> ApplicationManager.getApplication().invokeLater(() -> ConcurrencyUtil.manifestExceptionsIn(task)));
+      Runnable runnable = ThreadContext.captureThreadContext(Context.current().wrap(() ->
+        submitInBackground(fileEditor, document, virtualFile, psiFileToSubmit, backgroundHighlighter, passesToIgnore, progress, session, mainDocumentPasses)));
+      ((JobLauncherImpl)JobLauncher.getInstance()).submitToJobThread(runnable,
+                                                                    // manifest exceptions in EDT to avoid storing them in the Future and abandoning
+        task -> ApplicationManager.getApplication().invokeLater(() -> ConcurrencyUtil.manifestExceptionsIn(task)));
     }
     if (PassExecutorService.LOG.isDebugEnabled()) {
       PassExecutorService.log(progress, null, "queuePassesCreation completed. session=", session, "; fileStatusMap:",  (editor == null ? null : myFileStatusMap.toString(editor.getDocument())));
@@ -1403,12 +1410,11 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx
       LOG.trace("submitInBackground: " + virtualFile + "; viewProvider.hashCode()={"+psiFile.getViewProvider().hashCode()+"}");
     }
     try {
+      CodeInsightContext[] context = new CodeInsightContext[1];
       ProgressManager.getInstance().executeProcessUnderProgress(Context.current().wrap(() -> {
         HighlightingPass[] passes = ReadAction.computeBlocking(() -> {
-          CodeInsightContext context = fileEditor instanceof TextEditor te ?
-                                       EditorContextManager.getEditorContext(te.getEditor(), myProject) :
-                                       CodeInsightContextManager.getInstance(myProject).getCodeInsightContext(psiFile.getViewProvider());
-          PsiFile renewedPsiFile = TextEditorBackgroundHighlighter.renewFile(myProject, document, context);
+          context[0] = CodeInsightContextUtil.getCodeInsightContext(psiFile);
+          PsiFile renewedPsiFile = TextEditorBackgroundHighlighter.renewFile(myProject, document, context[0]);
           if (renewedPsiFile == null) {
             return HighlightingPass.EMPTY_ARRAY;
           }
@@ -1457,9 +1463,8 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx
             }
             // wait for heavy processing to stop, re-schedule daemon but not too soon
             if (heavyProcessIsRunning()) {
-              //noinspection SSBasedInspection
-              r = Registry.is("ide.dumb.mode.check.awareness") ? ContainerUtil.findAllAsArray(r, o -> DumbService.isDumbAware(o)) :
-                  ContainerUtil.findAllAsArray(r, o -> o.isDumbAware() || o instanceof DumbAware);
+              boolean checkAwareness = Registry.is("ide.dumb.mode.check.awareness");
+              r = ContainerUtil.findAllAsArray(r, o -> checkAwareness ? DumbService.isDumbAware(o) : o.isDumbAware() || o instanceof DumbAware);
               if (LOG.isDebugEnabled()) {
                 LOG.debug("submitInBackground: heavyProcessIsRunning=true, so only these passes are created: " + Arrays.toString(r));
               }
@@ -1473,10 +1478,7 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx
           stopAndRestartMyProcess(progress, null, " no passes created");
           return;
         }
-        // synchronize on TextEditorHighlightingPassRegistrarImpl instance to avoid concurrent modification of TextEditorHighlightingPassRegistrarImpl.nextAvailableId
-        synchronized (TextEditorHighlightingPassRegistrar.getInstance(myProject)) {
-          myPassExecutorService.submitPasses(document, virtualFile, psiFile, fileEditor, passes, progress);
-        }
+        myPassExecutorService.submitPasses(document, context[0], virtualFile, psiFile, fileEditor, passes, progress);
         //clearObsoleteRangeHighlightersManagedToSneakInAllTheSame(document, myProject);
         ProgressManager.checkCanceled();
       }), progress);
@@ -1562,6 +1564,10 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx
 
     @Override
     public void onStop() {
+      VirtualFile file = myFileEditor.getFile();
+      if (file != null && getFileEditorManager().isFileOpenWithRemotes(file)) {
+        myFirstPassFinished = true;
+      }
       removeIndicatorFromMap(myFileEditor, this);
       myDaemonListenerPublisher.daemonFinished(List.of(myFileEditor));
       HighlightingSessionImpl.clearAllHighlightingSessions(this);
@@ -1633,9 +1639,14 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx
     return activeTextEditors;
   }
 
-  private static boolean isValidEditor(@NotNull FileEditor editor) {
+  private boolean isValidEditor(@NotNull FileEditor editor) {
     VirtualFile virtualFile = editor.getFile();
-    return virtualFile != null && virtualFile.isValid() && editor.isValid() && isInActiveProject(editor);
+    return virtualFile != null && virtualFile.isValid() && editor.isValid() && isInActiveProject(editor) && isFromMyProject(editor);
+  }
+
+  private boolean isFromMyProject(@NotNull FileEditor fileEditor) {
+    Project project = fileEditor instanceof TextEditor te ? te.getEditor().getProject() : null;
+    return project == null || project == myProject;
   }
 
   private static boolean isInActiveProject(@NotNull FileEditor editor) {
@@ -1648,46 +1659,17 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx
     // Can't just check the editor's window, though, because the active window might be something else, e.g., a detached Project View,
     // see IDEA-343992.
     Window editorWindow = SwingUtilities.getWindowAncestor(editor.getComponent());
-    var editorProject = getProject(editorWindow);
+    var editorProject = ProjectUtil.getProjectForComponent(editorWindow);
     for (Window window : Window.getWindows()) {
       if (!window.isActive()) {
         continue;
       }
-      if (window == editorWindow || getProject(window) == editorProject) {
+      if (window == editorWindow || ProjectUtil.getProjectForComponent(window) == editorProject) {
         return true;
       }
     }
     // Project should be active in a headless case (see FL-25764)
     return editorWindow == null;
-  }
-
-  private static @Nullable Project getProject(@Nullable Window window) {
-    return ProjectUtil.getProjectForComponent(window);
-  }
-
-  /**
-   * This API is made {@code Internal} intentionally as it could lead to unpredictable highlighting performance behavior.
-   *
-   * @param flag if {@code true}: enables code insight passes serialization:
-   *             Injected fragments {@link InjectedGeneralHighlightingPass} highlighting and Inspections run after
-   *             completion of Syntax analysis {@link GeneralHighlightingPass}.
-   *             if {@code false} (default behavior) code insight passes are running in parallel
-   * @deprecated do not use, because it could slow down highlighting
-   */
-  @ApiStatus.Internal
-  @Deprecated
-  public void serializeCodeInsightPasses(boolean flag) {
-    ThreadingAssertions.assertEventDispatchThread();
-    setUpdateByTimerEnabled(false);
-    try {
-      cancelAllUpdateProgresses(false, "serializeCodeInsightPasses");
-      TextEditorHighlightingPassRegistrarImpl registrar =
-        (TextEditorHighlightingPassRegistrarImpl)TextEditorHighlightingPassRegistrar.getInstance(myProject);
-      registrar.serializeCodeInsightPasses(flag);
-    }
-    finally {
-      setUpdateByTimerEnabled(true);
-    }
   }
 
   // tell the next restarted highlighting that it should start in the "full mode" and run all inspections/external annotators/etc

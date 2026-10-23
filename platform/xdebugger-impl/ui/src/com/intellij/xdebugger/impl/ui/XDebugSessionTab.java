@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.xdebugger.impl.ui;
 
 import com.intellij.debugger.ui.DebuggerContentInfo;
@@ -28,8 +28,8 @@ import com.intellij.openapi.actionSystem.Constraints;
 import com.intellij.openapi.actionSystem.DataKey;
 import com.intellij.openapi.actionSystem.DataSink;
 import com.intellij.openapi.actionSystem.DefaultActionGroup;
+import com.intellij.openapi.actionSystem.ExecutionDataKeys;
 import com.intellij.openapi.actionSystem.IdeActions;
-import com.intellij.openapi.actionSystem.LangDataKeys;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.Disposer;
@@ -47,7 +47,6 @@ import com.intellij.ui.content.tabs.PinToolwindowTabAction;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.SystemProperties;
 import com.intellij.util.ui.UIUtil;
-import com.intellij.xdebugger.SplitDebuggerMode;
 import com.intellij.xdebugger.XDebugSession;
 import com.intellij.xdebugger.XDebugSessionListener;
 import com.intellij.xdebugger.XDebuggerBundle;
@@ -150,7 +149,7 @@ public class XDebugSessionTab extends DebuggerSessionTabBase {
       if (mySession != null) {
         sink.set(XDebugSessionProxy.DEBUG_SESSION_PROXY_KEY, mySession);
         mySession.putKey(sink);
-        sink.set(LangDataKeys.CONSOLE_VIEW, mySession.getConsoleView());
+        sink.set(ExecutionDataKeys.CONSOLE_VIEW, mySession.getConsoleView());
       }
     });
   }
@@ -232,10 +231,8 @@ public class XDebugSessionTab extends DebuggerSessionTabBase {
 
   protected final void createDefaultTabs(XDebugSessionProxy session) {
     myUi.addContent(createFramesContent(session), 0, PlaceInGrid.left, false);
-    if (Registry.is("debugger.new.threads.view") || SplitDebuggerMode.isSplitDebugger()) {
-      Content threadsContent = createThreadsContent(session);
-      myUi.addContent(threadsContent, 0, PlaceInGrid.right, true);
-    }
+    Content threadsContent = createThreadsContent(session);
+    myUi.addContent(threadsContent, 0, PlaceInGrid.right, true);
 
     addVariablesAndWatches(session);
   }
@@ -280,11 +277,9 @@ public class XDebugSessionTab extends DebuggerSessionTabBase {
     myRunContentDescriptor = new RunContentDescriptor(myConsole, session.getProcessHandler(),
                                                       myUi.getComponent(), session.getSessionName(), icon, this::computeWatches,
                                                       restartActions);
-    if (SplitDebuggerMode.isSplitDebugger()) {
-      // Session Proxy is not fully initialized in the Monolith,
-      // For the Monolith we incorporate the legacy happy execution path in ExecutionManagerImpl to assign run content descriptor id.
-      myRunContentDescriptor.setId(session.getRunContentDescriptorId());
-    }
+    // Session Proxy is not fully initialized in the Monolith,
+    // For the Monolith we incorporate the legacy happy execution path in ExecutionManagerImpl to assign run content descriptor id.
+    myRunContentDescriptor.setId(session.getRunContentDescriptorId());
 
     if (myEnvironmentProxy != null) {
       String toolWindowId = myEnvironmentProxy.getContentDescriptorToolWindowId();

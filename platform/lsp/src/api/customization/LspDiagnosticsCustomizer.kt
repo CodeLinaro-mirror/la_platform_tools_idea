@@ -10,6 +10,7 @@ import com.intellij.openapi.editor.markup.TextAttributes
 import com.intellij.openapi.util.NlsContexts
 import com.intellij.openapi.util.TextRange
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.platform.lsp.util.messageIfStringOrEmpty
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.util.concurrency.annotations.RequiresBackgroundThread
 import com.intellij.util.concurrency.annotations.RequiresReadLock
@@ -41,8 +42,8 @@ open class LspDiagnosticsSupport : LspDiagnosticsCustomizer() {
    */
   open fun shouldAskServerForDiagnostics(file: VirtualFile): Boolean = true
 
-  @RequiresReadLock
-  @RequiresBackgroundThread
+  @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
+  @RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
   open fun createAnnotation(holder: AnnotationHolder, diagnostic: Diagnostic, textRange: TextRange, quickFixes: List<IntentionAction>) {
     val severity = getHighlightSeverity(diagnostic) ?: return
     holder.newAnnotation(severity, getMessage(diagnostic))
@@ -84,10 +85,10 @@ open class LspDiagnosticsSupport : LspDiagnosticsCustomizer() {
     }
 
   @InspectionMessage
-  open fun getMessage(diagnostic: Diagnostic): String = diagnostic.message
+  open fun getMessage(diagnostic: Diagnostic): String = diagnostic.messageIfStringOrEmpty
 
   @NlsContexts.Tooltip
-  open fun getTooltip(diagnostic: Diagnostic): String = diagnostic.message
+  open fun getTooltip(diagnostic: Diagnostic): String = diagnostic.messageIfStringOrEmpty
 
   open fun getSpecialHighlightType(diagnostic: Diagnostic): ProblemHighlightType? = when {
     diagnostic.tags?.contains(DiagnosticTag.Unnecessary) == true -> ProblemHighlightType.LIKE_UNUSED_SYMBOL

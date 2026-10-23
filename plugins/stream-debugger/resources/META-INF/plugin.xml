@@ -1,3 +1,5 @@
+<!-- BUILD_USING_BAZEL_MARKER: this plugin is also packaged by the `ij_plugin` Bazel rule, and IjPluginDistributionEquivalenceTest
+     checks that the result matches the distribution produced by the build scripts. See IJPL-251444. -->
 <idea-plugin allow-bundled-update="true">
   <id>org.jetbrains.debugger.streams</id>
   <name>Java Stream Debugger</name>
@@ -8,6 +10,9 @@
     <module name="intellij.debugger.streams.shared" loading="required"/>
     <module name="intellij.debugger.streams.backend"/>
     <module name="intellij.debugger.streams.java" loading="optional"/>
+    <module name="intellij.debugger.streams.java.frontend" loading="optional"/>
+    <module name="intellij.debugger.streams.java.rt" loading="embedded"/>
+    <module name="intellij.debugger.streams.java.rt.gatherers" loading="embedded"/>
   </content>
 
   <description><![CDATA[
@@ -34,4 +39,9 @@
 
       <p>In the latter mode, you can switch between operations manually using the tabs on top.</p>
     ]]></description>
+  <!-- region Generated dependencies - run `Generate Product Layouts` to regenerate -->
+  <dependencies>
+    <module name="intellij.platform.ide.core.impl"/>
+  </dependencies>
+  <!-- endregion -->
 </idea-plugin>

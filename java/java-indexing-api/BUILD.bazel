@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.java.indexing` start
+content_module_jar(module = ":indexing")
+### auto-generated section `dev intellij.java.indexing` end
 
 ### auto-generated section `build intellij.java.indexing` start
-
 jvm_library(
     name = "indexing",
     srcs = glob(
@@ -62,6 +66,8 @@ jvm_library(
 exports_files(
     [
         "intellij.java.indexing.iml",
+        "resources/META-INF/JavaIndexingApi.xml",
+        "resources/intellij.java.indexing.xml",
     ],
     visibility = ["//visibility:public"],
 )

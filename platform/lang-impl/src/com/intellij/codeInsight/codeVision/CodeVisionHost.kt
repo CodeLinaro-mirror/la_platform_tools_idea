@@ -17,19 +17,21 @@ import com.intellij.codeInsight.hints.settings.showInlaySettings
 import com.intellij.codeInsight.multiverse.EditorContextManager
 import com.intellij.codeInsight.multiverse.isSharedSourceSupportEnabled
 import com.intellij.codeWithMe.ClientId
+import com.intellij.concurrency.JobLauncher
+import com.intellij.concurrency.JobLauncherImpl
 import com.intellij.ide.PowerSaveMode
 import com.intellij.ide.plugins.DynamicPluginListener
 import com.intellij.ide.plugins.IdeaPluginDescriptor
 import com.intellij.lang.Language
 import com.intellij.openapi.Disposable
-import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.ModalityState
+import com.intellij.openapi.application.invokeLater
 import com.intellij.openapi.application.readAction
 import com.intellij.openapi.application.runReadActionBlocking
 import com.intellij.openapi.components.service
-import com.intellij.openapi.diagnostic.ControlFlowException
 import com.intellij.openapi.diagnostic.logger
+import com.intellij.diagnostic.rethrowControlFlowException
 import com.intellij.openapi.diagnostic.trace
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.EditorFactory
@@ -46,7 +48,6 @@ import com.intellij.openapi.fileEditor.FileEditorManagerListener
 import com.intellij.openapi.fileEditor.TextEditor
 import com.intellij.openapi.fileEditor.impl.BaseRemoteFileEditor
 import com.intellij.openapi.progress.EmptyProgressIndicator
-import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.rd.createLifetime
@@ -64,7 +65,6 @@ import com.intellij.ui.SimpleTextAttributes
 import com.intellij.util.application
 import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.util.concurrency.annotations.RequiresEdt
-import com.intellij.util.ui.EDT
 import com.intellij.util.ui.update.DebouncedUpdates
 import com.jetbrains.rd.util.lifetime.Lifetime
 import com.jetbrains.rd.util.lifetime.SequentialLifetimes
@@ -72,12 +72,13 @@ import com.jetbrains.rd.util.reactive.Signal
 import com.jetbrains.rd.util.reactive.whenTrue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.TestOnly
 import java.util.concurrent.CompletableFuture
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.TimeSource
 
 @ApiStatus.NonExtendable
 open class CodeVisionHost(val project: Project, protected val coroutineScope: CoroutineScope) {
@@ -92,7 +93,7 @@ open class CodeVisionHost(val project: Project, protected val coroutineScope: Co
      * particular implementations of code vision to make sure that other tests' performance is not hurt.
      */
     val isCodeVisionTestKey: Key<Boolean> = Key.create("code.vision.test")
-    private val editorTrackingStart: Key<Long> = Key.create("editor.tracking.start")
+    private val editorTrackingStart: Key<TimeSource.Monotonic.ValueTimeMark> = Key.create("editor.tracking.start")
 
     /**
      * Returns true iff we are in test in [com.intellij.java.codeInsight.codeVision.CodeVisionTestCase].
@@ -120,14 +121,14 @@ open class CodeVisionHost(val project: Project, protected val coroutineScope: Co
 
   private val defaultSortedProvidersList = mutableListOf<String>()
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   internal fun initializeIfNeeded() {
     if (_isInitialised) return
     initialize()
     _isInitialised = true
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   protected open fun initialize() {
     lifeSettingModel.isRegistryEnabled.whenTrue(codeVisionLifetime) { enableCodeVisionLifetime ->
       runReadActionBlocking {
@@ -142,7 +143,7 @@ open class CodeVisionHost(val project: Project, protected val coroutineScope: Co
     }
   }
 
-  @get:RequiresEdt
+  @get:RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   val isInitialised: Boolean get() = _isInitialised
   private var _isInitialised = false
 
@@ -218,18 +219,10 @@ open class CodeVisionHost(val project: Project, protected val coroutineScope: Co
   @TestOnly
   fun calculateCodeVisionSync(editor: Editor, testRootDisposable: Disposable): CompletableFuture<Unit> {
     val future = CompletableFuture<Unit>()
-    calculateFrontendLenses(testRootDisposable.createLifetime(), editor, inTestSyncMode = true) { lenses, _ ->
-      if (EDT.isCurrentThreadEdt()) {
-        runReadActionBlocking {
-          editor.lensContext?.setResults(lenses)
-          future.complete(Unit)
-        }
-      }
-      else {
-        ApplicationManager.getApplication().invokeLater {
-          editor.lensContext?.setResults(lenses)
-          future.complete(Unit)
-        }
+    calculateFrontendLenses(testRootDisposable.createLifetime(), editor) { lenses, _ ->
+      runReadActionBlocking {
+        editor.lensContext?.setResults(lenses)
+        future.complete(Unit)
       }
     }
     return future
@@ -413,10 +406,11 @@ open class CodeVisionHost(val project: Project, protected val coroutineScope: Co
     var recalculateWhenVisible = false
 
     var previousLenses: List<Pair<TextRange, CodeVisionEntry>> = context.zombies
-    val openTimeNs = System.nanoTime()
-    editor.putUserData(editorTrackingStart, openTimeNs)
+    val editorOpenedMark = TimeSource.Monotonic.markNow()
+    editor.putUserData(editorTrackingStart, editorOpenedMark)
     var calcRunning = false
 
+    @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
     fun recalculateLenses(lensesToUpdate: UpdateLensesRequest = UpdateLensesRequest.All) {
       val editorManager = FileEditorManager.getInstance(project)
       if (!isInlaySettingsEditor(editor) && !editorManager.selectedEditors.any {
@@ -483,6 +477,9 @@ open class CodeVisionHost(val project: Project, protected val coroutineScope: Co
     )
 
     subscribeForDocumentChanges(editor, editorLifetime) {
+      // Any running recalculateLenses is now obsolete and cannot succeed.
+      // `.next` cancels it if it is running.
+      calculationLifetimes.next()
       pokeEditor()
     }
 
@@ -499,13 +496,16 @@ open class CodeVisionHost(val project: Project, protected val coroutineScope: Co
   // we are only interested in text editors, and BRFE behaves exceptionally bad so ignore them
   private fun isAllowedFileEditor(fileEditor: FileEditor?) = fileEditor is TextEditor && fileEditor !is BaseRemoteFileEditor
 
+  /** @param consumer Continuation called on EDT with the calculated lenses */
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private fun calculateFrontendLenses(
     calcLifetime: Lifetime,
     editor: Editor,
     lensesToUpdate: UpdateLensesRequest = UpdateLensesRequest.All,
-    inTestSyncMode: Boolean = false,
-    consumer: (newLenses: List<Pair<TextRange, CodeVisionEntry>>, providersToUpdate: List<String>) -> Unit,
+    @RequiresEdt consumer: (newLenses: List<Pair<TextRange, CodeVisionEntry>>, providersToUpdate: List<String>) -> Unit,
   ) {
+    val modCount = modificationCount(editor)
+
     val providers = providers
     val precalculatedUiThings = providers.associate {
       val shouldSkip = lensesToUpdate is UpdateLensesRequest.Specific && !lensesToUpdate.providerIds.contains(it.id)
@@ -521,11 +521,10 @@ open class CodeVisionHost(val project: Project, protected val coroutineScope: Co
       return
     }
 
-    executeOnPooledThread(calcLifetime, inTestSyncMode) {
+    executeOnPooledThread(calcLifetime) {
       ProgressManager.checkCanceled()
       val isEditorInsideSettingsPanel = isInlaySettingsEditor(editor)
-      val editorOpenTimeNs = editor.getUserData(editorTrackingStart)
-      val modCount = modificationCount(editor)
+      val editorOpenedTimeMark = editor.getUserData(editorTrackingStart)
 
       var results = mutableListOf<Pair<TextRange, CodeVisionEntry>>()
 
@@ -567,7 +566,7 @@ open class CodeVisionHost(val project: Project, protected val coroutineScope: Co
           if (state.isReady) {
             results.addAll(state.result)
           }
-          else if (editorOpenTimeNs == null || shouldConsiderProvider(editorOpenTimeNs)) {
+          else if (editorOpenedTimeMark == null || shouldConsiderProvider(editorOpenedTimeMark)) {
             everyProviderReadyToUpdate = false
           }
         }
@@ -588,47 +587,28 @@ open class CodeVisionHost(val project: Project, protected val coroutineScope: Co
         results = enrichTextWithStrikeoutLine(results)
       }
 
-      if (!inTestSyncMode) {
-        application.invokeLater(
-          Runnable {
-            calcLifetime.executeIfAlive {
-              if (modCount == modificationCount(editor)) {
-                consumer(results, providerWhoWantToUpdate)
-              }
-            }
-          },
-          ModalityState.stateForComponent(editor.component)
-        )
-      }
-      else {
-        consumer(results, providerWhoWantToUpdate)
+      invokeLater(ModalityState.stateForComponent(editor.component)) {
+        calcLifetime.executeIfAlive {
+          if (modCount == modificationCount(editor)) {
+            consumer(results, providerWhoWantToUpdate)
+          }
+        }
       }
     }
   }
 
-  private fun executeOnPooledThread(lifetime: Lifetime, inTestSyncMode: Boolean, runnable: () -> Unit): ProgressIndicator {
+  private fun executeOnPooledThread(lifetime: Lifetime, runnable: () -> Unit) {
     val indicator = EmptyProgressIndicator()
     indicator.start()
 
-    if (!inTestSyncMode) {
-      CompletableFuture.runAsync(
-        { ProgressManager.getInstance().runProcess(runnable, indicator) },
-        AppExecutorUtil.getAppExecutorService()
-      )
+    (JobLauncher.getInstance() as JobLauncherImpl).submitToJobThread(
+      { ProgressManager.getInstance().runProcess(runnable, indicator) },
+      {}
+    )
 
-      lifetime.onTerminationIfAlive {
-        if (indicator.isRunning) indicator.cancel()
-      }
+    lifetime.onTerminationIfAlive {
+      if (indicator.isRunning) indicator.cancel()
     }
-    else {
-      coroutineScope.launch {
-        readAction {
-          runnable()
-        }
-      }
-    }
-
-    return indicator
   }
 
   private inline fun runSafe(name: String, block: () -> Unit) {
@@ -636,7 +616,7 @@ open class CodeVisionHost(val project: Project, protected val coroutineScope: Co
       block()
     }
     catch (e: Exception) {
-      if (e is ControlFlowException) throw e
+      rethrowControlFlowException(e)
 
       logger.error("Exception during $name", e)
     }
@@ -646,9 +626,8 @@ open class CodeVisionHost(val project: Project, protected val coroutineScope: Co
     return editor.editorKind == EditorKind.MAIN_EDITOR || editor.editorKind == EditorKind.UNTYPED
   }
 
-  private fun shouldConsiderProvider(editorOpenTimeNs: Long): Boolean {
-    val oneMinute = 60_000_000_000
-    return System.nanoTime() - editorOpenTimeNs < oneMinute
+  private fun shouldConsiderProvider(editorOpenedTimeMark: TimeSource.Monotonic.ValueTimeMark): Boolean {
+    return editorOpenedTimeMark.elapsedNow() < 1.minutes
   }
 
   private fun shouldRecomputeForEditor(editor: Editor, provider: CodeVisionProvider<Any?>, uiThings: Map<String, Any?>): Boolean {

@@ -1,20 +1,14 @@
 package com.intellij.grazie.text
 
-import com.intellij.grazie.cloud.GrazieCloudConnector.Companion.seemsCloudConnected
-import com.intellij.grazie.mlec.MlecChecker
-import com.intellij.grazie.spellcheck.SpellingTextChecker
+import com.intellij.diagnostic.rethrowControlFlowException
 import com.intellij.grazie.text.TextChecker.ProofreadingContext
-import com.intellij.grazie.utils.getProblemsForText
 import com.intellij.grazie.utils.isSpelling
 import com.intellij.openapi.diagnostic.thisLogger
-import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.runBlockingCancellable
-import com.intellij.openapi.util.registry.Registry
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.yield
-import java.util.concurrent.CancellationException
 
 internal class TextCheckerManager {
 
@@ -33,9 +27,10 @@ internal class TextCheckerManager {
      * In the end, we still collect the results in the checker registration order
      * so that problems from the first checkers can override intersecting problems from others.
      */
+    @Deprecated("Use doRun(checkers, contexts) instead")
     fun doRun(checkers: List<TextChecker>, context: ProofreadingContext): Collection<TextProblem> {
       if (checkers.isSingleSpellingChecker()) {
-        return runSpellingChecker(checkers.first(), listOf(context))
+        return catching { checkers.first().check(listOf(context)) } ?: emptyList()
       }
 
       return runBlockingCancellable {
@@ -54,43 +49,21 @@ internal class TextCheckerManager {
     }
 
     fun doRun(checkers: List<TextChecker>, contexts: List<ProofreadingContext>): Collection<TextProblem> {
-      if (!Registry.`is`("grazie.correct.text.enabled")) {
-        return contexts.flatMap { context ->
-          ProgressManager.checkCanceled()
-          doRun(checkers, context)
-        }
-      }
-
       if (checkers.isSingleSpellingChecker()) {
-        return runSpellingChecker(checkers.first(), contexts)
+        return catching { checkers.first().check(contexts) } ?: emptyList()
       }
 
       return runBlockingCancellable {
-        val correctTextJob = if (checkers.any { it is SpellingTextChecker || it is MlecChecker }) {
-          async { catching { getProblemsForText(contexts) } }
-        } else {
-          null
-        }
-
         val deferred = checkers.map { checker ->
           when (checker) {
-            is SpellingTextChecker -> async(start = CoroutineStart.LAZY) {
-              catching { checker.checkWithProblems(contexts, correctTextJob?.await() ?: emptyMap()) } ?: emptyList()
-            }
-            is MlecChecker -> async(start = CoroutineStart.LAZY) {
-              catching { checker.checkWithProblems(correctTextJob?.await() ?: emptyMap()) } ?: emptyList()
-            }
             is ExternalTextChecker -> async { catching { checker.checkExternally(contexts) } ?: emptyList() }
             else -> async(start = CoroutineStart.LAZY) { catching { checker.check(contexts) } ?: emptyList() }
           }
         }
-
-        // let all pending external checker jobs complete what they're ready to do and possibly suspend further
         for (job in deferred) {
-          yield()
+          yield() // let all pending external checker jobs complete what they're ready to do and possibly suspend further
           job.start()
         }
-
         deferred.awaitAll().flatten()
       }
     }
@@ -100,7 +73,7 @@ internal class TextCheckerManager {
         return block()
       }
       catch (e: Throwable) {
-        if (e is CancellationException) throw e
+        rethrowControlFlowException(e)
         thisLogger().error(e)
         return null
       }
@@ -108,22 +81,6 @@ internal class TextCheckerManager {
 
     private fun List<TextChecker>.isSingleSpellingChecker(): Boolean {
       return size == 1 && first().isSpelling()
-    }
-
-    private fun runSpellingChecker(checker: TextChecker, contexts: List<ProofreadingContext>): Collection<TextProblem> {
-      // Spelling text checker optimization
-      // To get rid of expensive cancellable overhead,
-      // in case if cloud checking is disabled
-      return catching {
-        if (seemsCloudConnected()) {
-          runBlockingCancellable {
-            (checker as ExternalTextChecker).checkExternally(contexts)
-          }
-        }
-        else {
-          checker.check(contexts)
-        }
-      } ?: emptyList()
     }
   }
 }

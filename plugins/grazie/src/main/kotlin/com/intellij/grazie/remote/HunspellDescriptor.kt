@@ -6,22 +6,26 @@ import java.io.FilenameFilter
 import java.nio.file.Path
 import kotlin.io.path.Path
 
-private const val DE_CHECKSUM = "4fb1e06de9e4afd0b6586fe17bc681aa"
-private const val RU_CHECKSUM = "0c8f5760f3ed03e3a20f754d3bfcf190"
-private const val UK_CHECKSUM = "0ce677d2f1063e5d8906e4726516970d"
+private const val DE_JAR_CHECKSUM = "14f7601051d9ba7e42ccaf9c4e7cf911"
+private const val DE_CONTENT_CHECKSUM = "a63f05b26d352ad91ba28dc7755caae4"
+private const val RU_JAR_CHECKSUM = "f744cb4af8e8180e94987976e151d41e"
+private const val RU_CONTENT_CHECKSUM = "68b122b14f056a47d60f5eeefe80e231"
+private const val UK_JAR_CHECKSUM = "1be2def4ab90f0c7b8452ffabf10262b"
+private const val UK_CONTENT_CHECKSUM = "a7e9596f25b0141eb6109a58e51640fc"
 
 enum class HunspellDescriptor(
   override val iso: LanguageISO,
   val isGplLicensed: Boolean,
   override val size: Int,
-  override val checksum: String
+  override val checksum: String,
+  override val contentChecksum: String,
 ) : RemoteLangDescriptor {
-  RUSSIAN(LanguageISO.RU, isGplLicensed = false, 2, RU_CHECKSUM),
-  GERMAN(LanguageISO.DE, isGplLicensed = true, 2, DE_CHECKSUM),
-  UKRAINIAN(LanguageISO.UK, isGplLicensed = true, 2, UK_CHECKSUM);
+  RUSSIAN(LanguageISO.RU, isGplLicensed = false, 2, RU_JAR_CHECKSUM, RU_CONTENT_CHECKSUM),
+  GERMAN(LanguageISO.DE, isGplLicensed = true, 2, DE_JAR_CHECKSUM, DE_CONTENT_CHECKSUM),
+  UKRAINIAN(LanguageISO.UK, isGplLicensed = true, 2, UK_JAR_CHECKSUM, UK_CONTENT_CHECKSUM);
 
-  override val storageDescriptor: String by lazy { "$storageName.jar" }
-  override val storageName: String by lazy { "hunspell-$iso-${GraziePlugin.Hunspell.version}" }
+  override val storageDescriptor: String by lazy { "hunspell-$iso-${GraziePlugin.Hunspell.version}.jar" }
+  override val storageName: String by lazy { "hunspell-$iso-$contentChecksum" }
   override val file: Path by lazy { Path(storageName).resolve(DICTIONARY_DIR).resolve("$iso.dic") }
   override val url: String by lazy { "${GraziePlugin.Hunspell.url}/hunspell-$iso/${GraziePlugin.Hunspell.version}/$storageDescriptor" }
 

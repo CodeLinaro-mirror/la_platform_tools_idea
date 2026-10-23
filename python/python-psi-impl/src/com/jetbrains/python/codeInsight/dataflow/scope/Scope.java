@@ -24,16 +24,16 @@ import com.jetbrains.python.psi.types.TypeEvalContext;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 
 public interface Scope {
-  /*
-   * @return defined scope local/instance/class variables and parameters, using reaching defs
-   *
-   * it uses obsolete dfa analysis under the hood for pretty unclear reasons
+  /**
+   * @return the local, instance or class variable or the parameter with the given name, from the reaching definitions
+   * @deprecated The method uses the obsolete DFA analysis. This interface has no replacement for it.
    */
   @Nullable
   @Deprecated
@@ -52,13 +52,11 @@ public interface Scope {
 
   boolean containsDeclaration(String name);
 
-  /** Cheap O(1) check whether this scope itself declares a (non-import) named element {@code name}. */
-  boolean declaresName(@NotNull String name);
-
   @NotNull
   List<PyImportedNameDefiner> getImportedNameDefiners();
 
   @NotNull
+  @Unmodifiable
   Collection<PsiNamedElement> getNamedElements(String name, boolean includeNestedGlobals);
 
   @NotNull

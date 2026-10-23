@@ -1,8 +1,28 @@
 load("@community//build:tests-options.bzl", "jps_test")
+load("@community//platform/build-scripts/bazel-rules:ij_plugin.bzl", "ij_plugin")
+load("@jps_dynamic_deps_community//:targets.bzl", "dev_dist_plugin")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
-### auto-generated section `build intellij.html.tools` start
+jps_test(
+    name = "html-tools-tests_test",
+    timeout = "moderate",
+    tags = ["community-aggregator"],
+    runtime_deps = [":html-tools-tests_test_lib"],
+)
 
+### skip generation section `test intellij.html.tools.tests`
+
+### auto-generated section `dev intellij.html.tools` start
+dev_dist_plugin(
+    descriptor = "resources/META-INF/plugin.xml",
+    jars = {
+        "lib/html-tools.jar": ["intellij.html.tools"],
+    },
+    main_module = "intellij.html.tools",
+)
+### auto-generated section `dev intellij.html.tools` end
+
+### auto-generated section `build intellij.html.tools` start
 jvm_library(
     name = "html-tools",
     srcs = glob(
@@ -78,19 +98,25 @@ jvm_library(
         "//platform/util:util-ui_test_lib",
     ],
 )
+
+ij_plugin(
+    name = "html-tools_plugin",
+    descriptor_module = ":html-tools",
+    visibility = ["//visibility:public"],
+)
 ### auto-generated section `build intellij.html.tools` end
 
 ### auto-generated section `iml intellij.html.tools` start
 exports_files(
     [
         "intellij.html.tools.iml",
+        "resources/META-INF/plugin.xml",
     ],
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.html.tools` end
 
 ### auto-generated section `build intellij.html.tools.tests` start
-
 jvm_library(
     name = "html-tools-tests",
     srcs = glob(
@@ -145,6 +171,8 @@ jvm_library(
         "//platform/testFramework:testFramework_test_lib",
         "//spellchecker",
         "//spellchecker:spellchecker_test_lib",
+        "//spellchecker/xml",
+        "//spellchecker/xml:xml_test_lib",
         "//plugins/grazie/src:core",
         "//plugins/grazie/src:core_test_lib",
         "//xml/xml-psi-api:psi",
@@ -192,11 +220,3 @@ exports_files(
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.html.tools.tests` end
-
-### auto-generated section `test intellij.html.tools.tests` start
-
-jps_test(
-    name = "html-tools-tests_test",
-    runtime_deps = [":html-tools-tests_test_lib"],
-)
-### auto-generated section `test intellij.html.tools.tests` end

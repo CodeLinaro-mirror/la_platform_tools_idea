@@ -20,7 +20,6 @@ import com.intellij.openapi.vfs.local.FileWatcherNotificationSink;
 import com.intellij.openapi.vfs.local.PluggableFileWatcher;
 import com.intellij.util.SmartList;
 import com.intellij.util.TimeoutUtil;
-import com.intellij.util.io.BaseDataReader;
 import com.intellij.util.io.BaseOutputReader;
 import com.intellij.util.system.CpuArch;
 import com.intellij.util.system.OS;
@@ -73,19 +72,14 @@ public class NativeFileWatcherImpl extends PluggableFileWatcher {
   @Override
   public void initialize(@NotNull FileWatcherNotificationSink notificationSink) {
     myNotificationSink = notificationSink;
-
-    var disabled = isDisabled();
     myExecutable = getExecutable();
 
-    if (disabled) {
+    if (isDisabled()) {
       LOG.info("Native file watcher is disabled");
     }
     else if (myExecutable == null) {
       if (OS.CURRENT == OS.Windows || OS.CURRENT == OS.macOS || OS.CURRENT == OS.Linux && (CpuArch.isIntel64() || CpuArch.isArm64())) {
         notifyOnFailure(IdeCoreBundle.message("watcher.exe.not.found"), null);
-      }
-      else if (OS.CURRENT == OS.Linux) {
-        notifyOnFailure(IdeCoreBundle.message("watcher.exe.compile"), NotificationListener.URL_OPENING_LISTENER);
       }
       else {
         notifyOnFailure(IdeCoreBundle.message("watcher.exe.not.exists"), null);
@@ -291,7 +285,6 @@ public class NativeFileWatcherImpl extends PluggableFileWatcher {
     OS.CURRENT == OS.Windows || OS.CURRENT == OS.macOS ? StandardCharsets.UTF_8 : CharsetToolkit.getPlatformCharset();
 
   private static final BaseOutputReader.Options READER_OPTIONS = new BaseOutputReader.Options() {
-    @Override public BaseDataReader.SleepingPolicy policy() { return BaseDataReader.SleepingPolicy.BLOCKING; }
     @Override public boolean sendIncompleteLines() { return false; }
     @Override public boolean withSeparators() { return false; }
   };

@@ -56,13 +56,13 @@ public final class ActiveRules {
     if (usageViewSettings.isGroupByDirectoryStructure()) {
       rules.add(new DirectoryStructureGroupingRule(project, usageViewSettings.isCompactMiddleDirectories()));
     }
-    if (usageViewSettings.isGroupByFileStructure()) {
+    if (usageViewSettings.isGroupByFileStructure() && FileStructureGroupRuleProvider.EP_NAME.hasAnyExtensions()) {
       for (FileStructureGroupRuleProvider ruleProvider : FileStructureGroupRuleProvider.EP_NAME.getExtensionList()) {
         ContainerUtil.addIfNotNull(rules, ruleProvider.getUsageGroupingRule(project, usageViewSettings));
       }
     }
     else {
-      rules.add(new FileGroupingRule(project, usageViewSettings.getShowShortFilePath()));
+      rules.add(new FileGroupingRule(project, usageViewSettings.isShortFilePathEnabled()));
     }
 
     return rules.toArray(UsageGroupingRule.EMPTY_ARRAY);
@@ -113,7 +113,7 @@ public final class ActiveRules {
       rules.add(rule);
     }
 
-    rules.add(new FileGroupingRule(project, usageViewSettings.getShowShortFilePath()));
+    rules.add(new FileGroupingRule(project, usageViewSettings.isShortFilePathEnabled()));
 
     return rules.toArray(UsageGroupingRule.EMPTY_ARRAY);
   }

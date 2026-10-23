@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.application.options;
 
 import com.intellij.icons.AllIcons;
@@ -22,7 +22,6 @@ import com.intellij.ui.TableUtil;
 import com.intellij.ui.ToolbarDecorator;
 import com.intellij.ui.components.JBCheckBox;
 import com.intellij.ui.table.JBTable;
-import com.intellij.util.ui.JBUI;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -38,7 +37,6 @@ import javax.swing.table.TableColumn;
 import javax.swing.table.TableModel;
 import java.awt.BorderLayout;
 import java.awt.Component;
-import java.awt.Dimension;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -49,6 +47,7 @@ public abstract class ImportLayoutPanel extends JPanel {
   private final JBCheckBox myCbLayoutStaticImportsSeparately =
     new JBCheckBox(JavaFrontbackBundle.message("import.layout.static.imports.separately"));
   private final @Nullable JBCheckBox myCbLayoutOnDemandImportsFromSamePackageFirst;
+  private final @Nullable JBCheckBox myCbKeepBlankLinesBetweenImports;
   private final JBTable myImportLayoutTable;
 
   private final PackageEntryTable myImportLayoutList = new PackageEntryTable();
@@ -69,10 +68,15 @@ public abstract class ImportLayoutPanel extends JPanel {
     return myCbLayoutOnDemandImportsFromSamePackageFirst;
   }
 
-  public ImportLayoutPanel(boolean showLayoutOnDemandImportFromSamePackageFirstCheckbox, boolean supportModuleImport) {
+  public @Nullable JBCheckBox getCbKeepBlankLinesBetweenImports() {
+    return myCbKeepBlankLinesBetweenImports;
+  }
+
+  public ImportLayoutPanel(boolean showLayoutOnDemandImportFromSamePackageFirstCheckbox,
+                           boolean showKeepBlankLinesBetweenImportsCheckbox) {
     super(new BorderLayout());
 
-    myCbLayoutStaticImportsSeparately.addItemListener(e -> {
+    myCbLayoutStaticImportsSeparately.addItemListener(_ -> {
       if (areStaticImportsEnabled()) {
         boolean found = false;
         for (int i = myImportLayoutList.getEntryCount() - 1; i >= 0; i--) {
@@ -109,10 +113,10 @@ public abstract class ImportLayoutPanel extends JPanel {
 
     JPanel importLayoutPanel = ToolbarDecorator.createDecorator(myImportLayoutTable = createTableForPackageEntries(myImportLayoutList, this))
       .addExtraAction(addGroup)
-      .setRemoveAction(button -> removeEntryFromImportLayouts())
-      .setMoveUpAction(button -> moveRowUp())
-      .setMoveDownAction(button -> moveRowDown())
-      .setRemoveActionUpdater(e -> {
+      .setRemoveAction(_ -> removeEntryFromImportLayouts())
+      .setMoveUpAction(_ -> moveRowUp())
+      .setMoveDownAction(_ -> moveRowDown())
+      .setRemoveActionUpdater(_ -> {
         int selectedImport = myImportLayoutTable.getSelectedRow();
         PackageEntry entry = selectedImport < 0 ? null : myImportLayoutList.getEntryAt(selectedImport);
         return entry != null &&
@@ -124,7 +128,7 @@ public abstract class ImportLayoutPanel extends JPanel {
                            IdeBundle.message("action.remove"),
                            JavaFrontbackBundle.message("import.layout.panel.up.button"),
                            JavaFrontbackBundle.message("import.layout.panel.down.button"))
-      .setPreferredSize(new Dimension(-1, JBUI.scale(180)))
+      .setVisibleRowCount(8)
       .createPanel();
 
     myCbLayoutOnDemandImportsFromSamePackageFirst =
@@ -132,11 +136,15 @@ public abstract class ImportLayoutPanel extends JPanel {
       ? new JBCheckBox(JavaFrontbackBundle.message("import.layout.on.demand.import.from.same.package.first"))
       : null;
 
+    myCbKeepBlankLinesBetweenImports =
+      showKeepBlankLinesBetweenImportsCheckbox
+      ? new JBCheckBox(JavaFrontbackBundle.message("import.layout.keep.blank.lines.between.imports"))
+      : null;
+
     List<@Nullable JBCheckBox> additionalCheckBoxes = new ArrayList<>();
     additionalCheckBoxes.add(myCbLayoutOnDemandImportsFromSamePackageFirst);
-    final ImportLayoutPanelUI UI = new ImportLayoutPanelUI(myCbLayoutStaticImportsSeparately,
-                                                           additionalCheckBoxes,
-                                                           importLayoutPanel);
+    additionalCheckBoxes.add(myCbKeepBlankLinesBetweenImports);
+    final ImportLayoutPanelUI UI = new ImportLayoutPanelUI(myCbLayoutStaticImportsSeparately, additionalCheckBoxes, importLayoutPanel);
     add(UI.getPanel(), BorderLayout.CENTER);
   }
 
@@ -249,7 +257,7 @@ public abstract class ImportLayoutPanel extends JPanel {
     return myCbLayoutOnDemandImportsFromSamePackageFirst != null && myCbLayoutOnDemandImportsFromSamePackageFirst.isSelected();
   }
 
-  public static JBTable createTableForPackageEntries(final PackageEntryTable packageTable, final ImportLayoutPanel panel) {
+  public static JBTable createTableForPackageEntries(PackageEntryTable packageTable, ImportLayoutPanel panel) {
     final String[] names = {
       JavaFrontbackBundle.message("listbox.import.package"),
       JavaFrontbackBundle.message("listbox.import.with.subpackages"),
@@ -325,8 +333,7 @@ public abstract class ImportLayoutPanel extends JPanel {
           packageTable.setEntryAt(newPackageEntry, row);
         }
         else if (col == 2) {
-          PackageEntry newPackageEntry =
-            new PackageEntry(packageEntry.isStatic(), packageEntry.getPackageName(), (Boolean)aValue);
+          PackageEntry newPackageEntry = new PackageEntry(packageEntry.isStatic(), packageEntry.getPackageName(), (Boolean)aValue);
           packageTable.setEntryAt(newPackageEntry, row);
         }
         else {
@@ -342,8 +349,8 @@ public abstract class ImportLayoutPanel extends JPanel {
     resizeColumns(packageTable, result, panel.areStaticImportsEnabled());
 
     TableCellEditor editor = result.getDefaultEditor(String.class);
-    if (editor instanceof DefaultCellEditor) {
-      ((DefaultCellEditor)editor).setClickCountToStart(1);
+    if (editor instanceof DefaultCellEditor cellEditor) {
+      cellEditor.setClickCountToStart(1);
     }
 
     TableCellEditor beditor = result.getDefaultEditor(Boolean.class);
@@ -363,7 +370,7 @@ public abstract class ImportLayoutPanel extends JPanel {
     return result;
   }
 
-  public static void resizeColumns(final PackageEntryTable packageTable, JBTable result, boolean areStaticImportsEnabled) {
+  public static void resizeColumns(PackageEntryTable packageTable, JBTable result, boolean areStaticImportsEnabled) {
     ColoredTableCellRenderer packageRenderer = new ColoredTableCellRenderer() {
       @Override
       protected void customizeCellRenderer(@NotNull JTable table, Object value, boolean selected, boolean hasFocus, int row, int column) {
@@ -381,14 +388,21 @@ public abstract class ImportLayoutPanel extends JPanel {
           }
           append(" ", SimpleTextAttributes.REGULAR_ATTRIBUTES);
 
-          if (entry == PackageEntry.ALL_OTHER_IMPORTS_ENTRY || entry == PackageEntry.ALL_OTHER_STATIC_IMPORTS_ENTRY) {
+          if (entry == PackageEntry.ALL_OTHER_IMPORTS_ENTRY) {
             append(JavaFrontbackBundle.message("import.layout.panel.all.other.imports"), SimpleTextAttributes.REGULAR_ATTRIBUTES);
           }
-          else if (entry == PackageEntry.ALL_MODULE_IMPORTS) {
-            append(JavaFrontbackBundle.message("import.layout.panel.module.imports"), SimpleTextAttributes.REGULAR_ATTRIBUTES);
+          else if (entry == PackageEntry.ALL_OTHER_STATIC_IMPORTS_ENTRY) {
+            append(JavaFrontbackBundle.message("import.layout.panel.all.other.static.imports"), SimpleTextAttributes.REGULAR_ATTRIBUTES);
           }
           else {
-            append(entry.getPackageName() + ".*", SimpleTextAttributes.REGULAR_ATTRIBUTES);
+            if (entry == PackageEntry.ALL_MODULE_IMPORTS) {
+              append(JavaKeywords.MODULE, SimpleTextAttributes.fromTextAttributes(attributes));
+              append(" ", SimpleTextAttributes.REGULAR_ATTRIBUTES);
+              append(JavaFrontbackBundle.message("import.layout.panel.module.imports"), SimpleTextAttributes.REGULAR_ATTRIBUTES);
+            }
+            else {
+              append(entry.getPackageName() + ".*", SimpleTextAttributes.REGULAR_ATTRIBUTES);
+            }
           }
         }
       }

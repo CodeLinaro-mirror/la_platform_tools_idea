@@ -1,11 +1,10 @@
 // "Create local variable 'foo'" "true"
-// K2_ERROR: Expression expected, but package name found.
-// K2_ERROR: Return type mismatch: expected 'Int', actual 'Unit'.
+// K2_ERROR: EXPRESSION_EXPECTED_PACKAGE_FOUND
+// K2_ERROR: RETURN_TYPE_MISMATCH
 
 package foo
 
 fun test(): Int {
     return <caret>foo
 }
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.createFromUsage.createVariable.CreateLocalVariableActionFactory$CreateLocalFromUsageAction
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.quickFixes.createFromUsage.K2CreateLocalVariableFromUsageBuilder$CreateLocalFromUsageAction
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.quickFixes.createFromUsage.K2CreateLocalVariableFromUsageBuilder$CreateLocalFromUsageAction

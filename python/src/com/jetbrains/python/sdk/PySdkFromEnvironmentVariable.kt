@@ -1,62 +1,166 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.sdk
 
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.module.Module
-import com.intellij.openapi.projectRoots.ProjectJdkTable
-import com.intellij.openapi.projectRoots.Sdk
-import com.intellij.openapi.projectRoots.impl.SdkConfigurationUtil
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.project.modules
+import com.intellij.openapi.util.NlsSafe
+import com.intellij.platform.eel.path.EelPathException
+import com.intellij.platform.eel.provider.LocalEelDescriptor
+import com.intellij.platform.eel.provider.equalsMayBeUsingMachine
+import com.intellij.platform.eel.provider.getEelDescriptor
+import com.intellij.platform.eel.provider.utils.Path
 import com.intellij.util.EnvironmentUtil
+import com.intellij.python.pyproject.model.evolution.EvoPyProjectModel
+import com.intellij.python.pyproject.model.evolution.setPythonInterpreter
+import com.intellij.python.pyproject.model.evolution.getInterpreter
+import com.intellij.python.sdk.backend.detectPythonEnvironment
+import com.intellij.python.sdk.backend.getPythonInfo
+import com.jetbrains.python.mapResult
 import com.jetbrains.python.PyBundle
 import com.jetbrains.python.PythonBinary
+import com.jetbrains.python.Result
 import com.jetbrains.python.errorProcessing.MessageError
 import com.jetbrains.python.errorProcessing.PyResult
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import com.jetbrains.python.errorProcessing.getOr
+import com.jetbrains.python.project.PyProject.Companion.asPyProject
 import org.jetbrains.annotations.ApiStatus
+import org.jetbrains.annotations.CheckReturnValue
 import java.nio.file.InvalidPathException
-import java.nio.file.Path
-import kotlin.io.path.pathString
+import java.nio.file.Paths
 
-private val LOG = logger<PySdkFromEnvironmentVariable>()
+
+// See https://www.jetbrains.com/help/pycharm/configure-an-interpreter-using-command-line.html
+/**
+ * Configures sdk using [PYCHARM_PYTHON_PATH_ENV] env or [PYCHARM_PYTHON_PATH_PROPERTY] or other envs and properties provided by caller.
+ * Create with [create], then call [configureSdkForModules].
+ */
+@ApiStatus.Internal
+class PySdkFromEnvironmentVariable private constructor(
+  private val project: Project,
+  private val python: PythonBinary,
+) {
+  init {
+    check(project.getEelDescriptor().equalsMayBeUsingMachine(python.getEelDescriptor())) { "$python can't be used for $project" }
+  }
+
+  companion object {
+    private const val PYCHARM_PYTHON_PATH_PROPERTY: String = "PycharmPythonPath"
+    const val PYCHARM_PYTHON_PATH_ENV: String = "PYCHARM_PYTHON_PATH"
+
+    private val LOG = logger<PySdkFromEnvironmentVariable>()
+
+    /**
+     * Creates tool to configure modules on [project] (you can't use modules from another project).
+     * Along with built-in properties and env names, you can provide [propertyName] (for [System.getProperty])
+     * and [envVarName] (for [EnvironmentUtil.getEnvironmentMap]).
+     *
+     * Return `null` if all properties and envs are empty. If they aren't, but contain invalid/broken path, returns error.
+     * Otherwise, returns tool ready to use.
+     * Call [getOrLog] for logging
+     */
+    fun create(
+      project: Project,
+      propertyName: String? = null,
+      envVarName: String? = null,
+    ): Result<PySdkFromEnvironmentVariable, MessageError>? {
+      val descriptor = project.getEelDescriptor()
+      val pathStr: @NlsSafe String = propertyName?.let { System.getProperty(it) }
+                                     ?: envVarName?.let { EnvironmentUtil.getValue(it) }
+                                     ?: System.getProperty(PYCHARM_PYTHON_PATH_PROPERTY)
+                                     ?: EnvironmentUtil.getValue(PYCHARM_PYTHON_PATH_ENV)
+                                     ?: return null
+      val pythonBinary = try {
+        Path(pathStr, descriptor)
+      }
+       catch (e: EelPathException) {
+         LOG.info("Path $pathStr isn't path on $descriptor", e)
+         try {
+           Paths.get(pathStr)
+         }
+         catch (e: InvalidPathException) {
+           LOG.info("Path isn't local path", e)
+           null
+         }
+       } ?: return PyResult.localizedError(PyBundle.message("sdk.configuration.path.wrong", pathStr, descriptor.name))
+
+      if (! pythonBinary.getEelDescriptor().equalsMayBeUsingMachine(project.getEelDescriptor())) {
+        return PyResult.localizedError(
+          PyBundle.message("sdk.configuration.path.on.wrong.descriptor",
+                           pythonBinary,
+                           project.getEelDescriptor().name)
+        )
+      }
+      if (! pythonBinary.getEelDescriptor().equalsMayBeUsingMachine(LocalEelDescriptor)) {
+        return PyResult.localizedError(PyBundle.message("sdk.configuration.path.remote.not.supported", pythonBinary))
+      }
+
+      return PyResult.success(PySdkFromEnvironmentVariable(project, pythonBinary))
+    }
+  }
+
+  /**
+   * Creates SDK from [python] (or takes the one that exists) and sets it for [modules].
+   * All modules **must** be in the same [project].
+   * Use [configureSdkForModulesLogIfError] to log errors.
+   */
+  @CheckReturnValue
+  suspend fun configureSdkForModules(modules: Array<Module> = project.modules): PyResult<Unit> {
+    python.detectPythonEnvironment()
+      .mapResult { it.getPythonInfo() }
+      .getOr(PyBundle.message("sdk.configuration.path.python.invalid", python)) { return it }
+
+    // Skip modules with same SDK
+    val modules = modules.filter {
+      it.asPyProject()?.getInterpreter()?.pythonBinaryPath != python
+    }
+
+    if (modules.isEmpty()) {
+      return Result.success(Unit)
+    }
+
+    val pythonInterpreter = withSdkConfigurationLock(project) {
+      createLocalSdkGuessingTypeByPath(python, ModuleOrProject.ProjectOnly(project))
+    }.getOr(PyBundle.message("sdk.configuration.path.cant.create.sdk", python)) { return it }
+
+
+
+    val pyProjects = withSdkConfigurationLock(project) {
+      modules.mapNotNull { module ->
+        check(module.project == project) { "Module $module is not in $project" }
+        module.asPyProject()?.also { it.setPythonInterpreter(pythonInterpreter, waitForSnapshot = false) }
+      }
+    }
+    // Once for all modules, so that a caller that reads the snapshot next sees the new interpreter.
+    EvoPyProjectModel.getInstance(project).awaitInterpreterOf(pyProjects)
+    return Result.success(Unit)
+  }
+
+  suspend fun configureSdkForModulesLogIfError(log: Logger, modules: Array<Module> = project.modules) {
+    when (val r = configureSdkForModules(modules)) {
+      is Result.Failure -> {
+        log.warn("Failed to configure with python ${python} : ${r.error}")
+      }
+      is Result.Success -> {
+        log.info("Configured modules with ${python}")
+      }
+    }
+  }
+
+  override fun toString(): String =
+    "PySdkFromEnvironmentVariable(project=$project, python=$python)"
+}
+
 
 @ApiStatus.Internal
-object PySdkFromEnvironmentVariable {
-  const val PYCHARM_PYTHON_PATH_PROPERTY: String = "PycharmPythonPath"
-  const val PYCHARM_PYTHON_PATH_ENV: String = "PYCHARM_PYTHON_PATH"
-
-  fun getPycharmPythonPathProperty(): String? {
-    // see https://www.jetbrains.com/help/pycharm/configure-an-interpreter-using-command-line.html
-    return System.getProperty(PYCHARM_PYTHON_PATH_PROPERTY) ?: EnvironmentUtil.getValue(PYCHARM_PYTHON_PATH_ENV)
-  }
-
-  suspend fun findOrCreateSdkByPath(path: String, moduleOrProject: ModuleOrProject): PyResult<Sdk> {
-    val path = try {
-      Path.of(path)
+fun Result<PySdkFromEnvironmentVariable, MessageError>?.getOrLog(log: Logger): PySdkFromEnvironmentVariable? =
+  when (val r = this) {
+    null -> null
+    is Result.Failure -> {
+      log.warn("SDK configuration requested, but failed: ${r.error}")
+      null
     }
-    catch (e: InvalidPathException) {
-      return PyResult.failure(MessageError(PyBundle.message("sdk.bad.python", path, e)))
-    }
-    return findByPath(path)?.let { PyResult.success(it) } ?: createLocalSdkGuessingTypeByPath(path, moduleOrProject)
+    is Result.Success -> r.result
   }
-
-  fun setModuleSdk(module: Module, projectSdk: Sdk?, sdk: Sdk, pythonPath: String) {
-    val moduleSdk = PythonSdkUtil.findPythonSdk(module)
-    if (pythonPath != projectSdk?.homePath || pythonPath != moduleSdk?.homePath) {
-      module.pythonSdk = sdk
-    }
-  }
-}
-
-private suspend fun findByPath(pycharmPythonPathEnvVariable: PythonBinary): Sdk? {
-  val sdkType = PythonSdkType.getInstance()
-  val sdks = ProjectJdkTable.getInstance().getSdksOfType(sdkType)
-  val sdk =
-    withContext(Dispatchers.IO) { SdkConfigurationUtil.findByPath(sdkType, sdks.toTypedArray(), pycharmPythonPathEnvVariable.pathString) }
-
-  if (sdk != null) {
-    LOG.info("Found a previous sdk")
-  }
-
-  return sdk
-}

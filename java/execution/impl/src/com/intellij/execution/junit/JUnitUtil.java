@@ -21,6 +21,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.ProjectFileIndex;
 import com.intellij.openapi.util.Condition;
 import com.intellij.openapi.util.ThrowableComputable;
+import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.CommonClassNames;
 import com.intellij.psi.JavaDirectoryService;
@@ -69,6 +70,7 @@ import java.util.Objects;
 import java.util.Set;
 
 import static com.intellij.codeInsight.AnnotationUtil.CHECK_HIERARCHY;
+import static com.siyeh.ig.junit.JUnitCommonClassNames.ORG_JUNIT_JUPITER_API_EXTENSION_EXTEND_WITH;
 import static com.siyeh.ig.junit.JUnitCommonClassNames.ORG_JUNIT_JUPITER_API_METHOD_ORDERER;
 import static com.siyeh.ig.junit.JUnitCommonClassNames.ORG_JUNIT_JUPITER_API_METHOD_ORDERER_DEFAULT;
 
@@ -285,7 +287,7 @@ public final class JUnitUtil {
   }
 
   public static boolean isJUnit3TestClass(final PsiClass clazz) {
-    return hasNonPrivateConstructor(clazz) &&
+    return (clazz.hasModifierProperty(PsiModifier.ABSTRACT) || hasPublicConstructor(clazz)) &&
            PsiClassUtil.isRunnableClass(clazz, true, false) &&
            isTestCaseInheritor(clazz);
   }
@@ -322,7 +324,7 @@ public final class JUnitUtil {
       }
     }
 
-    if (!hasNonPrivateConstructor(psiClass)) return false;
+    if (!psiClass.hasModifierProperty(PsiModifier.ABSTRACT) && !hasPublicConstructor(psiClass)) return false;
     if (!PsiClassUtil.isRunnableClass(psiClass, true, checkAbstract)) return false;
 
     for (final PsiMethod method : psiClass.getAllMethods()) {
@@ -341,11 +343,11 @@ public final class JUnitUtil {
     return topLevelClass;
   }
 
-  private static boolean hasNonPrivateConstructor(PsiClass psiClass) {
+  private static boolean hasPublicConstructor(PsiClass psiClass) {
     PsiMethod[] constructors = psiClass.getConstructors();
     if (constructors.length > 0) {
       for (PsiMethod constructor : constructors) {
-        if (!constructor.getModifierList().hasModifierProperty(PsiModifier.PRIVATE)) {
+        if (constructor.getModifierList().hasModifierProperty(PsiModifier.PUBLIC)) {
           return true;
         }
       }
@@ -380,7 +382,7 @@ public final class JUnitUtil {
     if (!PsiClassUtil.isRunnableClass(psiClass, false, checkAbstract)) return false;
 
     return CachedValuesManager.getCachedValue(psiClass, () -> {
-      if (AnnotationUtil.isAnnotated(psiClass, "org.junit.jupiter.api.extension.ExtendWith", 0)) {
+      if (MetaAnnotationUtil.isMetaAnnotated(psiClass, Collections.singleton(ORG_JUNIT_JUPITER_API_EXTENSION_EXTEND_WITH))) {
         return CachedValueProvider.Result.create(true, PsiModificationTracker.MODIFICATION_COUNT);
       }
       for (final PsiMethod method : psiClass.getAllMethods()) {
@@ -414,7 +416,7 @@ public final class JUnitUtil {
 
   private static boolean hasInheritedTest(@Nullable PsiClass psiClass, @NotNull PsiMethod method) {
     if (psiClass == null) return false;
-    return ClassInheritorsSearch.search(psiClass)
+    return ClassInheritorsSearch.search(psiClass, GlobalSearchScope.projectScope(psiClass.getProject()), true)
       .filtering(subClass -> !subClass.hasModifierProperty(PsiModifier.ABSTRACT))
       .mapping(subClass -> subClass.findMethodBySignature(method, false))
       .filtering(override -> override != null && !override.hasModifierProperty(PsiModifier.ABSTRACT))
@@ -704,5 +706,19 @@ public final class JUnitUtil {
     public NoJUnitException(final String message) {
       super(ExecutionBundle.message("no.junit.in.scope.error.message", message));
     }
+  }
+
+  @SuppressWarnings("DuplicateBranchesInSwitch")
+  public static @NotNull GlobalSearchScope getScope(@Nullable Module module, @NotNull Project project) {
+    if (module == null) return GlobalSearchScope.allScope(project);
+
+    return switch (Registry.get("junit.version.detection.scope").getSelectedOption()) {
+      case "runtime" -> GlobalSearchScope.moduleRuntimeScope(module, true);
+      case "module" -> GlobalSearchScope.moduleScope(module);
+      case "testsWithDependents" -> GlobalSearchScope.moduleTestsWithDependentsScope(module);
+      case "withLibraries" -> GlobalSearchScope.moduleWithLibrariesScope(module);
+      case "withDependenciesAndLibraries" -> GlobalSearchScope.moduleWithDependenciesAndLibrariesScope(module, true);
+      case null, default -> GlobalSearchScope.moduleRuntimeScope(module, true);
+    };
   }
 }

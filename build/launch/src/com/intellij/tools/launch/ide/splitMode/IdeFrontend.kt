@@ -2,7 +2,7 @@ package com.intellij.tools.launch.ide.splitMode
 
 import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.diagnostic.logger
-import com.intellij.platform.runtime.product.ProductMode
+import com.intellij.platform.productMode.ProductMode
 import com.intellij.tools.launch.PathsProvider
 import com.intellij.tools.launch.ide.IdeDebugOptions
 import com.intellij.tools.launch.ide.IdeLaunchContext
@@ -42,7 +42,7 @@ fun runIdeFrontendLocally(product: Product, frontendProcessLifespanScope: Corout
       ideDebugOptions = IdeDebugOptions(debugPort, debugSuspendOnStart = true, bindToHost = ""),
       platformPrefix = IdeConstants.JETBRAINS_CLIENT_PREFIX,
       productMode = ProductMode.FRONTEND,
-      ideaArguments = listOf("thinClient", "debug://localhost:5990#newUi=true"),
+      ideaArguments = listOf("thinClient", "debug://localhost:5990#newUi=true&remoteId=Split%20Mode"),
       javaArguments = listOf(
         "-Dintellij.platform.root.module=${product.frontendRootProductModule}",
         "-Dintellij.platform.runtime.repository.path=${paths.outputRootFolder.toPath().resolve("module-descriptors.jar")}",
@@ -50,7 +50,6 @@ fun runIdeFrontendLocally(product: Product, frontendProcessLifespanScope: Corout
       ),
       environment = mapOf(
         "CWM_NO_TIMEOUTS" to "1",
-        "CWM_CLIENT_PASSWORD" to IdeConstants.DEFAULT_CWM_PASSWORD,
       ),
       specifyUserHomeExplicitly = false,
     )

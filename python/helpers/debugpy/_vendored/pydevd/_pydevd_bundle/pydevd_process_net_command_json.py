@@ -60,6 +60,61 @@ from _pydevd_frame_eval.pydevd_frame_eval_main import USING_FRAME_EVAL
 from _pydevd_bundle.pydevd_comm import internal_get_step_in_targets_json
 from _pydevd_bundle.pydevd_additional_thread_info import set_additional_thread_info
 from _pydevd_bundle.pydevd_thread_lifecycle import pydevd_find_thread_by_id
+from _pydevd_bundle._debug_adapter.pydevd_base_schema import BaseSchema, register, register_request, register_response
+
+
+# The 'pydevdInterruptConsole' request is a JetBrains extension (not part of the DAP spec and not
+# in the generated pydevd_schema), so it must be registered here for pydevd_base_schema.from_json
+# to accept the incoming request instead of rejecting it with "Unable to create message from dict".
+@register_request("pydevdInterruptConsole")
+@register
+class PydevdInterruptConsoleRequest(BaseSchema):
+    """Interrupts the debug console evaluation currently running, keeping the session alive."""
+
+    def __init__(self, seq=-1, arguments=None, update_ids_from_dap=False, **kwargs):
+        self.type = "request"
+        self.command = "pydevdInterruptConsole"
+        self.seq = seq
+        self.arguments = arguments
+        self.kwargs = kwargs
+
+    def to_dict(self, update_ids_to_dap=False):
+        dct = {"type": self.type, "command": self.command, "seq": self.seq}
+        if self.arguments is not None:
+            dct["arguments"] = self.arguments
+        dct.update(self.kwargs)
+        return dct
+
+
+@register_response("pydevdInterruptConsole")
+@register
+class PydevdInterruptConsoleResponse(BaseSchema):
+    """Response to the 'pydevdInterruptConsole' request."""
+
+    def __init__(self, request_seq=-1, success=True, command="pydevdInterruptConsole", message=None, body=None, seq=-1, update_ids_from_dap=False, **kwargs):
+        self.type = "response"
+        self.request_seq = request_seq
+        self.success = success
+        self.command = command
+        self.message = message
+        self.body = body
+        self.seq = seq
+        self.kwargs = kwargs
+
+    def to_dict(self, update_ids_to_dap=False):
+        dct = {
+            "type": self.type,
+            "request_seq": self.request_seq,
+            "success": self.success,
+            "command": self.command,
+            "seq": self.seq,
+        }
+        if self.message is not None:
+            dct["message"] = self.message
+        if self.body is not None:
+            dct["body"] = self.body
+        dct.update(self.kwargs)
+        return dct
 
 
 def _convert_rules_to_exclude_filters(rules, on_error):
@@ -250,6 +305,17 @@ class PyDevJsonCommandProcessor(object):
             if DEBUG:
                 print("Handled in pydevd: %s (in PyDevJsonCommandProcessor).\n" % (method_name,))
 
+        if request.command == "pydevdInterruptConsole" and py_db.authentication.is_authenticated():
+            # Must be executed outside of the main lock, so the interrupt reaches the thread
+            # which runs the console evaluation right away instead of queueing behind another
+            # request. The CMD_INTERRUPT_DEBUG_CONSOLE handler in pydevd_process_net_command
+            # does the same for the pydevd debugger. A request which is not authenticated
+            # falls through and gets the answer the locked path builds for it.
+            cmd = on_request(py_db, request)
+            if cmd is not None and send_response:
+                py_db.writer.add_command(cmd)
+            return
+
         with py_db._main_lock:
             if request.__class__ == PydevdAuthorizeRequest:
                 authorize_request = request  # : :type authorize_request: PydevdAuthorizeRequest
@@ -334,6 +400,11 @@ class PyDevJsonCommandProcessor(object):
 
         self.api.run(py_db)
         self.api.notify_configuration_done(py_db)
+
+        if py_db.stop_on_failed_tests:
+            # JetBrains extension (PY-88218): `PyDevdAPI.run` sets `ready_to_run` here, so this
+            # is the first point where `on_breakpoints_changed` can register the exception events.
+            py_db.on_breakpoints_changed()
 
         configuration_done_response = pydevd_base_schema.build_response(request)
         return NetCommand(CMD_RETURN, 0, configuration_done_response, is_json=True)
@@ -478,6 +549,13 @@ class PyDevJsonCommandProcessor(object):
         py_db.is_output_redirected = redirecting
 
         self.api.set_show_return_values(py_db, self._options.show_return_value)
+
+        if self._options.stop_on_failed_tests:
+            # JetBrains extension: "Drop into debugger on failed tests" (PY-88218).
+            # The flag makes the debugger suspend when an exception reaches the test
+            # framework. It also keeps the exception events on when no breakpoint is set.
+            py_db.set_unit_tests_debugging_mode()
+            py_db.on_breakpoints_changed()
 
         parsed = _parse_break_on_system_exit(args)
         if parsed is not None:
@@ -1379,6 +1457,12 @@ class PyDevJsonCommandProcessor(object):
         # EnableStepFiltering: true of false
 
         response = pydevd_base_schema.build_response(request, kwargs={"body": {}})
+        return NetCommand(CMD_RETURN, 0, response, is_json=True)
+
+    def on_pydevdinterruptconsole_request(self, py_db, request):
+        interrupted = self.api.request_interrupt_console(py_db)
+
+        response = pydevd_base_schema.build_response(request, kwargs={"body": {"interrupted": interrupted}})
         return NetCommand(CMD_RETURN, 0, response, is_json=True)
 
     def on_pydevdsysteminfo_request(self, py_db, request):

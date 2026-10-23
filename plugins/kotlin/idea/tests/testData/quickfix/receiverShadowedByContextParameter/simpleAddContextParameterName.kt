@@ -1,6 +1,6 @@
 // "Use 'f' as receiver" "true"
 // COMPILER_ARGUMENTS: -Xcontext-parameters
-// K2_ERROR: Call to 'fun bar(): Unit' defined in 'Foo' uses an implicit receiver shadowed by a context parameter. Make the receiver explicit using 'this' or 'f'.
+// K2_ERROR: RECEIVER_SHADOWED_BY_CONTEXT_PARAMETER
 
 class Foo {
     fun bar() {
@@ -16,4 +16,4 @@ fun Foo.test() {
     }
 }
 
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.AddContextParameterReceiverFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.AddExplicitReceiverFix

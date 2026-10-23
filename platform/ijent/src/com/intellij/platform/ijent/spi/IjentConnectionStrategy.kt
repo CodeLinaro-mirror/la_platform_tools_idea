@@ -19,8 +19,8 @@ interface IjentConnectionStrategy {
   }
 
   data class Tcp(
-    val connectionInfo: TcpDeployInfo.FixedPort,
-    val tlsData: MutualTlsCertificates? = null,
+    val connectionInfo: TcpDeployInfo,
+    val tlsData: MutualTlsCertificates,
     val proxy: IjentTcpProxyInformation? = null,
   ) : IjentConnectionStrategy {
     override suspend fun canUseVirtualSockets(): Boolean {

@@ -292,6 +292,7 @@ open class RecentProjectListActionProvider {
       projectName = reopenProjectAction.projectName ?: "",
       displayName = reopenProjectAction.projectNameToDisplay,
       branchName = reopenProjectAction.branchName,
+      vcsActionsEnabled = vcsActionsEnabled(reopenProjectAction.projectPath),
       activationTimestamp = reopenProjectAction.activationTimestamp,
       projectGroup = projectGroup,
     )
@@ -416,7 +417,7 @@ internal class RemoteRecentProjectActionGroup(val projectId: String, val project
   override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
   override fun update(e: AnActionEvent) {
-    e.presentation.isPerformGroup = project.additionalActions.isEmpty() || e.place == ActionPlaces.DOCK_MENU
+    e.presentation.isPerformGroup = true
     e.presentation.isPopupGroup = true
   }
 
@@ -506,6 +507,11 @@ private val AnAction.activationTimestamp
   }
 
 private val EP_NAME: ExtensionPointName<RecentProjectsBranchesProvider> = ExtensionPointName("com.intellij.recentProjectsBranchesProvider")
+
+private const val RECENT_PROJECT_VCS_ACTIONS_ENABLED = "ide.welcome.screen.recent.project.vcs.actions"
+
+private fun vcsActionsEnabled(projectPath: String): Boolean =
+  Registry.`is`(RECENT_PROJECT_VCS_ACTIONS_ENABLED) && EP_NAME.findFirstSafe { it.hasRepository(projectPath) } != null
 
 private fun getCurrentBranch(projectPath: String, nameIsDistinct: Boolean): String? {
   for (provider in EP_NAME.extensionList) {

@@ -1,8 +1,23 @@
 load("@community//build:tests-options.bzl", "jps_test")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+jps_test(
+    name = "vcs-impl-tests_test",
+    timeout = "moderate",
+    tags = ["community-aggregator"],
+    runtime_deps = [
+        ":vcs-impl-tests_test_lib",
+        "//platform/vcs/plugin",
+    ],
+)
+### skip generation section `test intellij.platform.vcs.impl.tests`
+
+### auto-generated section `dev intellij.platform.vcs.impl` start
+content_module_jar(module = ":vcs-impl")
+### auto-generated section `dev intellij.platform.vcs.impl` end
 
 ### auto-generated section `build intellij.platform.vcs.impl` start
-
 jvm_library(
     name = "vcs-impl",
     srcs = glob(
@@ -19,6 +34,7 @@ jvm_library(
     resource_strip_prefix = "resources",
     resources = glob(
         ["resources/**/*"],
+        exclude = ["resources/**/icon-robots.txt"],
     ),
     visibility = ["//visibility:public"],
     deps = [
@@ -47,9 +63,7 @@ jvm_library(
         "//platform/diff-impl",
         "//platform/refactoring",
         "//platform/vcs-log/api:vcs-log",
-        "//libraries/swingx",
         "//libraries/miglayout-swing",
-        "//libraries/stream",
         "//platform/statistics",
         "//platform/util",
         "//libraries/fastutil",
@@ -92,11 +106,16 @@ jvm_library(
         "//platform/platform-impl/concurrency",
         "//platform/project/shared:project",
         "//platform/kernel/backend",
+        "//platform/kernel/rpc.backend",
         "//platform/platform-impl/rpc",
         "//platform/progress/shared:ide-progress",
         "//platform/polySymbols",
         "//platform/execution",
+        "//platform/execution-impl",
+        "//platform/consoleView",
+        "//platform/consoleView/impl",
         "//platform/eel",
+        "//platform/util/annotations",
         "//fleet/rhizomedb",
         "//platform/remote-topics/shared:rpc-topics",
     ],
@@ -138,9 +157,7 @@ jvm_library(
         "//platform/diff-impl:diff-impl_test_lib",
         "//platform/refactoring:refactoring_test_lib",
         "//platform/vcs-log/api:vcs-log_test_lib",
-        "//libraries/swingx:swingx_test_lib",
         "//libraries/miglayout-swing:miglayout-swing_test_lib",
-        "//libraries/stream:stream_test_lib",
         "//platform/statistics:statistics_test_lib",
         "//platform/util:util_test_lib",
         "//libraries/fastutil:fastutil_test_lib",
@@ -183,11 +200,16 @@ jvm_library(
         "//platform/platform-impl/concurrency:concurrency_test_lib",
         "//platform/project/shared:project_test_lib",
         "//platform/kernel/backend:backend_test_lib",
+        "//platform/kernel/rpc.backend:rpc.backend_test_lib",
         "//platform/platform-impl/rpc:rpc_test_lib",
         "//platform/progress/shared:ide-progress_test_lib",
         "//platform/polySymbols:polySymbols_test_lib",
         "//platform/execution:execution_test_lib",
+        "//platform/execution-impl:execution-impl_test_lib",
+        "//platform/consoleView:consoleView_test_lib",
+        "//platform/consoleView/impl:impl_test_lib",
         "//platform/eel:eel_test_lib",
+        "//platform/util/annotations:annotations_test_lib",
         "//fleet/rhizomedb:rhizomedb_test_lib",
         "//platform/remote-topics/shared:rpc-topics_test_lib",
     ],
@@ -198,13 +220,16 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.vcs.impl.iml",
+        "resources/META-INF/VcsActions.xml",
+        "resources/META-INF/VcsExtensionPoints.xml",
+        "resources/META-INF/VcsExtensions.xml",
+        "resources/intellij.platform.vcs.impl.xml",
     ],
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.platform.vcs.impl` end
 
 ### auto-generated section `build intellij.platform.vcs.impl.tests` start
-
 jvm_library(
     name = "vcs-impl-tests",
     srcs = glob(
@@ -294,12 +319,8 @@ jvm_library(
         "//platform/refactoring:refactoring_test_lib",
         "//platform/vcs-log/api:vcs-log",
         "//platform/vcs-log/api:vcs-log_test_lib",
-        "//libraries/swingx",
-        "//libraries/swingx:swingx_test_lib",
         "//libraries/miglayout-swing",
         "//libraries/miglayout-swing:miglayout-swing_test_lib",
-        "//libraries/stream",
-        "//libraries/stream:stream_test_lib",
         "//platform/statistics",
         "//platform/statistics:statistics_test_lib",
         "//platform/statistics/testFramework",
@@ -393,8 +414,8 @@ jvm_library(
         "//fleet/rhizomedb:rhizomedb_test_lib",
         "//libraries/junit4",
         "//libraries/junit4:junit4_test_lib",
-        "//libraries/junit5",
-        "//libraries/junit5:junit5_test_lib",
+        "//libraries/junit6",
+        "//libraries/junit6:junit6_test_lib",
     ],
 )
 ### auto-generated section `build intellij.platform.vcs.impl.tests` end
@@ -407,11 +428,3 @@ exports_files(
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.platform.vcs.impl.tests` end
-
-### auto-generated section `test intellij.platform.vcs.impl.tests` start
-
-jps_test(
-    name = "vcs-impl-tests_test",
-    runtime_deps = [":vcs-impl-tests_test_lib"],
-)
-### auto-generated section `test intellij.platform.vcs.impl.tests` end

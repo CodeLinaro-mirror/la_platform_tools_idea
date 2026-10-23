@@ -1,6 +1,8 @@
 package org.intellij.plugins.markdown.preview.jcef
 
 import com.intellij.idea.TestFor
+import com.intellij.markdown.frontend.preview.MarkdownSplitEditorProvider
+import com.intellij.markdown.jcef.preview.JCEFHtmlPanelProvider
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.FileEditorProvider
@@ -17,8 +19,6 @@ import com.intellij.testFramework.junit5.fixture.projectFixture
 import org.assertj.core.api.Assertions.assertThat
 import org.intellij.plugins.markdown.ui.preview.MarkdownHtmlPanel
 import org.intellij.plugins.markdown.ui.preview.MarkdownHtmlPanelProvider
-import org.intellij.plugins.markdown.ui.preview.MarkdownSplitEditorProvider
-import com.intellij.markdown.jcef.preview.JCEFHtmlPanelProvider
 import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import javax.swing.JComponent
@@ -34,11 +34,11 @@ class MarkdownEditorCreationTest {
 
   @Test
   @RunMethodInEdt
-  fun `editor provider will not accept file without panel providers`() {
+  fun `editor provider accepts file without panel providers`() {
     ExtensionTestUtil.maskExtensions(MarkdownHtmlPanelProvider.EP_NAME, listOf(), disposable)
     val file = LightVirtualFile("some.md", "# Some")
     val provider = MarkdownSplitEditorProvider()
-    assertThat(provider.accept(project, file)).isFalse()
+    assertThat(provider.accept(project, file)).isTrue()
   }
 
   @Test

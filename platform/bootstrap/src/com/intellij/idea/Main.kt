@@ -8,7 +8,6 @@ import com.intellij.DynamicBundle
 import com.intellij.concurrency.IdeaForkJoinWorkerThreadFactory
 import com.intellij.diagnostic.CoroutineTracerShim
 import com.intellij.diagnostic.StartUpMeasurer
-import com.intellij.ide.BootstrapBundle
 import com.intellij.ide.CommandLineProcessor
 import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.ide.plugins.PluginModuleDescriptor
@@ -63,7 +62,7 @@ fun main(rawArgs: Array<String>) {
   val startupTimings = ArrayList<Any>(12)
   startupTimings.add("startup begin")
   startupTimings.add(startTimeNano)
-  mainImpl(rawArgs = rawArgs, startupTimings = startupTimings, startTimeUnixNano = startTimeUnixNano, changeClassPath = null)
+  mainImpl(rawArgs, startupTimings, startTimeUnixNano, changeClassPath = null)
 }
 
 internal fun mainImpl(
@@ -90,14 +89,14 @@ internal fun mainImpl(
         addBootstrapTiming("init scope creating", startupTimings)
         StartUpMeasurer.addTimings(startupTimings, "bootstrap", startTimeUnixNano)
 
-        startApp(args = args, mainScope = this@runBlocking, busyThread = busyThread, changeClassPath = changeClassPath)
+        startApp(args, mainScope = this@runBlocking, busyThread, changeClassPath)
       }
 
       awaitCancellation()
     }
   }
   catch (e: Throwable) {
-    StartupErrorReporter.showError(BootstrapBundle.message("bootstrap.error.title.start.failed"), e)
+    StartupErrorReporter.processException(e)
     exitProcess(AppExitCodes.STARTUP_EXCEPTION)
   }
 }
@@ -395,12 +394,7 @@ private fun runMarketplaceCommandsInActionScript() {
     // (referencing a string constant is OK - it is inlined by the compiler 🤞)
     val scriptFile = PathManager.getStartupScriptDir().resolve(StartupActionScriptManager.ACTION_SCRIPT_FILE)
     if (Files.isRegularFile(scriptFile)) {
-      if (System.getProperty("disable.IJPL.221005") == "true") {
-        // just in case the fix for IJPL-221005 blows up in the minor update, TODO drop after 26.1
-        StartupActionScriptManager.executeActionScript()
-      } else {
-        StartupActionScriptManager.executeMarketplaceCommandsFromActionScript()
-      }
+      StartupActionScriptManager.executeMarketplaceCommandsFromActionScript()
     }
   }
   catch (e: Throwable) {

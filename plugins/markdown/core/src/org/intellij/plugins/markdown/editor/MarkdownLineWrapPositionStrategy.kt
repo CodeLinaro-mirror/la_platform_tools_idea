@@ -5,31 +5,23 @@ import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.GenericLineWrapPositionStrategy
 import com.intellij.openapi.editor.ex.util.LexerEditorHighlighter
+import org.intellij.plugins.markdown.editor.tables.ui.alignment.isMarkdownTableVisualAlignmentEnabled
 import org.intellij.plugins.markdown.lang.MarkdownElementTypes
 import org.intellij.plugins.markdown.lang.MarkdownTokenTypes
 
 class MarkdownLineWrapPositionStrategy : GenericLineWrapPositionStrategy() {
   init {
     // We should wrap after space, cause otherwise formatting will eat space once AutoWrapHandler made wrap
-    addRule(Rule(' ', WrapCondition.AFTER))
-    addRule(Rule('\t', WrapCondition.AFTER))
+    WRAP_AFTER_CHARS.forEach { addRule(Rule(it, WrapCondition.AFTER)) }
+  }
 
-    // Punctuation.
-    addRule(Rule(',', WrapCondition.AFTER))
-    addRule(Rule('.', WrapCondition.AFTER))
-    addRule(Rule('!', WrapCondition.AFTER))
-    addRule(Rule('?', WrapCondition.AFTER))
-    addRule(Rule(';', WrapCondition.AFTER))
-
-    // Brackets to wrap after.
-    addRule(Rule(')', WrapCondition.AFTER))
-    addRule(Rule(']', WrapCondition.AFTER))
-    addRule(Rule('}', WrapCondition.AFTER))
-
-    // Brackets to wrap before
-    addRule(Rule('(', WrapCondition.BEFORE))
-    addRule(Rule('[', WrapCondition.BEFORE))
-    addRule(Rule('{', WrapCondition.BEFORE))
+  /**
+   * Allows wrapping only after a space or tab, including virtual wraps.
+   */
+  override fun canUseOffset(document: Document, offset: Int, virtual: Boolean): Boolean {
+    // Keep this check in sync with WRAP_AFTER_CHARS, which defines the rules above.
+    val character = document.charsSequence[offset]
+    return character == ' ' || character == '\t'
   }
 
   override fun calculateWrapPosition(editor: Editor, startOffset: Int, endOffset: Int,
@@ -46,6 +38,22 @@ class MarkdownLineWrapPositionStrategy : GenericLineWrapPositionStrategy() {
                                             minOf(maxPreferredOffset, forbiddenStart),
                                             allowToBeyondMaxPreferredOffset, isSoftWrap)
     return if (retry > 0) retry else forbiddenStart
+  }
+
+  override fun isSoftWrappingAllowed(editor: Editor, offset: Int): Boolean {
+    val highlighter = editor.highlighter as? LexerEditorHighlighter ?: return true
+    val document = editor.elfDocument
+    if (document.textLength == 0) return true
+    val line = document.getLineNumber(offset.coerceAtMost(document.textLength - 1))
+    val lineStart = document.getLineStartOffset(line)
+    val lineEnd = document.getLineEndOffset(line)
+    val lookupEnd = minOf(lineEnd, lineStart + MAX_SCAN_DISTANCE)
+    val tokens = highlighter.createIterator(lineStart)
+    while (!tokens.atEnd() && tokens.start < lookupEnd) {
+      if (tokens.tokenType in TABLE_TOKENS) return !isMarkdownTableVisualAlignmentEnabled(editor)
+      tokens.advance()
+    }
+    return true
   }
 
   /**
@@ -103,6 +111,8 @@ class MarkdownLineWrapPositionStrategy : GenericLineWrapPositionStrategy() {
     return false
   }
 }
+
+private val WRAP_AFTER_CHARS = charArrayOf(' ', '\t')
 
 private const val NEVER_WRAP = -1
 private const val NOT_FOUND = -1

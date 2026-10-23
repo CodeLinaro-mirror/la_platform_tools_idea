@@ -1,8 +1,10 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.python.test.env.junit5
 
-import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.diagnostic.Logger
+import com.intellij.platform.eel.provider.localEel
+import com.intellij.python.pytools.backend.setCustomExecutablePath
+import com.intellij.python.uv.backend.UvPyTool
 import com.intellij.python.test.env.core.LATEST_PYTHON_VERSION
 import com.intellij.python.test.env.core.PyEnvironment
 import com.intellij.python.test.env.uv.UvPyEnvironment
@@ -12,6 +14,7 @@ import org.jetbrains.annotations.ApiStatus.Internal
 import org.junit.jupiter.api.extension.BeforeAllCallback
 import org.junit.jupiter.api.extension.BeforeEachCallback
 import org.junit.jupiter.api.extension.ExtensionContext
+import org.junit.platform.commons.util.Preconditions
 import org.opentest4j.TestAbortedException
 import java.util.ResourceBundle
 import kotlin.io.path.pathString
@@ -44,11 +47,11 @@ class RequiresUvExtension : BeforeAllCallback, BeforeEachCallback {
   
   private fun configurePoetry(context: ExtensionContext) {
     val store = context.getStore(namespace)
-    val uvEnv = store.getOrComputeIfAbsent(UV_ENV_KEY, {
-      createUvEnvironment(context).unwrap()
+    val uvEnv = store.computeIfAbsent(UV_ENV_KEY, {
+      Preconditions.notNull(createUvEnvironment(context).unwrap<UvPyEnvironment>(), "uv environment is not available")
     }, UvPyEnvironment::class.java)
     
-    PropertiesComponent.getInstance().setValue("PyCharm.Uv.Path", uvEnv.uvExecutable.pathString)
+    UvPyTool.getInstance().setCustomExecutablePath(localEel.descriptor, uvEnv.uvExecutable)
 
     LOG.info("Uv configured at: ${uvEnv.uvExecutable.pathString}")
   }

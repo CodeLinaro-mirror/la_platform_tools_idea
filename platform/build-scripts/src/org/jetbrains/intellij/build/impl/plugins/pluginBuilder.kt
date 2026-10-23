@@ -4,15 +4,10 @@
 package org.jetbrains.intellij.build.impl.plugins
 
 import com.intellij.openapi.util.io.FileUtilRt
+import com.intellij.platform.buildScripts.concurrency.taskScope
 import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.trace.Span
-import kotlinx.coroutines.CoroutineName
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.jetbrains.intellij.build.BuildContext
 import org.jetbrains.intellij.build.BuildOptions
 import org.jetbrains.intellij.build.JvmArchitecture
@@ -23,6 +18,7 @@ import org.jetbrains.intellij.build.ScrambleTool
 import org.jetbrains.intellij.build.SearchableOptionSetDescriptor
 import org.jetbrains.intellij.build.antToRegex
 import org.jetbrains.intellij.build.classPath.PluginBuildDescriptor
+import org.jetbrains.intellij.build.classPath.PluginBuildResult
 import org.jetbrains.intellij.build.hasModuleOutputPath
 import org.jetbrains.intellij.build.impl.BUILT_IN_HELP_MODULE_NAME
 import org.jetbrains.intellij.build.impl.DescriptorCacheContainer
@@ -40,42 +36,46 @@ import java.nio.file.Path
 
 private class ScrambleTask(@JvmField val descriptor: PluginBuildDescriptor)
 
-internal suspend fun buildPlugins(
+internal fun buildPlugins(
   plugins: Collection<PluginLayout>,
   os: OsFamily?,
   arch: JvmArchitecture?,
   targetDir: Path,
   state: DistributionBuilderState,
-  platformEntriesProvider: (suspend () -> List<DistributionFileEntry>)?,
+  platformEntriesProvider: (() -> List<DistributionFileEntry>)?,
   searchableOptionSet: SearchableOptionSetDescriptor?,
   descriptorCacheContainer: DescriptorCacheContainer,
   context: BuildContext,
   copyFiles: Boolean = true,
   layoutOnly: Boolean = false,
-  additionalScrambleDescriptorsProvider: (suspend () -> Collection<PluginBuildDescriptor>)? = null,
-  pluginBuilt: (suspend (PluginLayout, pluginDirOrFile: Path) -> List<DistributionFileEntry>)? = null,
-): List<PluginBuildDescriptor> {
+  additionalScrambleDescriptorsProvider: (() -> Collection<PluginBuildResult>)? = null,
+  /** The function to be called after the plugin is built that may add additional entries to its distribution; `layout` parameter is `null` for plugins built by Bazel. */
+  pluginBuilt: ((PluginBuildResult, layout: PluginLayout?, pluginDirOrFile: Path) -> List<DistributionFileEntry>)? = null,
+): List<PluginBuildResult> {
   val scrambleTool = context.proprietaryBuildTools.scrambleTool
   val isScramblingSkipped = layoutOnly || context.options.buildStepsToSkip.contains(BuildOptions.SCRAMBLING_STEP)
 
-  val results = plugins.mapConcurrent(workerDispatcher = Dispatchers.IO) { pluginLayout ->
-    withContext(CoroutineName("Build plugin (module=${pluginLayout.mainModule})")) {
-      buildPlugin(
-        pluginLayout = pluginLayout,
-        targetDir = targetDir,
-        state = state,
-        descriptorCacheContainer = descriptorCacheContainer,
-        searchableOptionSet = searchableOptionSet,
-        scrambleTool = scrambleTool,
-        isScramblingSkipped = isScramblingSkipped,
-        os = os,
-        arch = arch,
-        context = context,
-        copyFiles = copyFiles,
-        pluginBuilt = pluginBuilt,
-      )
-    }
+  val (pluginsBuildInProcess, pluginsBuildByBazel) = partitionPluginsByBuildingMethod(plugins, context)
+
+  val resultsForPluginsBuiltInProcess = pluginsBuildInProcess.mapConcurrent { pluginLayout ->
+    buildPlugin(
+      pluginLayout = pluginLayout,
+      targetDir = targetDir,
+      state = state,
+      descriptorCacheContainer = descriptorCacheContainer,
+      searchableOptionSet = searchableOptionSet,
+      scrambleTool = scrambleTool,
+      isScramblingSkipped = isScramblingSkipped,
+      os = os,
+      arch = arch,
+      context = context,
+      copyFiles = copyFiles,
+      pluginBuilt = pluginBuilt,
+    )
   }
+
+  val resultsForPluginsBuiltByBazel = buildPluginsByBazel(pluginsBuildByBazel, targetDir, descriptorCacheContainer, searchableOptionSet, context, pluginBuilt = pluginBuilt)
+  val results = (resultsForPluginsBuiltInProcess + resultsForPluginsBuiltByBazel.map { it to null }).sortedBy { it.first.mainModule }
 
   val scrambleTasks = results.mapNotNull { it.second }
   if (scrambleTasks.isNotEmpty()) {
@@ -89,13 +89,13 @@ internal suspend fun buildPlugins(
     val laidOutDescriptors = additionalScrambleDescriptorsProvider?.let { provider ->
       provider() + descriptors
     } ?: descriptors
-    coroutineScope {
+    taskScope {
       for (scrambleTask in scrambleTasks) {
-        launch(CoroutineName("scramble plugin ${scrambleTask.descriptor.layout.directoryName}")) {
+        fork("scramble plugin ${scrambleTask.descriptor.buildResult.mainModule}") {
           scrambleTool.scramblePlugin(
             request = PluginScrambleRequest(
               currentDescriptor = scrambleTask.descriptor,
-              laidOutDescriptors = laidOutDescriptors,
+              laidOutPlugins = laidOutDescriptors,
               platformLayout = state.platformLayout,
               platformContent = platformEntries,
             ),
@@ -103,6 +103,7 @@ internal suspend fun buildPlugins(
           )
         }
       }
+      join()
     }
   }
   return results.map { it.first }
@@ -114,25 +115,28 @@ internal suspend fun buildPlugins(
  * the platform ZKM run, since regular plugins that were laid out early still need their per-plugin
  * scramble to happen.
  */
-internal suspend fun scrambleAlreadyLaidOutPlugins(
-  descriptors: Collection<PluginBuildDescriptor>,
+internal fun scrambleAlreadyLaidOutPlugins(
+  descriptors: Collection<PluginBuildResult>,
   state: DistributionBuilderState,
   platformEntries: List<DistributionFileEntry>,
+  layoutsOfPluginsToScramble: Map<String, PluginLayout>,
   context: BuildContext,
 ) {
   val scrambleTool = context.proprietaryBuildTools.scrambleTool ?: return
   if (context.options.buildStepsToSkip.contains(BuildOptions.SCRAMBLING_STEP)) return
-  val toScramble = descriptors.filter {
-    !it.layout.scrambleWithPlatform && it.layout.pathsToScramble.isNotEmpty()
+  val toScramble = descriptors.mapNotNull { plugin ->
+    val layout = layoutsOfPluginsToScramble[plugin.mainModule]
+    if (layout == null || layout.scrambleWithPlatform || layout.pathsToScramble.isEmpty()) return@mapNotNull null
+    PluginBuildDescriptor(layout, plugin)
   }
   if (toScramble.isEmpty()) return
-  coroutineScope {
+  taskScope {
     for (descriptor in toScramble) {
-      launch(CoroutineName("scramble plugin ${descriptor.layout.directoryName}")) {
+      fork("scramble plugin ${descriptor.buildResult.mainModule}") {
         scrambleTool.scramblePlugin(
           request = PluginScrambleRequest(
             currentDescriptor = descriptor,
-            laidOutDescriptors = descriptors,
+            laidOutPlugins = descriptors,
             platformLayout = state.platformLayout,
             platformContent = platformEntries,
           ),
@@ -140,10 +144,11 @@ internal suspend fun scrambleAlreadyLaidOutPlugins(
         )
       }
     }
+    join()
   }
 }
 
-private suspend fun CoroutineScope.buildPlugin(
+private fun buildPlugin(
   pluginLayout: PluginLayout,
   targetDir: Path,
   state: DistributionBuilderState,
@@ -155,15 +160,15 @@ private suspend fun CoroutineScope.buildPlugin(
   arch: JvmArchitecture?,
   context: BuildContext,
   copyFiles: Boolean,
-  pluginBuilt: (suspend (PluginLayout, Path) -> List<DistributionFileEntry>)?,
-): Pair<PluginBuildDescriptor, ScrambleTask?> {
+  pluginBuilt: ((PluginBuildResult, PluginLayout?, Path) -> List<DistributionFileEntry>)?,
+): Pair<PluginBuildResult, ScrambleTask?> = taskScope {
   val directoryName = pluginLayout.directoryName
   val pluginDir = targetDir.resolve(directoryName)
   val moduleOutputPatcher = ModuleOutputPatcher()
 
   if (pluginLayout.mainModule != BUILT_IN_HELP_MODULE_NAME) {
-    if (context.options.skipCheckOutputOfPluginModules) {
-      launch {
+    if (context.options.checkOutputOfPluginModules) {
+      fork("check output of plugin modules for ${pluginLayout.mainModule}") {
         checkOutputOfPluginModules(
           mainPluginModule = pluginLayout.mainModule,
           includedModules = pluginLayout.includedModules,
@@ -186,7 +191,7 @@ private suspend fun CoroutineScope.buildPlugin(
     )
   }
 
-  val task = spanBuilder("plugin").setAttribute("path", context.paths.buildOutputDir.relativize(pluginDir).toString()).use {
+  val buildResult = spanBuilder("plugin").setAttribute("path", context.paths.buildOutputDir.relativize(pluginDir).toString()).use {
     val (entries, file) = layoutDistribution(
       layout = pluginLayout,
       platformLayout = state.platformLayout,
@@ -199,15 +204,22 @@ private suspend fun CoroutineScope.buildPlugin(
       context = context,
     )
 
+    val buildResult = PluginBuildResult(
+      mainModule = pluginLayout.mainModule,
+      dir = pluginDir,
+      os = os,
+      arch = arch,
+      distribution = entries,
+    )
     if (pluginBuilt == null) {
-      entries
+      buildResult
     }
     else {
-      entries + pluginBuilt(pluginLayout, file)
+      val additionalEntries = pluginBuilt(buildResult, pluginLayout, file)
+      buildResult.copy(distribution = entries + additionalEntries)
     }
   }
 
-  val descriptor = PluginBuildDescriptor(dir = pluginDir, os = os, arch = arch, layout = pluginLayout, distribution = task)
   var scrambleTask: ScrambleTask? = null
   if (!pluginLayout.pathsToScramble.isEmpty()) {
     val attributes = Attributes.of(AttributeKey.stringKey("plugin"), directoryName)
@@ -219,11 +231,11 @@ private suspend fun CoroutineScope.buildPlugin(
     }
     else {
       // we cannot start executing right now because the plugin can use other plugins in a scramble classpath
-      scrambleTask = ScrambleTask(descriptor)
+      scrambleTask = ScrambleTask(PluginBuildDescriptor(layout = pluginLayout, buildResult = buildResult))
     }
   }
 
-  return descriptor to scrambleTask
+  join { buildResult to scrambleTask }
 }
 
 private fun checkOutputOfPluginModules(

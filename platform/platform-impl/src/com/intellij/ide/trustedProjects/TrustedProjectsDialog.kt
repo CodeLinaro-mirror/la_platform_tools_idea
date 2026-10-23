@@ -9,6 +9,7 @@ import com.intellij.ide.impl.OpenUntrustedProjectChoice
 import com.intellij.ide.impl.TRUSTED_PROJECTS_HELP_TOPIC
 import com.intellij.ide.impl.TrustedPathsSettings
 import com.intellij.ide.impl.TrustedProjectsStatistics
+import com.intellij.ide.trustedProjects.impl.TrustedFileDialog
 import com.intellij.ide.trustedProjects.impl.TrustedProjectStartupDialog
 import com.intellij.openapi.application.ApplicationInfo
 import com.intellij.openapi.application.EDT
@@ -16,14 +17,18 @@ import com.intellij.openapi.application.ex.ApplicationInfoEx
 import com.intellij.openapi.application.invokeAndWaitIfNeeded
 import com.intellij.openapi.components.service
 import com.intellij.openapi.components.serviceAsync
+import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.MessageDialogBuilder
 import com.intellij.openapi.util.NlsContexts
 import com.intellij.util.ThreeState
+import com.intellij.util.application
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jetbrains.annotations.ApiStatus
 import java.nio.file.Path
+
+private val LOG = logger<TrustedProjectsDialog>()
 
 @ApiStatus.Internal
 object TrustedProjectsDialog {
@@ -150,6 +155,44 @@ object TrustedProjectsDialog {
     TrustedProjects.setProjectTrusted(locatedProject, answer)
 
     TrustedProjectsStatistics.LOAD_UNTRUSTED_PROJECT_CONFIRMATION_CHOICE.log(project, answer)
+
+    return answer
+  }
+
+  /**
+   * Shows a warning confirmation for trusting the location of a single file opened in the safe mode
+   * inside [hostProject]'s frame (see [com.intellij.ide.TrustedFiles]).
+   * If the user confirms, marks [filePath] trusted, or adds its parent folder to the trusted locations when the user chooses the folder.
+   *
+   * @return `true` if the file became trusted
+   */
+  @JvmStatic
+  fun confirmTrustingUntrustedFile(hostProject: Project, filePath: Path): Boolean {
+    val locatedFile = TrustedProjectsLocator.locateProject(filePath, project = null)
+    if (TrustedProjects.isProjectTrusted(locatedFile)) {
+      LOG.info("Trust file dialog: ${filePath.fileName} is already trusted, the dialog is not shown")
+      TrustedProjects.setProjectTrusted(locatedFile, true)
+      return true
+    }
+
+    val choice = TrustedFileDialog.showAndGet(hostProject, filePath)
+    val answer = choice.isTrusted
+    LOG.info("Trust file dialog: the user choice for ${filePath.fileName} is trust=$answer, trustFolder=${choice.isTrustFolder}")
+
+    if (answer) {
+      val parentPath = filePath.parent
+      if (choice.isTrustFolder && parentPath != null) {
+        TrustedProjectsStatistics.TRUST_FILE_LOCATION_CHECKBOX_SELECTED.log()
+        service<TrustedPathsSettings>().addTrustedPath(parentPath.toString())
+        application.messageBus.syncPublisher(TrustedProjectsListener.TOPIC)
+          .onProjectTrusted(TrustedProjectsLocator.locateProject(parentPath, project = null))
+      }
+      else {
+        TrustedProjects.setProjectTrusted(locatedFile, true)
+      }
+    }
+
+    TrustedProjectsStatistics.LOAD_UNTRUSTED_PROJECT_CONFIRMATION_CHOICE.log(hostProject, answer)
 
     return answer
   }

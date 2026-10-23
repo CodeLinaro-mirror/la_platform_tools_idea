@@ -26,7 +26,6 @@ interface PluginManagerCustomizer {
   suspend fun getDisableButtonCustomizationModel(
     pluginModelFacade: PluginModelFacade,
     pluginModel: PluginUiModel,
-    installedDescriptorForMarketplace: PluginUiModel?,
     modalityState: ModalityState,
   ): OptionsButonCustomizationModel?
 
@@ -64,7 +63,7 @@ interface PluginManagerCustomizer {
   @Nls
   fun getUpdateSourceText(pluginModel: PluginUiModel): String?
 
-  fun ensurePluginStatesLoaded()
+  suspend fun awaitPluginStatesLoaded()
 
   fun updateCustomRepositories(
     addedRepoUrls: List<String>,
@@ -107,7 +106,7 @@ data class PluginPopupMenuActionData(
 
 @ApiStatus.Internal
 data class UpdateButtonCustomizationModel(
-  val action: () -> Unit,
+  val action: (PluginOperationContext?) -> Unit,
 )
 
 @ApiStatus.Internal

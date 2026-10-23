@@ -1,13 +1,10 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.platform.ide.nonModalWelcomeScreen.rightTab
 
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.NlsSafe
 import com.intellij.platform.ide.nonModalWelcomeScreen.DefaultFileDragAndDropHandler
 import com.intellij.platform.ide.nonModalWelcomeScreen.FileDragAndDropHandler
 import com.intellij.platform.project.projectId
@@ -15,7 +12,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.Nls
-import org.jetbrains.jewel.ui.icon.IconKey
+import java.awt.Image
 import java.util.function.Supplier
 import javax.swing.Icon
 
@@ -23,36 +20,29 @@ import javax.swing.Icon
 interface WelcomeRightTabContentProvider {
   val coroutineScope: CoroutineScope
 
-  // Use Valkyrie IDEA plugin to generate the ImageVector
-  val backgroundImageVectorLight: ImageVector
-  val backgroundImageVectorDark: ImageVector
+  val backgroundImageVectorLight: Image
+  val backgroundImageVectorDark: Image
 
   val fileTypeIcon: Icon
   val title: Supplier<@Nls String>
   val secondaryTitle: Supplier<@Nls String>
-  
-  /**
-   * Optional product icon to display above the title (48x48).
-   * Use Valkyrie IDEA plugin to generate the ImageVector from SVG.
-   * Return null if no icon should be displayed.
-   */
-  val productIcon: ImageVector? get() = null
 
-  val isDisableOptionVisible: Boolean
-  val isStartupSwitchPanelOptionVisible: Boolean
-    get() = false
+  val productIcon: Icon? get() = null
 
   val buttonsPerRow: Int
     get() = 3
 
-  fun shouldBeFocused(project: Project): Boolean {
-    return project.service<WelcomeScreenPreventWelcomeTabFocusService>().isAllowedFocusOnWelcomeTab()
-  }
-
-  @Composable
   fun getFeatureButtonModels(project: Project): List<FeatureButtonModel>
 
-  @Composable
+  /**
+   * The keys of the features whose section takes the place of the feature grid.
+   *
+   * While one of these features states a section, the tab shows no feature buttons. The buttons come back when the
+   * feature states no section, for example while it is not available.
+   */
+  val featureKeysReplacingFeatureGrid: Set<String>
+    get() = emptySet()
+
   fun getAdditionalInfoButtonModels(project: Project): List<InfoButtonModel> = emptyList()
 
   /**
@@ -61,7 +51,7 @@ interface WelcomeRightTabContentProvider {
    */
   class InfoButtonModel(
     val text: String,
-    val icon: IconKey,
+    val icon: Icon,
     val onClick: (Project, CoroutineScope) -> Unit,
   )
 
@@ -70,7 +60,6 @@ interface WelcomeRightTabContentProvider {
    * The outer list is a list of rows stacked vertically; the inner list is the row's components
    * laid out left-to-right, so a component's position in the row defines its column.
    */
-  @Composable
   fun getAdditionalComponents(project: Project): List<List<WelcomeContent>> = emptyList()
 
   fun getFileDragAndDropHandler(): FileDragAndDropHandler = DefaultFileDragAndDropHandler
@@ -82,47 +71,45 @@ interface WelcomeRightTabContentProvider {
     /** Non-interactive text label with an optional trailing [icon] (e.g. a Beta badge). */
     class Text(
       val text: @Nls String,
-      val icon: IconKey? = null,
-      val tint: Color = Color.Unspecified,
+      val icon: Icon? = null,
     ) : WelcomeContent
 
     /** Clickable external link rendered with the standard trailing external-arrow icon. */
     class Link(
       val text: @Nls String,
       val onClick: (Project) -> Unit,
-      val tint: Color = Color.Unspecified,
-      val tintHovered: Color = Color.Unspecified,
     ) : WelcomeContent
   }
 
   /**
-   * Base feature button model. Use for frontend-only features.
-   * For backend-based features, use [FeatureButtonModelWithBackend] and
-   * register a `WelcomeScreenFeatureBackend` implementation.
+   * Base feature button model. Use for a button that handles its click itself.
+   * For a feature with a key, use [FeatureButtonModelWithBackend] and
+   * register a [WelcomeScreenFeatureFrontend] or a `WelcomeScreenFeatureBackend` implementation.
    */
   open class FeatureButtonModel(
-    val text: String,
-    val icon: IconKey,
-    val tint: Color = Color.Unspecified,
+    @NlsSafe val text: String,
+    val icon: Icon,
     val onClick: (Project, CoroutineScope) -> Unit,
+    val background: java.awt.Color? = null,
   )
 
   /**
-   * Feature button backed by a `WelcomeScreenFeatureBackend` implementation.
+   * Feature button backed by a [WelcomeScreenFeatureFrontend] or a `WelcomeScreenFeatureBackend` implementation.
+   * The tab shows the button only when one of them registers the [featureKey], unless [isAlwaysAvailable] is set.
    */
   class FeatureButtonModelWithBackend(
     val featureKey: String,
     val isAlwaysAvailable: Boolean = false,
     text: String,
-    icon: IconKey,
-    tint: Color = Color.Unspecified,
-    val beforeOnClick: suspend (Project) -> Unit = {}
-  ) : FeatureButtonModel(text, icon, tint, { project, coroutineScope ->
+    icon: Icon,
+    val beforeOnClick: suspend (Project) -> Unit = {},
+    background: java.awt.Color? = null,
+  ) : FeatureButtonModel(text, icon, { project, coroutineScope ->
     coroutineScope.launch {
       beforeOnClick(project)
       WelcomeScreenFeatureApi.getInstance().onClick(project.projectId(), featureKey)
     }
-  })
+  }, background)
 
   companion object {
     private val EP_NAME: ExtensionPointName<WelcomeRightTabContentProvider> = ExtensionPointName("com.intellij.platform.ide.welcomeScreenContentProvider")

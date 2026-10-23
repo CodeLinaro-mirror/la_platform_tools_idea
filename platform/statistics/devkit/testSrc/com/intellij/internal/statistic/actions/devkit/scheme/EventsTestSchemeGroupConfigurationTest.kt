@@ -8,10 +8,8 @@ import com.intellij.internal.statistic.eventLog.events.scheme.FieldDescriptor
 import com.intellij.internal.statistic.eventLog.events.scheme.GroupDescriptor
 import com.intellij.internal.statistic.eventLog.events.scheme.PluginSchemeDescriptor
 import com.intellij.openapi.util.text.StringUtil
-import com.intellij.testFramework.UsefulTestCase
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.jetbrains.fus.reporting.model.metadata.EventGroupRemoteDescriptors
-import junit.framework.TestCase
 import org.intellij.lang.annotations.Language
 
 class EventsTestSchemeGroupConfigurationTest : BasePlatformTestCase() {
@@ -41,9 +39,9 @@ class EventsTestSchemeGroupConfigurationTest : BasePlatformTestCase() {
       }
     """.trimIndent()
     val validationInfo = EventsTestSchemeGroupConfiguration.validateCustomValidationRules(project, rules, null)
-    UsefulTestCase.assertSize(1, validationInfo)
-    TestCase.assertTrue("Validation info should contains incorrect eventId",
-                        validationInfo.first().message.contains(StatisticsBundle.message("stats.unable.to.parse.validation.rules")))
+    assertSize(1, validationInfo)
+    assertTrue("Validation info should contains incorrect eventId",
+               validationInfo.first().message.contains(StatisticsBundle.message("stats.unable.to.parse.validation.rules")))
   }
 
   fun testValidation() {
@@ -96,9 +94,9 @@ class EventsTestSchemeGroupConfigurationTest : BasePlatformTestCase() {
       }
     """.trimIndent()
     val validationInfo = EventsTestSchemeGroupConfiguration.validateCustomValidationRules(project, rules, null)
-    UsefulTestCase.assertSize(1, validationInfo)
-    TestCase.assertTrue("Validation info should contains error",
-                        validationInfo.first().message.contains("Line 4"))
+    assertSize(1, validationInfo)
+    assertTrue("Validation info should contains error",
+               validationInfo.first().message.contains("Line 4"))
   }
 
   fun testValidateEventId() {
@@ -111,9 +109,85 @@ class EventsTestSchemeGroupConfigurationTest : BasePlatformTestCase() {
       }
     """.trimIndent()
     val validationInfo = EventsTestSchemeGroupConfiguration.validateCustomValidationRules(project, rules, null)
-    UsefulTestCase.assertSize(1, validationInfo)
-    TestCase.assertTrue("Validation info should contains incorrect eventId",
-                        validationInfo.first().message.contains("Line 2"))
+    assertSize(1, validationInfo)
+    assertTrue("Validation info should contains incorrect eventId",
+               validationInfo.first().message.contains("Line 2"))
   }
 
+  fun testValidateMissingEventId() {
+    val rules = """
+      {
+        "event_data": {}
+      }
+    """.trimIndent()
+    val validationInfo = EventsTestSchemeGroupConfiguration.validateCustomValidationRules(project, rules, null)
+    assertSize(1, validationInfo)
+    assertTrue(validationInfo.first().message.contains("event_id"))
+  }
+
+  fun testValidateEventDataRuleType() {
+    val rules = """
+      {
+        "event_id": ["testEvent"],
+        "event_data": {
+          "data": [1]
+        }
+      }
+    """.trimIndent()
+    val validationInfo = EventsTestSchemeGroupConfiguration.validateCustomValidationRules(project, rules, null)
+    assertSize(1, validationInfo)
+    assertTrue(validationInfo.first().message.contains("Line 4"))
+  }
+
+  fun testValidateEventDataObject() {
+    val rules = """
+      {
+        "event_id": ["testEvent"],
+        "event_data": []
+      }
+    """.trimIndent()
+    val validationInfo = EventsTestSchemeGroupConfiguration.validateCustomValidationRules(project, rules, null)
+    assertSize(1, validationInfo)
+    assertTrue(validationInfo.first().message.contains("Line 3"))
+  }
+
+  fun testEventsSchemeIncludesDefaultValueRule() {
+    val fieldDescriptor = FieldDescriptor("unsafe_id", setOf("{enum:}", "{default_value:Unsafe plugin}"))
+    val eventDescriptor = EventDescriptor("testEvent", setOf(fieldDescriptor))
+    val groupDescriptor = GroupDescriptor("testId", "counter", 1, setOf(eventDescriptor),
+                                          "classNameTest", "recorderTest", PluginSchemeDescriptor("pluginIdTest"))
+
+    val scheme = EventsTestSchemeGroupConfiguration.createEventsScheme(listOf(groupDescriptor))
+
+    assertTrue("Generated scheme should contain {default_value:Unsafe plugin|testEvent|1}",
+               scheme["testId"]!!.contains("{default_value:Unsafe plugin|testEvent|1}"))
+  }
+
+  fun testEventsSchemeIncludesRequiredRule() {
+    val fieldDescriptor = FieldDescriptor("my_field", setOf("{enum:a|b}", "{required:true}"))
+    val eventDescriptor = EventDescriptor("testEvent", setOf(fieldDescriptor))
+    val groupDescriptor = GroupDescriptor("testId", "counter", 1, setOf(eventDescriptor),
+                                          "classNameTest", "recorderTest", PluginSchemeDescriptor("pluginIdTest"))
+
+    val scheme = EventsTestSchemeGroupConfiguration.createEventsScheme(listOf(groupDescriptor))
+
+    assertTrue("Generated scheme should contain {required:true|testEvent|1}",
+               scheme["testId"]!!.contains("{required:true|testEvent|1}"))
+  }
+
+  fun testDefaultValueRuleMultipleEvents() {
+    val fieldDescriptor = FieldDescriptor("shared_field", setOf("{enum:a|b}", "{default_value:fallback}"))
+    val eventDescriptor1 = EventDescriptor("event.one", setOf(fieldDescriptor))
+    val eventDescriptor2 = EventDescriptor("event.two", setOf(fieldDescriptor))
+    val groupDescriptor = GroupDescriptor("testId", "counter", 1, setOf(eventDescriptor1, eventDescriptor2),
+                                          "classNameTest", "recorderTest", PluginSchemeDescriptor("pluginIdTest"))
+
+    val scheme = EventsTestSchemeGroupConfiguration.createEventsScheme(listOf(groupDescriptor))
+
+    val schemeContent = scheme["testId"]!!
+    assertTrue("Generated scheme should contain {default_value:fallback|event.one|1}",
+               schemeContent.contains("{default_value:fallback|event.one|1}"))
+    assertTrue("Generated scheme should contain {default_value:fallback|event.two|1}",
+               schemeContent.contains("{default_value:fallback|event.two|1}"))
+  }
 }

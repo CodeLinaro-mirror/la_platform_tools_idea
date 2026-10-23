@@ -1,5 +1,5 @@
 // "Let 'A' implement interface 'IB'" "true"
-// K2_ERROR: Argument type mismatch: actual type is 'A', but 'IB' was expected.
+// K2_ERROR: ARGUMENT_TYPE_MISMATCH
 
 interface IA<T> {
     fun foo(t: T)
@@ -19,5 +19,4 @@ fun testCase(a: A) {
 }
 
 
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.LetImplementInterfaceFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.LetImplementInterfaceFixFactories$LetImplementInterfaceFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.LetImplementInterfaceFixFactories$LetImplementInterfaceFix

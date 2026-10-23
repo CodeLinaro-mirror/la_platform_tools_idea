@@ -29,7 +29,7 @@ internal abstract class ComponentInstanceInitializer(
               instance.disposeComponent()
             }
           }
-          registerWithServiceParent(componentManager, componentDisposer, interfaceClass)
+          registerDisposableWithServiceParent(componentManager, componentDisposer, interfaceClass)
         }
       }
       return instance

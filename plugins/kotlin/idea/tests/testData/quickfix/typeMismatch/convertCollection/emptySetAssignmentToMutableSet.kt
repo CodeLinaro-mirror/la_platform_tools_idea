@@ -1,7 +1,7 @@
 // "Replace 'emptySet()' with 'mutableSetOf()'" "true"
 // PRIORITY: HIGH
-// K2_ERROR: Assignment type mismatch: actual type is 'Set<uninferred ??? (Unknown type for type parameter T)>', but 'MutableSet<Double>' was expected.
-// K2_ERROR: Cannot infer type for type parameter 'T'. Specify it explicitly.
+// K2_ERROR: ASSIGNMENT_TYPE_MISMATCH
+// K2_ERROR: CANNOT_INFER_PARAMETER_TYPE
 
 fun foo() {
     var set: MutableSet<Double>
@@ -9,4 +9,4 @@ fun foo() {
 }
 
 
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ReplaceWithMutableCollectionFactoryFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ReplaceWithMutableCollectionFactoryFix

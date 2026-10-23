@@ -1,7 +1,10 @@
 package org.intellij.plugins.markdown.reference;
 
+import com.intellij.codeInsight.navigation.actions.GotoDeclarationAction;
+import com.intellij.markdown.backend.inspections.MarkdownUnresolvedFileReferenceInspection;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.psi.PsiFile;
+import com.intellij.psi.PsiNamedElement;
 import com.intellij.psi.PsiPolyVariantReference;
 import com.intellij.psi.PsiReference;
 import com.intellij.psi.impl.FakePsiElement;
@@ -72,6 +75,71 @@ public class CommonLinkDestinationReferenceTest extends BasePlatformTestCase {
 
   public void testLinkBrack() {
     doTest();
+  }
+
+  public void testLinkText() {
+    PsiFile file = myFixture.getFile();
+    String fileText = file.getText();
+    assertSameTarget(fileText.indexOf("[link]") + 1, fileText.indexOf("foo", fileText.indexOf("[link]")));
+    assertSameTarget(fileText.indexOf("[linkBrack]") + 1, fileText.indexOf("foo", fileText.indexOf("[linkBrack]")));
+  }
+
+  public void testWebLinkText() {
+    PsiFile file = myFixture.configureByText("some.md", "[hello](https://www.google.com)");
+    var targets = GotoDeclarationAction.findAllTargetElements(getProject(), myFixture.getEditor(), file.getText().indexOf("hello") + 1);
+    var target = assertInstanceOf(assertOneElement(targets), PsiNamedElement.class);
+    assertEquals("https://www.google.com", target.getName());
+  }
+
+  public void testImageInLinkText() {
+    PsiFile file = myFixture.configureByText("some.md", "[![Logo](app/foo.txt)](https://www.google.com)");
+    String fileText = file.getText();
+    assertSameTarget(fileText.indexOf("Logo") + 1, fileText.indexOf("foo.txt"));
+    assertSameTarget(fileText.indexOf("foo.txt") + 1, fileText.indexOf("foo.txt"));
+  }
+
+  public void testInlineLinkLabel() {
+    myFixture.addFileToProject("A.mdc", "# Yet another header");
+    PsiFile file = myFixture.configureByText("C.md", "[Testing resolving](A.mdc#yet-another-header)");
+    String fileText = file.getText();
+    assertSameTarget(fileText.indexOf("resolving") + 1, fileText.indexOf("header"));
+  }
+
+  public void testInlineWebLinkLabel() {
+    PsiFile file = myFixture.configureByText("some.md", "[Google](http://app.com/foo.txt)");
+    String fileText = file.getText();
+    assertGoodReference(file, fileText.indexOf("app.com"));
+  }
+
+  public void testRelativeFileLinkLabel() {
+    PsiFile file = myFixture.configureByText("some.md", "[Read Docs](app/foo.txt)");
+    String fileText = file.getText();
+    assertSameTarget(fileText.indexOf("Read Docs") + 1, fileText.indexOf("foo.txt"));
+  }
+
+  public void testSamePageAnchorLinkLabel() {
+    PsiFile file = myFixture.configureByText("some.md", "[Jump to Intro](#introduction)\n\n# Introduction");
+    String fileText = file.getText();
+    assertSameTarget(fileText.indexOf("Jump to Intro") + 1, fileText.indexOf("introduction"));
+  }
+
+  public void testImageDescription() {
+    PsiFile file = myFixture.configureByText("some.md", "![Logo](app/foo.txt)");
+    String fileText = file.getText();
+    assertSameTarget(fileText.indexOf("Logo") + 1, fileText.indexOf("foo.txt"));
+  }
+
+  public void testUnresolvedReferenceHighlighting() {
+    myFixture.enableInspections(new MarkdownUnresolvedFileReferenceInspection());
+    myFixture.configureByText("a.md", "[xxx](app/)");
+    myFixture.checkHighlighting();
+  }
+
+  private void assertSameTarget(int sourceOffset, int destinationOffset) {
+    var targets = GotoDeclarationAction.findAllTargetElements(getProject(), myFixture.getEditor(), sourceOffset);
+    var destinationReference = myFixture.getFile().findReferenceAt(destinationOffset);
+    assertNotNull(destinationReference);
+    assertEquals(destinationReference.resolve(), assertOneElement(targets));
   }
 
   public void testTrailingSlashUrl() {

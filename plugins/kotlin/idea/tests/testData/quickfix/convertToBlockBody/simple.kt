@@ -1,5 +1,5 @@
 // "Convert to block body" "true"
-// K2_ERROR: Returns are prohibited in functions with expression body. Use block body '{...}'.
+// K2_ERROR: RETURN_IN_FUNCTION_WITH_EXPRESSION_BODY
 fun foo(): Int = when {
     true -> {
         if (true) <caret>return 1
@@ -11,5 +11,4 @@ fun foo(): Int = when {
 
 fun bar() {}
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ConvertToBlockBodyFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ConvertToBlockBodyFix
 // LANGUAGE_VERSION: 2.2

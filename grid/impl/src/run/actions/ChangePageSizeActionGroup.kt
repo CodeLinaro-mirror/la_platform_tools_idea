@@ -57,9 +57,9 @@ class ChangePageSizeActionGroup : DefaultActionGroup(), CustomComponentAction, D
 
     addSeparator(DataGridBundle.message("separator.page.size"))
     for (pageSize in sizes) {
-      add(ChangePageSizeActionNew(pageSize, pageSize == defaultPageSize))
+      add(ChangePageSizeAction(pageSize, pageSize == defaultPageSize))
     }
-    add(ChangePageSizeActionNew(GridPagingModel.UNLIMITED_PAGE_SIZE, GridPagingModel.UNLIMITED_PAGE_SIZE == defaultPageSize))
+    add(ChangePageSizeAction(GridPagingModel.UNLIMITED_PAGE_SIZE, GridPagingModel.UNLIMITED_PAGE_SIZE == defaultPageSize))
     add(SetCustomPageSizeAction())
     add(Separator())
     add(SetDefaultPageSizeAction())
@@ -107,7 +107,7 @@ class ChangePageSizeActionGroup : DefaultActionGroup(), CustomComponentAction, D
     return createCustomComponentForResultViewToolbar(this, presentation, place)
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private fun updatePresentation(state: ChangePageSizeActionState, presentation: Presentation, settings: DataGridSettings?) {
     val oldState = getActionState(presentation)
     if (oldState == state) return

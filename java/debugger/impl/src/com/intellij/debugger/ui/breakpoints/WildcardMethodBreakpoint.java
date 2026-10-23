@@ -23,6 +23,7 @@ import com.intellij.debugger.engine.DebuggerManagerThreadImpl;
 import com.intellij.debugger.engine.DebuggerUtils;
 import com.intellij.debugger.engine.evaluation.EvaluateException;
 import com.intellij.debugger.engine.evaluation.EvaluationContextImpl;
+import com.intellij.debugger.engine.events.SuspendContextCommandImpl;
 import com.intellij.debugger.engine.requests.RequestManagerImpl;
 import com.intellij.debugger.jdi.VirtualMachineProxyImpl;
 import com.intellij.icons.AllIcons;
@@ -41,6 +42,7 @@ import com.intellij.util.PatternUtil;
 import com.intellij.xdebugger.breakpoints.XBreakpoint;
 import com.sun.jdi.Method;
 import com.sun.jdi.ReferenceType;
+import com.sun.jdi.VirtualMachine;
 import com.sun.jdi.event.LocatableEvent;
 import com.sun.jdi.request.MethodEntryRequest;
 import com.sun.jdi.request.MethodExitRequest;
@@ -55,8 +57,10 @@ import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 import java.util.stream.Stream;
 
+import static com.intellij.debugger.impl.DebugUtilsKt.emulateMethodBreakpointsOnVM;
+
 public class WildcardMethodBreakpoint extends Breakpoint<JavaMethodBreakpointProperties> implements MethodBreakpointBase {
-  private static final Logger LOG = Logger.getInstance(ExceptionBreakpoint.class);
+  private static final Logger LOG = Logger.getInstance(WildcardMethodBreakpoint.class);
 
   public WildcardMethodBreakpoint(Project project, XBreakpoint<JavaMethodBreakpointProperties> breakpoint) {
     super(project, breakpoint);
@@ -120,7 +124,9 @@ public class WildcardMethodBreakpoint extends Breakpoint<JavaMethodBreakpointPro
 
   @Override
   public boolean evaluateCondition(EvaluationContextImpl context, LocatableEvent event) throws EvaluateException {
-    return (isEmulated() || matchesMethod(event.location().method())) && super.evaluateCondition(context, event);
+    return (isEmulated(event.virtualMachine()) ||
+            matchingMethods(StreamEx.of(event.location().method()), context.getDebugProcess()).findAny().isPresent()) &&
+           super.evaluateCondition(context, event);
   }
 
   @Override
@@ -129,7 +135,7 @@ public class WildcardMethodBreakpoint extends Breakpoint<JavaMethodBreakpointPro
     if (!shouldCreateRequest(debugProcess)) {
       return;
     }
-    if (isEmulated()) {
+    if (isEmulated(VirtualMachineProxyImpl.getCurrent().getVirtualMachine())) {
       debugProcess.getRequestsManager().callbackOnPrepareClasses(this, getClassPattern());
 
       matchingClasses(debugProcess)
@@ -174,12 +180,17 @@ public class WildcardMethodBreakpoint extends Breakpoint<JavaMethodBreakpointPro
 
   @Override
   public void processClassPrepare(DebugProcess debugProcess, ReferenceType refType) {
-    if (isEmulated()) {
+    if (isEmulated(refType.virtualMachine())) {
       MethodBreakpoint.createRequestForPreparedClassEmulated(this, (DebugProcessImpl)debugProcess, refType, !stopOnlyInBaseClass());
     }
     else {
       // should be empty - does not make sense for this breakpoint
     }
+  }
+
+  @Override
+  public boolean processLocatableEvent(@NotNull SuspendContextCommandImpl action, LocatableEvent event) throws EventProcessingException {
+    return MethodBreakpointBase.processWithReturnValueCapture(this, action, event, LOG, () -> super.processLocatableEvent(action, event));
   }
 
   @Override
@@ -270,8 +281,9 @@ public class WildcardMethodBreakpoint extends Breakpoint<JavaMethodBreakpointPro
     return new WildcardMethodBreakpoint(project, classPattern, methodName, xBreakpoint);
   }
 
-  public boolean isEmulated() {
-    return getProperties().EMULATED;
+  @Override
+  public boolean isEmulated(@NotNull VirtualMachine vm) {
+    return getProperties().EMULATED && emulateMethodBreakpointsOnVM(vm);
   }
 
   @Override

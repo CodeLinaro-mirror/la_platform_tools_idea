@@ -2,7 +2,7 @@
 // WITH_STDLIB
 // ERROR: Not enough information to infer type variable T
 // K2_ERROR:
-// K2_AFTER_ERROR: Cannot infer type for type parameter 'T'. Specify it explicitly.
+// K2_AFTER_ERROR: CANNOT_INFER_PARAMETER_TYPE
 
 abstract class Main<T>
 
@@ -14,5 +14,4 @@ class New<T> : Main<T>()
 fun test() {
     val main = <caret>Old<Int, String>()
 }
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.replaceWith.DeprecatedSymbolUsageFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.replaceWith.DeprecatedSymbolUsageFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.replaceWith.DeprecatedSymbolUsageFix

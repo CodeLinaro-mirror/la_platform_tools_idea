@@ -1,5 +1,4 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
-
 package org.jetbrains.kotlin.idea.codeInsight.inspections
 
 import com.intellij.codeInspection.ProblemsHolder
@@ -14,19 +13,23 @@ import com.intellij.psi.PsiWhiteSpace
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.psi.util.parentOfType
 import com.intellij.psi.util.parents
-import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.components.resolveToCall
-import org.jetbrains.kotlin.analysis.api.components.resolveToSymbol
-import org.jetbrains.kotlin.analysis.api.components.semanticallyEquals
-import org.jetbrains.kotlin.analysis.api.components.smartCastInfo
-import org.jetbrains.kotlin.analysis.api.resolution.singleVariableAccessCall
+import org.jetbrains.kotlin.analysis.api.dataflow.smartCastInfo
+import org.jetbrains.kotlin.analysis.api.expressions.expressionType
+import org.jetbrains.kotlin.analysis.api.resolution.resolveSuccessfulSymbol
+import org.jetbrains.kotlin.analysis.api.resolution.single
 import org.jetbrains.kotlin.analysis.api.resolution.symbol
+import org.jetbrains.kotlin.analysis.api.resolution.variable
 import org.jetbrains.kotlin.analysis.api.symbols.KaValueParameterSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.symbol
-import org.jetbrains.kotlin.analysis.api.symbols.typeParameters
 import org.jetbrains.kotlin.analysis.api.types.KaType
+import org.jetbrains.kotlin.analysis.api.types.expandedSymbol
+import org.jetbrains.kotlin.analysis.api.types.semanticallyEquals
+import org.jetbrains.kotlin.analysis.api.types.type
 import org.jetbrains.kotlin.idea.base.analysis.api.utils.isPossiblySubTypeOf
+import org.jetbrains.kotlin.idea.base.psi.removeModifierKeyword
+import org.jetbrains.kotlin.idea.base.psi.setPropertyInitializer
+import org.jetbrains.kotlin.idea.base.psi.setPropertyTypeReference
 import org.jetbrains.kotlin.idea.base.psi.replaced
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.codeinsight.api.applicable.inspections.KotlinApplicableInspectionBase
@@ -36,6 +39,7 @@ import org.jetbrains.kotlin.idea.codeinsights.impl.base.intentions.MovePropertyT
 import org.jetbrains.kotlin.idea.codeinsights.impl.base.intentions.MovePropertyToConstructorUtils.moveToConstructor
 import org.jetbrains.kotlin.idea.codeinsights.impl.base.isComplexInitializer
 import org.jetbrains.kotlin.idea.references.mainReference
+import org.jetbrains.kotlin.idea.util.tryResolveExpressionCall
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.KtAnonymousInitializer
 import org.jetbrains.kotlin.psi.KtBinaryExpression
@@ -63,6 +67,7 @@ import org.jetbrains.kotlin.psi.psiUtil.getNextSiblingIgnoringWhitespaceAndComme
 import org.jetbrains.kotlin.psi.psiUtil.getStrictParentOfType
 import org.jetbrains.kotlin.psi.psiUtil.siblings
 import org.jetbrains.kotlin.psi.psiUtil.startOffset
+import org.jetbrains.kotlin.resolution.KtResolvable
 import org.jetbrains.kotlin.util.match
 import org.jetbrains.kotlin.utils.addToStdlib.firstIsInstanceOrNull
 
@@ -98,8 +103,8 @@ internal class JoinDeclarationAndAssignmentInspection :
         }
     }
 
-    @OptIn(KaExperimentalApi::class)
-    override fun KaSession.prepareContext(element: KtProperty): Context? {
+    context(session: KaSession)
+    override fun prepareContext(element: KtProperty): Context? {
         val assignment = findFirstAssignment(element) ?: return null
         val initializer = assignment.right ?: return null
 
@@ -182,8 +187,8 @@ internal class JoinDeclarationAndAssignmentInspection :
             val movePropertyToConstructorInfo = context.movePropertyToConstructorInfo?.toWritable(updater)
             val initializer = assignment.right ?: return
 
-            element.initializer = initializer
-            if (element.hasModifier(KtTokens.LATEINIT_KEYWORD)) element.removeModifier(KtTokens.LATEINIT_KEYWORD)
+            element.setPropertyInitializer(initializer)
+            if (element.hasModifier(KtTokens.LATEINIT_KEYWORD)) element.removeModifierKeyword(KtTokens.LATEINIT_KEYWORD)
 
             val grandParent = (assignment.parent as? KtBlockExpression)?.parent
             val initializerBlock = grandParent as? KtAnonymousInitializer
@@ -209,7 +214,7 @@ internal class JoinDeclarationAndAssignmentInspection :
             }
 
             if (context.canEraseDeclaredType) {
-                newProperty.typeReference = null
+                newProperty.setPropertyTypeReference(null)
                 updater.update(newProperty, false)
             } else {
                 updater.update(newProperty, context.canOmitDeclaredType)
@@ -227,7 +232,7 @@ internal class JoinDeclarationAndAssignmentInspection :
         val containingClass = constructor.getContainingClassOrObject()
         if (containingClass.isData()) return false
 
-        val paramSymbol = initializer.mainReference?.resolveToSymbol() as? KaValueParameterSymbol ?: return false
+        val paramSymbol = (initializer as? KtResolvable)?.resolveSuccessfulSymbol() as? KaValueParameterSymbol ?: return false
         if (element.nameAsName != paramSymbol.name) return false
 
         val parameter = paramSymbol.psi as? KtParameter ?: return false
@@ -306,7 +311,7 @@ internal class JoinDeclarationAndAssignmentInspection :
             return null
         }
 
-        val assignmentCall = firstAssignment.left?.resolveToCall()?.singleVariableAccessCall()?.symbol ?: return null
+        val assignmentCall = firstAssignment.left?.tryResolveExpressionCall()?.single?.variable?.symbol ?: return null
         if (assignmentCall != property.symbol) return null
 
         if (propertyContainer !is KtClassBody) return firstAssignment

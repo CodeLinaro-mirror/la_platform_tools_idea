@@ -1,5 +1,5 @@
 // "Move annotation to receiver type" "true"
-// K2_ERROR: This annotation is not applicable to target 'declaration' and use-site target '@receiver'. Applicable targets: class, annotation class, property, field, local variable, value parameter, constructor, function, getter, setter, backing field
+// K2_ERROR: WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET
 
 annotation class Ann
 
@@ -7,4 +7,3 @@ annotation class Ann
 fun String.foo() {
 }
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.MoveReceiverAnnotationFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.MoveReceiverAnnotationFix

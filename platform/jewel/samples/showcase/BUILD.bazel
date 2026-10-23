@@ -1,8 +1,12 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 load("//build:compiler-options.bzl", "create_kotlinc_options")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.platform.jewel.samples.showcase` start
+content_module_jar(module = ":showcase")
+### auto-generated section `dev intellij.platform.jewel.samples.showcase` end
 
 ### auto-generated section `build intellij.platform.jewel.samples.showcase` start
-
 create_kotlinc_options(
     name = "custom_showcase",
     opt_in = [
@@ -32,13 +36,14 @@ jvm_library(
     resource_strip_prefix = "src/main/resources",
     resources = glob(
         ["src/main/resources/**/*"],
+        exclude = ["src/main/resources/**/icon-robots.txt"],
     ),
     visibility = ["//visibility:public"],
     deps = [
         # do not sort,
         "@lib//:kotlin-stdlib",
         "//libraries/kotlinx/coroutines/core",
-        "@lib//:jetbrains-annotations",
+        "//libraries/jetbrains/annotations",
         "//platform/jewel/ui",
         "//platform/jewel/foundation",
         "//libraries/compose-runtime-desktop",
@@ -62,6 +67,7 @@ jvm_library(
         # do not sort,
         ":showcase",
         "//libraries/kotlinx/coroutines/core:core_test_lib",
+        "//libraries/jetbrains/annotations:annotations_test_lib",
         "//platform/jewel/ui:ui_test_lib",
         "//platform/jewel/foundation:foundation_test_lib",
         "//libraries/compose-runtime-desktop:compose-runtime-desktop_test_lib",
@@ -76,6 +82,7 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.jewel.samples.showcase.iml",
+        "src/main/resources/intellij.platform.jewel.samples.showcase.xml",
     ],
     visibility = ["//visibility:public"],
 )

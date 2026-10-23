@@ -16,10 +16,15 @@
 package com.jetbrains.python.inspections;
 
 import com.intellij.idea.TestFor;
+import com.jetbrains.python.allure.Layers;
+import com.jetbrains.python.allure.Subsystems;
+
 import com.jetbrains.python.fixtures.PyInspectionTestCase;
 import com.jetbrains.python.psi.LanguageLevel;
 import org.jetbrains.annotations.NotNull;
 
+@Subsystems.Inspections
+@Layers.Functional
 public class PyUnreachableCodeInspectionTest extends PyInspectionTestCase {
   // All previous unreachable tests, feel free to split them
   public void testUnreachable() {
@@ -724,6 +729,127 @@ async def nosupAssertFalse(b):
     });
   }
 
+  @TestFor(issues = "PY-72253")
+  public void testUnreachableCodeReportedAfterUnannotatedAlwaysRaisingFunction() {
+    doTestByText(
+      """
+        import sys
+
+        def raise_error():
+            raise ValueError()
+
+        def exit_program():
+            print("exiting")
+            sys.exit(1)
+
+        def loop_forever():
+            while True:
+                pass
+
+        def f1():
+            raise_error()
+            <warning descr="This code is unreachable">print("unreachable")</warning>
+
+        def f2():
+            exit_program()
+            <warning descr="This code is unreachable">print("unreachable")</warning>
+
+        def f3():
+            loop_forever()
+            <warning descr="This code is unreachable">print("unreachable")</warning>"""
+    );
+  }
+
+  @TestFor(issues = "PY-72253")
+  public void testNoUnreachableCodeAfterUnannotatedFunctionThatCanReturn() {
+    doTestByText(
+      """
+        def raise_conditionally(x):
+            if x:
+                raise ValueError()
+
+        def raise_and_catch():
+            try:
+                raise ValueError()
+            except ValueError:
+                pass
+
+        def f1(x):
+            raise_conditionally(x)
+            print("reachable")
+
+        def f2():
+            raise_and_catch()
+            print("reachable")"""
+    );
+  }
+
+  @TestFor(issues = "PY-72253")
+  public void testNoUnreachableCodeAfterCallThatDoesNotRunRaisingBody() {
+    doTestByText(
+      """
+        import abc
+
+        def generator():
+            raise ValueError()
+            <warning descr="This code is unreachable">yield 1</warning>
+
+        async def coroutine():
+            raise ValueError()
+
+        def decorator(func):
+            return func
+
+        @decorator
+        def decorated():
+            raise ValueError()
+
+        class Base(abc.ABC):
+            def not_implemented(self):
+                \"""Subclasses override it.\"""
+                raise NotImplementedError()
+
+            @abc.abstractmethod
+            def abstract(self):
+                raise ValueError()
+
+            def f(self):
+                self.not_implemented()
+                self.abstract()
+                print("reachable")
+
+        def f():
+            generator()
+            coroutine()
+            decorated()
+            print("reachable")"""
+    );
+  }
+
+  // Only the body of a direct callee is inspected, so recursion between functions does not make the analysis loop.
+  @TestFor(issues = "PY-72253")
+  public void testNoUnreachableCodeAfterIndirectlyRaisingFunction() {
+    doTestByText(
+      """
+        def raise_error():
+            raise ValueError()
+
+        def call_raise_error():
+            raise_error()
+
+        def ping():
+            pong()
+
+        def pong():
+            ping()
+
+        def f():
+            call_raise_error()
+            ping()
+            print("reachable")"""
+    );
+  }
+
   // PY-50642
   public void testTypeChecking() {
     doTestByText(
@@ -742,6 +868,11 @@ async def nosupAssertFalse(b):
     );
   }
 
+  /**
+   * The suppression half, and on its own it asserts nothing: before the fix the compound condition could not be
+   * evaluated at all, so nothing was unreachable and no warning was reported either. Keep it paired with
+   * {@link #testShortCircuitedConditionIsReportedUnreachable()}, which is the half that discriminates.
+   */
   @TestFor(issues="PY-85200")
   public void testTypeCheckingCompoundCondition() {
     doTestByText(
@@ -760,6 +891,83 @@ async def nosupAssertFalse(b):
         else:
             y: list[str] = ['a', 'b']"""
     );
+  }
+
+  /**
+   * The reporting half: the same short-circuit with no {@code TYPE_CHECKING}, so the dead branch is dead for
+   * everyone and the warning is owed. Fails without the fix. {@code PyEvaluatorTest.testBooleanShortCircuit}
+   * covers the evaluator; this covers the inspection consuming its result.
+   */
+  @TestFor(issues="PY-85200")
+  public void testShortCircuitedConditionIsReportedUnreachable() {
+    doTestByText(
+      """
+        def use_extensions() -> bool: ...
+
+        if False and use_extensions():
+            <warning descr="This code is unreachable">print("never runs")</warning>
+
+        if True or use_extensions():
+            print("always runs")
+        else:
+            <warning descr="This code is unreachable">print("never runs either")</warning>"""
+    );
+  }
+
+  // PY-90011
+  public void testIsInstanceIntWithIntEnumAnnotatedClassObject() {
+    doTestByText(
+      """
+        from enum import IntEnum, Enum
+
+
+        def test_enum(x: type[Enum]):
+            if isinstance(x, int):
+                print("first")
+            else:
+                print("second")
+
+
+        def test_int_enum(x: type[IntEnum]):
+            if isinstance(x, int):
+                print("first")
+            else:
+                print("second")"""
+    );
+  }
+
+  // PY-83726
+  public void testInspectionSuppressInElseBlock() {
+    doTestByText("""
+      import typing as _tp
+
+      def foo(v: _tp.Literal["foo", "bar"]):
+          if v == "foo":
+              raise Exception()
+          elif v == "bar":
+              raise Exception()
+          else:
+              # noinspection PyUnreachableCode
+              return False
+                   """);
+  }
+
+  // PY-83726
+  public void testInspectionSuppressInMatchCaseBlock() {
+    doTestByText("""
+      def foo(error: ArithmeticError):
+          match error:
+              case OverflowError():
+                  return "foo"
+
+              case ArithmeticError():
+                  return "bar"
+
+              case _:
+                  # noinspection PyUnreachableCode
+                  err: str = f"Expected ArithmeticError, got {type(error).__name__}: {error}"
+                  raise TypeError(err)
+                   """);
   }
 
   @NotNull

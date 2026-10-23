@@ -6,10 +6,11 @@ import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.ex.EditorEx;
 import com.intellij.openapi.editor.ex.FocusChangeListener;
 import com.intellij.ui.ComponentUtil;
+import com.intellij.ui.DrawUtil;
 import com.intellij.ui.EditorTextField;
+import com.intellij.ui.paint.PaintUtil;
 import com.intellij.util.ui.JBInsets;
 import com.intellij.util.ui.JBUI;
-import com.intellij.util.ui.MacUIUtil;
 import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -20,7 +21,6 @@ import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Insets;
 import java.awt.Rectangle;
-import java.awt.RenderingHints;
 import java.awt.Shape;
 import java.awt.geom.Path2D;
 import java.awt.geom.Rectangle2D;
@@ -74,11 +74,8 @@ public class DarculaEditorTextFieldBorder extends DarculaTextBorder implements V
       paintCellEditorBorder((Graphics2D)g, c, r, hasFocus);
     }
     else {
-      Graphics2D g2 = (Graphics2D)g.create();
-      try {
-        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g2.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL,
-                            MacUIUtil.USE_QUARTZ ? RenderingHints.VALUE_STROKE_PURE : RenderingHints.VALUE_STROKE_NORMALIZE);
+      PaintUtil.useCopy(g, g2 -> {
+        DrawUtil.setupRenderingHints(g2);
 
         if (c.isOpaque()) {
           g2.setColor(UIUtil.getPanelBackground());
@@ -111,10 +108,7 @@ public class DarculaEditorTextFieldBorder extends DarculaTextBorder implements V
           g2.setColor(getOutlineColor(editorTextField.isEnabled(), hasFocus));
           g2.fill(border);
         }
-      }
-      finally {
-        g2.dispose();
-      }
+      });
     }
   }
 

@@ -3,26 +3,28 @@
 package org.jetbrains.kotlin.idea.k2.refactoring.move
 
 import com.google.gson.JsonObject
+import com.intellij.openapi.application.impl.NonBlockingReadActionImpl
 import com.intellij.openapi.observable.util.whenDisposed
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
+import com.intellij.testFramework.PlatformTestUtil
 import org.jetbrains.kotlin.analysis.api.permissions.KaAllowAnalysisOnEdt
 import org.jetbrains.kotlin.analysis.api.permissions.allowAnalysisOnEdt
 import org.jetbrains.kotlin.idea.codeinsight.utils.findExistingEditor
+import org.jetbrains.kotlin.idea.base.test.KotlinRoot
 import org.jetbrains.kotlin.idea.k2.refactoring.move.descriptor.K2MoveOperationDescriptor
 import org.jetbrains.kotlin.idea.k2.refactoring.move.ui.BoundMoveModelSetting
 import org.jetbrains.kotlin.idea.k2.refactoring.move.ui.K2MoveModel
 import org.jetbrains.kotlin.idea.refactoring.loadTestConfiguration
 import org.jetbrains.kotlin.idea.refactoring.move.withConfiguredRuntime
 import org.jetbrains.kotlin.idea.refactoring.runRefactoringTest
-import org.jetbrains.kotlin.idea.test.IDEA_TEST_DATA_DIR
 import org.jetbrains.kotlin.idea.test.KotlinMultiFileTestCase
 import java.io.File
 
 abstract class AbstractK2CheckDescriptorMultiModuleMoveTest : KotlinMultiFileTestCase() {
-    override fun getTestRoot(): String = "refactoring/moveDescriptors/"
-    override fun getTestDataDirectory() = IDEA_TEST_DATA_DIR
+    override fun getTestRoot(): String = "moveDescriptors/"
+    override fun getTestDataDirectory() = KotlinRoot.DIR.resolve("refactorings/kotlin.refactorings.tests.k2/testData")
 
     init {
         isMultiModule = true
@@ -50,6 +52,8 @@ abstract class AbstractK2CheckDescriptorMultiModuleMoveTest : KotlinMultiFileTes
                             val descriptor = moveModel.toDescriptor()
                             checkMoveDescriptor(descriptor)
                             descriptor.refactoringProcessor().run()
+                            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+                            NonBlockingReadActionImpl.waitForAsyncTaskCompletion()
                         }
                     }
                 })

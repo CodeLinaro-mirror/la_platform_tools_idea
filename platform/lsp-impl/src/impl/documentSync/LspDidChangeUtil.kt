@@ -18,7 +18,7 @@ import org.jetbrains.annotations.ApiStatus
 object LspDidChangeUtil {
   fun getFileToHandle(event: DocumentEvent): VirtualFile? =
     FileDocumentManager.getInstance().getFile(event.document)?.takeIf {
-      it.isInLocalFileSystem && !StringUtil.equals(event.oldFragment, event.newFragment)
+      !StringUtil.equals(event.oldFragment, event.newFragment)
     }
 
   /**
@@ -26,19 +26,16 @@ object LspDidChangeUtil {
   * which effectively means that this function must be called from [com.intellij.openapi.editor.event.DocumentListener.beforeDocumentChange].
   * This is needed to calculate line numbers in the document as they were *before* the change.
   */
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun createIncrementalDidChangeParamsBeforeDocumentChange(
     lspClient: LspClient,
     documentEvent: DocumentEvent,
     virtualFile: VirtualFile,
   ): DidChangeTextDocumentParams {
-    val versionedIdentifier = getVersionedIdentifier(lspClient, documentEvent.document, virtualFile)
-    // This function is called at the moment when the `documentEvent` is not yet applied to the document,
-    // but the state of the document that this `DidChangeTextDocumentParams` reports to the LSP server
-    // assumes that the documentEvent has been applied.
-    // If we don't increase the document version number, the LSP server will have the right to ignore the `didChange` notification
-    // because the document version number may appear to be equal to the one sent previously within the `didOpen` request.
-    versionedIdentifier.version = versionedIdentifier.version!! + 1
+    // This function is called at the moment when the `documentEvent` is not yet applied to the document, so
+    // the version to declare can't be read off the document -- [LspClient.nextDocumentVersion] advances a
+    // version counter this client owns outright instead, so there's nothing to predict.
+    val versionedIdentifier = getVersionedIdentifier(lspClient, virtualFile, lspClient.nextDocumentVersion(documentEvent.document))
 
     val range = getLsp4jRange(documentEvent.document, documentEvent.offset, documentEvent.oldLength)
     val text = documentEvent.newFragment.toString()
@@ -47,24 +44,21 @@ object LspDidChangeUtil {
     return DidChangeTextDocumentParams(versionedIdentifier, listOf(changeEvent))
   }
 
-  @RequiresReadLock
-  internal fun createFullDidChangeParams(
+  @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
+  fun createFullDidChangeParams(
     lspClient: LspClient,
     document: Document,
     virtualFile: VirtualFile,
   ): DidChangeTextDocumentParams =
     DidChangeTextDocumentParams(
-      getVersionedIdentifier(lspClient, document, virtualFile),
+      getVersionedIdentifier(lspClient, virtualFile, lspClient.nextDocumentVersion(document)),
       listOf(TextDocumentContentChangeEvent(document.text))
     )
 
   private fun getVersionedIdentifier(
     lspClient: LspClient,
-    document: Document,
     virtualFile: VirtualFile,
+    version: Int,
   ): VersionedTextDocumentIdentifier =
-    VersionedTextDocumentIdentifier(
-      lspClient.descriptor.getFileUri(virtualFile),
-      lspClient.getDocumentVersion(document)
-    )
+    VersionedTextDocumentIdentifier(lspClient.descriptor.getFileUri(virtualFile), version)
 }

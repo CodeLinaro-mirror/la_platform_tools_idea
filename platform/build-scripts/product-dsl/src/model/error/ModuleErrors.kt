@@ -8,6 +8,8 @@ import com.intellij.platform.pluginGraph.PluginGraph
 import org.jetbrains.intellij.build.productLayout.model.ModuleSourceInfo
 import org.jetbrains.intellij.build.productLayout.model.getModuleSourceInfo
 import org.jetbrains.intellij.build.productLayout.stats.AnsiStyle
+import org.jetbrains.intellij.build.productLayout.traversal.UnusedEmbeddedLibraryModuleViolation
+import org.jetbrains.intellij.build.productLayout.traversal.UnusedSharedLibraryModuleViolation
 
 data class SelfContainedValidationError(
   override val context: String,
@@ -221,56 +223,6 @@ private fun formatReason(issue: ContentModuleBackingIssue): String {
   }
 }
 
-/**
- * Reported when an embedded module with `includeDependencies=true` transitively pulls
- * a content module that is not explicitly declared by the product (or any of its module
- * sets / bundled plugins).
- *
- * Plugin-model content modules must be the only truth for product packaging. Silently
- * bundling a content module through JPS runtime closure makes the jar layout differ
- * across products and hides real dependencies. Ancient JPS-only (non-content) modules
- * are allowed to flow; content modules must be listed explicitly.
- */
-data class ImplicitEmbeddedContentModuleError(
-  override val context: String,
-  /** Map from transitively pulled content module → set of embedded-with-includeDependencies=true roots whose chain reached it */
-  @JvmField val missingModules: Map<ContentModuleName, Set<ContentModuleName>>,
-  /** Dep chain (target names) for each missing module, from the embedded root to the violating module */
-  @JvmField val chains: Map<ContentModuleName, List<String>> = emptyMap(),
-  override val ruleName: String = "ImplicitEmbeddedContentModuleValidation",
-) : ValidationError {
-  override val category: ErrorCategory get() = ErrorCategory.IMPLICIT_EMBEDDED_CONTENT_MODULE
-
-  override fun format(s: AnsiStyle): String = buildString {
-    appendLine("${s.red}${s.bold}Product '${context}' implicitly bundles content modules via embedded-module JPS runtime-dep closure${s.reset}")
-    appendLine()
-    appendLine("${s.yellow}Packaging packs transitive JPS runtime deps of each embedded module declared with includeDependencies=true into that embedded module's jar.${s.reset}")
-    appendLine("${s.yellow}For content modules (modules with a descriptor) reached via this closure, silent bundling is forbidden — the plugin model must be the only truth for packaging.${s.reset}")
-    appendLine()
-
-    for ((missingDep, rootModules) in missingModules.entries.sortedByDescending { it.value.size }) {
-      appendLine("  ${s.red}*${s.reset} Implicitly bundled: ${s.bold}${missingDep.value}${s.reset}")
-      appendLine("    Reached from embedded module(s) with includeDependencies=true:")
-      for (root in rootModules.sortedBy { it.value }) {
-        appendLine("      - ${root.value}")
-      }
-      val chain = chains.get(missingDep)
-      if (!chain.isNullOrEmpty()) {
-        appendLine("    Chain: ${chain.joinToString(separator = " -> ")}")
-      }
-    }
-
-    appendLine()
-    appendLine("${s.yellow}Fix:${s.reset}")
-    appendLine("1. Add each implicitly bundled content module explicitly to the product's content spec (module set or additionalModules).")
-    appendLine("2. Or, if the module truly should not ship with the product, break the JPS dependency chain that pulls it in.")
-    appendLine("3. As a temporary allowlist, add the module name to the product's allowedMissingDependencies.")
-    appendLine()
-    appendLine("${s.gray}[Rule: $ruleName]${s.reset}")
-    appendLine()
-  }
-}
-
 data class EmbeddedContentModuleSource(
   @JvmField val kind: String,
   @JvmField val name: String,
@@ -323,6 +275,137 @@ data class EmbeddedContentModuleDependencyError(
     appendLine("1. Make the dependency embedded in the same product/module-set content, or")
     appendLine("2. Make the depending module non-embedded, or")
     appendLine("3. Move the dependency boundary so embedded code no longer references separately loaded content.")
+    appendLine()
+    appendLine("${s.gray}[Rule: $ruleName]${s.reset}")
+    appendLine()
+  }
+}
+
+/**
+ * Reported when library content is embedded in a module set without being reachable from
+ * embedded platform content in any product.
+ */
+internal data class UnusedEmbeddedLibraryModuleError(
+  override val context: String,
+  @JvmField val violations: List<UnusedEmbeddedLibraryModuleViolation>,
+  override val ruleName: String = "UnusedEmbeddedLibraryModuleValidation",
+) : ValidationError {
+  override val category: ErrorCategory get() = ErrorCategory.UNUSED_EMBEDDED_LIBRARY_MODULE
+
+  @Suppress("DestructuringDeclaration")
+  override fun format(s: AnsiStyle): String = buildString {
+    appendLine("${s.red}${s.bold}Embedded library modules without embedded platform consumers${s.reset}")
+    appendLine()
+    appendLine("${s.yellow}Plugin, test, optional, and required content does not justify loading a library in the core classloader.${s.reset}")
+    appendLine()
+
+    for (violation in violations.sortedBy { it.module }) {
+      appendLine("  ${s.red}*${s.reset} ${s.bold}${violation.module}${s.reset}")
+      appendLine("    Declared in: ${violation.declaringModuleSets.joinToString()}")
+      if (violation.platformConsumers.isNotEmpty()) {
+        appendLine("    Non-embedded platform consumers: ${violation.platformConsumers.joinToString()}")
+      }
+      if (violation.productionPluginConsumers.isNotEmpty()) {
+        appendLine("    Production plugin consumers: ${violation.productionPluginConsumers.joinToString()}")
+      }
+      if (violation.testPluginConsumers.isNotEmpty()) {
+        appendLine("    Test plugin consumers: ${violation.testPluginConsumers.joinToString()}")
+      }
+    }
+
+    appendLine()
+    appendLine("${s.yellow}Fix:${s.reset}")
+    appendLine("1. Keep the library embedded only if embedded platform content has a production dependency on it.")
+    appendLine("2. Otherwise make it ordinary shared content with module(...), or private content of its owning plugin.")
+    appendLine("3. Remove the module-set declaration if it has no runtime consumers.")
+    appendLine()
+    appendLine("${s.gray}[Rule: $ruleName]${s.reset}")
+    appendLine()
+  }
+}
+
+/**
+ * Reported when a library module is declared as ordinary module-set content that nothing depends on.
+ *
+ * Companion of [UnusedEmbeddedLibraryModuleError]: that rule keeps unused libraries out of the core
+ * classloader, this one keeps them out of the product entirely.
+ */
+internal data class UnusedSharedLibraryModuleError(
+  override val context: String,
+  @JvmField val violations: List<UnusedSharedLibraryModuleViolation>,
+  override val ruleName: String = "UnusedSharedLibraryModuleValidation",
+) : ValidationError {
+  override val category: ErrorCategory get() = ErrorCategory.UNUSED_SHARED_LIBRARY_MODULE
+
+  @Suppress("DestructuringDeclaration")
+  override fun format(s: AnsiStyle): String = buildString {
+    appendLine("${s.red}${s.bold}Library content modules without any consumer${s.reset}")
+    appendLine()
+    appendLine("${s.yellow}These libraries are shipped as product content, but no module or plugin declares a dependency on them.${s.reset}")
+    appendLine()
+
+    for (violation in violations.sortedBy { it.module }) {
+      appendLine("  ${s.red}*${s.reset} ${s.bold}${violation.module}${s.reset}")
+      appendLine("    Declared in: ${violation.declaringModuleSets.joinToString()}")
+      if (violation.availableProducts.isNotEmpty()) {
+        appendLine("    Shipped in: ${violation.availableProducts.joinToString()}")
+      }
+    }
+
+    appendLine()
+    appendLine("${s.yellow}Fix:${s.reset}")
+    appendLine("1. Declare the dependency on the consumer side, if a module really uses the library at runtime.")
+    appendLine("2. Otherwise remove the module-set declaration - nothing loads this library.")
+    appendLine("3. If only one plugin needs it, make it private content of that plugin instead of shared content.")
+    appendLine()
+    appendLine("${s.gray}[Rule: $ruleName]${s.reset}")
+    appendLine()
+  }
+}
+
+/**
+ * A library that an installation packages, but that has no license entry.
+ */
+internal data class MissingLibraryLicenseViolation(
+  @JvmField val libraryName: String,
+  @JvmField val coordinates: String?,
+  @JvmField val moduleName: String,
+)
+
+/**
+ * Reported when a library goes into an installation without a license entry.
+ */
+internal data class MissingLibraryLicenseError(
+  override val context: String,
+  @JvmField val violations: List<MissingLibraryLicenseViolation>,
+  /** The file a fix must edit. Two rules emit this error, and each one names the file it reads. */
+  @JvmField val licenseFile: String,
+  override val ruleName: String = "LibraryLicenseValidation",
+) : ValidationError {
+  override val category: ErrorCategory get() = ErrorCategory.MISSING_LIBRARY_LICENSE
+
+  @Suppress("DestructuringDeclaration")
+  override fun format(s: AnsiStyle): String = buildString {
+    appendLine("${s.red}${s.bold}Libraries without a license entry${s.reset}")
+    appendLine()
+    appendLine("${s.yellow}Every library that an installation packages needs a license entry.${s.reset}")
+    appendLine("${s.yellow}The entry gives the license name and the library origin for the legal report.${s.reset}")
+    appendLine("${s.gray}Scope: $context${s.reset}")
+    appendLine()
+
+    for (violation in violations.sortedBy { it.libraryName }) {
+      appendLine("  ${s.red}*${s.reset} ${s.bold}${violation.libraryName}${s.reset}")
+      if (violation.coordinates != null) {
+        appendLine("    Coordinates: ${violation.coordinates}")
+      }
+      appendLine("    Module: ${violation.moduleName}")
+    }
+
+    appendLine()
+    appendLine("${s.yellow}Fix:${s.reset}")
+    appendLine("1. Add the license entry to $licenseFile.")
+    appendLine("2. Change the dependency scope to TEST if only tests use the library.")
+    appendLine("3. Change the dependency scope to PROVIDED if only compilation uses the library.")
     appendLine()
     appendLine("${s.gray}[Rule: $ruleName]${s.reset}")
     appendLine()

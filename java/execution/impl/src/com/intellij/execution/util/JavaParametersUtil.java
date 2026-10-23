@@ -1,4 +1,4 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.execution.util;
 
 import com.intellij.execution.CantRunException;
@@ -32,13 +32,9 @@ import com.intellij.openapi.vfs.JarFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.JavaPsiFacade;
 import com.intellij.psi.PsiClass;
-import com.intellij.psi.PsiClassType;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiJavaModule;
-import com.intellij.psi.PsiProvidesStatement;
-import com.intellij.psi.PsiUsesStatement;
 import com.intellij.psi.impl.PsiImplUtil;
-import com.intellij.psi.impl.java.stubs.index.JavaModuleNameIndex;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.PathUtil;
@@ -56,7 +52,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 public final class JavaParametersUtil {
@@ -251,10 +246,9 @@ public final class JavaParametersUtil {
     }
 
     if (!includeTests) {
-      putProvidersOnModulePath(project, forModulePath, forModulePath);
+      forModulePath.addAll(JavaPsiModuleUtil.collectServiceProviders(project, forModulePath));
     }
 
-    JarFileSystem jarFS = JarFileSystem.getInstance();
     ProjectFileIndex fileIndex = ProjectFileIndex.getInstance(project);
     JavaPsiFacade psiFacade = JavaPsiFacade.getInstance(project);
 
@@ -264,11 +258,11 @@ public final class JavaParametersUtil {
     forModulePath.stream()
       .filter(javaModule -> !PsiJavaModule.JAVA_BASE.equals(javaModule.getName()))
       .flatMap(javaModule -> psiFacade.findModules(javaModule.getName(), GlobalSearchScope.allScope(project)).stream())
-      .map(javaModule -> getClasspathEntry(javaModule, fileIndex, jarFS))
+      .map(javaModule -> getClasspathEntry(javaModule, fileIndex))
       .filter(Objects::nonNull)
       .forEach(file -> putOnModulePath(modulePath, classPath, file));
 
-    VirtualFile productionOutput = getClasspathEntry(module, fileIndex, jarFS);
+    String productionOutput = getClasspathEntry(module, fileIndex);
     if (productionOutput != null) {
       putOnModulePath(modulePath, classPath, productionOutput);
     }
@@ -290,65 +284,27 @@ public final class JavaParametersUtil {
     }
   }
 
-  private static void putProvidersOnModulePath(Project project, Set<PsiJavaModule> initialModules, Set<PsiJavaModule> forModulePath) {
-    Set<String> interfaces = new HashSet<>();
-    for (PsiJavaModule explicitModule : initialModules) {
-      for (PsiUsesStatement use : explicitModule.getUses()) {
-        PsiClassType useClassType = use.getClassType();
-        if (useClassType != null) {
-          interfaces.add(useClassType.getCanonicalText());
-        }
-      }
-    }
-
-    if (interfaces.isEmpty()) return;
-
-    Set<PsiJavaModule> added = new HashSet<>();
-    Consumer<PsiJavaModule> registerProviders = javaModule -> {
-      if (forModulePath.add(javaModule)) {
-        added.add(javaModule);
-      }
-    };
-    JavaModuleNameIndex index = JavaModuleNameIndex.getInstance();
-    for (String key : index.getAllKeys(project)) {
-      nextModule: 
-      for (PsiJavaModule aModule : index.getModules(key, project, GlobalSearchScope.allScope(project))) {
-        if (forModulePath.contains(aModule)) continue;
-        for (PsiProvidesStatement provide : aModule.getProvides()) {
-          PsiClassType provideInterfaceType = provide.getInterfaceType();
-          if (provideInterfaceType != null && interfaces.contains(provideInterfaceType.getCanonicalText())) {
-            registerProviders.accept(aModule);
-            JavaPsiModuleUtil.getAllDependencies(aModule).forEach(registerProviders);
-            continue nextModule;
-          }
-        }
-      }
-    }
-    if (!added.isEmpty()) {
-      putProvidersOnModulePath(project, added, forModulePath);
-    }
-  }
-
-  private static void putOnModulePath(PathsList modulePath, PathsList classPath, VirtualFile virtualFile) {
-    String path = PathUtil.getLocalPath(virtualFile.getPath());
+  private static void putOnModulePath(PathsList modulePath, PathsList classPath, String path) {
     if (classPath.getPathList().contains(path)) {
       classPath.remove(path);
       modulePath.add(path);
     }
   }
 
-  private static VirtualFile getClasspathEntry(PsiJavaModule javaModule, ProjectFileIndex fileIndex, JarFileSystem jarFileSystem) {
+  private static @Nullable String getClasspathEntry(PsiJavaModule javaModule, ProjectFileIndex fileIndex) {
     var moduleFile = PsiImplUtil.getModuleVirtualFile(javaModule);
     var moduleDependency = fileIndex.getModuleForFile(moduleFile);
     if (moduleDependency != null) {
       var moduleExtension = CompilerModuleExtension.getInstance(moduleDependency);
       if (moduleExtension != null) {
         var inTests = fileIndex.isInTestSourceContent(moduleFile);
-        return inTests ? moduleExtension.getCompilerOutputPathForTests() : moduleExtension.getCompilerOutputPath();
+        var output = inTests ? moduleExtension.getCompilerOutputPathForTests() : moduleExtension.getCompilerOutputPath();
+        return output == null ? null : PathUtil.getLocalPath(output.getPath());
       }
     }
 
-    return jarFileSystem.getLocalByEntry(moduleFile);
+    int separator = moduleFile.getPath().indexOf(JarFileSystem.JAR_SEPARATOR);
+    return separator < 0 ? null : PathUtil.getLocalPath(moduleFile.getPath().substring(0, separator));
   }
 
   public static void applyModifications(JavaParameters parameters, List<ModuleBasedConfigurationOptions.ClasspathModification> modifications) {

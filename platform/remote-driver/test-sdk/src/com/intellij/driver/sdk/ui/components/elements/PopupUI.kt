@@ -1,13 +1,16 @@
 package com.intellij.driver.sdk.ui.components.elements
 
 import com.intellij.driver.client.Remote
+import com.intellij.driver.client.utility
+import com.intellij.driver.model.OnDispatcher
 import com.intellij.driver.sdk.ui.Finder
 import com.intellij.driver.sdk.ui.QueryBuilder
-import com.intellij.driver.sdk.ui.components.UIComponentsList
 import com.intellij.driver.sdk.ui.components.ComponentData
+import com.intellij.driver.sdk.ui.components.UIComponentsList
 import com.intellij.driver.sdk.ui.components.UiComponent
 import com.intellij.driver.sdk.ui.components.common.Icon
 import com.intellij.driver.sdk.ui.remote.Component
+import com.intellij.driver.sdk.ui.remote.Window
 import com.intellij.driver.sdk.ui.xQuery
 import com.intellij.driver.sdk.waitForOne
 import org.intellij.lang.annotations.Language
@@ -28,12 +31,13 @@ class PopupMenuUiComponent(data: ComponentData) : UiComponent(data) {
   private val menuItems =
     xx("//div[@class='ActionMenuItem' or @class='ActionMenu']", PopupItemUiComponent::class.java)
 
+  fun getMenuItems(): List<PopupItemUiComponent> = menuItems.list()
   fun getSelectedPath(): List<String> =
     driver.utility(MenuSelectionManager::class).defaultManager().getSelectedPath().mapNotNull {
       it.getComponent().getAccessibleContext()?.getAccessibleName()
     }
 
-  fun findMenuItemByText(text: String) = menuItems.list().firstOrNull { it.getText() == text}
+  fun findMenuItemByText(text: String) = menuItems.list().firstOrNull { it.getText() == text }
                                          ?: throw AssertionError("No item with text '$text' found in popup '${this.searchContext}'")
 
   fun select(vararg items: String) {
@@ -54,7 +58,7 @@ class PopupMenuUiComponent(data: ComponentData) : UiComponent(data) {
     }
   }
 
-  fun itemsList() = menuItems.list().map { it.getText() }
+  fun itemsList() = getMenuItems().map { it.getText() }
 
   @Remote("javax.swing.MenuSelectionManager")
   private interface MenuSelectionManager {
@@ -69,7 +73,25 @@ class PopupMenuUiComponent(data: ComponentData) : UiComponent(data) {
 }
 
 open class PopupUiComponent(data: ComponentData) : WindowUiComponent(data) {
-  fun close() = dispose()
+  fun close() {
+    val popup = driver.utility<PopupUtil>().getPopupFor(driver.cast(component, Window::class))
+    if (popup != null) {
+      driver.withContext(OnDispatcher.EDT) { popup.cancel() }
+    }
+    else {
+      dispose()
+    }
+  }
+
+  @Remote("com.intellij.openapi.ui.popup.util.PopupUtil")
+  private interface PopupUtil {
+    fun getPopupFor(window: Window): JBPopup?
+  }
+
+  @Remote("com.intellij.openapi.ui.popup.JBPopup")
+  private interface JBPopup {
+    fun cancel()
+  }
 }
 
 @Remote("com.intellij.openapi.actionSystem.impl.ActionMenuItem")

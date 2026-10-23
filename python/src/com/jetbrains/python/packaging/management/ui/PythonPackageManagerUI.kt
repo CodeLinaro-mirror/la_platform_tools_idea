@@ -1,12 +1,13 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.packaging.management.ui
 
-import com.intellij.openapi.application.edtWriteAction
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.projectRoots.Sdk
+import com.intellij.python.sdk.backend.PythonInterpreter
 import com.intellij.platform.ide.progress.runWithModalProgressBlocking
+import com.intellij.python.sdk.backend.pythonInterpreterAsync
 import com.intellij.util.concurrency.annotations.RequiresBlockingContext
 import com.intellij.util.concurrency.annotations.RequiresEdt
 import com.jetbrains.python.PyBundle
@@ -22,7 +23,7 @@ import com.jetbrains.python.packaging.management.PyWorkspaceMember
 import com.jetbrains.python.packaging.management.PythonPackageInstallRequest
 import com.jetbrains.python.packaging.management.PythonPackageManager
 import com.jetbrains.python.packaging.management.findPackageSpecification
-import com.jetbrains.python.packaging.pyRequirement
+import com.intellij.python.requirements.pyRequirement
 import com.jetbrains.python.statistics.PyPackagesUsageCollector
 import com.jetbrains.python.errorProcessing.ErrorSink
 import org.jetbrains.annotations.ApiStatus
@@ -159,9 +160,7 @@ class PythonPackageManagerUI private constructor(
     progressTitle: @Nls String,
     operation: suspend (() -> PyResult<T>),
   ): T? {
-    edtWriteAction {
-      FileDocumentManager.getInstance().saveAllDocuments()
-    }
+    FileDocumentManager.getInstance().saveAllDocuments()
     return PythonPackageManagerUIHelpers.runPackagingOperationMaybeBackground(manager, sink, progressTitle) {
       operation()
     }
@@ -177,7 +176,7 @@ class PythonPackageManagerUI private constructor(
    *
    * @return list of all installed packages after installation, or null if the operation failed
    */
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   @RequiresBlockingContext
   @ApiStatus.Experimental
   fun installPackagesWithModalProgressBlocking(vararg packages: String): List<PythonPackage>? {
@@ -197,17 +196,38 @@ class PythonPackageManagerUI private constructor(
   }
 
   companion object {
+    /** [forPythonInterpreter] for a caller that holds only an [Sdk]. See [PythonPackageManager.forSdk]. */
+    @Deprecated("Pass a PythonInterpreter to forPythonInterpreter. Get it from the project structure or with pythonInterpreterAsync.")
     @JvmStatic
     @JvmOverloads
     @ApiStatus.Internal
     fun forSdk(project: Project, sdk: Sdk, sink: ErrorSink = ErrorSink()): PythonPackageManagerUI {
+      @Suppress("DEPRECATION")
       val packageManager = PythonPackageManager.forSdk(project, sdk)
       return PythonPackageManagerUI(packageManager, sink)
     }
+
+    @ApiStatus.Internal
+    fun forPythonInterpreter(project: Project, interpreter: PythonInterpreter, sink: ErrorSink = ErrorSink()): PythonPackageManagerUI =
+      PythonPackageManagerUI(PythonPackageManager.forPythonInterpreter(project, interpreter), sink)
 
     @ApiStatus.Experimental
     fun forPackageManager(
       packageManager: PythonPackageManager,
     ): PythonPackageManagerUI = PythonPackageManagerUI(packageManager, ErrorSink())
+
+    /**
+     * Installs [packages] into the interpreter of [sdk], with a modal progress. For a Java caller on the EDT that holds
+     * only an [Sdk]. The interpreter is detected inside the progress.
+     */
+    @JvmStatic
+    @ApiStatus.Internal
+    @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
+    fun installPackagesWithModalProgressBlocking(project: Project, sdk: Sdk, vararg packages: String): List<PythonPackage>? {
+      val interpreter = runWithModalProgressBlocking(project, PyBundle.message("python.packaging.installing.packages")) {
+        sdk.pythonInterpreterAsync()
+      }
+      return forPythonInterpreter(project, interpreter).installPackagesWithModalProgressBlocking(*packages)
+    }
   }
 }

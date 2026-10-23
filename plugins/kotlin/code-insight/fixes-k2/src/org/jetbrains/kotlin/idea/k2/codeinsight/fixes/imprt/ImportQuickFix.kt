@@ -4,27 +4,30 @@ package org.jetbrains.kotlin.idea.k2.codeinsight.fixes.imprt
 import com.intellij.codeInsight.daemon.QuickFixBundle
 import com.intellij.codeInsight.hint.HintManager
 import com.intellij.codeInsight.hint.QuestionAction
+import com.intellij.codeInsight.intention.IntentionActionWithModCommandFallback
 import com.intellij.codeInsight.intention.PriorityAction
+import com.intellij.codeInsight.intention.preview.IntentionPreviewInfo
 import com.intellij.codeInspection.HintAction
 import com.intellij.codeInspection.util.IntentionName
 import com.intellij.modcommand.ModCommandAction
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
+import com.intellij.psi.PsiFile
 import com.intellij.psi.statistics.StatisticsManager
 import com.intellij.util.SlowOperations
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.analyze
-import org.jetbrains.kotlin.analysis.api.components.expandedSymbol
 import org.jetbrains.kotlin.analysis.api.permissions.KaAllowAnalysisFromWriteAction
 import org.jetbrains.kotlin.analysis.api.permissions.KaAllowAnalysisOnEdt
 import org.jetbrains.kotlin.analysis.api.permissions.allowAnalysisFromWriteAction
 import org.jetbrains.kotlin.analysis.api.permissions.allowAnalysisOnEdt
+import org.jetbrains.kotlin.analysis.api.session.analyze
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassLikeSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaEnumEntrySymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaNamedClassSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaTypeAliasSymbol
+import org.jetbrains.kotlin.analysis.api.types.expandedSymbol
 import org.jetbrains.kotlin.idea.base.psi.imports.addImport
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.quickfix.AutoImportVariant
@@ -42,15 +45,12 @@ import org.jetbrains.kotlin.psi.KtQualifiedExpression
 import org.jetbrains.kotlin.psi.KtSimpleNameExpression
 import org.jetbrains.kotlin.psi.psiUtil.getQualifiedElement
 
-/**
- * Note: Avoid instantiating directly, see [KotlinAddImportActionFactory] for that.
- */
 @ApiStatus.Internal
 class ImportQuickFix internal constructor(
     element: KtElement,
     @IntentionName private val text: String,
     importVariants: List<AutoImportVariant>
-) : ImportLikeQuickFix(element, importVariants), HintAction, PriorityAction {
+) : ImportLikeQuickFix(element, importVariants), HintAction, PriorityAction, IntentionActionWithModCommandFallback {
     override fun getPriority(): PriorityAction.Priority = PriorityAction.Priority.TOP
 
     override fun getText(): String = text
@@ -62,13 +62,21 @@ class ImportQuickFix internal constructor(
         file: KtFile,
         filterSuggestions: (Collection<FqName>) -> Collection<FqName>
     ): QuestionAction? {
-        val filteredFqNames = filterSuggestions(importVariants.map { it.fqName }).toSet()
-        if (filteredFqNames.size != 1) return null
+        val filteredFqNames =
+            filterSuggestions(importVariants.map { it.fqName }).toSet()
+        if (filteredFqNames.isEmpty()) return null
 
-        val singleSuggestion = importVariants.filter { it.fqName in filteredFqNames }.first()
-        if ((singleSuggestion as SymbolBasedAutoImportVariant).canNotBeImportedOnTheFly) return null
+        val singleNonDeprecatedSuggestion =
+            // single non-deprecated
+            importVariants.singleOrNull { it.fqName in filteredFqNames && !it.deprecated } ?:
+            // or single over all deprecated
+            importVariants.takeIf { it.all(AutoImportVariant::deprecated) }?.singleOrNull { it.fqName in filteredFqNames }
 
-        return ImportQuestionAction(file.project, editor, file, listOf(singleSuggestion), onTheFly = true)
+        if (singleNonDeprecatedSuggestion == null ||
+            (singleNonDeprecatedSuggestion as SymbolBasedAutoImportVariant).canNotBeImportedOnTheFly
+        ) return null
+
+        return ImportQuestionAction(file.project, editor, file, listOf(singleNonDeprecatedSuggestion), onTheFly = true)
     }
 
     override fun showHint(editor: Editor): Boolean {
@@ -131,16 +139,6 @@ class ImportQuickFix internal constructor(
         }
     }
 
-    /**
-     * We cannot provide [AddImportModCommandAction] here, because it would be used in the regular IntelliJ IDEA,
-     * leading to an unfamiliar UX.
-     *
-     * See [KotlinAddImportActionFactory] for details.
-     */
-    override fun asModCommandAction(): ModCommandAction? {
-        return null
-    }
-
     override fun isClassDefinitelyPositivelyImportedAlready(containingFile: KtFile, classFqName: FqName): Boolean {
         val importList = containingFile.importList
         if (importList == null) return false
@@ -154,6 +152,16 @@ class ImportQuickFix internal constructor(
             }
         }
         return false
+    }
+
+    override fun getFallbackModCommandAction(): ModCommandAction? {
+        val element = element ?: return null
+        return AddImportModCommandAction(element, text, importVariants)
+    }
+
+    override fun generatePreview(project: Project, editor: Editor, psiFile: PsiFile): IntentionPreviewInfo {
+        // we do not want to alter the IDE behavior, so we inherit the preview from the ImportLikeQuickFix
+        return super<ImportLikeQuickFix>.generatePreview(project, editor, psiFile)
     }
 
     internal companion object {

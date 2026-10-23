@@ -3,16 +3,14 @@
 
 package org.jetbrains.intellij.build.impl
 
+import com.intellij.platform.buildScripts.concurrency.TaskScope
+import com.intellij.platform.buildScripts.concurrency.taskScope
 import com.intellij.util.PathUtilRt
 import com.intellij.util.lang.ZipFile
 import kotlinx.collections.immutable.PersistentList
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.plus
-import kotlinx.coroutines.CoroutineName
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.launch
+import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.VisibleForTesting
 import org.jetbrains.intellij.build.BuildContext
 import org.jetbrains.intellij.build.BuildOptions
@@ -53,7 +51,8 @@ object OsFamilyDetector {
   private val windowsRegex = "(windows|win32-|win)".toRegex(RegexOption.IGNORE_CASE)
   private val linuxRegex = "linux".toRegex(RegexOption.IGNORE_CASE)
 
-  private val regex = "(^|-|/)((?<macos>(darwin|mac|macos)[-/])|(?<win>win32-|(win|windows)[-/])|(?<android>Linux-(Android|Musl)/)|(?<linux>linux[-/]))".toRegex(RegexOption.IGNORE_CASE)
+  private val regex =
+    "(^|-|/)((?<macos>(darwin|mac|macos)[-/])|(?<win>win32-|(win|windows)[-/])|(?<android>Linux-(Android|Musl)/)|(?<linux>linux[-/]))".toRegex(RegexOption.IGNORE_CASE)
 
 
   fun detectOsFamily(path: String): Pair<OsFamily, String>? {
@@ -78,7 +77,6 @@ object OsFamilyDetector {
   }
 }
 
-@VisibleForTesting
 class NativeFilesMatcher(paths: List<String>, private val targetOs: Iterable<OsFamily>?, private val targetArch: JvmArchitecture?) {
   private val iterator = paths.iterator()
   var commonPathPrefix: CharSequence? = null
@@ -137,32 +135,40 @@ private val posixExecutableFileAttribute = PosixFilePermissions.asFileAttribute(
   )
 )
 
-internal fun CoroutineScope.packNativePresignedFiles(
+/**
+ * Forks one task per source archive into the group of the caller.
+ *
+ * The native files of a library go to `<libDirPrefix>/<dir>/`, where `<dir>` is the value of
+ * `ProductProperties.presignedNativeLibs` for the library. [libDirPrefix] is relative to the distribution root.
+ * For a plugin, it is `plugins/<plugin directory>/lib`, so the tree is next to the jar that owns it.
+ * For platform content, it is `lib`.
+ */
+internal fun TaskScope.packNativePresignedFiles(
   nativeFiles: Map<ZipSource, List<String>>,
+  libDirPrefix: String,
   dryRun: Boolean,
   context: BuildContext,
-  toRelativePath: (String, String) -> String,
 ) {
   for ((source, paths) in nativeFiles) {
     val sourceFile = source.file
-    launch(Dispatchers.IO + CoroutineName("pack native presigned file $sourceFile")) {
+    fork("pack native presigned file $sourceFile") {
       unpackNativeLibraries(
         sourceFile = sourceFile,
         paths = paths,
+        libDirPrefix = libDirPrefix,
         dryRun = dryRun,
         context = context,
-        toRelativePath = toRelativePath,
       )
     }
   }
 }
 
-private suspend fun unpackNativeLibraries(
+private fun unpackNativeLibraries(
   sourceFile: Path,
   paths: List<String>,
+  libDirPrefix: String,
   dryRun: Boolean,
   context: BuildContext,
-  toRelativePath: (String, String) -> String,
 ) {
   val signTool = context.proprietaryBuildTools.signTool
   val unsignedFiles = TreeMap<OsFamily, MutableList<Path>>()
@@ -173,6 +179,7 @@ private suspend fun unpackNativeLibraries(
   val sourceFileName = sourceFile.name
   check(sourceFileName.startsWith("$libName-")) { "Unexpected source file name (should start with '$libName-'): $sourceFileName" }
   val libVersion = sourceFileName.removePrefix("$libName-").substringBeforeLast('.')
+  val libDir = "$libDirPrefix/${context.productProperties.presignedNativeLibs.getOrDefault(libName, libName)}"
 
   // we need to keep async-profiler agents for all platforms to support remote target profiling,
   // as a suitable agent is copied to a remote machine
@@ -231,7 +238,7 @@ private suspend fun unpackNativeLibraries(
       context.addDistFile(
         DistFile(
           content = LocalDistFileContent(file = file, isExecutable = isExecutable),
-          relativePath = toRelativePath(libName, getRelativePath(libName = libName, arch = arch, fileName = fileName, path = path)),
+          relativePath = "$libDir/${nativeLibraryRelativePath(libName = libName, arch = arch, fileName = fileName, path = path)}",
           os = os.takeUnless { allPlatformsRequired },
           arch = arch.takeUnless { allPlatformsRequired },
         )
@@ -241,23 +248,24 @@ private suspend fun unpackNativeLibraries(
 
   if (signTool.signNativeFileMode == SignNativeFileMode.PREPARE) {
     val versionOption = mapOf(SignTool.LIB_VERSION_OPTION_NAME to libVersion)
-    coroutineScope {
-      launch(CoroutineName("signing macOS binaries")) {
+    taskScope {
+      fork("signing macOS binaries") {
         unsignedFiles.get(OsFamily.MACOS)?.let {
           signMacBinaries(files = it, context = context, additionalOptions = versionOption, checkPermissions = false)
         }
       }
-      launch(CoroutineName("signing Windows binaries")) {
+      fork("signing Windows binaries") {
         unsignedFiles.get(OsFamily.WINDOWS)?.let {
           @Suppress("SpellCheckingInspection")
           context.signFiles(
             it, BuildOptions.WIN_SIGN_OPTIONS + versionOption + persistentMapOf(
-            "contentType" to "application/x-exe",
-            "jsign_replace" to "true"
-          )
+              "contentType" to "application/x-exe",
+              "jsign_replace" to "true"
+            )
           )
         }
       }
+      join()
     }
   }
 }
@@ -319,7 +327,7 @@ private fun determineArch(os: OsFamily, path: CharSequence): NativeFileArchitect
 }
 
 // each library has own implementation of handling path property
-private fun getRelativePath(libName: String, arch: JvmArchitecture?, fileName: String, path: String): String {
+internal fun nativeLibraryRelativePath(libName: String, arch: JvmArchitecture?, fileName: String, path: String): String {
   when (libName) {
     "async-profiler" -> {
       return if (arch == null) fileName else "${arch.dirName}/$fileName"
@@ -333,7 +341,9 @@ private fun getRelativePath(libName: String, arch: JvmArchitecture?, fileName: S
   }
 }
 
-internal fun getLibNameBySourceFile(sourceFile: Path): String {
+/** The Maven artifact name of a library file: the dash-separated parts of the file name before the first part with a dot. */
+@ApiStatus.Internal
+fun getLibNameBySourceFile(sourceFile: Path): String {
   val fileName = sourceFile.fileName.toString()
   return fileName.split('-').takeWhile { !it.contains('.') }.joinToString(separator = "-")
 }

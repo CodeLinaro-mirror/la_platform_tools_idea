@@ -46,6 +46,8 @@ import org.jetbrains.annotations.ApiStatus
  *   }
  * }
  * ```
+
+ * Also note that for [CustomImlComponentService] to work, the [com.intellij.platform.workspace.jps.serialization.CustomImlComponentNameContributor] extension point must be implemented.
  */
 @ApiStatus.Experimental
 interface CustomImlComponentService {
@@ -62,7 +64,7 @@ interface CustomImlComponentService {
   /**
    * Serializes and stores a persistent component value for the given module. Requires write action.
    */
-  @RequiresWriteLock
+  @RequiresWriteLock(generateAssertion = false /* IJPL-115548 */)
   fun <T> setComponentValueBlocking(module: Module, componentName: String, component: T)
 
   companion object {

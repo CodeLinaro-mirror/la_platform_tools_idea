@@ -1,31 +1,40 @@
 package com.intellij.python.pyproject.model.spi
 
 import com.intellij.openapi.extensions.ExtensionPointName
-import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.python.community.common.tools.ToolId
+import com.intellij.python.pyproject.PyProjectIssue
+import com.intellij.python.pyproject.PyProjectTable
 import com.intellij.python.pyproject.dependencies.spi.PyDependencyGroupLocator
+import com.intellij.python.pyproject.psi.spi.PyProjectTomlPathLocator
+import com.intellij.python.sdk.backend.PythonInterpreter
+import com.intellij.python.sdk.backend.flavor
 import com.jetbrains.python.PyToolUIInfo
 import com.jetbrains.python.sdk.flavors.PythonSdkFlavor
-import com.jetbrains.python.sdk.pySdkAdditionalData
 import com.jetbrains.python.venvReader.Directory
 import org.apache.tuweni.toml.TomlTable
 
 /**
- * Manager provides various specific extensions to `pyproject.toml` (i.e.: uv-specific) and coupled with python SDK with additional data.
- * It can also be created by [forSdk].
+ * Manager provides various specific extensions to `pyproject.toml` (i.e.: uv-specific) and coupled with the flavor of a Python interpreter.
+ * [forPythonInterpreter] finds the one of an interpreter.
  */
-interface PyProjectManager : PyDependencyGroupLocator {
+interface PyProjectManager : PyProjectCreator, PyDependencyGroupLocator, PyProjectTomlPathLocator {
   companion object {
+    /**
+     * The registered managers, in load order. `DefaultPyProjectManager` is always the last element,
+     * because `intellij.python.pyproject.xml` registers it with `order="last"`.
+     */
     internal val EP = ExtensionPointName.create<PyProjectManager>("com.intellij.python.pyproject.model.pyprojectmanager")
 
-    fun forSdk(sdk: Sdk): PyProjectManager? {
-      val additionalData = sdk.pySdkAdditionalData
-      return EP.extensionList.firstOrNull { it.flavorDataType.isInstance(additionalData.flavor) }
+    /** The manager of the tool that set up [interpreter], or `DefaultPyProjectManager` when no tool did. */
+    fun forPythonInterpreter(interpreter: PythonInterpreter): PyProjectManager {
+      val flavor = interpreter.flavor
+      return EP.extensionList.firstOrNull { it.flavorDataType.isInstance(flavor) }
+             ?: error("No PyProjectManager accepts the flavor $flavor. DefaultPyProjectManager must have order=\"last\".")
     }
   }
 
   /**
-   * To be used by [forSdk]
+   * To be used by [forPythonInterpreter]
    */
   val flavorDataType: Class<out PythonSdkFlavor<*>>
 
@@ -52,7 +61,12 @@ interface PyProjectManager : PyDependencyGroupLocator {
   ): ProjectStructureInfo?
 
   /**
-   * Tool that supports build systems might return additional src directories
+   * Tool that supports build systems might return additional src directories.
+   *
+   * [toml] is the `pyproject.toml` content, [projectRoot] is the directory that holds it.
+   * Report the directories the build backend declares as source roots, and use [resolveSrcRoots]
+   * to turn the toml paths into them. A non-empty answer also makes this tool a participant of the project,
+   * so answer only for a table this tool owns.
    */
   suspend fun getSrcRoots(toml: TomlTable, projectRoot: Directory): Set<Directory>
 
@@ -60,4 +74,13 @@ interface PyProjectManager : PyDependencyGroupLocator {
    * Tool-specific toml sections where dependencies may be specified
    */
   fun getTomlDependencySpecifications(): List<TomlDependencySpecification>
+
+  /**
+   * [PyProjectTable] usually represents `[project]` table, but when it doesn't exist, this method is called as a fallback.
+   * @param pyProjectToml is `pyproject.toml` content
+   * @param fallbackName is a project name for virtual projects (e.g. directory name)
+   * @param issues is a sink to report issues from [PyProjectTable] creation.
+   */
+  fun getAlternativeProjectTable(pyProjectToml: TomlTable, fallbackName: String, issues: MutableList<PyProjectIssue>): PyProjectTable? =
+    null
 }

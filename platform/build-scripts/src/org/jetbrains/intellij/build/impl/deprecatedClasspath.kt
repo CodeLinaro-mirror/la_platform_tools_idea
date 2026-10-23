@@ -2,15 +2,14 @@
 package org.jetbrains.intellij.build.impl
 
 import com.intellij.openapi.util.JDOMUtil
-import kotlinx.coroutines.CoroutineName
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
+import com.intellij.platform.buildScripts.concurrency.taskScope
 import org.jetbrains.intellij.build.BuildContext
 import org.jetbrains.intellij.build.MAVEN_REPO
 import org.jetbrains.intellij.build.PLUGIN_XML_RELATIVE_PATH
 import org.jetbrains.intellij.build.classPath.DescriptorSearchScope
-import org.jetbrains.intellij.build.classPath.PluginBuildDescriptor
+import org.jetbrains.intellij.build.classPath.PluginBuildResult
 import org.jetbrains.intellij.build.classPath.XIncludeElementResolverImpl
+import org.jetbrains.intellij.build.classPath.descriptorResolveContext
 import org.jetbrains.intellij.build.classPath.resolveIncludes
 import org.jetbrains.intellij.build.getUnprocessedPluginXmlContent
 import org.jetbrains.intellij.build.impl.projectStructureMapping.CustomAssetEntry
@@ -22,9 +21,9 @@ import java.nio.file.Path
 import kotlin.io.path.invariantSeparatorsPathString
 
 @Deprecated("Do not use it")
-suspend fun createIdeClassPath(platformLayout: PlatformLayout, context: BuildContext): Collection<String> {
+fun createIdeClassPath(platformLayout: PlatformLayout, context: BuildContext): Collection<String> {
   val contentReport = generateProjectStructureMapping(platformLayout = platformLayout, context = context)
-  val pluginLayouts = context.productProperties.productLayout.pluginLayouts
+  val pluginLayouts = context.productProperties.productLayout.pluginLayouts.value
   val classPath = LinkedHashSet<Path>()
 
   val libDir = context.paths.distAllDir.resolve("lib")
@@ -92,31 +91,32 @@ private fun sortEntries(unsorted: Collection<DistributionFileEntry>): List<Distr
 // also, put libraries from Maven repo ahead of others, for them to not depend on the lexicographical order of Maven repo and source path
 private fun isFromLocalMavenRepo(path: Path) = path.startsWith(MAVEN_REPO)
 
-private suspend fun generateProjectStructureMapping(
+private fun generateProjectStructureMapping(
   platformLayout: PlatformLayout,
   context: BuildContext,
-): Pair<List<DistributionFileEntry>, List<PluginBuildDescriptor>> = coroutineScope {
+): Pair<List<DistributionFileEntry>, List<PluginBuildResult>> = taskScope {
   val moduleOutputPatcher = ModuleOutputPatcher()
-  val libDirLayout = async(CoroutineName("layout platform distribution")) {
-    sortEntries(JarPackager.pack(
-      includedModules = platformLayout.includedModules,
-      outputDir = context.paths.distAllDir.resolve(LIB_DIRECTORY),
-      isRootDir = true,
-      layout = platformLayout,
-      platformLayout = platformLayout,
-      moduleOutputPatcher = moduleOutputPatcher,
-      searchableOptionSet = null,
-      dryRun = true,
-      descriptorCache = null,
-      context = context,
-    ))
+  val libDirLayout = fork("layout platform distribution") {
+    sortEntries(
+      JarPackager.pack(
+        includedModules = platformLayout.includedModules,
+        outputDir = context.paths.distAllDir.resolve(LIB_DIRECTORY),
+        layout = platformLayout,
+        platformLayout = platformLayout,
+        moduleOutputPatcher = moduleOutputPatcher,
+        searchableOptionSet = null,
+        dryRun = true,
+        descriptorCache = null,
+        context = context,
+      )
+    )
   }
 
   val descriptorCacheContainer = DescriptorCacheContainer()
   val platformDescriptorCache = descriptorCacheContainer.forPlatform(platformLayout)
 
   val allPlugins = getPluginLayoutsByJpsModuleNames(modules = context.getBundledPluginModules(), productLayout = context.productProperties.productLayout)
-  val entries = mutableListOf<PluginBuildDescriptor>()
+  val entries = mutableListOf<PluginBuildResult>()
   for (pluginLayout in allPlugins) {
     if (!satisfiesBundlingRequirements(plugin = pluginLayout, osFamily = null, arch = null, context = context)) {
       continue
@@ -134,11 +134,11 @@ private suspend fun generateProjectStructureMapping(
         DescriptorSearchScope(pluginLayout.includedModules.mapTo(LinkedHashSet()) { it.moduleName }, pluginDescriptorCache),
         DescriptorSearchScope(platformLayout.includedModules.mapTo(LinkedHashSet()) { it.moduleName }, platformDescriptorCache),
       ),
-      context = context
+      context = descriptorResolveContext(context),
     )
     resolveIncludes(element = element, elementResolver = xIncludeResolver)
 
-    filterAndProcessContentModules(rootElement = element, pluginMainModuleName = pluginLayout.mainModule, context = context) { _, _, _ ->
+    filterAndProcessContentModules(rootElement = element, pluginMainModuleName = pluginLayout.mainModule, context = context) { _, _, _, _ ->
       // no need to embed modules
     }
 
@@ -148,7 +148,6 @@ private suspend fun generateProjectStructureMapping(
     val pluginEntries = JarPackager.pack(
       includedModules = pluginLayout.includedModules,
       outputDir = outputDir,
-      isRootDir = false,
       layout = pluginLayout,
       platformLayout = platformLayout,
       moduleOutputPatcher = moduleOutputPatcher,
@@ -157,7 +156,7 @@ private suspend fun generateProjectStructureMapping(
       descriptorCache = pluginDescriptorCache,
       context = context,
     )
-    entries.add(PluginBuildDescriptor(dir = targetDir, os = null, arch = null, layout = pluginLayout, distribution = pluginEntries))
+    entries.add(PluginBuildResult(mainModule = pluginLayout.mainModule, dir = targetDir, os = null, arch = null, distribution = pluginEntries))
   }
-  libDirLayout.await() to entries
+  join { libDirLayout.get() to entries }
 }

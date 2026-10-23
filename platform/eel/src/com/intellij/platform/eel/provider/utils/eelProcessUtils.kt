@@ -2,7 +2,6 @@
 package com.intellij.platform.eel.provider.utils
 
 import com.intellij.platform.eel.EelProcess
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
@@ -13,6 +12,9 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import org.jetbrains.annotations.ApiStatus
 import java.io.ByteArrayOutputStream
+import java.util.logging.Level
+import java.util.logging.Logger
+import kotlin.coroutines.CoroutineContext
 
 /**
  * To simplify [EelProcessExecutionResult] delegation
@@ -43,6 +45,9 @@ class EelProcessExecutionResult(
  * Function that awaits the completion of an [EelProcess] and retrieves its execution result,
  * including the exit code, standard output, and standard error streams.
  *
+ * If the function cannot read a stream (for example, the pipe is closed), it does not throw.
+ * The result then contains only the data that was read before the error.
+ *
  * @example
  * ```kotlin
  * val process = eelApi.exec.executeProcess("ls", "-la").getOrThrow()
@@ -62,11 +67,11 @@ suspend fun EelProcess.awaitProcessResult(): EelProcessExecutionResult {
       ByteArrayOutputStream().use { err ->
         coroutineScope {
           launch {
-            copy(stdout, out.asEelChannel()) // TODO: process errors
+            ignoreCopyError("stdout") { copy(stdout, out.asEelChannel()) }
           }
 
           launch {
-            copy(stderr, err.asEelChannel()) // TODO: process errors
+            ignoreCopyError("stderr") { copy(stderr, err.asEelChannel()) }
           }
         }
 
@@ -76,18 +81,37 @@ suspend fun EelProcess.awaitProcessResult(): EelProcessExecutionResult {
   }
 }
 
+private val LOG = Logger.getLogger("com.intellij.platform.eel.provider.utils.EelProcessUtils")
+
+private inline fun ignoreCopyError(streamName: String, copyCall: () -> Unit) {
+  try {
+    copyCall()
+  }
+  catch (e: CopyError) {
+    LOG.log(Level.INFO, "Cannot read $streamName of the process, the result can be incomplete", e)
+  }
+}
+
 @OptIn(ExperimentalCoroutinesApi::class)
 internal val unlimitedDispatcher = Dispatchers.IO.limitedParallelism(parallelism = Int.MAX_VALUE)
 
 // TODO: Move com.intellij.util.io.ProcessKt.computeDetached to intellij.platform.util.coroutines module, then remove this duplicate
 @DelicateCoroutinesApi
-internal suspend fun <T> computeDetached(action: suspend CoroutineScope.() -> T): T {
-  val deferred = GlobalScope.async(unlimitedDispatcher, block = action)
+internal suspend fun <T> computeDetached(dispatcher: CoroutineContext = unlimitedDispatcher, action: suspend CoroutineScope.() -> T): T {
+  val deferred = GlobalScope.async(dispatcher, block = action)
   try {
     return deferred.await()
   }
-  catch (ce: CancellationException) {
-    deferred.cancel(ce)
+  catch (ce: java.util.concurrent.CancellationException) {
+    // `Job.cancel` calls completion handlers synchronously on the calling thread.
+    // When the action runs `runInterruptible`, its internal completion handler interrupts the worker thread.
+    // If the worker thread blocks in a Java NIO channel, the JVM interrupt hook calls channel.close() synchronously.
+    // On Windows, closing a file descriptor with an active synchronous pipe read (such as native ReadFile)
+    // blocks until that read completes.
+    // Calling `cancel` in a detached coroutine prevents such synchronous cancellation hooks from freezing the caller.
+    GlobalScope.launch(dispatcher) {
+      deferred.cancel(ce)
+    }
     throw ce
   }
 }

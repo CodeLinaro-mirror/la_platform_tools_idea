@@ -23,6 +23,7 @@ import com.intellij.psi.PsiFile;
 import com.intellij.psi.impl.source.PostprocessReformattingAspect;
 import com.intellij.psi.impl.source.tree.injected.InjectedLanguageManagerImpl;
 import com.intellij.psi.impl.source.tree.injected.InjectedLanguageUtil;
+import com.intellij.psi.impl.source.tree.mvcc.InternalPsiVersioning;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.FileContentUtil;
 import com.intellij.util.InjectionUtils;
@@ -63,6 +64,9 @@ public final class PsiDocumentManagerImpl extends PsiDocumentManagerBase {
 
   @Override
   public void assertFileIsFromCorrectProject(@NotNull VirtualFile virtualFile) {
+    if (InternalPsiVersioning.isInsideVersioningButNotLocks()) {
+      return;
+    }
     if (myUnitTestMode && virtualFile.isValid()) {
       Project preferredProject = ProjectLocator.getPreferredProject(virtualFile);
       Collection<Project> projects = preferredProject == null ? ProjectLocator.getInstance().getProjectsForFile(virtualFile)
@@ -93,11 +97,11 @@ public final class PsiDocumentManagerImpl extends PsiDocumentManagerBase {
 
 
   @Override
-  protected boolean finishCommitInWriteAction(@NotNull Document document,
-                                              @NotNull List<? extends BooleanRunnable> finishProcessors,
-                                              @NotNull List<? extends BooleanRunnable> reparseInjectedProcessors,
-                                              boolean synchronously) {
-    boolean success = super.finishCommitInWriteAction(document, finishProcessors, reparseInjectedProcessors, synchronously);
+  protected boolean finishCommitWithPublishing(@NotNull Document document,
+                                               @NotNull List<? extends BooleanRunnable> finishProcessors,
+                                               @NotNull List<? extends BooleanRunnable> reparseInjectedProcessors,
+                                               @NotNull DocumentCommitKind commitKind) {
+    boolean success = super.finishCommitWithPublishing(document, finishProcessors, reparseInjectedProcessors, commitKind);
     PsiFile file = getCachedPsiFile(document);
     if (file != null) {
       InjectedLanguageManagerImpl.clearInvalidInjections(file);

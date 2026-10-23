@@ -1,5 +1,5 @@
 // "Surround with null check" "true"
-// K2_ERROR: Assignment type mismatch: actual type is 'String?', but 'String' was expected.
+// K2_ERROR: ASSIGNMENT_TYPE_MISMATCH
 
 fun foo(s: String?) {
     var ss: String = ""
@@ -7,5 +7,4 @@ fun foo(s: String?) {
         ss = s
     }
 }
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.SurroundWithNullCheckFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.SurroundWithNullCheckFixFactory$SurroundWithNullCheckFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.SurroundWithNullCheckFixFactory$SurroundWithNullCheckFix

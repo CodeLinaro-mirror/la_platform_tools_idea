@@ -3,27 +3,26 @@ package com.intellij.ide.plugins
 
 import com.intellij.ide.IdeBundle
 import com.intellij.notification.NotificationType
-import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.AnAction
-import com.intellij.openapi.application.EDT
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.progress.runBlockingMaybeCancellable
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.updateSettings.impl.UpdateCheckerFacade
 import com.intellij.openapi.util.NlsContexts
 import com.intellij.platform.ide.progress.ModalTaskOwner
 import com.intellij.platform.ide.progress.TaskCancellation
 import com.intellij.platform.ide.progress.runWithModalProgressBlocking
 import com.intellij.platform.ide.progress.withModalProgress
+import com.intellij.platform.productMode.ProductMode
 import com.intellij.util.ObjectUtils
+import com.intellij.util.PlatformUtils
 import com.intellij.util.concurrency.annotations.RequiresBackgroundThread
 import com.intellij.util.concurrency.annotations.RequiresEdt
 import com.intellij.util.concurrency.annotations.RequiresReadLockAbsence
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import org.jetbrains.annotations.ApiStatus
+import org.jetbrains.annotations.Nls
 import org.jetbrains.annotations.NonNls
-import javax.swing.JComponent
 
 private val LOG = Logger.getInstance(DynamicPlugins::class.java)
 
@@ -44,7 +43,7 @@ object DynamicPlugins {
    * @param pretendEnabled plugins that should be treated as not disabled
    * @param pretendDisabled plugins that should be treated as disabled
    */
-  @RequiresReadLockAbsence
+  @RequiresReadLockAbsence(generateAssertion = false /* IJPL-115548 */)
   @ApiStatus.Internal
   suspend fun checkCanReconfigureWithoutRestart(
     addNewCustomPlugins: List<PluginMainDescriptor>,
@@ -53,16 +52,15 @@ object DynamicPlugins {
     pretendEnabled: List<PluginId>,
     pretendDisabled: List<PluginId>,
   ): Boolean {
-    val dynamicPlugins = DynamicPluginsSupport.getInstance() ?: error("new dynamic plugins support is disabled")
+    val dynamicPlugins = DynamicPluginsSupport.getInstance()
     val newState = computeNewPluginsState(
       include = addNewCustomPlugins,
       exclude = forceRemovePlugins,
       forceExclude = true,
       pretendEnabled = pretendEnabled,
       pretendDisabled = pretendDisabled,
-    )
-    // old plugin set resolver is already dropped, so with new dynamic plugins support this thing is expected to be always present
-    val resolvedPluginSet = newState.resolvedPluginSet ?: error("resolved plugin set is not set")
+    ) ?: return false
+    val resolvedPluginSet = newState.resolvedPluginSet
     extraStateValidator.validate(resolvedPluginSet)?.let {
       LOG.info("new plugins state did not meet expectations: $it")
       return false
@@ -81,62 +79,56 @@ object DynamicPlugins {
    * @param addNewCustomPlugins newly installed/updated plugins that weren't in the context before
    * @param forceRemovePlugins plugins that should be excluded from the context completely (so it appears as they don't exist at all anymore)
    * @param extraStateValidator additional checks of the target state can be done there (e.g. that a certain plugin loads). See [expectPluginsState]
+   * @param targetProductMode when set, the process moves into this product mode as a part of this reconfiguration.
+   *   A mode change takes effect only through the module set that the mode implies, so the two never happen apart.
+   *   The mode moves first, because the recalculation and the descriptor parsing below both read the current mode.
+   *   Nothing happens and the result is `false` when the mode cannot move to [targetProductMode], which is also what
+   *   a second call with the same target does.
    */
-  @RequiresReadLockAbsence
+  @RequiresReadLockAbsence(generateAssertion = false /* IJPL-115548 */)
   @ApiStatus.Internal
   suspend fun reconfigure(
     project: Project?,
     addNewCustomPlugins: List<PluginMainDescriptor>,
     forceRemovePlugins: List<PluginMainDescriptor>,
     extraStateValidator: PluginStateValidator,
+    targetProductMode: ProductMode? = null,
   ): Boolean {
     LOG.trace("dynamic plugins reconfiguration attempt")
-
-    DynamicPluginsSupport.getInstance()?.let { instance ->
-      val title = when {
-        forceRemovePlugins.isEmpty() -> when {
-          addNewCustomPlugins.isEmpty() -> IdeBundle.message("modal.progress.title.reconfiguring.plugins")
-          addNewCustomPlugins.size == 1 -> IdeBundle.message("modal.progress.title.loading.plugin", addNewCustomPlugins[0].name)
-          else -> IdeBundle.message("modal.progress.title.loading.plugins")
-        }
-        addNewCustomPlugins.isEmpty() -> when {
-          // forceRemovePlugins.isEmpty() -> already covered above
-          forceRemovePlugins.size == 1 -> IdeBundle.message("modal.progress.title.unloading.plugin", forceRemovePlugins[0].name)
-          else -> IdeBundle.message("modal.progress.title.unloading.plugins")
-        }
-        else -> IdeBundle.message("modal.progress.title.reconfiguring.plugins")
-      }
-      return withModalProgress(
-        project?.let { ModalTaskOwner.project(it) } ?: ModalTaskOwner.guess(),
-        title,
-        cancellation = TaskCancellation.nonCancellable()
-      ) {
-        val newState = computeNewPluginsState(addNewCustomPlugins, forceRemovePlugins, forceExclude = true)
-        // old plugin set resolver is already dropped, so with new dynamic plugins support this thing is expected to be always present
-        val resolvedPluginSet = newState.resolvedPluginSet ?: error("resolved plugin set is not set")
-        extraStateValidator.validate(resolvedPluginSet)?.let {
-          LOG.info("new plugins state did not meet expectations: $it")
-          return@withModalProgress false
-        }
-        val result = instance.performDynamicReconfiguration(newState)
-        result is DynamicPluginsReconfigurationResult.Success
+    if (targetProductMode != null) {
+      val currentMode = PluginManagerCore.getPluginSet().initContext.productMode
+      if (!CurrentProductMode.transitionTo(targetProductMode)) {
+        LOG.info("The product mode does not move to '${targetProductMode.id}' from '${currentMode.id}', so no plugin is reconfigured")
+        return false
       }
     }
-
-    return withContext(Dispatchers.EDT) {
-      if (forceRemovePlugins.isNotEmpty()) {
-        val unloaded = DynamicPluginsLegacyImpl.unloadPlugins(forceRemovePlugins, project = project)
-        if (!unloaded) {
-          return@withContext false
-        }
+    val title = when {
+      forceRemovePlugins.isEmpty() -> when {
+        addNewCustomPlugins.isEmpty() -> IdeBundle.message("modal.progress.title.reconfiguring.plugins")
+        addNewCustomPlugins.size == 1 -> IdeBundle.message("modal.progress.title.loading.plugin", addNewCustomPlugins[0].name)
+        else -> IdeBundle.message("modal.progress.title.loading.plugins")
       }
-      if (addNewCustomPlugins.isNotEmpty()) {
-        val loaded = DynamicPluginsLegacyImpl.loadPlugins(addNewCustomPlugins, project)
-        if (!loaded) {
-          return@withContext false
-        }
+      addNewCustomPlugins.isEmpty() -> when {
+        // forceRemovePlugins.isEmpty() -> already covered above
+        forceRemovePlugins.size == 1 -> IdeBundle.message("modal.progress.title.unloading.plugin", forceRemovePlugins[0].name)
+        else -> IdeBundle.message("modal.progress.title.unloading.plugins")
       }
-      true
+      else -> IdeBundle.message("modal.progress.title.reconfiguring.plugins")
+    }
+    return withModalProgress(
+      project?.let { ModalTaskOwner.project(it) } ?: ModalTaskOwner.guess(),
+      title,
+      cancellation = TaskCancellation.nonCancellable()
+    ) {
+      val newState = computeNewPluginsState(addNewCustomPlugins, forceRemovePlugins, forceExclude = true)
+                     ?: return@withModalProgress false
+      val resolvedPluginSet = newState.resolvedPluginSet
+      extraStateValidator.validate(resolvedPluginSet)?.let {
+        LOG.info("new plugins state did not meet expectations: $it")
+        return@withModalProgress false
+      }
+      val result = DynamicPluginsSupport.getInstance().performDynamicReconfiguration(newState)
+      result is DynamicPluginsReconfigurationResult.Success
     }
   }
 
@@ -148,17 +140,17 @@ object DynamicPlugins {
     expectNotToLoad: List<PluginId> = emptyList(),
   ): PluginStateValidator = validator@{ state ->
     for (id in expectToLoad) {
-      val plugin = state.originalPluginSet.resolvePluginId(id)
+      val plugin = state.candidateSet.resolvePluginId(id)
       if (plugin == null) {
         return@validator "plugin $id was expected to be loaded but is not found in the target plugin state"
       }
       if (state.isExcluded(plugin)) {
-        return@validator "${plugin.shortLogDescription} was expected to be loaded but was excluded (disabled plugins may appear as unresolved):\n" + // FIXME IJPL-246161
-                         "${PluginInitializationDiagnosticUtils.buildSingleExclusionChainMessage(state, emptyMap(), plugin)}"
+        return@validator "${plugin.shortLogDescription} was expected to be loaded but was excluded:\n" +
+                         "${PluginInitializationDiagnosticUtils.buildSingleExclusionChainMessage(state, plugin)}"
       }
     }
     for (id in expectNotToLoad) {
-      val plugin = state.originalPluginSet.resolvePluginId(id)
+      val plugin = state.candidateSet.resolvePluginId(id)
       if (plugin != null && state.isResolved(plugin)) {
         return@validator "${plugin.shortLogDescription} was expected not to be loaded but was included in the module graph"
       }
@@ -170,48 +162,54 @@ object DynamicPlugins {
    * @return true if the requested enabled state was applied without restart, false if restart is required
    */
   @RequiresEdt(generateAssertion = false)
-  fun loadPlugins(plugins: List<PluginMainDescriptor>, project: Project?): Boolean {
-    DynamicPluginsSupport.getInstance()?.let { instance ->
-      return runWithModalProgressBlocking(
-        project?.let { ModalTaskOwner.project(it) } ?: ModalTaskOwner.guess(),
-        IdeBundle.message("modal.progress.title.loading.plugins"),
-        cancellation = TaskCancellation.nonCancellable()
-      ) {
-        val newState = computeNewPluginsState(plugins, emptyList())
-        // old plugin set resolver is already dropped, so with new dynamic plugins support this thing is expected to be always present
-        val resolvedPluginSet = newState.resolvedPluginSet ?: error("resolved plugin set is not set")
-        expectPluginsState(expectToLoad = plugins.map { it.pluginId }).validate(resolvedPluginSet)?.let {
-          LOG.info("new plugins state did not meet expectations: $it")
-          return@runWithModalProgressBlocking false
-        }
-        val result = instance.performDynamicReconfiguration(newState)
-        result is DynamicPluginsReconfigurationResult.Success
+  fun loadPlugins(plugins: List<PluginMainDescriptor>, project: Project?, progressTitle: @Nls String? = null): Boolean {
+    return runWithModalProgressBlocking(
+      project?.let { ModalTaskOwner.project(it) } ?: ModalTaskOwner.guess(),
+      progressTitle ?: defaultLoadingTitle(plugins),
+      cancellation = TaskCancellation.nonCancellable()
+    ) {
+      val newState = computeNewPluginsState(plugins, emptyList())
+                     ?: return@runWithModalProgressBlocking false
+      val resolvedPluginSet = newState.resolvedPluginSet
+      expectPluginsState(expectToLoad = plugins.map { it.pluginId }).validate(resolvedPluginSet)?.let {
+        LOG.info("new plugins state did not meet expectations: $it")
+        return@runWithModalProgressBlocking false
       }
+      val result = DynamicPluginsSupport.getInstance().performDynamicReconfiguration(newState)
+      result is DynamicPluginsReconfigurationResult.Success
     }
-    return DynamicPluginsLegacyImpl.loadPlugins(plugins, project)
+  }
+
+  /**
+   * Enabling the Ultimate plugin is a subscription activation from the user's point of view
+   */
+  private fun defaultLoadingTitle(plugins: List<PluginMainDescriptor>): @NlsContexts.ModalProgressTitle String {
+    return if (plugins.any { it.pluginId == PluginManagerCore.ULTIMATE_PLUGIN_ID }) {
+      IdeBundle.message("modal.progress.title.activating.ultimate.subscription", PlatformUtils.freeIdePaidVersionName())
+    }
+    else {
+      IdeBundle.message("modal.progress.title.loading.plugins")
+    }
   }
 
   @RequiresEdt(generateAssertion = false)
   @JvmOverloads
   fun loadPlugin(pluginDescriptor: PluginMainDescriptor, project: Project? = null): Boolean {
-    DynamicPluginsSupport.getInstance()?.let { instance ->
-      return runWithModalProgressBlocking(
-        project?.let { ModalTaskOwner.project(it) } ?: ModalTaskOwner.guess(),
-        IdeBundle.message("modal.progress.title.loading.plugin", pluginDescriptor.name),
-        cancellation = TaskCancellation.nonCancellable()
-      ) {
-        val newState = computeNewPluginsState(listOf(pluginDescriptor), emptyList())
-        // old plugin set resolver is already dropped, so with new dynamic plugins support this thing is expected to be always present
-        val resolvedPluginSet = newState.resolvedPluginSet ?: error("resolved plugin set is not set")
-        expectPluginsState(expectToLoad = listOf(pluginDescriptor.pluginId)).validate(resolvedPluginSet)?.let {
-          LOG.info("new plugins state did not meet expectations: $it")
-          return@runWithModalProgressBlocking false
-        }
-        val result = instance.performDynamicReconfiguration(newState)
-        result is DynamicPluginsReconfigurationResult.Success
+    return runWithModalProgressBlocking(
+      project?.let { ModalTaskOwner.project(it) } ?: ModalTaskOwner.guess(),
+      IdeBundle.message("modal.progress.title.loading.plugin", pluginDescriptor.name),
+      cancellation = TaskCancellation.nonCancellable()
+    ) {
+      val newState = computeNewPluginsState(listOf(pluginDescriptor), emptyList())
+                     ?: return@runWithModalProgressBlocking false
+      val resolvedPluginSet = newState.resolvedPluginSet
+      expectPluginsState(expectToLoad = listOf(pluginDescriptor.pluginId)).validate(resolvedPluginSet)?.let {
+        LOG.info("new plugins state did not meet expectations: $it")
+        return@runWithModalProgressBlocking false
       }
+      val result = DynamicPluginsSupport.getInstance().performDynamicReconfiguration(newState)
+      result is DynamicPluginsReconfigurationResult.Success
     }
-    return DynamicPluginsLegacyImpl.loadPlugin(pluginDescriptor, project)
   }
 
   /**
@@ -221,95 +219,41 @@ object DynamicPlugins {
   fun unloadPlugins(
     plugins: List<PluginMainDescriptor>,
     project: Project? = null,
-    parentComponent: JComponent? = null,
-    options: UnloadPluginOptions = UnloadPluginOptions(disable = true),
   ): Boolean {
-    DynamicPluginsSupport.getInstance()?.let { instance ->
-      return runWithModalProgressBlocking(
-        project?.let { ModalTaskOwner.project(it) } ?: ModalTaskOwner.guess(),
-        IdeBundle.message("modal.progress.title.unloading.plugins"),
-        cancellation = TaskCancellation.nonCancellable()
-      ) {
-        val newState = computeNewPluginsState(emptyList(), plugins)
-        // old plugin set resolver is already dropped, so with new dynamic plugins support this thing is expected to be always present
-        val resolvedPluginSet = newState.resolvedPluginSet ?: error("resolved plugin set is not set")
-        expectPluginsState(expectNotToLoad = plugins.map { it.pluginId }).validate(resolvedPluginSet)?.let {
-          LOG.info("new plugins state did not meet expectations: $it")
-          return@runWithModalProgressBlocking false
-        }
-        val result = instance.performDynamicReconfiguration(newState)
-        result is DynamicPluginsReconfigurationResult.Success
+    return runWithModalProgressBlocking(
+      project?.let { ModalTaskOwner.project(it) } ?: ModalTaskOwner.guess(),
+      IdeBundle.message("modal.progress.title.unloading.plugins"),
+      cancellation = TaskCancellation.nonCancellable()
+    ) {
+      val newState = computeNewPluginsState(emptyList(), plugins)
+                     ?: return@runWithModalProgressBlocking false
+      val resolvedPluginSet = newState.resolvedPluginSet
+      expectPluginsState(expectNotToLoad = plugins.map { it.pluginId }).validate(resolvedPluginSet)?.let {
+        LOG.info("new plugins state did not meet expectations: $it")
+        return@runWithModalProgressBlocking false
       }
+      val result = DynamicPluginsSupport.getInstance().performDynamicReconfiguration(newState)
+      result is DynamicPluginsReconfigurationResult.Success
     }
-    return DynamicPluginsLegacyImpl.unloadPlugins(plugins, project, parentComponent, options)
   }
 
   @RequiresEdt(generateAssertion = false)
-  @JvmOverloads
-  fun unloadPlugin(pluginDescriptor: PluginMainDescriptor,
-                   options: UnloadPluginOptions = UnloadPluginOptions(disable = true)): Boolean {
-    DynamicPluginsSupport.getInstance()?.let { instance ->
-      return runWithModalProgressBlocking(
-        ModalTaskOwner.guess(),
-        IdeBundle.message("modal.progress.title.unloading.plugin", pluginDescriptor.name),
-        cancellation = TaskCancellation.nonCancellable()
-      ) {
-        val newState = computeNewPluginsState(emptyList(), listOf(pluginDescriptor))
-        // old plugin set resolver is already dropped, so with new dynamic plugins support this thing is expected to be always present
-        val resolvedPluginSet = newState.resolvedPluginSet ?: error("resolved plugin set is not set")
-        expectPluginsState(expectNotToLoad = listOf(pluginDescriptor.pluginId)).validate(resolvedPluginSet)?.let {
-          LOG.info("new plugins state did not meet expectations: $it")
-          return@runWithModalProgressBlocking false
-        }
-        val result = instance.performDynamicReconfiguration(newState)
-        result is DynamicPluginsReconfigurationResult.Success
+  fun unloadPlugin(pluginDescriptor: PluginMainDescriptor): Boolean {
+    return runWithModalProgressBlocking(
+      ModalTaskOwner.guess(),
+      IdeBundle.message("modal.progress.title.unloading.plugin", pluginDescriptor.name),
+      cancellation = TaskCancellation.nonCancellable()
+    ) {
+      val newState = computeNewPluginsState(emptyList(), listOf(pluginDescriptor))
+                     ?: return@runWithModalProgressBlocking false
+      val resolvedPluginSet = newState.resolvedPluginSet
+      expectPluginsState(expectNotToLoad = listOf(pluginDescriptor.pluginId)).validate(resolvedPluginSet)?.let {
+        LOG.info("new plugins state did not meet expectations: $it")
+        return@runWithModalProgressBlocking false
       }
+      val result = DynamicPluginsSupport.getInstance().performDynamicReconfiguration(newState)
+      result is DynamicPluginsReconfigurationResult.Success
     }
-    return DynamicPluginsLegacyImpl.unloadPlugin(pluginDescriptor, options)
-  }
-
-  @RequiresEdt(generateAssertion = false)
-  fun unloadPluginWithProgress(project: Project? = null,
-                               parentComponent: JComponent?,
-                               pluginDescriptor: PluginMainDescriptor,
-                               options: UnloadPluginOptions): Boolean {
-    DynamicPluginsSupport.getInstance()?.let { instance ->
-      return runWithModalProgressBlocking(
-        project?.let { ModalTaskOwner.project(it) } ?: ModalTaskOwner.guess(),
-        IdeBundle.message("modal.progress.title.unloading.plugin", pluginDescriptor.name),
-        cancellation = TaskCancellation.nonCancellable()
-      ) {
-        val newState = computeNewPluginsState(emptyList(), listOf(pluginDescriptor))
-        // old plugin set resolver is already dropped, so with new dynamic plugins support this thing is expected to be always present
-        val resolvedPluginSet = newState.resolvedPluginSet ?: error("resolved plugin set is not set")
-        expectPluginsState(expectNotToLoad = listOf(pluginDescriptor.pluginId)).validate(resolvedPluginSet)?.let {
-          LOG.info("new plugins state did not meet expectations: $it")
-          return@runWithModalProgressBlocking false
-        }
-        val result = instance.performDynamicReconfiguration(newState)
-        result is DynamicPluginsReconfigurationResult.Success
-      }
-    }
-    return DynamicPluginsLegacyImpl.unloadPluginWithProgress(project, parentComponent, pluginDescriptor, options)
-  }
-
-  @Deprecated("use checkCanLoadWithoutRestart or checkCanUnloadWithoutRestart instead")
-  @RequiresBackgroundThread(generateAssertion = false)
-  @JvmStatic
-  @JvmOverloads
-  fun allowLoadUnloadWithoutRestart(descriptor: IdeaPluginDescriptorImpl,
-                                    baseDescriptor: IdeaPluginDescriptorImpl? = null,
-                                    context: List<IdeaPluginDescriptorImpl> = emptyList()): Boolean {
-    DynamicPluginsSupport.getInstance()?.let { instance ->
-      require(descriptor is PluginMainDescriptor) { "PluginMainDescriptor expected" }
-      if (context.any { it !is PluginMainDescriptor }) throw IllegalArgumentException("Context must contain only PluginMainDescriptor instances")
-      @Suppress("UNCHECKED_CAST")
-      val newState = computeNewPluginsState(context as List<PluginMainDescriptor>, listOf(descriptor)) // treat as unload
-      return runBlockingMaybeCancellable {
-        instance.validateDynamicReconfigurationPossible(newState) == null
-      }
-    }
-    return DynamicPluginsLegacyImpl.allowLoadUnloadWithoutRestart(descriptor, baseDescriptor, context)
   }
 
   /**
@@ -317,18 +261,15 @@ object DynamicPlugins {
    */
   @RequiresBackgroundThread(generateAssertion = false)
   fun validateCanUnloadWithoutRestart(plugin: PluginMainDescriptor): String? {
-    DynamicPluginsSupport.getInstance()?.let { instance ->
-      val newState = computeNewPluginsState(emptyList(), listOf(plugin), pretendDisabled = listOf(plugin.pluginId))
-      // old plugin set resolver is already dropped, so with new dynamic plugins support this thing is expected to be always present
-      val resolvedPluginSet = newState.resolvedPluginSet ?: error("resolved plugin set is not set")
-      expectPluginsState(expectNotToLoad = listOf(plugin.pluginId)).validate(resolvedPluginSet)?.let {
-        return it
-      }
-      return runBlockingMaybeCancellable {
-        instance.validateDynamicReconfigurationPossible(newState)?.reason?.logMessage
-      }
+    val newState = computeNewPluginsState(emptyList(), listOf(plugin), pretendDisabled = listOf(plugin.pluginId))
+                   ?: return "Target state is missing essential plugins"
+    val resolvedPluginSet = newState.resolvedPluginSet
+    expectPluginsState(expectNotToLoad = listOf(plugin.pluginId)).validate(resolvedPluginSet)?.let {
+      return it
     }
-    return DynamicPluginsLegacyImpl.checkCanUnloadWithoutRestart(plugin)
+    return runBlockingMaybeCancellable {
+      DynamicPluginsSupport.getInstance().validateDynamicReconfigurationPossible(newState)?.reason?.logMessage
+    }
   }
 
   /**
@@ -336,18 +277,15 @@ object DynamicPlugins {
    */
   @RequiresBackgroundThread(generateAssertion = false)
   fun validateCanLoadWithoutRestart(plugin: PluginMainDescriptor): String? {
-    DynamicPluginsSupport.getInstance()?.let { instance ->
-      val newState = computeNewPluginsState(listOf(plugin), listOf(), pretendEnabled = listOf(plugin.pluginId))
-      // old plugin set resolver is already dropped, so with new dynamic plugins support this thing is expected to be always present
-      val resolvedPluginSet = newState.resolvedPluginSet ?: error("resolved plugin set is not set")
-      expectPluginsState(expectToLoad = listOf(plugin.pluginId)).validate(resolvedPluginSet)?.let {
-        return it
-      }
-      return runBlockingMaybeCancellable {
-        instance.validateDynamicReconfigurationPossible(newState)?.reason?.logMessage
-      }
+    val newState = computeNewPluginsState(listOf(plugin), listOf(), pretendEnabled = listOf(plugin.pluginId))
+                     ?: return "Target state is missing essential plugins"
+    val resolvedPluginSet = newState.resolvedPluginSet
+    expectPluginsState(expectToLoad = listOf(plugin.pluginId)).validate(resolvedPluginSet)?.let {
+      return it
     }
-    return DynamicPluginsLegacyImpl.checkCanUnloadWithoutRestart(plugin) // old impl always assumes unload :igor-dead-inside:
+    return runBlockingMaybeCancellable {
+      DynamicPluginsSupport.getInstance().validateDynamicReconfigurationPossible(newState)?.reason?.logMessage
+    }
   }
 
   @RequiresBackgroundThread(generateAssertion = false)
@@ -371,11 +309,15 @@ object DynamicPlugins {
   // TODO migrate to isUIOnlyDynamicPlugin
   @JvmStatic
   fun allowLoadUnloadSynchronously(module: IdeaPluginDescriptorImpl): Boolean {
-    return DynamicPluginsLegacyImpl.allowLoadUnloadSynchronously(module)
+    return module is PluginMainDescriptor && isUIOnlyDynamicPlugin(module)
   }
 
   internal fun notify(@NlsContexts.NotificationContent text: String, notificationType: NotificationType, vararg actions: AnAction) {
-    return DynamicPluginsLegacyImpl.notify(text, notificationType, *actions)
+    val notification = UpdateCheckerFacade.getInstance().getNotificationGroupForPluginUpdateResults().createNotification(text, notificationType)
+    for (action in actions) {
+      notification.addAction(action)
+    }
+    notification.notify(null)
   }
 
   /**
@@ -385,28 +327,42 @@ object DynamicPlugins {
    */
   // TODO should we demand their "statelessness"?
   fun isUIOnlyDynamicPlugin(plugin: PluginMainDescriptor): Boolean {
-    return DynamicPluginsLegacyImpl.isUIOnlyDynamicPlugin(plugin)
-  }
-
-  // TODO imprecise naming
-  internal fun isUIOnlyExtension(extensionFqn: String): Boolean {
-    return DynamicPluginsLegacyImpl.isUIOnlyExtension(extensionFqn)
-  }
-
-  fun onPluginUnload(parentDisposable: Disposable, callback: Runnable) {
-    return DynamicPluginsLegacyImpl.onPluginUnload(parentDisposable, callback)
+    var cause: String? = null
+    val reporter = DynamicPluginsValidators.IssueReporter { reason ->
+      if (cause == null) {
+        cause = reason.logMessage
+      }
+      throw DynamicPluginsValidators.AbortDynamicPluginIssuesComputation()
+    }
+    try {
+      with(DynamicPluginsValidators) {
+        reporter.validatePluginIsUIOnlyAndDynamic(plugin)
+      }
+    }
+    catch (_: DynamicPluginsValidators.AbortDynamicPluginIssuesComputation) {
+    }
+    LOG.debug(cause)
+    return cause == null
   }
 
   /**
    * Note: this method should not be expected to produce the exact max loadable subset, because the actual maximum may actually require a lot of computation.
    * Instead, expect this method to employ heuristics to get some approximation in a reasonable time.
    *
-   * @param plugins ids of plugins from the current context that are disabled, but there is a demand to load as many of them as possible dynamically
+   * Each test of a subset treats the plugins from [plugins] outside of the subset as disabled.
+   * So the test state resolves the subset and the other plugins that are not disabled, but not the other candidates.
+   * A plugin that cannot load dynamically then fails only the tests of the subsets that contain it.
+   *
+   * The caller must load the result in the same state.
+   * So the plugins from [plugins] outside of the result must stay disabled during the load.
+   *
+   * @param plugins ids of plugins from the current context that are not loaded, but there is a demand to load as many of them as
+   *   possible dynamically. A plugin can be disabled, or it can be enabled but not resolved because a dependency was disabled.
    * @return a list of ids of plugins that can be enabled and loaded dynamically together
    */
   @ApiStatus.Internal
   suspend fun findMaxLoadableSubsetApproximation(plugins: List<PluginId>): List<PluginId> {
-    val dynamicPluginsSupport = DynamicPluginsSupport.getInstance() ?: error("new dynamic plugins support is not enabled")
+    val dynamicPluginsSupport = DynamicPluginsSupport.getInstance()
     val candidates = plugins.toMutableSet()
 
     val externalConflict = ObjectUtils.sentinel("external conflict")
@@ -416,11 +372,11 @@ object DynamicPlugins {
         include = emptyList(),
         exclude = emptyList(),
         pretendEnabled = candidates.toList(),
-        pretendDisabled = emptyList(),
-      )
+        pretendDisabled = plugins.filter { it !in candidates },
+      ) ?: return externalConflict
       val excludedCandidates: List<PluginId> = candidates.filter { candidateId ->
-        val candidate = newState.resolvedPluginSet!!.originalPluginSet.resolvePluginId(candidateId)
-        candidate == null || !newState.resolvedPluginSet!!.isResolved(candidate)
+        val candidate = newState.resolvedPluginSet.candidateSet.resolvePluginId(candidateId)
+        candidate == null || !newState.resolvedPluginSet.isResolved(candidate)
       }
       if (excludedCandidates.isNotEmpty()) {
         // TODO log
@@ -461,7 +417,7 @@ object DynamicPlugins {
     forceExclude: Boolean = false,
     pretendEnabled: List<PluginId> = emptyList(),
     pretendDisabled: List<PluginId> = emptyList(),
-  ): PluginSet {
+  ): PluginSet? {
     LOG.info(buildString {
       append("Computing new plugins state with")
       append(" include=${include.joinToString(prefix = "[", postfix = "]") { it.shortLogDescription }}")
@@ -510,59 +466,16 @@ object DynamicPlugins {
     }
 
     val newDiscoveryResult = PluginsDiscoveryResult.build(
-      newPluginLists
+      discoveredPluginLists = newPluginLists,
+      descriptorLoadingErrors = currentSet.input.discoveryResult.descriptorLoadingErrors,
     )
 
-    val incompletePlugins = mutableMapOf<PluginId, PluginMainDescriptor> ()
-    val pluginsToLoad = newInitContext.selectPluginsToLoad(newDiscoveryResult) { plugin, reason ->
-      incompletePlugins[plugin.pluginId] = plugin
+    try {
+      return newInitContext.computeTargetState(newDiscoveryResult, isStartupInit = false, parentActivity = null)
     }
-    val resolvedSet = newInitContext.resolveConstraints(pluginsToLoad)
-    val newState = PluginManagerCore.adaptResolvedPluginSetAsOldPluginSet(
-      PluginSubsystemInput(newInitContext, newDiscoveryResult),
-      resolvedSet,
-    ) {
-      // TODO handle later, not important right now
-    }
-
-    return newState.first
-  }
-
-  data class UnloadPluginOptions(
-    var disable: Boolean = true,
-    var isUpdate: Boolean = false,
-    var save: Boolean = true,
-    var requireMemorySnapshot: Boolean = false,
-    var waitForClassloaderUnload: Boolean = false,
-    var checkImplementationDetailDependencies: Boolean = true,
-    var unloadWaitTimeout: Int? = null,
-  ) {
-
-    fun withUpdate(isUpdate: Boolean): UnloadPluginOptions = also {
-      this.isUpdate = isUpdate
-    }
-
-    fun withWaitForClassloaderUnload(waitForClassloaderUnload: Boolean): UnloadPluginOptions = also {
-      this.waitForClassloaderUnload = waitForClassloaderUnload
-    }
-
-    fun withDisable(disable: Boolean): UnloadPluginOptions = also {
-      this.disable = disable
-    }
-
-    fun withRequireMemorySnapshot(requireMemorySnapshot: Boolean): UnloadPluginOptions = also {
-      this.requireMemorySnapshot = requireMemorySnapshot
-    }
-
-    fun withUnloadWaitTimeout(unloadWaitTimeout: Int): UnloadPluginOptions = also {
-      this.unloadWaitTimeout = unloadWaitTimeout
-    }
-
-    fun withSave(save: Boolean): UnloadPluginOptions = also {
-      this.save = save
-    }
-    fun withCheckImplementationDetailDependencies(checkImplementationDetailDependencies: Boolean): UnloadPluginOptions = also {
-      this.checkImplementationDetailDependencies = checkImplementationDetailDependencies
+    catch (e: EssentialPluginMissingException) {
+      LOG.warn("target plugin set is missing essential plugins", e)
+      return null // TODO not the best way to handle this, but it'll do for now
     }
   }
 }

@@ -18,29 +18,39 @@ import com.intellij.psi.PsiElement
 import com.intellij.psi.util.parentOfType
 import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaSession
+import org.jetbrains.kotlin.analysis.api.expressions.expressionType
 import org.jetbrains.kotlin.analysis.api.resolution.KaImplicitReceiverValue
 import org.jetbrains.kotlin.analysis.api.resolution.KaReceiverValue
-import org.jetbrains.kotlin.analysis.api.resolution.singleFunctionCallOrNull
+import org.jetbrains.kotlin.analysis.api.resolution.resolveSymbol
+import org.jetbrains.kotlin.analysis.api.resolution.function
+import org.jetbrains.kotlin.analysis.api.resolution.single
 import org.jetbrains.kotlin.analysis.api.resolution.symbol
+import org.jetbrains.kotlin.analysis.api.session.analyze
+import org.jetbrains.kotlin.analysis.api.resolution.tryResolveCall
 import org.jetbrains.kotlin.analysis.api.symbols.KaContextParameterSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaReceiverParameterSymbol
-import org.jetbrains.kotlin.analysis.api.symbols.contextParameters
+import org.jetbrains.kotlin.analysis.api.symbols.containingSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.name
 import org.jetbrains.kotlin.analysis.api.types.KaType
+import org.jetbrains.kotlin.analysis.api.types.isSubtypeOf
 import org.jetbrains.kotlin.config.LanguageFeature
 import org.jetbrains.kotlin.idea.base.analysis.api.utils.unwrapSmartCasts
 import org.jetbrains.kotlin.idea.base.projectStructure.languageVersionSettings
+import org.jetbrains.kotlin.idea.base.psi.appendValueArgument
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.codeinsight.api.applicable.inspections.KotlinApplicableInspectionBase
 import org.jetbrains.kotlin.idea.codeinsight.intentions.contexts.ContextParameterUtils.isKotlinContextCall
 import org.jetbrains.kotlin.idea.util.CommentSaver
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.KtCallExpression
+import org.jetbrains.kotlin.psi.KtExperimentalApi
 import org.jetbrains.kotlin.psi.KtLambdaArgument
 import org.jetbrains.kotlin.psi.KtLambdaExpression
 import org.jetbrains.kotlin.psi.KtPsiFactory
+import org.jetbrains.kotlin.psi.KtSimpleNameExpression
 import org.jetbrains.kotlin.psi.KtVisitor
 import org.jetbrains.kotlin.psi.callExpressionVisitor
+import org.jetbrains.kotlin.psi.psiUtil.quoteIfNeeded
 
 /**
  * Inspection that detects implicit context arguments and offers to convert them to explicit
@@ -85,9 +95,9 @@ internal class ConvertImplicitContextArgumentToExplicitInspection :
         element.languageVersionSettings.supportsFeature(LanguageFeature.ExplicitContextArguments) &&
                 element.calleeExpression != null
 
-    @OptIn(KaExperimentalApi::class)
-    override fun KaSession.prepareContext(element: KtCallExpression): Context? {
-        val resolvedCall = element.resolveToCall()?.singleFunctionCallOrNull() ?: return null
+    context(session: KaSession)
+    override fun prepareContext(element: KtCallExpression): Context? {
+        val resolvedCall = element.tryResolveCall()?.single?.function ?: return null
         val contextParameters = resolvedCall.symbol.contextParameters
         val contextArguments = resolvedCall.contextArguments
         if (contextArguments.size != contextParameters.size) return null
@@ -199,7 +209,7 @@ private fun appendArgumentToExpression(
     )
     val argumentList = element.valueArgumentList
     if (argumentList != null) {
-        argumentList.addArgument(newArgument)
+        argumentList.appendValueArgument(newArgument)
     } else {
         element.addAfter(
             psiFactory.createCallArguments("(${paramName.asString()} = $replacement)"),
@@ -208,8 +218,8 @@ private fun appendArgumentToExpression(
     }
 }
 
-@OptIn(KaExperimentalApi::class)
-private fun KaSession.createReplacementForContextArgument(
+context(session: KaSession)
+private fun createReplacementForContextArgument(
     callExpression: KtCallExpression,
     receiverValue: KaReceiverValue,
     expectedType: KaType,
@@ -223,7 +233,13 @@ private fun KaSession.createReplacementForContextArgument(
         is KaContextParameterSymbol -> {
             val name = symbol.name
             if (!name.isSpecial) {
-                name.asString()
+                val nameText = name.asString().quoteIfNeeded()
+                val paramPsi = symbol.psi
+                if (paramPsi == null || !callExpression.resolvesToSameSymbol(nameText, paramPsi)) {
+                    null
+                } else {
+                    nameText
+                }
             } else {
                 findExpressionInEnclosingContextBlock(callExpression, expectedType)
             }
@@ -233,8 +249,9 @@ private fun KaSession.createReplacementForContextArgument(
     }
 }
 
-@OptIn(KaExperimentalApi::class)
-private fun KaSession.findExpressionInEnclosingContextBlock(
+@OptIn(KaExperimentalApi::class, KtExperimentalApi::class)
+context(session: KaSession)
+private fun findExpressionInEnclosingContextBlock(
     callExpression: KtCallExpression,
     expectedType: KaType,
 ): String? {
@@ -248,12 +265,29 @@ private fun KaSession.findExpressionInEnclosingContextBlock(
             for (valueArg in contextCall.valueArguments) {
                 val contextArgExpr = valueArg.getArgumentExpression() ?: continue
                 val contextArgType = contextArgExpr.expressionType ?: continue
-                if (contextArgType.isSubtypeOf(expectedType)) {
-                    return contextArgExpr.text
+                if (!contextArgType.isSubtypeOf(expectedType)) continue
+
+                if (contextArgExpr is KtSimpleNameExpression) {
+                    val referencedPsi = contextArgExpr.resolveSymbol()?.psi
+                    if (referencedPsi == null || !callExpression.resolvesToSameSymbol(contextArgExpr.text, referencedPsi)) continue
                 }
+
+                return contextArgExpr.text
             }
         }
         enclosingElement = contextCall
+    }
+}
+
+@OptIn(KaExperimentalApi::class, KtExperimentalApi::class)
+private fun KtCallExpression.resolvesToSameSymbol(
+    identifier: String,
+    expectedPsi: PsiElement,
+): Boolean {
+    val fragment = KtPsiFactory(project).createExpressionCodeFragment(identifier.quoteIfNeeded(), this)
+    val expr = fragment.getContentElement() as? KtSimpleNameExpression ?: return false
+    return analyze(expr) {
+        expr.resolveSymbol()?.psi == expectedPsi
     }
 }
 
@@ -261,8 +295,8 @@ private fun KaSession.findExpressionInEnclosingContextBlock(
  * Checks if the call is the only statement inside an enclosing `context()` block's lambda,
  * meaning the context block can be removed after converting to explicit arguments.
  */
-@OptIn(KaExperimentalApi::class)
-private fun KaSession.isSingleUsageContext(callExpression: KtCallExpression): Boolean {
+context(session: KaSession)
+private fun isSingleUsageContext(callExpression: KtCallExpression): Boolean {
     val lambdaExpr = callExpression.parentOfType<KtLambdaExpression>() ?: return false
     val lambdaArg = lambdaExpr.parent as? KtLambdaArgument ?: return false
     val contextCall = lambdaArg.parent as? KtCallExpression ?: return false

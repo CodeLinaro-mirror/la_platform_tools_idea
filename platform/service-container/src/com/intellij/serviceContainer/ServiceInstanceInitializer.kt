@@ -17,6 +17,16 @@ import kotlinx.coroutines.CoroutineScope
 import org.jetbrains.annotations.ApiStatus
 import java.util.concurrent.CancellationException
 
+@ApiStatus.Internal
+object ServiceInstanceWriteAccess {
+  internal var checkServiceFromWriteAccess: Boolean = true
+
+  @ApiStatus.Internal
+  fun disableCheckServiceFromWriteAccess() {
+    checkServiceFromWriteAccess = false
+  }
+}
+
 internal abstract class ServiceInstanceInitializer(
   private val componentManager: ComponentManagerImpl,
   private val pluginId: PluginId,
@@ -58,7 +68,7 @@ internal abstract class ServiceInstanceInitializer(
     }
 
     if (instance is Disposable) {
-      registerWithServiceParent(componentManager, instance, instanceClass)
+      registerDisposableWithServiceParent(componentManager, instance, instanceClass)
     }
 
     // do not call Cancellation.withNonCancelableSection or perform any other setup if the service doesn't need to be initialized
@@ -122,7 +132,7 @@ private fun checkWriteAction(instanceClass: Class<*>) {
   if (!LOG.isDebugEnabled) {
     return
   }
-  if (!checkServiceFromWriteAccess) {
+  if (!ServiceInstanceWriteAccess.checkServiceFromWriteAccess) {
     return
   }
   val app = ApplicationManager.getApplication() ?: return
@@ -130,10 +140,6 @@ private fun checkWriteAction(instanceClass: Class<*>) {
     LOG.warn(Throwable("Getting service from write-action leads to possible deadlock. Service implementation ${instanceClass.name}"))
   }
 }
-
-@ApiStatus.Internal
-@JvmField
-var checkServiceFromWriteAccess: Boolean = true
 
 private suspend fun initializeService(
   component: Any,

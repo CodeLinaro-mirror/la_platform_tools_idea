@@ -4,14 +4,13 @@ package com.intellij.ide.plugins
 import com.intellij.core.CoreBundle
 import com.intellij.ide.AppLifecycleListener
 import com.intellij.ide.IdeBundle
+import com.intellij.ide.plugins.marketplace.statistics.enums.PluginManagerOpenSourceEnum
 import com.intellij.notification.NotificationAction
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.components.service
 import com.intellij.openapi.components.serviceAsync
-import com.intellij.openapi.options.ShowSettingsUtil
-import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.text.HtmlBuilder
 import com.intellij.openapi.util.text.HtmlChunk
 import com.intellij.platform.ide.productMode.IdeProductMode
@@ -21,36 +20,36 @@ import kotlinx.coroutines.withContext
 import org.jetbrains.annotations.Nls
 
 // TODO add trigger on dynamic plugin set change
-internal class PluginInitializationErrorStartupReporter : AppLifecycleListener {
-  val handlers: List<PluginInitializationErrorHandler> by lazy { PluginInitializationErrorHandler.getInstances() }
+internal class PluginLoadingProblemsStartupReporter : AppLifecycleListener {
+  val handlers: List<PluginLoadingProblemsNotificationHandler> by lazy { PluginLoadingProblemsNotificationHandler.getInstances() }
 
   override fun appStarted() {
     service<PluginManagerCoroutineScopeHolder>().coroutineScope.launch {
       if (!IdeProductMode.isBackend) {
-        reportPluginErrors()
+        reportPluginLoadingProblems()
       }
     }
   }
 
-  internal suspend fun getPluginInitializationErrors(): PluginInitializationErrors {
+  internal suspend fun getPluginLoadingProblems(): PluginLoadingProblemsNotificationData {
     val pluginLoadingErrors = ArrayList<@Nls String>()
     val pluginNamesToEnable = ArrayList<String>()
     val pluginNamesToDisable = ArrayList<String>()
 
-    for (handler in PluginInitializationErrorHandler.getInstances()) {
-      val initializationErrors = handler.getPluginInitializationErrors()
-      pluginLoadingErrors.addAll(initializationErrors.pluginErrors)
-      pluginNamesToEnable.addAll(initializationErrors.pluginNamesToEnable)
-      pluginNamesToDisable.addAll(initializationErrors.pluginNamesToDisable)
+    for (handler in PluginLoadingProblemsNotificationHandler.getInstances()) {
+      val loadingProblems = handler.getPluginLoadingProblemsForNotification()
+      pluginLoadingErrors.addAll(loadingProblems.pluginLoadingProblemsForNotification)
+      pluginNamesToEnable.addAll(loadingProblems.pluginNamesToEnable)
+      pluginNamesToDisable.addAll(loadingProblems.pluginNamesToDisable)
     }
 
-    return PluginInitializationErrors(pluginLoadingErrors, pluginNamesToEnable, pluginNamesToDisable)
+    return PluginLoadingProblemsNotificationData(pluginLoadingErrors, pluginNamesToEnable, pluginNamesToDisable)
   }
 
-  internal suspend fun reportPluginErrors() {
-    val errors = getPluginInitializationErrors()
+  internal suspend fun reportPluginLoadingProblems() {
+    val errors = getPluginLoadingProblems()
 
-    val pluginErrors = errors.pluginErrors
+    val pluginErrors = errors.pluginLoadingProblemsForNotification
     if (pluginErrors.isEmpty()) {
       return
     }
@@ -68,8 +67,10 @@ internal class PluginInitializationErrorStartupReporter : AppLifecycleListener {
       actions += prepareDisableAction(pluginsToDisable)
     }
 
+    val notificationGroupManager = serviceAsync<NotificationGroupManager>()
+
     withContext(RawSwingDispatcher) {
-      serviceAsync<NotificationGroupManager>().getNotificationGroup("Plugin Error")
+      notificationGroupManager.getNotificationGroup("Plugin Error")
         .createNotification(title, content, NotificationType.ERROR)
         .addActions(actions)
         .notify(null)
@@ -87,7 +88,7 @@ internal class PluginInitializationErrorStartupReporter : AppLifecycleListener {
     }
     return NotificationAction.createSimpleExpiring(enableMessage) {
       service<PluginManagerCoroutineScopeHolder>().coroutineScope.launch {
-        handlers.forEach { it.enableDeferredPlugins() }
+        handlers.forEach { it.onEnableClickInNotification() }
       }
     }
   }
@@ -103,21 +104,14 @@ internal class PluginInitializationErrorStartupReporter : AppLifecycleListener {
     }
     return NotificationAction.createSimpleExpiring(disableMessage) {
       service<PluginManagerCoroutineScopeHolder>().coroutineScope.launch {
-        handlers.forEach { it.disableDeferredPlugins() }
+        handlers.forEach { it.onDisableClickInNotification() }
       }
     }
   }
 
   internal fun prepareEditAction(): AnAction {
     return NotificationAction.createSimpleExpiring(CoreBundle.message("link.text.open.plugin.manager")) {
-      val configurable = PluginManagerConfigurable()
-      ShowSettingsUtil.getInstance().editConfigurable(
-        null as Project?,
-        configurable,
-        Runnable {
-          configurable.openInstalledTab("/invalid") // TODO: does nothing, does not set query
-        }
-      )
+      PluginManagerConfigurableUtils.showInstalledTabWithSearch(null, "/invalid", PluginManagerOpenSourceEnum.NOTIFICATION)
     }
   }
 }

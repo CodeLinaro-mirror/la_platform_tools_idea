@@ -7,12 +7,12 @@
 // ERROR: Unresolved reference: TODO
 // ERROR: Unresolved reference: TODO
 // ERROR: Unresolved reference: TODO
-// K2_ERROR: Class 'C' must override 'bar' because it inherits multiple interface methods for it.
-// K2_ERROR: Class 'C' must override 'foo' because it inherits multiple interface methods for it.
-// K2_AFTER_ERROR: Conflicting overloads:<br>fun bar(): Unit
-// K2_AFTER_ERROR: Conflicting overloads:<br>fun bar(): Unit
-// K2_AFTER_ERROR: Conflicting overloads:<br>fun foo(): Unit
-// K2_AFTER_ERROR: Conflicting overloads:<br>fun foo(): Unit
+// K2_AFTER_ERROR: CONFLICTING_OVERLOADS
+// K2_AFTER_ERROR: CONFLICTING_OVERLOADS
+// K2_AFTER_ERROR: CONFLICTING_OVERLOADS
+// K2_AFTER_ERROR: CONFLICTING_OVERLOADS
+// K2_ERROR: MANY_INTERFACES_MEMBER_NOT_IMPLEMENTED
+// K2_ERROR: MANY_INTERFACES_MEMBER_NOT_IMPLEMENTED
 interface A {
     fun foo() {}
     fun bar() {}
@@ -24,5 +24,4 @@ interface B {
 }
 
 class<caret> C : A, B
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.core.overrideImplement.ImplementMembersHandler
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.core.overrideImplement.KtImplementMembersQuickfix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.core.overrideImplement.KtImplementMembersQuickfix

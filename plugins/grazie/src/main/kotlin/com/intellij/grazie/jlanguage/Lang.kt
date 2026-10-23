@@ -13,8 +13,11 @@ import com.intellij.grazie.remote.LanguageToolDescriptor
 import com.intellij.grazie.remote.RemoteLangDescriptor
 import com.intellij.grazie.spellcheck.engine.GrazieSpellCheckerEngine
 import com.intellij.grazie.spellcheck.hunspell.HunspellDictionary
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.progress.util.runWithCheckCanceled
 import com.intellij.openapi.util.NlsSafe
 import org.jetbrains.annotations.NonNls
+import org.languagetool.JLanguageTool
 import org.languagetool.Language
 import org.languagetool.language.English
 import org.languagetool.noop.NoopChunker
@@ -110,15 +113,33 @@ enum class Lang(val displayName: String, val className: String, val iso: Languag
 
   @Volatile
   private var _jLanguage: Language? = null
+  private val lock = Any()
   val jLanguage: Language?
-    get() = _jLanguage ?: GrazieDynamic.loadLang(this)?.also {
-      if (shouldDisableChunker(it)) {
-        it.chunker = NoopChunker()
+    get() {
+      if (_jLanguage != null) return _jLanguage
+
+      val app = ApplicationManager.getApplication()
+      if (app.isDispatchThread || !app.isReadAccessAllowed) {
+        return _jLanguage ?: loadJLanguage()
       }
-      it.disambiguator = LazyCachingConcurrentDisambiguator(it)
-      _jLanguage = it
-      
+      return runWithCheckCanceled { _jLanguage ?: loadJLanguage() }
     }
+
+  private fun loadJLanguage(): Language? {
+    if (_jLanguage != null) return _jLanguage
+    synchronized(lock) {
+      if (_jLanguage != null) return _jLanguage
+      JLanguageTool.useCustomPasswordAuthenticator(false)
+      GrazieDynamic.loadLang(this)?.also {
+        if (shouldDisableChunker(it)) {
+          it.chunker = NoopChunker()
+        }
+        it.disambiguator = LazyCachingConcurrentDisambiguator(it)
+        _jLanguage = it
+      }
+    }
+    return _jLanguage
+  }
 
   fun isAvailable() = GrazieRemote.isAvailableLocally(this)
 

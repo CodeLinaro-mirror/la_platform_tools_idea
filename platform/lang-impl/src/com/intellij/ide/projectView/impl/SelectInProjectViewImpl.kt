@@ -3,6 +3,7 @@
 
 package com.intellij.ide.projectView.impl
 
+import com.intellij.codeInsight.multiverse.EditorContextManager
 import com.intellij.codeWithMe.ClientId
 import com.intellij.ide.DataManager
 import com.intellij.ide.FileEditorProvider
@@ -157,9 +158,10 @@ open class SelectInProjectViewImpl(
   private suspend fun getPsiFilePointer(fileEditor: FileEditor): SmartPsiElementPointer<PsiFile>? =
     withContext(Dispatchers.EDT) {
       if (fileEditor is TextEditor) {
-        fileEditor.nullIfInvalid()?.editor?.nullIfDisposed()?.document?.let { document ->
+        fileEditor.nullIfInvalid()?.editor?.nullIfDisposed()?.let { editor ->
           readAction {
-            project.serviceOrNull<PsiDocumentManager>()?.getPsiFile(document)?.let { psiFile ->
+            if (project.serviceOrNull<PsiDocumentManager>() == null) return@readAction null
+            EditorContextManager.getPsiFileForEditor(editor, project)?.let { psiFile ->
               project.serviceOrNull<SmartPointerManager>()?.createSmartPsiElementPointer(psiFile)
             }
           }
@@ -349,8 +351,10 @@ open class SelectInProjectViewImpl(
     }
     val currentFilter = pane.getCurrentFilter()
     val allFilters = pane.filters.toMutableList()
-    allFilters.remove(currentFilter)
-    allFilters.add(0, currentFilter) // Start with the current filter and then fall back to others.
+    if (currentFilter != null) { // might be null if the pane isn't initialized yet, then we'll just pick the first one
+      allFilters.remove(currentFilter)
+      allFilters.add(0, currentFilter) // Start with the current filter and then fall back to others.
+    }
     for (filter in allFilters) {
       if (readAction { filter.accept(file) }) {
         if (LOG.isDebugEnabled()) {

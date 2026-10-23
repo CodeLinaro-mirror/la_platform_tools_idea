@@ -1,5 +1,5 @@
 // "Create member function 'A.plus'" "true"
-// K2_ERROR: Unresolved reference 'plus' for operator '+' on receiver of type 'A<Int>'.
+// K2_ERROR: UNRESOLVED_REFERENCE
 
 class A<T>(val n: T) {
     operator fun unaryPlus(): A<T> = throw Exception()
@@ -8,5 +8,4 @@ class A<T>(val n: T) {
 fun test() {
     val a: A<Int> = A(1) +<caret> 2
 }
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.createFromUsage.createCallable.CreateCallableFromUsageFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.quickFixes.createFromUsage.CreateKotlinCallableAction
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.quickFixes.createFromUsage.CreateKotlinCallableAction

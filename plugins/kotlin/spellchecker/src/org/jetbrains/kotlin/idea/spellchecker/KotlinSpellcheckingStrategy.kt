@@ -3,6 +3,7 @@
 package org.jetbrains.kotlin.idea.spellchecker
 
 import com.intellij.openapi.project.DumbAware
+import com.intellij.openapi.util.TextRange
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.psi.PsiComment
 import com.intellij.psi.PsiElement
@@ -18,6 +19,7 @@ import org.jetbrains.kotlin.psi.KtLiteralStringTemplateEntry
 import org.jetbrains.kotlin.psi.KtModifierListOwner
 import org.jetbrains.kotlin.psi.KtNameReferenceExpression
 import org.jetbrains.kotlin.psi.KtNamedFunction
+import org.jetbrains.kotlin.psi.KtOperationReferenceExpression
 import org.jetbrains.kotlin.psi.KtParameter
 import org.jetbrains.kotlin.psi.KtParameterList
 
@@ -41,7 +43,7 @@ internal class KotlinSpellcheckingStrategy : SpellcheckingStrategy(), DumbAware 
             is LeafPsiElement -> {
                 if (element.elementType != KtTokens.IDENTIFIER) return emptyTokenizer
                 val parent = element.parent
-                if (parent is KtNameReferenceExpression) return emptyTokenizer
+                if (parent is KtNameReferenceExpression || parent is KtOperationReferenceExpression) return emptyTokenizer
                 if (parent is KtParameter) {
                     val function = (parent.parent as? KtParameterList)?.parent as? KtNamedFunction
                     if (function is KtNamedFunction) return getTokenizer(function)
@@ -59,4 +61,14 @@ internal class KotlinSpellcheckingStrategy : SpellcheckingStrategy(), DumbAware 
     }
 
     override fun useTextLevelSpellchecking(): Boolean = Registry.`is`("spellchecker.grazie.enabled", false)
+
+    override fun getRenameIdentifierRange(nameIdentifier: PsiElement): TextRange? {
+        val text = nameIdentifier.text
+        val textRange = nameIdentifier.textRange
+        return if (text.length > 1 && text.startsWith('`') && text.endsWith('`')) {
+            TextRange.create(textRange.startOffset + 1, textRange.endOffset - 1)
+        } else {
+            textRange
+        }
+    }
 }

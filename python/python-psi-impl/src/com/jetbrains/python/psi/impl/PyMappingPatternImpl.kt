@@ -9,6 +9,7 @@ import com.jetbrains.python.psi.PyKeyValuePattern
 import com.jetbrains.python.psi.PyMappingPattern
 import com.jetbrains.python.psi.PyPattern
 import com.jetbrains.python.psi.PyPsiFacade
+import com.jetbrains.python.psi.types.PyAnyType
 import com.jetbrains.python.psi.types.PyClassType
 import com.jetbrains.python.psi.types.PyCollectionTypeImpl
 import com.jetbrains.python.psi.types.PyLiteralType
@@ -41,19 +42,19 @@ class PyMappingPatternImpl(astNode: ASTNode?) : PyElementImpl(astNode), PyMappin
     val valueTypes = mutableListOf<PyType?>()
     for (it in elements.filterIsInstance<PyKeyValuePattern>()) {
       keyTypes.add(context.getType(it.keyPattern))
-      if (it.valuePattern != null) {
-        valueTypes.add(context.getType(it.valuePattern!!))
+      val valuePattern = it.valuePattern
+      if (valuePattern != null) {
+        valueTypes.add(context.getType(valuePattern))
       }
     }
 
-    val patternMappingType = wrapInMappingType(PyUnionType.union(keyTypes), PyUnionType.union(valueTypes))
+    val patternMappingType = wrapInMappingType(PyUnionType.unionOrUnknown(keyTypes), PyUnionType.unionOrUnknown(valueTypes))
 
-    val filteredType = PyCaptureContext.getCaptureType(this, context).compositeComponents.filter { captureType: PyType? ->
+    val matchingComponents = PyCaptureContext.getCaptureType(this, context).compositeComponents.filter { captureType: PyType? ->
       val mappingType = captureType.convertToType("typing.Mapping", this, context) ?: return@filter false
       PyTypeChecker.match(mappingType, patternMappingType, context)
-    }.let {
-      PyUnionType.union(it)
     }
+    val filteredType = if (matchingComponents.isEmpty()) null else PyUnionType.unionOrUnknown(matchingComponents)
 
     return filteredType ?: patternMappingType
   }
@@ -73,11 +74,11 @@ class PyMappingPatternImpl(astNode: ASTNode?) : PyElementImpl(astNode), PyMappin
 
     return PyCaptureContext.getCaptureType(this, context).compositeComponents
       .map { possibleMapping -> possibleMapping.getValueType(sequenceMember, context) }
-      .let { PyUnionType.union(it) }
+      .let { PyUnionType.unionOrUnknown(it) }
   }
 
   private fun wrapInMappingType(keyType: PyType?, valueType: PyType?): PyType? {
-    val sequence = PyPsiFacade.getInstance(getProject()).createClassByQName("typing.Mapping", this) ?: return null
+    val sequence = PyPsiFacade.getInstance(getProject()).createClassByQName("typing.Mapping", this) ?: return PyAnyType.unknown
     return PyCollectionTypeImpl(sequence, false, listOf(keyType, valueType).map { PyTypeUtil.widenLiteralAndNumeric(it) })
   }
 }
@@ -85,7 +86,7 @@ class PyMappingPatternImpl(astNode: ASTNode?) : PyElementImpl(astNode), PyMappin
 private fun PyType?.getValueType(sequenceMember: PyKeyValuePattern, context: TypeEvalContext): PyType? {
   if (this is PyTypedDictType) {
     val key = sequenceMember.getKeyString(context)
-    if (key != null) return getElementType(key)
+    if (key != null) return getElementType(key, context)
   }
   val mappingType = this.convertToType("typing.Mapping", sequenceMember, context)
                     ?: return PyNeverType.NEVER

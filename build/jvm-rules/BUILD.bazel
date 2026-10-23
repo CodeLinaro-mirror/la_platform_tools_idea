@@ -7,11 +7,24 @@ load("@rules_pkg//pkg:mappings.bzl", "pkg_filegroup", "pkg_files", "strip_prefix
 load("@rules_pkg//pkg:pkg.bzl", "pkg_zip")
 load("//:jvm.bzl", "jvm_import", "jvm_provided_library", "kt_javac_options", "kt_kotlinc_options")
 load("//:rules/assert_maven_coordinates_match.bzl", "assert_maven_coordinates_match_jar")
+load("//:rules/impl/transitions.bzl", "scrubbed_host_tool")
 
 jvm_import(
     name = "protobuf_java",
     jar = "@protobuf-java_http//file",
     source_jar = "@protobuf-java-sources_http//file",
+    visibility = ["//visibility:public"],
+)
+
+# Java toolchain for `java_proto_library` with the prebuilt runtime jar above.
+# Without it, resolution falls back to `@protobuf//java/core:toolchain`, which
+# compiles the runtime from source. Registered in MODULE.bazel.
+proto_lang_toolchain(
+    name = "protoc_java_toolchain",
+    command_line = "--java_out=%s",
+    progress_message = "Generating Java proto_library %{label}",
+    runtime = ":protobuf_java",
+    toolchain_type = "@protobuf//bazel/private:java_toolchain_type",
     visibility = ["//visibility:public"],
 )
 
@@ -55,6 +68,9 @@ define_kt_toolchain(
     btapi_kotlin_daemon_client = ":kotlin-daemon-client_import",
     btapi_kotlin_reflect = ":kotlin-reflect_import",
     btapi_kotlin_stdlib = ":kotlin-stdlib_import",
+    btapi_kotlin_tooling_core = ":kotlin-tooling-core_import",
+    # Run the BTA Kotlin worker in multiplex mode (concurrency-safe), on par with the JPS JvmCompile path.
+    experimental_multiplex_workers = True,
     experimental_remove_private_classes_in_abi_jars = True,
     jvm_runtime = [
         ":kotlin-stdlib_import",
@@ -70,6 +86,23 @@ define_kt_toolchain(
     language_version = "2.3",
 )
 
+# Default Kotlin toolchain: `@rules_kotlin//kotlin/internal:default_toolchain` plus multiplex mode, so one worker
+# process serves every `KotlinCompile` action. Each `MODULE.bazel` registers it, and a root-module registration wins
+# over the one from `rules_kotlin`. `--extra_toolchains` overrides it.
+#
+# BAZEL-3397 Also, it sets proper version of annotations library (instead of default one v23) so it properly resolves when monorepo is opened with Bazel plugin
+define_kt_toolchain(
+    name = "kotlin_multiplex_toolchain",
+    experimental_multiplex_workers = True,
+    jvm_runtime = [
+        ":kotlin-stdlib_import",
+    ],
+    jvm_stdlibs = [
+        ":annotations_import",
+        ":kotlin-stdlib_import",
+    ],
+)
+
 # --@rules_jvm//:trace
 bool_flag(
     name = "trace",
@@ -79,6 +112,69 @@ bool_flag(
 # used by _jvm_builder_launcher attribute in jvm_library rule
 exports_files(
     ["rules/impl/MemoryLauncher.java"],
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "macos_arm64",
+    constraint_values = [
+        "@platforms//os:macos",
+        "@platforms//cpu:arm64",
+    ],
+)
+
+config_setting(
+    name = "macos_x86_64",
+    constraint_values = [
+        "@platforms//os:macos",
+        "@platforms//cpu:x86_64",
+    ],
+)
+
+config_setting(
+    name = "linux_x86_64",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+)
+
+config_setting(
+    name = "linux_arm64",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:arm64",
+    ],
+)
+
+config_setting(
+    name = "windows_x86_64",
+    constraint_values = [
+        "@platforms//os:windows",
+        "@platforms//cpu:x86_64",
+    ],
+)
+
+config_setting(
+    name = "windows_arm64",
+    constraint_values = [
+        "@platforms//os:windows",
+        "@platforms//cpu:arm64",
+    ],
+)
+
+# binaryen's wasm-opt for the current host, used by the wasm_opt_action fused into wasmjs_binary
+# (see rules/opt-wasmjs.bzl and rules/binary-wasmjs.bzl)
+alias(
+    name = "wasm-opt",
+    actual = select({
+        ":macos_arm64": "@binaryen_arm64-macos//:wasm-opt",
+        ":macos_x86_64": "@binaryen_x86_64-macos//:wasm-opt",
+        ":linux_x86_64": "@binaryen_x86_64-linux//:wasm-opt",
+        ":linux_arm64": "@binaryen_aarch64-linux//:wasm-opt",
+        ":windows_x86_64": "@binaryen_x86_64-windows//:wasm-opt",
+        ":windows_arm64": "@binaryen_arm64-windows//:wasm-opt",
+    }),
     visibility = ["//visibility:public"],
 )
 
@@ -109,12 +205,6 @@ jvm_import(
     name = "caffeine_import",
     jar = "@caffeine_http//file",
     source_jar = "@caffeine-sources_http//file",
-    visibility = ["//visibility:public"],
-)
-
-jvm_import(
-    name = "forms_import",
-    jar = "@forms_http//file",
     visibility = ["//visibility:public"],
 )
 
@@ -153,12 +243,6 @@ jvm_import(
 )
 
 jvm_import(
-    name = "jaxen_import",
-    jar = "@jaxen_http//file",
-    visibility = ["//visibility:public"],
-)
-
-jvm_import(
     name = "jps-javac-extension_import",
     jar = "@jps-javac-extension_http//file",
     visibility = ["//visibility:public"],
@@ -185,6 +269,12 @@ jvm_import(
 jvm_import(
     name = "kotlin-build-tools-impl_import",
     jar = "@kotlin-build-tools-impl_http//file",
+    visibility = ["//visibility:public"],
+)
+
+jvm_import(
+    name = "kotlin-tooling-core_import",
+    jar = "@kotlin-tooling-core_http//file",
     visibility = ["//visibility:public"],
 )
 
@@ -221,9 +311,10 @@ jvm_import(
 jvm_import(
     name = "kotlin-stdlib_import",
     jar = "@kotlin-stdlib_http//file",
+    source_jar = "@kotlin-stdlib-sources_http//file",
     # Version must match `kotlin_compiler_version` in MODULE.bazel — verified at
     # analysis time by `:kotlin-stdlib_import_coords_check`.
-    tags = ["maven_coordinates=org.jetbrains.kotlin:kotlin-stdlib:2.4.0"],
+    tags = ["maven_coordinates=org.jetbrains.kotlin:kotlin-stdlib:2.4.21-RC"],
     visibility = ["//visibility:public"],
 )
 
@@ -456,6 +547,12 @@ label_flag(
 label_flag(
     name = "jvm-builder",
     build_setting_default = "//jvm-inc-builder:jvm-inc-builder_deploy.jar",
+    visibility = ["//visibility:public"],
+)
+
+scrubbed_host_tool(
+    name = "jvm-builder-scrubbed_host_tool",
+    tool = "//:jvm-builder",
     visibility = ["//visibility:public"],
 )
 

@@ -1,5 +1,6 @@
 // "Import class 'FromBarCompanion'" "true"
 // LANGUAGE_VERSION: 1.3
+// K2_ERROR: UNRESOLVED_REFERENCE
 
 package foo
 
@@ -14,5 +15,4 @@ open class Bar {
 class Foo : Bar() {
     val a = <caret>FromBarCompanion::foo
 }
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ImportFix
 // IGNORE_K2

@@ -48,6 +48,8 @@ import com.intellij.platform.eel.provider.getEelDescriptor
 import com.intellij.platform.ide.productMode.IdeProductMode
 import com.intellij.platform.ide.progress.runWithModalProgressBlocking
 import com.intellij.terminal.TerminalUiSettingsManager
+import com.intellij.terminal.frontend.toolwindow.impl.migration.askForFeedbackIfSwitchedBackToClassicTerminal
+import com.intellij.terminal.updateActionShortcut
 import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.ExperimentalUI
 import com.intellij.ui.FontComboBox
@@ -117,7 +119,6 @@ import org.jetbrains.plugins.terminal.runner.LocalShellIntegrationInjector
 import org.jetbrains.plugins.terminal.runner.LocalTerminalStartCommandBuilder
 import org.jetbrains.plugins.terminal.settings.TerminalApplicationTitleShowingMode
 import org.jetbrains.plugins.terminal.shellDetection.TerminalShellsDetectionService
-import org.jetbrains.plugins.terminal.util.updateActionShortcut
 import java.awt.Color
 import java.awt.Component
 import java.awt.event.ActionListener
@@ -176,7 +177,12 @@ internal class TerminalOptionsConfigurable(private val project: Project) : Bound
             .label(message("settings.terminal.engine"))
             .bindItem(
               getter = { optionsProvider.terminalEngine },
-              setter = { optionsProvider.terminalEngine = it!! }
+              setter = {
+                val oldEngine = optionsProvider.terminalEngine
+                val newEngine = it!!
+                optionsProvider.terminalEngine = newEngine
+                askForFeedbackIfSwitchedBackToClassicTerminal(project, oldEngine, newEngine)
+              }
             )
             .component
         }
@@ -223,7 +229,7 @@ internal class TerminalOptionsConfigurable(private val project: Project) : Bound
           }.visible(commandCompletionAvailable)
 
           if (inlineCompletionAvailable) {
-            inlineCompletionSettingsProvider.addSettingsRow(this)
+            inlineCompletionSettingsProvider.addSettingsRow(this, project)
           }
         }.bottomGap(BottomGap.NONE)
           .visibleIf(terminalEngineComboBox.selectedValueIs(TerminalEngine.REWORKED)
@@ -576,8 +582,8 @@ private fun Panel.workingDirectoryField(project: Project) {
  * In RemDev, the terminal process is supposed to be started only on the backend,
  * so all file paths suggested in the File Chooser should be restricted to the remote environment.
  */
-@RequiresReadLockAbsence
-@RequiresBackgroundThread
+@RequiresReadLockAbsence(generateAssertion = false /* IJPL-115548 */)
+@RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
 private fun FileChooserDescriptor.withEelRoot(eelDescriptor: EelDescriptor): FileChooserDescriptor {
   if (!IdeProductMode.isFrontend) {
     return this

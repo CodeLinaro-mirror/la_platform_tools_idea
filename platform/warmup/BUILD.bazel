@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.platform.warmup` start
+content_module_jar(module = ":warmup")
+### auto-generated section `dev intellij.platform.warmup` end
 
 ### auto-generated section `build intellij.platform.warmup` start
-
 jvm_library(
     name = "warmup",
     srcs = glob(
@@ -41,6 +45,8 @@ jvm_library(
         "//libraries/kotlinx/coroutines/core",
         "//platform/backend/observation",
         "//platform/lang-api:lang",
+        "//platform/execution",
+        "//platform/execution-impl",
     ],
 )
 
@@ -76,6 +82,8 @@ jvm_library(
         "//libraries/kotlinx/coroutines/core:core_test_lib",
         "//platform/backend/observation:observation_test_lib",
         "//platform/lang-api:lang_test_lib",
+        "//platform/execution:execution_test_lib",
+        "//platform/execution-impl:execution-impl_test_lib",
     ],
 )
 ### auto-generated section `build intellij.platform.warmup` end
@@ -84,6 +92,7 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.warmup.iml",
+        "resources/intellij.platform.warmup.xml",
     ],
     visibility = ["//visibility:public"],
 )

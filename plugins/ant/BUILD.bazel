@@ -1,8 +1,28 @@
 load("@community//build:tests-options.bzl", "jps_test")
+load("@jps_dynamic_deps_community//:targets.bzl", "dev_dist_plugin")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
-### auto-generated section `build intellij.ant` start
+jps_test(
+    name = "ant-tests_test",
+    timeout = "moderate",
+    tags = ["community-aggregator"],
+    runtime_deps = [":ant-tests_test_lib"],
+)
+### skip generation section `test intellij.ant.tests`
 
+### auto-generated section `dev intellij.ant` start
+dev_dist_plugin(
+    content_modules = ["intellij.ant.jps"],
+    descriptor = "resources/META-INF/plugin.xml",
+    jars = {
+        "lib/ant-jps.jar": ["intellij.ant.jps"],
+        "lib/antIntegration.jar": ["intellij.ant"],
+    },
+    main_module = "intellij.ant",
+)
+### auto-generated section `dev intellij.ant` end
+
+### auto-generated section `build intellij.ant` start
 jvm_library(
     name = "ant",
     srcs = glob(
@@ -17,6 +37,7 @@ jvm_library(
     resource_strip_prefix = "resources",
     resources = glob(
         ["resources/**/*"],
+        exclude = ["resources/**/icon-robots.txt"],
     ),
     visibility = ["//visibility:public"],
     deps = [
@@ -68,12 +89,14 @@ jvm_library(
         "//platform/util:util-ui",
         "//xml/xml-psi-api:psi",
         "//platform/execution",
+        "//platform/consoleView",
         "//libraries/kotlinx/collections-immutable:libraries-kotlinx-collections-immutable",
         "//platform/util/concurrency",
         "//jps/model-api:model",
         "//platform/code-style-api:codeStyle",
         "//platform/lang-api:lang",
         "//platform/testRunner",
+        "//java/java-backend:backend",
     ],
 )
 
@@ -91,9 +114,8 @@ jvm_library(
         ":ant",
         "//java/openapi:java_test_lib",
         "//java/java-psi-api:psi_test_lib",
-        "//java/testFramework",
-        "//java/testFramework:testFramework_test_lib",
-        "@lib//:junit4",
+        "//libraries/junit4",
+        "//libraries/junit4:junit4_test_lib",
         "//platform/analysis-api:analysis_test_lib",
         "//xml/xml-analysis-api:analysis_test_lib",
         "//platform/core-api:core_test_lib",
@@ -109,8 +131,6 @@ jvm_library(
         "//platform/macro:macro_test_lib",
         "//platform/projectModel-api:projectModel_test_lib",
         "//platform/refactoring:refactoring_test_lib",
-        "//platform/testFramework",
-        "//platform/testFramework:testFramework_test_lib",
         "//platform/platform-impl/concurrency:concurrency_test_lib",
         "//java/java-runtime:rt_test_lib",
         "//java/execution/impl:impl_test_lib",
@@ -138,18 +158,16 @@ jvm_library(
         "//platform/platform-util-io:ide-util-io_test_lib",
         "//platform/util/jdom:jdom_test_lib",
         "//platform/util:util-ui_test_lib",
-        "//tools/intellij.tools.ide.metrics.benchmark:ide-metrics-benchmark",
-        "//tools/intellij.tools.ide.metrics.benchmark:ide-metrics-benchmark_test_lib",
         "//xml/xml-psi-api:psi_test_lib",
-        "//xml/testFramework",
-        "//xml/testFramework:testFramework_test_lib",
         "//platform/execution:execution_test_lib",
+        "//platform/consoleView:consoleView_test_lib",
         "//libraries/kotlinx/collections-immutable:libraries-kotlinx-collections-immutable_test_lib",
         "//platform/util/concurrency:concurrency_test_lib",
         "//jps/model-api:model_test_lib",
         "//platform/code-style-api:codeStyle_test_lib",
         "//platform/lang-api:lang_test_lib",
         "//platform/testRunner:testRunner_test_lib",
+        "//java/java-backend:backend_test_lib",
     ],
 )
 ### auto-generated section `build intellij.ant` end
@@ -158,13 +176,13 @@ jvm_library(
 exports_files(
     [
         "intellij.ant.iml",
+        "resources/META-INF/plugin.xml",
     ],
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.ant` end
 
 ### auto-generated section `build intellij.ant.tests` start
-
 jvm_library(
     name = "ant-tests",
     srcs = glob(
@@ -175,10 +193,12 @@ jvm_library(
     visibility = ["//visibility:public"],
     runtime_deps = [
         # do not sort,
+        "//platform/vcs/plugin",
         "//platform/structuralsearch/plugin",
         "//platform/structure-view-impl/plugin",
         "//platform/todo/plugin",
         "//platform/testRunner/plugin",
+        "//xml/plugin",
     ],
 )
 
@@ -201,6 +221,7 @@ jvm_library(
     runtime_deps = [
         # do not sort,
         ":ant-tests",
+        "//platform/vcs/plugin:plugin_test_lib",
         "//platform/ide-core-impl:ide-core-impl_test_lib",
         "//platform/ide-core:ide-core_test_lib",
         "//platform/platform-impl/concurrency:concurrency_test_lib",
@@ -210,6 +231,7 @@ jvm_library(
         "//platform/structure-view-impl/plugin:plugin_test_lib",
         "//platform/todo/plugin:plugin_test_lib",
         "//platform/testRunner/plugin:plugin_test_lib",
+        "//xml/plugin:plugin_test_lib",
     ],
     deps = [
         # do not sort,
@@ -217,7 +239,8 @@ jvm_library(
         "//java/openapi:java_test_lib",
         "//java/testFramework",
         "//java/testFramework:testFramework_test_lib",
-        "@lib//:junit4",
+        "//libraries/junit4",
+        "//libraries/junit4:junit4_test_lib",
         "@lib//ant/lib:ant",
         "//platform/analysis-api:analysis",
         "//platform/analysis-api:analysis_test_lib",
@@ -318,6 +341,10 @@ jvm_library(
         "//platform/code-style-api:codeStyle_test_lib",
         "//platform/lang-api:lang",
         "//platform/lang-api:lang_test_lib",
+        "//java/plugin",
+        "//java/plugin:plugin_test_lib",
+        "//aether-dependency-resolver/plugin",
+        "//aether-dependency-resolver/plugin:plugin_test_lib",
     ],
 )
 ### auto-generated section `build intellij.ant.tests` end
@@ -330,11 +357,3 @@ exports_files(
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.ant.tests` end
-
-### auto-generated section `test intellij.ant.tests` start
-
-jps_test(
-    name = "ant-tests_test",
-    runtime_deps = [":ant-tests_test_lib"],
-)
-### auto-generated section `test intellij.ant.tests` end

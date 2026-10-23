@@ -7,13 +7,13 @@ import com.intellij.execution.ExecutionManager;
 import com.intellij.execution.ExecutionTarget;
 import com.intellij.execution.ExecutionTargetManager;
 import com.intellij.execution.Executor;
+import com.intellij.execution.ExecutorRegistry;
 import com.intellij.execution.RunManager;
+import com.intellij.execution.RunnerAndConfigurationSettings;
 import com.intellij.execution.configurations.RunConfiguration;
 import com.intellij.execution.configurations.RunProfile;
-import com.intellij.execution.executors.DefaultDebugExecutor;
 import com.intellij.execution.executors.DefaultRunExecutor;
 import com.intellij.execution.impl.RunManagerImpl;
-import com.intellij.execution.impl.RunnerAndConfigurationSettingsImpl;
 import com.intellij.execution.process.ProcessHandler;
 import com.intellij.execution.runners.ExecutionEnvironment;
 import com.intellij.openapi.application.ApplicationManager;
@@ -38,7 +38,7 @@ import org.jetbrains.concurrency.Promises;
 import java.util.Arrays;
 
 /**
- * Command runs specified configuration.
+ * Command selects specified configuration and runs it.
  * If configuration is absent prints all available for the project.
  * There are two modes: TILL_STARTED and TILL_TERMINATED
  * Set -failureExpected param if failure expected
@@ -125,22 +125,31 @@ public final class RunConfigurationCommand extends AbstractCommand {
     RunManagerImpl runManager = RunManagerImpl.getInstanceImpl(project);
 
     ApplicationManager.getApplication().invokeLater(() -> {
-      Executor executor = options.debug ? new DefaultDebugExecutor() : new DefaultRunExecutor();
-      RunConfiguration configurationToRun = getConfigurationByName(runManager, options.configurationName);
+      Executor executor;
+      if (options.debug) {
+        executor = ExecutorRegistry.getInstance().getExecutorById("Debug");
+        if (executor == null) {
+          actionCallback.reject("'Debug' executor is not found");
+          return;
+        }
+      }
+      else {
+        executor = new DefaultRunExecutor();
+      }
+      RunnerAndConfigurationSettings settings = runManager.findConfigurationByName(options.configurationName);
 
-      if (configurationToRun == null) {
+      if (settings == null) {
         actionCallback.reject("Specified configuration is not found: " + options.configurationName);
         printAllConfigurationsNames(runManager);
       }
       else {
         ExecutionTargetManager targetManager = ExecutionTargetManager.getInstance(project);
-        ExecutionTarget target = targetManager.findTarget(configurationToRun);
+        ExecutionTarget target = targetManager.findTarget(settings.getConfiguration());
         if (target == null) target = DefaultExecutionTarget.INSTANCE;
 
-        RunnerAndConfigurationSettingsImpl runnerAndConfigurationSettings =
-          new RunnerAndConfigurationSettingsImpl(runManager, configurationToRun);
+        runManager.setSelectedConfiguration(settings);
 
-        ExecutionManager.getInstance(project).restartRunProfile(project, executor, target, runnerAndConfigurationSettings, null);
+        ExecutionManager.getInstance(project).restartRunProfile(project, executor, target, settings, null);
       }
     });
 

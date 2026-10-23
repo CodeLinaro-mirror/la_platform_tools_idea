@@ -8,7 +8,7 @@
 // ACTION: Make 'bar' private
 // ACTION: Move to companion object
 // ACTION: Specify return type explicitly
-// K2_ERROR: 'internal' function exposes its 'private-in-file' return type 'Data'.
+// K2_ERROR: EXPOSED_FUNCTION_RETURN_TYPE
 
 private data class Data(val x: Int)
 
@@ -16,5 +16,4 @@ class First {
     private fun bar(x: Int) = Data(x)
 }
 
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ChangeVisibilityFix$ChangeToPrivateFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeVisibilityFixFactories$ChangeToPrivateModCommandAction
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeVisibilityFixFactories$ChangeToPrivateModCommandAction

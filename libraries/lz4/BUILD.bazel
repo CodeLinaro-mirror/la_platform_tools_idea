@@ -1,7 +1,14 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.libraries.lz4` start
+content_module_jar(
+    libraries = ["@lib//:libraries-lz4-lz4-java"],
+    module = ":lz4",
+)
+### auto-generated section `dev intellij.libraries.lz4` end
 
 ### auto-generated section `build intellij.libraries.lz4` start
-
 jvm_library(
     name = "lz4",
     srcs = glob(
@@ -37,6 +44,7 @@ jvm_library(
 exports_files(
     [
         "intellij.libraries.lz4.iml",
+        "resources/intellij.libraries.lz4.xml",
     ],
     visibility = ["//visibility:public"],
 )

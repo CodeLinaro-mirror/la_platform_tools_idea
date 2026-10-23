@@ -9,9 +9,14 @@ import com.intellij.modcommand.ModPsiUpdater
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.TextRange
 import org.jetbrains.kotlin.analysis.api.KaSession
+import org.jetbrains.kotlin.analysis.api.components.returnType
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.symbol
 import org.jetbrains.kotlin.analysis.api.types.KaClassType
+import org.jetbrains.kotlin.analysis.api.types.isMarkedNullable
 import org.jetbrains.kotlin.idea.base.facet.platform.platform
+import org.jetbrains.kotlin.idea.base.psi.addModifierKeyword
+import org.jetbrains.kotlin.idea.base.psi.removeModifierKeyword
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.codeinsight.api.applicable.inspections.KotlinApplicableInspectionBase
 import org.jetbrains.kotlin.idea.codeinsight.api.applicable.inspections.KotlinModCommandQuickFix
@@ -41,7 +46,8 @@ internal class NonExternalClassifierExtendingStateOrPropsInspection :
     override fun isApplicableByPsi(element: KtClassOrObject): Boolean =
         element.platform.isJs() && (element is KtClass || element is KtObjectDeclaration)
 
-    override fun KaSession.prepareContext(element: KtClassOrObject): Context? {
+    context(session: KaSession)
+    override fun prepareContext(element: KtClassOrObject): Context? {
         val symbol = element.symbol as? KaClassSymbol ?: return null
         if (!implementsReactPropsOrState(symbol)) return null
 
@@ -79,7 +85,7 @@ private class AddExternalKeywordFix : KotlinModCommandQuickFix<KtClassOrObject>(
     override fun getFamilyName(): String = KotlinBundle.message("add.external.keyword")
 
     override fun applyFix(project: Project, element: KtClassOrObject, updater: ModPsiUpdater) {
-        element.addModifier(KtTokens.EXTERNAL_KEYWORD)
+        element.addModifierKeyword(KtTokens.EXTERNAL_KEYWORD)
     }
 }
 
@@ -91,7 +97,7 @@ private class ChangeToVarFix : KotlinModCommandQuickFix<KtProperty>() {
         val newKeyword = factory.createVarKeyword()
         element.valOrVarKeyword.replace(newKeyword)
         if (element.hasModifier(KtTokens.CONST_KEYWORD)) {
-            element.removeModifier(KtTokens.CONST_KEYWORD)
+            element.removeModifierKeyword(KtTokens.CONST_KEYWORD)
         }
     }
 }
@@ -111,7 +117,8 @@ internal class NonVarPropertyInExternalInterfaceInspection :
         return parent.isInterface() && parent.hasModifier(KtTokens.EXTERNAL_KEYWORD)
     }
 
-    override fun KaSession.prepareContext(element: KtProperty): Unit? {
+    context(session: KaSession)
+    override fun prepareContext(element: KtProperty): Unit? {
         val parent = element.containingClassOrObject as? KtClass ?: return null
         val symbol = parent.symbol as? KaClassSymbol ?: return null
         return if (implementsReactPropsOrState(symbol)) Unit else null
@@ -147,7 +154,8 @@ internal class NonNullableBooleanPropertyInExternalInterfaceInspection :
         return parent.isInterface() && parent.hasModifier(KtTokens.EXTERNAL_KEYWORD)
     }
 
-    override fun KaSession.prepareContext(element: KtProperty): Unit? {
+    context(session: KaSession)
+    override fun prepareContext(element: KtProperty): Unit? {
         val type = element.returnType
         val isBoolean = (type as? KaClassType)?.classId == StandardClassIds.Boolean
         val isNullable = type.isMarkedNullable

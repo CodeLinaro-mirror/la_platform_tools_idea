@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.platform.execution.dashboard` start
+content_module_jar(module = ":execution.dashboard")
+### auto-generated section `dev intellij.platform.execution.dashboard` end
 
 ### auto-generated section `build intellij.platform.execution.dashboard` start
-
 jvm_library(
     name = "execution.dashboard",
     srcs = glob(
@@ -47,7 +51,9 @@ jvm_library(
         "//platform/kernel/shared:kernel",
         "//platform/lang-core",
         "//platform/execution",
+        "//platform/consoleView",
         "//platform/remote-topics/shared:rpc-topics",
+        "//platform/execution-impl/rpc",
         "//platform/lang-api:lang",
         "//platform/util/concurrency",
         "//platform/util:util-ui",
@@ -94,7 +100,9 @@ jvm_library(
         "//platform/kernel/shared:kernel_test_lib",
         "//platform/lang-core:lang-core_test_lib",
         "//platform/execution:execution_test_lib",
+        "//platform/consoleView:consoleView_test_lib",
         "//platform/remote-topics/shared:rpc-topics_test_lib",
+        "//platform/execution-impl/rpc:rpc_test_lib",
         "//platform/lang-api:lang_test_lib",
         "//platform/util/concurrency:concurrency_test_lib",
         "//platform/util:util-ui_test_lib",
@@ -107,6 +115,7 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.execution.dashboard.iml",
+        "resources/intellij.platform.execution.dashboard.xml",
     ],
     visibility = ["//visibility:public"],
 )

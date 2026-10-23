@@ -1,5 +1,5 @@
 // "Change to 'return@foo'" "true"
-// K2_ERROR: Null cannot be a value of a non-null type 'Unit'.
+// K2_ERROR: NULL_FOR_NONNULL_TYPE
 inline fun foo(f: (Int) -> Int?) {}
 
 fun baz(): Int = 0
@@ -11,4 +11,3 @@ fun test() {
     }
 }
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ChangeToLabeledReturnFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ChangeToLabeledReturnFix

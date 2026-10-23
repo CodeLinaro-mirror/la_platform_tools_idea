@@ -1,7 +1,14 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.libraries.kotlinx.coroutines.guava` start
+content_module_jar(
+    libraries = ["@lib//:libraries-kotlinx-coroutines-guava-kotlinx-coroutines-guava"],
+    module = ":guava",
+)
+### auto-generated section `dev intellij.libraries.kotlinx.coroutines.guava` end
 
 ### auto-generated section `build intellij.libraries.kotlinx.coroutines.guava` start
-
 jvm_library(
     name = "guava",
     srcs = glob(
@@ -14,12 +21,12 @@ jvm_library(
         ["resources/**/*"],
     ),
     visibility = ["//visibility:public"],
-    exports = ["@lib//:kotlinx-coroutines-guava"],
+    exports = ["@lib//:libraries-kotlinx-coroutines-guava-kotlinx-coroutines-guava"],
     runtime_deps = [
         # do not sort,
         "//libraries/kotlinx/coroutines/core",
         "//libraries/guava",
-        "@lib//:kotlinx-coroutines-guava",
+        "@lib//:libraries-kotlinx-coroutines-guava-kotlinx-coroutines-guava",
     ],
 )
 
@@ -33,7 +40,7 @@ jvm_library(
     kotlinc_opts = "@community//:k8",
     module_name = "intellij.libraries.kotlinx.coroutines.guava",
     visibility = ["//visibility:public"],
-    exports = ["@lib//:kotlinx-coroutines-guava"],
+    exports = ["@lib//:libraries-kotlinx-coroutines-guava-kotlinx-coroutines-guava"],
     runtime_deps = [
         # do not sort,
         ":guava",
@@ -47,6 +54,7 @@ jvm_library(
 exports_files(
     [
         "intellij.libraries.kotlinx.coroutines.guava.iml",
+        "resources/intellij.libraries.kotlinx.coroutines.guava.xml",
     ],
     visibility = ["//visibility:public"],
 )

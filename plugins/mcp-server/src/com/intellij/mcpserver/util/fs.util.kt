@@ -4,12 +4,13 @@ import com.intellij.mcpserver.mcpFail
 import com.intellij.openapi.components.serviceAsync
 import com.intellij.openapi.diagnostic.fileLogger
 import com.intellij.openapi.diagnostic.trace
-import com.intellij.openapi.project.BaseProjectDirectories.Companion.getBaseDirectories
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.project.BaseProjectDirectories
+import com.intellij.openapi.project.BaseProjectDirectories.Companion.getBaseDirectories
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.util.io.FileUtilRt
+import com.intellij.openapi.util.io.toNioPathOrNull
 import com.intellij.openapi.vfs.JarFileSystem
-import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.StandardFileSystems
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.VirtualFileManager
@@ -46,21 +47,27 @@ val Project.projectDirectory: Path
  * When [throwWhenOutside] is true the method throws an McpExpectedException if the path is outside the project directory.
  */
 fun Project.resolveInProject(pathInProject: String, throwWhenOutside: Boolean = true): Path {
-  return resolveInProject(pathInProject = pathInProject, projectDirectory = projectDirectory, throwWhenOutside = throwWhenOutside)
-}
-
-/**
- * Resolves a relative path against the directory.
- *
- * When [throwWhenOutside] is true the method throws an McpExpectedException if the path is outside the project directory.
- */
-fun resolveInProject(pathInProject: String, projectDirectory: Path, throwWhenOutside: Boolean = true): Path {
   val filePath = projectDirectory.resolve(pathInProject).normalize()
-  if (throwWhenOutside && !filePath.startsWith(projectDirectory)) {
+  if (throwWhenOutside && !isInProjectDirectories(filePath)) {
     mcpFail("Specified path '$filePath' points to the location outside of the project directory")
   }
   return filePath
 }
+
+/**
+ * Whether [path] is inside one of the project's base directories.
+ */
+fun Project.isInProjectDirectories(path: Path): Boolean {
+  logger.assertTrue(path.isAbsolute, "Expected an absolute path, got '$path'")
+  return projectDirectories().any { path.startsWith(it) }
+}
+
+/**
+ * The directories a file may live in and still belong to the project: the project directory itself plus every root
+ * [BaseProjectDirectories] reports.
+ */
+fun Project.projectDirectories(): List<Path> =
+  (listOf(projectDirectory.normalize()) + baseProjectDirectories()).distinct()
 
 /**
  * The roots [BaseProjectDirectories] reports for this project, or an empty list when they cannot be obtained.
@@ -85,6 +92,21 @@ private fun <T> Project.readSafely(what: String, fallback: T, action: () -> T): 
     logger.warn("Failed to read $what of the project '$name'", error)
     fallback
   }
+
+/**
+ * Relativizes [path] against this directory, falling back to the absolute path when the two share no root.
+ */
+fun Path.relativizeIfPossible(path: Path): String =
+  try {
+    relativize(path).toString()
+  }
+  catch (_: IllegalArgumentException) {
+    path.toString()
+  }
+
+fun Project.getPathForMcp(): String? {
+  return basePath
+}
 
 suspend fun findMostRelevantProjectForRoots(roots: Collection<String>): Project? {
   return roots.firstNotNullOfOrNull { findMostRelevantProject (it) }
@@ -135,7 +157,7 @@ private suspend fun findMostRelevantProject(path: Path): Project? {
   // - frontend/common/src  <-- this path passed as `path`
   // here we will have 2 project matches: `frontend/common` and `frontend` and better to prefer `frontend/common`
   val matches = openProjects.flatMap { it.matchingDirectories(targetNormalizedPath) }.sortedWith(MOST_INNER_MATCH_FIRST)
-  logger.trace { "Found projects for path $path: ${matches.joinToString { "${it.project.basePath} (matched by ${it.directory})" }}" }
+  logger.trace { "Found projects for path $path: ${matches.joinToString { "${it.project.getPathForMcp()} (matched by ${it.directory})" }}" }
   val bestMatch = matches.firstOrNull() ?: return null
 
   // two projects opened from the same repository report the same repository root, and the root alone does not tell one
@@ -168,7 +190,8 @@ private fun Project.matchingDirectories(targetNormalizedPath: Path): List<Projec
   if (isDisposed) return emptyList()
 
   return readSafely("the directories", emptyList()) {
-    val projectPath = if (this is ProjectStoreOwner) componentStore.projectBasePath.normalize() else null
+    val projectPath = if (this is ProjectStoreOwner) componentStore.projectBasePath.normalize()
+                      else getPathForMcp()?.toNioPathOrNull()?.normalize()
 
     val directories = LinkedHashSet<Path>()
     projectPath?.let(directories::add)
@@ -202,7 +225,7 @@ fun Path.relativizeIfPossible(virtualFile: VirtualFile): String {
 }
 
 // TODO: this must be unified with resolveInProject and made more flexible to support multiple source roots, also MCP client roots and so on
-@RequiresBackgroundThread
+@RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
 fun resolveReadFile(project: Project, filePath: String): VirtualFile {
   val normalizedPath = normalizeReadFilePath(filePath)
   val virtualFileManager = VirtualFileManager.getInstance()
@@ -216,7 +239,7 @@ fun resolveReadFile(project: Project, filePath: String): VirtualFile {
     }
     else -> {
       val resolvedPath = resolveReadFilePath(project, normalizedPath)
-      LocalFileSystem.getInstance().refreshAndFindFileByPath(FileUtilRt.toSystemIndependentName(resolvedPath))
+      StandardFileSystems.local().refreshAndFindFileByPath(FileUtilRt.toSystemIndependentName(resolvedPath))
     }
   } ?: mcpFail("File $filePath doesn't exist or can't be opened")
 
@@ -255,7 +278,7 @@ private fun resolveArchiveEntryFile(archiveEntryPath: String): VirtualFile? {
 
   val localRootPath = archiveEntryPath.substring(0, separatorIndex)
   val entryPath = archiveEntryPath.substring(separatorIndex + JarFileSystem.JAR_SEPARATOR.length).trimStart('/')
-  val localRoot = LocalFileSystem.getInstance().refreshAndFindFileByPath(localRootPath) ?: return null
+  val localRoot = StandardFileSystems.local().refreshAndFindFileByPath(localRootPath) ?: return null
   val virtualFileManager = VirtualFileManager.getInstance()
 
   val archiveRoot = listOf(StandardFileSystems.JAR_PROTOCOL, StandardFileSystems.JRT_PROTOCOL)
@@ -269,18 +292,6 @@ private fun resolveArchiveEntryFile(archiveEntryPath: String): VirtualFile? {
 fun looksLikeVfsUrl(filePath: String): Boolean {
   val schemeSeparator = filePath.indexOf("://")
   return schemeSeparator > 0 && filePath.substring(0, schemeSeparator).all { it.isLetterOrDigit() || it == '+' || it == '-' || it == '.' }
-}
-
-// TODO: this must be unified with resolveInProject and made more flexible to support multiple source roots, also MCP client roots and so on
-internal fun isUnderProjectDirectory(project: Project, virtualFile: VirtualFile): Boolean {
-  val filePath = virtualFile.toNioPathOrNull()
-                 ?: try {
-                   Path.of(virtualFile.path)
-                 }
-                 catch (_: Throwable) {
-                   return false
-                 }
-  return filePath.normalize().startsWith(project.projectDirectory)
 }
 
 enum class RenderStyle {

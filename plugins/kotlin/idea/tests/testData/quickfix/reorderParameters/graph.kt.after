@@ -1,8 +1,8 @@
 // "Reorder parameters" "true"
-// K2_ERROR: Parameter 'a1' is uninitialized here.
-// K2_ERROR: Parameter 'a2' is uninitialized here.
-// K2_ERROR: Parameter 'a2' is uninitialized here.
-// K2_ERROR: Parameter 'a3' is uninitialized here.
+// K2_ERROR: UNINITIALIZED_PARAMETER
+// K2_ERROR: UNINITIALIZED_PARAMETER
+// K2_ERROR: UNINITIALIZED_PARAMETER
+// K2_ERROR: UNINITIALIZED_PARAMETER
 fun println(any: Any) = Unit
 
 fun foo(
@@ -21,5 +21,4 @@ fun main() {
     )
 }
 
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ReorderParametersFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.refactoring.changeSignature.quickFix.ReorderParametersFixFactory$ReorderParametersFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.refactoring.changeSignature.quickFix.ReorderParametersFixFactory$ReorderParametersFix

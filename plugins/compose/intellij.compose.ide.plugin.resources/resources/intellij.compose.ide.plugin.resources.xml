@@ -7,9 +7,50 @@
     <module name="intellij.compose.ide.plugin.gradleTooling.rt"/>
     <module name="intellij.compose.ide.plugin.shared"/>
     <module name="intellij.java.psi"/>
+    <module name="intellij.kotlin.base.analysis.utils"/>
+    <module name="intellij.kotlin.base.codeInsight"/>
+    <module name="intellij.kotlin.base.facet"/>
+    <module name="intellij.kotlin.base.indices"/>
+    <module name="intellij.kotlin.base.projectModel"/>
+    <module name="intellij.kotlin.base.psi"/>
+    <module name="intellij.kotlin.base.util"/>
+    <module name="intellij.kotlin.codeInsight.api"/>
+    <module name="intellij.kotlin.gradle.tooling.impl"/>
+    <module name="intellij.kotlin.refactorings.base"/>
+    <module name="intellij.kotlin.references"/>
+    <module name="intellij.libraries.kotlin.reflect"/>
+    <module name="intellij.libraries.kotlinc.analysis.api"/>
+    <module name="intellij.libraries.kotlinc.kotlin.compiler.common"/>
+    <module name="intellij.libraries.kotlinc.symbol.light.classes"/>
+    <module name="intellij.platform.analysis"/>
+    <module name="intellij.platform.codeStyle"/>
+    <module name="intellij.platform.core"/>
+    <module name="intellij.platform.core.impl"/>
+    <module name="intellij.platform.core.ui"/>
+    <module name="intellij.platform.editor.ui"/>
+    <module name="intellij.platform.externalSystem"/>
+    <module name="intellij.platform.ide.core"/>
+    <module name="intellij.platform.ide.impl"/>
+    <module name="intellij.platform.ide.observable"/>
+    <module name="intellij.platform.indexing"/>
+    <module name="intellij.platform.lang"/>
+    <module name="intellij.platform.lang.impl"/>
+    <module name="intellij.platform.monolith"/>
+    <module name="intellij.platform.projectModel"/>
+    <module name="intellij.platform.refactoring"/>
+    <module name="intellij.platform.statistics"/>
+    <module name="intellij.platform.usageView"/>
+    <module name="intellij.platform.usageView.impl"/>
+    <module name="intellij.platform.util.coroutines"/>
+    <module name="intellij.platform.util.ui"/>
+    <module name="intellij.xml.impl"/>
+    <module name="intellij.xml.parser"/>
+    <module name="intellij.xml.psi"/>
+    <module name="intellij.xml.psi.impl"/>
     <module name="kotlin.gradle.gradle-java"/>
   </dependencies>
   <!-- endregion -->
+  <resource-bundle>messages.ComposeIdeBundle</resource-bundle>
   <extensionPoints>
     <extensionPoint
       dynamic="true"
@@ -17,8 +58,16 @@
       interface="com.intellij.compose.ide.plugin.resources.vectorDrawable.preview.BaseVectorDrawablePreviewRenderer"/>
     <extensionPoint
       dynamic="true"
+      qualifiedName="com.intellij.compose.ide.plugin.resources.vectorIconPicker"
+      interface="com.intellij.compose.ide.plugin.resources.actions.vectorAsset.BaseVectorIconPicker"/>
+    <extensionPoint
+      dynamic="true"
       qualifiedName="com.intellij.compose.ide.plugin.resources.dataProvider"
       interface="com.intellij.compose.ide.plugin.resources.ComposeResourcesDataProvider"/>
+    <extensionPoint
+      dynamic="true"
+      qualifiedName="com.intellij.compose.ide.plugin.resources.settingsContributor"
+      interface="com.intellij.compose.ide.plugin.resources.settings.ComposeResourcesSettingsContributor"/>
   </extensionPoints>
 
   <extensions defaultExtensionNs="com.intellij.compose.ide.plugin.resources">
@@ -26,10 +75,24 @@
       implementation="com.intellij.compose.ide.plugin.resources.vectorDrawable.preview.ComposeResourcesDrawablePreviewRenderer"
       order="last"/>
     <dataProvider implementation="com.intellij.compose.ide.plugin.resources.gradle.GradleComposeResourcesDataProvider"/>
+    <settingsContributor
+      implementation="com.intellij.compose.ide.plugin.resources.emmetLikeTemplates.settings.ComposeResourcesEmmetLikeSettingsContributor"/>
   </extensions>
 
   <extensions defaultExtensionNs="com.intellij">
     <annotator language="XML" implementationClass="com.intellij.compose.ide.plugin.resources.highlighting.ComposeResourcesXmlAnnotator"/>
+
+    <applicationConfigurable
+      id="compose.resources.settings"
+      parentId="kmp.settings.group"
+      bundle="messages.ComposeIdeBundle"
+      key="compose.resources.title"
+      instance="com.intellij.compose.ide.plugin.resources.settings.ComposeResourcesConfigurable"/>
+
+    <applicationService
+      serviceImplementation="com.intellij.compose.ide.plugin.resources.emmetLikeTemplates.settings.ComposeResourcesEmmetLikeSettings"/>
+    <applicationSettings
+      service="com.intellij.compose.ide.plugin.resources.emmetLikeTemplates.settings.ComposeResourcesEmmetLikeSettings"/>
 
 
     <codeInsight.unresolvedReferenceQuickFixProvider
@@ -44,6 +107,9 @@
     <renamePsiElementProcessor id="ComposeResources"
                                implementation="com.intellij.compose.ide.plugin.resources.rename.ComposeResourcesRenameProcessor"
                                order="first, before KotlinProperty"/>
+    <headlessRenamePsiElementProcessor id="ComposeResources"
+                                       implementation="com.intellij.compose.ide.plugin.resources.rename.ComposeResourcesRenameProcessor"
+                                       order="first, before KotlinProperty"/>
     <renamePsiElementProcessor id="ComposeResourcesFile"
                                implementation="com.intellij.compose.ide.plugin.resources.rename.ComposeResourcesFileRenameProcessor"
                                order="first"/>
@@ -69,8 +135,36 @@
     <xml.schemaProvider implementation="com.intellij.compose.ide.plugin.resources.ComposeResourcesDrawableXmlSchemaProvider"/>
     <xml.elementDescriptorProvider
       implementation="com.intellij.compose.ide.plugin.resources.ComposeResourcesDrawableXmlElementDescriptorProvider"/>
+    <localInspection implementationClass="com.intellij.compose.ide.plugin.resources.inspections.ComposeResourcesImageResourceInspection"
+                     language="kotlin"
+                     enabledByDefault="true"
+                     bundle="messages.ComposeIdeBundle"
+                     groupKey="compose.inspection.group.name"
+                     key="compose.inspection.image.resource.name"
+                     level="ERROR"
+                     shortName="ComposeResourcesImageResource"/>
   </extensions>
-
+  <actions>
+    <action id="compose.newVectorAsset"
+            class="com.intellij.compose.ide.plugin.resources.actions.vectorAsset.ComposeResourcesNewVectorAsset"
+            icon="com.intellij.compose.ide.plugin.shared.icons.ComposeIdePluginSharedIcons.ComposeMultiplatform">
+      <add-to-group group-id="NewGroup" anchor="after" relative-to-action="NewDir"/>
+    </action>
+    <group id="compose.resource.preview.Toolbar">
+      <group id="compose.resource.preview.background"
+             popup="true"
+             icon="com.intellij.compose.ide.plugin.shared.icons.ComposeIdePluginSharedIcons.ViewMode">
+        <action id="compose.resource.preview.background.none"
+                class="com.intellij.compose.ide.plugin.resources.vectorDrawable.preview.ComposeResourcePreviewBackgroundAction$None"/>
+        <action id="compose.resource.preview.background.white"
+                class="com.intellij.compose.ide.plugin.resources.vectorDrawable.preview.ComposeResourcePreviewBackgroundAction$White"/>
+        <action id="compose.resource.preview.background.black"
+                class="com.intellij.compose.ide.plugin.resources.vectorDrawable.preview.ComposeResourcePreviewBackgroundAction$Black"/>
+        <action id="compose.resource.preview.background.checkered"
+                class="com.intellij.compose.ide.plugin.resources.vectorDrawable.preview.ComposeResourcePreviewBackgroundAction$Checkered"/>
+      </group>
+    </group>
+  </actions>
   <projectListeners>
     <listener class="com.intellij.compose.ide.plugin.resources.gradle.GradleComposeResourcesManager$ComposeResourcesProjectDataImportListener"
               topic="com.intellij.openapi.externalSystem.service.project.manage.ProjectDataImportListener"/>

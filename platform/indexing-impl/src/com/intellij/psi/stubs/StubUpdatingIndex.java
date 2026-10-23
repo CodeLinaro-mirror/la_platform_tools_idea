@@ -339,12 +339,12 @@ public final class StubUpdatingIndex extends SingleEntryFileBasedIndexExtension<
 
   @Override
   @ApiStatus.Internal
-  public @NotNull UpdatableIndex<Integer, SerializedStubTree, FileContent, ?> createIndexImplementation(
-    @NotNull FileBasedIndexExtension<Integer, SerializedStubTree> extension,
-    @NotNull VfsAwareIndexStorageLayout<Integer, SerializedStubTree> layout
-  ) throws StorageException, IOException {
+  public @NotNull UpdatableIndex<Integer, SerializedStubTree, FileContent, ?> createIndexImplementation(@NotNull FileBasedIndexExtension<Integer, SerializedStubTree> extension,
+                                                                                                        @NotNull VfsAwareIndexStorageLayout<Integer, SerializedStubTree> layout,
+                                                                                                        boolean isInitialBuild)
+    throws StorageException, IOException {
 
-    ((StubIndexEx)StubIndex.getInstance()).initializeStubIndexes();
+    ((StubIndexEx)StubIndex.getInstance()).initializeStubIndexes(isInitialBuild);
     checkNameStorage();
     mySerializationManager.initialize();
 
@@ -396,11 +396,6 @@ public final class StubUpdatingIndex extends SingleEntryFileBasedIndexExtension<
   @Override
   public int getVersion() {
     return VERSION;
-  }
-
-  @Override
-  public boolean enableWal() {
-    return true;
   }
 
   @Override

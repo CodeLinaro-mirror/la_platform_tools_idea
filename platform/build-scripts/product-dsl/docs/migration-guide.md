@@ -42,7 +42,7 @@ To migrate a product to programmatic content:
 **`getProductContentDescriptor()` (modern):**
 - Declares content modules via module sets and `module()`/`embeddedModule()`
 - Content modules = have XML descriptors with extensions/services
-- Implementation dependencies come via `includeDependencies = true`
+- A runtime dependency of a content module is a content module too; the layout packs nothing else
 
 ### Migration Steps
 
@@ -92,22 +92,24 @@ productLayout.productImplementationModules = listOf(
 )
 ```
 
-**4. Use includeDependencies for transitive implementation deps**
+**4. Give a transitive implementation dependency its own descriptor**
 
-Instead of listing all implementation dependencies explicitly:
+The layout packs only the modules the descriptor names. When a content module depends on an
+implementation module, add a `<module>.xml` descriptor to that module and list it in the module set
+of its consumer:
 
 ```kotlin
-// ❌ OLD - manually list all transitive implementation modules
+// ❌ OLD - list the implementation module beside the content module
 productLayout.productImplementationModules = listOf(
   "fleet.andel",  // Content module (has descriptor)
   "fleet.util.multiplatform",  // Implementation dep of fleet.andel
   "fleet.backend"
 )
 
-// ✅ NEW - let includeDependencies handle transitive implementation modules
+// ✅ NEW - fleet.util.multiplatform gets a descriptor and joins the set that holds fleet.andel
 override fun getProductContentDescriptor() = productModules {
-  embeddedModule("fleet.andel", includeDependencies = true)
-  // This automatically includes fleet.util.multiplatform and other implementation deps
+  embeddedModule("fleet.andel")
+  embeddedModule("fleet.util.multiplatform")
 }
 
 productLayout.productImplementationModules = listOf(
@@ -136,49 +138,29 @@ override fun getProductContentDescriptor() = productModules {
 **Pitfall 2: Not checking transitive dependencies**
 
 ```kotlin
-// ❌ BAD - assuming no duplicates without checking
+// ❌ BAD - the module is already a content module of a module set
 productLayout.productImplementationModules = listOf(
-  "fleet.util.multiplatform"  // Might come via includeDependencies!
-)
-
-override fun getProductContentDescriptor() = productModules {
-  embeddedModule("fleet.andel", includeDependencies = true)
-  // fleet.andel → fleet.util.core → fleet.util.multiplatform
-}
-```
-
-**Fix:** Use Plugin Model Analyzer MCP to check transitive deps:
-
-```kotlin
-// Check ALL transitive dependencies
-get_module_dependencies(
-  moduleName = "fleet.andel",
-  includeTransitive = true
+  "fleet.util.multiplatform"  // A content module of the `fleet` set
 )
 ```
 
-**Pitfall 3: Forgetting includeDependencies only gets implementation modules**
+**Fix:** Use the Plugin Model Analyzer skill to check transitive deps through the Bazel JSON analyzer:
 
-```kotlin
-// ❓ QUESTION - will this include fleet.util.core?
-embeddedModule("fleet.andel", includeDependencies = true)
-
-// ✅ ANSWER - NO! 
-// fleet.util.core has a descriptor, so it's filtered out
-// Only implementation modules (no descriptors) are included
+```bash
+bazel run --ui_event_filters=-info --noshow_progress //platform/buildScripts:plugin-model-tool -- --json='{"filter":"moduleDependencies","module":"fleet.andel","includeTransitive":true}'
 ```
 
 ### Verification Checklist
 
 Before committing changes:
 
-1. **Run Generate Product Layouts**
+1. **Run the generator**
    ```bash
-   # Via JetBrains MCP
-   execute_run_configuration(name="Generate Product Layouts")
-   
-   # Or directly
+   # Preferred
    bazel run //platform/buildScripts:plugin-model-tool
+   
+   # Or via JetBrains MCP
+   execute_run_configuration(name="Generate Product Layouts")
    ```
 
 2. **Check for duplicate content modules**
@@ -187,12 +169,12 @@ Before committing changes:
 
 3. **Verify tests pass**
    ```bash
-   ./tests.cmd -Dintellij.build.test.patterns=com.intellij.idea.ultimate.build.smokeTests.AllProductsPackagingTest
+   ./bazel.cmd test //build:all-products-packaging_test
    ```
 
 4. **Use MCP to analyze transitive dependencies**
    ```kotlin
-   // Check what includeDependencies will include
+   // Check which content modules the module needs
    get_module_dependencies(
      moduleName = "your.module",
      includeTransitive = true
@@ -215,7 +197,7 @@ Older build scripts used a hard-coded list in `PlatformModules.kt` for modules t
 // OLD (removed): adding modules to a hard-coded platform core list in PlatformModules.kt
 
 // NEW (recommended)
-moduleSet(CommunityModuleSets.essentialMinimal())
+moduleSet(CommunityModuleSets.essential())
 // or for minimal products:
 moduleSet(CommunityModuleSets.corePlatform())
 ```
@@ -233,14 +215,14 @@ moduleSet(CommunityModuleSets.corePlatform())
    (analysis/inspection)         (basic editing)         (all features)
         │                               │                     │
         ▼                               ▼                     ▼
-   corePlatform                   essentialMinimal        ide.common
-                                  + specific sets         or ide.ultimate
+   corePlatform                   coreLang                ide.common
+                                  + feature sets          or ide.ultimate
 ```
 
 | Module Set | Use Case |
 |------------|----------|
 | `corePlatform()` | Minimal tools without editing (CodeServer) |
-| `essentialMinimal()` | Lightweight IDEs with basic editing |
+| `coreLang()` + feature sets | Lightweight IDEs with basic editing, such as Draft (`splitCore()`, `editor()`, `find()`) |
 | `essential()` | Full IDEs with language support |
 | `ide.common` | IDEs with VCS, XML, common features |
 | `ide.ultimate` | Full Ultimate IDEs |
@@ -255,10 +237,8 @@ override fun getProductContentDescriptor(): ProductModulesContentSpec = productM
   alias("com.intellij.codeServer")
   
   // Only XML includes - modules not available at runtime
-  deprecatedInclude("intellij.platform.analysis", "META-INF/Analysis.xml")
-  deprecatedInclude("intellij.platform.core", "META-INF/Core.xml")
-  deprecatedInclude("intellij.platform.projectModel", "META-INF/ProjectModel.xml")
-  // ... 11 more deprecatedInclude calls
+  deprecatedInclude("intellij.platform.resources", "META-INF/ProjectModel.xml")
+  // ... more deprecatedInclude calls
   
   // Only 5 modules total
   module("intellij.grid")
@@ -274,13 +254,12 @@ override fun getProductContentDescriptor(): ProductModulesContentSpec = productM
   // Use corePlatform for analysis tools (core platform without language editing)
   moduleSet(CommunityModuleSets.corePlatform())
   
-  // Keep deprecatedInclude only for modules NOT in corePlatform
-  deprecatedInclude("intellij.platform.indexing", "META-INF/Indexing.xml")
-  deprecatedInclude("intellij.platform.codeStyle.impl", "META-INF/CodeStyle.xml")
-  deprecatedInclude("intellij.platform.refactoring", "META-INF/RefactoringExtensionPoints.xml")
-  deprecatedInclude("intellij.codeServer.core", "META-INF/codeserver-customization.xml")
+  // Product-specific customization lives in a dedicated embedded content module
+  embeddedModule("intellij.codeServer.ide.customization")
   
   // Product-specific modules
+  embeddedModule("intellij.platform.codeStyle.impl")
+  embeddedModule("intellij.platform.refactoring")
   module("intellij.grid")
   module("intellij.grid.types")
   module("intellij.grid.csv.core.impl")
@@ -289,7 +268,7 @@ override fun getProductContentDescriptor(): ProductModulesContentSpec = productM
 }
 ```
 
-**Why corePlatform (not essentialMinimal)?**
+**Why corePlatform (not essential)?**
 CodeServer is an analysis/inspection tool that doesn't provide language editing capabilities:
 - ✅ Needs: Core platform, analysis APIs, IDE extension points
 - ❌ Doesn't need: Language support (lang.*), IDE editing (ide.impl), editor UI, search
@@ -297,6 +276,6 @@ CodeServer is an analysis/inspection tool that doesn't provide language editing 
 
 **Benefits of using module sets:**
 - Modules are actually available at runtime (not just XML extension points)
-- Clear separation: analysis tools use corePlatform, editing IDEs use essentialMinimal
+- Clear separation: analysis tools use corePlatform, editing IDEs use essential, or coreLang with the feature sets
 - Easier to maintain (fewer deprecatedInclude calls)
 - Automatic updates when core platform evolves

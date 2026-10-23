@@ -2,6 +2,7 @@
 package org.jetbrains.plugins.gradle.execution.build
 
 import com.intellij.openapi.externalSystem.test.compileModules
+import com.intellij.platform.testFramework.assertion.BuildViewAssertions.assertBuildViewTree
 import com.intellij.platform.testFramework.assertion.moduleAssertion.ModuleAssertions.assertModules
 import org.gradle.util.GradleVersion
 import org.jetbrains.plugins.gradle.importing.BuildViewMessagesImportingTestCase.Companion.assertNodeWithDeprecatedGradleWarning
@@ -17,8 +18,8 @@ class GradleBuildOutputTest : GradleExecutionTestCase() {
 
   @Disabled("IDEA-387217")
   @ParameterizedTest
-  @AllGradleVersionsSource
-  fun `test build script errors on Build`(gradleVersion: GradleVersion) {
+  @AllGradleVersionsSource("true, false")
+  fun `test build script errors on Build`(gradleVersion: GradleVersion, singleConsole: Boolean) = withSingleConsole(singleConsole) {
     val fixtureBuilder = GradleTestFixtureBuilder.create("GradleExecutionOutputTest.test build script errors on Build") {
       withSettingsFile(gradleVersion) {
         setProjectName("project")
@@ -71,7 +72,7 @@ class GradleBuildOutputTest : GradleExecutionTestCase() {
       waitForAnyGradleTaskExecution {
         try { compileModules(project, true, "project.impl.main") } catch (_: AssertionError) { /* compilation failure expected */ }
       }
-      assertBuildViewTree {
+      assertBuildViewTree(buildView) {
         assertNode("successful") {
           assertNodeWithDeprecatedGradleWarning(gradleVersion)
           assertNode(":api:compileJava")
@@ -94,7 +95,7 @@ class GradleBuildOutputTest : GradleExecutionTestCase() {
       waitForAnyGradleTaskExecution {
         try { compileModules(project, true, "project.brokenProject.main") } catch (_: AssertionError) { /* compilation failure expected */ }
       }
-      assertBuildViewTree {
+      assertBuildViewTree(buildView) {
         assertNode("failed") {
           assertNodeWithDeprecatedGradleWarning(gradleVersion)
           assertNode(":brokenProject:compileJava") {

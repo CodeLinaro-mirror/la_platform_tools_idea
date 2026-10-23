@@ -2,8 +2,8 @@
 package com.jetbrains.python.packaging.toolwindow.actions
 
 import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.python.requirements.pyRequirement
 import com.jetbrains.python.packaging.management.PythonPackageInstallRequest
-import com.jetbrains.python.packaging.pyRequirement
 import com.jetbrains.python.packaging.statistics.PyInstallDialogSource
 import com.jetbrains.python.packaging.statistics.PythonPackagesToolwindowStatisticsCollector
 import com.jetbrains.python.packaging.toolwindow.PyPackagingToolWindowService

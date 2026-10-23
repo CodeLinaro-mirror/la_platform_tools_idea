@@ -5,102 +5,60 @@ import com.intellij.workspaceModel.codegen.deft.meta.ExtProperty
 import com.intellij.workspaceModel.codegen.deft.meta.ObjClass
 import com.intellij.workspaceModel.codegen.deft.meta.ObjProperty
 import com.intellij.workspaceModel.codegen.deft.meta.ValueType
-import com.intellij.workspaceModel.codegen.impl.writer.extensions.additionalAnnotations
-import com.intellij.workspaceModel.codegen.impl.writer.extensions.allFields
-import com.intellij.workspaceModel.codegen.impl.writer.extensions.allRefsFields
-import com.intellij.workspaceModel.codegen.impl.writer.extensions.allSuperClasses
+import com.intellij.workspaceModel.codegen.impl.dsl.CodeContext
+import com.intellij.workspaceModel.codegen.impl.dsl.GeneratorContext
+import com.intellij.workspaceModel.codegen.impl.dsl.additionalAnnotations
+import com.intellij.workspaceModel.codegen.impl.dsl.annotation
+import com.intellij.workspaceModel.codegen.impl.dsl.notReferenceError
+import com.intellij.workspaceModel.codegen.impl.dsl.unsupportedTypeError
+import com.intellij.workspaceModel.codegen.impl.writer.entityImplementation.lineComment
 import com.intellij.workspaceModel.codegen.impl.writer.extensions.builderWithTypeParameter
 import com.intellij.workspaceModel.codegen.impl.writer.extensions.compatibleJavaBuilderName
 import com.intellij.workspaceModel.codegen.impl.writer.extensions.defaultJavaBuilderName
-import com.intellij.workspaceModel.codegen.impl.writer.extensions.getRefType
-import com.intellij.workspaceModel.codegen.impl.writer.extensions.isRefType
+import com.intellij.workspaceModel.codegen.impl.writer.extensions.isReferenceType
 import com.intellij.workspaceModel.codegen.impl.writer.extensions.javaFullName
 import com.intellij.workspaceModel.codegen.impl.writer.extensions.kotlinClassName
-import com.intellij.workspaceModel.codegen.impl.writer.extensions.requiresCompatibility
-import com.intellij.workspaceModel.codegen.impl.writer.fields.additionalAnnotations
-import com.intellij.workspaceModel.codegen.impl.writer.fields.javaType
-import java.util.Locale.getDefault
+import com.intellij.workspaceModel.codegen.impl.writer.extensions.requiresModuleId
+import com.intellij.workspaceModel.codegen.impl.writer.extensions.unwrapReferenceType
 
-private val DEPRECATION = "@${Deprecated::class.fqn}(message = \"Use new API instead\")"
+private val DEPRECATION = "${Deprecated::class.fqn}(message = \"Use new API instead\")"
+private val FAKE_MODULE_ID_PROPERTY =
+  PropertyData("moduleId", ValueType.Any, QualifiedName("#uC03o#com.intellij.platform.workspace.jps.entities@@ModuleId#ModuleId"))
 
-private fun String.capitalizeFirstChar(): String = replaceFirstChar { if (it.isLowerCase()) it.titlecase(getDefault()) else it.toString() }
-
-fun ObjClass<*>.generateCompatabilityBuilder(): String =
-  lines {
-    if (!requiresCompatibility) {
-      return@lines
-    }
-    val (typeParameter, typeDeclaration) = if (builderWithTypeParameter) "<T>" to "<T: $javaFullName>" else "" to ""
-    val message = "Use $defaultJavaBuilderName instead"
-    line("@${Deprecated::class.fqn}(message = \"$message\")")
-    val superFields = allSuperClasses.flatMap { it.allFields.map { it.name } }.toSet()
-    val refsFields = allRefsFields.filter { it.name !in superFields  && it.valueType !is ValueType.Collection<*, *>}
-    if (refsFields.isNotEmpty()) {
-      section("interface Builder$typeDeclaration : $defaultJavaBuilderName$typeParameter") {
-        refsFields
-          .forEach { field ->
-            line(DEPRECATION)
-            line("fun get${field.name.capitalizeFirstChar()}():${field.valueType.compatibilityJavaBuilderTypeWithGeneric} = ${field.name} as ${field.valueType.compatibilityJavaBuilderTypeWithGeneric}")
-            line(DEPRECATION)
-            line("fun set${field.name.capitalizeFirstChar()}(value: ${field.valueType.compatibilityJavaBuilderTypeWithGeneric}) { ${field.name} = value }")
-          }
-      }
-    }
-    else {
-      line("interface Builder$typeDeclaration : $defaultJavaBuilderName$typeParameter")
-    }
-  }
-
-fun ObjClass<*>.generateCompatibilityCompanion(): String =
-  lines {
-    if (!requiresCompatibility) {
-      return@lines
-    }
-    val builderGeneric = if (openness.extendable) "<$javaFullName>" else ""
-    section("companion object : ${EntityType}<$javaFullName, Builder$builderGeneric>()") {
-      val mandatoryFields = allFields.mandatoryFields()
-      line(DEPRECATION)
-      line("@${JvmOverloads::class.fqn}")
-      line("@${JvmStatic::class.fqn}")
-      line("@${JvmName::class.fqn}(\"create\")")
-      if (mandatoryFields.isNotEmpty()) {
-        line("operator fun invoke(")
-        mandatoryFields.forEach { field ->
-          line("${field.name}: ${field.valueType.javaType},")
-        }
-        line("init: (Builder$builderGeneric.() -> Unit)? = null,")
-        line("): Builder$builderGeneric = ${javaFullName}Type.compatibilityInvoke(${mandatoryFields.joinToString(", ") { it.name }}, init)")
-      }
-      else {
-        line("${generatedCodeVisibilityModifier}operator fun invoke(init: (Builder$builderGeneric.() -> Unit)? = null): Builder$builderGeneric = = ${javaFullName}Type.compatibilityInvoke(init)")
-      }
-    }
-  }
-
-fun LinesBuilder.compatibilityInvoke(
-  mandatoryFields: List<ObjProperty<*, *>>,
-  javaFullName: QualifiedName,
+fun CodeContext.compatibilityInvoke(
+  mandatoryProperties: List<ObjProperty<*, *>>,
+  objClass: ObjClass<*>,
   builderGeneric: String,
 ) {
-  val builderSymbol = "$javaFullName.Builder$builderGeneric"
-  line(DEPRECATION)
-  if (mandatoryFields.isNotEmpty()) {
+  val builderSymbol = "${objClass.javaFullName}.Builder$builderGeneric"
+  annotation(DEPRECATION)
+  val convertedGiven = mandatoryProperties.map { PropertyData(it.name, it.valueType, getJavaType(it)) }
+  val requiresModuleId = objClass.requiresModuleId
+  val propertiesData = if (requiresModuleId) {
+    listOf(FAKE_MODULE_ID_PROPERTY) + convertedGiven
+  }
+  else {
+    convertedGiven
+  }
+  if (propertiesData.isNotEmpty()) {
     line("fun compatibilityInvoke(")
-    mandatoryFields.forEach { field ->
-      line("${field.name}: ${field.valueType.javaType},")
+    for (propertyData in propertiesData) {
+      line("${propertyData.name}: ${propertyData.javaType},")
     }
     line("init: ($builderSymbol.() -> Unit)? = null,")
     section("): $builderSymbol") {
       line("val builder = builder() as $builderSymbol")
-      list(mandatoryFields) {
-        if (this.valueType is ValueType.Set<*> && !this.valueType.isRefType()) {
-          "builder.$name = $name.${StorageCollection.toMutableWorkspaceSet}()"
+      for (propertyData in propertiesData) {
+        val name = propertyData.name
+        if (requiresModuleId && name == FAKE_MODULE_ID_PROPERTY.name) continue
+        if (propertyData.valueType is ValueType.Set<*> && !propertyData.valueType.isReferenceType()) {
+          +"builder.$name = $name.${StorageCollection.toMutableWorkspaceSet}()"
         }
-        else if (this.valueType is ValueType.List<*> && !this.valueType.isRefType()) {
-          "builder.$name = $name.${StorageCollection.toMutableWorkspaceList}()"
+        else if (propertyData.valueType is ValueType.List<*> && !propertyData.valueType.isReferenceType()) {
+          +"builder.$name = $name.${StorageCollection.toMutableWorkspaceList}()"
         }
         else {
-          "builder.$name = $name"
+          +"builder.$name = $name"
         }
       }
       line("init?.invoke(builder)")
@@ -108,7 +66,7 @@ fun LinesBuilder.compatibilityInvoke(
     }
   }
   else {
-    section("${generatedCodeVisibilityModifier}fun compatibilityInvoke(init: ($builderSymbol.() -> Unit)? = null): $builderSymbol") {
+    section("${explicitApiModifier}fun compatibilityInvoke(init: ($builderSymbol.() -> Unit)? = null): $builderSymbol") {
       line("val builder = builder() as $builderSymbol")
       line("init?.invoke(builder)")
       line("return builder")
@@ -116,34 +74,59 @@ fun LinesBuilder.compatibilityInvoke(
   }
 }
 
-fun ObjClass<*>.compatibilityModifyCode(linesBuilder: LinesBuilder) {
-  with(linesBuilder) {
-    line(DEPRECATION)
-    if (additionalAnnotations.isNotEmpty()) {
-      list(additionalAnnotations)
-    }
-    line("${generatedCodeVisibilityModifier}fun ${MutableEntityStorage}.modify$name(")
-    line("  entity: $name,")
-    line("  modification: $compatibleJavaBuilderName.() -> Unit,")
-    line("): $name {")
-    line("  return modifyEntity($compatibleJavaBuilderName::class.java, entity, modification)")
-    line("}")
+fun CodeContext.generateCompatibilityConstructorCode(objClass: ObjClass<*>) {
+  if (!objClass.requiresModuleId) return
+  lineComment("IJPL-150365")
+  val mandatoryProperties = mandatoryProperties(objClass)
+  val builderGeneric = if (objClass.openness.extendable) "<${objClass.javaFullName}>" else ""
+  val javaBuilderName = objClass.defaultJavaBuilderName
+
+  val propertiesData = listOf(FAKE_MODULE_ID_PROPERTY) + mandatoryProperties.map { PropertyData(it.name, it.valueType, getJavaType(it)) }
+
+  annotation("${Deprecated::class.fqn}(message = \"Use new constructor without moduleId\")")
+  additionalAnnotations(objClass)
+  annotation(JvmOverloads::class.fqn.toString())
+  annotation("${JvmName::class.fqn}(\"create${objClass.name}\")")
+  line("${explicitApiModifier}fun ${objClass.name}(")
+  for (property in propertiesData) {
+    line("${property.name}: ${property.javaType},")
   }
+  line("init: ($javaBuilderName$builderGeneric.() -> Unit)? = null,")
+  line("): $javaBuilderName = ${objClass.name}Type(${mandatoryProperties.joinToString(", ") { it.name }}, init)")
 }
 
-fun ExtProperty<*, *>.compatibilityExtensionWsCode(linesBuilder: LinesBuilder) {
-  val isChild = valueType.getRefType().child
-  val parentAnnotation = if (!isChild) "@${Parent}\n" else ""
-  val generic = if (receiver.builderWithTypeParameter) "<out ${receiver.javaFullName}>" else ""
-  if (additionalAnnotations.isNotEmpty()) {
-    linesBuilder.line(additionalAnnotations)
+private data class PropertyData(val name: String, val valueType: ValueType<*>, val javaType: QualifiedName)
+
+fun CodeContext.compatibilityModifyCode(objClass: ObjClass<*>) {
+  annotation(DEPRECATION)
+  additionalAnnotations(objClass)
+  line("${explicitApiModifier}fun ${MutableEntityStorage}.modify${objClass.name}(")
+  line("entity: ${objClass.name},")
+  line("modification: ${objClass.compatibleJavaBuilderName}.() -> Unit,")
+  line("): ${objClass.name} {")
+  line("return modifyEntity(${objClass.compatibleJavaBuilderName}::class.java, entity, modification)")
+  line("}")
+}
+
+fun CodeContext.compatibilityExtensionWsCode(extProperty: ExtProperty<*, *>) {
+  val unwrappedType = unwrapReferenceType(extProperty.valueType)
+  if (unwrappedType == null) {
+    notReferenceError("extension", extProperty)
+    return
   }
-  linesBuilder.line(DEPRECATION)
-  val propertyType = valueType.compatibilityJavaBuilderTypeWithGeneric
-  linesBuilder.sectionNoBrackets("$parentAnnotation${generatedCodeVisibilityModifier}var ${receiver.compatibleJavaBuilderName}$generic.$name: $propertyType") {
-    line("get() = (this as ${receiver.defaultJavaBuilderName}$generic).$name as $propertyType")
+  val isChild = unwrappedType.child
+  val generic = if (extProperty.receiver.builderWithTypeParameter) "<out ${extProperty.receiver.javaFullName}>" else ""
+  if (extProperty.annotations.any { it.fqName == Internal.decoded }) {
+    annotation("get:$Internal")
+    annotation("set:$Internal")
+  }
+  annotation(DEPRECATION)
+  val propertyType = getCompatibilityJavaBuilderTypeWithGeneric(extProperty)
+  if (!isChild) annotation(Parent.toString())
+  sectionNoBrackets("${explicitApiModifier}var ${extProperty.receiver.compatibleJavaBuilderName}$generic.${extProperty.name}: $propertyType") {
+    line("get() = (this as ${extProperty.receiver.defaultJavaBuilderName}$generic).${extProperty.name} as $propertyType")
     section("set(value)") {
-      line("(this as ${receiver.defaultJavaBuilderName}$generic).$name = value")
+      line("(this as ${extProperty.receiver.defaultJavaBuilderName}$generic).${extProperty.name} = value")
     }
   }
 }
@@ -151,8 +134,11 @@ fun ExtProperty<*, *>.compatibilityExtensionWsCode(linesBuilder: LinesBuilder) {
 private val ObjClass<*>.compatibilityJavaBuilderFqnName: QualifiedName
   get() = fqn(module.name, "$name.Builder")
 
-private val ValueType<*>.compatibilityJavaBuilderTypeWithGeneric: QualifiedName
-  get() = when (this) {
+private fun GeneratorContext.getCompatibilityJavaBuilderTypeWithGeneric(
+  objProperty: ObjProperty<*, *>,
+  givenValueType: ValueType<*>? = null,
+): QualifiedName {
+  return when (val valueType = givenValueType ?: objProperty.valueType) {
     ValueType.Boolean -> "Boolean".toQualifiedName()
     ValueType.Int -> "Int".toQualifiedName()
     ValueType.String -> "String".toQualifiedName()
@@ -166,15 +152,25 @@ private val ValueType<*>.compatibilityJavaBuilderTypeWithGeneric: QualifiedName
     ValueType.UShort -> "UShort".toQualifiedName()
     ValueType.UInt -> "UInt".toQualifiedName()
     ValueType.ULong -> "ULong".toQualifiedName()
-    is ValueType.List<*> -> "List".toQualifiedName().appendSuffix("<${elementType.compatibilityJavaBuilderTypeWithGeneric}>")
-    is ValueType.Set<*> -> "Set".toQualifiedName().appendSuffix("<${elementType.compatibilityJavaBuilderTypeWithGeneric}>")
-    is ValueType.Map<*, *> -> "Map".toQualifiedName().appendSuffix("<${keyType.compatibilityJavaBuilderTypeWithGeneric}, ${valueType.compatibilityJavaBuilderTypeWithGeneric}>")
+    is ValueType.List<*> -> "List".toQualifiedName()
+      .appendSuffix("<${getCompatibilityJavaBuilderTypeWithGeneric(objProperty, valueType.elementType)}>")
+    is ValueType.Set<*> -> "Set".toQualifiedName()
+      .appendSuffix("<${getCompatibilityJavaBuilderTypeWithGeneric(objProperty, valueType.elementType)}>")
+    is ValueType.Map<*, *> -> "Map".toQualifiedName()
+      .appendSuffix("<${getCompatibilityJavaBuilderTypeWithGeneric(objProperty, valueType.keyType)}, ${
+        getCompatibilityJavaBuilderTypeWithGeneric(objProperty, valueType.valueType)
+      }>")
     is ValueType.ObjRef -> {
-      val out = if (target.openness == ObjClass.Openness.abstract) "out " else ""
-      target.compatibilityJavaBuilderFqnName.appendSuffix(if (target.builderWithTypeParameter) "<$out${this.javaType}>" else "")
+      val out = if (valueType.target.openness == ObjClass.Openness.abstract) "out " else ""
+      val suffix = if (valueType.target.builderWithTypeParameter) "<$out${getJavaType(objProperty, valueType)}>" else ""
+      valueType.target.compatibilityJavaBuilderFqnName.appendSuffix(suffix)
     }
 
-    is ValueType.Optional<*> -> type.compatibilityJavaBuilderTypeWithGeneric.appendSuffix("?")
-    is ValueType.JvmClass -> kotlinClassName.toQualifiedName()
-    else -> throw UnsupportedOperationException("$this type isn't supported")
+    is ValueType.Optional<*> -> getCompatibilityJavaBuilderTypeWithGeneric(objProperty, valueType.type).appendSuffix("?")
+    is ValueType.JvmClass -> valueType.kotlinClassName.toQualifiedName()
+    else -> {
+      unsupportedTypeError(valueType, objProperty)
+      QualifiedName("")
+    }
   }
+}

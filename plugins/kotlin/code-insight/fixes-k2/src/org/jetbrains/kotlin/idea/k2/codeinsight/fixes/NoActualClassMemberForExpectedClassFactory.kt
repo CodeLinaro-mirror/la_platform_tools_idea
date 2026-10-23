@@ -4,12 +4,13 @@ package org.jetbrains.kotlin.idea.k2.codeinsight.fixes
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
 import com.intellij.psi.createSmartPointer
-import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.fir.diagnostics.KaFirDiagnostic
 import org.jetbrains.kotlin.analysis.api.symbols.KaCallableSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.symbol
 import org.jetbrains.kotlin.idea.base.analysis.api.utils.analyzeInModalWindow
 import org.jetbrains.kotlin.idea.base.analysis.api.utils.shortenReferences
+import org.jetbrains.kotlin.idea.base.psi.addMemberDeclaration
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.codeinsight.api.applicators.fixes.KotlinQuickFixFactory
 import org.jetbrains.kotlin.idea.codeinsight.api.classic.quickfixes.KotlinQuickFixAction
@@ -55,7 +56,6 @@ private class AddActualFix(
 
     override fun startInWriteAction(): Boolean = false
 
-    @OptIn(KaExperimentalApi::class)
     override fun invoke(project: Project, editor: Editor?, file: KtFile) {
         val element = element ?: return
         val generatedDeclarations = analyzeInModalWindow(element, KotlinBundle.message("fix.change.signature.prepare")) {
@@ -79,7 +79,7 @@ private class AddActualFix(
                     if (element.primaryConstructor == null)
                         shortenReferences(element.addAfter(actualDeclaration, element.nameIdentifier) as KtElement)
                 } else {
-                    shortenReferences(element.addDeclaration(actualDeclaration) as KtElement)
+                    shortenReferences(element.addMemberDeclaration(actualDeclaration) as KtElement)
                 }
             }
         }

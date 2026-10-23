@@ -15,8 +15,6 @@ import ai.grazie.rules.RuleMatch
 import ai.grazie.rules.document.Delimiter
 import ai.grazie.rules.document.DocumentRule
 import ai.grazie.rules.document.DocumentSentence
-import ai.grazie.rules.settings.RuleSetting
-import ai.grazie.rules.settings.Setting
 import ai.grazie.rules.settings.TextStyle
 import ai.grazie.rules.toolkit.LanguageToolkit
 import ai.grazie.rules.tree.Parameter
@@ -26,16 +24,12 @@ import com.intellij.codeInspection.LocalQuickFix
 import com.intellij.codeInspection.util.InspectionMessage
 import com.intellij.grazie.GrazieBundle
 import com.intellij.grazie.GrazieConfig
-import com.intellij.grazie.detection.toAvailableLang
-import com.intellij.grazie.ide.inspection.ai.RephraseAction
 import com.intellij.grazie.ide.inspection.auto.AutoFix
 import com.intellij.grazie.ide.ui.configurable.StyleConfigurable.Companion.ruleEngineLanguages
 import com.intellij.grazie.jlanguage.Lang
 import com.intellij.grazie.rule.ParsedSentence
 import com.intellij.grazie.rule.RuleIdeClient
-import com.intellij.grazie.rule.SentenceBatcher
 import com.intellij.grazie.rule.SentenceTokenizer
-import com.intellij.grazie.style.ConfigureSuggestedParameter
 import com.intellij.grazie.style.TextLevelFix
 import com.intellij.grazie.text.TextContent.TextDomain
 import com.intellij.grazie.utils.HighlightingUtil
@@ -110,12 +104,12 @@ class TreeRuleChecker private constructor() {
 
     @JvmStatic
     fun getRules(language: Language): List<Rule> {
-      if (language !in ruleEngineLanguages || SentenceBatcher.findInstalledLTLanguage(language) == null) {
+      if (language !in ruleEngineLanguages || HighlightingUtil.findInstalledLang(language)?.jLanguage == null) {
         return emptyList()
       }
 
       val toolkit = LanguageToolkit.forLanguage(language)
-      return toolkit.publishedRules().map(::toGrazieRule)
+      return toolkit.publishedRules().filter { it.supportsFlatTrees() }.map(::toGrazieRule)
     }
 
     @JvmStatic
@@ -159,10 +153,10 @@ class TreeRuleChecker private constructor() {
         }
 
         override fun getUrl(): URL? = rule.url
-        override fun getFeaturedSetting(): Setting = RuleSetting(rule)
-        override fun isEnabledByDefault(domain: TextStyleDomain): Boolean =
-          rule.isRuleEnabledByDefault(GrazieConfig.get().getTextStyle(domain), RuleIdeClient.INSTANCE)
-
+        override fun isEnabledByDefault(domain: TextStyleDomain): Boolean {
+          val textStyle = if (domain == TextStyleDomain.Other) TextStyle.Unspecified else domain.textStyle
+          return rule.isRuleEnabledByDefault(textStyle, RuleIdeClient.INSTANCE)
+        }
       }
     }
 
@@ -190,10 +184,10 @@ class TreeRuleChecker private constructor() {
       if (sentences.isEmpty()) return emptyList()
 
       try {
+        val sampleTree = sentences.firstNotNullOfOrNull { it.tree } ?: return sentences.map { MatchingResult.EMPTY }
         val parameters = calcParameters(sentences)
-        val trees = sentences.map { it.tree.withParameters(parameters) }
-        val rules = enabledRules(trees.first(), text)
-        return matchTrees(trees, rules)
+        val rules = enabledRules(sampleTree.withParameters(parameters), text)
+        return matchTrees(sentences.map { it.tree?.withParameters(parameters) }, rules)
       }
       catch (e: Throwable) {
         val cause = ExceptionUtil.getRootCause(e)
@@ -213,8 +207,9 @@ class TreeRuleChecker private constructor() {
       }
     }
 
-    private fun matchTrees(trees: List<Tree>, rules: List<ai.grazie.rules.Rule>): List<MatchingResult> {
+    private fun matchTrees(trees: List<Tree?>, rules: List<ai.grazie.rules.Rule>): List<MatchingResult> {
       return trees.map { tree ->
+        if (tree == null) return@map MatchingResult.EMPTY
         val matchingResults = ArrayList<MatchingResult>(rules.size)
         for (rule in rules) {
           ProgressManager.checkCanceled()
@@ -226,28 +221,19 @@ class TreeRuleChecker private constructor() {
 
     private fun calcParameters(sentences: List<ParsedSentence>): ParameterValues {
       val parameters = HashMap<String, String>()
-      val language = sentences.first().tree.treeSupport().grazieLanguage
+      val language = sentences.firstNotNullOf { it.tree }.treeSupport().grazieLanguage
       val content = sentences.first().extractedText
-      val toolkit = LanguageToolkit.forLanguage(language)
-      toolkit.allParameters(RuleIdeClient.INSTANCE).forEach { parameter ->
-        parameters[parameter.id()] = getParamValue(parameter, language, content)
+      LanguageToolkit.forLanguage(language).allParameters(RuleIdeClient.INSTANCE).forEach { parameter ->
+        parameters[parameter.id()] = getParamValue(parameter, content)
       }
-      val variant = getLanguageVariant(language)
-      if (variant != null) {
-        parameters[Parameter.LANGUAGE_VARIANT] = variant
-      }
+      getLanguageVariant(language)?.let { parameters[Parameter.LANGUAGE_VARIANT] = it }
       return ParameterValues(parameters)
     }
 
-    private fun getParamValue(param: Parameter, language: Language, content: TextContent): String {
+    private fun getParamValue(param: Parameter, content: TextContent): String {
       val domain = content.getTextDomain()
-      val value = GrazieConfig.get().paramValue(domain, language, param)
-      if (value == null || param.possibleValues(RuleIdeClient.INSTANCE).none { value == it.id() }) {
-        val textStyle = TextStyle.styles(RuleIdeClient.INSTANCE).firstOrNull { it.id() == domain.name }
-                        ?: GrazieConfig.get().getTextStyle()
-        return param.defaultValue(textStyle, RuleIdeClient.INSTANCE).id()
-      }
-      return value
+      val textStyle = if (domain == TextStyleDomain.Other) TextStyle.Unspecified else domain.textStyle
+      return param.defaultValue(textStyle, RuleIdeClient.INSTANCE).id()
     }
 
     private fun getLanguageVariant(language: Language): String? {
@@ -278,7 +264,7 @@ class TreeRuleChecker private constructor() {
     @Deprecated("Use checkText(List) instead")
     @JvmStatic
     fun checkTextLevelProblems(file: PsiFile): List<TreeProblem> {
-      return checkText(ParsedSentence.getAllCheckedSentences(file.viewProvider))
+      throw UnsupportedOperationException("Use checkText(List) instead")
     }
 
     private fun checkDocumentProblems(file: PsiFile, doc: List<SentenceWithContent>): List<TreeProblem> {
@@ -379,9 +365,10 @@ class TreeRuleChecker private constructor() {
     private fun checkDocument(doc: List<SentenceWithContent>): MatchingResult {
       val rules = LinkedHashMap<Language, List<ai.grazie.rules.Rule>>()
       for (sentenceWithContent in doc) {
+        val tree = sentenceWithContent.sentence.tree ?: continue
         val language = sentenceWithContent.sentence.language
         if (!rules.containsKey(language) && language in ruleEngineLanguages) {
-          rules[language] = enabledRules(sentenceWithContent.sentence.treeOrThrow(), sentenceWithContent.content)
+          rules[language] = enabledRules(tree, sentenceWithContent.content)
         }
       }
 
@@ -421,11 +408,7 @@ class TreeRuleChecker private constructor() {
     }
 
     @JvmStatic
-    suspend fun checkText(texts: List<TextContent>): List<TreeProblem> {
-      return checkText(ParsedSentence.getAllCheckedSentences(texts))
-    }
-
-    private fun checkText(textToSentences: SequencedMap<TextContent, List<ParsedSentence>>): List<TreeProblem> {
+    fun checkText(textToSentences: SequencedMap<TextContent, List<ParsedSentence>>): List<TreeProblem> {
       if (textToSentences.isEmpty()) return emptyList()
 
       val suppressedRanges = suppressedRanges()
@@ -434,6 +417,8 @@ class TreeRuleChecker private constructor() {
       var offset = 0
       for ((content, sentences) in textToSentences.entries) {
         if (sentences.isEmpty()) continue
+
+        val contentLanguage = sentences.firstNotNullOfOrNull { it.tree }?.treeSupport()?.grazieLanguage ?: continue
 
         var offsetInContent = 0
 
@@ -453,11 +438,12 @@ class TreeRuleChecker private constructor() {
           val suppressions = (suppressedRanges[trimmed] ?: emptySet())
             .mapTo(LinkedHashSet()) { it.shiftRight(trimmedStart) }
 
-          val sentence = DocumentSentence(untrimmedText, parsed.tree.treeSupport().grazieLanguage)
+          val language = parsed.tree?.treeSupport()?.grazieLanguage ?: contentLanguage
+          val sentence = DocumentSentence(untrimmedText, language)
             .withIntro(if (i == 0) getIntro(content) else emptyList())
             .withExclusions(SentenceTokenizer.rangeExclusions(content, untrimmedRange))
             .withSuppressions(suppressions)
-            .withTree(parsed.tree.withStartOffset(offset))
+            .withTree(parsed.tree?.withStartOffset(offset))
             .withMetadata(matches[i].metadata)
           doc.add(SentenceWithContent(sentence, content, offset, offset + untrimmedRange.startOffset))
           offsetInContent += sentence.text.length
@@ -622,11 +608,8 @@ class TreeRuleChecker private constructor() {
                 suggestion.quickFixText,
               )
             }
-            else {
-              ConfigureSuggestedParameter(suggestion, domain, match.rule().language().toAvailableLang(), suggestion.quickFixText)
-            }
+            else null
           }
-          ActionSuggestion.RephraseAround -> RephraseAction()
           else -> null
         }
       }

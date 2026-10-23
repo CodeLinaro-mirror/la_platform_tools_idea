@@ -14,7 +14,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.project.ex.ProjectManagerEx
 import com.intellij.openapi.ui.getPresentablePath
-import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.vfs.StandardFileSystems
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.platform.backend.observation.trackActivity
 import kotlinx.coroutines.Dispatchers
@@ -72,20 +72,23 @@ abstract class AbstractOpenProjectProvider {
       isNewProject = !isValidIdeaProject,
       runConfigurators = false,
       projectRootDir = nioPath,
-      beforeOpen = { project ->
-        if (isValidIdeaProject) {
-          UnlinkedProjectNotificationAware.enableNotifications(project, systemId)
-        }
-        else {
-          project.putUserData(ExternalSystemDataKeys.NEWLY_CREATED_PROJECT, true)
-          project.putUserData(ExternalSystemDataKeys.NEWLY_IMPORTED_PROJECT, true)
-          project.trackActivity(ExternalSystemActivityKey) {
-            linkToExistingProjectAsync(projectFile, project)
+      beforeOpenTasks = buildList {
+        add { project ->
+          if (isValidIdeaProject) {
+            UnlinkedProjectNotificationAware.enableNotifications(project, systemId)
           }
-          ProjectUtil.updateLastProjectLocation(nioPath)
+          else {
+            project.putUserData(ExternalSystemDataKeys.NEWLY_CREATED_PROJECT, true)
+            project.putUserData(ExternalSystemDataKeys.NEWLY_IMPORTED_PROJECT, true)
+            project.trackActivity(ExternalSystemActivityKey) {
+              linkToExistingProjectAsync(projectFile, project)
+            }
+            ProjectUtil.updateLastProjectLocation(nioPath)
+          }
+          true
         }
-        openProjectTask.beforeOpen?.invoke(project) ?: true
-      },
+        addAll(openProjectTask.beforeOpenTasks)
+      }
     )
     return ProjectManagerEx.getInstanceEx().openProjectAsync(nioPath, options)
   }
@@ -101,7 +104,7 @@ abstract class AbstractOpenProjectProvider {
   }
 
   protected fun getProjectFile(projectFilePath: String): VirtualFile {
-    val localFileSystem = LocalFileSystem.getInstance()
+    val localFileSystem = StandardFileSystems.local()
     val projectFile = localFileSystem.refreshAndFindFileByPath(projectFilePath)
     if (projectFile == null) {
       val shortPath = getPresentablePath(projectFilePath)

@@ -60,7 +60,7 @@ import java.time.Instant
  * @param projectRoot Project root path for resolving .idea/modules.xml
  * @param filter Optional filter: null (full), or JsonFilter object with filter type and optional value
  */
-suspend fun streamModuleAnalysisJson(
+fun streamModuleAnalysisJson(
   allModuleSets: List<ModuleSetMetadata>,
   products: List<ProductSpec>,
   projectRoot: Path,
@@ -102,7 +102,7 @@ suspend fun streamModuleAnalysisJson(
 /**
  * Dispatches filter handling to appropriate handler functions.
  */
-private suspend fun applyFilter(
+private fun applyFilter(
   gen: JsonGenerator,
   filter: JsonFilter?,
   allModuleSets: List<ModuleSetMetadata>,
@@ -126,6 +126,20 @@ private suspend fun applyFilter(
     "dependencyPath" -> handleDependencyPathFilter(gen, filter, pluginGraph)
     "productUsage" -> handleProductUsageFilter(gen, filter.moduleSet, products, pluginGraph)
     "embeddedDependencyClosure" -> handleEmbeddedDependencyClosureFilter(gen, filter, pluginGraph)
+    "summary" -> writeSummaryQuery(gen, allModuleSets, products, pluginGraph, filter)
+    "moduleInfo" -> writeModuleInfoQuery(gen, allModuleSets, products, projectRoot, pluginGraph, filter)
+    "moduleSetQuery" -> writeModuleSetQuery(gen, allModuleSets, products, pluginGraph, filter)
+    "productQuery" -> writeProductQuery(gen, products, pluginGraph, filter)
+    "productCompare" -> writeProductCompareQuery(gen, products, pluginGraph, filter)
+    "productTracePath" -> writeProductTracePathQuery(gen, products, pluginGraph, filter)
+    "moduleSetOverlap" -> writeParameterizedModuleSetOverlap(gen, allModuleSets, pluginGraph, filter)
+    "productSimilarity" -> writeParameterizedProductSimilarity(gen, products, pluginGraph, filter)
+    "unificationSuggestions" -> writeParameterizedUnificationSuggestions(gen, allModuleSets, products, pluginGraph, filter)
+    "validation" -> writeValidationQuery(gen, allModuleSets, products, projectRoot, pluginGraph, filter)
+    "moduleLoading" -> writeModuleLoadingQuery(gen, allModuleSets, products, filter)
+    "deprecatedIncludes" -> writeDeprecatedIncludesQuery(gen, products, filter)
+    "redundantModuleSetRefs" -> writeRedundantModuleSetRefsQuery(gen, products, pluginGraph, filter)
+    "suggestModuleSetsForModules" -> writeSuggestModuleSetsForModulesQuery(gen, allModuleSets, products, pluginGraph, filter)
     else -> gen.writeStringProperty("error", "Unknown filter: ${filter.filter}")
   }
 }
@@ -347,7 +361,7 @@ private fun handleEmbeddedDependencyClosureFilter(
 /**
  * Writes all sections of the analysis JSON (used when no filter is specified).
  */
-private suspend fun writeAllSections(
+private fun writeAllSections(
   gen: JsonGenerator,
   allModuleSets: List<ModuleSetMetadata>,
   products: List<ProductSpec>,

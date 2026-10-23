@@ -1,9 +1,22 @@
 load("@community//build:tests-options.bzl", "jps_test")
 load("@rules_jvm//:jvm.bzl", "jvm_library", "jvm_provided_library")
 load("//build:compiler-options.bzl", "create_kotlinc_options")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+jps_test(
+    name = "i18n-tests_test",
+    timeout = "moderate",
+    tags = ["community-aggregator"],
+    runtime_deps = [":i18n-tests_test_lib"],
+)
+
+### skip generation section `test intellij.platform.syntax.i18n.tests`
+
+### auto-generated section `dev intellij.platform.syntax.i18n` start
+content_module_jar(module = ":i18n")
+### auto-generated section `dev intellij.platform.syntax.i18n` end
 
 ### auto-generated section `build intellij.platform.syntax.i18n` start
-
 create_kotlinc_options(
     name = "custom_i18n",
     jvm_target = "8",
@@ -31,11 +44,15 @@ jvm_library(
     ),
     kotlinc_opts = ":custom_i18n",
     module_name = "intellij.platform.syntax.i18n",
+    resource_strip_prefix = "resources",
+    resources = glob(
+        ["resources/**/*"],
+    ),
     visibility = ["//visibility:public"],
     deps = [
         # do not sort,
         "@lib//:kotlin-stdlib",
-        "@lib//:jetbrains-annotations",
+        "//libraries/jetbrains/annotations",
         ":platform_multiplatformSupport_provided",
     ],
 )
@@ -55,10 +72,11 @@ jvm_library(
         ":i18n",
         "//platform/multiplatformSupport",
         "//platform/multiplatformSupport:multiplatformSupport_test_lib",
-        "@lib//:kotlin-test-junit",
-        "@lib//:kotlin-test",
-        "//libraries/junit5",
-        "//libraries/junit5:junit5_test_lib",
+        "//libraries/kotlin/test-junit:libraries-kotlin-test-junit",
+        "//libraries/kotlin/test-junit:libraries-kotlin-test-junit_test_lib",
+        "//libraries/kotlin/test:libraries-kotlinTest",
+        "//libraries/kotlin/test:libraries-kotlinTest_test_lib",
+        "//libraries/jetbrains/annotations:annotations_test_lib",
     ],
 )
 ### auto-generated section `build intellij.platform.syntax.i18n` end
@@ -67,13 +85,13 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.syntax.i18n.iml",
+        "resources/intellij.platform.syntax.i18n.xml",
     ],
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.platform.syntax.i18n` end
 
 ### auto-generated section `build intellij.platform.syntax.i18n.tests` start
-
 jvm_library(
     name = "i18n-tests",
     srcs = glob(
@@ -106,11 +124,14 @@ jvm_library(
         "@lib//:kotlin-stdlib",
         "//platform/multiplatformSupport",
         "//platform/multiplatformSupport:multiplatformSupport_test_lib",
-        "@lib//:kotlin-test-junit",
-        "@lib//:kotlin-test",
-        "//libraries/junit5",
-        "//libraries/junit5:junit5_test_lib",
-        "@lib//:jetbrains-annotations",
+        "//libraries/kotlin/test-junit:libraries-kotlin-test-junit",
+        "//libraries/kotlin/test-junit:libraries-kotlin-test-junit_test_lib",
+        "//libraries/kotlin/test:libraries-kotlinTest",
+        "//libraries/kotlin/test:libraries-kotlinTest_test_lib",
+        "//libraries/junit6",
+        "//libraries/junit6:junit6_test_lib",
+        "//libraries/jetbrains/annotations",
+        "//libraries/jetbrains/annotations:annotations_test_lib",
     ],
 )
 ### auto-generated section `build intellij.platform.syntax.i18n.tests` end
@@ -123,11 +144,3 @@ exports_files(
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.platform.syntax.i18n.tests` end
-
-### auto-generated section `test intellij.platform.syntax.i18n.tests` start
-
-jps_test(
-    name = "i18n-tests_test",
-    runtime_deps = [":i18n-tests_test_lib"],
-)
-### auto-generated section `test intellij.platform.syntax.i18n.tests` end

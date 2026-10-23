@@ -1,5 +1,6 @@
 // "Add remaining branches with * import" "true"
 // WITH_STDLIB
+// K2_ERROR: NO_ELSE_IN_WHEN
 import Foo.*
 
 enum class Foo {
@@ -25,4 +26,3 @@ class Test {
 }
 // IGNORE_K2
 
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AddWhenRemainingBranchesFix

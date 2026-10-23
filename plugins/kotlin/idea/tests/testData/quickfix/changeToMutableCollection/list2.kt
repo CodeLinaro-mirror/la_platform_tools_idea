@@ -1,11 +1,10 @@
 // "Change type to MutableList" "true"
 // WITH_STDLIB
-// K2_ERROR: No 'set' operator method providing array access.
+// K2_ERROR: NO_SET_METHOD
 fun main() {
     val list = foo()
     list[1]<caret> = 10
 }
 
 fun foo() = listOf(1, 2, 3)
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ChangeToMutableCollectionFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.collections.ChangeToMutableCollectionFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.collections.ChangeToMutableCollectionFix

@@ -1406,6 +1406,44 @@ public abstract class SharedK2IntentionTestGenerated extends AbstractSharedK2Int
     }
 
     @RunWith(JUnit3RunnerWithInners.class)
+    @TestMetadata("testData/intentions/generateCopyFunction")
+    public static class GenerateCopyFunction extends AbstractSharedK2IntentionTest {
+        private void runTest(String testDataFilePath) throws Exception {
+            KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
+        }
+
+        @TestMetadata("existingBody.kt")
+        public void testExistingBody() throws Exception {
+            runTest("testData/intentions/generateCopyFunction/existingBody.kt");
+        }
+
+        @TestMetadata("generic.kt")
+        public void testGeneric() throws Exception {
+            runTest("testData/intentions/generateCopyFunction/generic.kt");
+        }
+
+        @TestMetadata("notApplicable_copyAlreadyExists.kt")
+        public void testNotApplicable_copyAlreadyExists() throws Exception {
+            runTest("testData/intentions/generateCopyFunction/notApplicable_copyAlreadyExists.kt");
+        }
+
+        @TestMetadata("notApplicable_jvmInline.kt")
+        public void testNotApplicable_jvmInline() throws Exception {
+            runTest("testData/intentions/generateCopyFunction/notApplicable_jvmInline.kt");
+        }
+
+        @TestMetadata("simple.kt")
+        public void testSimple() throws Exception {
+            runTest("testData/intentions/generateCopyFunction/simple.kt");
+        }
+
+        @TestMetadata("singleProperty.kt")
+        public void testSingleProperty() throws Exception {
+            runTest("testData/intentions/generateCopyFunction/singleProperty.kt");
+        }
+    }
+
+    @RunWith(JUnit3RunnerWithInners.class)
     @TestMetadata("testData/intentions/indentRawString")
     public static class IndentRawString extends AbstractSharedK2IntentionTest {
         private void runTest(String testDataFilePath) throws Exception {
@@ -1867,14 +1905,24 @@ public abstract class SharedK2IntentionTestGenerated extends AbstractSharedK2Int
             runTest("testData/intentions/operatorToFunction/arrayAccessOneIndex.kt");
         }
 
+        @TestMetadata("arrayAccessWIthAssignment_caretOnEquals.kt")
+        public void testArrayAccessWIthAssignment_caretOnEquals() throws Exception {
+            runTest("testData/intentions/operatorToFunction/arrayAccessWIthAssignment_caretOnEquals.kt");
+        }
+
+        @TestMetadata("arrayAccessWIthAssignment_caretOnValue.kt")
+        public void testArrayAccessWIthAssignment_caretOnValue() throws Exception {
+            runTest("testData/intentions/operatorToFunction/arrayAccessWIthAssignment_caretOnValue.kt");
+        }
+
+        @TestMetadata("arrayAccessWithAssignment_caretOnAccess.kt")
+        public void testArrayAccessWithAssignment_caretOnAccess() throws Exception {
+            runTest("testData/intentions/operatorToFunction/arrayAccessWithAssignment_caretOnAccess.kt");
+        }
+
         @TestMetadata("arrayAssignmentMultipleIndex.kt")
         public void testArrayAssignmentMultipleIndex() throws Exception {
             runTest("testData/intentions/operatorToFunction/arrayAssignmentMultipleIndex.kt");
-        }
-
-        @TestMetadata("assignment.kt")
-        public void testAssignment() throws Exception {
-            runTest("testData/intentions/operatorToFunction/assignment.kt");
         }
 
         @TestMetadata("binarayNotEqNullable.kt")
@@ -2331,6 +2379,11 @@ public abstract class SharedK2IntentionTestGenerated extends AbstractSharedK2Int
             runTest("testData/intentions/removeBraces/doWhileWithLocalClass.kt");
         }
 
+        @TestMetadata("doWhileWithLocalFunction.kt")
+        public void testDoWhileWithLocalFunction() throws Exception {
+            runTest("testData/intentions/removeBraces/doWhileWithLocalFunction.kt");
+        }
+
         @TestMetadata("doWhileWithLocalVariable.kt")
         public void testDoWhileWithLocalVariable() throws Exception {
             runTest("testData/intentions/removeBraces/doWhileWithLocalVariable.kt");
@@ -2369,6 +2422,11 @@ public abstract class SharedK2IntentionTestGenerated extends AbstractSharedK2Int
         @TestMetadata("for.kt")
         public void testFor() throws Exception {
             runTest("testData/intentions/removeBraces/for.kt");
+        }
+
+        @TestMetadata("forWithDestructuringDeclarations.kt")
+        public void testForWithDestructuringDeclarations() throws Exception {
+            runTest("testData/intentions/removeBraces/forWithDestructuringDeclarations.kt");
         }
 
         @TestMetadata("forWithLocalClass.kt")
@@ -2549,6 +2607,11 @@ public abstract class SharedK2IntentionTestGenerated extends AbstractSharedK2Int
         @TestMetadata("whenWithComment3.kt")
         public void testWhenWithComment3() throws Exception {
             runTest("testData/intentions/removeBraces/whenWithComment3.kt");
+        }
+
+        @TestMetadata("whenWithDestructuringDeclaration.kt")
+        public void testWhenWithDestructuringDeclaration() throws Exception {
+            runTest("testData/intentions/removeBraces/whenWithDestructuringDeclaration.kt");
         }
 
         @TestMetadata("while.kt")
@@ -4121,6 +4184,11 @@ public abstract class SharedK2IntentionTestGenerated extends AbstractSharedK2Int
         @TestMetadata("annotations.kt")
         public void testAnnotations() throws Exception {
             runTest("testData/intentions/valToObject/annotations.kt");
+        }
+
+        @TestMetadata("backtickedName.kt")
+        public void testBacktickedName() throws Exception {
+            runTest("testData/intentions/valToObject/backtickedName.kt");
         }
 
         @TestMetadata("callableReference.kt")

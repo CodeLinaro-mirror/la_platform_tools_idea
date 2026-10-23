@@ -1,37 +1,31 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.sdk.pipenv
 
-import com.intellij.openapi.components.service
+import com.jetbrains.python.sdk.ModuleOrProject
 import com.intellij.openapi.projectRoots.Sdk
-import com.intellij.platform.eel.EelApi
-import com.intellij.platform.eel.provider.localEel
 import com.intellij.python.community.execService.DownloadConfig
 import com.intellij.python.community.execService.ProcessOutputTransformer
-import com.intellij.python.community.impl.pipenv.pipenvPath
 import com.jetbrains.python.PyBundle
+import com.jetbrains.python.PyInternalExecApi
 import com.jetbrains.python.PythonBinary
 import com.jetbrains.python.errorProcessing.PyResult
-import com.jetbrains.python.sdk.ToolCommandExecutor
-import com.jetbrains.python.sdk.add.v2.EelFileSystem
+import com.intellij.python.community.impl.pipenv.PipEnvPyTool
 import com.jetbrains.python.sdk.add.v2.FileSystem
 import com.jetbrains.python.sdk.add.v2.PathHolder
-import com.jetbrains.python.sdk.add.v2.TargetFileSystemCache
 import com.jetbrains.python.sdk.add.v2.toEelFileSystem
-import com.jetbrains.python.sdk.impl.PySdkBundle
+import com.intellij.python.sdk.backend.PySdkBundle
+import com.intellij.python.sdk.backend.PythonInterpreter
+import com.intellij.python.sdk.backend.getSdkAPI
 import com.jetbrains.python.sdk.pySdkAdditionalData
-import com.jetbrains.python.sdk.runTool
-import com.jetbrains.python.target.PyTargetAwareAdditionalData
-import com.jetbrains.python.target.PythonLanguageRuntimeConfiguration
+import com.intellij.python.pytools.runTool
+import com.jetbrains.python.sdk.add.v2.EelOrJustPath
+import com.jetbrains.python.sdk.add.v2.EelOrJustPath.Companion.toEelFileSystem
+import com.jetbrains.python.sdk.add.v2.toFileSystem
 import com.jetbrains.python.target.ui.TargetPanelExtension
 import org.jetbrains.annotations.ApiStatus.Internal
-import org.jetbrains.annotations.SystemDependent
 import java.nio.file.Path
 import kotlin.io.path.createFile
 import kotlin.io.path.exists
-
-internal val PIPENV_TOOL: ToolCommandExecutor = ToolCommandExecutor("pipenv") {
-  pipenvPath
-}
 
 private val PIPENV_PROJECT_DOWNLOAD_CONFIG = DownloadConfig(relativePaths = listOf(PIP_FILE, PIP_FILE_LOCK))
 private val PIPENV_PROJECT_MUTATING_COMMANDS = setOf("--python", "install", "lock", "sync", "uninstall", "update")
@@ -44,9 +38,9 @@ internal suspend fun <P : PathHolder> runPipEnv(
   baseEnv: Map<String, String> = emptyMap(),
   downloadConfig: DownloadConfig? = null,
 ): PyResult<String> =
-  PIPENV_TOOL.runTool(
+  PipEnvPyTool.getInstance().runTool(
     fileSystem = fileSystem,
-    pathFromSdk = pipenvExecutable?.toString(),
+    pathFromSdk = pipenvExecutable?.toStringForExecution(),
     dirPath = dirPath,
     args = args,
     env = baseEnv,
@@ -54,33 +48,30 @@ internal suspend fun <P : PathHolder> runPipEnv(
   )
 
 @Internal
-suspend fun runPipEnv(dirPath: Path?, vararg args: String): PyResult<String> =
+@PyInternalExecApi
+suspend fun runPipEnv(dirPath: Path, vararg args: String): PyResult<String> =
   runPipEnv(
     fileSystem = dirPath.toEelFileSystem(),
     dirPath = dirPath,
     args = args,
   )
 
-internal suspend fun <T> runPipEnv(dirPath: Path?, vararg args: String, transformer: ProcessOutputTransformer<T>): PyResult<T> =
-  PIPENV_TOOL.runTool(
+internal suspend fun <T> runPipEnv(dirPath: EelOrJustPath, vararg args: String, transformer: ProcessOutputTransformer<T>): PyResult<T> =
+  PipEnvPyTool.getInstance().runTool(
     fileSystem = dirPath.toEelFileSystem(),
     pathFromSdk = null,
-    dirPath = dirPath,
+    dirPath = dirPath.path,
     args = args,
     transformer = transformer,
   )
 
-/**
- * Returns the configured pipenv executable or detects it automatically on the given [fileSystem].
- */
-internal suspend fun <P : PathHolder> getPipEnvExecutable(fileSystem: FileSystem<P>): P? =
-  PIPENV_TOOL.getToolExecutable(fileSystem, pathFromSdk = null)
 
-/**
- * Returns the configured pipenv executable or detects it automatically.
- */
-internal suspend fun getPipEnvExecutable(eel: EelApi = localEel): Path? =
-  getPipEnvExecutable(EelFileSystem(eel))?.path
+/** [runPipEnvWithSdk] in the environment of [interpreter]. */
+internal suspend fun runPipEnvWithInterpreter(interpreter: PythonInterpreter, vararg args: String): PyResult<String> {
+  // Pipenv reads the working directory and the target from the SDK data, which has no interpreter API yet.
+  @Suppress("DEPRECATION")
+  return runPipEnvWithSdk(interpreter.getSdkAPI(), *args)
+}
 
 internal suspend fun runPipEnvWithSdk(sdk: Sdk, vararg args: String): PyResult<String> {
   val data = sdk.pySdkAdditionalData
@@ -89,24 +80,12 @@ internal suspend fun runPipEnvWithSdk(sdk: Sdk, vararg args: String): PyResult<S
   val sdkHomePath = sdk.homePath
                     ?: return PyResult.localizedError(PySdkBundle.message("python.sdk.broken.configuration", sdk.name))
 
-  return when (data) {
-    is PyTargetAwareAdditionalData -> {
-      val targetConfig = data.targetEnvironmentConfiguration
-                         ?: return PyResult.localizedError(PySdkBundle.message("python.sdk.broken.configuration", sdk.name))
-      runPipEnvWithSdk(
-        fileSystem = service<TargetFileSystemCache>().getOrCreate(targetConfig, PythonLanguageRuntimeConfiguration()),
-        workingDirectory = workingDirectory,
-        sdkHomePath = sdkHomePath,
-        args = args,
-      )
-    }
-    else -> runPipEnvWithSdk(
-      fileSystem = workingDirectory.toEelFileSystem(),
-      workingDirectory = workingDirectory,
-      sdkHomePath = sdkHomePath,
-      args = args,
-    )
-  }
+  return runPipEnvWithSdk(
+    fileSystem = sdk.toFileSystem(),
+    workingDirectory = workingDirectory,
+    sdkHomePath = sdkHomePath,
+    args = args,
+  )
 }
 
 private suspend fun <P : PathHolder> runPipEnvWithSdk(
@@ -121,7 +100,7 @@ private suspend fun <P : PathHolder> runPipEnvWithSdk(
     fileSystem = fileSystem,
     dirPath = workingDirectory,
     args = args,
-    baseEnv = mapOf("VIRTUAL_ENV" to pythonHomePath.toString()),
+    baseEnv = mapOf("VIRTUAL_ENV" to pythonHomePath.toStringForExecution()),
     downloadConfig = PIPENV_PROJECT_DOWNLOAD_CONFIG.takeIf { args.firstOrNull() in PIPENV_PROJECT_MUTATING_COMMANDS },
   )
 }
@@ -132,13 +111,14 @@ private suspend fun <P : PathHolder> runPipEnvWithSdk(
  * @return the SDK for pipenv, not stored in the SDK table yet.
  */
 internal suspend fun <P : PathHolder> setupPipEnvSdkWithProgressReport(
+  moduleOrProject: ModuleOrProject,
   moduleBasePath: Path,
   basePythonBinaryPath: P?,
   fileSystem: FileSystem<P>,
   pipenvExecutable: P?,
   installPackages: Boolean,
   targetPanelExtension: TargetPanelExtension? = null,
-): PyResult<Sdk> {
+): PyResult<PythonInterpreter> {
   val pythonHomePath = setupPipEnv(
     projectPath = moduleBasePath,
     fileSystem = fileSystem,
@@ -147,10 +127,10 @@ internal suspend fun <P : PathHolder> setupPipEnvSdkWithProgressReport(
     installPackages = installPackages,
   ).getOr { return it }
   val pythonBinaryPath = fileSystem.resolvePythonBinary(pythonHomePath)
-                         ?: return PyResult.localizedError(PyBundle.message("python.sdk.cannot.setup.sdk", pythonHomePath))
+                         ?: return PyResult.localizedError(PyBundle.message("python.sdk.cannot.setup.sdk", pythonHomePath.toStringForUI()))
 
   return fileSystem.setupSdk(
-    project = null,
+    moduleOrProject = moduleOrProject,
     pythonBinaryPath = pythonBinaryPath,
     sdkAdditionalData = PyPipEnvSdkAdditionalData(moduleBasePath),
     targetPanelExtension = targetPanelExtension,
@@ -167,14 +147,14 @@ internal suspend fun setupPipEnv(
   projectPath: Path,
   basePythonBinaryPath: PythonBinary?,
   installPackages: Boolean,
-): PyResult<@SystemDependent String> =
+): PyResult<Path> =
   setupPipEnv(
     projectPath = projectPath,
     fileSystem = projectPath.toEelFileSystem(),
     pipenvExecutable = null,
     basePythonBinaryPath = basePythonBinaryPath?.let(PathHolder::Eel),
     installPackages = installPackages,
-  ).mapSuccess { it.toString() }
+  ).mapSuccess { it.path }
 
 internal suspend fun <P : PathHolder> setupPipEnv(
   projectPath: Path,
@@ -195,12 +175,10 @@ internal suspend fun <P : PathHolder> setupPipEnv(
 
   when {
     installPackages -> {
-      val pythonArgs = if (basePythonBinaryPath != null) listOf("--python", basePythonBinaryPath.toString()) else emptyList()
-      val command = pythonArgs + listOf("install", "--dev")
       runPipEnv(
         fileSystem = fileSystem,
         dirPath = projectPath,
-        args = command.toTypedArray(),
+        args = pipenvSetupCommandWithPythonPath(projectPath, basePythonBinaryPath?.toStringForExecution()).toTypedArray(),
         pipenvExecutable = pipenvExecutable,
         downloadConfig = PIPENV_PROJECT_DOWNLOAD_CONFIG,
       ).getOr { return it }
@@ -209,7 +187,7 @@ internal suspend fun <P : PathHolder> setupPipEnv(
       runPipEnv(
         fileSystem = fileSystem,
         dirPath = projectPath,
-        "--python", basePythonBinaryPath.toString(),
+        "--python", basePythonBinaryPath.toStringForExecution(),
         pipenvExecutable = pipenvExecutable,
         downloadConfig = PIPENV_PROJECT_DOWNLOAD_CONFIG,
       ).getOr { return it }
@@ -228,4 +206,13 @@ internal suspend fun <P : PathHolder> setupPipEnv(
     pipenvExecutable = pipenvExecutable,
   ).getOr { return it }
   return fileSystem.parsePath(pythonHomePath.trim())
+}
+
+internal fun pipenvSetupCommand(projectPath: Path, basePythonBinaryPath: PythonBinary?): List<String> =
+  pipenvSetupCommandWithPythonPath(projectPath, basePythonBinaryPath?.toString())
+
+private fun pipenvSetupCommandWithPythonPath(projectPath: Path, basePythonBinaryPath: String?): List<String> {
+  val pythonArgs = if (basePythonBinaryPath != null) listOf("--python", basePythonBinaryPath) else emptyList()
+  val command = if (projectPath.resolve(PIP_FILE_LOCK).exists()) listOf("sync", "--dev") else listOf("install", "--dev")
+  return pythonArgs + command
 }

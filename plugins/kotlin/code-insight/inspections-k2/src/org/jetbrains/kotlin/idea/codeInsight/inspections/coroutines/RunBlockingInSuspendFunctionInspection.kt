@@ -7,35 +7,38 @@ import com.intellij.codeInspection.util.IntentionFamilyName
 import com.intellij.modcommand.ModPsiUpdater
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.TextRange
+import com.intellij.psi.PsiElement
 import com.intellij.psi.SmartPsiElementPointer
 import com.intellij.psi.createSmartPointer
 import com.intellij.psi.util.parents
 import org.jetbrains.annotations.NonNls
 import org.jetbrains.annotations.PropertyKey
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.components.resolveToSymbol
+import org.jetbrains.kotlin.analysis.api.expressions.expressionType
+import org.jetbrains.kotlin.analysis.api.resolution.resolveSuccessfulSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaNamedFunctionSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.importableFqName
 import org.jetbrains.kotlin.analysis.api.symbols.symbol
 import org.jetbrains.kotlin.analysis.api.types.KaFunctionType
+import org.jetbrains.kotlin.analysis.api.types.isSuspendFunctionType
 import org.jetbrains.kotlin.analysis.api.types.symbol
 import org.jetbrains.kotlin.idea.base.resources.BUNDLE
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.codeInsight.inspections.coroutines.RunBlockingInSuspendFunctionInspection.Context
 import org.jetbrains.kotlin.idea.codeinsight.api.applicable.inspections.KotlinApplicableInspectionBase
 import org.jetbrains.kotlin.idea.codeinsight.api.applicable.inspections.KotlinModCommandQuickFix
-import org.jetbrains.kotlin.idea.codeinsight.utils.getCallExpressionSymbol
 import org.jetbrains.kotlin.idea.codeinsight.utils.getImplicitReceiverInfo
 import org.jetbrains.kotlin.idea.codeinsight.utils.isInlinedArgument
 import org.jetbrains.kotlin.idea.codeinsights.impl.base.applicators.ApplicabilityRanges
 import org.jetbrains.kotlin.idea.imports.addImportFor
 import org.jetbrains.kotlin.idea.refactoring.singleLambdaArgumentExpression
-import org.jetbrains.kotlin.idea.references.mainReference
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.psi.KtCallExpression
 import org.jetbrains.kotlin.psi.KtExpression
 import org.jetbrains.kotlin.psi.KtFunction
 import org.jetbrains.kotlin.psi.KtFunctionLiteral
 import org.jetbrains.kotlin.psi.KtLabelReferenceExpression
+import org.jetbrains.kotlin.psi.KtNamedFunction
 import org.jetbrains.kotlin.psi.KtPsiFactory
 import org.jetbrains.kotlin.psi.KtReturnExpression
 import org.jetbrains.kotlin.psi.KtThisExpression
@@ -83,7 +86,8 @@ internal class RunBlockingInSuspendFunctionInspection : KotlinApplicableInspecti
         return element.getCallNameExpression()?.text == RUN_BLOCKING_FUNCTION_NAME
     }
 
-    override fun KaSession.prepareContext(element: KtCallExpression): Context? {
+    context(session: KaSession)
+    override fun prepareContext(element: KtCallExpression): Context? {
         // Check if we're in a suspend context (either suspend function or suspend lambda)
         if (!isInSuspendContext(element)) return null
 
@@ -106,7 +110,7 @@ internal class RunBlockingInSuspendFunctionInspection : KotlinApplicableInspecti
             else -> return null
         }
 
-        val function = element.resolveToFunctionSymbol(this) ?: return null
+        val function = element.resolveToFunctionSymbol() ?: return null
         if (!isRunBlocking(function)) return null
 
         val labelReferenceExpressions = functionLiteral.findRelatedLabelReferences().map { it.createSmartPointer() }
@@ -171,7 +175,8 @@ internal class RunBlockingInSuspendFunctionInspection : KotlinApplicableInspecti
     }
 }
 
-private fun KaSession.isRunBlocking(function: KaNamedFunctionSymbol): Boolean {
+context(session: KaSession)
+private fun isRunBlocking(function: KaNamedFunctionSymbol): Boolean {
     if (function.importableFqName != RUN_BLOCKING_FQ_NAME) return false
 
     if (function.valueParameters.size != 2) return false
@@ -194,37 +199,64 @@ private fun KaSession.isRunBlocking(function: KaNamedFunctionSymbol): Boolean {
 }
 
 
-private fun KtCallExpression.resolveToFunctionSymbol(analysisSession: KaSession): KaNamedFunctionSymbol? = with(analysisSession) {
-    calleeExpression?.mainReference?.resolveToSymbol() as? KaNamedFunctionSymbol
+context(session: KaSession)
+private fun KtCallExpression.resolveToFunctionSymbol(): KaNamedFunctionSymbol? =
+    this.resolveSuccessfulSymbol() as? KaNamedFunctionSymbol
+
+/**
+ * Returns the containing suspend context of the [element], if it is in a suspend context.
+ * A suspend context can be
+ * - A named function that is marked as suspend
+ * - A lambda that has a suspend type
+ *
+ * [contextCache] can be used to cache results if this function is used for multiple calls within
+ * the same body.
+ */
+context(session: KaSession)
+internal fun getContainingSuspendContext(
+    element: KtExpression,
+    contextCache: MutableMap<PsiElement, KtFunction?>? = null
+): KtFunction? {
+    val seenParents = if (contextCache != null) mutableSetOf<PsiElement>() else null
+
+    var result: KtFunction? = null
+    for (parent in element.parents(withSelf = false)) {
+        if (contextCache?.contains(parent) == true) {
+            return contextCache[parent]
+        }
+        seenParents?.add(parent)
+
+        if (parent !is KtFunctionLiteral && parent !is KtFunction) continue
+
+        if (parent is KtFunctionLiteral || (parent is KtNamedFunction && parent.isAnonymous)) {
+            // Skip lambdas which happen to be fully locally inlined
+            if (isInlinedArgument(parent, allowCrossinline = false)) {
+                continue
+            }
+
+            result = parent.takeIf { it.expressionType?.isSuspendFunctionType == true }
+            break
+        }
+
+        result = parent.takeIf { parent.modifierList?.hasSuspendModifier() == true }
+        break
+    }
+
+    if (seenParents != null && contextCache != null) {
+        for (parent in seenParents) {
+            contextCache[parent] = result
+        }
+    }
+
+    return result
 }
 
 /**
  * Checks if the given element is in a suspend context (either in a suspend function or in a suspend lambda).
  */
-private fun KaSession.isInSuspendContext(element: KtExpression): Boolean {
-    for (parent in element.parents(withSelf = false)) {
-        when (parent) {
-            is KtFunctionLiteral -> {
-                // Skip lambdas which happen to be fully locally inlined
-                if (isInlinedArgument(parent, allowCrossinline = false)) {
-                    continue
-                }
-
-                // Check if the matching parameter's return type is a suspend type
-                val (_, argumentSymbol) = getCallExpressionSymbol(parent) ?: return false
-                val parameterType = argumentSymbol.returnType
-
-                return parameterType.isSuspendFunctionType
-            }
-
-            is KtFunction -> {
-                return parent.modifierList?.hasSuspendModifier() == true
-            }
-        }
-    }
-
-    return false
-}
+context(session: KaSession)
+internal fun isInSuspendContext(element: KtExpression, contextCache: MutableMap<PsiElement, KtFunction?>? = null): Boolean =
+    getContainingSuspendContext(element, contextCache) != null
 
 /**
  * Returns `true` if the lambda body references its receiver, either explicitly via `this`
@@ -244,7 +276,7 @@ private fun KtFunctionLiteral.usesCoroutineScopeReceiver(): Boolean {
     return bodyExpression.anyDescendantOfType<KtExpression> { expression ->
         when (expression) {
             is KtThisExpression -> {
-                val resolvedSymbol = expression.instanceReference.mainReference.resolveToSymbol()
+                val resolvedSymbol = expression.resolveSuccessfulSymbol()
                 resolvedSymbol == lambdaReceiverParameter
             }
 

@@ -10,23 +10,29 @@ import com.intellij.psi.PsiMethod
 import com.intellij.psi.tree.IElementType
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.kotlin.KtNodeTypes
-import org.jetbrains.kotlin.analysis.api.KaContextParameterApi
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.analyze
-import org.jetbrains.kotlin.analysis.api.components.isUsedAsExpression
-import org.jetbrains.kotlin.analysis.api.components.resolveToCall
 import org.jetbrains.kotlin.analysis.api.components.resolveToSymbol
-import org.jetbrains.kotlin.analysis.api.resolution.singleFunctionCallOrNull
+import org.jetbrains.kotlin.analysis.api.expressions.expressionType
+import org.jetbrains.kotlin.analysis.api.expressions.isUsedAsExpression
+import org.jetbrains.kotlin.analysis.api.resolution.function
+import org.jetbrains.kotlin.analysis.api.resolution.single
 import org.jetbrains.kotlin.analysis.api.resolution.symbol
+import org.jetbrains.kotlin.analysis.api.resolution.tryResolveCall
+import org.jetbrains.kotlin.analysis.api.session.analyze
 import org.jetbrains.kotlin.analysis.api.symbols.KaPropertySymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbolOrigin
+import org.jetbrains.kotlin.analysis.api.symbols.directlyOverriddenSymbols
+import org.jetbrains.kotlin.analysis.api.symbols.symbol
+import org.jetbrains.kotlin.analysis.api.types.isSubtypeOf
 import org.jetbrains.kotlin.idea.base.psi.copied
 import org.jetbrains.kotlin.idea.base.psi.deleteBody
 import org.jetbrains.kotlin.idea.base.psi.replaced
+import org.jetbrains.kotlin.idea.base.psi.setPropertyTypeReference
 import org.jetbrains.kotlin.idea.base.psi.textRangeIn
 import org.jetbrains.kotlin.idea.codeinsight.utils.NegatedBinaryExpressionSimplificationUtils.negate
 import org.jetbrains.kotlin.idea.references.mainReference
 import org.jetbrains.kotlin.idea.util.CommentSaver
+import org.jetbrains.kotlin.idea.util.tryResolveExpressionCall
 import org.jetbrains.kotlin.lexer.KtSingleValueToken
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.name.FqName
@@ -147,7 +153,7 @@ fun removeRedundantGetter(getter: KtPropertyAccessor) {
     val property = getter.property
     val accessorTypeReference = getter.typeReference
     if (accessorTypeReference != null && property.typeReference == null && property.initializer == null) {
-        property.typeReference = accessorTypeReference
+        property.setPropertyTypeReference(accessorTypeReference)
     }
     if (getter.canBeCompletelyDeleted()) {
         getter.delete()
@@ -374,7 +380,7 @@ fun PsiElement.getWrappingPrefixExpressionOrNull(): KtPrefixExpression? =
 fun createArgumentWithoutName(argument: KtValueArgument, isVararg: Boolean = false, isArrayOf: Boolean = false): List<KtValueArgument> {
     if (!argument.isNamed()) return listOf(argument.copied())
     val argumentExpr = argument.getArgumentExpression() ?: return emptyList()
-    val psiFactory = KtPsiFactory(argument)
+    val psiFactory = KtPsiFactory(argument.project)
     return when {
         isVararg && argumentExpr is KtCollectionLiteralExpression ->
             argumentExpr.getInnerExpressions().map { psiFactory.createArgument(it) }
@@ -411,16 +417,14 @@ tailrec fun KtDotQualifiedExpression.expressionWithoutClassInstanceAsReceiver():
 fun KtClass.isOpen(): Boolean = hasModifier(KtTokens.OPEN_KEYWORD)
 fun KtClass.isInheritable(): Boolean = isOpen() || isAbstract() || isSealed()
 
-@OptIn(KaContextParameterApi::class)
 @ApiStatus.Internal
 context(_: KaSession)
 fun KtExpression.isSynthesizedFunction(): Boolean {
     val symbol =
-        resolveToCall()?.singleFunctionCallOrNull()?.partiallyAppliedSymbol?.symbol ?: mainReference?.resolveToSymbol() ?: return false
+        tryResolveExpressionCall()?.single?.function?.symbol ?: mainReference?.resolveToSymbol() ?: return false
     return symbol.origin == KaSymbolOrigin.SOURCE_MEMBER_GENERATED
 }
 
-@OptIn(KaContextParameterApi::class)
 @ApiStatus.Internal
 context(_: KaSession)
 fun KtCallExpression.isCallingAnyOf(vararg fqNames: FqName): Boolean {
@@ -428,9 +432,7 @@ fun KtCallExpression.isCallingAnyOf(vararg fqNames: FqName): Boolean {
     val targetFqNames = fqNames.filter { it.shortName().asString() == calleeText }
     if (targetFqNames.none()) return false
 
-    val fqName = resolveToCall()
-        ?.singleFunctionCallOrNull()
-        ?.partiallyAppliedSymbol
+    val fqName = tryResolveCall()?.single?.function
         ?.symbol
         ?.callableId
         ?.asSingleFqName()
@@ -454,7 +456,6 @@ private val KOTLIN_BUILTIN_ENUM_FUNCTION_FQ_NAMES: Array<FqName>
         StandardKotlinNames.Enum.enumValueOf
     )
 
-@OptIn(KaContextParameterApi::class)
 context(_: KaSession)
 fun KtTypeReference.isReferenceToBuiltInEnumFunction(): Boolean {
     val target = (parent.getStrictParentOfType<KtTypeArgumentList>() ?: this)

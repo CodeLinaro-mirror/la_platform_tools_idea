@@ -18,13 +18,10 @@ import java.util.Objects;
 
 import static com.intellij.platform.ide.bootstrap.SplashManagerKt.blockingLoadSplashImage;
 
-/**
- * @author Konstantin Bulenkov
- */
-public final class ShowSplashAction extends DumbAwareAction {
+final class ShowSplashAction extends DumbAwareAction {
   @Override
   public void actionPerformed(@NotNull AnActionEvent e) {
-    Splash splash = new Splash(Objects.requireNonNull(blockingLoadSplashImage(ApplicationInfoImpl.getShadowInstance())), false);
+    Splash splash = new Splash(Objects.requireNonNull(blockingLoadSplashImage(ApplicationInfoImpl.getShadowInstance())));
     splash.setVisible(true);
     splash.toFront();
 

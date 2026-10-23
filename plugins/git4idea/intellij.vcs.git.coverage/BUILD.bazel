@@ -1,8 +1,12 @@
 load("@community//build:tests-options.bzl", "jps_test")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.vcs.git.coverage` start
+content_module_jar(module = ":vcs-git-coverage")
+### auto-generated section `dev intellij.vcs.git.coverage` end
 
 ### auto-generated section `build intellij.vcs.git.coverage` start
-
 jvm_library(
     name = "vcs-git-coverage",
     srcs = glob(
@@ -51,8 +55,6 @@ jvm_library(
     runtime_deps = [
         # do not sort,
         ":vcs-git-coverage",
-        "//libraries/junit5",
-        "//libraries/junit5:junit5_test_lib",
         "//platform/core-api:core_test_lib",
         "//platform/platform-api:ide_test_lib",
         "//platform/ide-core:ide-core_test_lib",
@@ -75,13 +77,13 @@ jvm_library(
 exports_files(
     [
         "intellij.vcs.git.coverage.iml",
+        "resources/intellij.vcs.git.coverage.xml",
     ],
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.vcs.git.coverage` end
 
 ### auto-generated section `build intellij.vcs.git.coverage.tests` start
-
 jvm_library(
     name = "vcs-git-coverage-tests",
     srcs = glob(
@@ -115,8 +117,8 @@ jvm_library(
     ],
     deps = [
         # do not sort,
-        "//libraries/junit5",
-        "//libraries/junit5:junit5_test_lib",
+        "//libraries/junit6",
+        "//libraries/junit6:junit6_test_lib",
         "@lib//:kotlin-stdlib",
         "//platform/core-api:core",
         "//platform/core-api:core_test_lib",
@@ -159,7 +161,6 @@ exports_files(
 ### auto-generated section `iml intellij.vcs.git.coverage.tests` end
 
 ### auto-generated section `test intellij.vcs.git.coverage.tests` start
-
 jps_test(
     name = "vcs-git-coverage-tests_test",
     runtime_deps = [":vcs-git-coverage-tests_test_lib"],

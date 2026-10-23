@@ -2,8 +2,14 @@
 package org.jetbrains.intellij.build
 
 import com.intellij.openapi.util.JDOMUtil
+import kotlinx.coroutines.runBlocking
 import org.assertj.core.api.Assertions.assertThat
 import org.intellij.lang.annotations.Language
+import org.jdom.Element
+import org.jetbrains.intellij.build.classPath.DescriptorResolveContext
+import org.jetbrains.intellij.build.classPath.XIncludeElementResolverImpl
+import org.jetbrains.intellij.build.impl.PluginDescriptorPatchRequest
+import org.jetbrains.intellij.build.impl.applyPluginDescriptorPatch
 import org.jetbrains.intellij.build.impl.doPatchPluginXml
 import org.junit.jupiter.api.Test
 
@@ -219,6 +225,66 @@ class PluginXmlPatcherTest {
     toPublish = false,
   )
 
+  /**
+   * The shared body must run without a build context, a plugin layout or a platform layout. The resolver here refuses
+   * a module read, so a body that reached the JPS project model would fail rather than pass quietly.
+   */
+  @Test
+  fun sharedBodyRunsWithNoProjectModel() {
+    val embedded = ArrayList<String>()
+    val patched = runBlocking {
+      applyPluginDescriptorPatch(
+        request = request(
+          """
+            <idea-plugin>
+              <id>com.intellij.css</id>
+              <content>
+                <module name="intellij.css.backend" />
+              </content>
+            </idea-plugin>
+          """.trimIndent()
+        ),
+        xIncludeResolver = XIncludeElementResolverImpl(searchPath = emptyList(), context = NoProjectModelContext),
+        embedContentModules = { rootElement -> embedded.addAll(contentModuleNames(rootElement)) },
+        patchText = { "$it\n<!-- text patcher -->" },
+      )
+    }
+
+    assertThat(embedded).containsExactly("intellij.css.backend")
+    assertThat(patched).isEqualTo(
+      """
+      <idea-plugin>
+        <id>com.intellij.css</id>
+        <version>x-plugin-version</version>
+        <idea-version since-build="new-since" until-build="new-until" />
+        <content>
+          <module name="intellij.css.backend" />
+        </content>
+      </idea-plugin>
+      <!-- text patcher -->
+      """.trimIndent()
+    )
+  }
+
+  private fun request(source: String): PluginDescriptorPatchRequest = PluginDescriptorPatchRequest(
+    mainModule = "x-plugin-module-name",
+    sourceContent = source,
+    rawPatchedContent = source,
+    pluginVersion = "x-plugin-version",
+    compatibleSinceUntil = Pair("new-since", "new-until"),
+    releaseDate = "X-RELEASE-DATE-X",
+    releaseVersion = "X-RELEASE-VERSION-X",
+    toPublish = false,
+    retainProductDescriptorForBundledPlugin = false,
+    isEap = false,
+  )
+
+  private fun contentModuleNames(rootElement: Element): List<String> {
+    return rootElement.getChildren("content").flatMap { content ->
+      content.getChildren("module").mapNotNull { it.getAttributeValue("name") }
+    }
+  }
+
   private fun assertTransform(
     @Language("XML") before: String,
     @Language("XML") after: String,
@@ -240,4 +306,12 @@ class PluginXmlPatcherTest {
     )
     assertThat(JDOMUtil.write(result)).isEqualTo(after)
   }
+}
+
+private object NoProjectModelContext : DescriptorResolveContext {
+  override val outputProvider: ModuleOutputProvider
+    get() = throw UnsupportedOperationException("the shared descriptor patch must not read the JPS project model")
+
+  override val productPropertiesName: String
+    get() = "PluginXmlPatcherTest"
 }

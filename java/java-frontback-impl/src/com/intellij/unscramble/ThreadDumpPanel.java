@@ -47,12 +47,11 @@ import com.intellij.ui.SpeedSearchComparator;
 import com.intellij.ui.TreeSpeedSearch;
 import com.intellij.ui.treeStructure.Tree;
 import com.intellij.util.PlatformIcons;
-import com.intellij.util.ui.UIUtil;
-import com.intellij.util.ui.tree.TreeUtil;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -123,7 +122,7 @@ public final class ThreadDumpPanel extends JPanel implements NoStackTraceFolding
 
     configureToolbar(project, consoleView, toolbarActions);
 
-    updateThreadsTree();
+    sortAndUpdateThreadDumpItemList();
 
     Editor editor = CommonDataKeys.EDITOR.getData(DataManager.getInstance().getDataContext(consoleView.getPreferredFocusableComponent()));
     if (editor != null) {
@@ -190,8 +189,8 @@ public final class ThreadDumpPanel extends JPanel implements NoStackTraceFolding
     });
     TreeSpeedSearch
       .installOn(threadTree, true, path -> {
-      var node = (DefaultMutableTreeNode)path.getLastPathComponent();
-      return node.getUserObject() instanceof DumpItem item ? item.getName() : "";
+        var node = (DefaultMutableTreeNode)path.getLastPathComponent();
+        return node.getUserObject() instanceof DumpItem item ? item.getName() : "";
       })
       .setComparator(new SpeedSearchComparator(false, true));
     return threadTree;
@@ -373,10 +372,11 @@ public final class ThreadDumpPanel extends JPanel implements NoStackTraceFolding
       if (node.getUserObject() instanceof DumpItem dumpItem) {
         setIcon((dumpItem).getIcon());
         iconToolTip = dumpItem.getIconToolTip();
-        if (selected) {
+        if (!selected) {
           var selectedNode = (DefaultMutableTreeNode)tree.getLastSelectedPathComponent();
-          var selectedThread = (DumpItem)selectedNode.getUserObject();
-          setBackground(getBackgroundColor(dumpItem, selectedThread));
+          var selectedThread = selectedNode != null && selectedNode.getUserObject() instanceof DumpItem item ? item : null;
+          Color backgroundColor = getBackgroundColor(dumpItem, selectedThread);
+          if (backgroundColor != null) setBackground(backgroundColor);
         }
         SimpleTextAttributes attrs = dumpItem.getAttributes();
         append(dumpItem.getName(), attrs);
@@ -389,7 +389,12 @@ public final class ThreadDumpPanel extends JPanel implements NoStackTraceFolding
       return iconToolTip;
     }
 
-    private static @NotNull Color getBackgroundColor(DumpItem threadState, DumpItem selectedThread) {
+    @Override
+    protected boolean shouldDrawBackground() {
+      return true;
+    }
+
+    private static @Nullable Color getBackgroundColor(DumpItem threadState, DumpItem selectedThread) {
       if (threadState.isDeadLocked()) {
         return LightColors.RED;
       }
@@ -397,7 +402,7 @@ public final class ThreadDumpPanel extends JPanel implements NoStackTraceFolding
         return LightColors.YELLOW;
       }
       else {
-        return UIUtil.getListBackground();
+        return null;
       }
     }
   }

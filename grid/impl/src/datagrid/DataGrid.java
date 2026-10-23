@@ -20,6 +20,7 @@ import com.intellij.openapi.util.ModificationTracker;
 import com.intellij.openapi.util.NlsSafe;
 import com.intellij.ui.JBAutoScroller;
 import com.intellij.util.messages.Topic;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -42,6 +43,11 @@ public interface DataGrid extends CoreGrid<GridRow, GridColumn> {
 
   void runWithIgnoreSelectionChanges(Runnable runnable);
 
+  /** Changes the visibility of the columns. A grid can combine the view updates. */
+  default void setColumnsEnabled(@NotNull List<ModelIndex<GridColumn>> columns, boolean state) {
+    for (var column : columns) setColumnEnabled(column, state);
+  }
+
   boolean isSafeToReload();
 
   ActionCallback submit();
@@ -58,6 +64,16 @@ public interface DataGrid extends CoreGrid<GridRow, GridColumn> {
   GridFilterAndSortingComponent getFilterComponent();
 
   void resetFilters();
+
+  /**
+   * Resets the filters for the query result that {@code load} delivers.
+   * A grid may keep column visibility when the load keeps the current columns.
+   */
+  @ApiStatus.Internal
+  default void resetFiltersAndLoad(@NotNull Runnable load) {
+    resetFilters();
+    load.run();
+  }
 
   boolean isSortViaOrderBySupported();
 

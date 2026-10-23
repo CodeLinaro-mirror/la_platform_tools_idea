@@ -1,7 +1,7 @@
 // "Add context parameter to function" "false"
 // COMPILER_ARGUMENTS: -XXLanguage:-ContextParameters
-// K2_ERROR: No parameter with name 'ctx2' found.
-// K2_AFTER_ERROR: No parameter with name 'ctx2' found.
+// K2_AFTER_ERROR: NAMED_PARAMETER_NOT_FOUND
+// K2_ERROR: NAMED_PARAMETER_NOT_FOUND
 class Ctx
 
 fun f1() {
@@ -12,4 +12,4 @@ fun fdemo() {
 }
 
 
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.AddContextParameterFix$ForCalledFunction
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.AddContextParameterFix$ForCalledFunction

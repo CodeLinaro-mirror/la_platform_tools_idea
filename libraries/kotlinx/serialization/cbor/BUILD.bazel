@@ -1,7 +1,14 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.libraries.kotlinx.serialization.cbor` start
+content_module_jar(
+    libraries = ["@lib//:libraries-kotlinx-serialization-cbor-kotlinx-serialization-cbor"],
+    module = ":cbor",
+)
+### auto-generated section `dev intellij.libraries.kotlinx.serialization.cbor` end
 
 ### auto-generated section `build intellij.libraries.kotlinx.serialization.cbor` start
-
 jvm_library(
     name = "cbor",
     srcs = glob(
@@ -45,6 +52,7 @@ jvm_library(
 exports_files(
     [
         "intellij.libraries.kotlinx.serialization.cbor.iml",
+        "resources/intellij.libraries.kotlinx.serialization.cbor.xml",
     ],
     visibility = ["//visibility:public"],
 )

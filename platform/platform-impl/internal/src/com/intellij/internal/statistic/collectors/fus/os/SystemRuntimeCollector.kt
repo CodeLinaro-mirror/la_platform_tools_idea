@@ -39,7 +39,7 @@ class SystemRuntimeCollector : ApplicationUsagesCollector() {
   private val ARCHITECTURES = listOf("x86", "x86_64", "arm64", "other", "unknown")
   private val VENDORS = listOf("JetBrains", "Apple", "Oracle", "Sun", "IBM", "Azul", "Other")
   private val VM_OPTIONS = listOf("Xmx", "Xms", "SoftRefLRUPolicyMSPerMB", "ReservedCodeCacheSize")
-  private val SYSTEM_PROPERTIES = listOf("splash", "nosplash")
+  private val SYSTEM_PROPERTIES = listOf("splash", "nosplash", "ide.native.launcher")
   private val RENDERING_PIPELINES = listOf("Metal", "Vulkan", "Other")
   @Suppress("SpellCheckingInspection")
   private val OS_VMS = listOf("none", "xen", "kvm", "vmware", "hyperv", "other", "unknown")
@@ -93,12 +93,12 @@ class SystemRuntimeCollector : ApplicationUsagesCollector() {
       CpuArch.CURRENT.name.lowercase(Locale.ENGLISH),
       getJavaVendor())
 
-    for (option in collectJvmOptions()) {
-      result += JVM_OPTION.metric(option.key, option.value)
+    for ((key, value) in collectJvmOptions()) {
+      result += JVM_OPTION.metric(key, value)
     }
 
-    for (property in collectSystemProperties()) {
-      result += SYSTEM_PROPERTY.metric(property.key, property.value.toBoolean())
+    for ((key, value) in collectSystemProperties()) {
+      result += SYSTEM_PROPERTY.metric(key, value.toBoolean())
     }
 
     result += DEBUG_AGENT.metric(DebugAttachDetector.isDebugEnabled())

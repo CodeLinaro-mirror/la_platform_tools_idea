@@ -1383,6 +1383,19 @@ public abstract class K2QuickFixTestGenerated extends AbstractK2QuickFixTest {
                 runTest("../../../idea/tests/testData/quickfix/suppress/redundant/Suppressed.kt");
             }
         }
+
+        @RunWith(JUnit3RunnerWithInners.class)
+        @TestMetadata("../../../idea/tests/testData/quickfix/suppress/unused")
+        public static class Unused extends AbstractK2QuickFixTest {
+            private void runTest(String testDataFilePath) throws Exception {
+                KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
+            }
+
+            @TestMetadata("unusedParameter.kt")
+            public void testUnusedParameter() throws Exception {
+                runTest("../../../idea/tests/testData/quickfix/suppress/unused/unusedParameter.kt");
+            }
+        }
     }
 
     @RunWith(JUnit3RunnerWithInners.class)
@@ -2282,6 +2295,11 @@ public abstract class K2QuickFixTestGenerated extends AbstractK2QuickFixTest {
                 runTest("../../../idea/tests/testData/quickfix/optIn/propagateOptIn8Fir.kt");
             }
 
+            @TestMetadata("propagateRequiresOptInToPrimaryConstructor.kt")
+            public void testPropagateRequiresOptInToPrimaryConstructor() throws Exception {
+                runTest("../../../idea/tests/testData/quickfix/optIn/propagateRequiresOptInToPrimaryConstructor.kt");
+            }
+
             @TestMetadata("propagateSubclassOptInMultipleMarkers1.kt")
             public void testPropagateSubclassOptInMultipleMarkers1() throws Exception {
                 runTest("../../../idea/tests/testData/quickfix/optIn/propagateSubclassOptInMultipleMarkers1.kt");
@@ -2407,6 +2425,21 @@ public abstract class K2QuickFixTestGenerated extends AbstractK2QuickFixTest {
         @TestMetadata("protected2.kt")
         public void testProtected2() throws Exception {
             runTest("../../../idea/tests/testData/quickfix/protectedInFinal/protected2.kt");
+        }
+
+        @TestMetadata("protectedInDataClass.kt")
+        public void testProtectedInDataClass() throws Exception {
+            runTest("../../../idea/tests/testData/quickfix/protectedInFinal/protectedInDataClass.kt");
+        }
+
+        @TestMetadata("protectedInEnumClass.kt")
+        public void testProtectedInEnumClass() throws Exception {
+            runTest("../../../idea/tests/testData/quickfix/protectedInFinal/protectedInEnumClass.kt");
+        }
+
+        @TestMetadata("protectedInValueClass.kt")
+        public void testProtectedInValueClass() throws Exception {
+            runTest("../../../idea/tests/testData/quickfix/protectedInFinal/protectedInValueClass.kt");
         }
     }
 
@@ -2573,6 +2606,11 @@ public abstract class K2QuickFixTestGenerated extends AbstractK2QuickFixTest {
             runTest("../../../idea/tests/testData/quickfix/unsupportedFeature/ExplicitBackingFields_2_3.kt");
         }
 
+        @TestMetadata("IntrinsicConstEvaluation_2_4_Increase_Version.kt")
+        public void testIntrinsicConstEvaluation_2_4_Increase_Version() throws Exception {
+            runTest("../../../idea/tests/testData/quickfix/unsupportedFeature/IntrinsicConstEvaluation_2_4_Increase_Version.kt");
+        }
+
         @TestMetadata("MultiDollarInterpolation_2_0.kt")
         public void testMultiDollarInterpolation_2_0() throws Exception {
             runTest("../../../idea/tests/testData/quickfix/unsupportedFeature/MultiDollarInterpolation_2_0.kt");
@@ -2601,6 +2639,11 @@ public abstract class K2QuickFixTestGenerated extends AbstractK2QuickFixTest {
         @TestMetadata("NestedTypeAlias_2_2.kt")
         public void testNestedTypeAlias_2_2() throws Exception {
             runTest("../../../idea/tests/testData/quickfix/unsupportedFeature/NestedTypeAlias_2_2.kt");
+        }
+
+        @TestMetadata("UnnamedLocalVariables_2_4_Increase_Version.kt")
+        public void testUnnamedLocalVariables_2_4_Increase_Version() throws Exception {
+            runTest("../../../idea/tests/testData/quickfix/unsupportedFeature/UnnamedLocalVariables_2_4_Increase_Version.kt");
         }
 
         @TestMetadata("WhenGuards_2_0.kt")

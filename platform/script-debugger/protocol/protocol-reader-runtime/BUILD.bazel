@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.platform.scriptDebugger.protocolReaderRuntime` start
+content_module_jar(module = ":protocol-reader-runtime")
+### auto-generated section `dev intellij.platform.scriptDebugger.protocolReaderRuntime` end
 
 ### auto-generated section `build intellij.platform.scriptDebugger.protocolReaderRuntime` start
-
 jvm_library(
     name = "protocol-reader-runtime",
     srcs = glob(
@@ -58,6 +62,7 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.scriptDebugger.protocolReaderRuntime.iml",
+        "resources/intellij.platform.scriptDebugger.protocolReaderRuntime.xml",
     ],
     visibility = ["//visibility:public"],
 )

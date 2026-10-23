@@ -51,21 +51,24 @@ import com.intellij.openapi.updateSettings.impl.pluginsAdvertisement.PluginAdver
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.InvalidDataException;
 import com.intellij.openapi.util.JDOMUtil;
+import com.intellij.openapi.util.ModificationTracker;
 import com.intellij.openapi.util.NlsContexts.Label;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.WriteExternalException;
 import com.intellij.openapi.util.io.ByteSequence;
 import com.intellij.openapi.util.io.FileUtil;
+import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.AsyncFileListener;
 import com.intellij.openapi.vfs.CharsetToolkit;
 import com.intellij.openapi.vfs.CharsetToolkit.GuessedEncoding;
-import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.PersistentFSConstants;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.vfs.VirtualFileManager;
 import com.intellij.openapi.vfs.VirtualFileSystem;
 import com.intellij.openapi.vfs.encoding.EncodingProjectManager;
 import com.intellij.openapi.vfs.encoding.EncodingProjectManagerImpl;
+import com.intellij.openapi.vfs.newvfs.RefreshQueue;
 import com.intellij.openapi.vfs.newvfs.events.VFileContentChangeEvent;
 import com.intellij.openapi.vfs.newvfs.impl.CachedFileType;
 import com.intellij.openapi.vfs.newvfs.impl.FakeVirtualFile;
@@ -76,12 +79,15 @@ import com.intellij.psi.PsiPlainTextFile;
 import com.intellij.psi.impl.PsiManagerEx;
 import com.intellij.testFramework.ExtensionTestUtil;
 import com.intellij.testFramework.HeavyPlatformTestCase;
+import com.intellij.testFramework.JUnit38AssumeSupportRunner;
 import com.intellij.testFramework.PerformanceUnitTest;
 import com.intellij.testFramework.PlatformTestUtil;
 import com.intellij.testFramework.ServiceContainerUtil;
 import com.intellij.testFramework.TestLoggerKt;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.ExceptionUtil;
+import com.intellij.util.FileContentUtilCore;
+import com.intellij.util.ForcefulReparseModificationTracker;
 import com.intellij.util.PatternUtil;
 import com.intellij.util.ThrowableRunnable;
 import com.intellij.util.containers.ContainerUtil;
@@ -93,6 +99,7 @@ import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.junit.Assume;
+import org.junit.runner.RunWith;
 
 import javax.swing.Icon;
 import java.io.ByteArrayInputStream;
@@ -121,6 +128,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+@RunWith(JUnit38AssumeSupportRunner.class)
 public class FileTypesTest extends HeavyPlatformTestCase {
   private static final Logger LOG = Logger.getInstance(FileTypesTest.class);
 
@@ -1001,7 +1009,7 @@ public class FileTypesTest extends HeavyPlatformTestCase {
         });
         try {
           FileUtil.appendToFile(f, StringUtil.repeatSymbol(' ', 50));
-          LocalFileSystem.getInstance().refreshFiles(Collections.singletonList(virtualFile));
+          RefreshQueue.getInstance().refresh(false, false, null, Collections.singletonList(virtualFile));
           LOG.debug("f = " + f.length() + "; virtualFile=" + virtualFile.getLength() +
                     "; psiFile=" + psiFile.isValid() + "; type=" + getFileType(virtualFile));
         }
@@ -1878,5 +1886,48 @@ public class FileTypesTest extends HeavyPlatformTestCase {
     finally {
       myFileTypeManager.getExtensionMap().removeHashBangPattern("myhash", xmlType);
     }
+  }
+
+  public void testReparseLaterPreparesAsyncListenersBeforeWriteAction() throws IOException {
+    assertEquals(Set.of("outside write action"), reparseAndRecordPrepareChange());
+  }
+
+  public void testReparseLaterPreparesAsyncListenersInWriteActionWhenRegistryKeyIsOff() throws IOException {
+    Registry.get("filetype.reparse.prepare.async.listeners.in.read.action").setValue(false, getTestRootDisposable());
+    assertEquals(Set.of("in write action"), reparseAndRecordPrepareChange());
+  }
+
+  public void testReparseLaterIncrementsForcefulReparseModificationTracker() throws IOException {
+    VirtualFile file = createTempVirtualFile("reparse.txt", null, "text", StandardCharsets.UTF_8);
+    ModificationTracker tracker = ForcefulReparseModificationTracker.getInstance();
+    long countBefore = tracker.getModificationCount();
+
+    myFileTypeManager.detectionService.reparseLater(List.of(file));
+    PlatformTestUtil.waitWithEventsDispatching("The reparse did not increment the tracker", () -> tracker.getModificationCount() > countBefore, 60);
+  }
+
+  /**
+   * Reparses one file and returns whether an async listener prepared its change in a write action or outside it.
+   */
+  private @NotNull Set<String> reparseAndRecordPrepareChange() throws IOException {
+    VirtualFile file = createTempVirtualFile("reparse.txt", null, "text", StandardCharsets.UTF_8);
+    Set<String> prepared = ConcurrentCollectionFactory.createConcurrentSet();
+    AtomicBoolean applied = new AtomicBoolean();
+    VirtualFileManager.getInstance().addAsyncFileListener(events -> {
+      if (!ContainerUtil.exists(events, event -> event.getRequestor() == FileContentUtilCore.FORCE_RELOAD_REQUESTOR && file.equals(event.getFile()))) {
+        return null;
+      }
+      prepared.add(ApplicationManager.getApplication().isWriteAccessAllowed() ? "in write action" : "outside write action");
+      return new AsyncFileListener.ChangeApplier() {
+        @Override
+        public void beforeVfsChange() {
+          applied.set(true);
+        }
+      };
+    }, getTestRootDisposable());
+
+    myFileTypeManager.detectionService.reparseLater(List.of(file));
+    PlatformTestUtil.waitWithEventsDispatching("The file was not reparsed", applied::get, 60);
+    return prepared;
   }
 }

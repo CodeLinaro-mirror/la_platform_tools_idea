@@ -16,7 +16,9 @@ import com.intellij.platform.util.progress.reportSequentialProgress
 import com.intellij.util.concurrency.annotations.RequiresEdt
 import com.intellij.util.concurrency.annotations.RequiresReadLock
 import org.jetbrains.annotations.ApiStatus
+import org.jetbrains.annotations.Nls
 import org.jetbrains.annotations.VisibleForTesting
+import org.jetbrains.kotlin.config.LanguageFeature
 import org.jetbrains.kotlin.idea.base.projectStructure.ModuleSourceRootGroup
 import org.jetbrains.kotlin.idea.base.projectStructure.ModuleSourceRootMap
 import org.jetbrains.kotlin.idea.base.projectStructure.allModules
@@ -56,7 +58,7 @@ abstract class BaseKotlinProjectConfigurator : KotlinProjectConfigurator {
             calculateAutoConfigSettingsReadAction(module)
         }
 
-    @RequiresReadLock
+    @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
     protected abstract fun calculateAutoConfigSettingsReadAction(module: Module): AutoConfigurationSettings?
 
     override suspend fun runAutoConfig(settings: AutoConfigurationSettings) {
@@ -91,7 +93,7 @@ abstract class BaseKotlinProjectConfigurator : KotlinProjectConfigurator {
             FileDocumentManager.getInstance().saveAllDocuments()
             KotlinProjectConfigurationService.getInstance(project).queueSyncIfPossible()
 
-            val changes = readAction { result.changedFiles.calculateChanges() }
+            val changes = readAction { result.changedFiles.collectChangedFiles() }
             notificationHolder
                 .showAutoConfiguredNotification(module.name, changes)
 
@@ -106,7 +108,7 @@ abstract class BaseKotlinProjectConfigurator : KotlinProjectConfigurator {
         configureAndGetConfiguredModules(project, excludeModules)
     }
 
-    @RequiresEdt
+    @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
     override fun configureAndGetConfiguredModules(project: Project, excludeModules: Collection<Module>): Set<Module> {
         val dialog = ConfigureDialogWithModulesAndVersion(
             project,
@@ -322,4 +324,15 @@ abstract class BaseKotlinProjectConfigurator : KotlinProjectConfigurator {
         }
     }
 
+    @Nls
+    protected fun getFixText(state: LanguageFeature.State, featureShortName: String): String {
+        return when (state) {
+            LanguageFeature.State.ENABLED -> {
+                KotlinProjectConfigurationBundle.message("fix.change.feature.support.enabled", featureShortName)
+            }
+            LanguageFeature.State.DISABLED -> {
+                KotlinProjectConfigurationBundle.message("fix.change.feature.support.disabled", featureShortName)
+            }
+        }
+    }
 }

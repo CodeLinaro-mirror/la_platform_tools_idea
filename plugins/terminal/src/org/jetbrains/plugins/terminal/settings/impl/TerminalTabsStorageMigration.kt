@@ -8,8 +8,6 @@ import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.progress.runBlockingMaybeCancellable
 import com.intellij.openapi.project.Project
 import com.intellij.platform.PlatformProjectOpenProcessor
-import com.intellij.platform.eel.annotations.MultiRoutingFileSystemPath
-import com.intellij.platform.eel.annotations.NativePath
 import com.intellij.platform.eel.path.EelPath
 import com.intellij.platform.eel.path.EelPathException
 import com.intellij.platform.eel.provider.asNioPath
@@ -17,7 +15,9 @@ import com.intellij.platform.eel.provider.getEelDescriptor
 import com.intellij.platform.ide.productMode.IdeProductMode
 import com.intellij.platform.ide.progress.runWithModalProgressBlocking
 import com.intellij.platform.project.projectId
-import com.intellij.platform.rpc.RemoteApiProviderService
+import com.intellij.platform.rpc.lite.LiteRemoteApiProviderService
+import com.intellij.platform.util.annotations.paths.NioPath
+import com.intellij.platform.util.annotations.paths.OsPath
 import com.intellij.util.ui.EDT
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -57,7 +57,7 @@ internal class TerminalTabsStorageMigration(
       return null
     }
 
-    if (!service<RemoteApiProviderService>().isServiceOperational()) {
+    if (!LiteRemoteApiProviderService.isConnected()) {
       props.setValue(MIGRATION_ATTEMPTED_KEY, true)
       LOG.info("Terminal tabs storage migration skipped for project $project: no connection to the backend")
       return null
@@ -127,7 +127,7 @@ internal class TerminalTabsStorageMigration(
   }
 
   @Throws(EelPathException::class)
-  private fun getRemoteCurrentDirectory(localPath: @NativePath String): @MultiRoutingFileSystemPath String {
+  private fun getRemoteCurrentDirectory(localPath: @OsPath String): @NioPath String {
     val eelDescriptor = project.getEelDescriptor()
     val eelPath = EelPath.parse(localPath, eelDescriptor)
     return eelPath.asNioPath().toString()

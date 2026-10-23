@@ -2,6 +2,7 @@
 package com.intellij.openapi.vcs.configurable
 
 import com.intellij.ide.DataManager
+import com.intellij.ide.impl.ProjectUtil.isRealProject
 import com.intellij.ide.trustedProjects.TrustedProjects
 import com.intellij.ide.util.scopeChooser.ScopeChooserConfigurable
 import com.intellij.ide.util.treeView.FileNameComparator
@@ -29,7 +30,7 @@ import com.intellij.openapi.vcs.impl.DefaultVcsRootPolicy
 import com.intellij.openapi.vcs.impl.ProjectLevelVcsManagerImpl
 import com.intellij.openapi.vcs.roots.VcsRootErrorsFinder
 import com.intellij.openapi.vcs.update.AbstractCommonUpdateAction
-import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.vfs.StandardFileSystems
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.ColoredTableCellRenderer
 import com.intellij.ui.EditorNotificationPanel
@@ -68,7 +69,7 @@ import javax.swing.table.TableCellRenderer
 internal class VcsDirectoryConfigurationPanel(private val project: Project) : Disposable {
   private val POSTPONE_MAPPINGS_LOADING_PANEL = ProgressUIUtil.DEFAULT_PROGRESS_DELAY_MILLIS
 
-  private val isEditingDisabled = project.isDefault
+  private val isEditingDisabled = !isRealProject(project)
 
   private val vcsManager: ProjectLevelVcsManager = ProjectLevelVcsManager.getInstance(project)
   private val vcsConfiguration: VcsConfiguration = VcsConfiguration.getInstance(project)
@@ -192,7 +193,7 @@ internal class VcsDirectoryConfigurationPanel(private val project: Project) : Di
   }
 
   private fun scheduleUnregisteredRootsLoading() {
-    if (project.isDefault || !TrustedProjects.isProjectTrusted(project)) return
+    if (!isRealProject(project) || !TrustedProjects.isProjectTrusted(project)) return
     rootDetectionIndicator?.cancel()
     if (!VcsUtil.shouldDetectVcsMappingsFor(project)) return
 
@@ -227,7 +228,7 @@ internal class VcsDirectoryConfigurationPanel(private val project: Project) : Di
   private fun isMappingValid(mapping: VcsDirectoryMapping): Boolean {
     if (mapping.isDefaultMapping) return true
     val checker = vcsRootCheckers[mapping.vcs] ?: return true
-    val directory = LocalFileSystem.getInstance().findFileByPath(mapping.directory)
+    val directory = StandardFileSystems.local().findFileByPath(mapping.directory)
     return directory != null && checker.validateRoot(directory)
   }
 

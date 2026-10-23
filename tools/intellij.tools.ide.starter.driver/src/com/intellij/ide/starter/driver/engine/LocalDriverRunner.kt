@@ -2,10 +2,10 @@ package com.intellij.ide.starter.driver.engine
 
 import com.intellij.driver.client.impl.DriverImpl
 import com.intellij.driver.client.impl.JmxHost
+import com.intellij.driver.sdk.ManualWaitForIndicators
 import com.intellij.driver.sdk.getOpenProjects
+import com.intellij.driver.sdk.isPauseOnIndicatorsSuppressed
 import com.intellij.driver.sdk.waitForIndicators
-import com.intellij.driver.sdk.ui.components.elements.isDialogOpened
-import com.intellij.driver.sdk.ui.ui
 import com.intellij.ide.starter.coroutine.CommonScope.scopeForProcesses
 import com.intellij.ide.starter.ide.IDETestContext
 import com.intellij.ide.starter.ide.isRemDevContext
@@ -35,17 +35,16 @@ class LocalDriverRunner : DriverRunner {
     expectedKill: Boolean,
     expectedExitCode: Int,
     collectNativeThreads: Boolean,
-    pauseOnIndexing: Duration?,
+    pauseOnIndicators: Duration?,
     configure: IDERunContext.() -> Unit,
   ): BackgroundRun {
     val driverOptions = DriverOptions()
     val driver = DriverWithDetailedLogging(
       driver = DriverImpl(JmxHost(address = driverOptions.address), isRemDevMode = false) {
-        pauseOnIndexing?.let { timeout ->
-          // note failures when dialog is opened and the 'Synchronizing output directories...' indicator is active till the dialog is closed,
-          // so have to ensure that there is no dialog opened before checking the indicator
-          if (isConnected && !ui.isDialogOpened()) {
+        pauseOnIndicators?.let { timeout ->
+          if (isConnected && !isPauseOnIndicatorsSuppressed()) {
             getOpenProjects().forEach {
+              @OptIn(ManualWaitForIndicators::class)
               waitForIndicators(it, timeout, false)
             }
           }
@@ -54,21 +53,29 @@ class LocalDriverRunner : DriverRunner {
       logUiHierarchy = !context.isRemDevContext())
     val currentStep = Allure.getLifecycle().currentTestCaseOrStep
     val process = CompletableDeferred<IDEHandle>()
+    val runContext = CompletableDeferred<IDERunContext>()
     EventsBus.subscribeOnce(process) { event: IdeLaunchEvent ->
+      runContext.complete(event.runContext)
       process.complete(event.ideProcess)
     }
     val runResult = scopeForProcesses.async {
       Allure.getLifecycle().setCurrentTestCase(currentStep.orElse(UUID.randomUUID().toString()))
       try {
-        context.runIdeSuspending(commandLine,
-                                 commands,
-                                 runTimeout,
-                                 useStartupScript,
-                                 launchName,
-                                 expectedKill,
-                                 expectedExitCode,
-                                 collectNativeThreads) {
+        context.runIdeSuspending(
+          commandLine = commandLine,
+          commands = commands,
+          runTimeout = runTimeout,
+          useStartupScript = useStartupScript,
+          launchName = launchName,
+          expectedKill = expectedKill,
+          expectedExitCode = expectedExitCode,
+          collectNativeThreads = collectNativeThreads,
+        ) {
           provideDriverProperties(driverOptions)
+          // in split mode RemDevDriverRunner already enabled it for the frontend and the backend together
+          if (!context.isRemDevContext()) {
+            addVMOptionsPatch { enableFocusRequestsLog() }
+          }
           configure()
         }
       }
@@ -78,13 +85,22 @@ class LocalDriverRunner : DriverRunner {
         throw e
       }
     }
-    return runBlocking { BackgroundRun(runResult, driver, process.await()) }
+    @Suppress("RAW_RUN_BLOCKING")
+    return runBlocking {
+      val processAwaited = process.await()
+      val runContextAwaited = runContext.await()
+      BackgroundRun(
+        startResult = runResult,
+        driverWithoutAwaitedConnection = driver,
+        process = processAwaited,
+        runContext = runContextAwaited)
+    }
   }
 
   private fun IDERunContext.provideDriverProperties(driverOptions: DriverOptions) {
     addVMOptionsPatch {
-      for (entry in driverOptions.systemProperties) {
-        addSystemProperty(entry.key, entry.value)
+      for ((key, value) in driverOptions.systemProperties) {
+        addSystemProperty(key, value)
       }
     }
   }

@@ -38,13 +38,14 @@ import fleet.fastutil.ints.IntList
 import fleet.fastutil.ints.contains
 import fleet.fastutil.ints.retainAll
 import fleet.kernel.DbSource
+import fleet.kernel.SpeculativeChangeKey
+import fleet.kernel.shouldFailFast
 import fleet.reporting.shared.tracing.spannedScope
-import fleet.util.async.view
 import fleet.openmap.MutableOpenMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.serializer
@@ -198,7 +199,10 @@ private fun <T> ChangeScope.withTransactorView(kernelViewEntity: TransactorViewE
   let { changeScope ->
     val hiddenPart = kernelViewEntity[TransactorViewEntity2.HiddenPart]
     val visiblePart = kernelViewEntity[TransactorViewEntity2.DefaultPart]
-    val queryCache = kernelViewEntity[TransactorViewEntity2.QueryCache]
+    // A speculative pass reads an uncommitted state and its writes are replayed verbatim later, so it neither
+    // fills the live cache nor records one; the replay then resets both caches, which the replayed novelty requires.
+    val speculative = meta[SpeculativeChangeKey] == true
+    val queryCache = if (speculative) QueryCache.empty() else kernelViewEntity[TransactorViewEntity2.QueryCache]
     val mut = context.impl.mutableDb
     val oldQueryCache = mut.queryCache
     val partsExceptHidden = AllParts.except(hiddenPart)
@@ -259,15 +263,18 @@ private fun <T> ChangeScope.withTransactorView(kernelViewEntity: TransactorViewE
     val novelty = meta[MutableNoveltyKey]!!
 
     mut.queryCache = oldQueryCache.invalidate(novelty)
-    kernelViewEntity[TransactorViewEntity2.QueryCache] = newQueryCache
+    kernelViewEntity[TransactorViewEntity2.QueryCache] = if (speculative) QueryCache.empty() else newQueryCache
 
     kernelViewEntity.counterPart()?.let { counterpart ->
-      counterpart[TransactorViewEntity2.QueryCache] = counterpart[TransactorViewEntity2.QueryCache].invalidate(novelty)
+      counterpart[TransactorViewEntity2.QueryCache] = when {
+        speculative -> QueryCache.empty()
+        else -> counterpart[TransactorViewEntity2.QueryCache].invalidate(novelty)
+      }
     }
     res
   }
 
-private fun kernelViewMiddleware(kernelViewEntity: TransactorViewEntity2): fleet.kernel.TransactorMiddleware =
+private fun kernelViewMiddleware(kernelViewEntity: TransactorViewEntity2, failFast: Boolean = false): fleet.kernel.TransactorMiddleware =
   object : fleet.kernel.TransactorMiddleware {
     override fun ChangeScope.performChange(next: ChangeScope.() -> Unit) {
       DbContext.threadBound.ensureMutable {
@@ -281,7 +288,7 @@ private fun kernelViewMiddleware(kernelViewEntity: TransactorViewEntity2): fleet
           if (sharedNovelty.isNotEmpty()) {
             TransactorViewEntity2.forDefaultPart(fleet.kernel.FrontendPart)?.let { frontendKernelViewEnitty ->
               withTransactorView(frontendKernelViewEnitty) {
-                runOfferContributors(sharedNovelty)
+                runOfferContributors(sharedNovelty, failFast = failFast)
               }
             }
           }
@@ -301,6 +308,7 @@ suspend fun <T> withTransactorView(
   body: suspend CoroutineScope.(fleet.kernel.Transactor) -> T,
 ): T =
   spannedScope("withKernelView $defaultPart") {
+    val failFast = currentCoroutineContext().shouldFailFast
     val kernelViewEntity = fleet.kernel.change {
       register(TransactorViewEntity2)
       TransactorViewEntity2.new {
@@ -322,8 +330,14 @@ suspend fun <T> withTransactorView(
     val transactorView = object : fleet.kernel.Transactor {
       override val middleware: fleet.kernel.TransactorMiddleware = kernel.middleware + myMiddleware
 
-      override val dbState: StateFlow<DB> =
-        kernel.dbState.view { db -> db.subDB(hiddenPart, kernelViewEntity) }
+      override val dbSource: DbSource = object : DbSource {
+        override val flow: Flow<DB>
+          get() = kernel.dbSource.flow.map { db -> db.subDB(hiddenPart, kernelViewEntity) }
+        override val latest: DB
+          get() = kernel.dbSource.latest.subDB(hiddenPart, kernelViewEntity)
+        override val debugName: String
+          get() = "kernelView ${kernel.dbSource.debugName}"
+      }
 
       override fun changeAsync(f: ChangeScope.() -> Unit): Deferred<Change> =
         kernel.changeAsync(wrapChange(f))
@@ -345,11 +359,6 @@ suspend fun <T> withTransactorView(
 
       override val meta: MutableOpenMap<fleet.kernel.Transactor> = MutableOpenMap.empty()
     }
-    withContext(transactorView + fleet.kernel.DbSource.ContextElement(
-      fleet.kernel.FlowDbSource(
-        transactorView.dbState,
-        debugName = "kernelView $transactorView"
-      )
-    )) { body(transactorView) }
+    withContext(transactorView + fleet.kernel.DbSource.ContextElement(transactorView.dbSource)) { body(transactorView) }
   }
 

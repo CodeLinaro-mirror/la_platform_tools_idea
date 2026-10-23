@@ -26,7 +26,7 @@ public class EmptyChangelistBuilder implements ChangelistBuilder {
   }
 
   @Override
-  public void removeRegisteredChangeFor(FilePath path) {
+  public void removeRegisteredChangeFor(@NotNull FilePath path) {
   }
 
   @Override
@@ -68,16 +68,5 @@ public class EmptyChangelistBuilder implements ChangelistBuilder {
   @Override
   public boolean reportChangesOutsideProject() {
     return false;
-  }
-
-  @Override
-  public void reportAdditionalInfo(final String text) {
-  }
-
-  @Override
-  public void reportAdditionalInfo(Factory<JComponent> infoComponent) {
-  }
-
-  public void reportWarningMessage(final String message) {
   }
 }

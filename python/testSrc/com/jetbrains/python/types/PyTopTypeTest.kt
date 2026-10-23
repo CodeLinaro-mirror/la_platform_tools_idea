@@ -23,6 +23,8 @@ import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
+@Subsystems.Typing
+@Components.TypeInference
 @Layers.Functional
 @TestFor(classes = [PyTopType::class], issues = ["PY-90942"])
 class PyTopTypeTest : PyCodeInsightTestCase() {
@@ -101,4 +103,18 @@ class PyTopTypeTest : PyCodeInsightTestCase() {
       assertSame(PyTopType, PyCloningTypeVisitor.clone(PyTopType, cloner))
     }
   }
+
+  @Test
+  fun `partly unknown type`() = test("""
+    def test():
+        def f():
+            '''
+            :rtype: None or unknown or int or long
+            '''
+        def g(x):
+            '''
+            :type x: object
+            '''
+        g(f())
+    """.trimIndent())
 }

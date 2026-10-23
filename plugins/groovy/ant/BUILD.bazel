@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.groovy.ant` start
+content_module_jar(module = ":ant")
+### auto-generated section `dev intellij.groovy.ant` end
 
 ### auto-generated section `build intellij.groovy.ant` start
-
 jvm_library(
     name = "ant",
     srcs = glob(
@@ -73,6 +77,7 @@ jvm_library(
 exports_files(
     [
         "intellij.groovy.ant.iml",
+        "resources/intellij.groovy.ant.xml",
     ],
     visibility = ["//visibility:public"],
 )

@@ -6,10 +6,10 @@ import com.intellij.openapi.application.edtWriteAction
 import com.intellij.openapi.diagnostic.fileLogger
 import com.intellij.openapi.projectRoots.ProjectJdkTable
 import com.intellij.openapi.projectRoots.Sdk
-import com.intellij.openapi.util.SystemInfo
 import com.intellij.platform.eel.EelExecApi
 import com.intellij.platform.eel.ExecuteProcessException
 import com.intellij.platform.eel.ThrowsChecked
+import com.intellij.platform.eel.channels.EelReceiveChannelException
 import com.intellij.platform.eel.provider.asEelPath
 import com.intellij.platform.eel.provider.asNioPath
 import com.intellij.platform.eel.provider.localEel
@@ -20,14 +20,17 @@ import com.intellij.platform.eel.where
 import com.intellij.python.community.junit5Tests.framework.conda.CondaEnv
 import com.intellij.python.community.junit5Tests.framework.conda.PyEnvTestCaseWithConda
 import com.intellij.python.community.junit5Tests.framework.conda.createCondaEnv
-import com.intellij.python.junit5Tests.framework.env.pySdkFixture
+import com.intellij.python.junit5Tests.framework.env.pyInterpreterFixture
+import com.intellij.python.junit5Tests.framework.pyProjectFixture
 import com.intellij.python.junit5Tests.framework.winLockedFile.deleteCheckLocking
+import com.intellij.python.sdk.backend.getSdkAPI
 import com.intellij.python.terminal.PyVirtualEnvTerminalCustomizer
 import com.intellij.python.test.env.junit5.pyVenvFixture
 import com.intellij.testFramework.common.timeoutRunBlocking
-import com.intellij.testFramework.junit5.fixture.moduleFixture
 import com.intellij.testFramework.junit5.fixture.projectFixture
 import com.intellij.testFramework.junit5.fixture.tempPathFixture
+import com.intellij.util.system.LowLevelLocalMachineAccess
+import com.intellij.util.system.OS
 import com.jetbrains.python.getOrThrow
 import com.jetbrains.python.sdk.flavors.conda.PyCondaEnv
 import com.jetbrains.python.sdk.pythonSdk
@@ -41,6 +44,7 @@ import org.hamcrest.CoreMatchers.hasItem
 import org.hamcrest.MatcherAssert.assertThat
 import org.jetbrains.plugins.terminal.ShellStartupOptions
 import org.jetbrains.plugins.terminal.runner.LocalShellIntegrationInjector
+import org.jetbrains.plugins.terminal.session.ShellName
 import org.jetbrains.plugins.terminal.startup.MutableShellExecOptionsImpl
 import org.jetbrains.plugins.terminal.startup.ShellExecCommandImpl
 import org.jetbrains.plugins.terminal.util.ShellIntegration
@@ -63,17 +67,17 @@ import kotlin.time.Duration.Companion.minutes
 /**
  * Run `powershell.exe` with a venv activation script and make sure there are no errors and python is correct
  */
+@OptIn(LowLevelLocalMachineAccess::class)
 @PyEnvTestCaseWithConda
-class PyVirtualEnvTerminalCustomizerTest {
+internal class PyVirtualEnvTerminalCustomizerTest {
   private val projectFixture = projectFixture()
   private val tempDirFixture = tempPathFixture(prefix = "some_path_with_underscores")
-  private val moduleFixture = projectFixture.moduleFixture(tempDirFixture, addPathToSourceRoot = true)
+  private val pyProjectFixture = projectFixture.pyProjectFixture(tempDirFixture)
 
   @Suppress("unused") // we need venv
-  private val venvFixture = pySdkFixture().pyVenvFixture(
+  private val venvFixture = projectFixture.pyInterpreterFixture().pyVenvFixture(
     where = tempDirFixture,
-    addToSdkTable = true,
-    moduleFixture = moduleFixture
+    pyProjectFixture = pyProjectFixture
   )
 
   private var sdkToDelete: Sdk? = null
@@ -81,7 +85,7 @@ class PyVirtualEnvTerminalCustomizerTest {
   @AfterEach
   fun tearDown(): Unit = timeoutRunBlocking {
     sdkToDelete?.let { sdk ->
-      if (SystemInfo.isWindows) {
+      if (OS.CURRENT == OS.Windows) {
         deleteCheckLocking(Path.of(sdk.homePath!!))
       }
       edtWriteAction {
@@ -93,9 +97,8 @@ class PyVirtualEnvTerminalCustomizerTest {
 
   private suspend fun getShellPath(shellType: ShellType): Path = when (shellType) {
     ShellType.POWERSHELL -> {
-      PathEnvironmentVariableUtil.findInPath("powershell.exe")?.toPath()
-      ?: Path((System.getenv("SystemRoot")
-               ?: "c:\\windows"), "system32", "WindowsPowerShell", "v1.0", "powershell.exe")
+      PathEnvironmentVariableUtil.findFirst("powershell.exe")
+      ?: Path((System.getenv("SystemRoot") ?: "c:\\windows"), "system32", "WindowsPowerShell", "v1.0", "powershell.exe")
     }
     ShellType.FISH, ShellType.BASH, ShellType.ZSH -> {
       localEel.exec.where(shellType.name.lowercase())?.asNioPath()
@@ -104,7 +107,7 @@ class PyVirtualEnvTerminalCustomizerTest {
   }
 
 
-  @ThrowsChecked(ExecuteProcessException::class)
+  @ThrowsChecked(ExecuteProcessException::class, EelReceiveChannelException::class)
   @CartesianTest
   fun testShellActivation(
     @CartesianTest.Values(booleans = [true, false]) useConda: Boolean,
@@ -113,28 +116,28 @@ class PyVirtualEnvTerminalCustomizerTest {
     @TempDir venvPath: Path,
   ): Unit = timeoutRunBlocking(10.minutes) {
     when (shellType) {
-      ShellType.POWERSHELL -> Assumptions.assumeTrue(SystemInfo.isWindows, "PowerShell is Windows only")
+      ShellType.POWERSHELL -> Assumptions.assumeTrue(OS.CURRENT == OS.Windows, "PowerShell is Windows only")
       ShellType.FISH -> Assumptions.abort("Fish terminal activation isn't supported")
-      ShellType.ZSH, ShellType.BASH -> Assumptions.assumeFalse(SystemInfo.isWindows, "Unix shells do not work on Windows")
+      ShellType.ZSH, ShellType.BASH -> Assumptions.assumeFalse(OS.CURRENT == OS.Windows, "Unix shells do not work on Windows")
     }
 
     val shellPath = getShellPath(shellType)
     if (!withContext(Dispatchers.IO) { shellPath.exists() && shellPath.isExecutable() }) {
       when (shellType) {
-        ShellType.ZSH -> Assumptions.assumeFalse(SystemInfo.isMac, "Zsh is mandatory on mac")
+        ShellType.ZSH -> Assumptions.assumeFalse(OS.CURRENT == OS.macOS, "Zsh is mandatory on mac")
         ShellType.BASH -> error("$shellPath not found")
         ShellType.FISH -> error("Fish must be ignored")
         ShellType.POWERSHELL -> error("Powershell is mandatory on Windows")
       }
     }
 
-
     val (pythonBinary, venvDirName) =
       if (useConda) {
         val envDir = venvPath.resolve("some_path_with_underscores")
-        val sdk = createCondaEnv(condaEnv, envDir).createSdkFromThisEnv(null, emptyList(), envDir).getOrThrow()
+        val interpreter = createCondaEnv(condaEnv, envDir).createSdkFromThisEnv(projectFixture.get(), null, emptyList(), envDir).getOrThrow()
+        val sdk = interpreter.getSdkAPI()
         sdkToDelete = sdk
-        moduleFixture.get().pythonSdk = sdk
+        pyProjectFixture.get().residesOnModule.pythonSdk = sdk
         Pair(Path(sdk.homePath!!), envDir.toRealPath().pathString)
       }
       else {
@@ -162,21 +165,21 @@ class PyVirtualEnvTerminalCustomizerTest {
       .args(args)
       .env(shellOptions.envVariables + mapOf(Pair("TERM", "dumb")))
       // Unix shells do not activate without tty
-      .interactionOptions(if (SystemInfo.isWindows) null else EelExecApi.Pty(100, 100, true))
+      .interactionOptions(if (OS.CURRENT == OS.Windows) null else EelExecApi.Pty(100, 100, true))
     val process = execOptions.eelIt()
     try {
       val stderr = async {
         process.stderr.readWholeText()
       }
       val stdout = async {
-        val separator = if (SystemInfo.isWindows) "\n" else "\r\n"
+        val separator = if (OS.CURRENT == OS.Windows) "\n" else "\r\n"
         process.stdout.readWholeText().split(separator).map { it.trim() }
       }
 
       // tool -- where.exe Windows, "type(1)" **nix
       // "$TOOL python" returns $PREFIX [path-to-python] $POSTFIX
-      val (locateTool, prefix) = if (SystemInfo.isWindows) {
-        Pair(PathEnvironmentVariableUtil.findInPath("where.exe")?.toString() ?: "where.exe", "")
+      val (locateTool, prefix) = if (OS.CURRENT == OS.Windows) {
+        Pair(PathEnvironmentVariableUtil.findFirst("where.exe")?.toString() ?: "where.exe", "")
       }
       else {
         Pair("type", "python is ")
@@ -190,14 +193,14 @@ class PyVirtualEnvTerminalCustomizerTest {
 
       assertThat("We ran `$locateTool`, so we there should be python path", output,
                  anyOf(hasItem(prefix + pythonBinary.pathString), hasItem(prefix + pythonBinaryReal.pathString)))
-      if (SystemInfo.isWindows) {
+      if (OS.CURRENT == OS.Windows) {
         assertThat("There must be a line with ($venvDirName)", output, hasItem(containsString("($venvDirName)")))
       }
 
       process.exitCode.await()
     }
     finally {
-      if (SystemInfo.isWindows) {
+      if (OS.CURRENT == OS.Windows) {
         deleteCheckLocking(tempDirFixture.get())
         deleteCheckLocking(venvPath)
       }
@@ -224,9 +227,9 @@ class PyVirtualEnvTerminalCustomizerTest {
     @CartesianTest.Enum shellType: ShellType,
   ): Unit = timeoutRunBlocking {
     when (shellType) {
-      ShellType.POWERSHELL -> Assumptions.assumeTrue(SystemInfo.isWindows, "PowerShell is Windows only")
+      ShellType.POWERSHELL -> Assumptions.assumeTrue(OS.CURRENT == OS.Windows, "PowerShell is Windows only")
       ShellType.FISH -> Assumptions.abort("Fish terminal activation isn't supported")
-      ShellType.ZSH, ShellType.BASH -> Assumptions.assumeFalse(SystemInfo.isWindows, "Unix shells do not work on Windows")
+      ShellType.ZSH, ShellType.BASH -> Assumptions.assumeFalse(OS.CURRENT == OS.Windows, "Unix shells do not work on Windows")
     }
     val shellPath = getShellPath(shellType)
     Assumptions.assumeTrue(withContext(Dispatchers.IO) { shellPath.exists() && shellPath.isExecutable() }, "$shellPath not found")
@@ -255,11 +258,12 @@ class PyVirtualEnvTerminalCustomizerTest {
   private suspend fun getShellStartupOptions(workDir: Path, shellType: ShellType): ShellStartupOptions {
     val sut = PyVirtualEnvTerminalCustomizer()
     val env = mutableMapOf<String, String>()
-    val command = arrayOf(getShellPath(shellType).pathString)
+    val shellPath = getShellPath(shellType)
+    val command = arrayOf(shellPath.pathString)
     sut.customizeEnvironment(
       projectFixture.get(),
       workDir.pathString,
-      command,
+      ShellName.of(shellPath.fileName.name),
       env,
       localEel.descriptor)
 

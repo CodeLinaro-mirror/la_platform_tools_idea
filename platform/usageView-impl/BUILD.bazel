@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.platform.usageView.impl` start
+content_module_jar(module = ":usageView-impl")
+### auto-generated section `dev intellij.platform.usageView.impl` end
 
 ### auto-generated section `build intellij.platform.usageView.impl` start
-
 jvm_library(
     name = "usageView-impl",
     srcs = glob(
@@ -95,6 +99,8 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.usageView.impl.iml",
+        "resources/intellij.platform.usageView.impl.actions.xml",
+        "resources/intellij.platform.usageView.impl.xml",
     ],
     visibility = ["//visibility:public"],
 )

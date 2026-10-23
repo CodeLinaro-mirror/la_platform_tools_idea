@@ -1,6 +1,7 @@
 package com.jetbrains.python.sdk.uv
 
 import com.intellij.python.uv.common.icons.PythonUvCommonIcons
+import com.jetbrains.python.PyInternalExecApi
 import com.jetbrains.python.sdk.PythonSdkAdditionalData
 import com.jetbrains.python.sdk.flavors.CPythonSdkFlavor
 import org.jetbrains.annotations.ApiStatus
@@ -8,6 +9,7 @@ import java.nio.file.Path
 import javax.swing.Icon
 
 @ApiStatus.Internal
+@PyInternalExecApi
 object UvSdkFlavor : CPythonSdkFlavor<UvSdkFlavorData>() {
   override fun getIcon(): Icon = PythonUvCommonIcons.UV
   override fun getFlavorDataClass(): Class<UvSdkFlavorData> = UvSdkFlavorData::class.java

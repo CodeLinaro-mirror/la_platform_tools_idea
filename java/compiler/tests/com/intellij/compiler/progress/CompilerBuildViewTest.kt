@@ -18,6 +18,10 @@ import com.intellij.openapi.fileEditor.TextEditor
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.options.advanced.AdvancedSettings
 import com.intellij.openapi.util.Disposer
+import com.intellij.platform.testFramework.assertion.BuildViewAssertions.assertBuildViewNode
+import com.intellij.platform.testFramework.assertion.BuildViewAssertions.assertBuildViewTree
+import com.intellij.platform.testFramework.assertion.assertConsoleText
+import com.intellij.platform.testFramework.assertion.consoleText
 import com.intellij.pom.java.LanguageLevel
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.PsiTestUtil.addSourceRoot
@@ -28,6 +32,8 @@ import org.jetbrains.jps.model.java.JavaResourceRootType
 
 class CompilerBuildViewTest : BaseCompilerTestCase() {
   private lateinit var buildViewTestFixture: BuildViewTestFixture
+  private val buildView get() = buildViewTestFixture.buildView
+
   private val testDisposable = Disposer.newDisposable()
 
   public override fun setUp() {
@@ -51,16 +57,25 @@ class CompilerBuildViewTest : BaseCompilerTestCase() {
 
   fun `test empty build`() {
     make(compilerManager.createProjectCompileScope(myProject))
-    buildViewTestFixture.assertBuildViewTreeEquals("-\n build finished")
-    buildViewTestFixture.assertBuildViewNode("build finished", "")
+    assertBuildViewTree(buildView) {
+      assertNode("build finished") {
+        assertConsoleText("")
+      }
+    }
 
     rebuildProject(false)
-    buildViewTestFixture.assertBuildViewTreeEquals("-\n rebuild finished")
-    buildViewTestFixture.assertBuildViewNode("rebuild finished", "")
+    assertBuildViewTree(buildView) {
+      assertNode("rebuild finished") {
+        assertConsoleText("")
+      }
+    }
 
     compile(compilerManager.createProjectCompileScope(myProject), true)
-    buildViewTestFixture.assertBuildViewTreeEquals("-\n recompile finished")
-    buildViewTestFixture.assertBuildViewNode("recompile finished", "")
+    assertBuildViewTree(buildView) {
+      assertNode("recompile finished") {
+        assertConsoleText("")
+      }
+    }
   }
 
   fun `test successful build`() {
@@ -71,11 +86,16 @@ class CompilerBuildViewTest : BaseCompilerTestCase() {
     runWriteAction { addSourceRoot(module, propFile.parent, JavaResourceRootType.RESOURCE) }
 
     build(module)
-    buildViewTestFixture.assertBuildViewTreeEquals("-\n build finished")
+    assertBuildViewTree(buildView) {
+      assertNode("build finished")
+    }
 
     runWithProgressExIndicatorSupport { rebuildProject() }
-    buildViewTestFixture.assertBuildViewTreeEquals("-\n rebuild finished")
-    buildViewTestFixture.assertBuildViewNode("rebuild finished") { output ->
+    assertBuildViewTree(buildView) {
+      assertNode("rebuild finished")
+    }
+    assertBuildViewNode(buildView, "rebuild finished") {
+      val output = it.consoleText
       assertThat(output).startsWith(if (AdvancedSettings.getBoolean("compiler.unified.ic.implementation")) """
           Clearing build system data…
           Executing pre-compile tasks…
@@ -86,7 +106,6 @@ class CompilerBuildViewTest : BaseCompilerTestCase() {
           Updating dependency information… [a]
           Parsing java… [a]
           Writing classes… [a]
-          Adding threading assertions… [a]
           Adding pattern assertions… [a]
           Adding nullability assertions… [a]
           Running 'after' tasks
@@ -99,7 +118,6 @@ class CompilerBuildViewTest : BaseCompilerTestCase() {
           Copying resources… [a]
           Parsing java… [a]
           Writing classes… [a]
-          Adding threading assertions… [a]
           Adding pattern assertions… [a]
           Adding nullability assertions… [a]
           Updating dependency information… [a]
@@ -111,8 +129,11 @@ class CompilerBuildViewTest : BaseCompilerTestCase() {
     }
 
     runWithProgressExIndicatorSupport { rebuild(module) }
-    buildViewTestFixture.assertBuildViewTreeEquals("-\n recompile finished")
-    buildViewTestFixture.assertBuildViewNode("recompile finished") { output ->
+    assertBuildViewTree(buildView) {
+      assertNode("recompile finished")
+    }
+    assertBuildViewNode(buildView, "recompile finished") {
+      val output = it.consoleText
       assertThat(output).startsWith(if (AdvancedSettings.getBoolean("compiler.unified.ic.implementation")) """
         Executing pre-compile tasks…
         Cleaning output directories…
@@ -122,7 +143,6 @@ class CompilerBuildViewTest : BaseCompilerTestCase() {
         Updating dependency information… [a]
         Parsing java… [a]
         Writing classes… [a]
-        Adding threading assertions… [a]
         Adding pattern assertions… [a]
         Adding nullability assertions… [a]
         Running 'after' tasks
@@ -134,7 +154,6 @@ class CompilerBuildViewTest : BaseCompilerTestCase() {
         Copying resources… [a]
         Parsing java… [a]
         Writing classes… [a]
-        Adding threading assertions… [a]
         Adding pattern assertions… [a]
         Adding nullability assertions… [a]
         Updating dependency information… [a]
@@ -152,30 +171,34 @@ class CompilerBuildViewTest : BaseCompilerTestCase() {
     val module = addModule("a", srcRoot)
 
     build(module, true)
-    buildViewTestFixture.assertBuildViewTreeEquals(
-      "-\n" +
-      " -build failed\n" +
-      "  -A.java\n" +
-      "   '{' expected\n" +
-      "   reached end of file while parsing"
-    )
+    assertBuildViewTree(buildView) {
+      assertNode("build failed") {
+        assertNode("A.java") {
+          assertNode("'{' expected")
+          assertNode("reached end of file while parsing")
+        }
+      }
+    }
+
     rebuildProject(true)
-    buildViewTestFixture.assertBuildViewTreeEquals(
-      "-\n" +
-      " -rebuild failed\n" +
-      "  -A.java\n" +
-      "   '{' expected\n" +
-      "   reached end of file while parsing"
-    )
+    assertBuildViewTree(buildView) {
+      assertNode("rebuild failed") {
+        assertNode("A.java") {
+          assertNode("'{' expected")
+          assertNode("reached end of file while parsing")
+        }
+      }
+    }
 
     rebuild(module, true)
-    buildViewTestFixture.assertBuildViewTreeEquals(
-      "-\n" +
-      " -recompile failed\n" +
-      "  -A.java\n" +
-      "   '{' expected\n" +
-      "   reached end of file while parsing"
-    )
+    assertBuildViewTree(buildView) {
+      assertNode("recompile failed") {
+        assertNode("A.java") {
+          assertNode("'{' expected")
+          assertNode("reached end of file while parsing")
+        }
+      }
+    }
   }
 
   fun `test build workspace settings sync`() {
@@ -240,14 +263,16 @@ class CompilerBuildViewTest : BaseCompilerTestCase() {
       }
     })
     build(module)
-    buildViewTestFixture.assertBuildViewTreeEquals("-\n" +
-                                                   " -build finished\n" +
-                                                   "  another yellow message")
-    buildViewTestFixture.assertBuildViewNode("build finished", "some progress 60%\n" +
-                                                               "another message\n" +
-                                                               "another yellow message\n" +
-                                                               "some progress 95%\n" +
-                                                               "some progress 100%")
+    assertBuildViewTree(buildView) {
+      assertNode("build finished") {
+        assertConsoleText("some progress 60%\n" +
+                          "another message\n" +
+                          "another yellow message\n" +
+                          "some progress 95%\n" +
+                          "some progress 100%")
+        assertNode("another yellow message")
+      }
+    }
   }
 
   private fun build(module: Module, errorsExpected: Boolean = false): CompilationLog? {

@@ -8,14 +8,32 @@ import com.intellij.lang.annotation.AnnotationHolder
 import com.intellij.lang.annotation.ExternalAnnotator
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.EDT
-import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.UI
+import com.intellij.openapi.application.UiWithModelAccess
 import com.intellij.openapi.application.backgroundWriteAction
 import com.intellij.openapi.application.ex.ApplicationManagerEx
+import com.intellij.openapi.application.readAction
+import com.intellij.openapi.application.runReadActionBlocking
+import com.intellij.openapi.editor.impl.DocumentImpl
+import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditor
+import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.fileEditor.FileEditorPolicy
+import com.intellij.openapi.fileEditor.FileEditorProvider
+import com.intellij.openapi.fileEditor.FileEditorState
+import com.intellij.openapi.fileEditor.impl.EditorHistoryManager
 import com.intellij.openapi.fileTypes.PlainTextLanguage
 import com.intellij.openapi.progress.Cancellation
+import com.intellij.openapi.project.DumbAware
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.UserDataHolderBase
+import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.psi.AbstractFileViewProvider
+import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiFile
+import com.intellij.testFramework.LightVirtualFile
 import com.intellij.testFramework.common.timeoutRunBlocking
+import com.intellij.testFramework.common.waitUntil
 import com.intellij.testFramework.junit5.TestApplication
 import com.intellij.testFramework.junit5.TestDisposable
 import com.intellij.testFramework.junit5.fixture.editorFixture
@@ -23,30 +41,74 @@ import com.intellij.testFramework.junit5.fixture.moduleFixture
 import com.intellij.testFramework.junit5.fixture.projectFixture
 import com.intellij.testFramework.junit5.fixture.psiFileFixture
 import com.intellij.testFramework.junit5.fixture.sourceRootFixture
+import com.intellij.testFramework.junit5.fixture.virtualFileFixture
 import com.intellij.testFramework.junit5.highlighting.fixture.awaitHighlighting
 import com.intellij.testFramework.junit5.highlighting.fixture.highlightingFixture
 import com.intellij.util.ui.UIUtil
-import com.intellij.util.ui.update.MergingUpdateQueue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.junit.jupiter.api.Test
+import java.beans.PropertyChangeListener
 import java.util.concurrent.atomic.AtomicBoolean
+import javax.swing.JComponent
+import javax.swing.JPanel
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 
 @TestApplication
 class DaemonCodeAnalyzerTest {
   private companion object {
     val project = projectFixture(openAfterCreation = true)
+    val project2 = projectFixture(openAfterCreation = true)
     val module = project.moduleFixture()
     val sourceRoot = module.sourceRootFixture()
     val file = sourceRoot.psiFileFixture("A.txt", "text")
+    val nonAwtFile = sourceRoot.virtualFileFixture("NonAwt.txt", "text")
   }
 
   private val localEditor = file.editorFixture()
 
   private val highlighting = localEditor.highlightingFixture()
+
+  @Test
+  fun `non-AWT document change does not acquire daemon read lock`(): Unit = timeoutRunBlocking(context = Dispatchers.Default) {
+    project.get()
+    project2.get() // init two projects to trigger complex logic of project guessing
+    highlighting.get() // init listeners
+    val virtualFile = LightVirtualFile("test.txt", "text")
+    virtualFile.putUserData(AbstractFileViewProvider.FREE_THREADED, true)
+    val document = assertIs<DocumentImpl>(readAction { FileDocumentManager.getInstance().getDocument(virtualFile) })
+    assertFalse(document.isWriteThreadOnly)
+    DaemonCodeAnalyzer.getInstance(project.get())
+    runReadActionBlocking {
+      PsiDocumentManager.getInstance(project.get()).getPsiFile(document) // initialize viewprovider to avoid write action in listeners
+    }
+    withContext(Dispatchers.UiWithModelAccess) {
+      ApplicationManagerEx.getApplicationEx().withLocksSoftlyProhibited(
+        "Daemon document listener must not acquire locks for a non-AWT document change",
+        { throw it },
+      ) {
+        document.setText("txet")
+      }
+    }
+  }
+
+  /**
+   * An editor added to a hierarchy on `Dispatchers.UI` reaches `EditorTrackerImpl.updateLocalActiveEditors` from a Swing `ancestor` event.
+   * A headless test cannot create a `Window`, so it reaches the same path through `setActiveEditorsInTests`.
+   */
+  @Test
+  fun `active editors change on Dispatchers UI takes no lock`(): Unit = timeoutRunBlocking {
+    highlighting.get() // init DaemonListeners, the platform subscriber
+    val editor = localEditor.get()
+    val tracker = EditorTracker.getInstance(project.get())
+    withContext(Dispatchers.UI) {
+      tracker.setActiveEditorsInTests(listOf(editor))
+      tracker.setActiveEditorsInTests(emptyList())
+    }
+  }
 
   @Test
   fun `external annotator doAnnotate runs outside non-cancellable section`(@TestDisposable disposable: Disposable): Unit = timeoutRunBlocking {
@@ -77,6 +139,40 @@ class DaemonCodeAnalyzerTest {
   }
 
   @Test
+  fun `non-highlightable editor does not restart daemon`(@TestDisposable disposable: Disposable): Unit = timeoutRunBlocking {
+    val virtualFile = nonAwtFile.get()
+    FileEditorProvider.EP_FILE_EDITOR_PROVIDER.point.registerExtension(object : FileEditorProvider, DumbAware {
+      override fun accept(project: Project, file: VirtualFile): Boolean = file == virtualFile
+
+      override fun createEditor(project: Project, file: VirtualFile): FileEditor = NonHighlightableFileEditor(file)
+
+      override fun getEditorTypeId(): String = "non-highlightable-editor"
+
+      override fun getPolicy(): FileEditorPolicy = FileEditorPolicy.HIDE_DEFAULT_EDITOR
+    }, disposable)
+
+    val analyzer = assertIs<DaemonCodeAnalyzerImpl>(DaemonCodeAnalyzer.getInstance(project.get()))
+    val fileEditorManager = FileEditorManager.getInstance(project.get())
+    withContext(Dispatchers.EDT) {
+      fileEditorManager.openFile(virtualFile, true)
+      analyzer.restart("Non-highlightable editor opened")
+    }
+    try {
+      waitUntil("the daemon must stop after it skips the non-highlightable editor") {
+        withContext(Dispatchers.EDT) {
+          !analyzer.isRunningOrPending
+        }
+      }
+    }
+    finally {
+      withContext(Dispatchers.EDT) {
+        fileEditorManager.closeFile(virtualFile)
+        EditorHistoryManager.getInstance(project.get()).removeFile(virtualFile)
+      }
+    }
+  }
+
+  @Test
   fun `highlighting gets canceled on pending write action`(@TestDisposable disposable: Disposable): Unit = timeoutRunBlocking(context = Dispatchers.EDT) {
     val analyzer = highlighting.get()
     val listenerInvoked = AtomicBoolean(false)
@@ -96,4 +192,28 @@ class DaemonCodeAnalyzerTest {
     UIUtil.dispatchAllInvocationEvents()
     assertFalse(listenerInvoked.get())
   }
+}
+
+private class NonHighlightableFileEditor(private val virtualFile: VirtualFile) : UserDataHolderBase(), FileEditor {
+  private val component: JPanel = JPanel()
+
+  override fun getComponent(): JComponent = component
+
+  override fun getPreferredFocusedComponent(): JComponent? = null
+
+  override fun getName(): String = "Non-Highlightable Editor"
+
+  override fun setState(state: FileEditorState) { }
+
+  override fun isModified(): Boolean = false
+
+  override fun isValid(): Boolean = virtualFile.isValid
+
+  override fun addPropertyChangeListener(listener: PropertyChangeListener) { }
+
+  override fun removePropertyChangeListener(listener: PropertyChangeListener) { }
+
+  override fun getFile(): VirtualFile = virtualFile
+
+  override fun dispose() { }
 }

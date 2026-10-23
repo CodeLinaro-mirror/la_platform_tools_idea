@@ -25,37 +25,38 @@
 
   <dependencies>
     <module name="intellij.spellchecker"/>
-    <module name="intellij.platform.vcs.impl"/>
   </dependencies>
 
   <content namespace="jetbrains">
     <module name="intellij.grazie.core" loading="embedded"/>
+    <module name="intellij.grazie.todo" loading="optional"/>
     <module name="intellij.grazie.java"/>
     <module name="intellij.grazie.json"/>
     <module name="intellij.grazie.markdown"/>
     <module name="intellij.grazie.properties"/>
     <module name="intellij.grazie.xml"/>
     <module name="intellij.grazie.yaml"/>
+    <module name="intellij.libraries.ai.grazie.rule.engine" loading="embedded"/>
     <module name="intellij.libraries.ai.grazie.spell.gec.engine.local" loading="embedded"/>
+  </content>
+  <content>
+    <module name="intellij.libraries.ai.grazie.semantic.engine"/>
+    <module name="intellij.libraries.kotlin.logging" loading="embedded"/>
   </content>
 
   <extensions defaultExtensionNs="com.intellij">
+    <spellchecker.support language="IgnoreLang" implementationClass="com.intellij.grazie.ide.language.ignore.IgnoreSpellcheckingStrategy"/>
     <typedHandler implementation="com.intellij.grazie.ide.inspection.auto.GrazieTypedHandler"/>
     <projectConfigurable parentId="proofread" instance="com.intellij.grazie.spellcheck.settings.SpellCheckerConfigurable"
                          id="reference.settings.ide.settings.spelling"
                          key="spelling"
                          bundle="messages.SpellCheckerBundle" />
 
-    <statusBarWidgetFactory implementation="com.intellij.grazie.ide.ui.widget.GrazieStatusBarWidgetFactory"
-                            id="GrazieStatusBarWidget"
-                            order="before LineSeparator, after Position"/>
-
     <applicationService serviceImplementation="com.intellij.grazie.GrazieConfig"/>
     <applicationService serviceImplementation="com.intellij.grazie.GrazieFolderConfig"/>
 
     <backgroundPostStartupActivity implementation="com.intellij.grazie.ide.notification.GrazieNotificationComponent"/>
-    <backgroundPostStartupActivity implementation="com.intellij.grazie.cloud.license.LicenseStartupActivity"/>
-    <postStartupActivity implementation="com.intellij.grazie.spellcheck.engine.GrazieSpellCheckerEngine$SpellerLoadActivity"/>
+    <postStartupActivity implementation="com.intellij.grazie.ide.LanguageLoadActivity"/>
 
     <!-- getDisplayName is overridden in GrazieInspection itself! Placeholder is required to suppress validation. -->
     <localInspection bundle="messages.GrazieBundle" groupKey="grazie.group.name" enabledByDefault="true" shortName="GrazieInspectionRunner"
@@ -114,38 +115,14 @@
 
     <registryKey key="spellchecker.suggestion.provider.enabled" defaultValue="true" description="Enables spellchecking name suggestion provider"/>
     <registryKey key="spellchecker.grazie.enabled" defaultValue="true" description="Enables Grazie text-level spellchecking"/>
-    <registryKey key="spellchecker.cloud.enabled" defaultValue="true" description="Enables spellchecking via Cloud when it is available"/>
-    <registryKey key="grazie.enable.status.bar.widget" defaultValue="true" description="Controls if the new Grazie status bar widget is available"/>
-    <registryKey key="grazie.cloud.stage" defaultValue="PROD" description="Whether Grazie Pro should use PROD or STGN servers"/>
-    <registryKey key="grazie.cloud.production.url" defaultValue="https://api.jetbrains.ai/" description="Grazie Cloud production url"/>
     <registryKey key="grazie.skip.precommit.checks"
                  defaultValue="true"
                  description="Controls whether expensive linguistic checks should be performed during pre-commit code analysis"/>
     <registryKey key="grazie.show.gpl.warning" defaultValue="false" description="Whether to show warning for GPL licensed languages"/>
-    <registryKey key="grazie.batch.language.detector" defaultValue="true" description="Whether to use batch language detector instead of regular one"/>
-    <registryKey key="grazie.correct.text.enabled" defaultValue="true" description="Whether to use new /correct-text REST API"/>
 
-    <!-- Order matters for TextCheckerManager scheduling: there is async work that can suspended while LanguageToolChecker works. -->
     <grazie.textChecker implementation="com.intellij.grazie.text.AsyncTreeRuleChecker" id="treeRules"/>
     <grazie.textChecker implementation="com.intellij.grazie.grammar.LanguageToolChecker" id="languageTool"/>
-    <grazie.textChecker implementation="com.intellij.grazie.mlec.MlecChecker" id="mlec"/>
     <grazie.textChecker implementation="com.intellij.grazie.spellcheck.SpellingTextChecker" id="spelling"/>
-
-    <intentionAction>
-      <language/>
-      <bundleName>messages.GrazieBundle</bundleName>
-      <categoryKey>intention.category.natural.languages</categoryKey>
-      <className>com.intellij.grazie.ide.inspection.ai.RephraseAction</className>
-      <descriptionDirectoryName>RephraseAction</descriptionDirectoryName>
-    </intentionAction>
-
-    <intentionAction>
-      <language/>
-      <bundleName>messages.GrazieBundle</bundleName>
-      <categoryKey>intention.category.natural.languages</categoryKey>
-      <className>com.intellij.grazie.ide.inspection.ai.TranslateAction</className>
-      <descriptionDirectoryName>TranslateAction</descriptionDirectoryName>
-    </intentionAction>
 
     <intentionAction>
       <language/>
@@ -159,8 +136,8 @@
   </extensions>
 
   <extensions defaultExtensionNs="com.intellij.grazie">
-    <cloudConnector implementation="com.intellij.grazie.cloud.DefaultGrazieCloudConnector" order="last"/>
     <textExtractor language="TEXT" implementationClass="com.intellij.grazie.text.PlainTextExtractor"/>
+    <textExtractor language="IgnoreLang" implementationClass="com.intellij.grazie.ide.language.ignore.IgnoreTextExtractor"/>
 
     <problemFilter language="" implementationClass="com.intellij.grazie.text.CodeProblemFilter"/>
     <problemFilter language="" implementationClass="com.intellij.grazie.text.CommitProblemFilter"/>

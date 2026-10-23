@@ -13,11 +13,14 @@ import com.intellij.psi.util.siblings
 import com.intellij.psi.util.startOffset
 import org.intellij.plugins.markdown.lang.MarkdownElementTypes
 import org.intellij.plugins.markdown.lang.MarkdownTokenTypes
+import org.intellij.plugins.markdown.lang.formatter.settings.MarkdownCustomCodeStyleSettings
+import org.intellij.plugins.markdown.lang.formatter.settings.TableStyle
 import org.intellij.plugins.markdown.lang.psi.impl.MarkdownTable
 import org.intellij.plugins.markdown.lang.psi.impl.MarkdownTableCell
 import org.intellij.plugins.markdown.lang.psi.impl.MarkdownTableRow
 import org.intellij.plugins.markdown.lang.psi.impl.MarkdownTableSeparatorRow
 import org.intellij.plugins.markdown.lang.psi.util.hasType
+import org.intellij.plugins.markdown.lang.supportsMarkdown
 import org.intellij.plugins.markdown.settings.MarkdownCodeInsightSettings
 import org.jetbrains.annotations.ApiStatus
 
@@ -139,6 +142,10 @@ object TableUtils {
     return separatorRow?.getCellAlignment(columnIndex)!!
   }
 
+  fun getTableStyle(file: PsiFile): TableStyle {
+    return CodeStyle.getCustomSettings(file, MarkdownCustomCodeStyleSettings::class.java).tableStyle
+  }
+
   val MarkdownTableCell.firstNonWhitespaceOffset
     get() = startOffset + text.indexOfFirst { it != ' ' }.coerceAtLeast(0)
 
@@ -169,8 +176,15 @@ object TableUtils {
     return false
   }
 
-  internal fun isFormattingOnTypeEnabledForTables(file: PsiFile): Boolean {
-    return MarkdownCodeInsightSettings.getInstance().state.reformatTablesOnType && file !in CodeStyle.getSettings(file).excludedFiles
+  @ApiStatus.Internal
+  fun isFormattingOnTypeEnabledForTables(file: PsiFile): Boolean {
+    if (!file.supportsMarkdown()) {
+      return false
+    }
+    val settings = CodeStyle.getSettings(file)
+    return MarkdownCodeInsightSettings.getInstance().state.reformatTablesOnType
+           && file !in settings.excludedFiles
+           && settings.getCustomSettings(MarkdownCustomCodeStyleSettings::class.java).FORMAT_TABLES
   }
 
   /**
@@ -178,7 +192,8 @@ object TableUtils {
    * Currently, if the table is indented, the table separator element will contain line indentation as well.
    * The problem only occurs with table separator row - regular rows elements don't include leading indents.
    */
-  internal fun MarkdownTableSeparatorRow.calculateActualTextRange(): TextRange {
+  @ApiStatus.Internal
+  fun MarkdownTableSeparatorRow.calculateActualTextRange(): TextRange {
     val text = text
     val first = text.indexOfFirst { !it.isWhitespace() && it != '>'}
     val last = text.indexOfLast { !it.isWhitespace() }

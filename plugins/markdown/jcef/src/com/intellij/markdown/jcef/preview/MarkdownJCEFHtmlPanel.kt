@@ -1,16 +1,20 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.markdown.jcef.preview
 
-import com.intellij.markdown.jcef.preview.impl.FileSchemeResourcesProcessor
+import com.intellij.find.FindManager
+import com.intellij.markdown.frontend.preview.jcef.zoomIndicator.PreviewZoomIndicatorManager
 import com.intellij.markdown.jcef.preview.impl.IncrementalDOMBuilder
 import com.intellij.markdown.jcef.preview.impl.JcefBrowserPipeImpl
 import com.intellij.markdown.jcef.preview.impl.addRequestHandler
 import com.intellij.markdown.jcef.preview.impl.executeCancellableJavaScript
 import com.intellij.markdown.jcef.preview.impl.waitForPageLoad
+import com.intellij.markdown.jcef.preview.impl.waitForReloadIgnoringCache
+import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.readAction
 import com.intellij.openapi.components.service
+import com.intellij.openapi.components.serviceAsync
 import com.intellij.openapi.diagnostic.logger
-import com.intellij.openapi.project.BaseProjectDirectories
+import com.intellij.diagnostic.rethrowControlFlowException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.Balloon
 import com.intellij.openapi.util.Disposer
@@ -29,12 +33,20 @@ import com.intellij.ui.jcef.JCEFHtmlPanel
 import com.intellij.util.application
 import com.intellij.util.io.DigestUtil
 import com.intellij.util.net.NetUtils
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.cef.browser.CefBrowser
 import org.cef.browser.CefFrame
 import org.cef.handler.CefRequestHandlerAdapter
@@ -45,10 +57,12 @@ import org.cef.network.CefRequest
 import org.intellij.markdown.html.HtmlGenerator
 import org.intellij.plugins.markdown.extensions.MarkdownBrowserPreviewExtension
 import org.intellij.plugins.markdown.extensions.MarkdownConfigurableExtension
-import org.intellij.plugins.markdown.settings.MarkdownPreviewSettings
+import org.intellij.plugins.markdown.settings.MarkdownSettings
 import org.intellij.plugins.markdown.ui.preview.BrowserPipe
 import org.intellij.plugins.markdown.ui.preview.MarkdownHtmlPanel
 import org.intellij.plugins.markdown.ui.preview.MarkdownHtmlPanelEx
+import org.intellij.plugins.markdown.ui.preview.MarkdownImageResourceProvider
+import org.intellij.plugins.markdown.ui.preview.MarkdownImageWatcher
 import org.intellij.plugins.markdown.ui.preview.MarkdownPreviewBrowserActions
 import org.intellij.plugins.markdown.ui.preview.MarkdownUpdateHandler
 import org.intellij.plugins.markdown.ui.preview.MarkdownUpdateHandler.PreviewRequest
@@ -56,17 +70,17 @@ import org.intellij.plugins.markdown.ui.preview.PreviewLAFThemeStyles
 import org.intellij.plugins.markdown.ui.preview.PreviewLAFThemeStyles.fontSizeOptions
 import org.intellij.plugins.markdown.ui.preview.PreviewStaticServer
 import org.intellij.plugins.markdown.ui.preview.ResourceProvider
-import org.intellij.plugins.markdown.ui.preview.jcef.zoomIndicator.PreviewZoomIndicatorManager
 import org.intellij.plugins.markdown.util.MarkdownApplicationScope
 import org.intellij.plugins.markdown.util.MarkdownPluginScope
 import org.jetbrains.annotations.ApiStatus
-import org.jetbrains.annotations.TestOnly
 import java.awt.BorderLayout
 import java.awt.Point
 import java.net.URL
 import javax.swing.JComponent
 import javax.swing.JPanel
 import kotlin.math.round
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 
 class MarkdownJCEFHtmlPanel(private val project: Project?, private val virtualFile: VirtualFile?) : JCEFHtmlPanel(
   isOffScreenRendering = isOffScreenRendering(),
@@ -77,6 +91,20 @@ class MarkdownJCEFHtmlPanel(private val project: Project?, private val virtualFi
 
   private val pageBaseName = "markdown-preview-index-${DigestUtil.randomToken()}.html"
   private val resourceProvider = MyAggregatingResourceProvider()
+
+  private val coroutineScope = project?.let(MarkdownPluginScope::createChildScope) ?: MarkdownApplicationScope.createChildScope()
+
+  private val imageChanges = Channel<Unit>(Channel.CONFLATED)
+
+  private val imageWatcher: MarkdownImageWatcher<Unit> = MarkdownImageWatcher(
+    coroutineScope,
+    onChanged = { imageChanges.trySend(Unit) },
+    resolve = { imageResourceProvider.resolveFile(it) },
+  )
+
+  @get:ApiStatus.Internal
+  val imageResourceProvider: MarkdownImageResourceProvider = MarkdownImageResourceProvider(project, virtualFile, imageWatcher)
+
   private val pageUrl = PreviewStaticServer.getStaticUrl(resourceProvider, pageBaseName)
   private val browserPipe: BrowserPipe = JcefBrowserPipeImpl(browser = this, injectionAllowedUrls = listOf(pageUrl))
 
@@ -95,23 +123,27 @@ class MarkdownJCEFHtmlPanel(private val project: Project?, private val virtualFi
   }
 
   private val updateHandler = MarkdownUpdateHandler.Debounced()
+  private val initialization = CompletableDeferred<Unit>()
 
-  private fun buildIndexContent(): String {
+  /** The one served resource meant to be a document: it declares its own policy in a `<meta>`. */
+  private fun buildIndexResource(): ResourceProvider.Resource {
     val scripts = (baseScripts + currentExtensions.flatMap { it.scripts }).map { PreviewStaticServer.getStaticUrl(resourceProvider, it) }
     val styles = currentExtensions.flatMap { it.styles }.map { PreviewStaticServer.getStaticUrl(resourceProvider, it) }
     // language=HTML
-    return """
+    val content = """
       <!DOCTYPE html>
       <html>
         <head>
           <title>IntelliJ Markdown Preview</title>
           <meta http-equiv="Content-Security-Policy" content="${PreviewStaticServer.createCSP(scripts, styles)}"/>
+          <meta name="referrer" content="no-referrer"/>
           <meta name="markdown-position-attribute-name" content="${HtmlGenerator.SRC_ATTRIBUTE_NAME}"/>
           ${scripts.joinToString("\n") { "<script src=\"${it}\"></script>" }}
           ${styles.joinToString("\n") { "<link rel=\"stylesheet\" href=\"${it}\"/>" }}
         </head>
       </html>
     """
+    return ResourceProvider.Resource(content.toByteArray(), "text/html", isDocument = true)
   }
 
   private suspend fun loadIndexContent() {
@@ -119,16 +151,14 @@ class MarkdownJCEFHtmlPanel(private val project: Project?, private val virtualFi
     waitForPageLoad(pageUrl)
   }
 
+  /** Like [loadIndexContent], but bypasses the cache so settings-dependent resources refresh (see [waitForReloadIgnoringCache]). */
+  private suspend fun reloadIndexContent() {
+    reloadExtensions()
+    waitForReloadIgnoringCache()
+  }
+
   private var previousRenderClosure: String = ""
 
-  private val coroutineScope = project?.let(MarkdownPluginScope::createChildScope) ?: MarkdownApplicationScope.createChildScope()
-
-  private val projectRoot = coroutineScope.async(context = Dispatchers.Default) {
-    if (virtualFile != null && project != null) {
-      BaseProjectDirectories.getInstance(project).getBaseDirectoryFor(virtualFile)
-    }
-    else null
-  }
 
   private val panelComponent by lazy { createComponent() }
 
@@ -144,6 +174,7 @@ class MarkdownJCEFHtmlPanel(private val project: Project?, private val virtualFi
     Disposer.register(browserPipe) { currentExtensions.forEach(Disposer::dispose) }
     Disposer.register(this, browserPipe)
     Disposer.register(this, PreviewStaticServer.instance.registerResourceProvider(resourceProvider))
+    Disposer.register(this, PreviewStaticServer.instance.registerResourceProvider(imageResourceProvider))
 
     jbCefClient.addRequestHandler(MyFilteringRequestHandler(), cefBrowser, this)
     jbCefClient.setProperty(JBCefClient.Properties.JS_QUERY_POOL_SIZE, 20)
@@ -155,31 +186,62 @@ class MarkdownJCEFHtmlPanel(private val project: Project?, private val virtualFi
       }
     })
     val connection = application.messageBus.connect(this)
-    connection.subscribe(MarkdownPreviewSettings.ChangeListener.TOPIC, MarkdownPreviewSettings.ChangeListener { settings ->
-      changeFontSize(settings.state.fontSize)
+    connection.subscribe(MarkdownSettings.ChangeListener.TOPIC, object : MarkdownSettings.ChangeListener {
+      private var fontSize = MarkdownSettings.getInstance().fontSize
+
+      override fun beforeSettingsChanged(settings: MarkdownSettings) {
+        fontSize = settings.fontSize
+      }
+
+      override fun settingsChanged(settings: MarkdownSettings) {
+        if (fontSize != settings.fontSize) {
+          fontSize = settings.fontSize
+          changeFontSize(fontSize)
+        }
+      }
     })
 
     coroutineScope.launch {
-      val projectRoot = projectRoot.await()
-      val fileSchemeResourcesProcessor = createFileSchemeResourcesProcessor(projectRoot)
-
-      loadIndexContent()
-      updateHandler.requests.collectLatest { request ->
-        when (request) {
-          is PreviewRequest.Update -> {
-            val (html, initialScrollOffset, document) = request
-            val baseFile = document?.parent
-            val builder = IncrementalDOMBuilder(html, baseFile, projectRoot, fileSchemeResourcesProcessor)
-            val renderClosure = builder.generateRenderClosure()
-            updateDom(renderClosure, initialScrollOffset, previousRenderClosure.isEmpty())
+      try {
+        loadIndexContent()
+        initialization.complete(Unit)
+        var lastUpdate: PreviewRequest.Update? = null
+        @OptIn(FlowPreview::class)
+        val imagesChanged = imageChanges.receiveAsFlow().debounce(IMAGE_CHANGE_DEBOUNCE).map { ImagesChanged }
+        merge(updateHandler.requests, imagesChanged).collectLatest { request ->
+          try {
+            when (request) {
+              is PreviewRequest.Update -> {
+                lastUpdate = request
+                render(request)
+              }
+              is PreviewRequest.ReloadWithOffset -> {
+                reloadIndexContent()
+                updateDom(previousRenderClosure, request.offset, firstUpdate = true)
+              }
+              ImagesChanged -> lastUpdate?.let { render(it) }
+            }
           }
-          is PreviewRequest.ReloadWithOffset -> {
-            loadIndexContent()
-            updateDom(previousRenderClosure, request.offset, firstUpdate = true)
+          catch (e: Exception) {
+            rethrowControlFlowException(e)
+            logger.error("Failed to update the Markdown preview", e)
           }
         }
       }
+      catch (e: Throwable) {
+        initialization.completeExceptionally(e)
+        rethrowControlFlowException(e)
+        logger.error("Failed to initialize the Markdown preview", e)
+      }
     }
+  }
+
+  private suspend fun render(update: PreviewRequest.Update) {
+    val (html, initialScrollOffset, document) = update
+    val builder = IncrementalDOMBuilder(html, document, imageResourceProvider, resourceProvider)
+    val renderClosure = builder.generateRenderClosure()
+    imageWatcher.watch(builder.imageSources)
+    updateDom(renderClosure, initialScrollOffset, previousRenderClosure.isEmpty())
   }
 
   private suspend fun updateDom(renderClosure: String, initialScrollOffset: Int, firstUpdate: Boolean) {
@@ -221,17 +283,61 @@ class MarkdownJCEFHtmlPanel(private val project: Project?, private val virtualFi
   }
 
   @ApiStatus.Internal
-  @TestOnly
-  suspend fun setHtmlAndWait(html: String) {
-    loadIndexContent()
+  suspend fun setHtmlAndWait(html: String, document: VirtualFile? = null, imageResourceProvider: MarkdownImageResourceProvider? = null) {
+    initialization.await()
 
-    val builder = IncrementalDOMBuilder(html, null, null, null)
+    val builder = IncrementalDOMBuilder(html, document, imageResourceProvider, resourceProvider)
     val renderClosure = readAction { builder.generateRenderClosure() }
     updateDom(renderClosure, 0, false)
   }
 
+  /**
+   * Waits until each image of the page loads or fails, but not longer than [timeout].
+   *
+   * A PDF print does not wait for an image. An image that still loads is absent from the PDF.
+   */
+  @ApiStatus.Internal
+  suspend fun waitForImages(timeout: Duration) {
+    // language=JavaScript
+    val code = """
+      (function() {
+        const pending = Array.from(document.images)
+          .filter(image => !image.complete)
+          .map(image => new Promise(resolve => {
+            image.addEventListener("load", resolve, { once: true });
+            image.addEventListener("error", resolve, { once: true });
+          }));
+        return Promise.all(pending);
+      })();
+    """.trimIndent()
+    if (withTimeoutOrNull(timeout) { executeCancellableJavaScript(code) } == null) {
+      logger.warn("Some images of the Markdown preview did not load in $timeout")
+    }
+  }
+
   override fun reloadWithOffset(offset: Int) {
     updateHandler.reloadWithOffset(offset)
+  }
+
+  override fun reloadStyles() {
+    coroutineScope.launch {
+      initialization.await()
+      // language=JavaScript
+      val code = """
+      |(function() {
+      |  const token = Date.now();
+      |  for (const link of document.querySelectorAll('link[rel="stylesheet"]')) {
+      |    const fresh = link.cloneNode(false);
+      |    fresh.href = link.href.split("?")[0] + "?v=" + token;
+      |    const dropStale = () => link.remove();
+      |    fresh.addEventListener("load", dropStale, { once: true });
+      |    fresh.addEventListener("error", dropStale, { once: true });
+      |    link.insertAdjacentElement("afterend", fresh);
+      |  }
+      |})();
+      """.trimMargin()
+      runJavaScript(code)
+    }
   }
 
   override fun dispose() {
@@ -264,6 +370,13 @@ class MarkdownJCEFHtmlPanel(private val project: Project?, private val virtualFi
   @Suppress("OVERRIDE_DEPRECATION")
   override fun scrollToMarkdownSrcOffset(offset: Int, smooth: Boolean) {
     runJavaScript("window.scrollController?.scrollTo($offset, $smooth)")
+  }
+
+  override val canScrollToSourceOffset: Boolean
+    get() = true
+
+  override fun scrollToSourceOffset(offset: Double) {
+    runJavaScript("window.scrollController?.scrollToSourceOffset($offset)")
   }
 
   override fun scrollBy(horizontalUnits: Int, verticalUnits: Int) {
@@ -318,17 +431,22 @@ class MarkdownJCEFHtmlPanel(private val project: Project?, private val virtualFi
       balloon?.show(RelativePoint.getSouthOf(previewInnerComponent), Balloon.Position.below)
     }
 
-    coroutineScope.async(context = Dispatchers.Default, start = CoroutineStart.UNDISPATCHED) {
+    // MarkdownPreviewSearchSession requires EDT context to update actions in SearchReplaceComponent.updateBindingsActionsAndFocus
+    coroutineScope.launch(context = Dispatchers.EDT, start = CoroutineStart.UNDISPATCHED) {
       panel.startLoading()
-      val session = MarkdownPreviewSearchSession(project, cefBrowser, previewInnerComponent)
+      // preload it before we hit it on EDT from MarkdownPreviewSearchSession
+      val findManager = withContext(Dispatchers.Default) { project.serviceAsync<FindManager>() }
+
+      val session = MarkdownPreviewSearchSession(project, findManager, cefBrowser, previewInnerComponent)
       previewInnerComponent.add(session.getComponent(), BorderLayout.NORTH)
       searchSession = session
       val viewPort = ViewPort()
       viewPort.add(previewInnerComponent, BorderLayout.CENTER)
       panel.add(viewPort)
-      projectRoot.await()
+
       panel.stopLoading()
     }
+
     return panel
   }
 
@@ -362,14 +480,6 @@ class MarkdownJCEFHtmlPanel(private val project: Project?, private val virtualFi
     super.openDevtools()
   }
 
-  private fun createFileSchemeResourcesProcessor(projectRoot: VirtualFile?): ResourceProvider? {
-    if (projectRoot == null) return null
-
-    val fileSchemeResourcesProcessor = FileSchemeResourcesProcessor(virtualFile, projectRoot)
-    Disposer.register(this@MarkdownJCEFHtmlPanel, PreviewStaticServer.instance.registerResourceProvider(fileSchemeResourcesProcessor))
-    return fileSchemeResourcesProcessor
-  }
-
   private inner class MyAggregatingResourceProvider : ResourceProvider {
     private val internalResources = baseScripts + baseStyles
 
@@ -379,7 +489,7 @@ class MarkdownJCEFHtmlPanel(private val project: Project?, private val virtualFi
       currentExtensions.any { it.resourceProvider.canProvide(resourceName) }
 
     override fun loadResource(resourceName: String): ResourceProvider.Resource? = when (resourceName) {
-      pageBaseName -> ResourceProvider.Resource(buildIndexContent().toByteArray(), "text/html")
+      pageBaseName -> buildIndexResource()
       in internalResources -> ResourceProvider.loadInternalResource<MarkdownJCEFHtmlPanel>(resourceName)
       else -> currentExtensions.map { it.resourceProvider }.firstOrNull { it.canProvide(resourceName) }?.loadResource(resourceName)
     }
@@ -445,10 +555,16 @@ class MarkdownJCEFHtmlPanel(private val project: Project?, private val virtualFi
 
     private const val SET_SCROLL_EVENT = "setScroll"
 
+    private data object ImagesChanged
+
+    /** A file that a tool rewrites again and again renders once, after it stops. */
+    private val IMAGE_CHANGE_DEBOUNCE = 200.milliseconds
+
     private val baseScripts = listOf(
       "incremental-dom.min.js",
       "incremental-dom-additions.js",
       "BrowserPipe.js",
+      "PreviewClickGuard.js",
       "ScrollSync.js"
     )
 

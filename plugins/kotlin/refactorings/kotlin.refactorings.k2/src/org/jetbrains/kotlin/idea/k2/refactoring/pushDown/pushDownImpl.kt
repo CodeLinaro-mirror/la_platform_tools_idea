@@ -1,23 +1,29 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.kotlin.idea.k2.refactoring.pushDown
 
-import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaSession
+import org.jetbrains.kotlin.analysis.api.signatures.substitute
 import org.jetbrains.kotlin.analysis.api.symbols.KaCallableSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassKind
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbolModality
+import org.jetbrains.kotlin.analysis.api.symbols.allOverriddenSymbols
+import org.jetbrains.kotlin.analysis.api.symbols.containingDeclaration
+import org.jetbrains.kotlin.analysis.api.symbols.symbol
 import org.jetbrains.kotlin.analysis.api.types.KaSubstitutor
+import org.jetbrains.kotlin.analysis.api.types.expandedSymbol
+import org.jetbrains.kotlin.analysis.api.types.type
 import org.jetbrains.kotlin.idea.base.analysis.api.utils.shortenReferences
+import org.jetbrains.kotlin.idea.base.psi.addModifierKeyword
+import org.jetbrains.kotlin.idea.base.psi.addSuperType
+import org.jetbrains.kotlin.idea.base.psi.removeModifierKeyword
 import org.jetbrains.kotlin.idea.k2.refactoring.findCallableMemberBySignature
 import org.jetbrains.kotlin.idea.k2.refactoring.pullUp.createSuperTypeEntryForAddition
 import org.jetbrains.kotlin.idea.refactoring.memberInfo.KotlinMemberInfo
-import org.jetbrains.kotlin.idea.refactoring.memberInfo.KtPsiClassWrapper
 import org.jetbrains.kotlin.idea.refactoring.pullUp.addMemberToTarget
 import org.jetbrains.kotlin.lexer.KtModifierKeywordToken
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.KtCallableDeclaration
-import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtClassOrObject
 import org.jetbrains.kotlin.psi.KtNamedFunction
 import org.jetbrains.kotlin.psi.KtProperty
@@ -29,9 +35,8 @@ internal data class MemberContext(
     val doesNotOverride: Boolean,
 )
 
-@OptIn(KaExperimentalApi::class)
-internal fun KaSession.createPushDownAction(
-    sourceClass: KtClass,
+context(session: KaSession)
+internal fun createPushDownAction(
     memberInfo: KotlinMemberInfo,
     targetClass: KtClassOrObject,
     substitutor: KaSubstitutor,
@@ -43,10 +48,9 @@ internal fun KaSession.createPushDownAction(
             substitutor,
         )
 
-    is KtClassOrObject, is KtPsiClassWrapper -> {
+    is KtClassOrObject, is KtSuperTypeListEntry -> {
         createPushDownActionForClassLikeMember(
             memberInfo,
-            sourceClass,
             targetClass,
             substitutor,
         )
@@ -55,7 +59,8 @@ internal fun KaSession.createPushDownAction(
     else -> null
 }
 
-internal fun KaSession.getSuperTypeEntryBySymbol(
+context(session: KaSession)
+internal fun getSuperTypeEntryBySymbol(
     sourceClass: KtClassOrObject,
     symbol: KaClassSymbol,
 ): KtSuperTypeListEntry? = sourceClass.superTypeListEntries.firstOrNull {
@@ -63,8 +68,8 @@ internal fun KaSession.getSuperTypeEntryBySymbol(
     referencedType?.expandedSymbol == symbol
 }
 
-@OptIn(KaExperimentalApi::class)
-private fun KaSession.createPushDownActionForCallableMember(
+context(session: KaSession)
+private fun createPushDownActionForCallableMember(
     memberInfo: KotlinMemberInfo,
     targetClass: KtClassOrObject,
     substitutor: KaSubstitutor,
@@ -109,12 +114,12 @@ private fun updateExistingCallableMember(
     makeAbstract: Boolean,
 ): KtCallableDeclaration = memberContext.member.apply {
     if (memberContext.modality != KaSymbolModality.ABSTRACT && makeAbstract) {
-        addModifier(KtTokens.OVERRIDE_KEYWORD)
+        addModifierKeyword(KtTokens.OVERRIDE_KEYWORD)
     } else {
         if (memberContext.doesNotOverride) {
-            removeModifier(KtTokens.OVERRIDE_KEYWORD)
+            removeModifierKeyword(KtTokens.OVERRIDE_KEYWORD)
         } else {
-            addModifier(KtTokens.OVERRIDE_KEYWORD)
+            addModifierKeyword(KtTokens.OVERRIDE_KEYWORD)
         }
     }
 }
@@ -130,27 +135,23 @@ private fun addCallableMember(
         targetClassKind != KaClassKind.INTERFACE &&
         memberContext.modality == KaSymbolModality.ABSTRACT
     ) {
-        addModifier(KtTokens.ABSTRACT_KEYWORD)
+        addModifierKeyword(KtTokens.ABSTRACT_KEYWORD)
     }
 
     if (memberContext.modality != KaSymbolModality.ABSTRACT && makeAbstract) {
-        KtTokens.VISIBILITY_MODIFIERS.types.forEach { removeModifier(it as KtModifierKeywordToken) }
-        addModifier(KtTokens.OVERRIDE_KEYWORD)
+        KtTokens.VISIBILITY_MODIFIERS.types.forEach { removeModifierKeyword(it as KtModifierKeywordToken) }
+        addModifierKeyword(KtTokens.OVERRIDE_KEYWORD)
     }
 } as KtCallableDeclaration
 
-@OptIn(KaExperimentalApi::class)
-private fun KaSession.createPushDownActionForClassLikeMember(
+context(session: KaSession)
+private fun createPushDownActionForClassLikeMember(
     memberInfo: KotlinMemberInfo,
-    sourceClass: KtClassOrObject,
     targetClass: KtClassOrObject,
     substitutor: KaSubstitutor,
 ): PushDownAction? {
     return if (memberInfo.overrides != null) {
-        val superTypeListEntry = getSuperTypeEntryBySymbol(
-            sourceClass,
-            memberInfo.member.symbol as KaClassSymbol,
-        ) ?: return null
+        val superTypeListEntry = memberInfo.member as? KtSuperTypeListEntry ?: return null
 
         val newSpecifier = createSuperTypeEntryForAddition(
             superTypeListEntry,
@@ -159,12 +160,13 @@ private fun KaSession.createPushDownActionForClassLikeMember(
         ) ?: return null
 
         PushDownAction {
-            shortenReferences(targetClass.addSuperTypeListEntry(newSpecifier))
+            shortenReferences(targetClass.addSuperType(newSpecifier))
             null
         }
     } else {
+        val member = memberInfo.member as? KtClassOrObject ?: return null
         PushDownAction {
-            addMemberToTarget(memberInfo.member, targetClass)
+            addMemberToTarget(member, targetClass)
         }
     }
 }

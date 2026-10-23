@@ -3,6 +3,7 @@ package com.intellij.tests.bazel;
 
 import org.junit.platform.engine.TestExecutionResult;
 import org.junit.platform.engine.TestSource;
+import org.junit.platform.engine.UniqueId;
 import org.junit.platform.engine.reporting.ReportEntry;
 import org.junit.platform.engine.support.descriptor.ClassSource;
 import org.junit.platform.engine.support.descriptor.CompositeTestSource;
@@ -12,18 +13,23 @@ import org.junit.platform.launcher.TestExecutionListener;
 import org.junit.platform.launcher.TestIdentifier;
 import org.junit.platform.launcher.TestPlan;
 import org.opentest4j.AssertionFailedError;
+import org.opentest4j.FileInfo;
 import org.opentest4j.MultipleFailuresError;
+import org.opentest4j.ValueWrapper;
 
+import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -79,10 +85,6 @@ public final class IjSmTestExecutionListener implements TestExecutionListener {
       // fail-safe: keep originals
     }
 
-    // Signal start of testing to IDE
-    serviceMessage("enteredTheMatrix", Collections.emptyMap());
-    serviceMessage("testingStarted", Collections.emptyMap());
-
     // Pre-emit full test tree disabled for Bazel SM converter compatibility
     // Previously emitted testTreeStarted/testTreeNode/testTreeEnded which some converters don't handle and spam console.
     // We rely on live execution events (testSuiteStarted/testStarted) instead.
@@ -98,6 +100,7 @@ public final class IjSmTestExecutionListener implements TestExecutionListener {
   public void executionStarted(TestIdentifier testIdentifier) {
     String id = getId(testIdentifier);
     if (testIdentifier.isContainer()) {
+      if (isHidden(testIdentifier)) return;
       if (!startedSuites.contains(id)) {
         Map<String, String> attrs = baseAttrs(testIdentifier);
         // Provide location hint for class-like containers
@@ -122,17 +125,17 @@ public final class IjSmTestExecutionListener implements TestExecutionListener {
 
   @Override
   public void executionSkipped(TestIdentifier testIdentifier, String reason) {
+    if (isHidden(testIdentifier)) return;
+    // IDEA needs a matching executionStarted event first for skipped tests to show up in the UI
+    executionStarted(testIdentifier);
     if (testIdentifier.isTest()) {
       Map<String, String> attrs = baseAttrs(testIdentifier);
-      if (reason != null && !reason.isEmpty()) attrs.put("message", reason);
+      attrs.put("message", reason != null ? reason : "");
       serviceMessage("testIgnored", attrs);
     } else if (testIdentifier.isContainer()) {
-      // Emit started/ignored/finished trio for skipped containers to show up in UI
-      executionStarted(testIdentifier);
       Map<String, String> attrs = baseAttrs(testIdentifier);
-      if (reason != null && !reason.isEmpty()) attrs.put("message", reason);
+      attrs.put("message", reason != null ? reason : "");
       serviceMessage("testIgnored", attrs);
-      executionFinished(testIdentifier, TestExecutionResult.successful());
     }
   }
 
@@ -145,7 +148,7 @@ public final class IjSmTestExecutionListener implements TestExecutionListener {
       if ((testExecutionResult.getStatus() == TestExecutionResult.Status.FAILED
            || testExecutionResult.getStatus() == TestExecutionResult.Status.ABORTED) && throwable.isPresent()) {
         String syntheticId = id + "/[suite-setup]";
-        String parentId = id;
+        String parentId = isHidden(testIdentifier) ? getParentId(testIdentifier) : id;
         String suiteSetupName = "<suite setup>";
         Map<String, String> start = new LinkedHashMap<>();
         start.put("name", suiteSetupName);
@@ -162,7 +165,7 @@ public final class IjSmTestExecutionListener implements TestExecutionListener {
         fail.put("nodeId", syntheticId);
         fail.put("parentNodeId", parentId);
         String msg = t.getMessage();
-        if (msg != null && !msg.isEmpty()) fail.put("message", msg);
+        fail.put("message", msg != null ? msg : "");
         fail.put("details", stackTraceToString(t));
         serviceMessage("testFailed", fail);
 
@@ -192,17 +195,8 @@ public final class IjSmTestExecutionListener implements TestExecutionListener {
           for (Throwable sub : ((MultipleFailuresError) t).getFailures()) {
             Map<String, String> fail = baseAttrs(testIdentifier);
             String message = sub.getMessage();
-            if (message != null && !message.isEmpty()) fail.put("message", message);
-            if (sub instanceof AssertionFailedError) {
-              AssertionFailedError afe = (AssertionFailedError) sub;
-              if (afe.isExpectedDefined() || afe.isActualDefined()) {
-                fail.put("type", "comparisonFailure");
-                String expected = afe.isExpectedDefined() && afe.getExpected() != null ? String.valueOf(afe.getExpected().getValue()) : "";
-                String actual = afe.isActualDefined() && afe.getActual() != null ? String.valueOf(afe.getActual().getValue()) : "";
-                fail.put("expected", expected);
-                fail.put("actual", actual);
-              }
-            }
+            fail.put("message", message != null ? message : "");
+            putComparisonFailureAttrs(sub, fail);
             fail.put("details", stackTraceToString(sub));
             serviceMessage("testFailed", fail);
           }
@@ -210,16 +204,7 @@ public final class IjSmTestExecutionListener implements TestExecutionListener {
           Map<String, String> fail = baseAttrs(testIdentifier);
           String message = t.getMessage();
           fail.put("message", message != null ? message : "");  // required parameter
-          if (t instanceof AssertionFailedError) {
-            AssertionFailedError afe = (AssertionFailedError) t;
-            if (afe.isExpectedDefined() || afe.isActualDefined()) {
-              fail.put("type", "comparisonFailure");
-              String expected = afe.isExpectedDefined() && afe.getExpected() != null ? String.valueOf(afe.getExpected().getValue()) : "";
-              String actual = afe.isActualDefined() && afe.getActual() != null ? String.valueOf(afe.getActual().getValue()) : "";
-              fail.put("expected", expected);
-              fail.put("actual", actual);
-            }
-          }
+          putComparisonFailureAttrs(t, fail);
           fail.put("details", stackTraceToString(t));
           serviceMessage("testFailed", fail);
         }
@@ -288,7 +273,6 @@ public final class IjSmTestExecutionListener implements TestExecutionListener {
     startedTests.clear();
     startedSuites.clear();
 
-    serviceMessage("testingFinished", Collections.emptyMap());
     this.testPlan = null;
 
     // Restore streams
@@ -313,13 +297,63 @@ public final class IjSmTestExecutionListener implements TestExecutionListener {
 
   private String getParentId(TestIdentifier id) {
     if (testPlan == null) return "0";
-    return testPlan.getParent(id).map(this::getId).orElse("0");
+    Optional<TestIdentifier> parent = testPlan.getParent(id);
+    while (parent.isPresent() && isHidden(parent.get())) {
+      parent = testPlan.getParent(parent.get());
+    }
+    return parent.map(this::getId).orElse("0");
+  }
+
+  /**
+   * Tells whether the IDE should show no node for this container.
+   *
+   * An engine is such a container: it adds a level to the tree, and that level carries no
+   * information. A run of a JUnit Platform Suite brings two of them, one above the suite class
+   * and one below it. The JUnit runner of the IDE hides the same nodes,
+   * see {@code com.intellij.junit5.report.SuiteReporter#isSkipped}.
+   *
+   * A hidden container reports nothing, and {@link #getParentId} moves its children
+   * to the nearest visible ancestor.
+   */
+  private static boolean isHidden(TestIdentifier testIdentifier) {
+    if (!testIdentifier.isContainer()) return false;
+    List<UniqueId.Segment> segments = UniqueId.parse(testIdentifier.getUniqueId()).getSegments();
+    if (segments.isEmpty()) return false;
+    UniqueId.Segment segment = segments.get(segments.size() - 1);
+    String segmentType = segment.getType();
+    return "engine".equals(segmentType);
   }
 
   private static String getMetaInfo(TestIdentifier id) {
     // Keep simple: include type information
     String type = id.isContainer() ? (id.isTest() ? "test+container" : "container") : (id.isTest() ? "test" : "unknown");
     return type;
+  }
+
+  private static void putComparisonFailureAttrs(Throwable t, Map<String, String> fail) {
+    if (!(t instanceof AssertionFailedError afe)) return;
+    if (!afe.isExpectedDefined() && !afe.isActualDefined()) return;
+    fail.put("type", "comparisonFailure");
+    String expected = afe.isExpectedDefined() && afe.getExpected() != null ? String.valueOf(afe.getExpected().getValue()) : "";
+    String actual = afe.isActualDefined() && afe.getActual() != null ? String.valueOf(afe.getActual().getValue()) : "";
+    fail.put("expected", expected);
+    fail.put("actual", actual);
+    String expectedFile = fileInfoPath(afe.isExpectedDefined() ? afe.getExpected() : null);
+    if (expectedFile != null) fail.put("expectedFile", expectedFile);
+    String actualFile = fileInfoPath(afe.isActualDefined() ? afe.getActual() : null);
+    if (actualFile != null) fail.put("actualFile", actualFile);
+  }
+
+  private static String fileInfoPath(ValueWrapper wrapper) {
+    Object value = wrapper != null ? wrapper.getValue() : null;
+    if (!(value instanceof FileInfo)) return null;
+    String path = ((FileInfo) value).getPath();
+    try {
+      // bazel runfiles/sandbox symlinks die with the sandbox; resolve to the real workspace file while it is still alive
+      return Paths.get(path).toRealPath().toString();
+    } catch (IOException | InvalidPathException e) {
+      return path;
+    }
   }
 
   private static String stackTraceToString(Throwable t) {
@@ -466,9 +500,6 @@ public final class IjSmTestExecutionListener implements TestExecutionListener {
         serviceMessage("testSuiteFinished", fin);
       }
       startedSuites.clear();
-
-      // Ensure closing marker
-      serviceMessage("testingFinished", Collections.emptyMap());
     } catch (Throwable ignore) {
       // best-effort
     } finally {

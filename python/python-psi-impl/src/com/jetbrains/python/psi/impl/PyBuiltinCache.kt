@@ -21,6 +21,7 @@ import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.openapi.roots.JdkOrderEntry
 import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.roots.impl.OrderEntryUtil
+import com.jetbrains.python.psi.resolve.mainPythonSdk
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
@@ -39,6 +40,7 @@ import com.jetbrains.python.psi.PyUtil
 import com.jetbrains.python.psi.resolve.PythonSdkPathCache
 import com.jetbrains.python.psi.resolve.fromSdk
 import com.jetbrains.python.psi.resolve.resolveQualifiedName
+import com.jetbrains.python.psi.types.PyAnyType
 import com.jetbrains.python.psi.types.PyClassLikeType
 import com.jetbrains.python.psi.types.PyClassType
 import com.jetbrains.python.psi.types.PyClassTypeImpl
@@ -157,7 +159,7 @@ class PyBuiltinCache private constructor(
       unicode = if (definition) unicode.toClass() else unicode.toInstance()
     }
 
-    return PyUnionType.union(str, unicode)
+    return PyUnionType.unionOrUnknown(str, unicode ?: PyAnyType.unknown)
   }
 
   val boolType: PyClassType?
@@ -246,7 +248,11 @@ class PyBuiltinCache private constructor(
       var sdk: Sdk? = null
       if (vfile != null) { // reality
         val projectRootManager = ProjectRootManager.getInstance(psiFile.project)
-        sdk = projectRootManager.projectSdk
+        // A Python console is served by `PythonRuntimeService.getConsoleSdk` together with `visitAllModules`, so
+        // answering here would hand it a second, competing interpreter (PY-89831).
+        if (PythonRuntimeService.getInstance().getConsoleSdk(psiFile) == null) {
+          sdk = psiFile.project.mainPythonSdk()
+        }
         if (sdk == null) {
           val orderEntries = projectRootManager.fileIndex.getOrderEntriesForFile(vfile)
           for (orderEntry in orderEntries) {

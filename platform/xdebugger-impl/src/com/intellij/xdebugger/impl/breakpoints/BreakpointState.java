@@ -17,10 +17,12 @@ import org.jetbrains.annotations.Nullable;
 public class BreakpointState {
   private String myTypeId;
   private boolean myEnabled;
+  private boolean myTemporary;
   private Element myPropertiesElement;
   private SuspendPolicy mySuspendPolicy = SuspendPolicy.ALL;
   private boolean myLogMessage;
   private boolean myLogStack;
+  private ThreadDumpCapture myThreadDumpCapture;
   private LogExpression myLogExpression;
   private Condition myCondition;
   private XBreakpointDependencyState myDependencyState;
@@ -49,6 +51,14 @@ public class BreakpointState {
 
   public void setEnabled(final boolean enabled) {
     myEnabled = enabled;
+  }
+
+  public boolean isTemporary() {
+    return myTemporary;
+  }
+
+  public void setTemporary(boolean temporary) {
+    myTemporary = temporary;
   }
 
   @Attribute("type")
@@ -103,6 +113,16 @@ public class BreakpointState {
 
   public void setLogStack(final boolean logStack) {
     myLogStack = logStack;
+  }
+
+  /** The persisted form of {@link ThreadDumpCapturePolicy}. Null means that the breakpoint saves no thread dump. */
+  @Property(surroundWithTag = false)
+  public @Nullable ThreadDumpCapture getThreadDumpCapture() {
+    return myThreadDumpCapture;
+  }
+
+  public void setThreadDumpCapture(@Nullable ThreadDumpCapture threadDumpCapture) {
+    myThreadDumpCapture = threadDumpCapture;
   }
 
   public @Nullable String getGroup() {
@@ -188,6 +208,19 @@ public class BreakpointState {
         return null;
       }
       return new Condition(disabled, expression);
+    }
+  }
+
+  @Tag("thread-dump-capture")
+  public static class ThreadDumpCapture {
+    @Attribute("policy")
+    public String policy;
+
+    public ThreadDumpCapture() {
+    }
+
+    public ThreadDumpCapture(String policy) {
+      this.policy = policy;
     }
   }
 

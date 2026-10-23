@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
-@Subsystems.PackagingRequirements
+@Subsystems.Packaging
 @Layers.Functional
 internal class PyActiveInstallsTest {
 

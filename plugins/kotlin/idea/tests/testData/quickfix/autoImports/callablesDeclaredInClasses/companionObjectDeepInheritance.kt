@@ -1,5 +1,5 @@
 // "Import extension function 'Companion.foobar'" "true"
-// K2_ERROR: Unresolved reference 'foobar'.
+// K2_ERROR: UNRESOLVED_REFERENCE
 package p
 
 open class T1 {
@@ -15,5 +15,4 @@ fun usage() {
     T1.<caret>foobar()
 }
 
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ImportFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.imprt.ImportQuickFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.imprt.ImportQuickFix

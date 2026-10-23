@@ -5,7 +5,6 @@ import com.intellij.configurationStore.XmlSerializer;
 import com.intellij.featureStatistics.FeatureUsageTracker;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.editor.markup.GutterIconRenderer;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.JDOMUtil;
 import com.intellij.openapi.util.NlsSafe;
@@ -75,6 +74,7 @@ public class XBreakpointBase<Self extends XBreakpoint<P>, P extends XBreakpointP
   private XExpression myCondition;
   private boolean myLogExpressionEnabled = true;
   private XExpression myLogExpression;
+  private final ThreadDumpCaptureState myThreadDumpCaptureState = new ThreadDumpCaptureState();
   private volatile boolean myDisposed;
   // replay the last change event because some breakpoints can be modified asynchronously right after creation
   // (for example, method breakpoints in Java), but faster than our subscriber collects the flow,
@@ -191,6 +191,18 @@ public class XBreakpointBase<Self extends XBreakpoint<P>, P extends XBreakpointP
     updateStateIfNeededAndNotify(requestId, enabled, myState::isEnabled, myState::setEnabled);
   }
 
+  public boolean isTemporary() {
+    return withStateLock(() -> myState.isTemporary());
+  }
+
+  public void setTemporary(boolean temporary) {
+    setTemporary(-1, temporary);
+  }
+
+  public void setTemporary(long requestId, boolean temporary) {
+    updateStateIfNeededAndNotify(requestId, temporary, this::isTemporary, myState::setTemporary);
+  }
+
   @Override
   public @NotNull SuspendPolicy getSuspendPolicy() {
     return withStateLock(() -> myState.getSuspendPolicy());
@@ -236,6 +248,24 @@ public class XBreakpointBase<Self extends XBreakpoint<P>, P extends XBreakpointP
 
   public void setLogStack(long requestId, boolean logStack) {
     updateStateIfNeededAndNotify(requestId, logStack, myState::isLogStack, myState::setLogStack);
+  }
+
+  @ApiStatus.Internal
+  public @Nullable ThreadDumpCapturePolicy getThreadDumpCapturePolicy() {
+    return withStateLock(() -> ThreadDumpCapturePolicy.fromState(myState.getThreadDumpCapture()));
+  }
+
+  @ApiStatus.Internal
+  public void setThreadDumpCapturePolicy(@Nullable ThreadDumpCapturePolicy policy) {
+    updateStateIfNeededAndNotify(-1, policy, this::getThreadDumpCapturePolicy, (p) -> {
+      myState.setThreadDumpCapture(ThreadDumpCapturePolicy.toState(p));
+      myThreadDumpCaptureState.reset();
+    });
+  }
+
+  @ApiStatus.Internal
+  public @NotNull ThreadDumpCaptureState getThreadDumpCaptureState() {
+    return myThreadDumpCaptureState;
   }
 
   public boolean isConditionEnabled() {
@@ -518,6 +548,10 @@ public class XBreakpointBase<Self extends XBreakpoint<P>, P extends XBreakpointP
       builder.append(separator.get()).append(XDebuggerBundle.message("xbreakpoint.tooltip.log.stack"));
     }
 
+    if (getThreadDumpCapturePolicy() instanceof ThreadDumpCapturePolicy.OncePerSession) {
+      builder.append(separator.get()).append(XDebuggerBundle.message("xbreakpoint.tooltip.thread.dump.once.per.session"));
+    }
+
     String logExpression = getLogExpression();
     if (!StringUtil.isEmpty(logExpression)) {
       builder.append(separator.get());
@@ -578,11 +612,6 @@ public class XBreakpointBase<Self extends XBreakpoint<P>, P extends XBreakpointP
     myCustomizedPresentation = presentation;
     // Don't call fireBreakpointChanged() here, since it should be queued outside
     // See XBreakpointManagerImpl.updateBreakpointPresentation()
-  }
-
-  // TODO IJPL-185322
-  public @NotNull GutterIconRenderer createGutterIconRenderer() {
-    return new BreakpointGutterIconRenderer(asProxy(this));
   }
 
   public void clearIcon() {

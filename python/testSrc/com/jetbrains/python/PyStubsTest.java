@@ -1,6 +1,10 @@
 // Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python;
 
+import com.jetbrains.python.allure.Components;
+import com.jetbrains.python.allure.Layers;
+import com.jetbrains.python.allure.Subsystems;
+
 import com.google.common.collect.ImmutableRangeSet;
 import com.google.common.collect.Range;
 import com.google.common.collect.RangeSet;
@@ -38,6 +42,7 @@ import com.jetbrains.python.psi.PyCallable;
 import com.jetbrains.python.psi.PyClass;
 import com.jetbrains.python.psi.PyDecorator;
 import com.jetbrains.python.psi.PyDecoratorList;
+import com.jetbrains.python.psi.PyExpression;
 import com.jetbrains.python.psi.PyFile;
 import com.jetbrains.python.psi.PyFromImportStatement;
 import com.jetbrains.python.psi.PyFunction;
@@ -55,6 +60,7 @@ import com.jetbrains.python.psi.PyTypeParameter;
 import com.jetbrains.python.psi.PyTypeParameterListOwner;
 import com.jetbrains.python.psi.impl.PyBuiltinCache;
 import com.jetbrains.python.psi.impl.PyFileImpl;
+import com.jetbrains.python.psi.impl.stubs.PyTypingAliasStubType;
 import com.jetbrains.python.psi.stubs.PyClassNameIndex;
 import com.jetbrains.python.psi.stubs.PyClassStub;
 import com.jetbrains.python.psi.stubs.PyDataclassFieldStub;
@@ -74,6 +80,7 @@ import com.jetbrains.python.psi.stubs.PyTypingAliasStub;
 import com.jetbrains.python.psi.stubs.PyTypingNewTypeStub;
 import com.jetbrains.python.psi.stubs.PyVariableNameIndex;
 import com.jetbrains.python.psi.stubs.PyVersionSpecificStub;
+import com.jetbrains.python.psi.types.PyAnyType;
 import com.jetbrains.python.psi.types.PyCallableType;
 import com.jetbrains.python.psi.types.PyClassType;
 import com.jetbrains.python.psi.types.PyNamedTupleType;
@@ -93,7 +100,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
 
+import static org.junit.Assert.assertNotEquals;
+
 @TestDataPath("$CONTENT_ROOT/../testData/stubs/")
+@Subsystems.CodeInsight
+@Components.Parsing
+@Layers.Functional
 public class PyStubsTest extends PyTestCase {
 
   @Override
@@ -310,6 +322,18 @@ public class PyStubsTest extends PyTestCase {
     final PyImportElement importElement = importTargets.get(0);
     final QualifiedName importQName = importElement.getImportedQName();
     assertSameElements(importQName.getComponents(), "os", "path");
+
+    assertNotParsed(file);
+  }
+
+  @TestFor(issues = "PY-91818")
+  public void testLazyRelativeImportStatement() {
+    final PyFileImpl file = (PyFileImpl)getTestFile();
+
+    final List<PyFromImportStatement> fromImports = file.getFromImports();
+    assertEquals(2, fromImports.size());
+    assertEquals(1, fromImports.getFirst().getRelativeLevel());
+    assertEquals(2, fromImports.get(1).getRelativeLevel());
 
     assertNotParsed(file);
   }
@@ -669,7 +693,7 @@ public class PyStubsTest extends PyTestCase {
   }
 
   private void doTestNamedTuple(@NotNull QualifiedName expectedCalleeName) {
-    doTestNamedTuple("name", Collections.singletonList("field"), Collections.singletonList(null), expectedCalleeName);
+    doTestNamedTuple("name", Collections.singletonList("field"), Collections.singletonList(PyNames.UNKNOWN_TYPE), expectedCalleeName);
   }
 
   private void doTestTypingNamedTuple(@NotNull QualifiedName expectedCalleeName) {
@@ -677,7 +701,7 @@ public class PyStubsTest extends PyTestCase {
   }
 
   private void doTestNamedTupleArguments() {
-    doTestNamedTuple("name", Arrays.asList("x", "y"), Arrays.asList(null, null), QualifiedName.fromComponents("namedtuple"));
+    doTestNamedTuple("name", Arrays.asList("x", "y"), Arrays.asList(PyNames.UNKNOWN_TYPE, PyNames.UNKNOWN_TYPE), QualifiedName.fromComponents("namedtuple"));
   }
 
   private void doTestTypingNamedTupleArguments() {
@@ -738,7 +762,7 @@ public class PyStubsTest extends PyTestCase {
     assertNotNull(attribute);
 
     final PyType typeFromStub = TypeEvalContext.codeInsightFallback(myFixture.getProject()).getType(attribute);
-    assertNull(typeFromStub);
+    assertEquals(PyAnyType.getUnknown(), typeFromStub);
     assertNotParsed(file);
 
     final FileASTNode astNode = file.getNode();
@@ -924,6 +948,21 @@ public class PyStubsTest extends PyTestCase {
     assertNotParsed(file);
   }
 
+  @TestFor(issues = "PY-87570")
+  public void testTypeAliasValueAfterTreeIsLoaded() {
+    final PyFile file = getTestFile();
+    final PyTargetExpression alias = file.findTopLevelAttribute("Alias");
+    final PyExpression valueFromStub = PyTypingAliasStubType.getAssignedValueStubLike(alias);
+    assertNotNull(valueFromStub);
+    assertNotSame(file, valueFromStub.getContainingFile());
+    assertNotParsed(file);
+
+    assertNotNull(file.getNode()); // Load the tree
+
+    assertNull(alias.getStub());
+    assertSame(alias.findAssignedValue(), PyTypingAliasStubType.getAssignedValueStubLike(alias));
+  }
+
   // PY-75291
   public void testTypeAliasNameIndex() {
     getTestFile();
@@ -936,7 +975,7 @@ public class PyStubsTest extends PyTestCase {
   public void testUnresolvedTypingSymbol() {
     final PyFile file = getTestFile();
     final PyFunction func = file.findTopLevelFunction("func");
-    assertType("() -> Any", func, TypeEvalContext.codeInsightFallback(file.getProject()));
+    assertType("() -> Unknown", func, TypeEvalContext.codeInsightFallback(file.getProject()));
     assertNotParsed(file);
   }
 
@@ -1205,6 +1244,25 @@ public class PyStubsTest extends PyTestCase {
     assertNotParsed(file);
   }
 
+  public void testDataclassStubKinds() {
+    final PyFile file = getTestFile();
+
+    final PyDataclassStub stdlib = file.findTopLevelClass("StdlibModel").getStub().getCustomStub(PyDataclassStub.class);
+    assertNotNull(stdlib);
+    assertEquals("STD", stdlib.getType());
+
+    final PyDataclassStub attrs = file.findTopLevelClass("AttrsModel").getStub().getCustomStub(PyDataclassStub.class);
+    assertNotNull(attrs);
+    assertEquals("ATTRS", attrs.getType());
+
+    final PyDataclassStub transform = file.findTopLevelClass("TransformModel").getStub().getCustomStub(PyDataclassStub.class);
+    assertNotNull(transform);
+    assertNotEquals("PYDANTIC", transform.getType());
+    assertEquals("DATACLASS_TRANSFORM", transform.getType());
+
+    assertNotParsed(file);
+  }
+
   // PY-62608
   public void testTypeParameterListInFunctionDeclaration() {
     PyFile file = getTestFile();
@@ -1275,32 +1333,6 @@ public class PyStubsTest extends PyTestCase {
     assertNotParsed(file);
   }
 
-  // PY-78911
-  public void testPydanticFieldSpecifierPositionalDefault() {
-    myFixture.copyDirectoryToProject("pydantic", "pydantic");
-    PyFile file = getTestFile();
-    @Nullable PyClass pydanticModel = file.findTopLevelClass("Model");
-    assertNotNull(pydanticModel);
-    @Nullable PyTargetExpression attribute = pydanticModel.findClassAttribute("a", false, TypeEvalContext.codeAnalysis(myFixture.getProject(), myFixture.getFile()));
-    assertNotNull(attribute);
-    PyDataclassFieldStub pydanticFieldStub = attribute.getStub().getCustomStub(PyDataclassFieldStub.class);
-    assertNotNull(pydanticFieldStub);
-    assertTrue(pydanticFieldStub.hasDefault());
-  }
-
-  @TestFor(issues = "PY-89012")
-  public void testPydanticValidateByNameAndAliasOnClass() {
-    myFixture.copyDirectoryToProject("pydantic", "pydantic");
-    PyFile file = getTestFile();
-    @Nullable PyClass pydanticModel = file.findTopLevelClass("Model");
-    assertNotNull(pydanticModel);
-    PyDataclassStub pydanticStub = pydanticModel.getStub().getCustomStub(PyDataclassStub.class);
-    assertNotNull(pydanticStub);
-    assertTrue(pydanticStub.getValidateByName());
-    assertFalse(pydanticStub.getValidateByAlias());
-    assertNotParsed(file);
-  }
-
   // PY-54560
   public void testDataclassStubForClassDecoratedWithDataclassTransformFactoryFunction() {
     PyFile file = getTestFile();
@@ -1331,11 +1363,12 @@ public class PyStubsTest extends PyTestCase {
     assertTrue(stub.isClosed());
     assertEquals("bool", stub.getExtraItemsType());
 
-    final PyType typeFromStub = TypeEvalContext.codeInsightFallback(myFixture.getProject()).getType(attribute);
+    final TypeEvalContext stubContext = TypeEvalContext.codeInsightFallback(myFixture.getProject());
+    final PyType typeFromStub = stubContext.getType(attribute);
     assertInstanceOf(typeFromStub, PyTypedDictType.class);
     final PyTypedDictType typedDictFromStub = (PyTypedDictType)typeFromStub;
     assertTrue(typedDictFromStub.isClosed());
-    final PyType stubExtraItemsType = typedDictFromStub.getExtraItemsType();
+    final PyType stubExtraItemsType = typedDictFromStub.extraItemsType(stubContext);
     assertNotNull(stubExtraItemsType);
     assertEquals("bool", stubExtraItemsType.getName());
     assertNotParsed(file);
@@ -1343,11 +1376,12 @@ public class PyStubsTest extends PyTestCase {
     final FileASTNode astNode = file.getNode();
     assertNotNull(astNode);
 
-    final PyType typeFromAst = TypeEvalContext.userInitiated(myFixture.getProject(), file).getType(attribute);
+    final TypeEvalContext astContext = TypeEvalContext.userInitiated(myFixture.getProject(), file);
+    final PyType typeFromAst = astContext.getType(attribute);
     assertInstanceOf(typeFromAst, PyTypedDictType.class);
     final PyTypedDictType typedDictFromAst = (PyTypedDictType)typeFromAst;
     assertTrue(typedDictFromAst.isClosed());
-    final PyType astExtraItemsType = typedDictFromAst.getExtraItemsType();
+    final PyType astExtraItemsType = typedDictFromAst.extraItemsType(astContext);
     assertNotNull(astExtraItemsType);
     assertEquals("bool", astExtraItemsType.getName());
   }
@@ -1359,11 +1393,11 @@ public class PyStubsTest extends PyTestCase {
     final PyClass cls = file.findTopLevelClass("ClosedDict");
     assertNotNull(cls);
 
-    final PyTypedDictType typeFromStub = PyTypedDictTypeProvider.Helper.INSTANCE.getTypedDictTypeForResolvedElement(
-      cls, TypeEvalContext.codeInsightFallback(myFixture.getProject()));
+    final TypeEvalContext stubContext = TypeEvalContext.codeInsightFallback(myFixture.getProject());
+    final PyTypedDictType typeFromStub = PyTypedDictTypeProvider.Helper.INSTANCE.getTypedDictTypeForResolvedElement(cls, stubContext);
     assertInstanceOf(typeFromStub, PyTypedDictType.class);
     assertTrue(typeFromStub.isClosed());
-    final PyType stubExtraItemsType = typeFromStub.getExtraItemsType();
+    final PyType stubExtraItemsType = typeFromStub.extraItemsType(stubContext);
     assertNotNull(stubExtraItemsType);
     assertEquals("bool", stubExtraItemsType.getName());
     assertNotParsed(file);
@@ -1371,11 +1405,11 @@ public class PyStubsTest extends PyTestCase {
     final FileASTNode astNode = file.getNode();
     assertNotNull(astNode);
 
-    final PyTypedDictType typeFromAst = PyTypedDictTypeProvider.Helper.INSTANCE.getTypedDictTypeForResolvedElement(
-      cls, TypeEvalContext.userInitiated(myFixture.getProject(), file));
+    final TypeEvalContext astContext = TypeEvalContext.userInitiated(myFixture.getProject(), file);
+    final PyTypedDictType typeFromAst = PyTypedDictTypeProvider.Helper.INSTANCE.getTypedDictTypeForResolvedElement(cls, astContext);
     assertInstanceOf(typeFromAst, PyTypedDictType.class);
     assertTrue(typeFromAst.isClosed());
-    final PyType astExtraItemsType = typeFromAst.getExtraItemsType();
+    final PyType astExtraItemsType = typeFromAst.extraItemsType(astContext);
     assertNotNull(astExtraItemsType);
     assertEquals("bool", astExtraItemsType.getName());
   }
@@ -1395,46 +1429,6 @@ public class PyStubsTest extends PyTestCase {
     assertNull(customStub.unsafeHashValue());
     assertTrue(customStub.frozenValue());
     assertNull(customStub.kwOnly());
-    assertNotParsed(file);
-  }
-
-  @TestFor(issues = "PY-89012")
-  public void testPydanticFieldInsideAnnotatedStub() {
-    myFixture.copyDirectoryToProject("pydantic", "pydantic");
-    final PyFile file = getTestFile();
-    final PyClass cls = file.findTopLevelClass("Model");
-    PyDataclassFieldStub fieldStub = cls.findClassAttribute("b", false, null)
-      .getStub()
-      .getCustomStub(PyDataclassFieldStub.class);
-    assertNotNull(fieldStub);
-    assertTrue(fieldStub.hasDefault());
-    assertEquals("B", fieldStub.getAlias());
-    assertNotParsed(file);
-  }
-
-  @TestFor(issues = "PY-88897")
-  public void testPydanticDecoratorConfigImportedFromAnotherFileDoesNotCauseUnstubbing() {
-    myFixture.copyDirectoryToProject("pydantic", "pydantic");
-    final PyFile modelFile = getTestFile(getTestName(true) + "/model.py");
-    final PyFile configFile = getTestFile(getTestName(true) + "/config.py");
-    @Nullable PyClass modelClass = modelFile.findTopLevelClass("Model");
-    assertNotNull(modelClass);
-    PyDataclassStub stub = modelClass.getStub().getCustomStub(PyDataclassStub.class);
-    assertNotNull(stub);
-    assertNull(stub.getPopulateByName());
-    assertNotParsed(modelFile);
-    assertNotParsed(configFile);
-  }
-
-  @TestFor(issues = "PY-88897")
-  public void testPydanticDecoratorConfigDoesNotCauseUnstubbing() {
-    myFixture.copyDirectoryToProject("pydantic", "pydantic");
-    PyFile file = getTestFile();
-    @Nullable PyClass modelClass = file.findTopLevelClass("Model");
-    assertNotNull(modelClass);
-    PyDataclassStub stub = modelClass.getStub().getCustomStub(PyDataclassStub.class);
-    assertNotNull(stub);
-    assertTrue(stub.getPopulateByName());
     assertNotParsed(file);
   }
 
@@ -1459,21 +1453,24 @@ public class PyStubsTest extends PyTestCase {
     assertNotNull(stub);
     assertEquals(expectedCalleeName, stub.getCalleeName());
 
-    final PyType typeFromStub = TypeEvalContext.codeInsightFallback(myFixture.getProject()).getType(attribute);
-    doTestTypedDict(expectedName, expectedFieldsNames, expectedFieldsTypes, typeFromStub);
+    final TypeEvalContext stubContext = TypeEvalContext.codeInsightFallback(myFixture.getProject());
+    final PyType typeFromStub = stubContext.getType(attribute);
+    doTestTypedDict(expectedName, expectedFieldsNames, expectedFieldsTypes, typeFromStub, stubContext);
     assertNotParsed(file);
 
     final FileASTNode astNode = file.getNode();
     assertNotNull(astNode);
 
-    final PyType typeFromAst = TypeEvalContext.userInitiated(myFixture.getProject(), file).getType(attribute);
-    doTestTypedDict(expectedName, expectedFieldsNames, expectedFieldsTypes, typeFromAst);
+    final TypeEvalContext astContext = TypeEvalContext.userInitiated(myFixture.getProject(), file);
+    final PyType typeFromAst = astContext.getType(attribute);
+    doTestTypedDict(expectedName, expectedFieldsNames, expectedFieldsTypes, typeFromAst, astContext);
   }
 
   private static void doTestTypedDict(@NotNull String expectedName,
                                       @NotNull List<String> expectedFieldsNames,
                                       @NotNull List<String> expectedFieldsTypes,
-                                      @Nullable PyType type) {
+                                      @Nullable PyType type,
+                                      @NotNull TypeEvalContext context) {
     assertInstanceOf(type, PyTypedDictType.class);
     final PyTypedDictType typedDictType = (PyTypedDictType)type;
 
@@ -1482,7 +1479,7 @@ public class PyStubsTest extends PyTestCase {
     final Iterator<String> fieldsNamesIterator = expectedFieldsNames.iterator();
     final Iterator<String> fieldsTypesIterator = expectedFieldsTypes.iterator();
 
-    for (Map.Entry<String, PyTypedDictType.FieldTypeAndTotality> entry : typedDictType.getFields().entrySet()) {
+    for (Map.Entry<String, PyTypedDictType.FieldTypeAndTotality> entry : typedDictType.fields(context).entrySet()) {
       assertTrue(fieldsNamesIterator.hasNext());
       assertTrue(fieldsTypesIterator.hasNext());
 

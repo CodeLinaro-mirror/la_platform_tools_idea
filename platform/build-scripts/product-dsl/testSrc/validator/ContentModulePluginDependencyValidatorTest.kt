@@ -1,6 +1,7 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.intellij.build.productLayout.validator
 
+import com.intellij.platform.buildScripts.concurrency.SharedTaskOwner
 import com.intellij.platform.pluginGraph.ContentModuleName
 import com.intellij.platform.pluginGraph.PluginId
 import com.intellij.platform.pluginSystem.parser.impl.elements.ModuleLoadingRuleValue
@@ -26,6 +27,13 @@ import java.nio.file.Path
 
 @ExtendWith(TestFailureLogger::class)
 class ContentModulePluginDependencyValidatorTest {
+  private val owner = SharedTaskOwner("ContentModulePluginDependencyValidatorTest")
+
+  @org.junit.jupiter.api.AfterEach
+  fun closeSharedTasks() {
+    owner.close()
+  }
+
   @Test
   fun `missing plugin dependency in XML reports error`(): Unit = runBlocking {
     val graph = pluginGraph {
@@ -41,10 +49,10 @@ class ContentModulePluginDependencyValidatorTest {
     val plan = contentModulePlan(
       moduleName = "owner.content",
       writtenPluginDependencies = emptyList(),
-      allJpsPluginDependencies = setOf(PluginId("dep.plugin")),
+      requiredPluginDependencies = setOf(PluginId("dep.plugin")),
     )
 
-    val model = testGenerationModel(graph)
+    val model = testGenerationModel(graph, owner = owner)
     val errors = runValidationRule(
       ContentModulePluginDependencyValidator,
       model,
@@ -71,10 +79,10 @@ class ContentModulePluginDependencyValidatorTest {
     val plan = contentModulePlan(
       moduleName = contentModuleName,
       writtenPluginDependencies = emptyList(),
-      allJpsPluginDependencies = setOf(PluginId("owner.plugin")),
+      requiredPluginDependencies = setOf(PluginId("owner.plugin")),
     )
 
-    val model = testGenerationModel(graph)
+    val model = testGenerationModel(graph, owner = owner)
     val errors = runValidationRule(
       ContentModulePluginDependencyValidator,
       model,
@@ -99,7 +107,7 @@ class ContentModulePluginDependencyValidatorTest {
     val plan = contentModulePlan(
       moduleName = "owner.content",
       writtenPluginDependencies = emptyList(),
-      allJpsPluginDependencies = setOf(PluginId("dep.plugin")),
+      requiredPluginDependencies = setOf(PluginId("dep.plugin")),
     )
 
     val suppressionConfig = SuppressionConfig(
@@ -107,7 +115,7 @@ class ContentModulePluginDependencyValidatorTest {
         ContentModuleName("owner.content") to ValidationException(allowMissingPlugins = setOf(PluginId("dep.plugin")))
       )
     )
-    val model = testGenerationModel(graph, suppressionConfig = suppressionConfig)
+    val model = testGenerationModel(graph, suppressionConfig = suppressionConfig, owner = owner)
     val errors = runValidationRule(
       ContentModulePluginDependencyValidator,
       model,
@@ -132,7 +140,7 @@ class ContentModulePluginDependencyValidatorTest {
     val plan = contentModulePlan(
       moduleName = "owner.content",
       writtenPluginDependencies = emptyList(),
-      allJpsPluginDependencies = setOf(PluginId("dep.plugin")),
+      requiredPluginDependencies = setOf(PluginId("dep.plugin")),
       suppressedPlugins = setOf(PluginId("dep.plugin")),
     )
 
@@ -149,7 +157,7 @@ class ContentModulePluginDependencyValidatorTest {
         ContentModuleName("owner.content") to ValidationException(allowMissingPlugins = setOf(PluginId("dep.plugin")))
       )
     )
-    val model = testGenerationModel(graph, suppressionConfig = suppressionConfig).copy(
+    val model = testGenerationModel(graph, suppressionConfig = suppressionConfig, owner = owner).copy(
       dslTestPluginsByProduct = mapOf("TestProduct" to listOf(spec))
     )
     val errors = runValidationRule(
@@ -176,7 +184,7 @@ class ContentModulePluginDependencyValidatorTest {
     val plan = contentModulePlan(
       moduleName = "owner.content",
       writtenPluginDependencies = emptyList(),
-      allJpsPluginDependencies = setOf(PluginId("dep.plugin")),
+      requiredPluginDependencies = setOf(PluginId("dep.plugin")),
     )
 
     val spec = TestPluginSpec(
@@ -187,7 +195,7 @@ class ContentModulePluginDependencyValidatorTest {
         module("owner.content", allowedMissingPluginIds = listOf("dep.plugin"))
       },
     )
-    val model = testGenerationModel(graph).copy(
+    val model = testGenerationModel(graph, owner = owner).copy(
       dslTestPluginsByProduct = mapOf("TestProduct" to listOf(spec))
     )
     val errors = runValidationRule(
@@ -218,7 +226,7 @@ class ContentModulePluginDependencyValidatorTest {
     val plan = contentModulePlan(
       moduleName = "shared.content",
       writtenPluginDependencies = emptyList(),
-      allJpsPluginDependencies = setOf(PluginId("dep.plugin")),
+      requiredPluginDependencies = setOf(PluginId("dep.plugin")),
     )
 
     val spec = TestPluginSpec(
@@ -229,7 +237,7 @@ class ContentModulePluginDependencyValidatorTest {
         module("shared.content", allowedMissingPluginIds = listOf("dep.plugin"))
       },
     )
-    val model = testGenerationModel(graph).copy(
+    val model = testGenerationModel(graph, owner = owner).copy(
       dslTestPluginsByProduct = mapOf("TestProduct" to listOf(spec))
     )
     val errors = runValidationRule(
@@ -256,7 +264,7 @@ class ContentModulePluginDependencyValidatorTest {
     val plan = contentModulePlan(
       moduleName = "intellij.platform.testFramework",
       writtenPluginDependencies = emptyList(),
-      allJpsPluginDependencies = setOf(PluginId("dep.plugin")),
+      requiredPluginDependencies = setOf(PluginId("dep.plugin")),
     )
 
     val sharedSet = moduleSet("testFrameworks") {
@@ -287,7 +295,7 @@ class ContentModulePluginDependencyValidatorTest {
       """.trimIndent() + "\n"
     )
 
-    val baseModel = testGenerationModel(graph)
+    val baseModel = testGenerationModel(graph, owner = owner)
     val model = baseModel.copy(
       projectRoot = tempDir,
       discovery = baseModel.discovery.copy(
@@ -330,14 +338,14 @@ class ContentModulePluginDependencyValidatorTest {
     val plan = contentModulePlan(
       moduleName = "owner.content",
       writtenPluginDependencies = emptyList(),
-      allJpsPluginDependencies = setOf(PluginId("dep.plugin")),
+      requiredPluginDependencies = setOf(PluginId("dep.plugin")),
       suppressedPlugins = setOf(PluginId("dep.plugin")),
     )
 
     val model = testGenerationModel(
       pluginGraph = graph,
       updateSuppressions = true,
-      suppressionConfigPath = Path.of("platform/buildScripts/suppressions.json"),
+      suppressionConfigPath = Path.of("platform/buildScripts/suppressions.json"), owner = owner,
     )
     val errors = runValidationRule(
       ContentModulePluginDependencyValidator,
@@ -351,7 +359,7 @@ class ContentModulePluginDependencyValidatorTest {
   private fun contentModulePlan(
     moduleName: String,
     writtenPluginDependencies: List<PluginId>,
-    allJpsPluginDependencies: Set<PluginId>,
+    requiredPluginDependencies: Set<PluginId>,
     suppressedPlugins: Set<PluginId> = emptySet(),
   ): ContentModuleDependencyPlan {
     return ContentModuleDependencyPlan(
@@ -365,7 +373,7 @@ class ContentModulePluginDependencyValidatorTest {
       existingXmlPluginDependencies = emptySet(),
       preserveExistingPluginDependencies = writtenPluginDependencies.toSet(),
       writtenPluginDependencies = writtenPluginDependencies,
-      allJpsPluginDependencies = allJpsPluginDependencies,
+      requiredPluginDependencies = requiredPluginDependencies,
       suppressedModules = emptySet(),
       suppressedPlugins = suppressedPlugins,
       suppressionUsages = emptyList(),

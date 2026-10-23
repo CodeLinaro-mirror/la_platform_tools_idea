@@ -39,7 +39,6 @@ internal class PluginDependenciesTest {
 
   private val rootPath get() = inMemoryFs.fs.getPath("/")
   private val pluginDirPath get() = rootPath.resolve("plugin")
-  private var loadingErrors: List<PluginLoadingError> = emptyList()
 
   @Test
   fun `plugin is loaded when depends dependency is resolved`() {
@@ -95,8 +94,8 @@ internal class PluginDependenciesTest {
     val bar = pluginSet.findEnabledPlugin(PluginId.getId("bar")) as PluginMainDescriptor
     val fooDescriptor = bar.dependencies.first { it.pluginId == PluginId.getId("foo") }.subDescriptor!!
     val bazDescriptor = bar.dependencies.first { it.pluginId == PluginId.getId("baz") }.subDescriptor!!
-    assertThat(fooDescriptor.isMarkedForLoading).isTrue
-    assertThat(bazDescriptor.isMarkedForLoading).isFalse
+    assertThat(fooDescriptor.isLoaded).isTrue
+    assertThat(bazDescriptor.isLoaded).isFalse
   }
 
   @Test
@@ -185,7 +184,7 @@ internal class PluginDependenciesTest {
     }.installAt(pluginDirPath)
     val result = buildPluginSet()
     assertThat(result).doesNotHaveEnabledPlugins()
-    assertFirstErrorContains("sample.plugin", "requires plugin", "unknown")
+    assertThat(result.getRootExclusionReason("sample.plugin")).isInstanceOf(DependencyIsNotResolved::class.java)
   }
   
   @Test
@@ -203,7 +202,7 @@ internal class PluginDependenciesTest {
     }.installAt(pluginDirPath)
     val result = buildPluginSet(disabledPluginIds = arrayOf("bar"))
     assertThat(result).doesNotHaveEnabledPlugins()
-    assertFirstErrorContains("sample.plugin", "requires plugin", "bar")
+    assertThat(result.getRootExclusionReason("sample.plugin")).isInstanceOf(PluginIsMarkedDisabled::class.java)
     assertNonOptionalDependenciesIds(result, "sample.plugin", "bar")
   }
   
@@ -222,7 +221,7 @@ internal class PluginDependenciesTest {
     }.installAt(pluginDirPath)
     val result = buildPluginSet(disabledPluginIds = arrayOf("bar-plugin"))
     assertThat(result).doesNotHaveEnabledPlugins()
-    assertFirstErrorContains("sample.plugin", "requires plugin", "bar-plugin"/*, "to be enabled"*/) //todo fix not loading reason
+    assertThat(result.getRootExclusionReason("sample.plugin")).isInstanceOf(PluginIsMarkedDisabled::class.java)
     assertNonOptionalDependenciesIds(result, "sample.plugin", "bar-plugin")
   }
 
@@ -235,11 +234,6 @@ internal class PluginDependenciesTest {
       FileVisitResult.CONTINUE
     }
     assertThat(actualDependencies).containsExactlyInAnyOrder(*dependencyPluginId)
-  }
-
-  private fun assertFirstErrorContains(vararg messagePart: String) {
-    assertThat(loadingErrors).isNotEmpty
-    assertThat(loadingErrors.first().htmlMessage.toString()).contains(*messagePart)
   }
 
   @Test
@@ -301,8 +295,8 @@ internal class PluginDependenciesTest {
         }
       }
     }.installAt(pluginDirPath)
-    buildPluginSet()
-    assertFirstErrorContains("requires plugin", "unresolved")
+    val result = buildPluginSet()
+    assertThat(result.getRootExclusionReason(PluginManagerCore.CORE_PLUGIN_ID)).isInstanceOf(DependencyIsNotResolved::class.java)
   }
 
   @Test
@@ -423,7 +417,7 @@ internal class PluginDependenciesTest {
     `foo module-dependency bar`()
     val pluginSet = buildPluginSet(disabledPluginIds = arrayOf("bar-plugin"))
     assertThat(pluginSet).doesNotHaveEnabledPlugins()
-    assertFirstErrorContains("foo", "requires plugin", "bar-plugin", "to be enabled")
+    assertThat(pluginSet.getRootExclusionReason("foo")).isInstanceOf(PluginIsMarkedDisabled::class.java)
   }
   
   @Test
@@ -432,7 +426,9 @@ internal class PluginDependenciesTest {
     `foo module-dependency bar`()
     val pluginSet = buildPluginSet(expiredPluginIds = arrayOf("bar-plugin"))
     assertThat(pluginSet).doesNotHaveEnabledPlugins()
-    assertFirstErrorContains("foo", "depends", "bar-plugin", "failed to load")
+    val exclusion = pluginSet.getRootExclusionReason("foo")
+    assertThat(exclusion).isInstanceOf(ProductRulesImposedExclusion::class.java)
+    assertThat((exclusion as ProductRulesImposedExclusion).productReason).isInstanceOf(PluginHasExpiredLicense::class.java)
   }
   
   @Test
@@ -440,7 +436,7 @@ internal class PluginDependenciesTest {
     `foo module-dependency bar`()
     val pluginSet = buildPluginSet()
     assertThat(pluginSet).doesNotHaveEnabledPlugins()
-    assertFirstErrorContains("foo", "requires plugin", "bar", "to be installed")
+    assertThat(pluginSet.getRootExclusionReason("foo")).isInstanceOf(DependencyIsNotResolved::class.java)
   }
 
   @Test
@@ -870,7 +866,7 @@ internal class PluginDependenciesTest {
         .build()
 
       val foo = pluginSet.getEnabledPlugin("foo")
-      assertThat(pluginSet.resolvedPluginSet?.getDirectResolvedDependencies(foo)).doesNotContain(foo)
+      assertThat(pluginSet.resolvedPluginSet.getDirectResolvedDependencies(foo)).doesNotContain(foo)
     }
 
     @Test
@@ -1075,7 +1071,7 @@ internal class PluginDependenciesTest {
       plugin("cwm.provider") {
         pluginAlias("com.jetbrains.codeWithMe")
         content(namespace = "jetbrains") {
-          module("intellij.cwm") { packagePrefix = "com.intellij.cwm"; moduleVisibility = ModuleVisibilityValue.PUBLIC }
+          module("intellij.remoteDevelopment.plugin") { packagePrefix = "com.intellij.cwm"; moduleVisibility = ModuleVisibilityValue.PUBLIC }
         }
       }.installAt(pluginDirPath)
 
@@ -1113,7 +1109,7 @@ internal class PluginDependenciesTest {
         pluginSet.getEnabledPlugin("json.provider"),
         pluginSet.getEnabledModule("intellij.java.backend"),
         pluginSet.getEnabledModule("intellij.rider"),
-        pluginSet.getEnabledModule("intellij.cwm"),
+        pluginSet.getEnabledModule("intellij.remoteDevelopment.plugin"),
         pluginSet.getEnabledModule("intellij.rider.plugins.cwm"),
         pluginSet.getEnabledModule("intellij.json.backend"),
       )
@@ -1309,7 +1305,7 @@ internal class PluginDependenciesTest {
 
       plugin("cwm.module.provider") {
         content(namespace = "jetbrains") {
-          module("intellij.cwm") { packagePrefix = "com.intellij.cwm"; moduleVisibility = ModuleVisibilityValue.PUBLIC }
+          module("intellij.remoteDevelopment.plugin") { packagePrefix = "com.intellij.cwm"; moduleVisibility = ModuleVisibilityValue.PUBLIC }
         }
       }.installAt(pluginDirPath)
 
@@ -1321,7 +1317,7 @@ internal class PluginDependenciesTest {
       val consumer = pluginSet.getEnabledPlugin("consumer")
       assertThat(consumer).hasExactDirectParentClassloaders(
         pluginSet.getEnabledPlugin("cwm.alias.provider"),
-        pluginSet.getEnabledModule("intellij.cwm"),
+        pluginSet.getEnabledModule("intellij.remoteDevelopment.plugin"),
       )
     }
 
@@ -1569,11 +1565,15 @@ internal class PluginDependenciesTest {
   }.installAt(pluginDirPath)
 
   private fun buildPluginSet(expiredPluginIds: Array<String> = emptyArray(), disabledPluginIds: Array<String> = emptyArray()): PluginSet {
-    val state = PluginSetTestBuilder.fromPath(pluginDirPath)
+    return PluginSetTestBuilder.fromPath(pluginDirPath)
       .withExpiredPlugins(*expiredPluginIds)
       .withDisabledPlugins(*disabledPluginIds)
-      .buildState()
-    loadingErrors = state.loadingErrors
-    return state.pluginSet
+      .build()
+  }
+
+  private fun PluginSet.getRootExclusionReason(pluginId: String): DescriptorExclusionReason? {
+    val plugin = resolvedPluginSet.candidateSet.resolvePluginId(PluginId(pluginId)) ?: return null
+    val rootCauseDescriptor = plugin.sequenceDescriptorExclusionChain { resolvedPluginSet.getExclusionReason(it) }.last()
+    return resolvedPluginSet.getExclusionReason(rootCauseDescriptor)
   }
 }

@@ -12,8 +12,9 @@ import com.intellij.openapi.ide.CopyPasteManager;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
-import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.StandardFileSystems;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.platform.ide.productMode.IdeProductMode;
 import com.intellij.psi.PsiDirectory;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFileSystemItem;
@@ -52,7 +53,7 @@ public final class FileListPasteProvider implements PasteProvider {
 
     final List<PsiElement> elements = new ArrayList<>();
     for (File file : fileList) {
-      final VirtualFile vFile = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(file);
+      final VirtualFile vFile = StandardFileSystems.local().refreshAndFindFileByPath(file.getAbsolutePath());
       PsiFileSystemItem item = PsiUtilCore.findFileSystemItem(project, vFile);
       if (item != null) {
         elements.add(item);
@@ -66,7 +67,7 @@ public final class FileListPasteProvider implements PasteProvider {
     if (dir != null) {
       final boolean move = LinuxDragAndDropSupport.isMoveOperation(contents);
       if (move) {
-        if (DumbService.isDumb(project) &&
+        if (DumbService.isDumb(project) && !IdeProductMode.isLight() &&
             Messages.showYesNoDialog(project, RefactoringBundle.message("move.handler.is.dumb.during.indexing"),
                                      RefactoringBundle.message("move.title"), Messages.getQuestionIcon()) != Messages.YES) {
           return;

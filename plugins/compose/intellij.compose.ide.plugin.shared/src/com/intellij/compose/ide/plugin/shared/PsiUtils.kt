@@ -15,6 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+@file:ApiStatus.Internal
 package com.intellij.compose.ide.plugin.shared
 
 import com.intellij.openapi.module.Module
@@ -29,17 +30,23 @@ import com.intellij.psi.util.CachedValuesManager
 import com.intellij.util.concurrency.annotations.RequiresReadLock
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.analyze
+import org.jetbrains.kotlin.analysis.api.components.resolveToCall
+import org.jetbrains.kotlin.analysis.api.components.returnType
 import org.jetbrains.kotlin.analysis.api.permissions.KaAllowAnalysisOnEdt
 import org.jetbrains.kotlin.analysis.api.permissions.allowAnalysisOnEdt
 import org.jetbrains.kotlin.analysis.api.resolution.KaCallableMemberCall
 import org.jetbrains.kotlin.analysis.api.resolution.calls
 import org.jetbrains.kotlin.analysis.api.resolution.singleConstructorCallOrNull
+import org.jetbrains.kotlin.analysis.api.resolution.singleFunctionCallOrNull
 import org.jetbrains.kotlin.analysis.api.resolution.symbol
+import org.jetbrains.kotlin.name.CallableId
+import org.jetbrains.kotlin.analysis.api.session.analyze
+import org.jetbrains.kotlin.analysis.api.types.expandedSymbol
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.psi.KtAnnotated
 import org.jetbrains.kotlin.psi.KtAnnotationEntry
+import org.jetbrains.kotlin.psi.KtCallExpression
 import org.jetbrains.kotlin.psi.KtCallableDeclaration
 import org.jetbrains.kotlin.psi.KtDeclaration
 import org.jetbrains.kotlin.psi.KtElement
@@ -53,8 +60,7 @@ import org.jetbrains.kotlin.psi.KtValueArgumentList
  * @param element The [PsiElement] element to check.
  * @return true if the element is in a library source; false otherwise.
  */
-@ApiStatus.Internal
-@RequiresReadLock
+@RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
 fun isElementInLibrarySource(element: PsiElement): Boolean {
   val virtualFile = element.containingFile.virtualFile ?: return false
 
@@ -69,19 +75,18 @@ fun isElementInLibrarySource(element: PsiElement): Boolean {
  * @param element - the [PsiElement] for which the module should be evaluated.
  * @return true if the Compose annotation class is found in the module's classpath; false otherwise.
  */
-@ApiStatus.Internal
 fun isComposeEnabledForElementModule(element: PsiElement): Boolean {
   val module = ModuleUtilCore.findModuleForPsiElement(element) ?: return false
   return isComposeEnabledInModule(module)
 }
 
-internal fun PsiElement.isComposableFunction(): Boolean =
+fun PsiElement.isComposableFunction(): Boolean =
   this is KtNamedFunction && this.hasComposableAnnotation()
 
-internal fun KtAnnotated.hasComposableAnnotation(): Boolean =
+fun KtAnnotated.hasComposableAnnotation(): Boolean =
   this.getAnnotationWithCaching(COMPOSABLE_FUNCTION_KEY) { it.isComposableAnnotation() } != null
 
-internal val PsiElement.module: Module?
+val PsiElement.module: Module?
   get() = ModuleUtilCore.findModuleForPsiElement(this)
 
 private val COMPOSABLE_FUNCTION_KEY: Key<CachedValue<KtAnnotationEntry?>> =
@@ -96,16 +101,17 @@ private fun KtAnnotated.getAnnotationWithCaching(
   CachedValueProvider.Result.create(annotationEntry, containingKtFile, ProjectRootModificationTracker.getInstance(project))
 }
 
-internal fun KtAnnotationEntry.isComposableAnnotation(): Boolean = analyze(this) {
+fun KtAnnotationEntry.isComposableAnnotation(): Boolean = analyze(this) {
   classIdMatches(this@isComposableAnnotation, COMPOSABLE_ANNOTATION_CLASS_ID)
 }
 
-internal fun KtAnnotationEntry.isPreviewParameterAnnotation(): Boolean = analyze(this) {
+fun KtAnnotationEntry.isPreviewParameterAnnotation(): Boolean = analyze(this) {
   classIdMatches(this@isPreviewParameterAnnotation, MULTIPLATFORM_PREVIEW_PARAMETER_CLASS_ID) ||
   classIdMatches(this@isPreviewParameterAnnotation, JETPACK_PREVIEW_PARAMETER_CLASS_ID)
 }
 
-internal fun KaSession.classIdMatches(element: KtAnnotationEntry, classId: ClassId): Boolean {
+context(session: KaSession)
+fun classIdMatches(element: KtAnnotationEntry, classId: ClassId): Boolean {
   val shortName = element.shortName ?: return false
   if (classId.shortClassName != shortName) return false
 
@@ -113,19 +119,19 @@ internal fun KaSession.classIdMatches(element: KtAnnotationEntry, classId: Class
   return classId == elementClassId
 }
 
-internal fun KtDeclaration.returnTypeFqName(): FqName? =
+fun KtDeclaration.returnTypeFqName(): FqName? =
     if (this !is KtCallableDeclaration) null
     else analyze(this) { this@returnTypeFqName.returnType.expandedSymbol?.classId?.asSingleFqName() }
 
 @OptIn(KaAllowAnalysisOnEdt::class)
-internal fun KtElement.callReturnTypeFqName(): FqName? = allowAnalysisOnEdt {
+fun KtElement.callReturnTypeFqName(): FqName? = allowAnalysisOnEdt {
   analyze(this) {
     val call = resolveToCall()?.calls?.firstOrNull() as? KaCallableMemberCall<*, *>
     call?.let { it.symbol.returnType.expandedSymbol?.classId?.asSingleFqName() }
   }
 }
 
-internal fun KtValueArgument.matchingParamTypeFqName(callee: KtNamedFunction): FqName? {
+fun KtValueArgument.matchingParamTypeFqName(callee: KtNamedFunction): FqName? {
   return if (isNamed()) {
     val argumentName = getArgumentName()!!.asName.asString()
     val matchingParam = callee.valueParameters.find { it.name == argumentName } ?: return null
@@ -135,4 +141,11 @@ internal fun KtValueArgument.matchingParamTypeFqName(callee: KtNamedFunction): F
     val paramAtIndex = callee.valueParameters.getOrNull(argumentIndex) ?: return null
     paramAtIndex.returnTypeFqName()
   }
+}
+
+fun KtCallExpression.isCallTo(callableId: CallableId): Boolean = analyze(this) {
+  resolveToCall()
+    ?.singleFunctionCallOrNull()
+    ?.symbol
+    ?.callableId == callableId
 }

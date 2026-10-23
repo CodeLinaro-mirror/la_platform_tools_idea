@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.groovy.copyright` start
+content_module_jar(module = ":copyright")
+### auto-generated section `dev intellij.groovy.copyright` end
 
 ### auto-generated section `build intellij.groovy.copyright` start
-
 jvm_library(
     name = "copyright",
     srcs = glob(
@@ -58,6 +62,7 @@ jvm_library(
 exports_files(
     [
         "intellij.groovy.copyright.iml",
+        "resources/intellij.groovy.copyright.xml",
     ],
     visibility = ["//visibility:public"],
 )

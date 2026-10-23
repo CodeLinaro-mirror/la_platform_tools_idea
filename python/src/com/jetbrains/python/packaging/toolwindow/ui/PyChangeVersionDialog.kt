@@ -3,8 +3,7 @@ package com.jetbrains.python.packaging.toolwindow.ui
 
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.project.Project
-import com.intellij.python.processOutput.common.ProcessOutputQuery
-import com.intellij.python.processOutput.common.sendProcessOutputQuery
+import com.intellij.python.processOutput.common.ProcessOutputTopic
 import com.intellij.ui.awt.RelativePoint
 import com.intellij.util.ui.EmptyIcon
 import com.jetbrains.python.PyBundle.message
@@ -32,15 +31,14 @@ internal fun showChangeVersionPopup(
     items = versions,
     iconFor = { v -> if (v == currentVersion) AllIcons.Actions.Checked else emptyCheck },
   ) { selectedValue ->
-    val specification = details.toPackageSpecification(selectedValue)
-    if (specification == null) {
-      val trace = TraceContext(message("python.packaging.change.version.dialog.title"), null)
-      PyPackageCoroutine.launch(project, Dispatchers.IO) {
-        sendProcessOutputQuery(ProcessOutputQuery.OpenToolWindowByTraceUuid(trace.uuid.toString()))
-      }
-      return@buildVersionChooserPopup
-    }
     PyPackageCoroutine.launch(project, Dispatchers.IO) {
+      val specification = details.toPackageSpecification(selectedValue)
+      if (specification == null) {
+        val trace = TraceContext(message("python.packaging.change.version.dialog.title"), null)
+        ProcessOutputTopic.sendOpenToolWindowByTraceUuidEvent(trace.uuid)
+        return@launch
+      }
+
       PyPackagingToolWindowService.getInstance(project)
         .installPackage(specification.toInstallRequest(), workspaceMember = scope.workspaceMember, dependencyGroup = scope.dependencyGroup)
     }

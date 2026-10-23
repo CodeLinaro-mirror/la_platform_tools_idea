@@ -3,7 +3,6 @@
 
 package com.intellij.grazie.ide.language
 
-import ai.grazie.spell.GrazieSplittingSpeller
 import com.intellij.grazie.GrazieConfig
 import com.intellij.grazie.GrazieTestBase
 import com.intellij.grazie.jlanguage.Lang
@@ -12,11 +11,8 @@ import com.intellij.grazie.text.TextContent
 import com.intellij.grazie.text.TextContentTest
 import com.intellij.grazie.text.TextExtractor
 import com.intellij.grazie.utils.TextStyleDomain
-import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.spellchecker.ProjectDictionaryLayer
-import com.intellij.spellchecker.SpellCheckerManager
-import com.intellij.spellchecker.dictionary.Loader
 import com.intellij.spellchecker.settings.SpellCheckerSettings
 import com.intellij.testFramework.DumbModeTestUtils.runInDumbModeSynchronously
 import com.intellij.testFramework.LightProjectDescriptor
@@ -26,7 +22,6 @@ import com.intellij.testFramework.fixtures.impl.CodeInsightTestFixtureImpl
 import com.intellij.tools.ide.metrics.benchmark.Benchmark
 import org.junit.Assert.assertArrayEquals
 import org.junit.jupiter.api.assertDoesNotThrow
-import java.util.function.Consumer
 
 
 class JavaSupportTest : GrazieTestBase() {
@@ -72,6 +67,15 @@ class JavaSupportTest : GrazieTestBase() {
               var value1 = ""${'"'}
                       wrong object class\nexpected 1\nactual: 2""${'"'};
           }
+      }
+    """.trimIndent())
+    myFixture.checkHighlighting()
+  }
+
+  fun `test escaped backslash before text`() {
+    myFixture.configureByText("a.java", """
+      class Repro {
+        String path = "C:\\transform-templates";
       }
     """.trimIndent())
     myFixture.checkHighlighting()
@@ -241,32 +245,46 @@ class JavaSupportTest : GrazieTestBase() {
     }
     SpellCheckerSettings.getInstance(project).isUseSingleDictionaryToSave = true
 
-    myFixture.configureByText("a.java", "// <TYPO descr=\"Typo: In word 'Qdrant'\">Qdra<caret>nt</TYPO>")
+    myFixture.configureByText("a.java", "// <TYPO descr=\"Typo: In word 'Blahblahwordish'\">Blahblahword<caret>ish</TYPO>")
     myFixture.checkHighlighting()
-    val intention = myFixture.findSingleIntention("Save 'Qdrant' to dictionary")
+    val intention = myFixture.findSingleIntention("Save 'Blahblahwordish' to dictionary")
     myFixture.launchAction(intention)
-    myFixture.configureByText("a.java", "// Qdrant")
+    myFixture.configureByText("a.java", "// Blahblahwordish")
     myFixture.checkHighlighting()
   }
 
-  fun `test capitalized and uppercases words are not treated as typo if lowercase version is in the custom dictionary`() {
-    SpellCheckerManager.getInstance(project).spellChecker!!.loadDictionary(object: Loader {
-      override fun load(consumer: Consumer<String>) {
-        consumer.accept("wexwex")
-      }
-      override fun getName(): String = "TestLoader"
-    })
-
+  fun `test capitalized and uppercases words are not treated as typo if lowercase version is saved to a dictionary`() {
+    saveWord("wexwex")
     myFixture.configureByText("a.java", "// wexwex, Wexwex, WEXWEX")
     myFixture.checkHighlighting()
   }
 
+  fun `test capitalized and uppercases words are not treated as typo if capitalized version is saved to a dictionary`() {
+    saveWord("Wexwex")
+    myFixture.configureByText("a.java", "// wexwex, Wexwex, WEXWEX")
+    myFixture.checkHighlighting()
+  }
+
+  fun `test capitalized and uppercases words are treated as typo if mixed case version is saved to a dictionary`() {
+    saveWord("WexWex")
+    myFixture.configureByText("a.java",
+      """
+        // <TYPO descr="Typo: In word 'wexwex'">wexwex</TYPO> 
+        // <TYPO descr="Typo: In word 'wexWex'">wexWex</TYPO> 
+        // <TYPO descr="Typo: In word 'Wexwex'">Wexwex</TYPO> 
+        // <TYPO descr="Typo: In word 'WEXWEX'">WEXWEX</TYPO>
+        // WexWex
+      """.trimIndent()
+    )
+    myFixture.checkHighlighting()
+  }
+
   fun `test mixed words can be added via SaveTo action`() {
-    assertTrue(getSpeller(project).isMisspelled("typppoStatusChanged"))
+    assertTrue(GrazieSpellCheckerEngine.getInstance(project).getSpeller()!!.isMisspelled("typppoStatusChanged"))
     myFixture.configureByText("a.java", "// <TYPO descr=\"Typo: In word 'typppoStatusChanged'\">typppoStatusChanged</TYPO>")
     myFixture.checkHighlighting()
 
-    SpellCheckerManager.getInstance(project).acceptWordAsCorrect("typppoStatusChanged", project)
+    saveWord("typppoStatusChanged")
     myFixture.configureByText("a.java", "// typppoStatusChanged")
     myFixture.checkHighlighting()
   }
@@ -298,6 +316,7 @@ class JavaSupportTest : GrazieTestBase() {
       // It is a SCORN with no grade. It is a SCORM with no grade.
       // It is an ECO summit. It is an ECS summit.
       // It is an ISS mission. It is an ISSA mission.
+      // Sending an Sms. Sending an sms. Sending an SMS.
       """.trimIndent()
     )
     myFixture.checkHighlighting()
@@ -372,6 +391,15 @@ class JavaSupportTest : GrazieTestBase() {
     runHighlightTestForFile("ide/language/java/Mixed.java")
   }
 
+  fun `test spellchecking does not produce NoSuchMethodError`() {
+    myFixture.configureByText("a.java", """
+     // A little bit more text to sound like English. 
+     // It's a <GRAMMAR_ERROR descr="Grazie.RuleEngine.En.Spelling.MISPLACED_SPACE">grea tbig</GRAMMAR_ERROR> adventure.
+    """.trimIndent())
+    assertDoesNotThrow {
+      myFixture.checkHighlighting()
+    }
+  }
 
   private fun doTest(beforeText: String, afterText: String, hint: String) {
     myFixture.configureByText("a.java", beforeText)
@@ -379,13 +407,5 @@ class JavaSupportTest : GrazieTestBase() {
     assertNotNull(intentionAction)
     myFixture.launchAction(intentionAction)
     myFixture.checkResult(afterText)
-  }
-
-  private fun getSpeller(project: Project): GrazieSplittingSpeller {
-    val speller = GrazieSpellCheckerEngine.getInstance(project).getSpeller()
-    if (speller == null) {
-      fail("`GrazieSplittingSpeller` should be initialized")
-    }
-    return speller as GrazieSplittingSpeller
   }
 }

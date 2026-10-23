@@ -4,11 +4,14 @@ package com.intellij.ide.ui.laf.darcula.ui;
 import com.intellij.ide.ui.laf.LookAndFeelThemeAdapter;
 import com.intellij.ide.ui.laf.darcula.DarculaUIUtil;
 import com.intellij.ui.ComponentUtil;
+import com.intellij.ui.DrawUtil;
+import com.intellij.ui.ExperimentalUI;
+import com.intellij.ui.paint.PaintUtil;
 import com.intellij.ui.scale.JBUIScale;
+import com.intellij.util.concurrency.ThreadingAssertions;
 import com.intellij.util.ui.EmptyIcon;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.LafIconLookup;
-import com.intellij.util.ui.MacUIUtil;
 import com.intellij.util.ui.ThreeStateCheckBox;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
@@ -25,7 +28,6 @@ import java.awt.Dimension;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
-import java.awt.RenderingHints;
 import java.awt.geom.Path2D;
 import java.awt.geom.RoundRectangle2D;
 import java.beans.PropertyChangeListener;
@@ -48,6 +50,8 @@ public class DarculaCheckBoxUI extends MetalCheckBoxUI {
 
   @Override
   public void installUI(JComponent c) {
+    ThreadingAssertions.softAssertAwtOperationsThread();
+
     super.installUI(c);
     if (ComponentUtil.getParentOfType(CellRendererPane.class, c) != null) {
       c.setBorder(null);
@@ -108,8 +112,7 @@ public class DarculaCheckBoxUI extends MetalCheckBoxUI {
   }
 
   protected void drawCheckIcon(JComponent c, Graphics2D g, AbstractButton b, Rectangle iconRect, boolean selected, boolean enabled) {
-    Graphics2D g2 = (Graphics2D)g.create();
-    try {
+    PaintUtil.useCopy(g, g2 -> {
       String iconName = isIndeterminate(b) ? "checkBoxIndeterminate" : "checkBox";
 
       DarculaUIUtil.Outline op = DarculaUIUtil.getOutline(b);
@@ -120,22 +123,27 @@ public class DarculaCheckBoxUI extends MetalCheckBoxUI {
       if (op != null) {
         op.setGraphicsColor(g2, b.hasFocus());
         Path2D outline = new Path2D.Float(Path2D.WIND_EVEN_ODD);
-        outline.append(new RoundRectangle2D.Float(iconRect.x + JBUIScale.scale(3), iconRect.y + JBUIScale.scale(3),
-                                                  JBUIScale.scale(18), JBUIScale.scale(18),
-                                                  JBUIScale.scale(8), JBUIScale.scale(8)), false);
-        outline.append(new RoundRectangle2D.Float(iconRect.x + JBUIScale.scale(5),  iconRect.y + JBUIScale.scale(5),
-                                                  JBUIScale.scale(14), JBUIScale.scale(14),
-                                                  JBUIScale.scale(4), JBUIScale.scale(4)), false);
+        if (ExperimentalUI.isNewUI()) {
+          outline.append(new RoundRectangle2D.Float(iconRect.x + JBUIScale.scale(3), iconRect.y + JBUIScale.scale(3),
+                                                    JBUIScale.scale(18), JBUIScale.scale(18),
+                                                    JBUIScale.scale(8), JBUIScale.scale(8)), false);
+          outline.append(new RoundRectangle2D.Float(iconRect.x + JBUIScale.scale(5), iconRect.y + JBUIScale.scale(5),
+                                                    JBUIScale.scale(14), JBUIScale.scale(14),
+                                                    JBUIScale.scale(4), JBUIScale.scale(4)), false);
+        }
+        else {
+          outline.append(new RoundRectangle2D.Float(iconRect.x + JBUIScale.scale(1), iconRect.y,
+                                                    JBUIScale.scale(17), JBUIScale.scale(17),
+                                                    JBUIScale.scale(8), JBUIScale.scale(8)), false);
+          outline.append(new RoundRectangle2D.Float(iconRect.x + JBUIScale.scale(4), iconRect.y + JBUIScale.scale(3),
+                                                    JBUIScale.scale(12), JBUIScale.scale(12),
+                                                    JBUIScale.scale(3), JBUIScale.scale(3)), false);
+        }
 
-        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g2.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL,
-                            MacUIUtil.USE_QUARTZ ? RenderingHints.VALUE_STROKE_PURE : RenderingHints.VALUE_STROKE_NORMALIZE);
+        DrawUtil.setupRenderingHints(g2);
         g2.fill(outline);
       }
-    }
-    finally {
-      g2.dispose();
-    }
+    });
   }
 
   protected int getMnemonicIndex(AbstractButton b) {

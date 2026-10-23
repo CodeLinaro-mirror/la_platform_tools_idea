@@ -21,7 +21,7 @@ import com.intellij.openapi.module.ModuleUtilCore;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.ModuleRootManager;
 import com.intellij.openapi.roots.ModuleRootModificationUtil;
-import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.StandardFileSystems;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.project.IntelliJProjectConfiguration;
 import com.intellij.psi.JavaPsiFacade;
@@ -70,7 +70,10 @@ public abstract class BaseConfigurationTestCase extends JavaProjectTestCase {
   }
 
   protected void createModule(VirtualFile module1Content, boolean addSource) {
-    createModule(module1Content, addSource, "JUnit4");
+    createModule(module1Content,
+                 addSource,
+                 "JUnit4",
+                 IntelliJProjectConfiguration.getModuleLibrary("intellij.libraries.junit4", "JUnit4"));
   }
 
   protected void createModule(VirtualFile module1Content,
@@ -129,7 +132,7 @@ public abstract class BaseConfigurationTestCase extends JavaProjectTestCase {
 
   protected VirtualFile findFile(String path) {
     String filePath = getTestDataPath() + File.separatorChar + "configuration" + File.separatorChar + path;
-    return LocalFileSystem.getInstance().findFileByPath(filePath.replace(File.separatorChar, '/'));
+    return StandardFileSystems.local().findFileByPath(filePath.replace(File.separatorChar, '/'));
   }
 
   protected void disposeModule(Module module) {

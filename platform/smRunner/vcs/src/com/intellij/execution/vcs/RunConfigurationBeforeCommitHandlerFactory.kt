@@ -25,7 +25,6 @@ import com.intellij.execution.testframework.sm.runner.SMTestProxy
 import com.intellij.execution.testframework.sm.runner.ui.SMTRunnerConsoleView
 import com.intellij.execution.testframework.sm.runner.ui.SMTestRunnerResultsForm
 import com.intellij.execution.testframework.sm.runner.ui.TestResultsViewer
-import com.intellij.execution.ui.ConsoleViewWithDelegate
 import com.intellij.execution.ui.ExecutionConsole
 import com.intellij.execution.ui.RunContentDescriptor
 import com.intellij.execution.ui.unwrapDelegate
@@ -57,7 +56,7 @@ import com.intellij.openapi.vcs.checkin.CommitCheck
 import com.intellij.openapi.vcs.checkin.CommitInfo
 import com.intellij.openapi.vcs.checkin.CommitProblem
 import com.intellij.openapi.vcs.ui.RefreshableOnComponent
-import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.vfs.StandardFileSystems
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.platform.util.progress.RawProgressReporter
 import com.intellij.platform.util.progress.forEachWithProgress
@@ -79,7 +78,7 @@ private val LOG = logger<RunConfigurationBeforeCommitHandlerFactory>()
 
 @Service(Service.Level.PROJECT)
 @State(name = "TestsVcsConfig", storages = [Storage(StoragePathMacros.PRODUCT_WORKSPACE_FILE)])
-private class VcsRunConfigurationBeforeCommitConfig : PersistentStateComponent<VcsRunConfigurationBeforeCommitConfig.MyState> {
+internal class VcsRunConfigurationBeforeCommitConfig : PersistentStateComponent<VcsRunConfigurationBeforeCommitConfig.MyState> {
   class MyState {
     var enabled = false
     var configuration: ConfigurationBean? = null
@@ -335,6 +334,6 @@ private data class TestResultsFormDescriptor(val rootNode: SMTestProxy.SMRootTes
 
 internal fun getHistoryFile(project: Project, fileName: String): Pair<String, VirtualFile?> {
   val path = "${TestStateStorage.getTestHistoryRoot(project).path}/$fileName.xml"
-  val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByPath(path)
+  val virtualFile = StandardFileSystems.local().refreshAndFindFileByPath(path)
   return Pair(path, virtualFile)
 }

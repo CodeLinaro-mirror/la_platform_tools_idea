@@ -23,6 +23,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.impl.ProjectManagerImpl
 import com.intellij.openapi.project.impl.applyBoundsOrDefault
 import com.intellij.openapi.project.impl.createIdeFrame
+import com.intellij.openapi.project.impl.getOrCreateIdeFrameDeferred
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.SystemInfoRt
 import com.intellij.openapi.wm.IdeFocusManager
@@ -62,7 +63,7 @@ import java.awt.Dimension
 import javax.swing.JComponent
 import javax.swing.JFrame
 
-@RequiresEdt
+@RequiresEdt(generateAssertion = false /* IJPL-115548 */)
 internal fun allocateLightEditFrame(project: Project, frameInfo: FrameInfo?): LightEditFrameWrapper {
   return runWithModalProgressBlocking(ModalTaskOwner.guess(), "") {
     withContext(Dispatchers.UiWithModelAccess) {
@@ -185,6 +186,7 @@ private suspend fun allocateLightEditFrame(project: Project,
       setupFor(project)
     }
     windowManager.assignFrame(frameHelper, project, false)
+    project.getOrCreateIdeFrameDeferred().complete(frameHelper)
     return frameHelper
   }
 
@@ -226,6 +228,7 @@ private suspend fun allocateLightEditFrame(project: Project,
 
   frame.setupFor(project)
   windowManager.assignFrame(frame, project, false)
+  project.getOrCreateIdeFrameDeferred().complete(frame)
 
   val uiFrame = frame.frame
   if (frameInfo != null) {

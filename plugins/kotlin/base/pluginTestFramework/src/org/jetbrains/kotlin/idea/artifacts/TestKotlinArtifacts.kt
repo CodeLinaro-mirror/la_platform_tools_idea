@@ -21,6 +21,7 @@ import org.jetbrains.jps.model.serialization.JpsMavenSettings
 import org.jetbrains.kotlin.idea.base.plugin.artifacts.KotlinArtifactConstants
 import org.jetbrains.kotlin.konan.target.HostManager
 import org.jetbrains.kotlin.konan.target.TargetSupportException
+import org.jetbrains.tools.model.updater.BazelKotlinDependencyFacade
 import org.jetbrains.tools.model.updater.KotlinTestsDependenciesUtil
 import java.net.URI
 import java.nio.file.Files
@@ -96,11 +97,15 @@ object TestKotlinArtifacts {
         listOf(getKotlinDepsByLabel("@kotlin_test_deps//:kotlin-jps-plugin-classpath.jar"))
     }
 
-    private fun findDownloadFile(label: BazelLabel): KotlinTestsDependenciesUtil.DownloadFile {
+    private val kotlinDependencyFacade by lazy {
+        BazelKotlinDependencyFacade(communityRoot.communityRoot)
+    }
+
+    private fun findDownloadFile(label: BazelLabel): BazelKotlinDependencyFacade.Dependency {
         if (label.repo != KOTLIN_DEPS_REPO) {
             error("Only $KOTLIN_DEPS_REPO repo is supported, but got '${label.repo}' from: ${label.asLabel}")
         }
-        return KotlinTestsDependenciesUtil.kotlinTestDependenciesHttpFiles.find { it.fileName == label.target }
+        return kotlinDependencyFacade.dependencies.find { it.name == label.target }
             ?: error("Unable to find URL for '${label.asLabel}'")
     }
 
@@ -169,7 +174,11 @@ object TestKotlinArtifacts {
         return getKotlinDepsByLabel(label = label)
     }
 
-    private fun getKotlinDepsByLabel(label: BazelLabel): Path {
+    private fun getCanonicalDirectoryDependencyByLabel(bazelLabel: String): Path {
+        return getKotlinDepsByLabel(BazelLabel.fromString(bazelLabel), canonicalizeDirectory = true)
+    }
+
+    private fun getKotlinDepsByLabel(label: BazelLabel, canonicalizeDirectory: Boolean = false): Path {
         // Bazel will download and provide all dependencies externally.
         // We should manually download dependencies when test are running not from Bazel.
         val dependency = if (BazelTestUtil.isUnderBazelTest) {
@@ -180,6 +189,10 @@ object TestKotlinArtifacts {
             downloadFile(label).also {
                 LOG.info("Found dependency download dependency ${label.asLabel} at '$it'")
             }
+        }
+
+        if (dependency.isDirectory()) {
+            return if (canonicalizeDirectory) getCanonicalDirectory(dependency) else dependency
         }
 
         // some tests for code require that files should be under $COMMUNITY_HOME_PATH/out
@@ -207,6 +220,16 @@ object TestKotlinArtifacts {
         }
         LOG.info("Dependency ${label.asLabel} resolved to '$target'")
         return target
+    }
+
+    private fun getCanonicalDirectory(directory: Path): Path {
+        val leaf = directory.walk().firstOrNull(Files::isRegularFile) ?: return directory.toRealPath()
+        val relative = leaf.relativeTo(directory)
+        var canonicalDirectory = leaf.toRealPath()
+        repeat(relative.nameCount) {
+            canonicalDirectory = canonicalDirectory.parent ?: return directory.toRealPath()
+        }
+        return canonicalDirectory
     }
 
     @JvmStatic
@@ -307,13 +330,19 @@ object TestKotlinArtifacts {
     val kotlinxCoroutinesCoreJvm_1_10_2: Path by lazy { getKotlinDepsByLabel("@kotlin_test_deps//:kotlinx-coroutines-core-jvm-1.10.2.jar") }
 
     @JvmStatic
-    val kotlinJvmDebuggerTestData: Path by lazy { getKotlinDepsByLabel("@community//plugins/kotlin/jvm-debugger/test:testData") }
-    @JvmStatic
-    val debuggerJvmAdvancedKotlinTestData: Path by lazy {
-        getKotlinDepsByLabel("//plugins/debugger/jvm-advanced/jvm.advanced.kotlin/intellij.debugger.jvm.advanced.kotlin.tests:testData")
+    val kotlinJvmDebuggerTestData: Path by lazy {
+        getCanonicalDirectoryDependencyByLabel("@community//plugins/kotlin/jvm-debugger/test:testData")
     }
     @JvmStatic
-    val kotlinIdeaTestData: Path by lazy { getKotlinDepsByLabel("@community//plugins/kotlin/idea/tests:testData") }
+    val debuggerJvmAdvancedKotlinTestData: Path by lazy {
+        getCanonicalDirectoryDependencyByLabel(
+            "//plugins/debugger/jvm-advanced/jvm.advanced.kotlin/intellij.debugger.jvm.advanced.kotlin.tests:testData"
+        )
+    }
+    @JvmStatic
+    val kotlinIdeaTestData: Path by lazy {
+        getCanonicalDirectoryDependencyByLabel("@community//plugins/kotlin/idea/tests:testData")
+    }
 
     @Suppress("NO_REFLECTION_IN_CLASS_PATH")
     @JvmStatic

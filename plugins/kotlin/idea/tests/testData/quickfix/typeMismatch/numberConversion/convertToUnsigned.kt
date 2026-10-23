@@ -1,10 +1,9 @@
 // "Convert expression to 'UInt'" "true"
 // WITH_STDLIB
-// K2_ERROR: Argument type mismatch: actual type is 'Int', but 'UInt' was expected.
+// K2_ERROR: ARGUMENT_TYPE_MISMATCH
 fun foo(param: UInt) {}
 
 fun test(expr: Int) {
     foo(<caret>expr)
 }
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.NumberConversionFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.NumberConversionFix

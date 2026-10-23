@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.platform.execution.dashboard.frontend` start
+content_module_jar(module = ":frontend")
+### auto-generated section `dev intellij.platform.execution.dashboard.frontend` end
 
 ### auto-generated section `build intellij.platform.execution.dashboard.frontend` start
-
 jvm_library(
     name = "frontend",
     srcs = glob(
@@ -90,6 +94,7 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.execution.dashboard.frontend.iml",
+        "resources/intellij.platform.execution.dashboard.frontend.xml",
     ],
     visibility = ["//visibility:public"],
 )

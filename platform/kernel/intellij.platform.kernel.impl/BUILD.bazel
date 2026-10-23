@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.platform.kernel.impl` start
+content_module_jar(module = ":impl")
+### auto-generated section `dev intellij.platform.kernel.impl` end
 
 ### auto-generated section `build intellij.platform.kernel.impl` start
-
 jvm_library(
     name = "impl",
     srcs = glob(
@@ -58,6 +62,7 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.kernel.impl.iml",
+        "resources/intellij.platform.kernel.impl.xml",
     ],
     visibility = ["//visibility:public"],
 )

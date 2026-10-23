@@ -2,8 +2,8 @@
 package org.intellij.plugins.markdown.actions
 
 import com.intellij.openapi.actionSystem.ActionManager
-import com.intellij.testFramework.LightPlatformCodeInsightTestCase
 import com.intellij.testFramework.EditorTestUtil
+import com.intellij.testFramework.LightPlatformCodeInsightTestCase
 
 @Suppress("unused")
 class MarkdownStylingActionsConsistencyTest {
@@ -30,6 +30,15 @@ class MarkdownStylingActionsConsistencyTest {
       checkResultByText(content)
     }
 
+    fun `test nested formatting`() {
+      val nestedPrefix = if (wrapPrefix == "**") "_" else "**"
+      val content = "$wrapPrefix$nestedPrefix<selection>arbitrary</selection>$nestedPrefix$wrapSuffix"
+      val applied = "$nestedPrefix<selection>arbitrary</selection>$nestedPrefix"
+      configureFromFileText("some.md", content)
+      executeAction(actionId)
+      checkResultByText(applied)
+    }
+
     fun `test disabled inside code span`() {
       // language=Markdown
       val content = """
@@ -41,17 +50,28 @@ class MarkdownStylingActionsConsistencyTest {
       checkResultByText(content)
     }
 
-    fun `test enabled inside inline link text`() {
+    fun `test disabled inside fenced code block`() {
+      // language=Markdown
+      val content = """
+      Some text
+
+      ```python
+      some_cal<caret>l()
+      ```
+      """.trimIndent()
+      configureFromFileText("some.md", content)
+      val action = ActionManager.getInstance().getAction(actionId)
+      assertFalse(EditorTestUtil.checkActionIsEnabled(editor, action))
+      checkResultByText(content)
+    }
+
+    fun `test disabled inside inline link text`() {
       val content = """
       Click [<selection>JetBrains</selection>](https://jetbrains.com) here
       """.trimIndent()
-      val applied = """
-      Click [$wrapPrefix<selection>JetBrains</selection>$wrapSuffix](https://jetbrains.com) here
-      """.trimIndent()
       configureFromFileText("some.md", content)
-      executeAction(actionId)
-      checkResultByText(applied)
-      executeAction(actionId)
+      val action = ActionManager.getInstance().getAction(actionId)
+      assertFalse(EditorTestUtil.checkActionIsEnabled(editor, action))
       checkResultByText(content)
     }
 
@@ -81,6 +101,17 @@ class MarkdownStylingActionsConsistencyTest {
       // language=Markdown
       val content = """
       [@test] ../path/he<caret>re.py
+      """.trimIndent()
+      configureFromFileText("some.md", content)
+      val action = ActionManager.getInstance().getAction(actionId)
+      assertFalse(EditorTestUtil.checkActionIsEnabled(editor, action))
+      checkResultByText(content)
+    }
+
+    fun `test disabled inside @ path`() {
+      // language=Markdown
+      val content = """
+      @path/he<caret>re.py
       """.trimIndent()
       configureFromFileText("some.md", content)
       val action = ActionManager.getInstance().getAction(actionId)
@@ -128,7 +159,7 @@ class MarkdownStylingActionsConsistencyTest {
 
   class BoldActionConsistency: BaseTest("org.intellij.plugins.markdown.ui.actions.styling.ToggleBoldAction", "**")
 
-  class ItalicActionConsistency: BaseTest("org.intellij.plugins.markdown.ui.actions.styling.ToggleItalicAction", "_")
+  class ItalicActionConsistency: BaseTest("org.intellij.plugins.markdown.ui.actions.styling.ToggleItalicAction", "*")
 
   class StrikethroughActionConsistency: BaseTest(
     "org.intellij.plugins.markdown.ui.actions.styling.ToggleStrikethroughAction",

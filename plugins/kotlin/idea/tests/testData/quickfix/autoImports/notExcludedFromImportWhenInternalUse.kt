@@ -12,12 +12,13 @@
 // ACTION: Import class 'FunctionReference'
 // ACTION: Introduce local variable
 // ACTION: Rename reference
-// K2_ERROR: Unresolved reference 'FunctionReference'.
+// K2_ERROR: KOTLIN_PACKAGE_USAGE
+// K2_ERROR: UNRESOLVED_REFERENCE
+// K2_AFTER_ERROR: KOTLIN_PACKAGE_USAGE
 
 package kotlin
 
 fun some() {
     FunctionReference<caret>::class
 }
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ImportFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.imprt.ImportQuickFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.imprt.ImportQuickFix

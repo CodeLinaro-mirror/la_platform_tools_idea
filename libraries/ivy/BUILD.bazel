@@ -1,21 +1,36 @@
+load("@community//platform/build-scripts/bazel-rules:ij_plugin_module.bzl", "ij_plugin_module")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
 ### auto-generated section `build intellij.libraries.ivy` start
-
-jvm_library(
+ij_plugin_module(
     name = "ivy",
     srcs = glob(
         [],
         allow_empty = True,
     ),
     module_name = "intellij.libraries.ivy",
+    packed_deps = [
+        # do not sort,
+        "@lib//:libraries-ivy-ivy",
+        "@lib//:libraries-ivy-jsch-agent-proxy-connector-factory",
+    ],
     resource_strip_prefix = "resources",
     resources = glob(
         ["resources/**/*"],
     ),
     visibility = ["//visibility:public"],
-    exports = ["@lib//:libraries-ivy-ivy"],
-    runtime_deps = ["@lib//:libraries-ivy-ivy"],
+    exports = [
+        # do not sort,
+        "@lib//:libraries-ivy-ivy",
+        "@lib//:libraries-ivy-jsch-agent-proxy-connector-factory",
+    ],
+    runtime_deps = [
+        # do not sort,
+        "@lib//:libraries-ivy-ivy",
+        "@lib//:libraries-ivy-jsch-agent-proxy-connector-factory",
+        "//libraries/jsch-agent-proxy",
+        "//libraries/jna",
+    ],
 )
 
 jvm_library(
@@ -28,8 +43,17 @@ jvm_library(
     kotlinc_opts = "@community//:k8",
     module_name = "intellij.libraries.ivy",
     visibility = ["//visibility:public"],
-    exports = ["@lib//:libraries-ivy-ivy"],
-    runtime_deps = [":ivy"],
+    exports = [
+        # do not sort,
+        "@lib//:libraries-ivy-ivy",
+        "@lib//:libraries-ivy-jsch-agent-proxy-connector-factory",
+    ],
+    runtime_deps = [
+        # do not sort,
+        ":ivy",
+        "//libraries/jsch-agent-proxy:jsch-agent-proxy_test_lib",
+        "//libraries/jna:jna_test_lib",
+    ],
 )
 ### auto-generated section `build intellij.libraries.ivy` end
 
@@ -37,6 +61,7 @@ jvm_library(
 exports_files(
     [
         "intellij.libraries.ivy.iml",
+        "resources/intellij.libraries.ivy.xml",
     ],
     visibility = ["//visibility:public"],
 )

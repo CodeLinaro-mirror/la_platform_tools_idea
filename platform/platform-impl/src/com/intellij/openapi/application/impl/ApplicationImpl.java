@@ -15,9 +15,10 @@ import com.intellij.ide.ApplicationActivationStateManager;
 import com.intellij.ide.GeneralSettings;
 import com.intellij.ide.IdeBundle;
 import com.intellij.ide.IdeEventQueue;
-import com.intellij.ide.SaveAndSyncHandler;
+import com.intellij.ide.ThreadingSupportHolder;
 import com.intellij.ide.plugins.ContainerDescriptor;
 import com.intellij.ide.plugins.IdeaPluginDescriptorImpl;
+import com.intellij.ide.welcomeScreen.WelcomeUtils;
 import com.intellij.idea.AppExitCodes;
 import com.intellij.idea.AppMode;
 import com.intellij.idea.IdeaLogger;
@@ -67,14 +68,13 @@ import com.intellij.openapi.util.Condition;
 import com.intellij.openapi.util.Conditions;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.NlsContexts;
+import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.ShutDownTracker;
 import com.intellij.openapi.util.ThrowableComputable;
 import com.intellij.openapi.vfs.VirtualFileManager;
 import com.intellij.platform.diagnostic.telemetry.PlatformScopesKt;
 import com.intellij.platform.diagnostic.telemetry.Scope;
 import com.intellij.platform.diagnostic.telemetry.TelemetryManager;
-import com.intellij.platform.diagnostic.telemetry.helpers.TraceKt;
-import com.intellij.platform.locking.impl.IntelliJLockingUtil;
 import com.intellij.platform.locking.impl.NestedLocksThreadingSupport;
 import com.intellij.platform.locking.impl.listeners.ErrorHandler;
 import com.intellij.platform.locking.impl.listeners.LegacyProgressIndicatorProvider;
@@ -88,6 +88,7 @@ import com.intellij.util.BitUtil;
 import com.intellij.util.EventDispatcher;
 import com.intellij.util.ExceptionUtil;
 import com.intellij.util.Restarter;
+import com.intellij.util.Suppressions;
 import com.intellij.util.SystemProperties;
 import com.intellij.util.concurrency.AppExecutorUtil;
 import com.intellij.util.concurrency.AppScheduledExecutorService;
@@ -191,7 +192,7 @@ public final class ApplicationImpl extends ClientAwareComponentManager implement
   // contents modified in write action, read in read action
   private final TransactionGuardImpl myTransactionGuard = new TransactionGuardImpl();
 
-  private final NestedLocksThreadingSupport lock = IntelliJLockingUtil.getGlobalNestedLockingThreadingSupport();
+  private final NestedLocksThreadingSupport lock = ThreadingSupportHolder.getThreadingSupport();
 
   private final ReadActionCacheImpl myReadActionCacheImpl = new ReadActionCacheImpl();
 
@@ -323,14 +324,16 @@ public final class ApplicationImpl extends ClientAwareComponentManager implement
 
   @VisibleForTesting
   public void disposeContainer() {
-    // NonCancellable will override context Job
-    var coroutineContext = ThreadContext.currentThreadContext();
+    disposeContainer(ThreadContext.currentThreadContext());
+  }
+
+  private void disposeContainer(CoroutineContext coroutineContext) {
     try (var ignored = Cancellation.withNonCancelableSection()) {
       cancelAndJoinBlocking(this, coroutineContext);
-      runWriteAction(() -> {
-        startDispose();
-        Disposer.dispose(this);
-      });
+      runWriteAction(() -> Suppressions.runSuppressing(
+        this::startDispose,
+        () -> Disposer.dispose(this)
+      ));
       Disposer.assertIsEmpty();
     }
     catch (Throwable t) {
@@ -488,36 +491,36 @@ public final class ApplicationImpl extends ClientAwareComponentManager implement
 
   @Override
   public void dispose() {
-    lock.removeErrorHandler();
-    lock.removeLegacyIndicatorProvider(myLegacyIndicatorProvider);
-    lock.removeWriteActionListener(appListenerDispatcherWrapper);
-    lock.removeReadActionListener(customReadActionListener);
-
-    //noinspection deprecation
-    myDispatcher.getMulticaster().applicationExiting();
-
     var componentStore = componentStoreValue.getValueIfInitialized();
-    super.dispose();
-    if (componentStore != null) {
-      try {
-        componentStore.release();
-      }
-      catch (Exception e) {
-        getLogger().error(e);
-      }
-    }
-
-    // FileBasedIndexImpl can schedule some more activities to execute, so, shutdown executor only after service disposing
-    AppExecutorUtil.shutdownApplicationScheduledExecutorService();
-
-    if (myLastDisposable == null) {
-      ApplicationManager.setApplication(null);
-    }
-    else {
-      Disposer.dispose(myLastDisposable);
-    }
-
-    otelMonitor.get().close();
+    Suppressions.runSuppressing(
+      () -> {
+        lock.removeErrorHandler();
+        lock.removeLegacyIndicatorProvider(myLegacyIndicatorProvider);
+        lock.removeWriteActionListener(appListenerDispatcherWrapper);
+        lock.removeReadActionListener(customReadActionListener);
+      },
+      () -> {
+        //noinspection deprecation
+        myDispatcher.getMulticaster().applicationExiting();
+      },
+      () -> super.dispose(),
+      () -> {
+        if (componentStore != null) {
+          componentStore.release();
+        }
+      },
+      // FileBasedIndexImpl can schedule some more activities to execute, so, shutdown executor only after service disposing
+      AppExecutorUtil::shutdownApplicationScheduledExecutorService,
+      () -> {
+        if (myLastDisposable == null) {
+          ApplicationManager.setApplication(null);
+        }
+        else {
+          Disposer.dispose(myLastDisposable);
+        }
+      },
+      () -> otelMonitor.get().close()
+    );
   }
 
   @Override
@@ -625,11 +628,19 @@ public final class ApplicationImpl extends ClientAwareComponentManager implement
     final var guarded = myTransactionGuard.wrapLaterInvocation(runnable, state);
     // Middle layer: lock and modality
     final var locked = wrapWithRunIntendedWriteActionAndModality(guarded, false, ctxAware ? null : state);
-    // Outer layer context capture & reset
-    final var finalRunnable = AppImplKt.rethrowExceptions(AppScheduledExecutorService::captureContextCancellationForRunnableThatDoesNotOutliveContextScope, locked);
+    // Outer layer context capture & reset.
+    // The captured child job is completed by executing the runnable, so if `LaterInvocator.invokeAndWait` stops waiting and
+    // abandons the runnable, that job has to be cancelled explicitly - otherwise it hangs around forever and prevents completion
+    // of its parent, e.g. of the coroutine of a background task whose progress indicator got cancelled while it was waiting here.
+    final var contextCleanup = new Ref<Runnable>();
+    final var finalRunnable = AppImplKt.rethrowExceptions(r -> {
+      var captured = AppScheduledExecutorService.captureContextCancellationForDiscardableRunnable(r);
+      contextCleanup.set(captured.getSecond());
+      return captured.getFirst();
+    }, locked);
 
     UtilKt.waitWithParallelismCompensation(() -> {
-      LaterInvocator.invokeAndWait(state, wrapWithLocks, finalRunnable);
+      LaterInvocator.invokeAndWait(state, wrapWithLocks, finalRunnable, Objects.requireNonNull(contextCleanup.get()));
     });
   }
 
@@ -784,8 +795,13 @@ public final class ApplicationImpl extends ClientAwareComponentManager implement
     }
 
     myExitInProgress = true;
-    if (isDispatchThread()) {
-      doExit(flags, restart, beforeRestart, exitCode);
+    if (isDispatchThread() && !holdsReadLock()) {
+      try {
+        runIntendedWriteActionOnCurrentThread(() -> doExit(flags, restart, beforeRestart, exitCode));
+      }
+      finally {
+        myExitInProgress = false;
+      }
     }
     else {
       invokeLater(() -> doExit(flags, restart, beforeRestart, exitCode), ModalityState.nonModal());
@@ -844,98 +860,77 @@ public final class ApplicationImpl extends ClientAwareComponentManager implement
         logErrorDuringExit("Failed to invoke lifecycle listeners", t);
       }
 
-      if (BitUtil.isSet(flags, SAVE)) {
+      // captured before the exit helper resets the thread context: `cancelAndJoinBlocking` checks it for a wait on our own job
+      var exitContext = ThreadContext.currentThreadContext();
+      return ApplicationExitKt.saveAndCloseProjectsOnExit(this, tracer, BitUtil.isSet(flags, SAVE), !force, () -> {
         try {
-          TraceKt.use(tracer.spanBuilder("saveSettingsOnExit"),
-                      _ -> SaveAndSyncHandler.getInstance().saveSettingsUnderModalProgress(this));
-        }
-        catch (Throwable e) {
-          logErrorDuringExit("Failed to save settings", e);
-        }
-      }
-
-      try {
-        if (isInstantShutdownPossible()) {
-          for (var frame : Frame.getFrames()) {
-            frame.setVisible(false);
-          }
-        }
-      }
-      catch (Throwable e) {
-        logErrorDuringExit("Failed to instant shutdown the frames", e);
-      }
-
-      try {
-        lifecycleListener.appWillBeClosed(restart);
-      }
-      catch (Throwable t) {
-        logErrorDuringExit("Failed to invoke lifecycle listeners", t);
-      }
-
-      try {
-        LifecycleUsageTriggerCollector.onIdeClose(restart);
-      }
-      catch (Throwable e) {
-        logErrorDuringExit("Failed to notify usage collector", e);
-      }
-
-      var success = true;
-      var manager = ProjectManagerEx.getInstanceExIfCreated();
-      if (manager != null) {
-        try {
-          boolean projectsClosedSuccessfully = TraceKt.use(tracer.spanBuilder("disposeProjects"), _ -> {
-            return manager.closeAndDisposeAllProjects(!force);
-          });
-          if (!projectsClosedSuccessfully) {
-            success = false;
+          if (isInstantShutdownPossible()) {
+            for (var frame : Frame.getFrames()) {
+              frame.setVisible(false);
+            }
           }
         }
         catch (Throwable e) {
-          logErrorDuringExit("Failed to close and dispose all projects", e);
+          logErrorDuringExit("Failed to instant shutdown the frames", e);
         }
-      }
 
-      try {
-        // can't report OT after the container disposal
-        scope.close();
-        exitSpan.end();
-      }
-      catch (Throwable e) {
-        logErrorDuringExit("Failed to report the telemetry", e);
-      }
+        try {
+          lifecycleListener.appWillBeClosed(restart);
+        }
+        catch (Throwable t) {
+          logErrorDuringExit("Failed to invoke lifecycle listeners", t);
+        }
 
-      disposeContainer();
+        try {
+          LifecycleUsageTriggerCollector.onIdeClose(restart);
+        }
+        catch (Throwable e) {
+          logErrorDuringExit("Failed to notify usage collector", e);
+        }
+      }, () -> {
+        var actualExitCode = exitCode;
+        try {
+          // can't report OT after the container disposal
+          scope.close();
+          exitSpan.end();
+        }
+        catch (Throwable e) {
+          logErrorDuringExit("Failed to report the telemetry", e);
+        }
 
-      if (!success || isUnitTestMode()) {
-        return null;
-      }
+        disposeContainer(exitContext);
 
-      IdeEventQueue.applicationClose();
+        if (isUnitTestMode()) {
+          return null;
+        }
 
-      if (Boolean.getBoolean("idea.test.guimode")) {
-        //noinspection TestOnlyProblems
-        ShutDownTracker.getInstance().run();
-        return null;
-      }
+        IdeEventQueue.applicationClose();
 
-      IdeaLogger.dropFrequentExceptionsCaches();
-      if (restart) {
-        if (canRestart) {
-          try {
-            Restarter.scheduleRestart(BitUtil.isSet(flags, ELEVATE), List.of(beforeRestart));
+        if (Boolean.getBoolean("idea.test.guimode")) {
+          //noinspection TestOnlyProblems
+          ShutDownTracker.getInstance().run();
+          return null;
+        }
+
+        IdeaLogger.dropFrequentExceptionsCaches();
+        if (restart) {
+          if (canRestart) {
+            try {
+              Restarter.scheduleRestart(BitUtil.isSet(flags, ELEVATE), List.of(beforeRestart));
+            }
+            catch (Throwable t) {
+              logErrorDuringExit("Failed to restart the application", t);
+            }
           }
-          catch (Throwable t) {
-            logErrorDuringExit("Failed to restart the application", t);
+          else {
+            getLogger().warn("Restart not supported; exiting");
+          }
+          if (actualExitCode == 0) {
+            actualExitCode = AppExitCodes.RESTART_FAILED;
           }
         }
-        else {
-          getLogger().warn("Restart not supported; exiting");
-        }
-        if (exitCode == 0) {
-          exitCode = AppExitCodes.RESTART_FAILED;
-        }
-      }
-      return exitCode;
+        return actualExitCode;
+      });
     }
     finally {
       exitSpan.end();
@@ -943,7 +938,7 @@ public final class ApplicationImpl extends ClientAwareComponentManager implement
     }
   }
 
-  private static void logErrorDuringExit(String message, Throwable err) {
+  static void logErrorDuringExit(String message, Throwable err) {
     // A special class to bypass problems with logging ControlFlowException.
     class ApplicationExitException extends RuntimeException {
       ApplicationExitException(Throwable cause) {
@@ -998,6 +993,10 @@ public final class ApplicationImpl extends ClientAwareComponentManager implement
   private static boolean confirmExitIfNeeded(boolean exitConfirmed) {
     var hasUnsafeBgTasks = ProgressManager.getInstance().hasUnsafeProgressIndicator();
     if (exitConfirmed && !hasUnsafeBgTasks) {
+      return true;
+    }
+
+    if (!hasUnsafeBgTasks && WelcomeUtils.isSingleWelcomeProjectWithoutConfirmation()) {
       return true;
     }
 
@@ -1462,6 +1461,7 @@ public final class ApplicationImpl extends ClientAwareComponentManager implement
     app.lock.addWriteActionListener(app.appListenerDispatcherWrapper);
     app.lock.setLegacyIndicatorProvider(myLegacyIndicatorProvider);
     app.lock.setErrorHandler(lockingErrorHandler);
+    app.lock.setAllowanceForReadActions(() -> !EDT.isCurrentThreadEdt());
     SwingUtilities.invokeLater(() -> {
       SuvorovProgress.INSTANCE.init(app);
       app.lock.setLockAcquisitionInterceptor((deferred) -> {
@@ -1495,6 +1495,14 @@ public final class ApplicationImpl extends ClientAwareComponentManager implement
   @Override
   public <T> T withLocksProhibited(@NotNull String advice, @NotNull Supplier<T> action) {
     return getThreadingSupport().withLocksProhibited(advice, () -> action.get());
+  }
+
+  @Override
+  public <T> T withLocksSoftlyProhibited(@NotNull String advice, @NotNull Consumer<@NotNull Throwable> logger, @NotNull Supplier<T> action) {
+    return getThreadingSupport().withLocksSoftlyProhibited(advice, (t) -> {
+      logger.accept(t);
+      return Unit.INSTANCE;
+      }, () -> action.get());
   }
 
   @Override

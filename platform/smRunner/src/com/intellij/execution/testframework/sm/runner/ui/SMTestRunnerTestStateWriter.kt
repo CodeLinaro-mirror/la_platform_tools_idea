@@ -17,7 +17,7 @@ import com.intellij.util.concurrency.annotations.RequiresReadLock
 import java.util.Date
 
 internal object SMTestRunnerTestStateWriter {
-  @RequiresBackgroundThread
+  @RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
   @JvmStatic
   fun writeState(project: Project, proxy: SMTestProxy, url: String, configuration: RunConfiguration?, consoleProperties: TestConsoleProperties) {
     val configurationName: String? = configuration?.getName()
@@ -41,33 +41,51 @@ internal object SMTestRunnerTestStateWriter {
     }
   }
 
-  private suspend fun writeTestState(project: Project, consoleProperties: TestConsoleProperties, proxy: SMTestProxy, url: String, configurationName: String?) {
-    val info = readAction {
-      if (project.isDisposed) return@readAction null
-
-      getStackTraceParser(consoleProperties, proxy, url, project)
-    } ?: return
-
-    TestStateStorage.getInstance(project).writeState(url, TestStateStorage.Record(proxy.magnitude, Date(),
-                                                                                  (configurationName?.hashCode() ?: 0).toLong(),
-                                                                                  info.failedLine, info.failedMethodName,
-                                                                                  info.errorMessage, info.topLocationLine))
+  private suspend fun writeTestState(
+    project: Project,
+    consoleProperties: TestConsoleProperties,
+    proxy: SMTestProxy,
+    url: String,
+    configurationName: String?,
+  ) {
+    writeTestStateEx(project, consoleProperties, proxy, url, configurationName) { block ->
+      readAction(block)
+    }
   }
 
-  private suspend fun writeTestStateSmart(project: Project, consoleProperties: TestConsoleProperties, proxy: SMTestProxy, url: String, configurationName: String?) {
-    val info = smartReadAction(project) {
-      if (project.isDisposed) return@smartReadAction null
-
-      getStackTraceParser(consoleProperties, proxy, url, project)
-    } ?: return
-
-    TestStateStorage.getInstance(project).writeState(url, TestStateStorage.Record(proxy.magnitude, Date(),
-                                                                                  (configurationName?.hashCode() ?: 0).toLong(),
-                                                                                  info.failedLine, info.failedMethodName,
-                                                                                  info.errorMessage, info.topLocationLine))
+  private suspend fun writeTestStateSmart(
+    project: Project,
+    consoleProperties: TestConsoleProperties,
+    proxy: SMTestProxy,
+    url: String,
+    configurationName: String?,
+  ) {
+    writeTestStateEx(project, consoleProperties, proxy, url, configurationName) { block ->
+      smartReadAction(project, block)
+    }
   }
 
-  @RequiresReadLock
+  private suspend fun writeTestStateEx(
+    project: Project,
+    consoleProperties: TestConsoleProperties,
+    proxy: SMTestProxy,
+    url: String,
+    configurationName: String?,
+    raAction: suspend (() -> Pair<TestStateStorage, TestStackTraceParser>?) -> Pair<TestStateStorage, TestStackTraceParser>?,
+  ) {
+    val (storage, info) = raAction {
+      if (project.isDisposed) return@raAction null
+      // getService() under the read lock, after the isDisposed check
+      TestStateStorage.getInstance(project) to getStackTraceParser(consoleProperties, proxy, url, project)
+    } ?: return
+
+    storage.writeState(url, TestStateStorage.Record(proxy.magnitude, Date(),
+                                                    (configurationName?.hashCode() ?: 0).toLong(),
+                                                    info.failedLine, info.failedMethodName,
+                                                    info.errorMessage, info.topLocationLine))
+  }
+
+  @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
   private fun getStackTraceParser(consoleProperties: TestConsoleProperties, proxy: SMTestProxy, url: String, project: Project): TestStackTraceParser {
     if (consoleProperties is SMStacktraceParser) {
       return (consoleProperties as SMStacktraceParser).getTestStackTraceParser(url, proxy, project)

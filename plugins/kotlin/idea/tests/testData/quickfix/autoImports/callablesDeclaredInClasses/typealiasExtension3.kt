@@ -1,5 +1,5 @@
 // "Import extension function 'Obj.ext'" "true"
-// K2_ERROR: Unresolved reference 'ext'.
+// K2_ERROR: UNRESOLVED_REFERENCE
 package p
 
 object Obj
@@ -15,5 +15,4 @@ fun usage() {
     Obj.<caret>ext()
 }
 
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ImportFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.imprt.ImportQuickFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.imprt.ImportQuickFix

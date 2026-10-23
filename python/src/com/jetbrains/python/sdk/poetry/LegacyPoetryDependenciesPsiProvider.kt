@@ -6,9 +6,11 @@ import com.intellij.psi.PsiFile
 import com.intellij.python.pyproject.PY_PROJECT_TOML
 import com.jetbrains.python.inspections.dependencies.DependenciesPsiProvider
 import com.jetbrains.python.inspections.dependencies.DependencyMap
-import com.jetbrains.python.packaging.PyRequirementParser
+import com.intellij.python.requirements.parser.PyRequirementParser
+import com.jetbrains.python.packaging.PyPackageName
 import com.jetbrains.python.psi.getStringOrNull
-import com.jetbrains.python.requirements.getPythonSdk
+import com.intellij.python.pyproject.model.evolution.findEvoPyProjectIfReady
+import org.jetbrains.annotations.ApiStatus
 import org.toml.lang.TomlLanguage
 import org.toml.lang.psi.TomlFile
 import org.toml.lang.psi.TomlKeyValue
@@ -17,6 +19,30 @@ import org.toml.lang.psi.TomlTable
 
 private val poetryGroupRegex = Regex("""^tool\.poetry\.group\.[^.]*\.dependencies$""")
 private val legacyPoetryDependencyHeaders = setOf("tool.poetry.dependencies", "tool.poetry.dev-dependencies")
+
+@ApiStatus.Internal
+fun parseLegacyPoetryDependencies(file: TomlFile): DependencyMap =
+  file
+    .children
+    .filterIsInstance<TomlTable>()
+    .filter {
+      it.header.key?.text?.let { text ->
+        text in legacyPoetryDependencyHeaders || poetryGroupRegex matches text
+      } == true
+    }
+    .flatMap { it.children.filterIsInstance<TomlKeyValue>() }
+    .mapNotNull { keyValue ->
+      val name = keyValue.key.text
+      val versionString =
+        (keyValue.value as? TomlLiteral)?.getStringOrNull()
+        ?: return@mapNotNull null
+
+      val normalizedName = PyPackageName.normalizePackageName(name)
+      (PyRequirementParser.fromLine("$name$versionString")?.takeIf { it.name == normalizedName }
+       ?: PyRequirementParser.fromLine(name))
+        ?.let { pyRequirement -> pyRequirement to keyValue }
+    }
+    .toMap()
 
 internal class LegacyPoetryDependenciesPsiProvider : DependenciesPsiProvider<TomlFile>(
   TomlFile::class.java,
@@ -27,29 +53,11 @@ internal class LegacyPoetryDependenciesPsiProvider : DependenciesPsiProvider<Tom
       return null
     }
 
-    return file
-      .children
-      .filterIsInstance<TomlTable>()
-      .filter {
-        it.header.key?.text?.let { text ->
-          text in legacyPoetryDependencyHeaders || poetryGroupRegex matches text
-        } == true
-      }
-      .flatMap { it.children.filterIsInstance<TomlKeyValue>() }
-      .mapNotNull { keyValue ->
-        val versionString =
-          (keyValue.value as? TomlLiteral)?.getStringOrNull()
-          ?: return@mapNotNull null
-
-        (PyRequirementParser.fromLine("${keyValue.key.text}${versionString}")
-         ?: PyRequirementParser.fromLine(keyValue.key.text))
-          ?.let { pyRequirement -> pyRequirement to keyValue }
-      }
-      .toMap()
+    return parseLegacyPoetryDependencies(file)
   }
 
   override val emptyFileInspectionMessage: @InspectionMessage String? = null
 
   private fun isPoetryProject(psiFile: PsiFile) =
-    getPythonSdk(psiFile)?.isPoetry == true
+    psiFile.findEvoPyProjectIfReady(mainForOrphans = false)?.interpreter?.isPoetry == true
 }

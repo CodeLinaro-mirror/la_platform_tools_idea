@@ -22,7 +22,7 @@ import com.intellij.openapi.util.NlsSafe
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.platform.bootstrap.RuntimeModuleIntrospection
-import com.intellij.platform.runtime.product.ProductMode
+import com.intellij.platform.productMode.ProductMode
 import com.intellij.platform.runtime.repository.RuntimeModuleId
 import com.intellij.platform.runtime.repository.RuntimeModuleRepository
 import com.intellij.remoteDev.util.ProductInfo
@@ -57,7 +57,7 @@ class EmbeddedClientLauncher private constructor(private val moduleRepository: R
       val moduleRepository = RuntimeModuleIntrospection.moduleRepository ?: return null
       val moduleRepositoryPath = RuntimeModuleIntrospection.moduleRepositoryPath ?: return null
       try {
-        moduleRepository.getModule(getRootFrontendModule())
+        moduleRepository.computeModuleClasspath(getRootFrontendModule())
       }
       catch (e: Exception) {
         LOG.warn("Failed to load embedded client: " + e.message, e)
@@ -224,7 +224,7 @@ class EmbeddedClientLauncher private constructor(private val moduleRepository: R
     passProperties(javaParameters.vmParametersList)
     javaParameters.mainClass = "com.intellij.platform.runtime.loader.IntellijLoader"
     val runtimeLoaderModule = RuntimeModuleId.legacyJpsModule("intellij.platform.runtime.loader")
-    javaParameters.classPath.addAllFiles(moduleRepository.getModule(runtimeLoaderModule).moduleClasspath.map { it.toFile() })
+    javaParameters.classPath.addAllPaths(moduleRepository.computeModuleClasspath(runtimeLoaderModule))
     addVmOptions(javaParameters.vmParametersList, moduleRepositoryPath)
     javaParameters.programParametersList.addAll(arguments)
     return javaParameters
@@ -291,7 +291,6 @@ class EmbeddedClientLauncher private constructor(private val moduleRepository: R
       "-Dintellij.platform.root.module=${getRootFrontendModule().name}",
       "-Dintellij.platform.product.mode=${ProductMode.FRONTEND.id}",
       "-Dintellij.platform.full.ide.product.code=${build.productCode}",
-      "-Dintellij.platform.load.app.info.from.resources=true",
       "-Dsplash=true",
     )
     vmParametersList.addAll(jetBrainsClientOptions)

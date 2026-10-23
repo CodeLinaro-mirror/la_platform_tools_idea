@@ -1,7 +1,29 @@
+load("@jps_dynamic_deps_community//:targets.bzl", "dev_dist_plugin")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:dev_plugin_remainder.bzl", "dev_dist_complex_plugin")
+
+### auto-generated section `dev intellij.laf.win10` start
+dev_dist_plugin(
+    descriptor = "resources/META-INF/plugin.xml",
+    main_module = "intellij.laf.win10",
+    variants = ["windows"],
+)
+
+dev_dist_complex_plugin(
+    artifact_inputs = {
+        "//plugins/laf/win10:win10.jar": "intellij.laf.win10",
+    },
+    descriptor = "//plugins/laf/win10:intellij.laf.win10_windows_dev_descriptor",
+    execution_version = 1,
+    main_module = "intellij.laf.win10",
+    platforms = [
+        "windows_x64",
+        "windows_aarch64",
+    ],
+)
+### auto-generated section `dev intellij.laf.win10` end
 
 ### auto-generated section `build intellij.laf.win10` start
-
 jvm_library(
     name = "win10",
     srcs = glob(
@@ -16,6 +38,7 @@ jvm_library(
     resource_strip_prefix = "resources",
     resources = glob(
         ["resources/**/*"],
+        exclude = ["resources/**/icon-robots.txt"],
     ),
     visibility = ["//visibility:public"],
     deps = [
@@ -58,6 +81,7 @@ jvm_library(
 exports_files(
     [
         "intellij.laf.win10.iml",
+        "resources/META-INF/plugin.xml",
     ],
     visibility = ["//visibility:public"],
 )

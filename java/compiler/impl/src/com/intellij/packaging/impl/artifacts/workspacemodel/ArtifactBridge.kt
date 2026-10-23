@@ -37,9 +37,11 @@ import com.intellij.platform.workspace.storage.EntityChange
 import com.intellij.platform.workspace.storage.MutableEntityStorage
 import com.intellij.platform.workspace.storage.VersionedEntityStorage
 import com.intellij.platform.workspace.storage.VersionedStorageChange
+import com.intellij.platform.workspace.storage.WorkspaceEntityInternalApi
 import com.intellij.platform.workspace.storage.impl.ModifiableWorkspaceEntityBase
 import com.intellij.platform.workspace.storage.impl.VersionedEntityStorageOnBuilder
 import com.intellij.platform.workspace.storage.impl.WorkspaceEntityBase
+import com.intellij.platform.workspace.storage.impl.entityIdEquals
 import com.intellij.platform.workspace.storage.toBuilder
 import com.intellij.util.EventDispatcher
 import com.intellij.workspaceModel.ide.toExternalSource
@@ -190,7 +192,7 @@ open class ArtifactBridge(
 
   override fun setOutputPath(outputPath: String?) {
     val outputUrl = outputPath?.let {
-      WorkspaceModel.getInstance(project).getVirtualFileUrlManager().getOrCreateFromUrl(VfsUtilCore.pathToUrl(it))
+      WorkspaceModel.getInstance(project).getVirtualFileUrlManager().storeAndGet(VfsUtilCore.pathToUrl(it))
     }
     val entity = diff.get(artifactId)
     diff.modifyArtifactEntity(entity) {
@@ -209,6 +211,7 @@ open class ArtifactBridge(
     eventDispatcher?.multicaster?.artifactChanged(this, oldName)
   }
 
+  @OptIn(WorkspaceEntityInternalApi::class)
   override fun setRootElement(root: CompositePackagingElement<*>) {
     val entity = diff.get(artifactId)
     val rootEntity = root.getOrAddEntityBuilder(diff, entity.entitySource, project) as CompositePackagingElementEntity.Builder<out CompositePackagingElementEntity>
@@ -220,7 +223,7 @@ open class ArtifactBridge(
       }
     }
     val oldRootElement = entity.rootElement!!
-    if ((oldRootElement as WorkspaceEntityBase).id != (rootEntity as ModifiableWorkspaceEntityBase<*, *>).id) {
+    if (!entityIdEquals(oldRootElement as WorkspaceEntityBase, rootEntity as ModifiableWorkspaceEntityBase<*, *>)) {
       // As we replace old root element with the new one, we should kick builder from old root element
       if (originalArtifact != null) {
         diff.elements.getDataByEntity(oldRootElement)?.let { oldRootBridge ->

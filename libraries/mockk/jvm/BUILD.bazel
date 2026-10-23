@@ -1,7 +1,6 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
 ### auto-generated section `build intellij.libraries.mockk.jvm` start
-
 jvm_library(
     name = "jvm",
     srcs = glob(
@@ -18,7 +17,7 @@ jvm_library(
     runtime_deps = [
         # do not sort,
         "@lib//:libraries-mockk-jvm-io-mockk-jvm",
-        "//libraries/junit5",
+        "//libraries/junit6",
         "//libraries/byte-buddy",
         "//libraries/byte-buddy/agent",
         "//libraries/objenesis",
@@ -39,7 +38,7 @@ jvm_library(
     runtime_deps = [
         # do not sort,
         ":jvm",
-        "//libraries/junit5:junit5_test_lib",
+        "//libraries/junit6:junit6_test_lib",
         "//libraries/byte-buddy:byte-buddy_test_lib",
         "//libraries/byte-buddy/agent:agent_test_lib",
         "//libraries/objenesis:objenesis_test_lib",
@@ -51,6 +50,7 @@ jvm_library(
 exports_files(
     [
         "intellij.libraries.mockk.jvm.iml",
+        "resources/intellij.libraries.mockk.jvm.xml",
     ],
     visibility = ["//visibility:public"],
 )

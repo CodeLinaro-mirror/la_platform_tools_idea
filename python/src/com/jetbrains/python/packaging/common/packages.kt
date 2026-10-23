@@ -6,11 +6,11 @@ import com.jetbrains.python.packaging.PyPackage
 import com.jetbrains.python.packaging.PyPackageName
 import com.jetbrains.python.packaging.PyRequirement
 import com.jetbrains.python.packaging.management.findPackageSpecification
-import com.jetbrains.python.packaging.pyRequirement
-import com.jetbrains.python.packaging.pyRequirementVersionSpec
+import com.intellij.python.requirements.pyRequirement
+import com.intellij.python.requirements.pyRequirementVersionSpec
 import com.jetbrains.python.packaging.repository.PyPackageRepository
+import com.jetbrains.python.packaging.repository.PyPiPackageRepository
 import com.jetbrains.python.packaging.requirement.PyRequirementRelation
-import com.jetbrains.python.packaging.requirement.PyRequirementVersionSpec
 import org.jetbrains.annotations.ApiStatus
 import java.net.URI
 import kotlin.collections.emptyList
@@ -32,6 +32,15 @@ open class PythonPackage @JvmOverloads constructor(name: String, val version: St
 
   val name: String = normalizedName.name
   val presentableName: String = name
+
+  /**
+   * Repository the shared displayable-packages pipeline uses when the manager has no explicit
+   * specification for this package. Default is [PyPiPackageRepository]; a subclass whose
+   * repository is not PyPI (e.g. a conda-installed package) overrides.
+   */
+  @get:ApiStatus.Internal
+  open val defaultRepository: PyPackageRepository
+    get() = PyPiPackageRepository
 
   override fun toString(): String {
     return "PythonPackage(name='${this@PythonPackage.name}', version='$version')"
@@ -121,6 +130,7 @@ class PythonOutdatedPackage(name: String, version: String, val latestVersion: St
   }
 }
 
+@ApiStatus.Internal
 interface PythonPackageDetails {
   val name: String
   val availableVersions: List<String>
@@ -129,7 +139,7 @@ interface PythonPackageDetails {
   val description: @NlsSafe String?
   val descriptionContentType: String?
   val documentationUrl: String?
-  fun toPackageSpecification(version: String? = null): PythonRepositoryPackageSpecification? =
+  suspend fun toPackageSpecification(version: String? = null): PythonRepositoryPackageSpecification? =
     repository.findPackageSpecification(pyRequirement(name, version?.let { pyRequirementVersionSpec(it) }))
 }
 
@@ -166,17 +176,13 @@ data class PythonRepositoryPackageSpecification(
   val requirement: PyRequirement,
 ) {
   val name: String = requirement.name
-  val versionSpec: PyRequirementVersionSpec? = requirement.versionSpecs.firstOrNull()
 
-  val nameWithVersionSpec: String
-    get() = "$name${versionSpec?.presentableText ?: ""}"
-
-  val nameWithVersionsSpec: String
-    get() {
-      val versionSpecsString = requirement.versionSpecs.joinToString(",") { it.presentableText }
-      return "$name${versionSpecsString}"
-    }
-
+  /**
+   * The package name followed by its full PEP-440 specifier set, e.g. `pytest>=7.0,<8.0`.
+   * Every version spec is rendered: rendering only the first one silently drops the upper bound (PY-91457).
+   */
+  val nameWithVersionSpecs: String
+    get() = "$name${requirement.versionSpecs.joinToString(",") { it.presentableText }}"
 
   constructor(
     repository: PyPackageRepository,
@@ -188,16 +194,3 @@ data class PythonRepositoryPackageSpecification(
   )
 }
 
-@Deprecated(
-  "Use RepositoryPythonPackageSpecification instead",
-  replaceWith = ReplaceWith("RepositoryPythonPackageSpecification"),
-  level = DeprecationLevel.ERROR
-)
-interface PythonPackageSpecification
-
-@Deprecated(
-  "Use RepositoryPythonPackageSpecification instead",
-  replaceWith = ReplaceWith("RepositoryPythonPackageSpecification"),
-  level = DeprecationLevel.ERROR
-)
-interface PythonSimplePackageSpecification

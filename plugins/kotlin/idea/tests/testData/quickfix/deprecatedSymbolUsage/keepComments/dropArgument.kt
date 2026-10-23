@@ -1,5 +1,5 @@
 // "Replace with 'newFun()'" "true"
-// K2_ERROR: Unresolved reference 'O'.
+// K2_ERROR: UNRESOLVED_REFERENCE
 
 @Deprecated("", ReplaceWith("newFun()"))
 fun oldFun(p: Int) {
@@ -12,5 +12,4 @@ fun foo() {
     <caret>oldFun(O /* use zero */)
 }
 
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.replaceWith.DeprecatedSymbolUsageFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.replaceWith.DeprecatedSymbolUsageFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.replaceWith.DeprecatedSymbolUsageFix

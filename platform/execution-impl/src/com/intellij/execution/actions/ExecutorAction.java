@@ -1,7 +1,7 @@
 // Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.execution.actions;
 
-import com.intellij.execution.ExecutionActionSuppressor;
+import com.intellij.codeInsight.multiverse.EditorContextManager;
 import com.intellij.execution.ExecutionBundle;
 import com.intellij.execution.Executor;
 import com.intellij.execution.ExecutorActionStatus;
@@ -43,9 +43,6 @@ import com.intellij.openapi.ui.popup.JBPopupFactory;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.platform.ide.core.permissions.Permission;
-import com.intellij.platform.ide.core.permissions.RequiresPermissions;
-import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiManager;
 import com.intellij.psi.util.PsiModificationTracker;
@@ -69,15 +66,13 @@ import java.awt.Component;
 import java.awt.event.InputEvent;
 import java.awt.event.MouseEvent;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 
-import static com.intellij.execution.PermissionsKt.getFullRunAccess;
 import static java.util.Collections.emptyList;
 
 @ApiStatus.Internal
-public class ExecutorAction extends AnAction implements DumbAware, RequiresPermissions, ActionIdProvider {
+public class ExecutorAction extends AnAction implements DumbAware, ActionIdProvider {
 
   public static final Key<Boolean> WOULD_BE_ENABLED_BUT_STARTING = Key.create("WOULD_BE_ENABLED_BUT_STARTING");
 
@@ -101,6 +96,11 @@ public class ExecutorAction extends AnAction implements DumbAware, RequiresPermi
 
   @Override
   public void update(@NotNull AnActionEvent e) {
+    if (ExecutionActionsInLightModeKt.areExecutionActionsHiddenInLightMode()) {
+      e.getPresentation().setEnabledAndVisible(false);
+      return;
+    }
+
     Presentation presentation = e.getPresentation();
     presentation.putClientProperty(ExecutorActionStatus.KEY, null); // by default
     Project project = e.getProject();
@@ -130,12 +130,10 @@ public class ExecutorAction extends AnAction implements DumbAware, RequiresPermi
       presentation.setIcon(getInformativeIcon(project, selectedSettings, e));
       RunConfiguration configuration = selectedSettings.getConfiguration();
       Ref<Boolean> isStartingTracker = Ref.create(false);
-      if (!isSuppressed(project)) {
-        enabled = ExecutorRegistryImpl.RunnerHelper.canRun(project, myExecutor, configuration, isStartingTracker);
-        if (enabled && isStartingTracker.get() == Boolean.TRUE) {
-          enabled = false;
-          presentation.putClientProperty(WOULD_BE_ENABLED_BUT_STARTING, true);
-        }
+      enabled = ExecutorRegistryImpl.RunnerHelper.canRun(project, myExecutor, configuration, isStartingTracker);
+      if (enabled && isStartingTracker.get() == Boolean.TRUE) {
+        enabled = false;
+        presentation.putClientProperty(WOULD_BE_ENABLED_BUT_STARTING, true);
       }
       if (!(configuration instanceof CompoundRunConfiguration)) {
         runConfigAsksToHideDisabledExecutorButtons = configuration.hideDisabledExecutorButtons();
@@ -252,7 +250,7 @@ public class ExecutorAction extends AnAction implements DumbAware, RequiresPermi
       return RunCurrentFileActionStatus.createDisabled(tooltip, myExecutor.getIcon());
     }
 
-    PsiFile psiFile = PsiDocumentManager.getInstance(project).getPsiFile(editor.getDocument());
+    PsiFile psiFile = EditorContextManager.getPsiFileForEditor(editor, project);
     VirtualFile vFile = psiFile != null ? psiFile.getVirtualFile() : null;
     if (psiFile == null || vFile == null || !ArrayUtil.contains(vFile, files)) {
       // This is probably a special editor, like Python Console, which we don't want to use for the 'Run Current File' feature.
@@ -308,6 +306,9 @@ public class ExecutorAction extends AnAction implements DumbAware, RequiresPermi
     if (resetCache) {
       psiFile.putUserData(CURRENT_FILE_RUN_CONFIGS_KEY, null);
     }
+    if (!ExecutionSafeMode.isRunAllowed(psiFile.getProject(), psiFile.getVirtualFile())) {
+      return List.of();
+    }
 
     // Without this cache, an expensive method `ConfigurationContext.getConfigurationsFromContext()` is called too often for 2 reasons:
     // - there are several buttons on the toolbar (Run, Debug, Profile, etc.), each runs ExecutorAction.update() during each action update session
@@ -352,13 +353,6 @@ public class ExecutorAction extends AnAction implements DumbAware, RequiresPermi
 
   private @NotNull @Unmodifiable List<RunnerAndConfigurationSettings> filterConfigsThatHaveRunner(@NotNull List<? extends RunnerAndConfigurationSettings> runConfigs) {
     return ContainerUtil.filter(runConfigs, config -> ProgramRunner.getRunner(myExecutor.getId(), config.getConfiguration()) != null);
-  }
-
-  private static boolean isSuppressed(Project project) {
-    for (ExecutionActionSuppressor suppressor : ExecutionActionSuppressor.EP_NAME.getExtensionList()) {
-      if (suppressor.isSuppressed(project)) return true;
-    }
-    return false;
   }
 
   protected Icon getInformativeIcon(@NotNull Project project, @NotNull RunnerAndConfigurationSettings selectedConfiguration,
@@ -484,11 +478,6 @@ public class ExecutorAction extends AnAction implements DumbAware, RequiresPermi
                                   @NotNull RunnerAndConfigurationSettings runConfig,
                                   @NotNull DataContext dataContext) {
     ExecutionUtil.doRunConfiguration(runConfig, myExecutor, null, null, dataContext, env -> env.setRunningCurrentFile(true));
-  }
-
-  @Override
-  public @NotNull Collection<@NotNull Permission> getRequiredPermissions() {
-    return List.of(getFullRunAccess());
   }
 
   private record RunCurrentFileInfo(

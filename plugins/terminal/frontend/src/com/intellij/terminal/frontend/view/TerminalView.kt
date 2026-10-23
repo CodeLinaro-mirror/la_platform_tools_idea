@@ -2,7 +2,8 @@ package com.intellij.terminal.frontend.view
 
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.DataKey
-import com.intellij.platform.eel.annotations.NativePath
+import com.intellij.openapi.util.Key
+import com.intellij.platform.util.annotations.paths.OsPath
 import com.intellij.terminal.TerminalTitle
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -16,17 +17,8 @@ import org.jetbrains.plugins.terminal.view.TerminalOutputModel
 import org.jetbrains.plugins.terminal.view.TerminalOutputModelsSet
 import org.jetbrains.plugins.terminal.view.TerminalSendTextBuilder
 import org.jetbrains.plugins.terminal.view.shellIntegration.TerminalShellIntegration
-import java.awt.event.KeyEvent
 import java.nio.file.Path
 import javax.swing.JComponent
-
-@ApiStatus.Internal
-fun interface TerminalInputInterceptor {
-  /**
-   * Returns `true` when the event is handled and should not be sent to the terminal process.
-   */
-  fun beforeTerminalInput(event: KeyEvent): Boolean
-}
 
 /**
  * Represents the frontend part of the Reworked Terminal.
@@ -158,7 +150,7 @@ interface TerminalView {
    * or if the initial value is not yet received from the backend.
    */
   @Deprecated("Use workingDirectoryFlow instead.", ReplaceWith("workingDirectoryFlow.value"))
-  fun getCurrentDirectory(): @NativePath String?
+  fun getCurrentDirectory(): @OsPath String?
 
   /**
    * A shortcut to schedule sending the specified text to the shell process
@@ -171,13 +163,14 @@ interface TerminalView {
    */
   fun createSendTextBuilder(): TerminalSendTextBuilder
 
-  @ApiStatus.Internal
-  fun addInputInterceptor(parentDisposable: Disposable, interceptor: TerminalInputInterceptor)
+  fun addKeyEventsListener(parentDisposable: Disposable, listener: TerminalKeyEventsListener)
 
   @ApiStatus.Internal
   fun setTopComponent(component: JComponent, disposable: Disposable)
 
   companion object {
+    val KEY: Key<TerminalView> = Key.create("TerminalView")
+
     /**
      * The data context key for accessing the Terminal View from actions.
      *

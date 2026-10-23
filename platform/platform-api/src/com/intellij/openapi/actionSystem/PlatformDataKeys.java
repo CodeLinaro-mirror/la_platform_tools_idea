@@ -54,6 +54,14 @@ public class PlatformDataKeys extends PlatformCoreDataKeys {
   public static final DataKey<ToolWindow> TOOL_WINDOW = DataKey.create("TOOL_WINDOW");
 
   /**
+   * The ID of the currently active tool window, if any.
+   * <p>
+   *   Unlike {@link #TOOL_WINDOW}, this property is available on the backend in remdev mode even for frontend-only tool windows.
+   * </p>
+   */
+  public static final DataKey<String> TOOL_WINDOW_ID = DataKey.create("TOOL_WINDOW_ID");
+
+  /**
    * @see #TOOL_WINDOW
    */
   public static final DataKey<ToolWindow[]> LAST_ACTIVE_TOOL_WINDOWS = DataKey.create("LAST_ACTIVE_TOOL_WINDOWS");
@@ -75,12 +83,12 @@ public class PlatformDataKeys extends PlatformCoreDataKeys {
 
   public static final DataKey<Disposable> UI_DISPOSABLE = DataKey.create("ui.disposable");
 
-  public static final DataKey<ModalityState> MODALITY_STATE = DataKey.create("ModalityState");
+  public static final DataKey<ModalityState> MODALITY_STATE = DataKey.create(Names.MODALITY_STATE_KEY_NAME);
 
   public static final DataKey<String> PREDEFINED_TEXT = DataKey.create("predefined.text.value");
 
-  public static final DataKey<String> SPEED_SEARCH_TEXT = DataKey.create("speed.search.text");
-  public static final DataKey<Object> SPEED_SEARCH_COMPONENT = DataKey.create("speed.search.component");
+  public static final DataKey<String> SPEED_SEARCH_TEXT = DataKey.create(Names.SPEED_SEARCH_TEXT_KEY_NAME);
+  public static final DataKey<Object> SPEED_SEARCH_COMPONENT = DataKey.create(Names.SPEED_SEARCH_COMPONENT_KEY_NAME);
   public static final DataKey<SpeedSearchSupply.SpeedSearchLocator> SPEED_SEARCH_LOCATOR = DataKey.create("speed.search.locator");
 
   /**
@@ -96,4 +104,10 @@ public class PlatformDataKeys extends PlatformCoreDataKeys {
    */
   @ApiStatus.Experimental
   public static final DataKey<PopupLocator> CONTEXT_MENU_LOCATOR = DataKey.create("contextMenuLocator");
+  @ApiStatus.Internal
+  public interface Names {
+    String MODALITY_STATE_KEY_NAME = "ModalityState";
+    String SPEED_SEARCH_TEXT_KEY_NAME = "speed.search.text";
+    String SPEED_SEARCH_COMPONENT_KEY_NAME = "speed.search.component";
+  }
 }

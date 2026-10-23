@@ -6,15 +6,18 @@ import com.intellij.modcommand.ActionContext
 import com.intellij.modcommand.ModPsiUpdater
 import com.intellij.modcommand.Presentation
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.components.isUsedAsExpression
+import org.jetbrains.kotlin.analysis.api.expressions.expressionType
+import org.jetbrains.kotlin.analysis.api.expressions.isUsedAsExpression
+import org.jetbrains.kotlin.analysis.api.types.isMarkedNullable
 import org.jetbrains.kotlin.config.LanguageFeature
 import org.jetbrains.kotlin.idea.base.codeInsight.KotlinNameSuggester
 import org.jetbrains.kotlin.idea.base.projectStructure.languageVersionSettings
+import org.jetbrains.kotlin.idea.base.psi.setPropertyInitializer
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.codeinsight.api.applicable.intentions.KotlinApplicableModCommandAction
+import org.jetbrains.kotlin.idea.codeinsight.intentions.branchedTransformations.combineWhenConditions
 import org.jetbrains.kotlin.idea.codeinsight.utils.isFalseConstant
 import org.jetbrains.kotlin.idea.codeinsight.utils.isTrueConstant
-import org.jetbrains.kotlin.idea.codeinsight.intentions.branchedTransformations.combineWhenConditions
 import org.jetbrains.kotlin.idea.util.CommentSaver
 import org.jetbrains.kotlin.psi.KtExpression
 import org.jetbrains.kotlin.psi.KtIfExpression
@@ -73,7 +76,8 @@ internal class WhenToIfIntention :
         return entries.size <= 1
     }
 
-    override fun KaSession.prepareContext(element: KtWhenExpression): Context? {
+    context(session: KaSession)
+    override fun prepareContext(element: KtWhenExpression): Context? {
         if (element.hasNoElseButUsedAsExpression()) return null
 
         val subject = element.subjectExpression
@@ -196,7 +200,7 @@ internal class WhenToIfIntention :
         return PropertyForWhenSubject(
             psiFactory.buildExpression {
                 val property = psiFactory.createProperty(varNameForSubject, type = null, isVar = false)
-                property.initializer = subject
+                property.setPropertyInitializer(subject)
                 appendExpression(property)
             },
             psiFactory.createExpressionByPattern(varNameForSubject)

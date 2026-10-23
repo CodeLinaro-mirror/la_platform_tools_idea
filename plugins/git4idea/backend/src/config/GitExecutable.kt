@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package git4idea.config
 
 import com.intellij.execution.CommandLineUtil
@@ -8,14 +8,13 @@ import com.intellij.execution.configurations.PathEnvironmentVariableUtil
 import com.intellij.execution.wsl.WSLCommandLineOptions
 import com.intellij.execution.wsl.WSLDistribution
 import com.intellij.openapi.diagnostic.logger
-import com.intellij.openapi.progress.runBlockingCancellable
+import com.intellij.openapi.progress.runBlockingMaybeCancellable
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.platform.eel.EelApi
 import com.intellij.platform.eel.EelDescriptor
 import com.intellij.platform.eel.EelPlatform
-import com.intellij.platform.eel.annotations.MultiRoutingFileSystemPath
 import com.intellij.platform.eel.environmentVariables
 import com.intellij.platform.eel.fs.getPath
 import com.intellij.platform.eel.path.EelPath
@@ -24,6 +23,7 @@ import com.intellij.platform.eel.provider.asEelPath
 import com.intellij.platform.eel.provider.asNioPath
 import com.intellij.platform.eel.provider.utils.awaitProcessResult
 import com.intellij.platform.eel.spawnProcess
+import com.intellij.platform.util.annotations.paths.NioPath
 import com.intellij.vcs.VcsLocaleHelper
 import git4idea.commands.GitHandler
 import git4idea.i18n.GitBundle
@@ -34,9 +34,9 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.withTimeout
 import org.jetbrains.annotations.Nls
 import org.jetbrains.annotations.NonNls
-import java.io.File
 import java.io.IOException
 import java.nio.file.Files
+import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import kotlin.io.path.Path
 import kotlin.io.path.absolutePathString
@@ -54,7 +54,7 @@ sealed class GitExecutable {
     private const val SETSID_PATH = "/usr/bin/setsid"
     private val hasSetSid by lazy { Files.exists(Path.of(SETSID_PATH)) }
 
-    private fun setupLowPriorityExecution(commandLine: GeneralCommandLine, isWindows: Boolean, nicePath: () -> @MultiRoutingFileSystemPath String?) {
+    private fun setupLowPriorityExecution(commandLine: GeneralCommandLine, isWindows: Boolean, nicePath: () -> @NioPath String?) {
       if (Registry.`is`("ide.allow.low.priority.process")) {
         if (isWindows) {
           commandLine.withWrappingCommand(CommandLineUtil.getWinShellName(), "/c", "start", "/b", "/low", "/wait", GeneralCommandLine.inescapableQuote(""))
@@ -67,7 +67,7 @@ sealed class GitExecutable {
       }
     }
 
-    private fun setupNoTtyExecution(commandLine: GeneralCommandLine, wait: Boolean, setSidPath: () -> @MultiRoutingFileSystemPath String?) {
+    private fun setupNoTtyExecution(commandLine: GeneralCommandLine, wait: Boolean, setSidPath: () -> @NioPath String?) {
       setSidPath()?.let { setSidPathValue ->
         if (wait) {
           commandLine.withWrappingCommand(setSidPathValue, "-w")
@@ -132,9 +132,9 @@ sealed class GitExecutable {
     internal fun getModificationTime(pathVariable: String?, isMac: Boolean, toPath: (String) -> Path): Long {
       var filePath = exePath
 
-      if (!filePath.contains(File.separator)) {
-        val exeFile = PathEnvironmentVariableUtil.findInPath(filePath, pathVariable, null)
-        if (exeFile != null) filePath = exeFile.path
+      if (!filePath.contains(@Suppress("IO_FILE_USAGE", "RemoveRedundantQualifierName") java.io.File.separator)) {
+        val exeFile = PathEnvironmentVariableUtil.findFirst(filePath, pathVariable)
+        if (exeFile != null) filePath = exeFile.toString()
       }
 
       val executablePath = toPath(filePath)
@@ -177,8 +177,12 @@ sealed class GitExecutable {
   /**
    * Ideally, can represent any git executable, either local or remote. Actual instantiation depends on the feature flags enabled.
    */
-  data class Eel(val exeEelPath: EelPath, val eel: EelApi) : GitExecutable() {
-    override val exePath: String = exeEelPath.toString()
+  @ConsistentCopyVisibility
+  data class Eel private constructor(val eel: EelApi, val exeEelPath: EelPath?, private val unresolvedExeName: String?) : GitExecutable() {
+    constructor(eel: EelApi, exeEelPath: EelPath) : this(eel, exeEelPath, null)
+    constructor(eel: EelApi, unresolvedExeName: String) : this(eel, null, unresolvedExeName)
+
+    override val exePath: String = exeEelPath?.asNioPath()?.pathString ?: unresolvedExeName!!
     private val delegate = Local(exePath)
 
     override val id: @NonNls String = eel.descriptor.toString()
@@ -189,13 +193,19 @@ sealed class GitExecutable {
     }
 
     override fun getModificationTime(): Long  {
-      val dependencies = GitExecutableDetector.getDependencyPaths(exeEelPath.toString(), eel.platform is EelPlatform.Darwin).map { eel.fs.getPath(it) }
+      val path = exeEelPath ?: throw NoSuchFileException(exePath)
+      val dependencies = GitExecutableDetector.getDependencyPaths(path.toString(), eel.platform is EelPlatform.Darwin).map { eel.fs.getPath(it) }
 
-      return (listOf(exeEelPath) + dependencies).mapNotNull { path ->
+      var modificationTime = Files.getLastModifiedTime(path.asNioPath()).toMillis()
+
+      for (dependencyPath in dependencies) {
         runCatching {
-          Files.getLastModifiedTime(path.asNioPath()).toMillis()
-        }.getOrNull()
-      }.maxOrNull() ?: 0
+          val depTime = Files.getLastModifiedTime(dependencyPath.asNioPath()).toMillis()
+          modificationTime = modificationTime.coerceAtLeast(depTime)
+        }
+      }
+
+      return modificationTime
     }
 
     override fun convertFilePathBack(path: String, workingDir: Path): Path {
@@ -208,7 +218,7 @@ sealed class GitExecutable {
     override fun patchCommandLine(handler: GitHandler, commandLine: GeneralCommandLine, executableContext: GitExecutableContext) {
       if (executableContext.isWithLowPriority) setupLowPriorityExecution(commandLine, eel.platform is EelPlatform.Windows, nicePath = {
         GitConfigurationCache.getInstance().computeCachedValue(NiceKey(eel.descriptor)) {
-          runBlockingCancellable {
+          runBlockingMaybeCancellable {
             listOf("nice", "/usr/bin/nice").map {
               async { eel.exec.findExeFilesInPath(it) }
             }.awaitAll().flatten().firstOrNull()
@@ -217,7 +227,7 @@ sealed class GitExecutable {
       })
       if (isLocal && executableContext.isWithNoTty) setupNoTtyExecution(commandLine, wait = false, setSidPath = {
         GitConfigurationCache.getInstance().computeCachedValue(SetSidKey(eel.descriptor)) {
-          runBlockingCancellable {
+          runBlockingMaybeCancellable {
             listOf("setsid", "/usr/bin/setsid").map {
               async { eel.exec.findExeFilesInPath(it) }
             }.awaitAll().flatten().firstOrNull()
@@ -235,7 +245,7 @@ sealed class GitExecutable {
       if (userLocale != null) return userLocale
 
       val envMap = GitConfigurationCache.getInstance().computeCachedValue(EelSupportedLocaleKey(eel.descriptor)) {
-        runBlockingCancellable {
+        runBlockingMaybeCancellable {
           computeEelSupportedLocaleKey(eel)
         }
       }

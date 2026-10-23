@@ -1,12 +1,12 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.python.community.services.internal.impl
 
-import com.intellij.python.community.execService.python.validatePythonAndGetInfo
 import com.intellij.python.community.services.internal.impl.VanillaPythonWithPythonInfoImpl.Companion.concurrentLimit
-import com.intellij.python.community.services.internal.impl.VanillaPythonWithPythonInfoImpl.Companion.createByPythonBinary
 import com.intellij.python.community.services.shared.PythonInfoComparator
 import com.intellij.python.community.services.shared.PythonWithPythonInfo
 import com.intellij.python.community.services.shared.VanillaPythonWithPythonInfo
+import com.intellij.python.sdk.backend.detectPythonEnvironment
+import com.intellij.python.sdk.backend.getPythonInfo
 import com.jetbrains.python.PathShortener
 import com.jetbrains.python.PythonBinary
 import com.jetbrains.python.PythonInfo
@@ -35,20 +35,39 @@ class VanillaPythonWithPythonInfoImpl internal constructor(
      * @return python path -> python with language level sorted from highest to lowest.
      */
     suspend fun createByPythonBinaries(pythonBinaries: Collection<PythonBinary>): Collection<Pair<PythonBinary, PyResult<VanillaPythonWithPythonInfo>>> =
+      mapConcurrently(pythonBinaries) { createByPythonBinary(it) }
+
+    /**
+     * Runs [map] for each of [pythonBinaries], up to [concurrentLimit] of them at the same time.
+     *
+     * [map] usually starts the interpreter, which is expensive, so no caller starts all of them at once.
+     * @return python path -> what [map] returned, sorted by the path.
+     */
+    suspend fun <T> mapConcurrently(
+      pythonBinaries: Collection<PythonBinary>,
+      map: suspend (PythonBinary) -> T,
+    ): Collection<Pair<PythonBinary, T>> =
       coroutineScope {
         pythonBinaries.map {
           async {
             concurrentLimit.withPermit {
-              Pair(it, createByPythonBinary(it))
+              Pair(it, map(it))
             }
           }
         }.awaitAll()
       }.sortedBy { it.first }
 
     suspend fun createByPythonBinary(pythonBinary: PythonBinary): PyResult<VanillaPythonWithPythonInfoImpl> {
-      val pythonInfo = pythonBinary.validatePythonAndGetInfo().getOr { return it }
+      val pythonEnvironment = pythonBinary.detectPythonEnvironment().getOr { return it }
+      val pythonInfo = pythonEnvironment.getPythonInfo().getOr { return it }
       return Result.success(VanillaPythonWithPythonInfoImpl(pythonBinary, pythonInfo))
     }
+
+    /**
+     * Builds an instance from a [pythonInfo] the caller already has, so nothing runs.
+     */
+    fun create(pythonBinary: PythonBinary, pythonInfo: PythonInfo): VanillaPythonWithPythonInfoImpl =
+      VanillaPythonWithPythonInfoImpl(pythonBinary, pythonInfo)
   }
 
   override fun equals(other: Any?): Boolean {

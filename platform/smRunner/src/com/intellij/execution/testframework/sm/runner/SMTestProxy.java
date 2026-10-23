@@ -28,7 +28,6 @@ import com.intellij.execution.testframework.sm.runner.states.TestIgnoredState;
 import com.intellij.execution.testframework.sm.runner.states.TestInProgressState;
 import com.intellij.execution.testframework.sm.runner.states.TestPassedState;
 import com.intellij.execution.testframework.sm.runner.states.TestStateInfo;
-import com.intellij.execution.testframework.sm.runner.ui.SMTRunnerTestTreeView;
 import com.intellij.execution.testframework.sm.runner.ui.SMTRunnerTestTreeViewProvider;
 import com.intellij.execution.testframework.sm.runner.ui.TestsPresentationUtil;
 import com.intellij.execution.testframework.stacktrace.DiffHyperlink;
@@ -85,15 +84,19 @@ public class SMTestProxy extends AbstractTestProxy implements Navigatable {
 
   private enum DurationState {
     /**
-     * initial / after invalidation: {@link #getDuration} recomputes
+     * Initial state, or after invalidation. {@link #getDuration()} will (re)compute the value,
+     * e.g. by summing children durations for a suite.
      */
     NOT_SET,
     /**
-     * duration is set by children or explicitly and is up to date: {@link #getDuration} returns cached value
+     * Value was derived automatically (summed from children) and is up to date.
+     * {@link #getDuration()} returns the cached value without recomputing.
+     * Reverts to {@link #NOT_SET} whenever a child's duration changes.
      */
     COMPUTED,
     /**
-     * duration is set explicitly by {@link #setDuration} and is up to date: {@link #getDuration} returns cached value
+     * Value was provided directly via {@link #setDuration(long)} and is pinned:
+     * it is never recomputed or overwritten because a child's duration changed.
      */
     EXPLICIT
   }
@@ -512,8 +515,8 @@ public class SMTestProxy extends AbstractTestProxy implements Navigatable {
   @Override
   public @Nullable Long getCustomizedDuration(@NotNull TestConsoleProperties testConsoleProperties) {
     if (testConsoleProperties instanceof SMTRunnerTestTreeViewProvider provider) {
-      SMTRunnerTestTreeView view = provider.createSMTRunnerTestTreeView();
-      if (view instanceof SMTRunnerTestTreeViewProvider.CustomizedDurationProvider customizedDurationProvider) {
+      SMTRunnerTestTreeViewProvider.CustomizedDurationProvider customizedDurationProvider = provider.getCustomizedDurationProvider();
+      if (customizedDurationProvider != null) {
         return customizedDurationProvider.getCustomizedDuration(this);
       }
     }
@@ -1095,21 +1098,22 @@ public class SMTestProxy extends AbstractTestProxy implements Navigatable {
   private void invalidateCachedDurationForContainerSuites(long duration) {
     if (myDurationState != DurationState.EXPLICIT) {
       if (!durationShouldBeSetExplicitly()) {
-        // AUTOMATIC suite: update running sum incrementally, or invalidate on full reset
-        if (duration >= 0) {
-          if (myDuration == null) {
-            myDuration = duration;
+        // AUTOMATIC suite: only patch the cache if a sum is actually cached (COMPUTED).
+        // If NOT_SET, there is nothing to patch - the next getDuration() call will recompute
+        // the full sum from children anyway.
+        if (myDurationState == DurationState.COMPUTED) {
+          if (duration >= 0) {
+            myDuration = (myDuration != null) ? myDuration + duration : duration;
           }
           else {
-            myDuration += duration;
+            resetDuration();
           }
-        }
-        else {
-          resetDuration();
         }
       }
       else {
-        // MANUAL suite with computed duration: invalidate so getDuration() recomputes from children
+        // leaf test, or MANUAL suite with a computed (non-explicit) duration: invalidate so
+        // getDuration() recomputes - for a leaf this is immediately overwritten by setDuration(),
+        // for a MANUAL suite this forces recomputation from children
         resetDuration();
       }
     }

@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.xml.psi` start
+content_module_jar(module = ":psi")
+### auto-generated section `dev intellij.xml.psi` end
 
 ### auto-generated section `build intellij.xml.psi` start
-
 jvm_library(
     name = "psi",
     srcs = glob(
@@ -62,6 +66,7 @@ jvm_library(
 exports_files(
     [
         "intellij.xml.psi.iml",
+        "resources/intellij.xml.psi.xml",
     ],
     visibility = ["//visibility:public"],
 )

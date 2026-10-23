@@ -15,9 +15,6 @@ internal class PyIncompatibleStubVisitor(
   holder: ProblemsHolder,
   val session: LocalInspectionToolSession,
 ) : PyStubVisitor(holder, session) {
-  init {
-    downgradeHighlightForTypeEngine = getContext(session).usesExternalTypeEngine
-  }
 
   override fun checkImports(file: PyFile, importedPackages: Set<String>, packageManager: PythonPackageManager) {
     val checker = PyStubsIncompatibilityChecker.getInstance(project = packageManager.project)
@@ -27,7 +24,7 @@ internal class PyIncompatibleStubVisitor(
       val message = PyPsiBundle.message("INSP.stub.packages.compatibility.incompatible.packages.message", stub.stubRequirement.name)
       registerProblem(file,
                       message,
-                      InstallStubQuickFix(stub.stubRequirement, packageManager.sdk),
+                      InstallStubQuickFix(stub.stubRequirement, packageManager),
                       IgnoreStubCompatibilityQuickFix(stub.stubRequirement, ignoredStubPackages))
     }
   }

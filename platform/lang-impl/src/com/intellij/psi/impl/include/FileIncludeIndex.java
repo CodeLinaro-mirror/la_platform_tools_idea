@@ -2,7 +2,6 @@
 
 package com.intellij.psi.impl.include;
 
-import com.intellij.openapi.diagnostic.ControlFlowException;
 import com.intellij.openapi.extensions.ExtensionPointName;
 import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.project.Project;
@@ -11,7 +10,6 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.util.Consumer;
 import com.intellij.util.containers.ContainerUtil;
-import com.intellij.util.containers.FactoryMap;
 import com.intellij.util.indexing.CompositeDataIndexer;
 import com.intellij.util.indexing.DataIndexer;
 import com.intellij.util.indexing.DefaultFileTypeSpecificWithProjectInputFilter;
@@ -42,6 +40,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import static com.intellij.diagnostic.ControlFlowExceptionsKt.rethrowControlFlowException;
 
 @ApiStatus.Internal
 public final class FileIncludeIndex extends FileBasedIndexExtension<String, List<FileIncludeInfoImpl>> {
@@ -102,18 +102,18 @@ public final class FileIncludeIndex extends FileBasedIndexExtension<String, List
 
       @Override
       public @NotNull Map<String, List<FileIncludeInfoImpl>> map(@NotNull FileContent inputData, @NotNull Set<FileIncludeProvider> providers) {
-        Map<String, List<FileIncludeInfoImpl>> map = FactoryMap.create(key -> new ArrayList<>());
+        Map<String, List<FileIncludeInfoImpl>> map = new HashMap<>();
         for (FileIncludeProvider provider : providers) {
           FileIncludeInfo[] includeInfos;
           try {
             includeInfos = provider.getIncludeInfos(inputData);
           } catch (Exception e) {
-            if (e instanceof ControlFlowException) throw e;
+            rethrowControlFlowException(e);
             throw new MapReduceIndexMappingException(e, provider.getClass());
           }
           for (FileIncludeInfo info : includeInfos) {
             FileIncludeInfoImpl impl = new FileIncludeInfoImpl(info.path, info.offset, info.runtimeOnly, provider.getId());
-            map.get(info.fileName).add(impl);
+            map.computeIfAbsent(info.fileName, __ -> new ArrayList<>()).add(impl);
           }
         }
         return map;
@@ -158,7 +158,8 @@ public final class FileIncludeIndex extends FileBasedIndexExtension<String, List
       @Override
       public boolean acceptInput(@NotNull IndexedFile indexedFile) {
         VirtualFile file = indexedFile.getFile();
-        if (file.getFileSystem() == JarFileSystem.getInstance()) {
+        // by protocol, not by `JarFileSystem.getInstance()`: the jar file system of the language server is not a `JarFileSystem`
+        if (JarFileSystem.PROTOCOL.equals(file.getFileSystem().getProtocol())) {
           return false;
         }
         for (FileIncludeProvider provider : FILE_INCLUDE_PROVIDER_EP_NAME.getExtensionList()) {
@@ -220,5 +221,4 @@ public final class FileIncludeIndex extends FileBasedIndexExtension<String, List
   }
 
 }
-
 

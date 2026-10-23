@@ -5,12 +5,12 @@
 // ACTION: Enable a trailing comma by default in the formatter
 // ACTION: Make 'PrivateType' public
 // ACTION: Move to class body
+// K2_ERROR: EXPOSED_PARAMETER_TYPE
 
 // ERROR: 'public' function exposes its 'private-in-file' parameter type PrivateType
-// K2_ERROR: 'public' function exposes its 'private-in-file' parameter type 'PrivateType'.
 
 private class PrivateType
 
 class Foo(private val <caret>arg: PrivateType) {}
 
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeVisibilityFixFactories$ChangeToPrivateModCommandAction
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeVisibilityFixFactories$ChangeToPrivateModCommandAction

@@ -4,15 +4,17 @@ package com.intellij.python.test.env.junit5
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.CapturingProcessHandler
 import com.intellij.execution.process.ProcessNotCreatedException
-import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.diagnostic.Logger
-import com.intellij.python.community.impl.pipenv.pipenvPath
-import com.intellij.python.community.impl.poetry.common.poetryPath
+import com.intellij.platform.eel.provider.localEel
+import com.intellij.python.community.impl.pipenv.PipEnvPyTool
+import com.intellij.python.community.impl.poetry.backend.PoetryPyTool
 import com.intellij.python.junit5Tests.framework.env.PyEnvTestCase
 import com.intellij.python.junit5Tests.framework.env.RunOnEnvironments
 import com.intellij.python.junit5Tests.framework.resolvePythonTool
+import com.intellij.python.pytools.backend.setCustomExecutablePath
 import com.intellij.python.test.env.core.PyEnvironment
 import com.intellij.python.test.env.core.PyEnvironmentSpec
+import com.intellij.python.uv.backend.UvPyTool
 import com.intellij.util.containers.orNull
 import com.jetbrains.python.PythonBinary
 import com.jetbrains.python.venvReader.VirtualEnvReader
@@ -68,7 +70,7 @@ class RunOnEnvironmentsExtension : TestTemplateInvocationContextProvider, ClassT
       }.orNull()
 
     private fun getOrCreatePythonEnvironment(context: ExtensionContext, spec: PyEnvironmentSpec<*>): PyEnvironment {
-      return context.getStore(namespace).getOrComputeIfAbsent(envKey, {
+      return context.getStore(namespace).computeIfAbsent(envKey, {
         createPythonEnvironment(context, spec)
       }, PyEnvironment::class.java)
     }
@@ -84,11 +86,11 @@ class RunOnEnvironmentsExtension : TestTemplateInvocationContextProvider, ClassT
       // by other extensions (e.g. @RequiresPoetry), to avoid overwriting a valid
       // path with a potentially broken one from an environment that doesn't ship the tool.
       val pythonBinary = env.pythonPath
-      checkAndGetToolPath(pythonBinary, "poetry", false)?.let { PropertiesComponent.getInstance().poetryPath = it }
-      checkAndGetToolPath(pythonBinary, "pipenv", false)?.let { PropertiesComponent.getInstance().pipenvPath = it }
+      checkAndGetToolPath(pythonBinary, "poetry", false)?.let { PoetryPyTool.getInstance().setCustomExecutablePath(localEel.descriptor, Path.of(it)) }
+      checkAndGetToolPath(pythonBinary, "pipenv", false)?.let { PipEnvPyTool.getInstance().setCustomExecutablePath(localEel.descriptor, Path.of(it)) }
 
       val uv = VirtualEnvReader().resolvePythonHomeFromPythonBinary(pythonBinary).resolvePythonTool("uv")
-      PropertiesComponent.getInstance().setValue("PyCharm.Uv.Path", uv.toString())
+      UvPyTool.getInstance().setCustomExecutablePath(localEel.descriptor, uv)
 
       return env
     }

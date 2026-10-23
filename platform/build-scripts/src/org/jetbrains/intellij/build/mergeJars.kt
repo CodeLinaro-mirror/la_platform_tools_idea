@@ -7,25 +7,29 @@ import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.trace.Span
 import org.jetbrains.intellij.build.impl.projectStructureMapping.DistributionFileEntry
 import org.jetbrains.intellij.build.io.AddDirEntriesMode
-import org.jetbrains.intellij.build.io.INDEX_FILENAME
+import org.jetbrains.intellij.build.io.MANIFEST_ENTRY_NAME
 import org.jetbrains.intellij.build.io.PackageIndexBuilder
 import org.jetbrains.intellij.build.io.ZipArchiver
 import org.jetbrains.intellij.build.io.ZipFileWriter
 import org.jetbrains.intellij.build.io.archiveDir
-import org.jetbrains.intellij.build.io.suspendAwareReadZipFile
+import org.jetbrains.intellij.build.io.ZipEntryProcessorResult
+import org.jetbrains.intellij.build.io.readZipFile
 import org.jetbrains.intellij.build.io.zipWriter
 import org.jetbrains.intellij.build.productLayout.LIB_MODULE_PREFIX
+import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.PathMatcher
+import java.util.jar.Manifest
 import java.util.zip.Deflater
 
 private const val listOfEntitiesFileName = "META-INF/listOfEntities.txt"
 
+/** Describes the distribution entry of a library jar once the asset that holds it is packed. */
 fun interface DistributionFileEntryProducer {
-  fun consume(size: Int, hash: Long, targetFile: Path): DistributionFileEntry
+  fun produce(): DistributionFileEntry
 }
 
 internal interface NativeFileHandler {
@@ -35,32 +39,32 @@ internal interface NativeFileHandler {
 
   fun isCompatibleWithTargetPlatform(name: String): Boolean
 
-  suspend fun sign(name: String, dataSupplier: () -> ByteBuffer): Path?
+  fun sign(name: String, dataSupplier: () -> ByteBuffer): Path?
 }
 
-suspend fun buildUncompressJarWithDirEntries(targetFile: Path, sources: List<Source>) {
-  // addDirEntries=true has no effect when compress=true
-  buildJar(targetFile = targetFile, sources = sources, nativeFileHandler = null, addDirEntries = true, compress = false)
+fun buildJar(targetFile: Path, sources: List<Source>, compress: Boolean = false, jarName: String = targetFile.fileName.toString()) {
+  buildJar(targetFile = targetFile, sources = sources, nativeFileHandler = null, compress = compress, jarName = jarName)
 }
 
-suspend fun buildJar(targetFile: Path, sources: List<Source>, compress: Boolean = false) {
-  buildJar(targetFile = targetFile, sources = sources, nativeFileHandler = null, addDirEntries = false, compress = compress)
-}
-
-internal suspend fun buildJar(
+/**
+ * Writes the jar [targetFile] from [sources]. [jarName] is the file name the jar has in the distribution. It differs
+ * from the name of [targetFile] when a jar cache writes the jar into a temporary sibling file first.
+ */
+internal fun buildJar(
   targetFile: Path,
   sources: Collection<Source>,
   nativeFileHandler: NativeFileHandler?,
-  addDirEntries: Boolean,
   compress: Boolean = false,
+  jarName: String = targetFile.fileName.toString(),
 ) {
-  val packageIndexBuilder = if (compress) null else PackageIndexBuilder(if (addDirEntries) AddDirEntriesMode.ALL else AddDirEntriesMode.NONE)
+  val packageIndexBuilder = if (compress) null else PackageIndexBuilder(AddDirEntriesMode.NONE)
   Files.createDirectories(targetFile.parent)
   ZipFileWriter(
     zipWriter(targetFile, packageIndexBuilder),
     deflater = if (compress) Deflater(Deflater.DEFAULT_COMPRESSION, true) else null,
   ).use { zipCreator ->
     val uniqueNames = HashMap<String, Path>()
+    val moduleManifestCheck = ModuleManifestCheck(targetFile = targetFile, jarName = jarName)
 
     val filesToMerge = mutableListOf<CharSequence>()
 
@@ -69,6 +73,7 @@ internal suspend fun buildJar(
         source = source,
         zipCreator = zipCreator,
         uniqueNames = uniqueNames,
+        moduleManifestCheck = moduleManifestCheck,
         packageIndexBuilder = packageIndexBuilder,
         targetFile = targetFile,
         sources = sources,
@@ -84,10 +89,11 @@ internal suspend fun buildJar(
   }
 }
 
-private suspend fun writeSource(
+private fun writeSource(
   source: Source,
   zipCreator: ZipFileWriter,
   uniqueNames: HashMap<String, Path>,
+  moduleManifestCheck: ModuleManifestCheck,
   packageIndexBuilder: PackageIndexBuilder?,
   targetFile: Path,
   sources: Collection<Source>,
@@ -97,18 +103,27 @@ private suspend fun writeSource(
 ) {
   when (source) {
     is DirSource -> {
-      val includeManifest = sources.size == 1
+      val isModuleOutput = source.moduleName != null
+      val includeManifest = isModuleOutput || sources.size == 1
       val archiver = ZipArchiver(fileAdded = { name, file ->
         if (name == listOfEntitiesFileName) {
           filesToMerge.add(Files.readString(file))
           false
         }
-        else if (uniqueNames.putIfAbsent(name, source.dir) == null && (includeManifest || name != "META-INF/MANIFEST.MF")) {
-          packageIndexBuilder?.addFile(name)
-          true
+        else if (name == MANIFEST_ENTRY_NAME && !includeManifest) {
+          false
         }
         else {
-          false
+          if (name == MANIFEST_ENTRY_NAME && isModuleOutput) {
+            moduleManifestCheck.check(source, ByteBuffer.wrap(Files.readAllBytes(file)))
+          }
+          if (uniqueNames.putIfAbsent(name, source.dir) == null) {
+            packageIndexBuilder?.addFile(name)
+            true
+          }
+          else {
+            false
+          }
         }
       })
       val normalizedDir = source.dir.toAbsolutePath().normalize()
@@ -146,6 +161,7 @@ private suspend fun writeSource(
           sourceFile = sourceFile,
           nativeFileHandler = nativeFileHandler,
           uniqueNames = uniqueNames,
+          moduleManifestCheck = moduleManifestCheck,
           sources = sources,
           packageIndexBuilder = packageIndexBuilder,
           zipCreator = zipCreator,
@@ -162,12 +178,6 @@ private suspend fun writeSource(
           throw IOException("Failed to include $sourceFile to $targetFile", e)
         }
       }
-      finally {
-        @Suppress("KotlinConstantConditions")
-        if (sourceFile !== source.file) {
-          Files.deleteIfExists(sourceFile)
-        }
-      }
     }
 
     is LazySource -> {
@@ -177,6 +187,7 @@ private suspend fun writeSource(
           source = subSource,
           zipCreator = zipCreator,
           uniqueNames = uniqueNames,
+          moduleManifestCheck = moduleManifestCheck,
           packageIndexBuilder = packageIndexBuilder,
           targetFile = targetFile,
           sources = sources,
@@ -197,11 +208,12 @@ private suspend fun writeSource(
   }
 }
 
-private suspend fun handleZipSource(
+private fun handleZipSource(
   source: ZipSource,
   sourceFile: Path,
   nativeFileHandler: NativeFileHandler?,
   uniqueNames: MutableMap<String, Path>,
+  moduleManifestCheck: ModuleManifestCheck,
   sources: Collection<Source>,
   packageIndexBuilder: PackageIndexBuilder?,
   zipCreator: ZipFileWriter,
@@ -220,10 +232,10 @@ private suspend fun handleZipSource(
     }
   }
 
-  suspendAwareReadZipFile(sourceFile) { name, dataSupplier ->
+  readZipFile(sourceFile) { name, dataSupplier ->
     if (name == listOfEntitiesFileName) {
       filesToMerge.add(Charsets.UTF_8.decode(dataSupplier()))
-      return@suspendAwareReadZipFile
+      return@readZipFile ZipEntryProcessorResult.CONTINUE
     }
 
     fun writeZipData(data: ByteBuffer) {
@@ -235,15 +247,18 @@ private suspend fun handleZipSource(
       }
     }
 
-    if (checkCoverageAgentManifest(name = name, sourceFile = sourceFile, targetFile = targetFile, dataSupplier = dataSupplier, writeData = ::writeZipData)) {
-      return@suspendAwareReadZipFile
+    val isManifest = name == MANIFEST_ENTRY_NAME
+    val isModuleManifest = isManifest && source.moduleName != null
+    val isIncluded = source.filter(name) && (!isManifest || isModuleManifest || sources.count { !isLibModuleSource(it) } == 1)
+    if (!isIncluded) {
+      return@readZipFile ZipEntryProcessorResult.CONTINUE
     }
 
-    val includeManifest = sources.count { !isLibModuleSource(it) } == 1
-    val isIncluded = source.filter(name) && (includeManifest || name != "META-INF/MANIFEST.MF")
-
-    if (!isIncluded || isDuplicated(uniqueNames = uniqueNames, name = name, sourceFile = sourceFile)) {
-      return@suspendAwareReadZipFile
+    if (isModuleManifest) {
+      moduleManifestCheck.check(source, dataSupplier())
+    }
+    if (isDuplicated(uniqueNames = uniqueNames, name = name, sourceFile = sourceFile)) {
+      return@readZipFile ZipEntryProcessorResult.CONTINUE
     }
 
     if (nativeFileHandler?.isNative(name) == true) {
@@ -269,6 +284,7 @@ private suspend fun handleZipSource(
       packageIndexBuilder?.addFile(name)
       writeZipData(dataSupplier())
     }
+    ZipEntryProcessorResult.CONTINUE
   }
 }
 
@@ -282,37 +298,35 @@ private fun isLibModuleSource(source: Source): Boolean {
 }
 
 /**
- * Coverage agent uses the Boot-Class-Path jar attribute to an instrument class from any class loader.
- * For the correct work, it is required that the attribute value is the same as the simple jar name.
- * Here the attribute value is replaced with the target jar name.
+ * Checks the manifests of the module outputs in one jar.
+ *
+ * The jar keeps at most one module manifest.
+ * If that manifest has the `Boot-Class-Path` main attribute, the value must be [jarName], the name of the jar in the
+ * distribution. [targetFile] names the jar in a message only, because a jar cache can write a temporary sibling file.
  */
-private fun checkCoverageAgentManifest(
-  name: String,
-  sourceFile: Path,
-  targetFile: Path,
-  dataSupplier: () -> ByteBuffer,
-  writeData: (ByteBuffer) -> Unit,
-): Boolean {
-  if (name != "META-INF/MANIFEST.MF") {
-    return false
-  }
+private class ModuleManifestCheck(private val targetFile: Path, private val jarName: String) {
+  private var manifestSource: Source? = null
 
-  val coveragePlatformAgentModuleName = "intellij.platform.coverage.agent"
-  if (!targetFile.fileName.toString().contains(coveragePlatformAgentModuleName)) {
-    return false
-  }
+  fun check(source: Source, data: ByteBuffer) {
+    val firstSource = manifestSource
+    if (firstSource != null) {
+      error("$targetFile gets a module manifest from two sources: $firstSource and $source")
+    }
+    manifestSource = source
 
-  val agentPrefix = "intellij-coverage-agent"
-  if (!sourceFile.fileName.toString().startsWith(agentPrefix)) {
-    return false
+    val bytes = ByteArray(data.remaining())
+    data.duplicate().get(bytes)
+    val manifest = try {
+      Manifest(ByteArrayInputStream(bytes))
+    }
+    catch (e: IOException) {
+      throw IllegalStateException("$targetFile gets a module manifest from $source that is not a valid manifest: ${e.message}", e)
+    }
+    val bootClassPath = manifest.mainAttributes.getValue("Boot-Class-Path") ?: return
+    if (bootClassPath != jarName) {
+      error("$targetFile gets a module manifest from $source with Boot-Class-Path '$bootClassPath'. The value must be '$jarName'.")
+    }
   }
-
-  val manifestContent = Charsets.UTF_8.decode(dataSupplier()).let {
-    val bootAttribute = "Boot-Class-Path:"
-    it.replace("$bootAttribute $agentPrefix-\\d+(\\.\\d+)*\\.jar".toRegex(), "$bootAttribute $coveragePlatformAgentModuleName.jar")
-  }
-  writeData(ByteBuffer.wrap(manifestContent.toByteArray()))
-  return true
 }
 
 private fun isDuplicated(uniqueNames: MutableMap<String, Path>, name: String, sourceFile: Path): Boolean {
@@ -324,98 +338,4 @@ private fun isDuplicated(uniqueNames: MutableMap<String, Path>, name: String, so
   )
   )
   return true
-}
-
-@Suppress("SpellCheckingInspection")
-private fun getIgnoredNames(): Set<String> {
-  val set = mutableListOf<String>()
-
-  // compilation cache on TC
-  set.add(".hash")
-  set.add("classpath.index")
-  set.add(".gitattributes")
-  set.add("pom.xml")
-  set.add("about.html")
-  set.add("module-info.class")
-
-  // default is ok (modules not used)
-  set.add("META-INF/versions/9/kotlin/reflect/jvm/internal/impl/serialization/deserialization/builtins/BuiltInsResourceLoader.class")
-  set.add("META-INF/versions/9/org/apache/xmlbeans/impl/tool/MavenPluginResolver.class")
-  set.add("META-INF/services/javax.xml.parsers.SAXParserFactory")
-  set.add("META-INF/services/javax.xml.stream.XMLEventFactory")
-  set.add("META-INF/services/javax.xml.parsers.DocumentBuilderFactory")
-  set.add("META-INF/services/javax.xml.datatype.DatatypeFactory")
-
-  set.add("META-INF/services/com.fasterxml.jackson.core.ObjectCodec")
-  set.add("META-INF/services/com.fasterxml.jackson.core.JsonFactory")
-  set.add("META-INF/services/reactor.blockhound.integration.BlockHoundIntegration")
-
-  set.add("META-INF/io.netty.versions.properties")
-
-  set.add("com/sun/jna/aix-ppc/libjnidispatch.a")
-  set.add("com/sun/jna/aix-ppc64/libjnidispatch.a")
-
-  // duplicates in maven-resolver-transport-http and maven-resolver-transport-file
-  set.add("META-INF/sisu/javax.inject.Named")
-
-  // duplicates in recommenders-jayes-io-2.5.5 and recommenders-jayes-2.5.5.jar
-  set.add("OSGI-INF/l10n/bundle.properties")
-
-  // Groovy
-  set.add("META-INF/groovy-release-info.properties")
-
-  set.add("native-image")
-  set.add("native")
-  set.add("licenses")
-  set.add("META-INF/LGPL2.1")
-  set.add("META-INF/AL2.0")
-  @Suppress("SpellCheckingInspection")
-  set.add(".gitkeep")
-  set.add(INDEX_FILENAME)
-
-  for (originalName in sequenceOf("NOTICE", "README", "LICENSE", "DEPENDENCIES", "CHANGES", "THIRD_PARTY_LICENSES", "COPYING")) {
-    for (name in sequenceOf(originalName, originalName.lowercase())) {
-      set.add(name)
-      set.add("$name.txt")
-      set.add("$name.md")
-      set.add("META-INF/$name")
-      set.add("META-INF/$name.txt")
-      set.add("META-INF/$name.md")
-    }
-  }
-
-  set.add("kotlinx/coroutines/debug/ByteBuddyDynamicAttach.class")
-  set.add("kotlin/coroutines/jvm/internal/DebugProbesKt.class")
-
-  /**
-   * A merging build politic breaks Graal VM Truffle-based plugins in an inconsistant way,
-   * so it's better to provide a correctly merged version in the plugin.
-   */
-  set.add("META-INF/services/com.oracle.truffle.api.provider.TruffleLanguageProvider")
-
-  return java.util.Set.copyOf(set)
-}
-
-private val ignoredNames = getIgnoredNames()
-private val moduleInfoPattern = Regex("META-INF/versions/\\d+/module-info\\.class")
-
-fun defaultLibrarySourcesNamesFilter(name: String): Boolean {
-  return !ignoredNames.contains(name) &&
-         !name.matches(moduleInfoPattern) &&
-         !name.endsWith(".kotlin_metadata") &&
-         !name.startsWith("license/") &&
-         !name.startsWith("licenses/") &&
-         !name.startsWith("native/") &&
-         !name.startsWith("META-INF/license/") &&
-         !name.startsWith("META-INF/LICENSE-") &&
-         !name.startsWith("native-image/") &&
-         !name.startsWith("org/xml/sax/") &&  // XmlRPC lib
-         !name.startsWith("META-INF/versions/9/org/apache/logging/log4j/") &&
-         !name.startsWith("META-INF/versions/9/org/bouncycastle/") &&
-         !name.startsWith("META-INF/versions/10/org/bouncycastle/") &&
-         !name.startsWith("META-INF/versions/15/org/bouncycastle/") &&
-         !name.startsWith("kotlinx/coroutines/repackaged/") &&
-         !name.startsWith("META-INF/INDEX.LIST") &&
-         (!name.startsWith("META-INF/") || (!name.endsWith(".DSA") && !name.endsWith(".SF") && !name.endsWith(".RSA"))) &&
-         !name.startsWith("net/sf/cglib/core/AbstractClassGenerator")  // we replace the lib class with our own patched version
 }

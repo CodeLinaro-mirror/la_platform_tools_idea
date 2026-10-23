@@ -26,15 +26,13 @@ import com.intellij.openapi.actionSystem.KeyboardShortcut
 import com.intellij.openapi.actionSystem.PerformWithDocumentsCommitted
 import com.intellij.openapi.actionSystem.Presentation
 import com.intellij.openapi.actionSystem.ShortcutSet
-import com.intellij.openapi.actionSystem.ex.ActionUtil.SHOW_TEXT_IN_TOOLBAR
-import com.intellij.openapi.actionSystem.ex.ActionUtil.performAction
-import com.intellij.openapi.actionSystem.ex.ActionUtil.updateAction
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.keymap.KeymapUtil
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.DumbService
+import com.intellij.openapi.project.DumbUtil
 import com.intellij.openapi.project.IndexNotReadyException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
@@ -49,10 +47,7 @@ import com.intellij.openapi.util.NlsSafe
 import com.intellij.openapi.util.ThrowableComputable
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.util.text.StringUtil
-import com.intellij.platform.ide.core.permissions.Permission
-import com.intellij.platform.ide.core.permissions.PermissionDeniedException
-import com.intellij.platform.ide.core.permissions.RequiresPermissions
-import com.intellij.platform.ide.core.permissions.checkPermissionsGranted
+import com.intellij.platform.ide.productMode.IdeProductMode
 import com.intellij.ui.ClientProperty
 import com.intellij.util.ObjectUtils
 import com.intellij.util.SlowOperationCanceledException
@@ -229,10 +224,6 @@ object ActionUtil {
 
   @ApiStatus.Internal
   @JvmField
-  val UNSATISFIED_PERMISSIONS: Key<List<Permission>> = Key.create("UNSATISFIED_PERMISSIONS")
-
-  @ApiStatus.Internal
-  @JvmField
   val SKIP_ACTION_EXECUTION: Key<Boolean> = Key.create("SKIP_ACTION_EXECUTION")
 
   @JvmStatic
@@ -260,16 +251,30 @@ object ActionUtil {
   @JvmStatic
   fun getUnavailableMessage(action: String, plural: Boolean): @NlsContexts.PopupContent String {
     if (plural) {
-      return IdeBundle.message("popup.content.actions.not.available.while.updating.indices", action)
+      return DumbUtil.dumbModeMessage(
+        IdeBundle.message("popup.content.actions.not.available.while.updating.indices", action),
+        IdeBundle.message("popup.content.actions.not.available.in.light.mode", action)
+      )
     }
-    return IdeBundle.message("popup.content.action.not.available.while.updating.indices", action)
+    return DumbUtil.dumbModeMessage(
+      IdeBundle.message("popup.content.action.not.available.while.updating.indices", action),
+      IdeBundle.message("popup.content.action.not.available.in.light.mode", action)
+    )
   }
 
   @ApiStatus.Internal
   @JvmStatic
   fun getActionUnavailableMessage(@ActionText action: String?): @NlsContexts.PopupContent String {
-    if (action == null) return IdeBundle.message("popup.content.this.action.not.available.while.updating.indices")
-    return IdeBundle.message("popup.content.action.not.available.while.updating.indices", action)
+    if (action == null) {
+      return DumbUtil.dumbModeMessage(
+        IdeBundle.message("popup.content.this.action.not.available.while.updating.indices"),
+        IdeBundle.message("popup.content.this.action.not.available.in.light.mode")
+      )
+    }
+    return DumbUtil.dumbModeMessage(
+      IdeBundle.message("popup.content.action.not.available.while.updating.indices", action),
+      IdeBundle.message("popup.content.action.not.available.in.light.mode", action)
+    )
   }
 
   @JvmStatic
@@ -277,8 +282,13 @@ object ActionUtil {
     return when {
       actionNames.isEmpty() -> getActionUnavailableMessage(null)
       actionNames.size == 1 -> getActionUnavailableMessage(actionNames[0])
-      else -> IdeBundle.message("popup.content.none.of.following.actions.are.available.while.updating.indices",
-                                actionNames.joinToString(", "))
+      else -> {
+        val actionNamesAsString = actionNames.joinToString(", ")
+        DumbUtil.dumbModeMessage(
+          IdeBundle.message("popup.content.none.of.following.actions.are.available.while.updating.indices", actionNamesAsString),
+          IdeBundle.message("popup.content.none.of.following.actions.are.available.in.light.mode", actionNamesAsString)
+        )
+      }
     }
   }
 
@@ -311,6 +321,12 @@ object ActionUtil {
       presentation.putClientProperty(WOULD_BE_VISIBLE_IF_NOT_DUMB_MODE, false)
       return AnActionResult.ignored("action is not compatible with LightEdit")
     }
+    if (IdeProductMode.isLight && !action.isDumbAware) {
+      presentation.isEnabledAndVisible = false
+      presentation.putClientProperty(WOULD_BE_ENABLED_IF_NOT_DUMB_MODE, false)
+      presentation.putClientProperty(WOULD_BE_VISIBLE_IF_NOT_DUMB_MODE, false)
+      return AnActionResult.PERFORMED
+    }
     val wasEnabledBefore = presentation.getClientProperty(WAS_ENABLED_BEFORE_DUMB)
     val dumbMode = isDumbMode(e.project)
     if (wasEnabledBefore != null && !dumbMode) {
@@ -342,10 +358,13 @@ object ActionUtil {
       presentation.putClientProperty(WOULD_BE_VISIBLE_IF_NOT_DUMB_MODE, !allowed && presentation.isVisible)
       presentation.isEnabled = presentation.isEnabled && (allowed || !e.isFromContextMenu)
       if (!allowed) {
-        presentation.putClientProperty(TOOLTIP_TEXT, IdeBundle.message("ide.action.waits.for.analysis.message", presentation.text))
-      }
-      if (presentation.isEnabled && action is RequiresPermissions) {
-        checkPermissionsGranted(*action.getRequiredPermissions().toTypedArray())
+        presentation.putClientProperty(
+          TOOLTIP_TEXT,
+          DumbUtil.dumbModeMessage(
+            IdeBundle.message("ide.action.waits.for.analysis.message", presentation.text),
+            IdeBundle.message("ide.action.is.not.available.in.light.mode", presentation.text)
+          )
+        )
       }
     }
     catch (@Suppress("IncorrectCancellationExceptionHandling") ex: SlowOperationCanceledException) {
@@ -359,14 +378,6 @@ object ActionUtil {
         return AnActionResult.failed(ex)
       }
       throw ex
-    }
-    catch (pde: PermissionDeniedException) {
-      if (Registry.`is`("ide.permissions.api.enabled")) {
-        presentation.putClientProperty(UNSATISFIED_PERMISSIONS, pde.permissions)
-      }
-      else {
-        LOG.error(Throwable("PDE must not be thrown when `ide.permissions.api.enabled=false`", pde))
-      }
     }
     finally {
       if (!isPerformed) {
@@ -481,9 +492,6 @@ object ActionUtil {
     e: AnActionEvent,
     popupShow: Consumer<in JBPopup>?,
   ) {
-    if (action is RequiresPermissions) {
-      checkPermissionsGranted(*action.getRequiredPermissions().toTypedArray())
-    }
     if (action is ActionGroup && !e.presentation.isPerformGroup) {
       val dataContext = e.dataContext
       val place = ActionPlaces.getActionGroupPopupPlace(e.place)
@@ -690,13 +698,11 @@ object ActionUtil {
     return KeymapUtil.getShortcutsForMnemonicCode(action.templatePresentation.mnemonic)
   }
 
-  @ApiStatus.Experimental
   @JvmStatic
   fun getShortcutSet(id: @NonNls String): ShortcutSet {
     return getAction(id)?.shortcutSet ?: CustomShortcutSet.EMPTY
   }
 
-  @ApiStatus.Experimental
   @JvmStatic
   fun getAction(id: @NonNls String): AnAction? {
     val action = ActionManager.getInstance().getAction(id)
@@ -704,7 +710,6 @@ object ActionUtil {
     return action
   }
 
-  @ApiStatus.Experimental
   @JvmStatic
   fun getActionGroup(id: @NonNls String): ActionGroup? {
     val action = getAction(id) ?: return null
@@ -712,7 +717,6 @@ object ActionUtil {
     else DefaultActionGroup(listOf(action))
   }
 
-  @ApiStatus.Experimental
   @JvmStatic
   fun getActionGroup(vararg ids: String): ActionGroup? {
     if (ids.size == 1) return getActionGroup(ids[0])
@@ -744,7 +748,6 @@ object ActionUtil {
     return action
   }
 
-  @ApiStatus.Experimental
   @JvmStatic
   fun createToolbarComponent(
     target: JComponent,
@@ -792,4 +795,3 @@ object ActionUtil {
     ActionContextElement.reset(component, getActionThreadContext())
   }
 }
-

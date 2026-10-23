@@ -41,6 +41,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComponentContainer
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.registry.Registry
+import com.intellij.platform.buildView.BuildDataKeys.BUILD_VIEW_ID
 import com.intellij.platform.util.coroutines.childScope
 import com.intellij.pom.Navigatable
 import com.intellij.ui.AnimatedIcon
@@ -68,11 +69,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import org.jetbrains.annotations.Nls
 import java.awt.CardLayout
 import java.awt.Color
 import java.awt.Component
 import java.awt.Dimension
 import java.awt.Graphics
+import java.awt.event.MouseAdapter
+import java.awt.event.MouseEvent
 import java.util.Collections
 import java.util.Enumeration
 import java.util.Vector
@@ -80,7 +84,6 @@ import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.JTree
 import javax.swing.Timer
-import javax.swing.event.TreeSelectionEvent
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeModel
 import javax.swing.tree.MutableTreeNode
@@ -175,7 +178,20 @@ internal class BuildTreeView(
     tree.setCellRenderer(MyNodeRenderer())
     tree.putClientProperty(RenderingHelper.SHRINK_LONG_RENDERER, true)
     tree.getAccessibleContext().setAccessibleName(IdeBundle.message("buildToolWindow.tree.accessibleName"))
-    tree.addTreeSelectionListener(::onTreeSelectionChanged)
+    tree.addTreeSelectionListener { e ->
+      when (e.isAddedPath) {
+        true -> onNodeSelectionChange(e.path)
+        else -> onNodeSelectionChange(null)
+      }
+    }
+    tree.addMouseListener(object : MouseAdapter() {
+      override fun mousePressed(e: MouseEvent) {
+        val selectedPath = TreeUtil.getPathForLocation(tree, e.x, e.y) ?: return
+        if (tree.isPathSelected(selectedPath)) {
+          onNodeSelectionChange(selectedPath)
+        }
+      }
+    })
     tree.addMouseListener(object : PopupHandler() {
       override fun invokePopup(comp: Component?, x: Int, y: Int) {
         val group = getContextMenuGroup()
@@ -236,6 +252,7 @@ internal class BuildTreeView(
   override fun uiDataSnapshot(sink: DataSink) {
     sink[CommonDataKeys.NAVIGATABLE_ARRAY] = extractSelectedNodesNavigatables()
     sink[CommonDataKeys.NAVIGATABLE] = extractSelectedNodeNavigatable()
+    sink[BUILD_VIEW_ID] = buildViewId
     sink[BUILD_TREE_SELECTED_NODE] = getSelectedNode()?.let { SelectedBuildTreeNode(it.id) }
   }
 
@@ -352,16 +369,14 @@ internal class BuildTreeView(
     }
   }
 
-  private fun onTreeSelectionChanged(e: TreeSelectionEvent) {
-    if (e.path != null) {
-      val selectedNode = tree.selectionPath?.lastPathComponent as? MyNode
-      val selectedNodeId = selectedNode?.id
-      uiScope.launch {
-        LOG.debug { "Selection change: $selectedNodeId" }
-        model.onSelectionChange(selectedNodeId)
-      }
-      updateNavigationContext()
+  private fun onNodeSelectionChange(selectedPath: TreePath?) {
+    val selectedNode = selectedPath?.lastPathComponent as? MyNode
+    val selectedNodeId = selectedNode?.id
+    uiScope.launch {
+      LOG.debug { "Selection change: $selectedNodeId" }
+      model.onSelectionChange(selectedNodeId)
     }
+    updateNavigationContext()
   }
 
   private fun updateNavigationContext() {
@@ -635,6 +650,10 @@ internal class BuildTreeView(
     private var myDurationWidth = 0
     private var myDurationLeftInset = 0
     private var myDurationRightInset = 0
+
+    override fun getIconToolTipText(): @Nls String? {
+      return null;
+    }
 
     override fun customizeCellRenderer(
       tree: JTree,

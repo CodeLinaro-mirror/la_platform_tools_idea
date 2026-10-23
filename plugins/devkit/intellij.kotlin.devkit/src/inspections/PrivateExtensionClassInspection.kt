@@ -6,9 +6,11 @@ import com.intellij.codeInspection.LocalInspectionToolSession
 import com.intellij.codeInspection.LocalQuickFix
 import com.intellij.codeInspection.ProblemDescriptor
 import com.intellij.codeInspection.ProblemsHolder
+import com.intellij.openapi.module.ModuleUtilCore
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiElementVisitor
+import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.util.InheritanceUtil
 import org.jetbrains.annotations.Nls
 import org.jetbrains.idea.devkit.dom.index.IdeaPluginRegistrationIndex
@@ -17,11 +19,11 @@ import org.jetbrains.idea.devkit.inspections.ExtensionUtil.isExtensionPointImple
 import org.jetbrains.idea.devkit.inspections.isServiceImplementationRegisteredInPluginXml
 import org.jetbrains.idea.devkit.kotlin.DevKitKotlinBundle
 import org.jetbrains.kotlin.asJava.toLightClass
+import org.jetbrains.kotlin.idea.base.psi.addModifierKeyword
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtModifierListOwner
 import org.jetbrains.kotlin.psi.KtVisitorVoid
-import org.jetbrains.kotlin.psi.addRemoveModifier.addModifier
 import org.jetbrains.kotlin.psi.psiUtil.getParentOfType
 import org.jetbrains.kotlin.psi.psiUtil.isPrivate
 
@@ -52,8 +54,12 @@ internal class PrivateExtensionClassInspection : LocalInspectionTool() {
   }
 
   private fun isRegisteredAction(psiClass: PsiClass): Boolean {
+    val module = ModuleUtilCore.findModuleForPsiElement(psiClass) ?: return false
+    // do not use psiClass.resolveScope for private class, it is too small
+    val privateActionMentionedScope = GlobalSearchScope.moduleWithDependentsScope(module)
+
     return InheritanceUtil.isInheritor(psiClass, "com.intellij.openapi.actionSystem.AnAction")
-           && IdeaPluginRegistrationIndex.isRegisteredActionOrGroup(psiClass, psiClass.resolveScope)
+           && IdeaPluginRegistrationIndex.isRegisteredActionOrGroup(psiClass, privateActionMentionedScope)
   }
 
   private class InternalVisibilityFix : LocalQuickFix {
@@ -63,7 +69,7 @@ internal class PrivateExtensionClassInspection : LocalInspectionTool() {
     override fun applyFix(project: Project, descriptor: ProblemDescriptor) {
       val modifierListOwner = descriptor.psiElement.getParentOfType<KtModifierListOwner>(false)
                               ?: throw IllegalStateException("Can't find modifier list owner for modifier")
-      addModifier(modifierListOwner, KtTokens.INTERNAL_KEYWORD)
+      modifierListOwner.addModifierKeyword(KtTokens.INTERNAL_KEYWORD)
     }
   }
 }

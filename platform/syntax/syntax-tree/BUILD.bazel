@@ -1,8 +1,12 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library", "jvm_provided_library")
 load("//build:compiler-options.bzl", "create_kotlinc_options")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.platform.syntax.tree` start
+content_module_jar(module = ":tree")
+### auto-generated section `dev intellij.platform.syntax.tree` end
 
 ### auto-generated section `build intellij.platform.syntax.tree` start
-
 create_kotlinc_options(
     name = "custom_tree",
     jvm_target = "8",
@@ -27,12 +31,16 @@ jvm_library(
     ),
     kotlinc_opts = ":custom_tree",
     module_name = "intellij.platform.syntax.tree",
+    resource_strip_prefix = "resources",
+    resources = glob(
+        ["resources/**/*"],
+    ),
     visibility = ["//visibility:public"],
     deps = [
         # do not sort,
         "@lib//:kotlin-stdlib",
         "//platform/syntax/syntax-api:syntax",
-        "@lib//:jetbrains-annotations",
+        "//libraries/jetbrains/annotations",
         "//platform/util/base/multiplatform",
         "//platform/util/multiplatform",
         "//platform/syntax/syntax-i18n:i18n",
@@ -56,6 +64,7 @@ jvm_library(
         # do not sort,
         ":tree",
         "//platform/syntax/syntax-api:syntax_test_lib",
+        "//libraries/jetbrains/annotations:annotations_test_lib",
         "//platform/util/base/multiplatform:multiplatform_test_lib",
         "//platform/util/multiplatform:multiplatform_test_lib",
         "//platform/syntax/syntax-i18n:i18n_test_lib",
@@ -71,6 +80,7 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.syntax.tree.iml",
+        "resources/intellij.platform.syntax.tree.xml",
     ],
     visibility = ["//visibility:public"],
 )

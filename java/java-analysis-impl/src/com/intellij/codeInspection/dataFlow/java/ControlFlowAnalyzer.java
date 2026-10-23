@@ -33,6 +33,7 @@ import com.intellij.codeInspection.dataFlow.java.inliner.CollectionUpdateInliner
 import com.intellij.codeInspection.dataFlow.java.inliner.EnumCompareInliner;
 import com.intellij.codeInspection.dataFlow.java.inliner.IndexOfInliner;
 import com.intellij.codeInspection.dataFlow.java.inliner.LambdaInliner;
+import com.intellij.codeInspection.dataFlow.java.inliner.MapGetOrDefaultInliner;
 import com.intellij.codeInspection.dataFlow.java.inliner.MapUpdateInliner;
 import com.intellij.codeInspection.dataFlow.java.inliner.OptionalChainInliner;
 import com.intellij.codeInspection.dataFlow.java.inliner.SimpleMethodInliner;
@@ -108,6 +109,7 @@ import com.intellij.codeInspection.dataFlow.lang.ir.SwapInstruction;
 import com.intellij.codeInspection.dataFlow.lang.ir.WrapDerivedVariableInstruction;
 import com.intellij.codeInspection.dataFlow.rangeSet.LongRangeBinOp;
 import com.intellij.codeInspection.dataFlow.rangeSet.LongRangeSet;
+import com.intellij.codeInspection.dataFlow.types.DfReferenceType;
 import com.intellij.codeInspection.dataFlow.types.DfStreamStateType;
 import com.intellij.codeInspection.dataFlow.types.DfType;
 import com.intellij.codeInspection.dataFlow.types.DfTypes;
@@ -224,6 +226,7 @@ import com.intellij.psi.PsiWhileStatement;
 import com.intellij.psi.PsiWildcardType;
 import com.intellij.psi.PsiYieldStatement;
 import com.intellij.psi.augment.PsiAugmentProvider;
+import com.intellij.psi.impl.source.JavaVarTypeUtil;
 import com.intellij.psi.impl.source.tree.java.PsiEmptyExpressionImpl;
 import com.intellij.psi.tree.IElementType;
 import com.intellij.psi.util.InheritanceUtil;
@@ -1352,7 +1355,9 @@ public class ControlFlowAnalyzer extends JavaElementVisitor {
     if (innerPattern == null) return;
     else if (innerPattern instanceof PsiDeconstructionPattern deconstructionPattern) {
       PsiPatternVariable variable = deconstructionPattern.getPatternVariable();
-      PsiType patternType = deconstructionPattern.getTypeElement().getType();
+      // The nullability written on a pattern type is ignored, so take it from the type of the matched expression
+      PsiType effectiveType = JavaPsiPatternUtil.getEffectivePatternType(deconstructionPattern);
+      PsiType patternType = effectiveType != null ? effectiveType : deconstructionPattern.getTypeElement().getType();
       DfaVariableValue patternDfaVar = variable == null ? createTempVariable(patternType) :
                                        PlainDescriptor.createVariableValue(getFactory(), variable);
 
@@ -1365,7 +1370,10 @@ public class ControlFlowAnalyzer extends JavaElementVisitor {
         PsiClassType.ClassResolveResult resolveResult = patternClassType.resolveGenerics();
         PsiClass recordClass = resolveResult.getElement();
         boolean unchecked = JavaGenericsUtil.isUncheckedCast(patternClassType, checkType);
-        PsiSubstitutor substitutor = unchecked ? PsiSubstitutor.EMPTY : resolveResult.getSubstitutor();
+        // Capture the wildcards, as a bare wildcard component type (like in 'Rec<?>(Object o)') makes the nested pattern conditional
+        PsiSubstitutor substitutor = unchecked ? PsiSubstitutor.EMPTY :
+                                     ((PsiClassType)PsiUtil.captureToplevelWildcards(patternClassType, deconstructionPattern))
+                                       .resolveGenerics().getSubstitutor();
         if (recordClass != null && recordClass.isRecord()) {
           PsiRecordComponent[] recordComponents = recordClass.getRecordComponents();
           if (components.length == recordComponents.length) {
@@ -1382,7 +1390,8 @@ public class ControlFlowAnalyzer extends JavaElementVisitor {
               if (JavaPsiSwitchUtil.mayCauseMatchExceptionDuringDeconstruction(deconstructionPattern, recordComponent, patternComponent, Set.of())) {
                 addNullCheck(deconstructionMatchException.problem(labelAnchor, patternComponent));
               }
-              processPattern(sourcePattern, patternComponent, substitutor.substitute(recordComponent.getType()), null, endPatternOffset);
+              PsiType componentType = JavaVarTypeUtil.getUpwardProjection(substitutor.substitute(recordComponent.getType()));
+              processPattern(sourcePattern, patternComponent, componentType, null, endPatternOffset);
             }
           }
         }
@@ -1413,6 +1422,14 @@ public class ControlFlowAnalyzer extends JavaElementVisitor {
       addPatternTypeTest(innerPattern, instanceofAnchor, endPatternOffset, patternDfaVar, checkType);
     }
     else {
+      // The assigned value keeps the type of the record accessor, which loses the type arguments of the pattern.
+      // The declared type of the pattern variable has them, so narrow the value to it.
+      DfType declaredType = patternDfaVar.getInherentType();
+      if (!(checkType instanceof PsiPrimitiveType) &&
+          declaredType instanceof DfReferenceType &&
+          !declaredType.equals(patternDfaVar.getDfType())) {
+        addInstruction(new EnsureInstruction(null, RelationType.IS, declaredType, null));
+      }
       addInstruction(new SimpleAssignmentInstruction(null, patternDfaVar));
     }
   }
@@ -1433,9 +1450,11 @@ public class ControlFlowAnalyzer extends JavaElementVisitor {
     addInstruction(new PopInstruction());
     addInstruction(new PushValueInstruction(DfTypes.FALSE));
     addInstruction(new GotoInstruction(endPatternOffset));
+    int nextIndex = getInstructionCount();
+    generateBoxingUnboxingInstructionFor(pattern, checkType, patternType, false);
     SimpleAssignmentInstruction assignmentInstr = new SimpleAssignmentInstruction(null, patternDfaVar);
     addInstruction(assignmentInstr);
-    condGotoOffset.setOffset(assignmentInstr.getIndex());
+    condGotoOffset.setOffset(nextIndex);
   }
 
   private void generateInstanceOfInstructions(@NotNull PsiElement context,
@@ -2512,16 +2531,66 @@ public class ControlFlowAnalyzer extends JavaElementVisitor {
       }
 
       addConditionalErrorThrow();
-      List<? extends MethodContract> contracts = constructor == null ? Collections.emptyList() :
-                                                 JavaMethodContractUtil.getMethodCallContracts(constructor, null);
-      contracts = DfaUtil.addRangeContracts(constructor, contracts);
-      addInstruction(new MethodCallInstruction(expression, contracts));
-      processFailResult(constructor, contracts, expression);
+      if (isInitializableRecord(constructor, expression)) {
+        initializeRecordConstructor(constructor, expression);
+      }
+      else {
+        List<? extends MethodContract> contracts = constructor == null ? Collections.emptyList() :
+                                                   JavaMethodContractUtil.getMethodCallContracts(constructor, null);
+        contracts = DfaUtil.addRangeContracts(constructor, contracts);
+        addInstruction(new MethodCallInstruction(expression, contracts));
+        processFailResult(constructor, contracts, expression);
+      }
 
       addMethodThrows(constructorOrClass);
     }
 
     finishElement(expression);
+  }
+
+  private static boolean isInitializableRecord(@Nullable PsiMethod constructor,
+                                               @NotNull PsiNewExpression expression) {
+    if (constructor == null ||
+        !JavaPsiRecordUtil.isCanonicalConstructor(constructor) ||
+        JavaPsiRecordUtil.isCompactConstructor(constructor) ||
+        JavaPsiRecordUtil.isExplicitCanonicalConstructor(constructor)) {
+      return false;
+    }
+    PsiClass recordClass = constructor.getContainingClass();
+    if (recordClass == null || !recordClass.isRecord()) return false;
+    PsiRecordComponent[] components = recordClass.getRecordComponents();
+    PsiExpressionList argumentList = expression.getArgumentList();
+    int slotCount = MethodCallUtils.isVarArgCall(expression)
+                    ? constructor.getParameterList().getParametersCount()
+                    : (argumentList == null ? 0 : argumentList.getExpressionCount());
+    if (slotCount == 0) return false;
+    return slotCount == components.length;
+  }
+
+  /**
+   * Creates the instructions modeling an implicit canonical record constructor call. On entry the stack holds
+   * {@code [qualifier, arg0, ..., argN]}; on exit it holds the freshly created record object.
+   */
+  private void initializeRecordConstructor(@NotNull PsiMethod constructor, @NotNull PsiNewExpression expression) {
+    PsiClass recordClass = Objects.requireNonNull(constructor.getContainingClass());
+    DfType baseType = TypeConstraints.exactClass(recordClass).asDfType();
+    PsiRecordComponent[] components = recordClass.getRecordComponents();
+    DfaVariableValue result = myCurrentFlow.createTempVariable(baseType);
+    DfType recordType = baseType.meet(DfTypes.NOT_NULL_OBJECT).meet(DfTypes.LOCAL_OBJECT);
+    addInstruction(new PushValueInstruction(recordType, null));
+    addInstruction(new SimpleAssignmentInstruction(null, result));
+    addInstruction(new PopInstruction());
+    for (int i = components.length - 1; i >= 0; i--) {
+      PsiField field = JavaPsiRecordUtil.getFieldForComponent(components[i]);
+      DfaValue fieldValue = field == null ? null : new PlainDescriptor(field).createValue(myFactory, result);
+      if (fieldValue instanceof DfaVariableValue fieldVar) {
+        addInstruction(new SimpleAssignmentInstruction(null, fieldVar));
+      }
+      addInstruction(new PopInstruction());
+    }
+
+    addInstruction(new PopInstruction()); //qualifier
+    addInstruction(new PushInstruction(result, new JavaExpressionAnchor(expression)));
   }
 
   private void initializeSmallArray(PsiArrayType type, PsiExpression[] dimensions) {
@@ -2986,7 +3055,7 @@ public class ControlFlowAnalyzer extends JavaElementVisitor {
 
   private static final CallInliner[] INLINERS = {
     new AssertJInliner(), new OptionalChainInliner(), new LambdaInliner(), new CollectionUpdateInliner(),
-    new StreamChainInliner(), new MapUpdateInliner(), new AssumeInliner(), new ClassMethodsInliner(),
+    new StreamChainInliner(), new MapUpdateInliner(), new MapGetOrDefaultInliner(), new AssumeInliner(), new ClassMethodsInliner(),
     new AssertAllInliner(), new AllNotNullInliner(), new BoxingInliner(), new SimpleMethodInliner(), new AccessorInliner(),
     new TransformInliner(), new EnumCompareInliner(), new IndexOfInliner(), new AssertInstanceOfInliner()
   };

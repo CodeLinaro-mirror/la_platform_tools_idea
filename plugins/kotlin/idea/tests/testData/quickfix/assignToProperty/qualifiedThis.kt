@@ -1,6 +1,6 @@
 // "Assign to property" "true"
 // WITH_STDLIB
-// K2_ERROR: 'val' cannot be reassigned.
+// K2_ERROR: VAL_REASSIGNMENT
 class Test {
     var foo = 1
 
@@ -11,4 +11,3 @@ class Test {
     }
 }
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AssignToPropertyFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AssignToPropertyFix

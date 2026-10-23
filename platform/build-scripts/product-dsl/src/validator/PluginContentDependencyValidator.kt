@@ -10,11 +10,13 @@ import com.intellij.platform.pluginGraph.GraphScope
 import com.intellij.platform.pluginGraph.PluginGraph
 import com.intellij.platform.pluginGraph.TargetName
 import com.intellij.platform.pluginSystem.parser.impl.elements.ModuleLoadingRuleValue
+import com.intellij.platform.pluginSystem.parser.impl.elements.ModuleVisibilityValue
 import org.jetbrains.intellij.build.ModuleOutputProvider
 import org.jetbrains.intellij.build.productLayout.LIB_MODULE_PREFIX
 import org.jetbrains.intellij.build.productLayout.config.SuppressionConfig
 import org.jetbrains.intellij.build.productLayout.dependency.ModuleDescriptorCache
 import org.jetbrains.intellij.build.productLayout.discovery.DiscoveredProduct
+import org.jetbrains.intellij.build.productLayout.discovery.TEST_PRODUCT_CLASS_NAME
 import org.jetbrains.intellij.build.productLayout.discovery.findProductPropertiesSourceFile
 import org.jetbrains.intellij.build.productLayout.model.ModuleSourceInfo
 import org.jetbrains.intellij.build.productLayout.model.error.PluginDependencyError
@@ -28,6 +30,7 @@ import org.jetbrains.intellij.build.productLayout.pipeline.PipelineNode
 import org.jetbrains.intellij.build.productLayout.pipeline.Slots
 import org.jetbrains.intellij.build.productLayout.stats.DependencyFileResult
 import org.jetbrains.intellij.build.productLayout.validator.rule.ResolutionQuery
+import org.jetbrains.intellij.build.productLayout.validator.rule.VisibilityScope
 import org.jetbrains.intellij.build.productLayout.validator.rule.collectDependenciesByLoadingMode
 import org.jetbrains.intellij.build.productLayout.validator.rule.createResolutionQuery
 import org.jetbrains.intellij.build.productLayout.validator.rule.existsAnywhere
@@ -57,7 +60,7 @@ internal object PluginContentDependencyValidator : PipelineNode {
   // Validation queries deps from the graph (EDGE_CONTENT_MODULE_DEPENDS_ON / EDGE_CONTENT_MODULE_DEPENDS_ON_TEST).
   override val requires: Set<DataSlot<*>> get() = setOf(Slots.CONTENT_MODULE)
 
-  override suspend fun execute(ctx: ComputeContext) {
+  override fun execute(ctx: ComputeContext) {
     val model = ctx.model
 
     val contentModuleResults = ctx.get(Slots.CONTENT_MODULE).files
@@ -78,10 +81,7 @@ internal object PluginContentDependencyValidator : PipelineNode {
       dslTestPluginAdditionalBundles.put(key, merged)
     }
 
-    val allowedLibraryModulesByContentModule = buildAllowedLibraryModulesByContentModule(
-      testLibraryAllowedInModule = model.config.testLibraryAllowedInModule,
-      projectLibraryToModuleMap = model.config.projectLibraryToModuleMap,
-    )
+    val allowedLibraryModulesByContentModule = buildAllowedLibraryModulesByContentModule(model.config.testLibraryAllowedInModule)
 
     val pluginDepErrors = validatePluginDependencies(
       pluginGraph = model.pluginGraph,
@@ -116,7 +116,7 @@ internal object PluginContentDependencyValidator : PipelineNode {
  * @param suppressionConfig Suppression config for checking suppressed module deps
  * @return List of validation errors
  */
-internal suspend fun validatePluginDependencies(
+internal fun validatePluginDependencies(
   pluginGraph: PluginGraph,
   contentModuleResults: List<DependencyFileResult>,
   descriptorCache: ModuleDescriptorCache,
@@ -130,10 +130,12 @@ internal suspend fun validatePluginDependencies(
 ): List<ValidationError> {
   val contentModulesWithDescriptors = contentModuleResults.mapTo(HashSet()) { it.contentModuleName }
   val modulesWithDescriptors = HashSet(contentModulesWithDescriptors)
+  val allContentModules = LinkedHashSet<ContentModuleName>()
   val graphModules = LinkedHashSet<ContentModuleName>()
   pluginGraph.query {
     contentModules { module ->
       val moduleName = module.contentName()
+      allContentModules.add(moduleName)
       if (moduleName !in modulesWithDescriptors) {
         graphModules.add(moduleName)
       }
@@ -144,8 +146,17 @@ internal suspend fun validatePluginDependencies(
       modulesWithDescriptors.add(moduleName)
     }
   }
+  val visibilityByModule = HashMap<ContentModuleName, ModuleVisibilityValue>(allContentModules.size)
+  val declaredDepsByModule = HashMap<ContentModuleName, Set<ContentModuleName>>()
+  for (moduleName in allContentModules) {
+    val descriptor = descriptorCache.getOrAnalyze(moduleName.value) ?: continue
+    visibilityByModule.put(moduleName, descriptor.moduleVisibility)
+    if (descriptor.existingModuleDependencies.isNotEmpty()) {
+      declaredDepsByModule.put(moduleName, descriptor.existingModuleDependencies.mapTo(HashSet(), ::ContentModuleName))
+    }
+  }
   return pluginGraph.query {
-    val resolutionQuery = createResolutionQuery()
+    val resolutionQuery = createResolutionQuery { module -> visibilityByModule.get(module) }
 
     val result = ArrayList<ValidationError>()
     plugins { plugin ->
@@ -169,6 +180,14 @@ internal suspend fun validatePluginDependencies(
       val isTestPlugin = plugin.isTest
       val contentModulesForValidation = snapshot.contentModulesForValidation(isTestPlugin)
       val contentModuleDeps = collectContentModuleDeps(contentModulesForValidation, isTestPlugin)
+
+      // Only dependencies written in a descriptor are resolved by the plugin system, so only those can hit a
+      // visibility error. Plugin-level `<dependencies>` count as declared too.
+      val declaredDeps = LinkedHashSet(moduleDeps)
+      for (moduleName in contentModulesForValidation) {
+        declaredDepsByModule.get(moduleName)?.let { declaredDeps.addAll(it) }
+      }
+      val visibilityScope = VisibilityScope(dependingPlugin = pluginName, declaredDependencies = declaredDeps)
 
       val contentModuleFilteredDeps = LinkedHashMap<ContentModuleName, Set<ContentModuleName>>()
       for (moduleName in productionContentModules) {
@@ -198,6 +217,7 @@ internal suspend fun validatePluginDependencies(
         isDslDefined = plugin.isDslDefined,
         bundlingProducts = bundlingProducts,
         resolutionQuery = resolutionQuery,
+        visibilityScope = visibilityScope,
         contentModuleFilteredDeps = contentModuleFilteredDeps,
         pluginAllowed = pluginAllowedMissing.get(pluginName) ?: emptySet(),
         productAllowedMissingByProduct = productAllowedMissingByProduct,
@@ -229,6 +249,7 @@ private fun validateSinglePlugin(
   isDslDefined: Boolean,
   bundlingProducts: Set<String>,
   resolutionQuery: ResolutionQuery,
+  visibilityScope: VisibilityScope,
   contentModuleFilteredDeps: Map<ContentModuleName, Set<ContentModuleName>>,
   pluginAllowed: Set<ContentModuleName>,
   productAllowedMissingByProduct: Map<String, Set<ContentModuleName>>,
@@ -294,6 +315,7 @@ private fun validateSinglePlugin(
       productName = "",
       allowedMissing = globalAllowed,
       includeTestSources = includeTestSources,
+      visibilityScope = visibilityScope,
     )
     if (unresolved.isNotEmpty()) {
       unresolvedByProduct.put("(non-bundled)", unresolved.toSet())
@@ -310,6 +332,7 @@ private fun validateSinglePlugin(
         productName = productName,
         allowedMissing = combinedAllowed,
         includeTestSources = includeTestSources,
+        visibilityScope = visibilityScope,
       )
       if (unresolved.isNotEmpty()) {
         unresolvedByProduct.put(productName, unresolved.toSet())
@@ -324,6 +347,7 @@ private fun validateSinglePlugin(
     productName = "",
     allowedMissing = globalAllowed,
     includeTestSources = includeTestSources,
+    visibilityScope = visibilityScope,
   )
 
   // === Layer 3: Filtered Dependency Validation ===
@@ -334,6 +358,8 @@ private fun validateSinglePlugin(
     for (filteredDep in filteredDeps) {
       if (filteredDep in suppressedModules) continue
       if (filteredDep in globalAllowed) continue
+      // No `dependingPlugin`: these are implicit JPS dependencies deliberately kept out of the descriptor, so the
+      // runtime never resolves them and their visibility is irrelevant. The question here is only whether they exist.
       val scan = resolutionQuery.scanSources(filteredDep, existsAnywhere, "", includeTestSources = includeTestSources)
       if (!scan.matchesPredicate) {
         unresolvedFilteredDeps.computeIfAbsent(moduleName) { LinkedHashSet() }.add(filteredDep)
@@ -357,12 +383,8 @@ private fun validateSinglePlugin(
   for (dep in allProblematic) {
     for (contentModuleName in contentModules) {
       val deps = contentModuleDeps.get(contentModuleName) ?: emptySet()
-      val testDeps = contentModuleDeps.get(ContentModuleName("${contentModuleName.value}._test")) ?: emptySet()
       if (dep in deps) {
         missingDeps.computeIfAbsent(dep) { HashSet() }.add(contentModuleName)
-      }
-      if (dep in testDeps) {
-        missingDeps.computeIfAbsent(dep) { HashSet() }.add(ContentModuleName("${contentModuleName.value}._test"))
       }
     }
     if (dep in pluginModuleDependencies) {
@@ -452,7 +474,7 @@ private fun buildProductSourceFiles(
   for (product in products) {
     val props = product.properties
     val sourceFile = if (props == null) {
-      "test-product"
+      TEST_PRODUCT_CLASS_NAME
     }
     else {
       try {
@@ -497,7 +519,7 @@ private fun buildAllowedMissingDependencyPatches(
     if (missingModulesForProduct.isEmpty()) continue
 
     val sourceFile = productSourceFiles.get(productName) ?: continue
-    if (sourceFile == "test-product") continue
+    if (sourceFile == TEST_PRODUCT_CLASS_NAME) continue
 
     val patch = when {
       isTestPlugin && isDslDefined -> buildTestPluginContentPatch(
@@ -639,9 +661,9 @@ private fun findProductModulesLineIndex(lines: List<String>): Int {
 // region Structural Violation Auto-Fix
 
 // Map allowed test libraries to their library module content names for dependency filtering.
+// Only an entry that names a wrapper module (`intellij.libraries.*`) takes part; a plain library name has no module here.
 private fun buildAllowedLibraryModulesByContentModule(
   testLibraryAllowedInModule: Map<ContentModuleName, Set<String>>,
-  projectLibraryToModuleMap: Map<String, String>,
 ): Map<ContentModuleName, Set<ContentModuleName>> {
   if (testLibraryAllowedInModule.isEmpty()) return emptyMap()
 
@@ -649,12 +671,8 @@ private fun buildAllowedLibraryModulesByContentModule(
   for ((moduleName, allowedLibraries) in testLibraryAllowedInModule) {
     val allowedModules = LinkedHashSet<ContentModuleName>()
     for (libraryName in allowedLibraries) {
-      val libraryModuleName = when {
-        libraryName.startsWith(LIB_MODULE_PREFIX) -> libraryName
-        else -> projectLibraryToModuleMap[libraryName]
-      }
-      if (libraryModuleName != null && libraryModuleName.startsWith(LIB_MODULE_PREFIX)) {
-        allowedModules.add(ContentModuleName(libraryModuleName))
+      if (libraryName.startsWith(LIB_MODULE_PREFIX)) {
+        allowedModules.add(ContentModuleName(libraryName))
       }
     }
     if (allowedModules.isNotEmpty()) {

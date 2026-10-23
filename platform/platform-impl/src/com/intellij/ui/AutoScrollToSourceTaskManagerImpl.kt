@@ -24,7 +24,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 internal class AutoScrollToSourceTaskManagerImpl : AutoScrollToSourceTaskManager {
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   override fun scheduleScrollToSource(handler: AutoScrollToSourceHandler, dataContext: DataContext) {
     val asyncDataContext = createAsyncDataContext(dataContext)
     val project = dataContext.getData(PlatformDataKeys.PROJECT)
@@ -45,7 +45,9 @@ internal class AutoScrollToSourceTaskManagerImpl : AutoScrollToSourceTaskManager
         } ?: return@launch
 
         if (project != null && Registry.`is`("ide.navigation.requests")) {
-          val options = NavigationOptions.defaultOptions().requestFocus(false).preserveCaret(true).sourceNavigationOnly(true)
+          val options = NavigationOptions.defaultOptions()
+            .requestFocus(false).preserveCaret(true)
+            .sourceNavigationOnly(true).recordAsBackHistory(false)
           project.serviceAsync<NavigationService>().navigate(navigatable, options)
         }
         else {

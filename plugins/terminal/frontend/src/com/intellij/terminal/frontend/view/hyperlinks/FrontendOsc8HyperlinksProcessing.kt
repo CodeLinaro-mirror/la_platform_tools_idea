@@ -10,8 +10,8 @@ import com.intellij.execution.impl.EditorTextDecorationId
 import com.intellij.execution.impl.buildHyperlink
 import com.intellij.execution.impl.createTextDecorationId
 import com.intellij.ide.setToolTipText
-import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.ModalityState
+import com.intellij.openapi.application.UI
 import com.intellij.openapi.application.asContextElement
 import com.intellij.openapi.editor.event.EditorMouseEvent
 import com.intellij.openapi.editor.event.EditorMouseMotionListener
@@ -100,11 +100,10 @@ fun installOsc8HyperlinksProcessing(
   }, coroutineScope.asDisposable())
 
   // The reconciliation reads the model and mutates the editor markup, so it must run
-  // on the EDT and outside the output model's own content-change notification.
+  // on the EDT thread and outside the output model's own content-change notification.
   // Sampling the StateFlow also limits reconciliation to once every DELAY,
   // no matter how many changes arrive in between.
-  // Can't use Dispatchers.UI because the editor markup can require locks.
-  coroutineScope.launch(Dispatchers.EDT + ModalityState.any().asContextElement() + CoroutineName("Terminal OSC8 hyperlinks")) {
+  coroutineScope.launch(Dispatchers.UI + ModalityState.any().asContextElement() + CoroutineName("Terminal OSC8 hyperlinks")) {
     observedChanges.sample(DELAY).collect {
       renderer.reconcile()
     }
@@ -134,9 +133,9 @@ private class Osc8HyperlinksRenderer(
    * a document replace can invalidate a decoration's range highlighter without changing the link itself
    * (same offsets, same target), so a diff keyed by the link would never restore its decoration.
    */
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun reconcile() {
-    val links = outputModel.getOsc8Hyperlinks()
+    val links = Osc8HyperlinkUtil.mergeSplitUrls(outputModel, outputModel.getOsc8Hyperlinks())
     val toAdd = ArrayList<EditorTextDecoration>()
     val addedUriById = LinkedHashMap<EditorTextDecorationId, String>()
     for (link in links) {
@@ -158,7 +157,7 @@ private class Osc8HyperlinksRenderer(
    * Relies on the hover tracking of [applier]; a hovered filter-based hyperlink is not in
    * [appliedUriById], so it yields `null`.
    */
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun hoveredLinkUri(): @NlsSafe String? {
     val hovered = applier.getHoveredHyperlink() ?: return null
     return appliedUriById[hovered.id]

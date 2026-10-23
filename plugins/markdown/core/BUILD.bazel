@@ -1,7 +1,36 @@
+load("@jps_dynamic_deps_community//:targets.bzl", "dev_dist_plugin")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.markdown` start
+content_module_jar(module = ":markdown")
+
+dev_dist_plugin(
+    content_modules = [
+        # do not sort,
+        "intellij.markdown.jcef",
+        "intellij.markdown.fenceInjection",
+        "intellij.markdown.frontmatter",
+        "intellij.markdown.frontmatter.yaml",
+        "intellij.markdown.frontmatter.toml",
+        "intellij.markdown.images",
+        "intellij.markdown.xml",
+        "intellij.markdown.model",
+        "intellij.markdown.spellchecker",
+        "intellij.markdown.compose.preview",
+        "intellij.markdown.frontend",
+        "intellij.markdown.backend",
+        "intellij.markdown.java",
+        "intellij.markdown.fenceInjector.textMate",
+        "intellij.markdown.projectView",
+        "intellij.markdown.figmaAdvertiser",
+        "intellij.markdown.vcs",
+    ],
+    main_module = "intellij.markdown",
+)
+### auto-generated section `dev intellij.markdown` end
 
 ### auto-generated section `build intellij.markdown` start
-
 jvm_library(
     name = "markdown",
     srcs = glob(
@@ -18,10 +47,13 @@ jvm_library(
     resource_strip_prefix = "resources",
     resources = glob(
         ["resources/**/*"],
+        exclude = ["resources/**/icon-robots.txt"],
     ),
     visibility = ["//visibility:public"],
+    exports = ["//platform/statistics"],
     deps = [
         # do not sort,
+        "//platform/kernel/rpc.lite",
         "//platform/analysis-api:analysis",
         "//platform/code-style-api:codeStyle",
         "//platform/util/concurrency",
@@ -49,18 +81,16 @@ jvm_library(
         "//platform/core-ui",
         "//platform/code-style-impl:codeStyle-impl",
         "//libraries/markdown",
+        "//libraries/fastutil",
         "//platform/platform-util-io:ide-util-io",
         "//platform/util-ex",
         "//platform/projectModel-impl",
         "//platform/platform-util-netty:ide-util-netty",
-        "//libraries/jackson/jackson",
-        "//libraries/jackson/databind",
-        "//libraries/jackson/module-kotlin:libraries-jackson-module-kotlin",
         "//platform/execution-impl",
         "//libraries/miglayout-swing",
         "//platform/platform-api:ide",
+        "//platform/progress/shared:ide-progress",
         "//platform/statistics",
-        "//platform/structure-view-impl:structureView",
         "//platform/util/jdom",
         "//libraries/kotlinx/coroutines/core",
         "//platform/diagnostic",
@@ -79,7 +109,7 @@ jvm_library(
         "//platform/util/text-matching",
         "//platform/usageView-impl",
         "//platform/usageView",
-        "//libraries/fastutil",
+        "//libraries/snakeyaml",
     ],
 )
 
@@ -92,9 +122,15 @@ jvm_library(
     ),
     module_name = "intellij.markdown",
     visibility = ["//visibility:public"],
+    exports = [
+        # do not sort,
+        "//platform/statistics",
+        "//platform/statistics:statistics_test_lib",
+    ],
     runtime_deps = [
         # do not sort,
         ":markdown",
+        "//platform/kernel/rpc.lite:rpc.lite_test_lib",
         "//platform/analysis-api:analysis_test_lib",
         "//platform/code-style-api:codeStyle_test_lib",
         "//platform/util/concurrency:concurrency_test_lib",
@@ -122,18 +158,16 @@ jvm_library(
         "//platform/core-ui:core-ui_test_lib",
         "//platform/code-style-impl:codeStyle-impl_test_lib",
         "//libraries/markdown:markdown_test_lib",
+        "//libraries/fastutil:fastutil_test_lib",
         "//platform/platform-util-io:ide-util-io_test_lib",
         "//platform/util-ex:util-ex_test_lib",
         "//platform/projectModel-impl:projectModel-impl_test_lib",
         "//platform/platform-util-netty:ide-util-netty_test_lib",
-        "//libraries/jackson/jackson:jackson_test_lib",
-        "//libraries/jackson/databind:databind_test_lib",
-        "//libraries/jackson/module-kotlin:libraries-jackson-module-kotlin_test_lib",
         "//platform/execution-impl:execution-impl_test_lib",
         "//libraries/miglayout-swing:miglayout-swing_test_lib",
         "//platform/platform-api:ide_test_lib",
+        "//platform/progress/shared:ide-progress_test_lib",
         "//platform/statistics:statistics_test_lib",
-        "//platform/structure-view-impl:structureView_test_lib",
         "//platform/util/jdom:jdom_test_lib",
         "//libraries/kotlinx/coroutines/core:core_test_lib",
         "//platform/diagnostic:diagnostic_test_lib",
@@ -151,7 +185,7 @@ jvm_library(
         "//platform/util/text-matching:text-matching_test_lib",
         "//platform/usageView-impl:usageView-impl_test_lib",
         "//platform/usageView:usageView_test_lib",
-        "//libraries/fastutil:fastutil_test_lib",
+        "//libraries/snakeyaml:snakeyaml_test_lib",
     ],
 )
 ### auto-generated section `build intellij.markdown` end
@@ -160,6 +194,10 @@ jvm_library(
 exports_files(
     [
         "intellij.markdown.iml",
+        "resources/META-INF/plugin.xml",
+        "resources/colorSchemes/MarkdownDarcula.xml",
+        "resources/colorSchemes/MarkdownDefault.xml",
+        "resources/intellij.markdown.xml",
     ],
     visibility = ["//visibility:public"],
 )

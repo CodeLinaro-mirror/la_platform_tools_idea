@@ -12,7 +12,6 @@ import com.intellij.debugger.ui.overhead.OverheadProducer;
 import com.intellij.debugger.ui.overhead.OverheadTimings;
 import com.intellij.icons.AllIcons;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.ui.SimpleColoredComponent;
 import com.sun.jdi.Method;
 import com.sun.jdi.ObjectCollectedException;
 import com.sun.jdi.ThreadReference;
@@ -195,11 +194,11 @@ public class MethodReturnValueWatcher {
   private @NotNull <T extends EventRequest> T prepareRequest(T request) {
     request.setSuspendPolicy(EventRequest.SUSPEND_EVENT_THREAD);
     if (myThread != null) {
-      if (request instanceof MethodEntryRequest) {
-        ((MethodEntryRequest)request).addThreadFilter(myThread);
+      if (request instanceof MethodEntryRequest entryRequest) {
+        entryRequest.addThreadFilter(myThread);
       }
-      else if (request instanceof MethodExitRequest) {
-        ((MethodExitRequest)request).addThreadFilter(myThread);
+      else if (request instanceof MethodExitRequest exitRequest) {
+        exitRequest.addThreadFilter(myThread);
       }
     }
     request.putProperty(WATCHER_REQUEST_KEY, true);
@@ -212,11 +211,11 @@ public class MethodReturnValueWatcher {
       return false;
     }
 
-    if (event instanceof MethodEntryEvent) {
-      processMethodEntryEvent(((MethodEntryEvent)event));
+    if (event instanceof MethodEntryEvent entryEvent) {
+      processMethodEntryEvent(entryEvent);
     }
-    else if (event instanceof MethodExitEvent) {
-      processMethodExitEvent(((MethodExitEvent)event));
+    else if (event instanceof MethodExitEvent exitEvent) {
+      processMethodExitEvent(exitEvent);
     }
     return true;
   }
@@ -239,9 +238,10 @@ public class MethodReturnValueWatcher {
     }
 
     @Override
-    public void customizeRenderer(SimpleColoredComponent renderer) {
-      renderer.setIcon(AllIcons.Debugger.WatchLastReturnValue);
-      renderer.append(JavaDebuggerBundle.message("action.watches.method.return.value.enable"));
+    public @NotNull OverheadProducer.Presentation computePresentation() {
+      return new OverheadProducer.Presentation(
+        JavaDebuggerBundle.message("action.watches.method.return.value.enable"),
+        AllIcons.Debugger.WatchLastReturnValue);
     }
   }
 }

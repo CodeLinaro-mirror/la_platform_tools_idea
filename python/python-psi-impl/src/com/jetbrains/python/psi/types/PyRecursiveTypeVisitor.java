@@ -154,15 +154,6 @@ public final class PyRecursiveTypeVisitor extends PyTypeVisitorExt<PyRecursiveTy
       return classType.getTypeArguments();
     }
 
-    /**
-     * @deprecated use visitPyClassType instead
-     */
-    @Deprecated
-    @Override
-    public @NotNull List<@Nullable PyType> visitPyGenericType(@NotNull PyClassType genericType) {
-      return visitPyClassType(genericType);
-    }
-
     @Override
     public @NotNull List<@Nullable PyType> visitPyConcatenateType(@NotNull PyConcatenateType concatenateType) {
       return ContainerUtil.append(concatenateType.getFirstTypes(), concatenateType.getParamSpec());
@@ -170,8 +161,13 @@ public final class PyRecursiveTypeVisitor extends PyTypeVisitorExt<PyRecursiveTy
 
     @Override
     public @NotNull List<@Nullable PyType> visitPyTypedDictType(@NotNull PyTypedDictType typedDictType) {
+      // Read from the declaration, so a recursive TypedDict does not have to evaluate the item it is in the middle of.
+      List<PyType> typeArguments = typedDictType.getTypeArgumentsOrDeclaredParameters();
+      if (typeArguments != null) {
+        return typeArguments;
+      }
       // TODO this is not entirely correct. Field types of a non-generic typed dict are not used in its notation.
-      return ContainerUtil.map(typedDictType.getFields().values(), field -> field.getType());
+      return ContainerUtil.map(typedDictType.fields(myTypeEvalContext).values(), field -> field.getType());
     }
 
     @Override

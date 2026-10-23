@@ -1,4 +1,4 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.documentation
 
 import com.intellij.codeInsight.documentation.render.CachingDataReader
@@ -66,7 +66,8 @@ import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.math.max
 
 @Service(Service.Level.APP)
-internal class CachingAdaptiveImageManagerService(private val coroutineScope: CoroutineScope) : AdaptiveImagesManager {
+@ApiStatus.Internal
+class CachingAdaptiveImageManagerService(private val coroutineScope: CoroutineScope) : AdaptiveImagesManager {
   companion object {
     @JvmStatic
     fun isEnabled(): Boolean = Registry.`is`("doc.render.adaptive.image", defaultValue = true)
@@ -183,6 +184,7 @@ suspend fun adaptiveImageOriginToSource(origin: AdaptiveImageOrigin): AdaptiveIm
       when (protocol) {
         URLUtil.JAR_PROTOCOL, URLUtil.FILE_PROTOCOL -> withContext(Dispatchers.IO) {
           val virtualFile = VirtualFileManager.getInstance().findFileByUrl(vfsUrl)
+                            ?: VfsUrlImageSourceRemapper.EP_NAME.extensionList.firstNotNullOfOrNull { it.remap(vfsUrl) }
           virtualFile?.let { VfsAdaptiveImageSource(it) }
         }
         else -> UrlAdaptiveImageSource(origin.url)

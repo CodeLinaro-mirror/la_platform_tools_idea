@@ -1,7 +1,7 @@
 // "Add 'Any' as upper bound for T to make it non-nullable" "true"
 // LANGUAGE_VERSION: 1.6
-// K2_ERROR: Argument type mismatch: actual type is 'T (of fun <T> bar)', but 'Any' was expected.
-// K2_ERROR: Cannot infer type for type parameter 'R'. Specify it explicitly.
+// K2_ERROR: ARGUMENT_TYPE_MISMATCH
+// K2_ERROR: CANNOT_INFER_PARAMETER_TYPE
 
 fun <R : Any> foo(x: R) {}
 
@@ -9,5 +9,4 @@ fun <T> bar(x: T) {
     foo(<caret>x)
 }
 
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.HighPriorityMakeUpperBoundNonNullableFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.MakeUpperBoundNotNullFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.MakeUpperBoundNotNullFix

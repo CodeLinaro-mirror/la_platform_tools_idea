@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.grazie.java` start
+content_module_jar(module = ":java")
+### auto-generated section `dev intellij.grazie.java` end
 
 ### auto-generated section `build intellij.grazie.java` start
-
 jvm_library(
     name = "java",
     srcs = glob(
@@ -18,6 +22,7 @@ jvm_library(
         ["src/main/resources/**/*"],
     ),
     visibility = ["//visibility:public"],
+    runtime_deps = ["//platform/backend"],
     deps = [
         # do not sort,
         "@lib//:kotlin-stdlib",
@@ -60,6 +65,7 @@ jvm_library(
         "//platform/util-ex:util-ex_test_lib",
         "//platform/analysis-api:analysis_test_lib",
         "//spellchecker:spellchecker_test_lib",
+        "//platform/backend:backend_test_lib",
     ],
 )
 ### auto-generated section `build intellij.grazie.java` end
@@ -68,6 +74,7 @@ jvm_library(
 exports_files(
     [
         "intellij.grazie.java.iml",
+        "src/main/resources/intellij.grazie.java.xml",
     ],
     visibility = ["//visibility:public"],
 )

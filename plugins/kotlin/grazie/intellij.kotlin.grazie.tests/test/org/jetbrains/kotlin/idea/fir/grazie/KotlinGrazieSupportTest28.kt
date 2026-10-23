@@ -26,6 +26,15 @@ class KotlinGrazieSupportTest28 : GrazieTestBase() {
         runHighlightTestForFile("grazie/Constructs.kt")
     }
 
+    fun `test Kotlin keyword operator is not a typo`() {
+        myFixture.configureByText("a.kt", """
+            fun f(low: Int, high: Int) {
+                val mid = (low + high) ushr 1
+            }
+        """.trimIndent())
+        myFixture.checkHighlighting()
+    }
+
     fun `test grammar check in docs`() {
         enableProofreadingFor(setOf(Lang.GERMANY_GERMAN, Lang.RUSSIAN))
         runHighlightTestForFile("grazie/Docs.kt")
@@ -58,6 +67,12 @@ class KotlinGrazieSupportTest28 : GrazieTestBase() {
         assertEquals("foo | bar", TextContentTest.unknownOffsets(content))
     }
 
+    fun `test text extraction in string literals with soft hyphen`() {
+        val file = myFixture.configureByText("a.kt", "val s = \"I just want to say \\u00ADhello to everyone.\"")
+        val content = TextExtractor.findTextAt(file, 10, TextContent.TextDomain.ALL)
+        assertEquals("I just want to say |hello to everyone.", TextContentTest.unknownOffsets(content))
+    }
+
     fun `test meaningful single suggestion in RenameTo action`() {
         myFixture.configureByText("a.kt", """
             class A {
@@ -72,6 +87,20 @@ class KotlinGrazieSupportTest28 : GrazieTestBase() {
             class A {
                 // target
                 val target = 1
+            }
+        """)
+    }
+
+    fun `test meaningful single suggestion in escaped identifier`() {
+        myFixture.configureByText("a.kt", """
+            fun `test no <TYPO descr="Typo: In word 'typpo'">typpo</TYPO> around path <TYPO descr="Typo: In word 'typpo'">ty<caret>ppo</TYPO>`() {
+            }
+        """)
+        myFixture.checkHighlighting()
+        val intention = myFixture.findSingleIntention("Typo: Rename to 'test no typpo around path typo'")
+        myFixture.launchAction(intention)
+        myFixture.checkResult("""
+            fun `test no typpo around path typo`() {
             }
         """)
     }

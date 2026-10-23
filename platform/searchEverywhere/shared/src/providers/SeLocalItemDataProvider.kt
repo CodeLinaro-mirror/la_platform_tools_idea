@@ -1,6 +1,7 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.platform.searchEverywhere.providers
 
+import com.intellij.diagnostic.rethrowControlFlowException
 import com.intellij.ide.SearchTopHitProvider
 import com.intellij.ide.actions.searcheverywhere.statistics.SearchEverywhereUsageTriggerCollector
 import com.intellij.openapi.Disposable
@@ -26,6 +27,7 @@ import com.intellij.platform.searchEverywhere.SeProviderId
 import com.intellij.platform.searchEverywhere.SeSearchScopesProvider
 import com.intellij.platform.searchEverywhere.SeSession
 import com.intellij.platform.searchEverywhere.SeTypeVisibilityStateProvider
+import com.intellij.platform.searchEverywhere.composedWeight
 import com.intellij.platform.searchEverywhere.providers.commands.SeCommandItem
 import com.intellij.platform.searchEverywhere.providers.target.SeTypeVisibilityStatePresentation
 import kotlinx.coroutines.CancellationException
@@ -167,7 +169,7 @@ class SeLocalItemDataProvider(
     itemData?.also {
       SeLog.log(SeLog.ITEM_EMIT) {
         val count = counter.incrementAndFetch()
-        "$logLabel provider for ${id.value} receives (total=$count, priority=${itemData.weight}): ${itemData.uuid} - ${itemData.presentation.text.split("\n").firstOrNull()}"
+        "$logLabel provider for ${id.value} receives (total=$count, priority=${itemData.composedWeight}): ${itemData.uuid} - ${itemData.presentation.text.split("\n").firstOrNull()}"
       }
     }
   }.buffer(0, onBufferOverflow = BufferOverflow.SUSPEND)
@@ -181,7 +183,7 @@ class SeLocalItemDataProvider(
         }
       }
       catch (e: Throwable) {
-        if (e is CancellationException) throw e
+        rethrowControlFlowException(e)
         SeLog.warn("Error while collecting items from ${provider.id}($logLabel) provider: ${e.message}")
       }
     }.buffer(0, onBufferOverflow = BufferOverflow.SUSPEND).onCompletion {
@@ -266,8 +268,8 @@ class SeLocalItemDataProvider(
     return (provider as? SeSearchScopesProvider)?.getSearchScopesInfo()
   }
 
-  suspend fun getTypeVisibilityStates(index: Int): List<SeTypeVisibilityStatePresentation>? =
-    (provider as? SeTypeVisibilityStateProvider)?.getTypeVisibilityStates(index)
+  suspend fun getTypeVisibilityStates(key: String): List<SeTypeVisibilityStatePresentation>? =
+    (provider as? SeTypeVisibilityStateProvider)?.getTypeVisibilityStates(key)
 
   /**
    * Defines if results can be shown in <i>Find</i> toolwindow.

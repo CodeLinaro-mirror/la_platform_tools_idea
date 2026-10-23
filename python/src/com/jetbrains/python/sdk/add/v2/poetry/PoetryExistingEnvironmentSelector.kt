@@ -1,13 +1,13 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.sdk.add.v2.poetry
 
-import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.observable.properties.ObservableProperty
-import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.python.community.execService.python.validatePythonAndGetInfo
+import com.intellij.python.community.impl.poetry.backend.PoetryPyTool
 import com.intellij.python.community.impl.poetry.common.POETRY_UI_INFO
-import com.intellij.python.community.impl.poetry.common.poetryPath
+import com.intellij.python.sdk.backend.PythonInterpreter
+import com.intellij.python.sdk.backend.pythonInterpreterAsync
 import com.jetbrains.python.PyBundle
 import com.jetbrains.python.Result
 import com.jetbrains.python.errorProcessing.PyResult
@@ -18,7 +18,7 @@ import com.jetbrains.python.sdk.add.v2.PathHolder
 import com.jetbrains.python.sdk.add.v2.PythonMutableTargetAddInterpreterModel
 import com.jetbrains.python.sdk.add.v2.ToolValidator
 import com.jetbrains.python.sdk.add.v2.ValidatedPath
-import com.jetbrains.python.sdk.add.v2.savePathForEelOnly
+import com.jetbrains.python.sdk.add.v2.pathHolder
 import com.jetbrains.python.sdk.legacy.PythonSdkUtil
 import com.jetbrains.python.sdk.poetry.createPoetrySdk
 import com.jetbrains.python.sdk.poetry.detectPoetryEnvs
@@ -33,23 +33,25 @@ internal class PoetryExistingEnvironmentSelector<P : PathHolder>(model: PythonMu
   override val toolState: ToolValidator<P> = model.poetryViewModel.toolValidator
   override val toolExecutable: ObservableProperty<ValidatedPath.Executable<P>?> = model.poetryViewModel.poetryExecutable
   override val toolExecutablePersister: suspend (P) -> Unit = { pathHolder ->
-    savePathForEelOnly(pathHolder) { path -> PropertiesComponent.getInstance().poetryPath = path.toString() }
+    model.fileSystem.persistCustomToolPath(pathHolder, PoetryPyTool.getInstance())
   }
 
-  override suspend fun getOrCreateSdk(moduleOrProject: ModuleOrProject): PyResult<Sdk> {
+  override suspend fun getOrCreateSdk(moduleOrProject: ModuleOrProject): PyResult<PythonInterpreter> {
 
-    val pythonBinaryPath = selectedEnv.get()?.homePath
-                           ?: return PyResult.localizedError(PyBundle.message("python.sdk.provided.path.is.invalid",
-                                                                              selectedEnv.get()?.homePath))
+    val pythonBinaryPath =
+      selectedEnv.get()?.homePath ?: return PyResult.localizedError(PyBundle.message("python.sdk.provided.path.is.invalid",
+                                                                                     selectedEnv.get()?.homePath))
 
-    PythonSdkUtil.getAllSdks().find { sdk -> sdk.isPoetry && sdk.homePath == pythonBinaryPath.toString() }?.let {
-      return Result.success(it)
+    // Look in the full SDK table, not only in the SDKs for this module: a new SDK with the same home is a duplicate.
+    PythonSdkUtil.getAllSdks().find { sdk -> sdk.isPoetry && sdk.homePath == pythonBinaryPath.toStringForUI() }?.let {
+      return Result.success(it.pythonInterpreterAsync())
     }
 
-    val basePath = moduleOrProject.workingDirectory
-                   ?: return PyResult.localizedError(PyBundle.message("python.sdk.project.working.directory.not.found"))
+    val basePath =
+      moduleOrProject.workingDirectory ?: return PyResult.localizedError(PyBundle.message("python.sdk.project.working.directory.not.found"))
 
     return createPoetrySdk(
+      moduleOrProject = moduleOrProject,
       basePath = basePath,
       pythonBinaryPath = pythonBinaryPath,
       fileSystem = model.fileSystem,
@@ -58,10 +60,9 @@ internal class PoetryExistingEnvironmentSelector<P : PathHolder>(model: PythonMu
   }
 
   override suspend fun detectEnvironments(modulePath: Path): List<DetectedSelectableInterpreter<P>> {
-    val poetryExecutable = model.poetryViewModel.poetryExecutable.get()?.pathHolder
+    val poetryExecutable = model.poetryViewModel.poetryExecutable.get()?.pathHolder?.successOrNull
     val existingEnvs = detectPoetryEnvs(modulePath, model.fileSystem, poetryExecutable).mapNotNull { pythonBinary ->
-      val pythonInfo = model.fileSystem.getBinaryToExec(pythonBinary).validatePythonAndGetInfo().successOrNull
-                       ?: return@mapNotNull null
+      val pythonInfo = model.fileSystem.getBinaryToExec(pythonBinary).validatePythonAndGetInfo().successOrNull ?: return@mapNotNull null
       DetectedSelectableInterpreter(pythonBinary, pythonInfo, false, POETRY_UI_INFO)
     }
     return existingEnvs

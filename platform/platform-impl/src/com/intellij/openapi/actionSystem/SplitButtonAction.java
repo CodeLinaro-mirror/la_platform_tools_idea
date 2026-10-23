@@ -17,6 +17,8 @@ import com.intellij.openapi.ui.JBPopupMenu;
 import com.intellij.openapi.util.IconLoader;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.ui.components.SplitButtonHalf;
+import com.intellij.ui.components.SplitButtonZones;
 import com.intellij.ui.scale.JBUIScale;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.containers.ContainerUtil;
@@ -30,6 +32,7 @@ import org.jetbrains.annotations.Nullable;
 import javax.swing.Icon;
 import javax.swing.JComponent;
 import javax.swing.JPopupMenu;
+import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Graphics;
 import java.awt.Point;
@@ -99,18 +102,29 @@ public class SplitButtonAction extends ActionGroupWrapper implements CustomCompo
     return false;
   }
 
+  /**
+   * Opens the chevron popup for {@code event}.
+   * The default answers {@code false}, and the button shows {@link #getActionGroup()} as a popup menu.
+   * An override that opens its own popup answers {@code true}.
+   */
+  @SuppressWarnings("unused")
+  protected boolean showPopup(@NotNull AnActionEvent event) {
+    return false;
+  }
+
   @Override
   public @NotNull JComponent createCustomComponent(@NotNull Presentation presentation, @NotNull String place) {
     return new SplitButton(this, presentation, place, getDelegate(), useDynamicSplitButton());
   }
 
-  private static final class SplitButton extends ActionButton {
+  private static final class SplitButton extends ActionButton implements SplitButtonZones {
     private enum MousePressType {
       Action, Popup, None
     }
 
     private static final Icon ARROW_DOWN = AllIcons.General.ButtonDropTriangle;
 
+    private final SplitButtonAction mySplitButtonAction;
     private final ActionGroup myActionGroup;
     private AnAction selectedAction;
     private boolean actionEnabled = true;
@@ -118,12 +132,13 @@ public class SplitButtonAction extends ActionGroupWrapper implements CustomCompo
     private SimpleMessageBusConnection myConnection;
     private final boolean myUpdateSelectedActionAfterExecution;
 
-    private SplitButton(@NotNull AnAction action,
+    private SplitButton(@NotNull SplitButtonAction action,
                         @NotNull Presentation presentation,
                         String place,
                         ActionGroup actionGroup,
                         boolean updateSelectedActionAfterExecution) {
       super(action, presentation, place, ActionToolbar.DEFAULT_MINIMUM_BUTTON_SIZE);
+      mySplitButtonAction = action;
       myActionGroup = actionGroup;
       myUpdateSelectedActionAfterExecution = updateSelectedActionAfterExecution;
       selectedAction = presentation.getClientProperty(FIRST_ACTION);
@@ -214,18 +229,44 @@ public class SplitButtonAction extends ActionGroupWrapper implements CustomCompo
       return selectedAction instanceof Toggleable && Toggleable.isSelected(myPresentation);
     }
 
-      @Override
-    protected void onMousePressed(@NotNull MouseEvent e) {
+    @Override
+    public @NotNull Rectangle splitButtonZone(@NotNull SplitButtonHalf half) {
+      return half == SplitButtonHalf.ACTION ? actionZone() : popupZone();
+    }
+
+    /** This button paints both halves and decides the pressed one from the point, so it owns both halves' listeners. */
+    @Override
+    public @NotNull Component splitButtonHalfComponent(@NotNull SplitButtonHalf half) {
+      return this;
+    }
+
+    /**
+     * The main-action half.
+     * <p>
+     * Its arrow width includes the right inset, unlike the one {@link #paintComponent} clips with: the paint pass
+     * measures inside the already-removed insets and this one measures the whole component. Keep them apart.
+     */
+    private @NotNull Rectangle actionZone() {
       Rectangle baseRect = new Rectangle(getSize());
-      JBInsets.removeFrom(baseRect, getInsets());
-      int arrowWidth = ARROW_DOWN.getIconWidth() + JBUIScale.scale(7);
+      return new Rectangle(baseRect.x, baseRect.y, baseRect.width - pressArrowWidth(), baseRect.height);
+    }
 
-      Rectangle execButtonRect = new Rectangle(baseRect.x, baseRect.y, baseRect.width - arrowWidth, baseRect.height);
-      Rectangle arrowButtonRect = new Rectangle(execButtonRect.x + execButtonRect.width, baseRect.y, arrowWidth, baseRect.height);
+    /** The chevron half; see {@link #actionZone}. */
+    private @NotNull Rectangle popupZone() {
+      Rectangle baseRect = new Rectangle(getSize());
+      int arrowWidth = pressArrowWidth();
+      return new Rectangle(baseRect.x + baseRect.width - arrowWidth, baseRect.y, arrowWidth, baseRect.height);
+    }
 
+    private int pressArrowWidth() {
+      return ARROW_DOWN.getIconWidth() + JBUIScale.scale(7) + getInsets().right;
+    }
+
+    @Override
+    protected void onMousePressed(@NotNull MouseEvent e) {
       Point p = e.getPoint();
-      mousePressType = execButtonRect.contains(p) ? MousePressType.Action :
-                       arrowButtonRect.contains(p) ? MousePressType.Popup :
+      mousePressType = actionZone().contains(p) ? MousePressType.Action :
+                       popupZone().contains(p) ? MousePressType.Popup :
                        MousePressType.None;
     }
 
@@ -234,9 +275,11 @@ public class SplitButtonAction extends ActionGroupWrapper implements CustomCompo
       HelpTooltip.hide(this);
 
       if (mousePressType == MousePressType.Popup || !selectedActionEnabled()) {
-        showActionGroupPopup(myActionGroup, event);
+        if (!mySplitButtonAction.showPopup(event)) {
+          showActionGroupPopup(myActionGroup, event);
+        }
       }
-      else {
+      else if (mousePressType == MousePressType.Action) {
         selectedAction.actionPerformed(event);
       }
     }

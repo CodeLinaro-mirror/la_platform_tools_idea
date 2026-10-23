@@ -1,5 +1,5 @@
 // "Remove annotation" "true"
-// K2_ERROR: Opt-in requirement marker annotation cannot be used on variable.
+// K2_ERROR: OPT_IN_MARKER_ON_WRONG_TARGET
 
 @RequiresOptIn
 @Target(AnnotationTarget.LOCAL_VARIABLE)
@@ -10,5 +10,4 @@ fun foo() {
     var x: Int
 }
 
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.inspections.RemoveAnnotationFix
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.inspections.RemoveAnnotationFix

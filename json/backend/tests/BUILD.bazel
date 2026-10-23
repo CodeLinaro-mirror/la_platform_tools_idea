@@ -1,8 +1,19 @@
 load("@community//build:tests-options.bzl", "jps_test")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
-### auto-generated section `build intellij.json.tests` start
+jps_test(
+    name = "tests_test",
+    timeout = "eternal",
+    tags = ["community-aggregator"],
+    runtime_deps = [
+        ":tests_test_lib",
+        "//platform/vcs/plugin",
+        "//plugins/grazie",
+    ],
+)
+### skip generation section `test intellij.json.tests`
 
+### auto-generated section `build intellij.json.tests` start
 jvm_library(
     name = "tests",
     srcs = glob(
@@ -15,6 +26,7 @@ jvm_library(
         # do not sort,
         "//libraries/kotlinx/coroutines/core",
         "//platform/ide-core-impl",
+        "//xml/plugin",
     ],
 )
 
@@ -40,6 +52,7 @@ jvm_library(
         ":tests",
         "//platform/ide-core-impl:ide-core-impl_test_lib",
         "//platform/ide-core:ide-core_test_lib",
+        "//xml/plugin:plugin_test_lib",
     ],
     deps = [
         # do not sort,
@@ -69,8 +82,12 @@ jvm_library(
         "//json/structureView:structureView_test_lib",
         "//json/backend/regexp",
         "//json/backend/regexp:regexp_test_lib",
+        "//json/backend/spellchecker",
+        "//json/backend/spellchecker:spellchecker_test_lib",
         "//spellchecker",
         "//spellchecker:spellchecker_test_lib",
+        "//libraries/lucene.common",
+        "//libraries/lucene.common:lucene.common_test_lib",
         "//plugins/grazie/src:core",
         "//plugins/grazie/src:core_test_lib",
         "//platform/lang-impl",
@@ -110,6 +127,8 @@ jvm_library(
         "//platform/util:util-ui_test_lib",
         "//platform/structure-view-impl:structureView",
         "//platform/structure-view-impl:structureView_test_lib",
+        "//platform/structure-view-impl/plugin",
+        "//platform/structure-view-impl/plugin:plugin_test_lib",
         "//libraries/fastutil",
         "//libraries/fastutil:fastutil_test_lib",
         "//libraries/kotlinx/collections-immutable:libraries-kotlinx-collections-immutable",
@@ -120,8 +139,8 @@ jvm_library(
         "//json/networknt.wrapper:networknt.wrapper_test_lib",
         "//libraries/junit4",
         "//libraries/junit4:junit4_test_lib",
-        "//libraries/junit5",
-        "//libraries/junit5:junit5_test_lib",
+        "//libraries/junit6",
+        "//libraries/junit6:junit6_test_lib",
     ],
 )
 ### auto-generated section `build intellij.json.tests` end
@@ -134,11 +153,3 @@ exports_files(
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.json.tests` end
-
-### auto-generated section `test intellij.json.tests` start
-
-jps_test(
-    name = "tests_test",
-    runtime_deps = [":tests_test_lib"],
-)
-### auto-generated section `test intellij.json.tests` end

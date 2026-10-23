@@ -1,5 +1,5 @@
 // "Remove 'in' modifier" "true"
-// K2_ERROR: Projections are not allowed on type arguments of functions calls.
+// K2_ERROR: PROJECTION_ON_NON_CLASS_TYPE_ARGUMENT
 class A<T> {}
 
 class B {
@@ -7,4 +7,3 @@ class B {
 }
 
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.RemoveModifierFixBase
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.RemoveModifierFixBase

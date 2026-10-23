@@ -1,7 +1,31 @@
+load("@jps_dynamic_deps_community//:targets.bzl", "dev_dist_plugin")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
-### auto-generated section `build intellij.dotenv` start
+### auto-generated section `dev intellij.dotenv` start
+dev_dist_plugin(
+    content_modules = [
+        # do not sort,
+        "intellij.dotenv.kotlin",
+        "intellij.dotenv.java",
+        "intellij.dotenv.python",
+    ],
+    descriptor = "src/main/resources/META-INF/plugin.xml",
+    jars = {
+        "lib/dotenv.jar": [
+            "intellij.dotenv",
+            "intellij.dotenv.kotlin",
+            "intellij.dotenv.java",
+            "intellij.dotenv.python",
+        ],
+    },
+    main_module = "intellij.dotenv",
+    mode_refused_content_modules = {
+        "frontend": ["intellij.dotenv.python"],
+    },
+)
+### auto-generated section `dev intellij.dotenv` end
 
+### auto-generated section `build intellij.dotenv` start
 jvm_library(
     name = "dotenv",
     srcs = glob(
@@ -77,6 +101,8 @@ jvm_library(
 exports_files(
     [
         "intellij.dotenv.iml",
+        "src/main/resources/META-INF/js.xml",
+        "src/main/resources/META-INF/plugin.xml",
     ],
     visibility = ["//visibility:public"],
 )

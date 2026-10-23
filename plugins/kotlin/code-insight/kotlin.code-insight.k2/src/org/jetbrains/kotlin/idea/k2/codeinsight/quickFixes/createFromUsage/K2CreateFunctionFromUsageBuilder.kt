@@ -11,21 +11,22 @@ import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiNamedElement
 import com.intellij.psi.util.PsiTreeUtil
-import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.analyze
-import org.jetbrains.kotlin.analysis.api.components.allSupertypes
-import org.jetbrains.kotlin.analysis.api.components.directSupertypes
-import org.jetbrains.kotlin.analysis.api.components.expressionType
+import org.jetbrains.kotlin.analysis.api.session.analyze
+import org.jetbrains.kotlin.analysis.api.types.allSupertypes
+import org.jetbrains.kotlin.analysis.api.types.directSupertypes
+import org.jetbrains.kotlin.analysis.api.expressions.expressionType
+import org.jetbrains.kotlin.analysis.api.expressions.isImplicitReferenceToCompanion
+import org.jetbrains.kotlin.analysis.api.javaInterop.asPsiClass
 import org.jetbrains.kotlin.analysis.api.components.resolveToSymbol
 import org.jetbrains.kotlin.analysis.api.components.scopeContext
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassKind
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.classSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.symbol
 import org.jetbrains.kotlin.analysis.api.types.KaErrorType
 import org.jetbrains.kotlin.analysis.api.types.KaType
 import org.jetbrains.kotlin.analysis.api.types.KaTypeParameterType
-import org.jetbrains.kotlin.asJava.toLightClass
 import org.jetbrains.kotlin.idea.base.analysis.api.utils.buildClassTypeWithStarProjections
 import org.jetbrains.kotlin.idea.k2.codeinsight.quickFixes.createFromUsage.CreateMethodFromKotlinUsageRequest.Companion.createMethodRequest
 import org.jetbrains.kotlin.idea.k2.codeinsight.quickFixes.createFromUsage.K2CreateFunctionFromUsageUtil.canRefactor
@@ -195,7 +196,7 @@ object K2CreateFunctionFromUsageBuilder {
         val abstractTypeOfContainer = calleeExpression.getAbstractTypeOfReceiver(receiverExpression)
         val abstractContainerClass = abstractTypeOfContainer?.convertToClass()
         if (abstractContainerClass != null) {
-            val jvmClass = abstractContainerClass.toLightClass()
+            val jvmClass = abstractContainerClass.classSymbol?.asPsiClass()
             if (jvmClass != null) {
                 requests.add(jvmClass to createMethodRequest(
                     functionCall = usageElement,
@@ -255,6 +256,7 @@ object K2CreateFunctionFromUsageBuilder {
         val receiverResolved =
             (receiverExpression as? KtNameReferenceExpression)?.mainReference?.resolveToSymbol() as? KaClassSymbol
         return receiverResolved != null && receiverResolved.classKind != KaClassKind.OBJECT && receiverResolved.classKind != KaClassKind.COMPANION_OBJECT
+                || (receiverExpression as? KtNameReferenceExpression)?.isImplicitReferenceToCompanion == true
     }
 
     // assume the map is linked, because we require order

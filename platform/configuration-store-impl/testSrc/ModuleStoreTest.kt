@@ -15,8 +15,8 @@ import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.roots.impl.storage.ClasspathStorage
 import com.intellij.openapi.roots.impl.storage.ClasspathStorageProvider
 import com.intellij.openapi.util.text.Strings
-import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.project.isDirectoryBased
 import com.intellij.project.stateStore
 import com.intellij.testFramework.ActiveStoreRule
@@ -139,7 +139,7 @@ class ModuleStoreTest {
       val moduleFile = module.stateStore.storageManager.expandMacro(StoragePathMacros.MODULE_FILE)
       assertThat(moduleFile).isRegularFile
 
-      val virtualFile = LocalFileSystem.getInstance().findFileByNioFile(moduleFile)!!
+      val virtualFile = VirtualFileManager.getInstance().findFileByNioPath(moduleFile)!!
       val oldText = moduleFile.readText()
       val newText = oldText.replace("""<content url="file://${"$"}MODULE_DIR$/${module.name}" />""", "")
       assertThat(oldText).isNotEqualTo(newText)
@@ -246,6 +246,41 @@ class ModuleStoreTest {
 
     loadAndUseProjectInLoadComponentStateMode(tempDirManager, projectCreator) { project ->
       project.stateStore.save()
+      val moduleFilePath = Path.of(project.basePath!!).resolve("module.iml")
+      assertThat(moduleFilePath.readText()).isEqualTo(imlFileText)
+    }
+  }
+
+  @Test
+  @Suppress("DEPRECATION")
+  fun `custom module options in iml attributes are preserved on save`() = runBlocking {
+    val imlFileText = """
+      |<?xml version="1.0" encoding="UTF-8"?>
+      |<module type="JAVA_MODULE" uml-param="show" version="4">
+      |  <component name="NewModuleRootManager" />
+      |</module>""".trimMargin()
+    val modulesXmlText = """
+      |<?xml version="1.0" encoding="UTF-8"?>
+      |<project version="4">
+      |  <component name="ProjectModuleManager">
+      |    <modules>
+      |      <module fileurl="file://PROJECT_DIR_MACRO/module.iml" filepath="PROJECT_DIR_MACRO/module.iml" />
+      |    </modules>
+      |  </component>
+      |</project>""".trimMargin().replace("PROJECT_DIR_MACRO", "$" + "PROJECT_DIR$")
+    val projectCreator: (VirtualFile) -> Path = {
+      it.writeChild(".idea/modules.xml", modulesXmlText)
+      it.writeChild("module.iml", imlFileText)
+      Path.of(it.path)
+    }
+
+    loadAndUseProjectInLoadComponentStateMode(tempDirManager, projectCreator) { project ->
+      val module = ModuleManager.getInstance(project).modules.single()
+      assertThat(module.getOptionValue("uml-param")).isEqualTo("show")
+
+      module.setOption("uml-param", "show")
+      project.stateStore.save()
+
       val moduleFilePath = Path.of(project.basePath!!).resolve("module.iml")
       assertThat(moduleFilePath.readText()).isEqualTo(imlFileText)
     }

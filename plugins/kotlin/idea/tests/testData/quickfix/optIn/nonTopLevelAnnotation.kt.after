@@ -1,6 +1,6 @@
 // "Opt in for 'NestedMarker' on 'main'" "true"
 // PRIORITY: HIGH
-// K2_ERROR: This declaration needs opt-in. Its usage must be marked with '@TopClass.NestedMarker' or '@OptIn(TopClass.NestedMarker::class)'
+// K2_ERROR: OPT_IN_USAGE_ERROR
 
 class TopClass {
     @RequiresOptIn
@@ -15,4 +15,3 @@ fun main(){
     Main()
 }
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.OptInFixes$UseOptInAnnotationFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.OptInFixes$UseOptInAnnotationFix

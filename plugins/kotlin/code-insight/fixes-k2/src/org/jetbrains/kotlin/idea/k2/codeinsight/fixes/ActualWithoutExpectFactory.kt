@@ -13,21 +13,27 @@ import com.intellij.openapi.util.text.StringUtil
 import com.intellij.psi.PsiElement
 import com.intellij.psi.createSmartPointer
 import com.intellij.util.containers.addIfNotNull
-import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
-import org.jetbrains.kotlin.analysis.api.KaNonPublicApi
 import org.jetbrains.kotlin.analysis.api.KaSession
+import org.jetbrains.kotlin.analysis.api.components.returnType
 import org.jetbrains.kotlin.analysis.api.fir.diagnostics.KaFirDiagnostic
 import org.jetbrains.kotlin.analysis.api.symbols.KaCallableSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaValueParameterSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.getExpectsForActual
+import org.jetbrains.kotlin.analysis.api.symbols.symbol
 import org.jetbrains.kotlin.analysis.api.types.KaClassType
 import org.jetbrains.kotlin.analysis.api.types.KaErrorType
 import org.jetbrains.kotlin.analysis.api.types.KaType
+import org.jetbrains.kotlin.analysis.api.types.semanticallyEquals
+import org.jetbrains.kotlin.analysis.api.types.type
 import org.jetbrains.kotlin.idea.base.analysis.api.utils.analyzeInModalWindow
 import org.jetbrains.kotlin.idea.base.analysis.api.utils.shortenReferences
 import org.jetbrains.kotlin.idea.base.codeInsight.KotlinPsiElementMemberChooserObject
 import org.jetbrains.kotlin.idea.base.facet.implementedModules
+import org.jetbrains.kotlin.idea.base.psi.addMemberDeclaration
+import org.jetbrains.kotlin.idea.base.psi.addModifierKeyword
 import org.jetbrains.kotlin.idea.base.psi.isAlwaysActual
+import org.jetbrains.kotlin.idea.base.psi.removeModifierKeyword
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.base.util.module
 import org.jetbrains.kotlin.idea.codeinsight.api.applicators.fixes.KotlinQuickFixFactory
@@ -99,13 +105,15 @@ internal object ActualWithoutExpectFactory {
         }
     }
 
-    private fun KaSession.findExpectWithConflictingVisibility(
+    context(session: KaSession)
+    private fun findExpectWithConflictingVisibility(
         actualDeclaration: KtCallableDeclaration,
         fileToCreateDeclaration: KtFile?,
         expectedContainingClass: KtClassOrObject?
     ): KtFunction? {
         if (fileToCreateDeclaration != null && actualDeclaration is KtFunction) {
-            fun KaSession.types(decl: KtFunction): List<KaType?> =
+            context(session: KaSession)
+            fun types(decl: KtFunction): List<KaType?> =
                 (decl.valueParameters.map { it.typeReference } + listOf(decl.receiverTypeReference) + decl.contextReceivers.map { it.typeReference() }).map { it?.type }
 
             val types = types(actualDeclaration)
@@ -174,7 +182,7 @@ sealed class CreateExpectedFix<D : KtNamedDeclaration>(
         val target = project.executeWriteCommand(familyName, null) {
             val initial = (when {
                 targetExpectedClass != null && expectPrototype is KtPrimaryConstructor -> targetExpectedClass.add(expectPrototype)
-                targetExpectedClass != null -> targetExpectedClass.addDeclaration<KtDeclaration>(expectPrototype)
+                targetExpectedClass != null -> targetExpectedClass.addMemberDeclaration<KtDeclaration>(expectPrototype)
                 else -> expectedFile.add(expectPrototype)
             }) as KtElement
             val shortened = shortenReferences(initial)
@@ -199,7 +207,6 @@ sealed class CreateExpectedFix<D : KtNamedDeclaration>(
         }
     }
 
-    @OptIn(KaExperimentalApi::class, KaNonPublicApi::class)
     protected fun isCorrectAndHaveAccessibleModifiers(
         declaration: KtNamedDeclaration,
         expectedFile: KtFile,
@@ -300,7 +307,6 @@ internal class CreateExpectedClassFix(
     targetFile: KtFile?,
     commonModule: Module,
 ) : CreateExpectedFix<KtClassOrObject>(declaration, targetExpectedClass, commonModule, targetFile) {
-    @OptIn(KaExperimentalApi::class)
     override fun generate(
         project: Project,
         targetExpectedClass: KtClassOrObject?,
@@ -401,7 +407,7 @@ internal class CreateExpectedClassFix(
                 if (original in selectedElements)
                     original.makeActualWithParents()
                 else {
-                    original.removeModifier(ACTUAL_KEYWORD)
+                    original.removeModifierKeyword(ACTUAL_KEYWORD)
                 }
             }
         }
@@ -455,7 +461,7 @@ internal class CreateExpectedClassFix(
 
 
     private tailrec fun KtDeclaration.makeActualWithParents() {
-        addModifier(ACTUAL_KEYWORD)
+        addModifierKeyword(ACTUAL_KEYWORD)
         containingClassOrObject?.takeUnless(KtDeclaration::hasActualModifier)?.makeActualWithParents()
     }
 
@@ -491,7 +497,6 @@ internal class CreateExpectedCallableMemberFix(
     targetFile: KtFile?,
     commonModule: Module,
 ) : CreateExpectedFix<KtNamedDeclaration>(declaration, targetExpectedClass, commonModule, targetFile) {
-    @OptIn(KaExperimentalApi::class)
     override fun generate(
         project: Project,
         targetExpectedClass: KtClassOrObject?,
@@ -506,7 +511,7 @@ internal class CreateExpectedCallableMemberFix(
             generateMember(
                 project = declaration.project,
                 ktClassMember = null,
-                symbol = (callableSymbol as? KaValueParameterSymbol)?.generatedPrimaryConstructorProperty ?: callableSymbol,
+                symbol = (callableSymbol as? KaValueParameterSymbol)?.primaryConstructorProperty ?: callableSymbol,
                 targetClass = targetExpectedClass,
                 copyDoc = false,
                 mode = MemberGenerateMode.EXPECT,

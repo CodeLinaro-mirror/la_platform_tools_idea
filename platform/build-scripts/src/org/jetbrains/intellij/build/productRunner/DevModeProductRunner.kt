@@ -3,16 +3,17 @@
 
 package org.jetbrains.intellij.build.productRunner
 
-import kotlinx.coroutines.CoroutineScope
+import com.intellij.platform.buildScripts.devLaunch.readVmOptions
 import org.jetbrains.intellij.build.BuildContext
+import org.jetbrains.intellij.build.BuildLifetime
 import org.jetbrains.intellij.build.VmProperties
 import org.jetbrains.intellij.build.checkForNoDiskSpace
 import org.jetbrains.intellij.build.dev.BuildRequest
 import org.jetbrains.intellij.build.dev.buildProduct
 import org.jetbrains.intellij.build.dev.configureDevModeBuildOptions
+import org.jetbrains.intellij.build.dev.copyWithDevBuildOverrides
 import org.jetbrains.intellij.build.dev.createDevBuildContext
 import org.jetbrains.intellij.build.dev.createDevBuildPaths
-import org.jetbrains.intellij.build.dev.readVmOptions
 import org.jetbrains.intellij.build.impl.BuildContextImpl
 import org.jetbrains.intellij.build.impl.logging.BuildMessagesHandler
 import org.jetbrains.intellij.build.impl.logging.BuildMessagesImpl
@@ -25,13 +26,9 @@ import kotlin.time.Duration
  * Only for use in build scripts, not for dev mode / integrations tests.
  * Use [BuildContext.createProductRunner] instead of calling this function directly.
  */
-internal suspend fun createDevModeProductRunner(context: BuildContextImpl, additionalPluginModules: List<String> = emptyList()): IntellijProductRunner {
-  var newClassPath: Collection<Path>? = null
+internal fun createDevModeProductRunner(context: BuildContextImpl, additionalPluginModules: List<String> = emptyList()): IntellijProductRunner {
   return checkForNoDiskSpace(context) {
     val request = BuildRequest(
-      //isUnpackedDist = context.productProperties.platformPrefix != "Gateway",
-      // https://youtrack.jetbrains.com/issue/IJPL-156115/devModeProductRunner-use-packed-dist-as-a-workaround-for-incorrect-product-info.json-entries-links-to-compilation-output
-      isUnpackedDist = false,
       writeCoreClasspath = false,
       platformPrefix = context.productProperties.platformPrefix ?: "idea",
       baseIdePlatformPrefixForFrontend = context.productProperties.baseIdePlatformPrefixForFrontend,
@@ -40,15 +37,12 @@ internal suspend fun createDevModeProductRunner(context: BuildContextImpl, addit
       devRootDir = context.paths.tempDir.resolve("dev-run"),
       jarCacheDir = context.paths.projectHome.resolve("out/dev-run/jar-cache"),
       generateRuntimeModuleRepository = context.useModularLoader,
-      platformClassPathConsumer = { _: String, classPath: Set<Path>, _: Path ->
-        newClassPath = classPath
-      },
       isBootClassPathCorrect = true,
     )
-    val runDir = buildProduct(request) { buildDir ->
-      createBuildContextFromExistingContext(baseContext = context, request = request, buildDir = buildDir, scope = this)
+    val build = buildProduct(request) { buildDir, lifetime ->
+      createBuildContextFromExistingContext(baseContext = context, request = request, buildDir = buildDir, lifetime = lifetime)
     }
-    DevModeProductRunner(context = context, homePath = runDir, classPath = newClassPath!!.map { it.toString() })
+    DevModeProductRunner(context = context, homePath = build.runDir, classPath = build.coreClassPath.map { it.toString() })
   }
 }
 
@@ -56,36 +50,35 @@ private fun createBuildContextFromExistingContext(
   baseContext: BuildContextImpl,
   request: BuildRequest,
   buildDir: Path,
-  scope: CoroutineScope,
+  lifetime: BuildLifetime,
 ): BuildContext {
-  val options = baseContext.options.copy(
-    jarCacheDir = request.jarCacheDir,
-    printFreeSpace = false,
-    validateImplicitPlatformModule = false,
-    skipDependencySetup = true,
-    skipCheckOutputOfPluginModules = true,
-    validateModuleStructure = false,
-    cleanOutDir = false,
-    outRootDir = buildDir,
-    compilationLogEnabled = false,
-    logDir = buildDir.resolve("log"),
-    isUnpackedDist = request.isUnpackedDist,
+  val options = baseContext.options.copyWithDevBuildOverrides(
+    request = request,
+    buildDir = buildDir,
+    // this assembly is nested in a real build, so without an explicit override it keeps that build's date rather than the dev-mode one
+    defaultBuildDateInSeconds = baseContext.options.buildDateInSeconds,
   )
   configureDevModeBuildOptions(options = options, request = request, buildOptionsTemplate = baseContext.options)
 
-  val buildPaths = createDevBuildPaths(projectDir = request.projectDir, buildDir = buildDir, logDir = options.logDir!!)
+  val buildPaths = createDevBuildPaths(
+    projectDir = request.projectDir,
+    buildDir = buildDir,
+    logDir = options.logDir!!,
+    scratchDir = request.scratchDir ?: buildDir,
+  )
   val messages = BuildMessagesImpl.create()
   messages.setDebugLogPath(buildPaths.logDir.resolve("debug.log"))
   BuildMessagesHandler.initLoggingIfNeeded(messages)
 
   val compilationContext = normalizeCompilationContextForBuild(
-    context = baseContext.compilationContext.createCopy(messages = messages, options = options, paths = buildPaths, scope = scope),
-    scope = scope,
+    context = baseContext.compilationContext.createCopy(messages = messages, options = options, paths = buildPaths, lifetime = lifetime),
+    lifetime = lifetime,
   )
   return createDevBuildContext(
     compilationContext = compilationContext,
     productProperties = baseContext.productProperties,
     request = request,
+    lifetime = lifetime,
   )
 }
 
@@ -94,7 +87,7 @@ private class DevModeProductRunner(
   private val homePath: Path,
   private val classPath: Collection<String>,
 ) : IntellijProductRunner {
-  override suspend fun runProduct(args: List<String>, additionalVmProperties: VmProperties, timeout: Duration) {
+  override fun runProduct(args: List<String>, additionalVmProperties: VmProperties, timeout: Duration) {
     val vmOptionsFromBuild = readVmOptions(homePath)
     val appStarterId = args.firstOrNull() ?: "appStarter"
     doRunApplicationStarter(

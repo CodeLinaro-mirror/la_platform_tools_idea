@@ -1,4 +1,4 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.kotlin.idea.codeInsight.inspections.declarations
 
 import com.intellij.codeInspection.CleanupLocalInspectionTool
@@ -9,10 +9,14 @@ import com.intellij.codeInspection.ProblemHighlightType
 import com.intellij.codeInspection.ProblemsHolder
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiElementVisitor
-import org.jetbrains.kotlin.analysis.api.analyze
+import org.jetbrains.kotlin.analysis.api.session.analyze
+import org.jetbrains.kotlin.analysis.api.symbols.symbol
+import org.jetbrains.kotlin.analysis.api.types.KaStandardTypeClassIds
+import org.jetbrains.kotlin.analysis.api.types.classId
 import org.jetbrains.kotlin.idea.base.analysis.api.utils.shortenReferences
 import org.jetbrains.kotlin.idea.base.codeInsight.KotlinMainFunctionDetector
 import org.jetbrains.kotlin.idea.base.codeInsight.PsiOnlyKotlinMainFunctionDetector
+import org.jetbrains.kotlin.idea.base.psi.setCallableTypeReference
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.name.StandardClassIds
 import org.jetbrains.kotlin.psi.KtNamedFunction
@@ -33,7 +37,7 @@ internal class MainFunctionReturnUnitInspection : LocalInspectionTool(), Cleanup
         if (!KotlinMainFunctionDetector.getInstance().isMain(function, detectorConfiguration)) return
 
         analyze(function) {
-            if (!function.symbol.returnType.isUnitType) {
+            if (function.symbol.returnType.classId != KaStandardTypeClassIds.UNIT) {
                 holder.registerProblem(
                     function.typeReference ?: function,
                     KotlinBundle.message("0.should.return.unit", "'main()'"),
@@ -54,9 +58,9 @@ internal class MainFunctionReturnUnitInspection : LocalInspectionTool(), Cleanup
         override fun applyFix(project: Project, descriptor: ProblemDescriptor) {
             val function = descriptor.psiElement.getNonStrictParentOfType<KtNamedFunction>() ?: return
             if (function.hasBlockBody()) {
-                function.typeReference = null
+                function.setCallableTypeReference(null)
             } else {
-                function.typeReference = KtPsiFactory(project).createType(StandardClassIds.Unit.asFqNameString())
+                function.setCallableTypeReference(KtPsiFactory(project).createType(StandardClassIds.Unit.asFqNameString()))
                 function.typeReference?.let {
                     shortenReferences(it)
                 }

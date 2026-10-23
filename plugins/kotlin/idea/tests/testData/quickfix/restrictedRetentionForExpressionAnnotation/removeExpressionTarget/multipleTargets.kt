@@ -1,9 +1,8 @@
 // "Remove EXPRESSION target" "true"
-// K2_ERROR: Expression annotations with retention other than SOURCE are prohibited.
+// K2_ERROR: RESTRICTED_RETENTION_FOR_EXPRESSION_ANNOTATION_ERROR
 import kotlin.annotation.AnnotationTarget.*
 
 <caret>@Retention
 @Target(FIELD, EXPRESSION, PROPERTY)
 annotation class Ann
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.RemoveExpressionTargetFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.RemoveExpressionTargetFix

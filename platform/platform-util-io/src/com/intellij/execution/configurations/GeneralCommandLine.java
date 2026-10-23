@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.execution.configurations;
 
 import com.google.common.base.Strings;
@@ -27,11 +27,13 @@ import com.intellij.platform.eel.EelDescriptor;
 import com.intellij.platform.eel.provider.LocalEelDescriptor;
 import com.intellij.util.EnvironmentRestorer;
 import com.intellij.util.EnvironmentUtil;
+import com.intellij.util.SlowOperations;
 import com.intellij.util.containers.CollectionFactory;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.FastUtilHashingStrategies;
 import com.intellij.util.execution.ParametersListUtil;
 import com.intellij.util.io.IdeUtilIoBundle;
+import com.intellij.util.system.OS;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenCustomHashMap;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
@@ -41,6 +43,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -51,7 +54,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
 
-import static com.intellij.execution.util.ExecUtil.startProcessBlockingUsingEel;
+import static com.intellij.execution.configurations.EelProcessLauncherKt.startProcessBlockingUsingEel;
 import static com.intellij.platform.eel.provider.EelPathDescriptorKt.getEelDescriptor;
 
 /**
@@ -113,6 +116,8 @@ public class GeneralCommandLine implements UserDataHolder {
   private @Nullable File myInputFile;
   private Map<Object, Object> myUserData;
   /**
+   * Caches the target derived from the executable path and the working directory.
+   * Changing either value clears this cache.
    * `null` means that the ref is not initialized yet
    * `Ref(null)` means that Eel should **not** be used here
    * `Ref(not-null)` means that the Eel **should** be used
@@ -152,16 +157,34 @@ public class GeneralCommandLine implements UserDataHolder {
     myEelDescriptor = original.myEelDescriptor;
   }
 
-  private static Charset defaultCharset() {
-    return LoadingState.COMPONENTS_LOADED.isOccurred() ? EncodingManager.getInstance().getDefaultConsoleEncoding() : Charset.defaultCharset();
+  /**
+   * Returns an environment that will be inherited by a child process.
+   *
+   * @see #getEffectiveEnvironment()
+   */
+  public @NotNull Map<String, String> getParentEnvironment() {
+    return switch (myParentEnvironmentType) {
+      case SYSTEM -> System.getenv();
+      case CONSOLE -> EnvironmentUtil.getEnvironmentMap();
+      default -> Collections.emptyMap();
+    };
   }
 
   public @NotNull @NlsSafe String getExePath() {
     return myExePath;
   }
 
+  /**
+   * Sets an executable path or a program name.
+   * For remote EEL execution, accepts an absolute global path, an absolute native path, or a name from the target's PATH.
+   * Executable strings without a remote global path are passed unchanged to EEL.
+   * For remote EEL execution, a native path or a program name requires a working directory that identifies the remote target.
+   * A native path can also be a valid local path when both systems use the same path syntax.
+   * Global executable and working directory paths must identify the same target.
+   */
   public @NotNull GeneralCommandLine withExePath(@NotNull String exePath) {
     myExePath = exePath.trim();
+    myEelDescriptor = null;
     return this;
   }
 
@@ -219,6 +242,7 @@ public class GeneralCommandLine implements UserDataHolder {
 
   public @NotNull GeneralCommandLine withWorkingDirectory(@Nullable Path workDirectory) {
     myWorkingDirectory = workDirectory;
+    myEelDescriptor = null;
     return this;
   }
 
@@ -254,16 +278,10 @@ public class GeneralCommandLine implements UserDataHolder {
     return this;
   }
 
-  /**
-   * Returns an environment that will be inherited by a child process.
-   * @see #getEffectiveEnvironment()
-   */
-  public @NotNull Map<String, String> getParentEnvironment() {
-    return switch (myParentEnvironmentType) {
-      case SYSTEM -> System.getenv();
-      case CONSOLE -> EnvironmentUtil.getEnvironmentMap();
-      default -> Collections.emptyMap();
-    };
+  protected @NotNull List<String> prepareCommandLine(@NotNull String command,
+                                                     @NotNull List<String> parameters,
+                                                     @NotNull Platform platform) {
+    return CommandLineUtil.toCommandLine(command, parameters, platform);
   }
 
   /**
@@ -390,12 +408,11 @@ public class GeneralCommandLine implements UserDataHolder {
     return String.join("\n", prepareCommandLine(myExePath != null ? myExePath : "", myProgramParams.getList(), platform));
   }
 
-  protected @NotNull List<String> prepareCommandLine(@NotNull String command, @NotNull List<String> parameters, @NotNull Platform platform) {
-    return CommandLineUtil.toCommandLine(command, parameters, platform);
-  }
-
   @ApiStatus.NonExtendable
   public @NotNull Process createProcess() throws ExecutionException {
+    // creating process on Windows may easily block, it may not be performed from EDT
+    SlowOperations.assertNonCancelableSlowOperationsAreAllowed();
+
     if (LOG.isDebugEnabled()) {
       LOG.debug("Executing [" + getCommandLineString() + "]");
       if (myWorkingDirectory != null) {
@@ -423,11 +440,18 @@ public class GeneralCommandLine implements UserDataHolder {
         var mode = System.getProperty("jdk.lang.Process.allowAmbiguousCommands");
         @SuppressWarnings("removal") var sm = System.getSecurityManager();
         if ("false".equalsIgnoreCase(mode) || sm != null) {
-          e.addSuppressed(new IllegalStateException("Suspicious state: allowAmbiguousCommands=" + mode + " SM=" + (sm != null ? sm.getClass() : null)));
+          e.addSuppressed(
+            new IllegalStateException("Suspicious state: allowAmbiguousCommands=" + mode + " SM=" + (sm != null ? sm.getClass() : null)));
         }
       }
       throw new ProcessNotCreatedException(e.getMessage(), e, this);
     }
+  }
+
+  private static Charset defaultCharset() {
+    return LoadingState.COMPONENTS_LOADED.isOccurred()
+           ? EncodingManager.getInstance().getDefaultConsoleEncoding()
+           : Charset.defaultCharset();
   }
 
   @ApiStatus.Internal
@@ -487,15 +511,21 @@ public class GeneralCommandLine implements UserDataHolder {
       return null;
     }
 
-    final var exePath = Path.of(exe);
+    EelDescriptor executableDescriptor;
+    try {
+      executableDescriptor = getEelDescriptor(Path.of(exe));
+    }
+    catch (InvalidPathException ignored) {
+      executableDescriptor = LocalEelDescriptor.INSTANCE;
+    }
 
     // IJPL-177172: do not use eel for absolute Windows paths (e.g., C:\...).
     // Fallback to the legacy WSL behavior where a local exe is executed in a remote working directory.
     if (SystemInfo.isWindows && OSAgnosticPathUtil.isAbsoluteDosPath(exe)) {
       descriptor = null;
     }
-    else if (getEelDescriptor(exePath) != LocalEelDescriptor.INSTANCE) { // fast check
-      descriptor = getEelDescriptor(exePath);
+    else if (executableDescriptor != LocalEelDescriptor.INSTANCE) {
+      descriptor = executableDescriptor;
     }
     else if (workingDirectory != null && getEelDescriptor(workingDirectory) != LocalEelDescriptor.INSTANCE) {
       // also try to compute non-local descriptor from working dir
@@ -534,20 +564,20 @@ public class GeneralCommandLine implements UserDataHolder {
       }
     }
 
-    String exePath = myExePath;
-    if (exePath.indexOf(File.separatorChar) == -1) {
-      String lookupPath = myEnvParams.get("PATH");
-      if (lookupPath == null && myParentEnvironmentType == ParentEnvironmentType.CONSOLE && SystemInfo.isMac) {
-        String shellPath = EnvironmentUtil.getValue("PATH");
+    var exePath = myExePath;
+    if (exePath.indexOf('/') == -1 && exePath.indexOf('\\') == -1) {
+      var lookupPath = myEnvParams.get("PATH");
+      if (lookupPath == null && myParentEnvironmentType == ParentEnvironmentType.CONSOLE && OS.CURRENT == OS.macOS) {
+        var shellPath = EnvironmentUtil.getValue("PATH");
         if (!Objects.equals(shellPath, System.getenv("PATH"))) {
           lookupPath = shellPath;
         }
       }
       if (lookupPath != null) {
-        File exeFile = PathEnvironmentVariableUtil.findInPath(myExePath, lookupPath, null);
+        var exeFile = PathEnvironmentVariableUtil.findFirst(myExePath, lookupPath);
         if (exeFile != null) {
           LOG.debug(exePath + " => " + exeFile);
-          exePath = exeFile.getPath();
+          exePath = exeFile.toString();
         }
       }
     }

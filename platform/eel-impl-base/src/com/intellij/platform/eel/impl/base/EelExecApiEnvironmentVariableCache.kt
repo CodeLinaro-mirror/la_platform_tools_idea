@@ -2,10 +2,9 @@
 package com.intellij.platform.eel.impl.base
 
 import com.intellij.platform.eel.EelExecApi
-import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.ExperimentalCoroutinesApi
+import com.intellij.platform.eel.SafeDeferred
+import kotlinx.coroutines.CompletableDeferred
 import org.jetbrains.annotations.ApiStatus
-import java.util.Optional
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -13,43 +12,39 @@ import java.util.concurrent.ConcurrentHashMap
  */
 @ApiStatus.Internal
 class EelExecApiEnvironmentVariableCache(
-  private val makeEnvironmentVariablesDeferred: (EelExecApi.EnvironmentVariablesOptions.Mode?) -> Deferred<Map<String, String>>,
+  private val makeEnvironmentVariablesDeferred: (EelExecApi.EnvironmentVariablesOptions.Mode) -> SafeDeferred<Map<String, String>>,
 ) {
   /**
    * If the first feature is present, it is already completed successfully.
    * The second feature can be in any state.
    */
   @JvmInline
-  private value class EnvVarCache(private val pair: Pair<Deferred<Map<String, String>>?, Deferred<Map<String, String>>>) {
-    val envVarsInProgress: Deferred<Map<String, String>> get() = pair.second
+  private value class EnvVarCache(private val pair: Pair<SafeDeferred<Map<String, String>>?, SafeDeferred<Map<String, String>>>) {
+    val envVarsInProgress: SafeDeferred<Map<String, String>> get() = pair.second
 
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val latestKnownEnvVars: Deferred<Map<String, String>>?
+    val latestKnownEnvVars: SafeDeferred<Map<String, String>>?
       get() =
-        if (envVarsInProgress.isCompleted && envVarsInProgress.getCompletionExceptionOrNull() == null) {
-          envVarsInProgress
-        }
-        else {
-          pair.first
+        when (val s = envVarsInProgress.state) {
+          is SafeDeferred.State.Completed<*> -> envVarsInProgress
+          is SafeDeferred.State.Unsuccessful, SafeDeferred.State.Active -> pair.first
         }
   }
 
-  private val environmentVariablesCache = ConcurrentHashMap<Optional<EelExecApi.EnvironmentVariablesOptions.Mode>, EnvVarCache>()
+  private val environmentVariablesCache = ConcurrentHashMap<EelExecApi.EnvironmentVariablesOptions.Mode, EnvVarCache>()
 
   fun getDeferred(
-    mode: EelExecApi.EnvironmentVariablesOptions.Mode?,
+    mode: EelExecApi.EnvironmentVariablesOptions.Mode,
     opts: EelExecApi.EnvironmentVariablesOptions,
   ): EelExecApi.EnvironmentVariablesDeferred {
-    val cacheKey = Optional.ofNullable(mode)
     var newEnvVarCache: EnvVarCache
 
     do {
-      val envVarCache = environmentVariablesCache[cacheKey]
+      val envVarCache = environmentVariablesCache[mode]
       val successfullyUpdated: Boolean
 
       if (envVarCache == null) {
         newEnvVarCache = EnvVarCache(null to makeEnvironmentVariablesDeferred(mode))
-        successfullyUpdated = environmentVariablesCache.putIfAbsent(cacheKey, newEnvVarCache) == null
+        successfullyUpdated = environmentVariablesCache.putIfAbsent(mode, newEnvVarCache) == null
       }
       else {
         val latestKnownEnvVars = envVarCache.latestKnownEnvVars
@@ -57,20 +52,47 @@ class EelExecApiEnvironmentVariableCache(
           return EelExecApi.EnvironmentVariablesDeferred(latestKnownEnvVars)
         }
 
-        if (!envVarCache.envVarsInProgress.isCompleted) {
-          return EelExecApi.EnvironmentVariablesDeferred(envVarCache.envVarsInProgress)
-        }
+        when (envVarCache.envVarsInProgress.state) {
+          SafeDeferred.State.Active, is SafeDeferred.State.Unsuccessful -> {
+            return EelExecApi.EnvironmentVariablesDeferred(envVarCache.envVarsInProgress)
+          }
 
-        // read again after checking isCompleted to avoid TOCTOU race
-        val latestKnownEnvVarsNew = envVarCache.latestKnownEnvVars
-        newEnvVarCache = EnvVarCache(latestKnownEnvVarsNew to makeEnvironmentVariablesDeferred(mode))
-        successfullyUpdated = environmentVariablesCache.replace(cacheKey, envVarCache, newEnvVarCache)
+          is SafeDeferred.State.Completed<*> -> {
+            // read again after checking isCompleted to avoid TOCTOU race
+            val latestKnownEnvVarsNew = envVarCache.latestKnownEnvVars
+            newEnvVarCache = EnvVarCache(latestKnownEnvVarsNew to makeEnvironmentVariablesDeferred(mode))
+            successfullyUpdated = environmentVariablesCache.replace(mode, envVarCache, newEnvVarCache)
+          }
+        }
       }
     }
     while (!successfullyUpdated)
 
     newEnvVarCache.envVarsInProgress.start()
     return EelExecApi.EnvironmentVariablesDeferred(newEnvVarCache.envVarsInProgress)
+  }
+
+  fun updateCache(
+    mode: EelExecApi.EnvironmentVariablesOptions.Mode,
+    envVars: Map<String, String>,
+  ) {
+    val completedDeferred = SafeDeferred(CompletableDeferred(envVars))
+    var newEnvVarCache: EnvVarCache
+
+    do {
+      val envVarCache = environmentVariablesCache[mode]
+      val successfullyUpdated: Boolean
+
+      if (envVarCache == null) {
+        newEnvVarCache = EnvVarCache(null to completedDeferred)
+        successfullyUpdated = environmentVariablesCache.putIfAbsent(mode, newEnvVarCache) == null
+      }
+      else {
+        newEnvVarCache = EnvVarCache(completedDeferred to envVarCache.envVarsInProgress)
+        successfullyUpdated = environmentVariablesCache.replace(mode, envVarCache, newEnvVarCache)
+      }
+    }
+    while (!successfullyUpdated)
   }
 
   fun clear() {

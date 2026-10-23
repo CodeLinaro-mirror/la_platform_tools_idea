@@ -1,6 +1,7 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.intellij.build.productLayout.validator
 
+import com.intellij.platform.buildScripts.concurrency.SharedTaskOwner
 import com.intellij.platform.pluginGraph.ContentModuleName
 import com.intellij.platform.pluginGraph.PluginId
 import com.intellij.platform.pluginGraph.TargetDependencyScope
@@ -9,6 +10,7 @@ import kotlinx.coroutines.runBlocking
 import org.assertj.core.api.Assertions.assertThat
 import org.jetbrains.intellij.build.productLayout.TestFailureLogger
 import org.jetbrains.intellij.build.productLayout.TestPluginSpec
+import org.jetbrains.intellij.build.productLayout.dependency.jpsModuleOutputProvider
 import org.jetbrains.intellij.build.productLayout.dependency.pluginGraph
 import org.jetbrains.intellij.build.productLayout.dependency.runValidationRule
 import org.jetbrains.intellij.build.productLayout.dependency.testGenerationModel
@@ -34,12 +36,23 @@ import java.nio.file.Path
 
 @ExtendWith(TestFailureLogger::class)
 class TestPluginPluginDependencyValidatorTest {
+  private val owner = SharedTaskOwner("TestPluginPluginDependencyValidatorTest")
+
+  @org.junit.jupiter.api.AfterEach
+  fun closeSharedTasks() {
+    owner.close()
+  }
+
   @Test
   fun `missing plugin dependency in test plugin XML reports error`(@TempDir tempDir: Path): Unit = runBlocking(Dispatchers.Default) {
     val graph = pluginGraph {
       product("TestProduct") { bundlesPlugin("dep.plugin") }
       plugin("dep.plugin") {
         pluginId("dep.plugin")
+        content("dep.module")
+      }
+      plugin("alternative.dep.plugin") {
+        pluginId("alternative.dep.plugin")
         content("dep.module")
       }
       testPlugin("test.plugin") {
@@ -59,7 +72,7 @@ class TestPluginPluginDependencyValidatorTest {
 
     writePluginXml(tempDir, spec.pluginXmlPath, pluginXml("test.plugin"))
 
-    val model = testGenerationModel(graph, fileUpdater = DeferredFileUpdater(tempDir)).copy(
+    val model = testGenerationModel(graph, outputProvider = jpsModuleOutputProvider(tempDir, productionModules = listOf("consumer.module")), fileUpdater = DeferredFileUpdater(tempDir), owner = owner).copy(
       projectRoot = tempDir,
       dslTestPluginsByProduct = mapOf("TestProduct" to listOf(spec)),
     )
@@ -102,7 +115,7 @@ class TestPluginPluginDependencyValidatorTest {
 
     writePluginXml(tempDir, spec.pluginXmlPath, pluginXml("test.plugin", pluginDeps = listOf("dep.plugin")))
 
-    val model = testGenerationModel(graph, fileUpdater = DeferredFileUpdater(tempDir)).copy(
+    val model = testGenerationModel(graph, fileUpdater = DeferredFileUpdater(tempDir), owner = owner).copy(
       projectRoot = tempDir,
       dslTestPluginsByProduct = mapOf("TestProduct" to listOf(spec)),
     )
@@ -143,7 +156,7 @@ class TestPluginPluginDependencyValidatorTest {
 
     writePluginXml(tempDir, spec.pluginXmlPath, pluginXml("test.plugin"))
 
-    val model = testGenerationModel(graph, fileUpdater = DeferredFileUpdater(tempDir)).copy(
+    val model = testGenerationModel(graph, fileUpdater = DeferredFileUpdater(tempDir), owner = owner).copy(
       projectRoot = tempDir,
       dslTestPluginsByProduct = mapOf("TestProduct" to listOf(spec)),
     )
@@ -195,7 +208,7 @@ class TestPluginPluginDependencyValidatorTest {
       )
     )
 
-    val model = testGenerationModel(graph, fileUpdater = DeferredFileUpdater(tempDir)).copy(
+    val model = testGenerationModel(graph, fileUpdater = DeferredFileUpdater(tempDir), owner = owner).copy(
       projectRoot = tempDir,
       dslTestPluginsByProduct = mapOf("TestProduct" to listOf(spec)),
       dslTestPluginDependencyChains = dependencyChains,
@@ -239,7 +252,7 @@ class TestPluginPluginDependencyValidatorTest {
 
     writePluginXml(tempDir, spec.pluginXmlPath, pluginXml("test.plugin"))
 
-    val model = testGenerationModel(graph, fileUpdater = DeferredFileUpdater(tempDir)).copy(
+    val model = testGenerationModel(graph, fileUpdater = DeferredFileUpdater(tempDir), owner = owner).copy(
       projectRoot = tempDir,
       dslTestPluginsByProduct = mapOf("TestProduct" to listOf(spec)),
     )
@@ -283,7 +296,7 @@ class TestPluginPluginDependencyValidatorTest {
 
     writePluginXml(tempDir, spec.pluginXmlPath, pluginXml("test.plugin"))
 
-    val model = testGenerationModel(graph, fileUpdater = DeferredFileUpdater(tempDir)).copy(
+    val model = testGenerationModel(graph, fileUpdater = DeferredFileUpdater(tempDir), owner = owner).copy(
       projectRoot = tempDir,
       dslTestPluginsByProduct = mapOf("TestProduct" to listOf(spec)),
     )
@@ -334,7 +347,7 @@ class TestPluginPluginDependencyValidatorTest {
 
     writePluginXml(tempDir, spec.pluginXmlPath, pluginXml("test.plugin"))
 
-    val model = testGenerationModel(graph, fileUpdater = DeferredFileUpdater(tempDir)).copy(
+    val model = testGenerationModel(graph, fileUpdater = DeferredFileUpdater(tempDir), owner = owner).copy(
       projectRoot = tempDir,
       dslTestPluginsByProduct = mapOf("TestProduct" to listOf(spec)),
     )
@@ -351,6 +364,114 @@ class TestPluginPluginDependencyValidatorTest {
     )
 
     assertThat(errors.filterIsInstance<DslTestPluginDependencyError>()).isEmpty()
+  }
+
+  @Test
+  fun `content dependency chooses owner matching bundled plugin ID`(@TempDir tempDir: Path): Unit = runBlocking(Dispatchers.Default) {
+    val graph = pluginGraph {
+      product("TestProduct") { bundlesPlugin("product.java.plugin") }
+      plugin("product.java.plugin") {
+        pluginId("com.intellij.java")
+      }
+      plugin("intellij.java.plugin") {
+        pluginId("com.intellij.java")
+        content("intellij.java.psi")
+      }
+      plugin("language-server.plugins.java") {
+        pluginId("org.jetbrains.ls.plugin.java")
+        content("intellij.java.psi")
+      }
+      testPlugin("test.plugin") {
+        pluginId("test.plugin")
+        content("consumer.module")
+      }
+    }
+
+    val spec = TestPluginSpec(
+      pluginId = PluginId("test.plugin"),
+      name = "Test Plugin",
+      pluginXmlPath = "test-plugin/META-INF/plugin.xml",
+      spec = productModules {
+        module("consumer.module")
+      }
+    )
+
+    writePluginXml(tempDir, spec.pluginXmlPath, pluginXml("test.plugin", pluginDeps = listOf("com.intellij.java")))
+
+    val model = testGenerationModel(graph, fileUpdater = DeferredFileUpdater(tempDir), owner = owner).copy(
+      projectRoot = tempDir,
+      dslTestPluginsByProduct = mapOf("TestProduct" to listOf(spec)),
+    )
+
+    val result = dependencyResult("consumer.module", listOf("intellij.java.psi"))
+    val planOutput = buildPlanOutput(model, listOf(result))
+    val plan = planOutput.plans.single()
+    assertThat(plan.requiredByPlugin.keys).containsExactly(PluginId("com.intellij.java"))
+    assertThat(plan.requiredByPlugin.keys).doesNotContain(PluginId("org.jetbrains.ls.plugin.java"))
+
+    val errors = runValidationRule(
+      TestPluginPluginDependencyValidator,
+      model,
+      slotOverrides = mapOf(Slots.TEST_PLUGIN_DEPENDENCY_PLAN to planOutput),
+    )
+
+    assertThat(errors).isEmpty()
+  }
+
+  @Test
+  fun `main target dependency chooses owner matching bundled plugin ID`(@TempDir tempDir: Path): Unit = runBlocking(Dispatchers.Default) {
+    val graph = pluginGraph {
+      product("TestProduct") { bundlesPlugin("product.java.plugin") }
+      plugin("product.java.plugin") {
+        pluginId("com.intellij.java")
+      }
+      plugin("intellij.java.plugin") {
+        pluginId("com.intellij.java")
+        content("intellij.java.psi")
+      }
+      plugin("language-server.plugins.java") {
+        pluginId("org.jetbrains.ls.plugin.java")
+        content("intellij.java.psi")
+      }
+      testPlugin("test.plugin") {
+        pluginId("test.plugin")
+        content("consumer.module")
+      }
+      target("test.plugin") {
+        dependsOn("intellij.java.psi", TargetDependencyScope.COMPILE)
+      }
+      linkPluginMainTarget("test.plugin")
+    }
+
+    val spec = TestPluginSpec(
+      pluginId = PluginId("test.plugin"),
+      name = "Test Plugin",
+      pluginXmlPath = "test-plugin/META-INF/plugin.xml",
+      spec = productModules {
+        module("consumer.module")
+      }
+    )
+
+    writePluginXml(tempDir, spec.pluginXmlPath, pluginXml("test.plugin", pluginDeps = listOf("com.intellij.java")))
+
+    val model = testGenerationModel(graph, fileUpdater = DeferredFileUpdater(tempDir), owner = owner).copy(
+      projectRoot = tempDir,
+      dslTestPluginsByProduct = mapOf("TestProduct" to listOf(spec)),
+    )
+
+    val planOutput = buildPlanOutput(model, emptyList())
+    val plan = planOutput.plans.single()
+    assertThat(plan.pluginDependencies).containsExactly(PluginId("com.intellij.java"))
+    assertThat(plan.pluginDependencies).doesNotContain(PluginId("org.jetbrains.ls.plugin.java"))
+    assertThat(plan.unresolvedDependencies).isEmpty()
+
+    val errors = runValidationRule(
+      TestPluginPluginDependencyValidator,
+      model,
+      slotOverrides = mapOf(Slots.TEST_PLUGIN_DEPENDENCY_PLAN to planOutput),
+    )
+
+    assertThat(errors).isEmpty()
   }
 
   @Test
@@ -383,7 +504,7 @@ class TestPluginPluginDependencyValidatorTest {
 
     writePluginXml(tempDir, spec.pluginXmlPath, pluginXml("test.plugin"))
 
-    val model = testGenerationModel(graph, fileUpdater = DeferredFileUpdater(tempDir)).copy(
+    val model = testGenerationModel(graph, fileUpdater = DeferredFileUpdater(tempDir), owner = owner).copy(
       projectRoot = tempDir,
       dslTestPluginsByProduct = mapOf("TestProduct" to listOf(spec)),
     )
@@ -412,7 +533,7 @@ class TestPluginPluginDependencyValidatorTest {
     )
   }
 
-  private suspend fun buildPlanOutput(
+  private fun buildPlanOutput(
     model: GenerationModel,
     contentModuleResults: List<DependencyFileResult>,
   ): TestPluginDependencyPlanOutput {
@@ -429,7 +550,7 @@ class TestPluginPluginDependencyValidatorTest {
         existingXmlPluginDependencies = emptySet(),
         preserveExistingPluginDependencies = emptySet(),
         writtenPluginDependencies = result.writtenPluginDependencies,
-        allJpsPluginDependencies = result.allJpsPluginDependencies,
+        requiredPluginDependencies = result.requiredPluginDependencies,
         suppressedModules = emptySet(),
         suppressedPlugins = emptySet(),
         suppressionUsages = result.suppressionUsages,
@@ -452,7 +573,8 @@ class TestPluginPluginDependencyValidatorTest {
   }
 
   private fun pluginXml(pluginId: String, pluginDeps: List<String> = emptyList()): String {
-    val depsBlock = if (pluginDeps.isEmpty()) "" else buildString {
+    val depsBlock = if (pluginDeps.isEmpty()) ""
+    else buildString {
       append("\n  <dependencies>\n")
       for (dep in pluginDeps.sorted()) {
         append("    <plugin id=\"").append(dep).append("\"/>\n")

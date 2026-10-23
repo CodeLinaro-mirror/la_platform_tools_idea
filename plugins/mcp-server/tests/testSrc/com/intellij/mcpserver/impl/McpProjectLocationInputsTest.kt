@@ -13,6 +13,7 @@ import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.StateStorageOperation
 import com.intellij.openapi.components.Storage
+import com.intellij.openapi.components.service
 import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.openapi.project.BaseProjectDirectories.Companion.getBaseDirectories
 import com.intellij.openapi.project.Project
@@ -85,12 +86,12 @@ class McpProjectLocationInputsTest {
   @Test
   fun `projectPath argument wins over all other sources`() {
     runBlocking(Dispatchers.Default) {
-      val project = McpProjectLocationInputs(
+      val project = service<McpSessionProjectResolver>().resolveSessionProject(
         projectPathFromArgument = secondProject.basePath,
         projectPathFromCallHeader = firstProject.basePath,
         projectPathFromSessionHeader = firstProject.basePath,
         roots = setOf(projectRootUri(firstProject)),
-      ).resolveProject()
+      )
 
       assertThat(project).isEqualTo(secondProject)
     }
@@ -100,12 +101,12 @@ class McpProjectLocationInputsTest {
   fun `invalid projectPath argument throws without fallback`() {
     assertThatThrownBy {
       runBlocking(Dispatchers.Default) {
-        McpProjectLocationInputs(
+        service<McpSessionProjectResolver>().resolveSessionProject(
           projectPathFromArgument = "/tmp/not-an-open-project",
           projectPathFromCallHeader = firstProject.basePath,
           projectPathFromSessionHeader = secondProject.basePath,
           roots = setOf(projectRootUri(secondProject)),
-        ).resolveProject()
+        )
       }
     }
       .isInstanceOf(McpExpectedError::class.java)
@@ -115,12 +116,12 @@ class McpProjectLocationInputsTest {
   @Test
   fun `call header wins over session header`() {
     runBlocking(Dispatchers.Default) {
-      val project = McpProjectLocationInputs(
+      val project = service<McpSessionProjectResolver>().resolveSessionProject(
         projectPathFromArgument = null,
         projectPathFromCallHeader = secondProject.basePath,
         projectPathFromSessionHeader = firstProject.basePath,
         roots = setOf(projectRootUri(firstProject)),
-      ).resolveProject()
+      )
 
       assertThat(project).isEqualTo(secondProject)
     }
@@ -129,12 +130,12 @@ class McpProjectLocationInputsTest {
   @Test
   fun `session header wins over roots`() {
     runBlocking(Dispatchers.Default) {
-      val project = McpProjectLocationInputs(
+      val project = service<McpSessionProjectResolver>().resolveSessionProject(
         projectPathFromArgument = null,
         projectPathFromCallHeader = "/tmp/not-an-open-project",
         projectPathFromSessionHeader = secondProject.basePath,
         roots = setOf(projectRootUri(firstProject)),
-      ).resolveProject()
+      )
 
       assertThat(project).isEqualTo(secondProject)
     }
@@ -143,12 +144,12 @@ class McpProjectLocationInputsTest {
   @Test
   fun `roots are used as final fallback`() {
     runBlocking(Dispatchers.Default) {
-      val project = McpProjectLocationInputs(
+      val project = service<McpSessionProjectResolver>().resolveSessionProject(
         projectPathFromArgument = null,
         projectPathFromCallHeader = "/tmp/not-an-open-project",
         projectPathFromSessionHeader = "/tmp/also-not-an-open-project",
         roots = setOf(projectRootUri(secondProject)),
-      ).resolveProject()
+      )
 
       assertThat(project).isEqualTo(secondProject)
     }
@@ -187,12 +188,12 @@ class McpProjectLocationInputsTest {
       assertThat(bazelProject.basePath).isEqualTo(repo.invariantSeparatorsPathString)
 
       runBlocking(Dispatchers.Default) {
-        val project = McpProjectLocationInputs(
+        val project = service<McpSessionProjectResolver>().resolveSessionProject(
           projectPathFromArgument = null,
           projectPathFromCallHeader = repo.invariantSeparatorsPathString,
           projectPathFromSessionHeader = null,
           roots = emptySet(),
-        ).resolveProject()
+        )
 
         assertThat(project).isSameAs(bazelProject)
       }
@@ -206,12 +207,12 @@ class McpProjectLocationInputsTest {
   fun `chaining mode throws user-facing error without internal source details`() {
     assertThatThrownBy {
       runBlocking(Dispatchers.Default) {
-        McpProjectLocationInputs(
+        service<McpSessionProjectResolver>().resolveSessionProject(
           projectPathFromArgument = null,
           projectPathFromCallHeader = "/tmp/not-an-open-project",
           projectPathFromSessionHeader = "/tmp/also-not-an-open-project",
           roots = setOf("file:///tmp/missing-root"),
-        ).resolveProject()
+        )
       }
     }
       .isInstanceOf(McpExpectedError::class.java)
@@ -230,12 +231,12 @@ class McpProjectLocationInputsTest {
       val outerRootPath = outerRoot.virtualFile.toNioPath()
       awaitBaseDirectory(outerRootProject, outerRootPath)
 
-      val project = McpProjectLocationInputs(
+      val project = service<McpSessionProjectResolver>().resolveSessionProject(
         projectPathFromArgument = outerRootPath.invariantSeparatorsPathString,
         projectPathFromCallHeader = null,
         projectPathFromSessionHeader = null,
         roots = emptySet(),
-      ).resolveProject()
+      )
 
       assertThat(project).isSameAs(outerRootProject)
     }
@@ -247,12 +248,12 @@ class McpProjectLocationInputsTest {
       val outerRootPath = outerRoot.virtualFile.toNioPath()
       awaitBaseDirectory(outerRootProject, outerRootPath)
 
-      val project = McpProjectLocationInputs(
+      val project = service<McpSessionProjectResolver>().resolveSessionProject(
         projectPathFromArgument = null,
         projectPathFromCallHeader = null,
         projectPathFromSessionHeader = null,
         roots = setOf(outerRootPath.toUri().toString()),
-      ).resolveProject()
+      )
 
       assertThat(project).isSameAs(outerRootProject)
     }
@@ -266,12 +267,12 @@ class McpProjectLocationInputsTest {
       val nestedProjectPath = Path.of(nestedProject.basePath!!)
       assertThat(nestedProjectPath).startsWith(outerRootPath)
 
-      val project = McpProjectLocationInputs(
+      val project = service<McpSessionProjectResolver>().resolveSessionProject(
         projectPathFromArgument = nestedProjectPath.invariantSeparatorsPathString,
         projectPathFromCallHeader = null,
         projectPathFromSessionHeader = null,
         roots = emptySet(),
-      ).resolveProject()
+      )
 
       assertThat(project).isSameAs(nestedProject)
     }
@@ -287,12 +288,12 @@ class McpProjectLocationInputsTest {
 
       assertThatThrownBy {
         runBlocking(Dispatchers.Default) {
-          McpProjectLocationInputs(
+          service<McpSessionProjectResolver>().resolveSessionProject(
             projectPathFromArgument = sharedRootPath.invariantSeparatorsPathString,
             projectPathFromCallHeader = null,
             projectPathFromSessionHeader = null,
             roots = emptySet(),
-          ).resolveProject()
+          )
         }
       }
         .isInstanceOf(McpExpectedError::class.java)

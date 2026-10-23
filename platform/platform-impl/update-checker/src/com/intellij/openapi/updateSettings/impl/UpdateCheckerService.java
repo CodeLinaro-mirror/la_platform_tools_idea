@@ -7,6 +7,7 @@ import com.intellij.ide.IdeBundle;
 import com.intellij.ide.plugins.InstalledPluginsState;
 import com.intellij.ide.plugins.PluginManagerConfigurable;
 import com.intellij.ide.plugins.PluginManagerCore;
+import com.intellij.ide.plugins.marketplace.statistics.enums.PluginManagerOpenSourceEnum;
 import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.idea.AppMode;
 import com.intellij.notification.NotificationAction;
@@ -17,6 +18,7 @@ import com.intellij.openapi.application.ApplicationNamesInfo;
 import com.intellij.openapi.application.InitialConfigImportState;
 import com.intellij.openapi.application.PathManager;
 import com.intellij.openapi.application.ex.ApplicationInfoEx;
+import com.intellij.openapi.application.ex.ApplicationManagerEx;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.extensions.PluginId;
 import com.intellij.openapi.project.Project;
@@ -110,7 +112,9 @@ public class UpdateCheckerService {
     if (appInfo.isMajorEAP() && current != ChannelStatus.EAP && customization.forceEapUpdateChannelForEapBuilds()) {
       settings.setSelectedChannelStatus(ChannelStatus.EAP);
       LOG.info("channel forced to 'eap'");
-      if (!InitialConfigImportState.isFirstSession()) {
+
+      if (!InitialConfigImportState.isFirstSession()
+          && !ApplicationManagerEx.isInIntegrationTest()) { // do not show sporadically in integration tests
         var title = IdeBundle.message("updates.notification.title", ApplicationNamesInfo.getInstance().getFullProductName());
         var message = IdeBundle.message("update.channel.enforced", ChannelStatus.EAP);
         UpdateChecker.getNotificationGroup()
@@ -280,7 +284,7 @@ public class UpdateCheckerService {
     var id = event.getDescription();
     if (id != null) {
       var pluginId = PluginId.getId(id);
-      PluginManagerConfigurable.showPluginConfigurable(project, List.of(pluginId));
+      PluginManagerConfigurable.showPluginConfigurable(project, List.of(pluginId), PluginManagerOpenSourceEnum.NOTIFICATION);
     }
   }
 

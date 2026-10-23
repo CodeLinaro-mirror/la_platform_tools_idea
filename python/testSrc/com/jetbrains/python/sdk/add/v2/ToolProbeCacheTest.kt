@@ -2,24 +2,34 @@
 package com.jetbrains.python.sdk.add.v2
 
 import com.intellij.idea.TestFor
+import com.intellij.testFramework.common.timeoutRunBlocking
 import com.jetbrains.python.Result
+import com.jetbrains.python.allure.Layers
+import com.jetbrains.python.allure.Subsystems
 import com.jetbrains.python.errorProcessing.PyResult
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.fail
 
-@TestFor(classes = [ToolProbeCache::class])
+/**
+ * Every case here bounds itself with [timeoutRunBlocking] rather than a plain `runBlocking`: the cache
+ * coalesces concurrent loads, so a regression that loses a waiter or fails to release one does not produce
+ * a wrong value — it produces a coroutine that never resumes. Under `runBlocking` that is a hung test
+ * killed by the CI timeout with no attribution; under [timeoutRunBlocking] it is a failure in this class.
+ */
+@TestFor(classes = [ToolProbeCache::class], issues = ["PY-90654"])
+@Subsystems.Interpreters
+@Layers.Functional
 class ToolProbeCacheTest {
 
   @Test
-  fun `successful values and misses are cached`() = runBlocking {
+  fun `successful values and misses are cached`(): Unit = timeoutRunBlocking {
     val cache = ToolProbeCache<String, String>()
     var loadCount = 0
 
@@ -38,7 +48,7 @@ class ToolProbeCacheTest {
   }
 
   @Test
-  fun `only uncached keys are loaded`() = runBlocking {
+  fun `only uncached keys are loaded`(): Unit = timeoutRunBlocking {
     val cache = ToolProbeCache<String, String>()
     cache.getOrLoad(listOf("uv")) {
       PyResult.success(mapOf("uv" to "/bin/uv"))
@@ -53,7 +63,7 @@ class ToolProbeCacheTest {
   }
 
   @Test
-  fun `failure is not cached`() = runBlocking {
+  fun `failure is not cached`(): Unit = timeoutRunBlocking {
     val cache = ToolProbeCache<String, String>()
     var loadCount = 0
 
@@ -72,7 +82,7 @@ class ToolProbeCacheTest {
   }
 
   @Test
-  fun `exception does not block a later load`() = runBlocking {
+  fun `exception does not block a later load`(): Unit = timeoutRunBlocking {
     val cache = ToolProbeCache<String, String>()
 
     val failure = runCatching {
@@ -89,7 +99,7 @@ class ToolProbeCacheTest {
   }
 
   @Test
-  fun `cancelled load does not cancel another request`() = runBlocking {
+  fun `cancelled load does not cancel another request`(): Unit = timeoutRunBlocking {
     val cache = ToolProbeCache<String, String>()
     val loaderStarted = CompletableDeferred<Unit>()
 
@@ -112,7 +122,7 @@ class ToolProbeCacheTest {
   }
 
   @Test
-  fun `concurrent requests share a successful load`() = runBlocking {
+  fun `concurrent requests share a successful load`(): Unit = timeoutRunBlocking {
     val cache = ToolProbeCache<String, String>()
     val loaderStarted = CompletableDeferred<Unit>()
     val releaseLoader = CompletableDeferred<Unit>()

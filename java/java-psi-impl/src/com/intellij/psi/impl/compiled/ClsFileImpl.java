@@ -65,6 +65,7 @@ import com.intellij.psi.impl.source.SourceTreeToPsiMap;
 import com.intellij.psi.impl.source.StubbedSpine;
 import com.intellij.psi.impl.source.tree.JavaElementType;
 import com.intellij.psi.impl.source.tree.TreeElement;
+import com.intellij.psi.impl.source.tree.TreeUtil;
 import com.intellij.psi.scope.ElementClassHint;
 import com.intellij.psi.scope.PsiScopeProcessor;
 import com.intellij.psi.stubs.PsiClassHolderFileStub;
@@ -80,6 +81,7 @@ import com.intellij.util.AstLoadingFilter;
 import com.intellij.util.BitUtil;
 import com.intellij.util.IncorrectOperationException;
 import com.intellij.util.cls.ClsFormatException;
+import com.intellij.util.progress.CancellationUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.org.objectweb.asm.Attribute;
@@ -92,6 +94,7 @@ import java.lang.ref.SoftReference;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.locks.ReentrantLock;
 
 import static com.intellij.codeInsight.multiverse.CodeInsightContexts.isSharedSourceSupportEnabled;
 import static com.intellij.reference.SoftReference.dereference;
@@ -110,7 +113,7 @@ public class ClsFileImpl extends PsiBinaryFileImpl
 
   private static final Key<Document> CLS_DOCUMENT_LINK_KEY = Key.create("cls.document.link");
 
-  private final Object myMirrorLock = new Object();  // NOTE: one absolutely MUST NOT hold PsiLock under the mirror lock
+  private final ReentrantLock myMirrorLock = new ReentrantLock();  // NOTE: one absolutely MUST NOT hold PsiLock under the mirror lock
   private final Object myStubLock = new Object();
 
   private final boolean myIsForDecompiling;
@@ -298,18 +301,25 @@ public class ClsFileImpl extends PsiBinaryFileImpl
       catch (IndexNotReadyException ignore) { }
     }
 
-    return CachedValuesManager.getCachedValue(this, () -> {
+    VirtualFile navigationFile = CachedValuesManager.getCachedValue(this, () -> {
       PsiElement target = JavaPsiImplementationHelper.getInstance(getProject()).getClsFileNavigationElement(this);
+      VirtualFile targetFile = target.getContainingFile().getVirtualFile();
       ModificationTracker tracker = FileIndexFacade.getInstance(getProject()).getRootModificationTracker();
-      return CachedValueProvider.Result.create(target, this, target.getContainingFile(), tracker);
+      return CachedValueProvider.Result.create(targetFile, this, targetFile, tracker);
     });
+    if (navigationFile == null) return this;
+    if (navigationFile.equals(getVirtualFile())) return this;
+
+    PsiFile navigationPsi = PsiManager.getInstance(getProject()).findFile(navigationFile);
+    return navigationPsi != null ? navigationPsi : this;
   }
 
   @Override
   public @NotNull PsiElement getMirror() {
     TreeElement mirrorTreeElement = dereference(myMirrorFileElement);
     if (mirrorTreeElement == null) {
-      synchronized (myMirrorLock) {
+      CancellationUtil.lockMaybeCancellable(myMirrorLock);
+      try {
         mirrorTreeElement = dereference(myMirrorFileElement);
         if (mirrorTreeElement == null) {
           VirtualFile file = getVirtualFile();
@@ -333,6 +343,9 @@ public class ClsFileImpl extends PsiBinaryFileImpl
           }
 
           mirrorTreeElement = SourceTreeToPsiMap.psiToTreeNotNull(mirror);
+          // force to parse;
+          // the non-cancelable section below must only wire mirrors, never parse
+          TreeUtil.ensureParsed(mirrorTreeElement);
           try {
             TreeElement _mirrorTreeElement = mirrorTreeElement;
             ProgressManager.getInstance().executeNonCancelableSection(() -> {
@@ -347,6 +360,9 @@ public class ClsFileImpl extends PsiBinaryFileImpl
           ((PsiFileImpl)mirror).setOriginalFile(this);
           myMirrorFileElement = new SoftReference<>(mirrorTreeElement);
         }
+      }
+      finally {
+        myMirrorLock.unlock();
       }
     }
     return mirrorTreeElement.getPsi();
@@ -522,9 +538,13 @@ public class ClsFileImpl extends PsiBinaryFileImpl
       }
     }
 
-    synchronized (myMirrorLock) {
+    myMirrorLock.lock();
+    try {
       putUserData(CLS_DOCUMENT_LINK_KEY, null);
       myMirrorFileElement = null;
+    }
+    finally {
+      myMirrorLock.unlock();
     }
   }
 

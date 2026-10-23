@@ -95,7 +95,7 @@ object TerminalShellsDetectionUtil {
     val eelApi = eelDescriptor.toEelApi()
 
     val envVariables = try {
-      eelApi.exec.environmentVariables().onlyActual(true).eelIt().await()
+      eelApi.exec.environmentVariables().minimal().onlyActual(true).eelIt().await()
     }
     catch (ex: EelExecApi.EnvironmentVariablesException) {
       thisLogger().error("Failed to fetch environment variables", ex)
@@ -158,7 +158,7 @@ object TerminalShellsDetectionUtil {
     return createShellInfo(CMDER_NAME, cmd.toString(), listOf("/k", cmderInitBat.toString()), eelApi.descriptor)
   }
 
-  @RequiresBackgroundThread
+  @RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
   fun detectWslDistributions(): List<DetectedShellInfo> {
     return if (WSLDistribution.findWslExe() != null) {
       WslDistributionManager.getInstance()

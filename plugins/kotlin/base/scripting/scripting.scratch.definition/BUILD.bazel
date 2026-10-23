@@ -1,6 +1,29 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//build:compiler-options.bzl", "create_kotlinc_options")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.kotlin.base.scripting.scratch.definition` start
+content_module_jar(module = ":scripting.scratch.definition")
+### auto-generated section `dev intellij.kotlin.base.scripting.scratch.definition` end
 
 ### auto-generated section `build intellij.kotlin.base.scripting.scratch.definition` start
+create_kotlinc_options(
+    name = "custom_scripting.scratch.definition",
+    jvm_target = "8",
+    opt_in = [
+        "org.jetbrains.kotlin.psi.KtExperimentalApi",
+        "org.jetbrains.kotlin.psi.KtNonPublicApi",
+        "org.jetbrains.kotlin.psi.KtIdeApi",
+        "org.jetbrains.kotlin.analysis.api.KaExperimentalApi",
+        "org.jetbrains.kotlin.analysis.api.KaIdeApi",
+        "org.jetbrains.kotlin.analysis.api.KaPlatformInterface",
+        "org.jetbrains.kotlin.analysis.api.fir.diagnostics.KaUnstableDiagnosticApi",
+        "org.jetbrains.kotlin.analysis.api.KaNonPublicApi",
+        "org.jetbrains.kotlin.analysis.api.KaContextParameterApi",
+        "org.jetbrains.kotlin.analysis.api.permissions.KaAllowProhibitedAnalyzeFromWriteAction",
+    ],
+    x_context_parameters = True,
+)
 
 jvm_library(
     name = "scripting.scratch.definition",
@@ -12,7 +35,7 @@ jvm_library(
         ],
         allow_empty = True,
     ),
-    kotlinc_opts = "@community//:k8",
+    kotlinc_opts = ":custom_scripting.scratch.definition",
     module_name = "intellij.kotlin.base.scripting.scratch.definition",
     resource_strip_prefix = "resources",
     resources = glob(
@@ -21,8 +44,8 @@ jvm_library(
     visibility = ["//visibility:public"],
     deps = [
         # do not sort,
-        "@lib//:kotlinc-kotlin-scripting-common",
-        "@lib//:kotlinc-kotlin-scripting-jvm",
+        "//libraries/kotlinc/kotlin-scripting-common:libraries-kotlinc-kotlin-scripting-common",
+        "//libraries/kotlinc/kotlin-scripting-jvm:libraries-kotlinc-kotlin-scripting-jvm",
         "@lib//:kotlin-stdlib",
     ],
 )
@@ -34,10 +57,15 @@ jvm_library(
         [],
         allow_empty = True,
     ),
-    kotlinc_opts = "@community//:k8",
+    kotlinc_opts = ":custom_scripting.scratch.definition",
     module_name = "intellij.kotlin.base.scripting.scratch.definition",
     visibility = ["//visibility:public"],
-    runtime_deps = [":scripting.scratch.definition"],
+    runtime_deps = [
+        # do not sort,
+        ":scripting.scratch.definition",
+        "//libraries/kotlinc/kotlin-scripting-common:libraries-kotlinc-kotlin-scripting-common_test_lib",
+        "//libraries/kotlinc/kotlin-scripting-jvm:libraries-kotlinc-kotlin-scripting-jvm_test_lib",
+    ],
 )
 ### auto-generated section `build intellij.kotlin.base.scripting.scratch.definition` end
 
@@ -45,6 +73,7 @@ jvm_library(
 exports_files(
     [
         "intellij.kotlin.base.scripting.scratch.definition.iml",
+        "resources/intellij.kotlin.base.scripting.scratch.definition.xml",
     ],
     visibility = ["//visibility:public"],
 )

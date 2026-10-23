@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.platform.recentFiles` start
+content_module_jar(module = ":recentFiles")
+### auto-generated section `dev intellij.platform.recentFiles` end
 
 ### auto-generated section `build intellij.platform.recentFiles` start
-
 jvm_library(
     name = "recentFiles",
     srcs = glob(
@@ -20,6 +24,7 @@ jvm_library(
     visibility = ["//visibility:public"],
     deps = [
         # do not sort,
+        "//platform/kernel/rpc.lite",
         "@lib//:kotlin-stdlib",
         "//platform/core-api:core",
         "//platform/project/shared:project",
@@ -27,7 +32,7 @@ jvm_library(
         "//libraries/kotlinx/serialization/core",
         "//libraries/kotlinx/serialization/json",
         "//platform/kernel/shared:kernel",
-        "@lib//:jetbrains-annotations",
+        "//libraries/jetbrains/annotations",
         "//libraries/kotlinx/coroutines/core",
         "//platform/platform-impl/rpc",
         "//platform/platform-api:ide",
@@ -36,6 +41,11 @@ jvm_library(
         "//platform/platform-impl:ide-impl",
         "//platform/analysis-api:analysis",
         "//platform/ide-core-impl",
+        "//platform/editor-ui-api:editor-ui",
+        "//platform/ide-core",
+        "//platform/projectModel-api:projectModel",
+        "//platform/runtime/product",
+        "//platform/util/coroutines",
         "//fleet/rhizomedb",
     ],
 )
@@ -52,12 +62,14 @@ jvm_library(
     runtime_deps = [
         # do not sort,
         ":recentFiles",
+        "//platform/kernel/rpc.lite:rpc.lite_test_lib",
         "//platform/core-api:core_test_lib",
         "//platform/project/shared:project_test_lib",
         "//platform/object-serializer:object-serializer_test_lib",
         "//libraries/kotlinx/serialization/core:core_test_lib",
         "//libraries/kotlinx/serialization/json:json_test_lib",
         "//platform/kernel/shared:kernel_test_lib",
+        "//libraries/jetbrains/annotations:annotations_test_lib",
         "//libraries/kotlinx/coroutines/core:core_test_lib",
         "//platform/platform-impl/rpc:rpc_test_lib",
         "//platform/platform-api:ide_test_lib",
@@ -66,6 +78,11 @@ jvm_library(
         "//platform/platform-impl:ide-impl_test_lib",
         "//platform/analysis-api:analysis_test_lib",
         "//platform/ide-core-impl:ide-core-impl_test_lib",
+        "//platform/editor-ui-api:editor-ui_test_lib",
+        "//platform/ide-core:ide-core_test_lib",
+        "//platform/projectModel-api:projectModel_test_lib",
+        "//platform/runtime/product:product_test_lib",
+        "//platform/util/coroutines:coroutines_test_lib",
         "//fleet/rhizomedb:rhizomedb_test_lib",
     ],
 )
@@ -75,6 +92,7 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.recentFiles.iml",
+        "resources/intellij.platform.recentFiles.xml",
     ],
     visibility = ["//visibility:public"],
 )

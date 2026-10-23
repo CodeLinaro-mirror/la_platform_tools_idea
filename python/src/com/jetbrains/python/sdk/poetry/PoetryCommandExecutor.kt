@@ -1,18 +1,14 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.sdk.poetry
 
-import com.intellij.execution.Platform
-import com.intellij.openapi.components.service
 import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.openapi.util.registry.Registry
-import com.intellij.platform.eel.EelApi
-import com.intellij.platform.eel.provider.localEel
 import com.intellij.python.community.execService.DownloadConfig
 import com.intellij.python.community.execService.UploadConfig
 import com.intellij.python.community.execService.python.validatePythonAndGetInfo
-import com.intellij.python.community.impl.poetry.common.poetryPath
 import com.intellij.python.pyproject.PY_PROJECT_TOML
 import com.jetbrains.python.PyBundle
+import com.jetbrains.python.PyInternalExecApi
 import com.jetbrains.python.PythonBinary
 import com.jetbrains.python.PythonHomePath
 import com.jetbrains.python.errorProcessing.ErrorSink
@@ -24,21 +20,19 @@ import com.jetbrains.python.onFailure
 import com.jetbrains.python.packaging.PyPackage
 import com.jetbrains.python.packaging.PyPackageName
 import com.jetbrains.python.packaging.PyRequirement
-import com.jetbrains.python.packaging.PyRequirementParser
+import com.intellij.python.requirements.parser.PyRequirementParser
 import com.jetbrains.python.packaging.common.PythonOutdatedPackage
 import com.jetbrains.python.packaging.common.PythonPackage
-import com.jetbrains.python.sdk.ToolCommandExecutor
-import com.jetbrains.python.sdk.ToolSearchPath
-import com.jetbrains.python.sdk.add.v2.EelFileSystem
+import com.intellij.python.community.impl.poetry.backend.PoetryPyTool
 import com.jetbrains.python.sdk.add.v2.FileSystem
 import com.jetbrains.python.sdk.add.v2.PathHolder
-import com.jetbrains.python.sdk.add.v2.TargetFileSystemCache
 import com.jetbrains.python.sdk.add.v2.toEelFileSystem
-import com.jetbrains.python.sdk.impl.PySdkBundle
+import com.intellij.python.sdk.backend.PySdkBundle
 import com.jetbrains.python.sdk.pySdkAdditionalData
-import com.jetbrains.python.sdk.runTool
-import com.jetbrains.python.target.PyTargetAwareAdditionalData
-import com.jetbrains.python.target.PythonLanguageRuntimeConfiguration
+import com.intellij.python.pytools.runTool
+import com.jetbrains.python.sdk.add.v2.EelOrJustPath
+import com.jetbrains.python.sdk.add.v2.EelOrJustPath.Companion.toEelFileSystem
+import com.jetbrains.python.sdk.add.v2.toFileSystem
 import io.github.z4kn4fein.semver.Version
 import io.github.z4kn4fein.semver.toVersion
 import org.apache.tuweni.toml.Toml
@@ -53,14 +47,9 @@ import kotlin.io.path.name
 private val VERSION_2 = "2.0.0".toVersion()
 
 @Internal
+@PyInternalExecApi
 const val POETRY_TOML = "poetry.toml"
 
-internal val POETRY_TOOL: ToolCommandExecutor = ToolCommandExecutor(
-  "poetry",
-  // TODO: Poetry from store isn't detected because local eel doesn't obey appx binaries. We need to fix it on eel side
-  additionalSearchPaths = listOf(ToolSearchPath.RelativePathFromHome(listOf(".poetry", ".bin"), Platform.WINDOWS)),
-  getToolPathFromSettings = { poetryPath }
-)
 
 private val POETRY_EXCLUDE_NON_DIGITS_REGEX = Regex("""\D+$""")
 private const val POETRY_LOCK = "poetry.lock"
@@ -86,9 +75,9 @@ internal suspend fun <P : PathHolder> runPoetry(
   val env = baseEnv.toMutableMap().apply {
     if (inProjectEnv != null) put("POETRY_VIRTUALENVS_IN_PROJECT", inProjectEnv.toString())
   }
-  return POETRY_TOOL.runTool(
+  return PoetryPyTool.getInstance().runTool(
     fileSystem = fileSystem,
-    pathFromSdk = poetryExecutable?.toString(),
+    pathFromSdk = poetryExecutable?.toStringForExecution(),
     dirPath = projectPath,
     args = args,
     env = env,
@@ -99,34 +88,20 @@ internal suspend fun <P : PathHolder> runPoetry(
 
 @Internal
 internal suspend fun runPoetry(
-  projectPath: Path?,
+  projectPath: EelOrJustPath,
   vararg args: String,
   inProjectEnv: Boolean? = null,
   baseEnv: Map<String, String> = emptyMap(),
 ): PyResult<String> {
   return runPoetry(
     fileSystem = projectPath.toEelFileSystem(),
-    projectPath = projectPath,
+    projectPath = projectPath.path,
     args = args,
     inProjectEnv = inProjectEnv,
     baseEnv = baseEnv,
   )
 }
 
-
-/**
- * Returns the configured poetry executable or detects it automatically on the given [fileSystem].
- */
-@Internal
-internal suspend fun <P : PathHolder> getPoetryExecutable(fileSystem: FileSystem<P>): P? =
-  POETRY_TOOL.getToolExecutable(fileSystem, pathFromSdk = null)
-
-/**
- * Returns the configured poetry executable or detects it automatically.
- */
-@Internal
-internal suspend fun getPoetryExecutable(eel: EelApi = localEel): Path? =
-  getPoetryExecutable(EelFileSystem(eel))?.path
 
 /**
  * Runs poetry command for the specified Poetry SDK.
@@ -142,25 +117,12 @@ internal suspend fun runPoetryWithSdk(sdk: Sdk, vararg args: String): PyResult<S
   val sdkHomePath = sdk.homePath
                     ?: return PyResult.localizedError(PySdkBundle.message("python.sdk.broken.configuration", sdk.name))
 
-  return when (data) {
-    is PyTargetAwareAdditionalData -> {
-      val targetConfig = data.targetEnvironmentConfiguration
-                         ?: return PyResult.localizedError(PySdkBundle.message("python.sdk.broken.configuration", sdk.name))
-      val targetFileSystemCache = service<TargetFileSystemCache>()
-      runPoetryWithSdk(
-        fileSystem = targetFileSystemCache.getOrCreate(targetConfig, PythonLanguageRuntimeConfiguration()),
-        projectPath = projectPath,
-        sdkHomePath = sdkHomePath,
-        args = args,
-      )
-    }
-    else -> runPoetryWithSdk(
-      fileSystem = projectPath.toEelFileSystem(),
-      projectPath = projectPath,
-      sdkHomePath = sdkHomePath,
-      args = args,
-    )
-  }
+  return runPoetryWithSdk(
+    fileSystem = sdk.toFileSystem(),
+    projectPath = projectPath,
+    sdkHomePath = sdkHomePath,
+    args = args,
+  )
 }
 
 private suspend fun <P : PathHolder> runPoetryWithSdk(
@@ -174,7 +136,7 @@ private suspend fun <P : PathHolder> runPoetryWithSdk(
   val env = buildMap {
     put("POETRY_VIRTUALENVS_IN_PROJECT", "false")
     put("POETRY_VIRTUALENVS_PREFER_ACTIVE_PYTHON", "true")
-    put("VIRTUAL_ENV", pythonHomePath.toString())
+    put("VIRTUAL_ENV", pythonHomePath.toStringForExecution())
   }
   return runPoetry(
     fileSystem = fileSystem,
@@ -230,10 +192,30 @@ internal suspend fun <P : PathHolder> setupPoetry(
     ).getOr { return it }
   }
 
+  // In-project only: drop the environment poetry has activated for this project, or the next command does nothing.
+  //
+  // With `virtualenvs.in-project` on and a cache environment activated, `poetry env use <python>` keeps that
+  // environment and reports "Using virtualenv: <the old one>", whatever Python it was given, and builds no `.venv`
+  // (checked against poetry 2.4.1). So a project moved to an environment from poetry's caches could never move back to
+  // an in-project one. Without in-project the same command switches correctly, which is why this is not run there.
+  //
+  // `env use system` is poetry's own way to deactivate. It removes the activation record and nothing else: it deletes
+  // no environment, it succeeds when nothing is activated, and the environment it deactivated is reused as it stands
+  // if the Python below asks for that same one again.
+  if (inProjectEnv) {
+    runPoetry(
+      fileSystem = fileSystem,
+      projectPath = projectPath,
+      "env", "use", "system",
+      poetryExecutable = poetryExecutable,
+      inProjectEnv = true,
+    ).getOr { return it }
+  }
+
   runPoetry(
     fileSystem = fileSystem,
     projectPath = projectPath,
-    "env", "use", basePythonBinaryPath.toString(),
+    "env", "use", basePythonBinaryPath.toStringForExecution(),
     poetryExecutable = poetryExecutable,
     inProjectEnv = inProjectEnv,
   ).getOr { return it }
@@ -467,7 +449,7 @@ internal suspend fun <P : PathHolder> configurePoetryEnvironment(
   )
 }
 
-internal suspend fun configurePoetryEnvironment(modulePath: Path?, vararg args: String) {
+internal suspend fun configurePoetryEnvironment(modulePath: Path, vararg args: String) {
   configurePoetryEnvironment(modulePath, modulePath.toEelFileSystem(), args = args)
 }
 

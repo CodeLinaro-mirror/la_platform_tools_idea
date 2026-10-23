@@ -2,27 +2,26 @@
 package com.jetbrains.python.types
 
 import com.intellij.idea.TestFor
+import com.jetbrains.python.allure.Components
+import com.jetbrains.python.allure.Layers
+import com.jetbrains.python.allure.Subsystems
+import com.jetbrains.python.codeInsight.stdlib.PyDataclassTypeProvider
 import com.jetbrains.python.fixtures.PyCodeInsightTestCase
 import com.jetbrains.python.inspections.PyArgumentListInspection
 import com.jetbrains.python.inspections.PyDataclassInspection
+import com.jetbrains.python.inspections.PyStdlibDataclassInspection
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 
 /**
- * Type and type-checker tests for [dataclasses][https://docs.python.org/3/library/dataclasses.html]:
+ * Type and type-checker tests for [dataclasses](https://docs.python.org/3/library/dataclasses.html):
  * `@dataclass`, `dataclasses.field`, generated `__init__`/`__post_init__` signatures, `InitVar`,
  * frozen/order/slots semantics, descriptor-typed fields and the [dataclass_transform] mechanism.
  */
+@Subsystems.Typing
+@Components.TypeInference
+@Layers.Functional
 class PyDataclassTypeTest : PyCodeInsightTestCase() {
-
-  override val defaultTestOptions =
-    TestOptions(
-      assertRecursionPrevention = false,
-      disableInspections = setOf(
-        PyArgumentListInspection::class.java,
-        PyDataclassInspection::class.java,
-      )
-    )
 
   @Nested
   inner class GeneratedInitFieldTypes {
@@ -37,7 +36,7 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
       
       expr = A(1).t
       # └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-87909"])
@@ -55,10 +54,23 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
       
       expr = A(1).t
       #└ TYPE int
-      """)
+      """.trimIndent())
+
+    @Test
+    fun `constructor argument overrides type parameter default`() = test("""
+      from dataclasses import dataclass
+
+      @dataclass
+      class Box[T = str]:
+          value: T
+
+      expr = Box(1).value
+      # └ TYPE int
+      """.trimIndent())
   }
 
   @Nested
+  @TestInspections(disableInspections = [PyStdlibDataclassInspection::class])
   inner class PostInitParametersInitVar {
     @Test
     fun `dataclass post init parameter type`() = test("""
@@ -71,7 +83,7 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
           def __post_init__(self, d):
               expr = d
       #       └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-78006"])
@@ -116,7 +128,7 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
           def __post_init__(self, p1, p2, p3, p4, p5, p6):
               expr = (p1, p2, p3, p4, p5, p6)
       #       └ TYPE tuple[A1, A4, A2, A3, A5, A6]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-27398"])
@@ -130,7 +142,7 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
           def __post_init__(self, d):
               expr = d
       #       └ TYPE Unknown
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-28506"])
@@ -148,7 +160,7 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
           def __post_init__(self, a, b):
               expr = a
       #       └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-28506"])
@@ -166,7 +178,7 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
           def __post_init__(self, a, b):
               expr = a
       #       └ TYPE Unknown
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-28506"])
@@ -184,7 +196,7 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
           def __post_init__(self, a, b):
               expr = a
       #       └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-28506"])
@@ -202,7 +214,7 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
           def __post_init__(self, a, b):
               expr = a
       #       └ TYPE Unknown
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-28506"])
@@ -219,7 +231,7 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
           def __post_init__(self, a, b):
               expr = a
       #       └ TYPE str
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-28506"])
@@ -236,29 +248,7 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
           def __post_init__(self, a, b):
               expr = a
       #       └ TYPE Unknown
-      """)
-  }
-
-  @Nested
-  inner class SlotsDisjointBase {
-    @Test
-    @TestFor(issues = ["PY-83206"])
-    fun `dataclass with slots creates disjoint base`() = test("""
-      from dataclasses import dataclass
-      
-      @dataclass(slots=True)
-      class A:
-          x: int
-      
-      @dataclass(slots=True)
-      class B:
-          y: str
-      
-      def foo(a: A) -> None:
-          if isinstance(a, B):
-              expr = a
-      #       └ TYPE Never
-      """)
+      """.trimIndent())
   }
 
   @Nested
@@ -276,9 +266,12 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
            id: int
            name: str
       
+      expr = MyClass(1, 'aba')
+      #└ TYPE MyClass
       MyClass()
-      #└ TYPE (id: int, name: str) -> MyClass
-      """)
+      #       └ WARNING Parameter 'id' unfilled
+      #       └ WARNING Parameter 'name' unfilled
+      """.trimIndent())
 
     @Test
     fun `dataclass_transform constructor signature decorated base class attribute excluded`() = test("""
@@ -294,9 +287,12 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
       class SubSub(Sub):
            name: str
       
+      expr = SubSub(1, 'aba')
+      #└ TYPE SubSub
       SubSub()
-      # └ TYPE (id: int, name: str) -> SubSub
-      """)
+      #      └ WARNING Parameter 'id' unfilled
+      #      └ WARNING Parameter 'name' unfilled
+      """.trimIndent())
 
     @Test
     fun `dataclass_transform constructor signature metaclass base class attribute not excluded`() = test("""
@@ -315,9 +311,13 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
       class SubSub(Sub):
           name: str
       
+      expr = SubSub(-1, 1, name='aba')
+      #└ TYPE SubSub
       SubSub()
-      #└ TYPE (included: int, id: int, name: str) -> SubSub
-      """)
+      #      └ WARNING Parameter 'id' unfilled
+      #      └ WARNING Parameter 'included' unfilled
+      #      └ WARNING Parameter 'name' unfilled
+      """.trimIndent())
 
     @Test
     fun `dataclass_transform overloads`() = test("""
@@ -345,9 +345,12 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
            id: int
            name: str
       
+      expr = MyClass(1, 'aba')
+      #└ TYPE MyClass
       MyClass()
-      #└ TYPE (id: int, name: str) -> MyClass
-      """)
+      #       └ WARNING Parameter 'id' unfilled
+      #       └ WARNING Parameter 'name' unfilled
+      """.trimIndent())
 
     @Test
     fun `dataclass_transform own kw_only omitted and taken from kw_only_default`() = test("""
@@ -365,9 +368,14 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
           name: str
       
       
-      MyClass()
-      #└ TYPE (*, id: int, name: str) -> MyClass
-      """)
+      expr = MyClass(id=1, name='aba')
+      #└ TYPE MyClass
+      MyClass(1, 'aba')
+      #       │  │    └ WARNING Parameter 'id' unfilled
+      #       │  │    └ WARNING Parameter 'name' unfilled
+      #       │  ^^^^^ WARNING Unexpected argument
+      #       └ WARNING Unexpected argument
+      """.trimIndent())
 
     @Test
     fun `dataclass_transform field specifier kw_only default overrides decorators kw_only`() = test("""
@@ -385,9 +393,12 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
           id: str = my_field() # WARNING Expected type 'str', got 'None' instead
           addr: list[str]
       
-      Order()
-      # └ TYPE (id: str, *, addr: list[str]) -> Order
-      """)
+      expr = Order('aba', addr=['x'])
+      # └ TYPE Order
+      Order('aba', ['x'])
+      #            │    └ WARNING Parameter 'addr' unfilled
+      #            ^^^^^ WARNING Unexpected argument
+      """.trimIndent())
 
     @Test
     fun `dataclass_transform field specifier kw_only default overrides decorators kw_only_default`() = test("""
@@ -405,9 +416,12 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
           id: str = my_field() # WARNING Expected type 'str', got 'None' instead
           addr: list[str]
       
-      Order()
-      #└ TYPE (id: str, *, addr: list[str]) -> Order
-      """)
+      expr = Order('aba', addr=['x'])
+      #└ TYPE Order
+      Order('aba', ['x'])
+      #            │    └ WARNING Parameter 'addr' unfilled
+      #            ^^^^^ WARNING Unexpected argument
+      """.trimIndent())
 
     @Test
     fun `dataclass_transform field specifier kw_only overrides decorators kw_only`() = test("""
@@ -425,9 +439,12 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
           id: str = my_field(kw_only=False) # WARNING Expected type 'str', got 'None' instead
           addr: list[str]
       
-      Order()
-      #└ TYPE (id: str, *, addr: list[str]) -> Order
-      """)
+      expr = Order('aba', addr=['x'])
+      #└ TYPE Order
+      Order('aba', ['x'])
+      #            │    └ WARNING Parameter 'addr' unfilled
+      #            ^^^^^ WARNING Unexpected argument
+      """.trimIndent())
 
     @Test
     fun `dataclass_transform field specifier kw_only overrides decorators kw_only_default`() = test("""
@@ -445,9 +462,12 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
           id: str = my_field(kw_only=False) # WARNING Expected type 'str', got 'None' instead
           addr: list[str]
       
-      Order()
-      #└ TYPE (id: str, *, addr: list[str]) -> Order
-      """)
+      expr = Order('aba', addr=['x'])
+      #└ TYPE Order
+      Order('aba', ['x'])
+      #            │    └ WARNING Parameter 'addr' unfilled
+      #            ^^^^^ WARNING Unexpected argument
+      """.trimIndent())
 
     @Test
     fun `dataclass_transform field specifier overload init false constructor signature`() = test("""
@@ -488,9 +508,11 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
           id: int = field1(resolver=lambda: 0)
           name: str = field1(default="Voldemort")
       
-      CustomerModel1()
-      #└ TYPE (*, name: str) -> CustomerModel1
-      """)
+      expr = CustomerModel1(name='aba')
+      #└ TYPE CustomerModel1
+      CustomerModel1(1)
+      #              └ WARNING Unexpected argument
+      """.trimIndent())
 
     @Test
     fun `dataclass_transform decorated function type`() = test("""
@@ -501,7 +523,7 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
       
       expr = my_dataclass
       #└ TYPE (cls: Unknown) -> None
-      """)
+      """.trimIndent())
 
     @Test
     fun `dataclass_transform constructor signature with fields annotated with descriptor`() = test("""
@@ -524,9 +546,12 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
            id: MyIdDescriptor
            name: MyNameDescriptor
       
+      expr = MyClass(1, 'aba')
+      #└ TYPE MyClass
       MyClass()
-      #└ TYPE (id: int, name: str) -> MyClass
-      """)
+      #       └ WARNING Parameter 'id' unfilled
+      #       └ WARNING Parameter 'name' unfilled
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-76149"])
@@ -548,9 +573,12 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
            id: MyDescriptor[int]
            name: MyDescriptor[str]
       
-      MyClass(1, "")
-      #└ TYPE (id: int, name: str) -> MyClass
-      """)
+      expr = MyClass(1, "")
+      #└ TYPE MyClass
+      MyClass()
+      #       └ WARNING Parameter 'id' unfilled
+      #       └ WARNING Parameter 'name' unfilled
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-76149"])
@@ -578,19 +606,27 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
           payload: Anything
           payload_length: MyDescriptor[int]
       
+      expr = MyClass(1, 'aba', object(), 2)
+      #└ TYPE MyClass
       MyClass()
-      #└ TYPE (id: int, name: str, payload: Any, payload_length: int) -> MyClass
-      """)
+      #       └ WARNING Parameter 'id' unfilled
+      #       └ WARNING Parameter 'name' unfilled
+      #       └ WARNING Parameter 'payload' unfilled
+      #       └ WARNING Parameter 'payload_length' unfilled
+      MyClass(1, 'aba', object(), payload_length="bad") # WARNING Expected type 'int', got 'Literal["bad"]' instead
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-88828"])
-    fun `dataclass_transform constructor signature decorator with marked overloads not implementation`() = test(
-      """
+    fun `dataclass_transform constructor signature decorator with marked overloads not implementation`() = test("""
       from mod import Document
       
-      Document(name="foo")
-      #└ TYPE (*, name: str) -> Document
-      """,
+      expr = Document(name="foo")
+      #└ TYPE Document
+      Document("foo")
+      #        │    └ WARNING Parameter 'name' unfilled
+      #        ^^^^^ WARNING Unexpected argument
+      """.trimIndent(),
       "mod.py" to """
         import strawberry
         
@@ -598,7 +634,7 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
         @strawberry.type
         class Document:
             name: str
-        """,
+      """.trimIndent(),
       "strawberry.py" to """
         from typing import overload, dataclass_transform, Sequence, Callable
         
@@ -653,14 +689,32 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
                 extend: bool = False,
         ) -> T | Callable[[T], T]:
             pass
-        """,
-    )
+        """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-92578"])
+    fun `dataclass_transform decorator returning object preserves class type`() = test("""
+      from typing import dataclass_transform, Callable
+
+
+      @dataclass_transform(kw_only_default=True)
+      def deco(**kwargs) -> Callable[[object], object]:
+          raise NotImplementedError
+
+      @deco(frozen=True)
+      class MyClass: ...
+
+      MyClass
+      # └ TYPE type[MyClass]
+      """.trimIndent())
   }
 
   @Nested
   inner class InitArgumentTypeChecking {
     @Test
     @TestFor(issues = ["PY-27398"])
+    @TestCaseOptions(assertRecursionPrevention = false)
+    @TestInspections(disableInspections = [PyArgumentListInspection::class, PyStdlibDataclassInspection::class])
     fun `initializing dataclass checks generated init arguments`() = test("""
       import dataclasses
       import typing
@@ -794,7 +848,7 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
 
       F1("1")
       F1(1) # WARNING Expected type 'str', got 'Literal[1]' instead
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-28442"])
@@ -810,7 +864,7 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
           @classmethod
           def from_str(cls, string: str) -> 'Point':
               return cls(1, 2)
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-36889"])
@@ -822,13 +876,79 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
           attr: int = 1
       
       C().attr = "foo" # WARNING Expected type 'int', got 'Literal["foo"]' instead
-      """)
+      """.trimIndent())
+
+    @Test
+    @TestFor(classes = [PyDataclassTypeProvider::class])
+    fun `kw_only subclass keeps the base fields positional`() = test("""
+      from dataclasses import dataclass
+
+      @dataclass
+      class Base:
+          x: int
+
+      @dataclass(kw_only=True)
+      class Child(Base):
+          y: int
+
+      Child(1, y=2)
+      #     │     └ WARNING Parameter 'x' unfilled FIXME
+      #     └ WARNING Unexpected argument FIXME
+      """.trimIndent())
+
+    @Test
+    @TestFor(classes = [PyDataclassTypeProvider::class])
+    fun `field in a kw_only class is keyword only`() = test("""
+      from dataclasses import dataclass, field
+
+      @dataclass(kw_only=True)
+      class KW:
+          x: int = field(default=0)
+
+      KW(1) # WARNING FIXME Unexpected argument
+      """.trimIndent())
+
+    @Test
+    @TestFor(classes = [PyDataclassTypeProvider::class])
+    fun `dataclass base with its own __init__ still contributes its fields`() = test("""
+      from dataclasses import dataclass
+
+      @dataclass
+      class Base:
+          x: int
+          def __init__(self, x: int) -> None:
+              self.x = x
+
+      @dataclass
+      class Child(Base):
+          y: int
+
+      Child(1, 2)
+      #        └ WARNING Unexpected argument FIXME
+      """.trimIndent())
+
+    @Test
+    @TestFor(classes = [PyDataclassTypeProvider::class])
+    fun `copy replace returns the dataclass and accepts its fields`() = test("""
+      import copy
+      from dataclasses import dataclass
+
+      @dataclass
+      class Point:
+          x: int
+
+      res = copy.replace(Point(1), x=2)
+      # │                │         ^^^ WARNING Unexpected argument (from ParamSpec '_P') FIXME
+      # │                ^^^^^^^^ WARNING Expected type '_SupportsReplace[**_P, _RT_co]', got 'Point' instead FIXME
+      # └ TYPE Unknown FIXME Point
+      """.trimIndent())
   }
 
   @Nested
   inner class DataclassInstanceProtocolStructuralMatching {
     @Test
     @TestFor(issues = ["PY-76059"])
+    @TestInspections(disableInspections = [PyDataclassInspection::class])
     fun `dataclass instance matches DataclassInstance protocol`() = test("""
       from dataclasses import dataclass, asdict
       
@@ -837,8 +957,34 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
           name:str
       
       asdict(MyDataClass(name="Bob"))
-      asdict("Bob") # WARNING Expected type 'DataclassInstance', got 'Literal["Bob"]' instead
-      """)
+      asdict("Bob") # WARNING No overload of 'asdict' matches the arguments. Argument types: (Literal["Bob"]). Expected one of: (obj: DataclassInstance), (obj: DataclassInstance, dict_factory: (list[tuple[str, Any]]) -> _T)
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-55691"])
+    @TestCaseOptions(additionalSdkRoots = [SdkRoot("packages", OrderRootTypeEnum.CLASSES)])
+    fun `attrs dataclass protocol matching define`() = test("""
+      import attrs
+
+      @attrs.define
+      class User:
+          password: str
+
+      attrs.fields(User)
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-55691"])
+    @TestCaseOptions(additionalSdkRoots = [SdkRoot("packages", OrderRootTypeEnum.CLASSES)])
+    fun `attrs dataclass protocol matching frozen`() = test("""
+      import attrs
+
+      @attrs.frozen
+      class User:
+          password: str
+
+      attrs.fields(User)
+      """.trimIndent())
   }
 
   @Nested
@@ -863,7 +1009,7 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
       
       
       v2: Hashable = DC2(0) # WARNING Expected type 'Hashable', got 'DC2' instead
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-76854"])
@@ -909,7 +1055,26 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
       
       
       v5: Hashable = DC5(0)
-      """)
+      """.trimIndent())
+  }
+
+  @Nested
+  inner class FrozenAttributes {
+    @Test
+    @TestFor(classes = [PyDataclassInspection::class])
+    fun `plain subclass of a frozen dataclass can add an attribute`() = test("""
+      from dataclasses import dataclass
+
+      @dataclass(frozen=True)
+      class Frozen:
+          x: int
+
+      class PlainSub(Frozen):
+          def __init__(self) -> None:
+              super().__init__(1)
+              self.cache = {}
+      #       ^^^^^^^^^^ ERROR 'PlainSub' object attribute 'cache' is read-only FIXME
+      """.trimIndent())
   }
 
   @Nested
@@ -923,7 +1088,7 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
       class DC: ...
       
       sorted([DC(), DC()])
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-45958"])
@@ -938,10 +1103,11 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
       class DC: ...
       
       a: SupportsLessThan = DC()
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-45958"])
+    @TestInspections(disableInspections = [PyArgumentListInspection::class])
     fun `ordered dataclass dunder le call is type-checked`() = test("""
       from dataclasses import dataclass
       
@@ -952,8 +1118,8 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
       class B: ...
       
       A().__le__(A())
-      A().__le__(B()) # WARNING Expected type 'A', got 'B' instead
-      """)
+      A().__le__(B()) # WARNING FIXME Expected type 'A', got 'B' instead # PY-91385
+      """.trimIndent())
   }
 
   @Nested
@@ -965,8 +1131,8 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
       
       @dataclass
       class E:
-          a: int = field(default_factory=(lambda: "")) # WARNING Expected type 'int', got 'str' instead
-      """)
+          a: int = field(default_factory=(lambda: "")) # WARNING Expected type 'int', got 'Literal[""]' instead
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-76861"])
@@ -980,7 +1146,7 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
       @dataclass
       class A:
           x: int = field(default_factory=make_str) # WARNING Expected type 'int', got 'str' instead
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-76861"])
@@ -996,7 +1162,7 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
       @dataclass
       class B:
           y: int = field(default_factory=make_factory()) # WARNING Expected type 'int', got 'str' instead
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-88042"])
@@ -1006,7 +1172,7 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
       @dataclass
       class DC:
           a: str | None = field(default_factory=lambda: "")
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-88043"])
@@ -1020,24 +1186,22 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
       @dataclass
       class DC:
           a: str | None = field(default_factory=factory)
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-88043"])
-    fun `field default_factory not annotated multifile`() = test(
-      """
+    fun `field default_factory not annotated multifile`() = test("""
       from dataclasses import dataclass, field
       from lib import do
       
       @dataclass
       class NewDataclass:
           val: str | None = field(default_factory=do)
-      """,
+      """.trimIndent(),
       "lib.py" to """
         def do():
             return "this or that"
-        """,
-    )
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-76861"])
@@ -1047,6 +1211,346 @@ class PyDataclassTypeTest : PyCodeInsightTestCase() {
       @dataclass
       class DC:
           a: str = field(default_factory=(lambda: str)) # WARNING Expected type 'str', got 'type[str]' instead
+      """.trimIndent())
+  }
+
+  @Nested
+  @TestFor(issues = ["PY-75771", "PY-80624"])
+  inner class DataclassTransformConverter {
+    @Test
+    @TestInspections(disableInspections = [PyDataclassInspection::class])
+    fun `converter field type`() = test("""
+      from typing import Callable, dataclass_transform
+
+      def model_field(converter: Callable) -> str: ...
+
+      @dataclass_transform(field_specifiers=(model_field,))
+      class ModelBase: ...
+
+      class DC(ModelBase):
+          field = model_field(converter=int)
+
+      expr = DC("1").field
+      # └ TYPE int
+      expr_on_class = DC.field
+      # └ TYPE int
+      """.trimIndent())
+
+    @Test
+    @TestInspections(disableInspections = [PyArgumentListInspection::class])
+    fun `converter with aliased field specifier and TypeVar field type`() = test("""
+      from typing import Callable, TypeVar, dataclass_transform
+
+      T = TypeVar('T')
+      def model_field(converter: Callable[[str], T]) -> T: ...
+
+      @dataclass_transform(field_specifiers=(model_field,))
+      class ModelBase: ...
+
+      my_alias = model_field
+
+      class DC(ModelBase):
+          field = my_alias(converter=int)
+
+      expr = DC("1").field
+      # └ TYPE int
+      """.trimIndent())
+
+    @Test
+    fun `read of annotated converter field gives declared type`() = test("""
+      from typing import Any, Callable, Iterable, TypeVar, dataclass_transform
+
+      S = TypeVar('S')
+      def to_list(x: Iterable[S]) -> list[S]: ...
+      def model_field(*, converter: Callable) -> Any: ...
+
+      @dataclass_transform(field_specifiers=(model_field,))
+      class ModelBase: ...
+
+      class DC(ModelBase):
+          generic_function: list[int] = model_field(converter=to_list)
+          generic_class: list[int] = model_field(converter=list)
+
+      expr1 = DC((1,), (2,)).generic_function
+      # └ TYPE list[int]
+      expr2 = DC((1,), (2,)).generic_class
+      # └ TYPE list[int]
+      """.trimIndent())
+
+    @Test
+    @TestInspections(disableInspections = [PyArgumentListInspection::class, PyDataclassInspection::class])
+    fun `read of converter field of generic dataclass substitutes type parameters`() = test("""
+      from typing import Any, Callable, Generic, TypeVar, dataclass_transform
+
+      T = TypeVar('T')
+      def model_field(*, converter: Callable) -> Any: ...
+
+      @dataclass_transform(field_specifiers=(model_field,))
+      class ModelBase: ...
+
+      class DC(ModelBase, Generic[T]):
+          declared: list[T] = model_field(converter=list[T])
+          inferred = model_field(converter=list[T])
+
+      class Sub(DC[str]): ...
+
+      def make() -> DC[int]: ...
+
+      expr1 = make().declared
+      # └ TYPE list[int]
+      expr2 = make().inferred
+      # └ TYPE list[int]
+      expr3 = Sub([]).declared
+      # └ TYPE list[str]
+      """.trimIndent())
+
+    @Test
+    fun `write to converter field of generic dataclass substitutes type parameters`() = test("""
+      from typing import Any, Callable, Generic, TypeVar, dataclass_transform
+
+      T = TypeVar('T')
+      def model_field(*, converter: Callable) -> Any: ...
+
+      @dataclass_transform(field_specifiers=(model_field,))
+      class ModelBase: ...
+
+      class DC(ModelBase, Generic[T]):
+          field: list[T] = model_field(converter=list[T])
+
+      def make() -> DC[int]: ...
+
+      d = make()
+      d.field = (1, 2)
+      d.field = ("a",)
+      #         ^^^^^^ WARNING Expected type 'Iterable[int]', got 'tuple[Literal["a"]]' instead
+      """.trimIndent())
+
+    @Test
+    fun `converter field in class body has declared type`() = test("""
+      from typing import Any, Callable, dataclass_transform
+
+      def model_field(converter: Callable) -> Any: ...
+      def to_int(s: str) -> int: ...
+
+      @dataclass_transform(field_specifiers=(model_field,))
+      class ModelBase: ...
+
+      class DC(ModelBase):
+          field: int = model_field(converter=to_int)
+      #   └ TYPE int
+      """.trimIndent())
+
+    @Test
+    @TestInspections(disableInspections = [PyDataclassInspection::class])
+    fun `constructor call checks converter input type`() = test("""
+      from typing import Callable, dataclass_transform
+
+      def model_field(converter: Callable) -> str: ...
+
+      @dataclass_transform(field_specifiers=(model_field,))
+      class ModelBase: ...
+
+      class DC(ModelBase):
+          field = model_field(converter=int)
+
+      DC(1)
+      DC("1")
+      DC(1.5)
+      DC([1, 2])
+      #  ^^^^^^ WARNING Expected type 'str | Buffer | SupportsInt | SupportsIndex | bytes | bytearray', got 'list[Literal[1, 2]]' instead
+      """.trimIndent())
+
+    @Test
+    @TestInspections(disableInspections = [PyDataclassInspection::class])
+    fun `assignment checks converter input type`() = test("""
+      from typing import Any, Callable, dataclass_transform
+
+      def model_field(converter: Callable) -> Any: ...
+      def to_int(s: str) -> int: ...
+
+      @dataclass_transform(field_specifiers=(model_field,))
+      class ModelBase: ...
+
+      class DC(ModelBase):
+          field: int = model_field(converter=to_int)
+          unannotated = model_field(converter=to_int)
+
+          def __post_init__(self) -> None:
+              self.field = "1"
+
+          def reset(self) -> None:
+              self.field = 5
+      #                    └ WARNING Expected type 'str', got 'Literal[5]' instead
+
+      dc = DC("1", "2")
+      dc.field = "2"
+      dc.field = 2
+      #          └ WARNING Expected type 'str', got 'Literal[2]' instead
+      dc.unannotated += 1
+      #^^^^^^^^^^^^^^^^^^ WARNING Expected type 'str' for augmented assignment, got 'int' from operation instead
+      DC.field = 3
+      """.trimIndent())
+
+    @Test
+    fun `converter keyword of a call that is not a field specifier`() = test("""
+      from typing import Callable, dataclass_transform
+
+      def model_field(converter: Callable) -> str: ...
+      def not_a_field_specifier(converter: Callable) -> str: ...
+
+      @dataclass_transform(field_specifiers=(model_field,))
+      class ModelBase: ...
+
+      class DC(ModelBase):
+          field: str = not_a_field_specifier(converter=int)
+
+      expr = DC("1").field
+      # └ TYPE str
+      DC(1)
+      #  └ WARNING Expected type 'str', got 'Literal[1]' instead
+      """.trimIndent())
+
+    @Test
+    fun `converter field of a dataclass in another file`() = test("""
+      from mod import DC
+
+      expr = DC("1").field
+      # └ TYPE int
+      DC(1)
+      #  └ WARNING Expected type 'str', got 'Literal[1]' instead
+      dc = DC("1")
+      dc.field = 1
+      #          └ WARNING Expected type 'str', got 'Literal[1]' instead
+      """.trimIndent(), "mod.py" to """
+      from typing import Callable, dataclass_transform
+
+      def model_field(converter: Callable) -> str: ...
+      def to_int(s: str) -> int: ...
+
+      @dataclass_transform(field_specifiers=(model_field,))
+      class ModelBase: ...
+
+      class DC(ModelBase):
+          field: int = model_field(converter=to_int)
       """)
+
+    @Test
+    @TestInspections(disableInspections = [PyArgumentListInspection::class])
+    fun `default and default factory must match converter input type`() = test("""
+      from typing import Any, Callable, dataclass_transform
+
+      def model_field(
+          *, converter: Callable, default: object = None, default_factory: Callable | None = None, factory: Callable | None = None,
+      ) -> Any: ...
+      def to_int(s: str) -> int: ...
+
+      @dataclass_transform(field_specifiers=(model_field,))
+      class ModelBase: ...
+
+      class DC(ModelBase):
+          field0: int = model_field(converter=to_int, default="")
+          field1: int = model_field(converter=to_int, default=1)
+      #                                                       └ WARNING Expected type 'str', got 'Literal[1]' instead
+          field2: int = model_field(converter=to_int, default_factory=str)
+          field3: int = model_field(converter=to_int, default_factory=int)
+      #                                                               ^^^ WARNING Expected type 'str', got 'int' instead
+          field4: int = model_field(converter=to_int, factory=int)
+      #                                                       ^^^ WARNING Expected type 'str', got 'int' instead
+      """.trimIndent())
+
+    @Test
+    fun `unbound method converter accepts its self type`() = test("""
+      from typing import Any, Callable, dataclass_transform
+
+      def model_field(*, converter: Callable) -> Any: ...
+
+      @dataclass_transform(field_specifiers=(model_field,))
+      class ModelBase: ...
+
+      class DC(ModelBase):
+          field: str = model_field(converter=str.strip)
+
+      DC(" a ")
+      DC(1)
+      #  └ WARNING Expected type 'LiteralString | str', got 'Literal[1]' instead
+      """.trimIndent())
+
+    @Test
+    fun `converter return type must match declared type`() = test("""
+      from typing import Any, Callable, TypeVar, dataclass_transform
+
+      T = TypeVar('T')
+      def model_field(*, converter: Callable[[Any], T]) -> T: ...
+      def to_int(s: str) -> int: ...
+
+      @dataclass_transform(field_specifiers=(model_field,))
+      class ModelBase: ...
+
+      class DC(ModelBase):
+          ok: int = model_field(converter=to_int)
+          bad: str = model_field(converter=to_int)
+      #              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ WARNING Expected type 'str', got 'int' instead
+      """.trimIndent())
+
+    @Test
+    fun `converter field matches a protocol and a class pattern by its declared type`() = test("""
+      from typing import Any, Callable, Protocol, dataclass_transform
+
+      def model_field(*, converter: Callable) -> Any: ...
+      def to_int(s: str) -> int: ...
+
+      @dataclass_transform(field_specifiers=(model_field,))
+      class ModelBase: ...
+
+      class DC(ModelBase):
+          field: int = model_field(converter=to_int)
+
+      class HasField(Protocol):
+          field: int
+
+      def use(p: HasField): ...
+
+      use(DC("1"))
+
+      def check(dc: object):
+          match dc:
+              case DC(field=x):
+                  expr = x
+      #           └ TYPE int
+      """.trimIndent())
+  }
+
+  @Nested
+  inner class NestedDataclassThroughInstance {
+    @Test
+    @TestFor(issues = ["PY-91150"])
+    fun `nested dataclass called through self`() = test("""
+      from dataclasses import dataclass
+
+      class Adapter:
+          @dataclass
+          class Command:
+              x: int
+
+          def do(self):
+              expr = self.Command(1)
+      #       └ TYPE Command
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-91150"])
+    fun `nested dataclass passed as an argument through instance`() = test("""
+      from dataclasses import dataclass
+
+      class Adapter:
+          @dataclass
+          class Command:
+              x: int
+
+          def do(self, arg: Command) -> None: ...
+
+      a = Adapter()
+      a.do(a.Command(1))
+      """.trimIndent())
   }
 }

@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.java.uast.ide` start
+content_module_jar(module = ":java-uast-ide")
+### auto-generated section `dev intellij.java.uast.ide` end
 
 ### auto-generated section `build intellij.java.uast.ide` start
-
 jvm_library(
     name = "java-uast-ide",
     srcs = glob(
@@ -67,6 +71,7 @@ jvm_library(
 exports_files(
     [
         "intellij.java.uast.ide.iml",
+        "resources/intellij.java.uast.ide.xml",
     ],
     visibility = ["//visibility:public"],
 )

@@ -1,19 +1,33 @@
 // Copyright 2000-2017 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python;
 
+import com.jetbrains.python.allure.Layers;
+import com.jetbrains.python.allure.Subsystems;
+
+import com.intellij.icons.AllIcons;
+import com.intellij.ide.util.treeView.smartTree.TreeElement;
+import com.intellij.idea.TestFor;
 import com.intellij.navigation.ItemPresentation;
 import com.intellij.openapi.command.WriteCommandAction;
+import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.testFramework.PlatformTestUtil;
 import com.intellij.util.ui.tree.TreeUtil;
 import com.jetbrains.python.fixtures.PyTestCase;
+import com.jetbrains.python.psi.PyClass;
+import com.jetbrains.python.psi.PyFile;
 import com.jetbrains.python.psi.PyFunction;
+import com.jetbrains.python.psi.PyTypeAliasStatement;
 import com.jetbrains.python.structureView.PyStructureViewElement;
 
 import javax.swing.Icon;
 import javax.swing.JTree;
+import java.util.ArrayList;
+import java.util.List;
 
 import static com.intellij.testFramework.PlatformTestUtil.assertTreeEqual;
 
+@Subsystems.CodeInsight
+@Layers.Functional
 public class PyStructureViewTest extends PyTestCase {
   private static final String TEST_DIRECTORY = "structureView/";
 
@@ -26,11 +40,11 @@ public class PyStructureViewTest extends PyTestCase {
                f(self, x)
               -B2(object)
                g(x)
-              C(B1, B2)
-              D1(C)
-              D2(C)
-              D3(lib1.C)
-              D4(foo.bar.C)
+              -C(B1, B2)
+              -D1(C)
+              -D2(C)
+              -D3(lib1.C)
+              -D4(foo.bar.C)
              """,
            false);
   }
@@ -145,6 +159,92 @@ public class PyStructureViewTest extends PyTestCase {
                __module__
              """,
            true);
+  }
+
+  // IJPL-255407
+  public void testChildrenOfInheritedMembersAreInherited() {
+    final PyFile file = (PyFile)myFixture.configureByText("a.py", """
+      class Base:
+          class Config:
+              frozen = True
+          def method(self):
+              def helper():
+                  pass
+      class A(Base):
+          def own(self):
+              pass
+      """);
+    final PyClass cls = file.findTopLevelClass("A");
+    assertNotNull(cls);
+
+    final List<String> ownMembers = new ArrayList<>();
+    final List<String> notInheritedNestedInInherited = new ArrayList<>();
+    for (TreeElement child : new PyStructureViewElement(cls).getChildren()) {
+      final PyStructureViewElement member = (PyStructureViewElement)child;
+      if (!member.isInherited()) {
+        ownMembers.add(member.getPresentation().getPresentableText());
+        continue;
+      }
+      for (TreeElement nested : member.getChildren()) {
+        if (!((PyStructureViewElement)nested).isInherited()) {
+          notInheritedNestedInInherited.add(nested.getPresentation().getPresentableText());
+        }
+      }
+    }
+
+    assertEquals(List.of("own(self)"), ownMembers);
+    assertEmpty(notInheritedNestedInInherited);
+  }
+
+  @TestFor(issues = "PY-92836")
+  public void testTypeAliasStatement() {
+    myFixture.configureByText("a.py", """
+      type Pair[T] = tuple[T, T]
+      class C:
+          type Alias = int
+      if True:
+          type Conditional = str
+      """);
+    doTest("""
+             -a.py
+              Pair
+              -C
+               Alias
+              Conditional
+             """,
+           false);
+  }
+
+  @TestFor(issues = "PY-92836")
+  public void testTypeAliasStatementPresentation() {
+    myFixture.configureByText("a.py", "type Pair[T] = tuple[T, T]\n");
+    final PyTypeAliasStatement alias = PsiTreeUtil.findChildOfType(myFixture.getFile(), PyTypeAliasStatement.class);
+    assertNotNull(alias);
+    final ItemPresentation presentation = new PyStructureViewElement(alias).getPresentation();
+    assertEquals("Pair", presentation.getPresentableText());
+    assertSame(AllIcons.Nodes.Type, presentation.getIcon(false));
+  }
+
+  @TestFor(issues = "PY-92836")
+  public void testNamesBoundOutsideModuleLevelAssignment() {
+    myFixture.configureByText("a.py", """
+      x = 1
+      a, b = 1, 2
+      if (n := 10) > 5:
+          y = 2
+      for i in range(3):
+          pass
+      with open("f") as f:
+          pass
+      match x:
+          case [p, q]:
+              pass
+      """);
+    doTest("""
+             -a.py
+              x
+             """,
+           false);
   }
 
   private void doTest(final String expected, final boolean inherited) {

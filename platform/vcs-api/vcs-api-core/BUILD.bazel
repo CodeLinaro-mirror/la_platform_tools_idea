@@ -1,8 +1,21 @@
 load("@community//build:tests-options.bzl", "jps_test")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+jps_test(
+    name = "vcs-core-tests_test",
+    timeout = "moderate",
+    tags = ["community-aggregator"],
+    runtime_deps = [":vcs-core-tests_test_lib"],
+)
+
+### skip generation section `test intellij.platform.vcs.core.tests`
+
+### auto-generated section `dev intellij.platform.vcs.core` start
+content_module_jar(module = ":vcs-core")
+### auto-generated section `dev intellij.platform.vcs.core` end
 
 ### auto-generated section `build intellij.platform.vcs.core` start
-
 jvm_library(
     name = "vcs-core",
     srcs = glob(
@@ -54,12 +67,6 @@ jvm_library(
         "//platform/util/diff:diff_test_lib",
         "//platform/util/multiplatform:multiplatform_test_lib",
         "//platform/util/base:base_test_lib",
-        "//libraries/junit5",
-        "//libraries/junit5:junit5_test_lib",
-        "//libraries/junit5-params",
-        "//libraries/junit5-params:junit5-params_test_lib",
-        "//libraries/assertj-core",
-        "//libraries/assertj-core:assertj-core_test_lib",
         "//libraries/kotlinx/serialization/core:core_test_lib",
     ],
 )
@@ -69,13 +76,13 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.vcs.core.iml",
+        "resources/intellij.platform.vcs.core.xml",
     ],
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.platform.vcs.core` end
 
 ### auto-generated section `build intellij.platform.vcs.core.tests` start
-
 jvm_library(
     name = "vcs-core-tests",
     srcs = glob(
@@ -121,10 +128,10 @@ jvm_library(
         "//platform/util/diff",
         "//platform/util/diff:diff_test_lib",
         "@lib//:kotlin-stdlib",
-        "//libraries/junit5",
-        "//libraries/junit5:junit5_test_lib",
-        "//libraries/junit5-params",
-        "//libraries/junit5-params:junit5-params_test_lib",
+        "//libraries/junit6",
+        "//libraries/junit6:junit6_test_lib",
+        "//libraries/junit6-params",
+        "//libraries/junit6-params:junit6-params_test_lib",
         "//libraries/assertj-core",
         "//libraries/assertj-core:assertj-core_test_lib",
         "//libraries/kotlinx/serialization/core",
@@ -141,11 +148,3 @@ exports_files(
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.platform.vcs.core.tests` end
-
-### auto-generated section `test intellij.platform.vcs.core.tests` start
-
-jps_test(
-    name = "vcs-core-tests_test",
-    runtime_deps = [":vcs-core-tests_test_lib"],
-)
-### auto-generated section `test intellij.platform.vcs.core.tests` end

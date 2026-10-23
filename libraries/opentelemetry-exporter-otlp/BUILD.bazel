@@ -1,7 +1,6 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
 ### auto-generated section `build intellij.libraries.opentelemetry.exporter.otlp` start
-
 jvm_library(
     name = "opentelemetry-exporter-otlp",
     srcs = glob(
@@ -54,6 +53,7 @@ jvm_library(
 exports_files(
     [
         "intellij.libraries.opentelemetry.exporter.otlp.iml",
+        "resources/intellij.libraries.opentelemetry.exporter.otlp.xml",
     ],
     visibility = ["//visibility:public"],
 )

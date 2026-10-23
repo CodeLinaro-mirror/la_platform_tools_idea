@@ -148,7 +148,7 @@ public class OptimizeImportsTest extends OptimizeImportsTestCase {
   public void testImplicitIoImport2() {
     implicitIoImport();
   }
-  
+
   public void testImplicitIoImport3() {
     implicitIoImport();
   }
@@ -406,7 +406,7 @@ public class OptimizeImportsTest extends OptimizeImportsTestCase {
     CodeStyle.doWithTemporarySettings(getProject(), temp, () -> doTest());
   }
 
-  public void testScratch() throws Exception {
+  public void testScratch() {
     myFixture.enableInspections(new UnusedImportInspection());
     VirtualFile scratch =
       ScratchRootType.getInstance()
@@ -423,7 +423,7 @@ public class OptimizeImportsTest extends OptimizeImportsTestCase {
     myFixture.checkResult("class Scratch { }");
   }
 
-  public void testLeavesDocumentUnblocked() throws Exception {
+  public void testLeavesDocumentUnblocked() {
     myFixture.enableInspections(new UnusedImportInspection());
     myFixture.configureByText("a.java", "import static java.ut<caret>il.List.*; class Foo {}");
     runOptimizeImports();
@@ -587,7 +587,7 @@ public class OptimizeImportsTest extends OptimizeImportsTestCase {
     assertNull(intention);
   }
 
-  public void testRemovingAllUnusedImports() throws Exception {
+  public void testRemovingAllUnusedImports() {
     myFixture.enableInspections(new UnusedImportInspection());
     myFixture.configureByText("a.java", """
       package p;
@@ -741,6 +741,40 @@ public class OptimizeImportsTest extends OptimizeImportsTestCase {
 
       doTest();
     });
+  }
+
+  public void testExtraBlankLinesBetweenImports() {
+    JavaCodeStyleSettings javaSettings = setUpBlankLinesTest();
+    javaSettings.setKeepBlankLinesBetweenImports(true);
+    doTest();
+  }
+
+  public void testExtraBlankLinesBetweenImportsLayoutOnly() {
+    JavaCodeStyleSettings javaSettings = setUpBlankLinesTest();
+    javaSettings.setKeepBlankLinesBetweenImports(false);
+    doTest();
+  }
+
+  public void testExtraBlankLinesBetweenImportsWithComment() {
+    JavaCodeStyleSettings javaSettings = setUpBlankLinesTest();
+    javaSettings.setKeepBlankLinesBetweenImports(false);
+    // rebuilding the list would drop the standalone comment, so the extra blank lines are kept instead
+    doTest();
+  }
+
+  private JavaCodeStyleSettings setUpBlankLinesTest() {
+    myFixture.addClass("package com.custom; public class MyClass1 {}");
+    myFixture.addClass("package com.custom; public class MyClass2 {}");
+    JavaCodeStyleSettings javaSettings = JavaCodeStyleSettings.getInstance(getProject());
+
+    javaSettings.IMPORT_LAYOUT_TABLE = new PackageEntryTable();
+    javaSettings.IMPORT_LAYOUT_TABLE.addEntry(PackageEntry.ALL_OTHER_STATIC_IMPORTS_ENTRY);
+    javaSettings.IMPORT_LAYOUT_TABLE.addEntry(PackageEntry.BLANK_LINE_ENTRY);
+    javaSettings.IMPORT_LAYOUT_TABLE.addEntry(new PackageEntry(false, "java", true));
+    javaSettings.IMPORT_LAYOUT_TABLE.addEntry(new PackageEntry(false, "javax", true));
+    javaSettings.IMPORT_LAYOUT_TABLE.addEntry(PackageEntry.BLANK_LINE_ENTRY);
+    javaSettings.IMPORT_LAYOUT_TABLE.addEntry(PackageEntry.ALL_OTHER_IMPORTS_ENTRY);
+    return javaSettings;
   }
 
   public void testIncorrectOrderWithoutModuleImport() {

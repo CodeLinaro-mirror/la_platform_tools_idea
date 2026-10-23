@@ -19,16 +19,19 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.Key;
+import com.intellij.openapi.util.NotNullLazyValue;
 import com.intellij.openapi.util.NullableLazyValue;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.wm.ToolWindow;
 import com.intellij.openapi.wm.ToolWindowManager;
 import com.intellij.openapi.wm.ex.ToolWindowEx;
+import com.intellij.openapi.wm.impl.content.ToolWindowContentUi;
 import com.intellij.terminal.JBTerminalWidget;
 import com.intellij.terminal.JBTerminalWidgetListener;
 import com.intellij.terminal.TerminalTitle;
 import com.intellij.terminal.ui.TerminalWidget;
 import com.intellij.terminal.ui.TerminalWidgetKt;
+import com.intellij.ui.ClientProperty;
 import com.intellij.ui.ExperimentalUI;
 import com.intellij.ui.content.Content;
 import com.intellij.ui.content.ContentFactory;
@@ -49,6 +52,7 @@ import org.jetbrains.plugins.terminal.arrangement.TerminalCommandHistoryManager;
 import org.jetbrains.plugins.terminal.arrangement.TerminalWorkingDirectoryManager;
 import org.jetbrains.plugins.terminal.classic.ClassicTerminalTabCloseListener;
 import org.jetbrains.plugins.terminal.classic.ClassicTerminalTitleUpdatingKt;
+import org.jetbrains.plugins.terminal.classic.CustomTerminalRunnerProvider;
 import org.jetbrains.plugins.terminal.fus.ReworkedTerminalUsageCollector;
 import org.jetbrains.plugins.terminal.ui.TerminalContainer;
 import org.jetbrains.plugins.terminal.util.TerminalCoroutineKt;
@@ -76,11 +80,12 @@ public final class TerminalToolWindowManager implements Disposable {
 
   private ToolWindowEx myToolWindow;
   private final Project myProject;
-  private final AbstractTerminalRunner<?> myTerminalRunner;
+  // Created on the first use, because the classic runner is not needed to open the Reworked terminal.
+  private final NotNullLazyValue<AbstractTerminalRunner<?>> myTerminalRunner;
   private final Map<TerminalWidget, TerminalContainer> myContainerByWidgetMap = new HashMap<>();
 
   public @NotNull AbstractTerminalRunner<?> getTerminalRunner() {
-    return myTerminalRunner;
+    return myTerminalRunner.getValue();
   }
 
 
@@ -90,7 +95,15 @@ public final class TerminalToolWindowManager implements Disposable {
 
   public TerminalToolWindowManager(@NotNull Project project) {
     myProject = project;
-    myTerminalRunner = DefaultTerminalRunnerFactory.getInstance().create(project);
+    myTerminalRunner = NotNullLazyValue.lazy(() -> createTerminalRunner(project));
+  }
+
+  private static @NotNull AbstractTerminalRunner<?> createTerminalRunner(@NotNull Project project) {
+    var customRunner = CustomTerminalRunnerProvider.createRunner(project);
+    if (customRunner != null) {
+      return customRunner;
+    }
+    return new LocalTerminalDirectRunner(project);
   }
 
   @Override
@@ -130,6 +143,7 @@ public final class TerminalToolWindowManager implements Disposable {
       return;
     }
     myToolWindow = toolWindow;
+    ClientProperty.put(toolWindow.getComponent(), ToolWindowContentUi.CLEANED_TOOL_WINDOW_CONTEXT_MENUS, Boolean.TRUE);
   }
 
   /** Restores tabs for Classic Terminal and New Terminal Gen1. */
@@ -143,7 +157,7 @@ public final class TerminalToolWindowManager implements Disposable {
     if (arrangementState != null) {
       for (TerminalTabState tabState : arrangementState.myTabStates) {
         TerminalEngine engine = TerminalOptionsProvider.getInstance().getTerminalEngine();
-        createNewSession(null, myTerminalRunner, engine, tabState, false, true);
+        createNewSession(null, myTerminalRunner.getValue(), engine, tabState, false, true);
       }
 
       Content content = contentManager.getContent(arrangementState.mySelectedTabIndex);
@@ -169,13 +183,13 @@ public final class TerminalToolWindowManager implements Disposable {
   public @NotNull TerminalWidget createNewSession(@Nullable AbstractTerminalRunner<?> terminalRunner,
                                                   @Nullable TerminalTabState tabState,
                                                   @Nullable ContentManager contentManager) {
-    var runner = terminalRunner != null ? terminalRunner : myTerminalRunner;
+    var runner = terminalRunner != null ? terminalRunner : myTerminalRunner.getValue();
     return createNewSession(contentManager, runner, TerminalEngine.CLASSIC, tabState, true, true);
   }
 
   /** Creates the <b>Classic</b> terminal tab regardless of the {@link TerminalEngine} state in the {@link TerminalOptionsProvider} */
   public @NotNull Content newTab(@NotNull ToolWindow toolWindow, @Nullable TerminalWidget terminalWidget) {
-    return createNewTab(null, terminalWidget, myTerminalRunner, TerminalEngine.CLASSIC, null, true, true);
+    return createNewTab(null, terminalWidget, myTerminalRunner.getValue(), TerminalEngine.CLASSIC, null, true, true);
   }
 
   //------------ Classic Terminal tab creation API methods end --------------------------------------
@@ -191,7 +205,7 @@ public final class TerminalToolWindowManager implements Disposable {
     tabState.myTabName = tabName;
     tabState.myWorkingDirectory = workingDirectory;
     tabState.myShellCommand = shellCommand;
-    return createNewSession(null, myTerminalRunner, TerminalEngine.CLASSIC, tabState,
+    return createNewSession(null, myTerminalRunner.getValue(), TerminalEngine.CLASSIC, tabState,
                             requestFocus, deferSessionStartUntilUiShown);
   }
 
@@ -205,7 +219,7 @@ public final class TerminalToolWindowManager implements Disposable {
   public @NotNull TerminalWidget createNewTab(@NotNull TerminalEngine preferredEngine,
                                               @Nullable TerminalTabState tabState,
                                               @Nullable ContentManager contentManager) {
-    return createNewSession(contentManager, myTerminalRunner, preferredEngine, tabState, true, true);
+    return createNewSession(contentManager, myTerminalRunner.getValue(), preferredEngine, tabState, true, true);
   }
 
   /**
@@ -306,7 +320,7 @@ public final class TerminalToolWindowManager implements Disposable {
             terminalRunner.getDefaultTabTitle(),
             TerminalOptionsProvider.getInstance().getTabName()
           );
-          String uniqueName = TerminalTitleUtils.createDefaultTabName(toolWindow, defaultName);
+          String uniqueName = TerminalTitleUtils.createDefaultTabName(myProject, toolWindow, defaultName);
           state.setDefaultTitle(uniqueName);
         }
         return Unit.INSTANCE;
@@ -359,7 +373,7 @@ public final class TerminalToolWindowManager implements Disposable {
     terminalWidget.setListener(new JBTerminalWidgetListener() {
       @Override
       public void onNewSession() {
-        createNewSession(content.getManager(), myTerminalRunner, TerminalEngine.CLASSIC, null, true, true);
+        createNewSession(content.getManager(), myTerminalRunner.getValue(), TerminalEngine.CLASSIC, null, true, true);
       }
 
       @Override
@@ -438,6 +452,12 @@ public final class TerminalToolWindowManager implements Disposable {
         performAction(actionId);
       }
 
+      @Override
+      public void moveToolWindowTabToEditor() {
+        var actionId = "MoveToolWindowTabToEditorAction";
+        performAction(actionId);
+      }
+
       private boolean isActionEnabled(@NotNull String actionId) {
         AnAction action = ActionManager.getInstance().getAction(actionId);
         if (action == null) return false;
@@ -505,6 +525,8 @@ public final class TerminalToolWindowManager implements Disposable {
     var manager = content.getManager();
     if (manager != null) {
       manager.removeContent(content, true, true, true);
+    } else {
+      content.release();
     }
   }
 
@@ -546,7 +568,7 @@ public final class TerminalToolWindowManager implements Disposable {
     // Do not enable it in remote dev since it is not adapted to this mode.
     if (preferredEngine == TerminalEngine.NEW_TERMINAL &&
         ExperimentalUI.isNewUI() &&
-        terminalRunner == myTerminalRunner &&
+        terminalRunner == myTerminalRunner.getValue() &&
         !isAnyRemoteDev) {
       // Use the specific runner that will start the terminal with the corresponding shell integration.
       var runner = new LocalBlockTerminalRunner(myProject);
@@ -614,7 +636,7 @@ public final class TerminalToolWindowManager implements Disposable {
    */
   @Deprecated
   public @NotNull TerminalWidget createNewSession() {
-    return createNewSession(null, myTerminalRunner, TerminalEngine.CLASSIC, null, true, true);
+    return createNewSession(null, myTerminalRunner.getValue(), TerminalEngine.CLASSIC, null, true, true);
   }
 
   /**
@@ -656,7 +678,7 @@ public final class TerminalToolWindowManager implements Disposable {
     if (fileToOpen != null) {
       state.myWorkingDirectory = fileToOpen.getPath();
     }
-    createNewSession(null, myTerminalRunner, TerminalEngine.CLASSIC, state, true, true);
+    createNewSession(null, myTerminalRunner.getValue(), TerminalEngine.CLASSIC, state, true, true);
   }
 
   /**

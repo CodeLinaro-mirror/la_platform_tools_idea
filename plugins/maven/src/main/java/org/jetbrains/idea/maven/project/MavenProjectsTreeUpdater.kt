@@ -4,12 +4,15 @@ package org.jetbrains.idea.maven.project
 import com.intellij.openapi.application.readAction
 import com.intellij.openapi.util.Comparing
 import com.intellij.openapi.util.Ref
-import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.platform.diagnostic.telemetry.helpers.useWithScope
 import com.intellij.platform.util.progress.RawProgressReporter
-import kotlinx.coroutines.*
-import org.jetbrains.annotations.ApiStatus
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.jetbrains.idea.maven.model.MavenConstants
 import org.jetbrains.idea.maven.model.MavenExplicitProfiles
 import org.jetbrains.idea.maven.project.MavenProjectChangesBuilder.Companion.merged
@@ -19,7 +22,6 @@ import org.jetbrains.idea.maven.utils.MavenUtil
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
 
-@ApiStatus.Internal
 internal class MavenProjectsTreeUpdater(
   private val tree: MavenProjectsTree,
   private val updateContext: MavenProjectsTreeUpdateContext,
@@ -261,10 +263,9 @@ internal class MavenProjectsTreeUpdater(
   }
 
   private fun getFileTimestamp(file: Path?): Long {
-    return getFileTimestamp(if (file == null) null else LocalFileSystem.getInstance().findFileByNioFile(file))
+    return getFileTimestamp(if (file == null) null else VirtualFileManager.getInstance().findFileByNioPath(file))
   }
 
-  @ApiStatus.Internal
   @JvmRecord
   internal data class UpdateSpec(val mavenProjectFile: VirtualFile, val forceRead: Boolean)
 }

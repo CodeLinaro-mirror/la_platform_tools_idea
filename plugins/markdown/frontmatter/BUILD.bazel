@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.markdown.frontmatter` start
+content_module_jar(module = ":frontmatter")
+### auto-generated section `dev intellij.markdown.frontmatter` end
 
 ### auto-generated section `build intellij.markdown.frontmatter` start
-
 jvm_library(
     name = "frontmatter",
     srcs = glob(
@@ -58,6 +62,7 @@ jvm_library(
 exports_files(
     [
         "intellij.markdown.frontmatter.iml",
+        "src/main/resources/intellij.markdown.frontmatter.xml",
     ],
     visibility = ["//visibility:public"],
 )

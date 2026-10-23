@@ -7,10 +7,11 @@ import org.jetbrains.annotations.ApiStatus
 /**
  * Handles events from [ApplicationRemoteTopic] on the frontend side.
  *
- * Register listeners via extension points in plugin.xml:
+ * Register listeners via extension points in plugin.xml. The `topicId` attribute repeats the id of [topic],
+ * so the listener is constructed on the first event of its topic:
  * ```xml
  * <extensions defaultExtensionNs="com.intellij">
- *   <platform.rpc.applicationRemoteTopicListener implementation="com.example.MyListener"/>
+ *   <platform.rpc.applicationRemoteTopicListener implementation="com.example.MyListener" topicId="my.application.topic"/>
  * </extensions>
  * ```
  *
@@ -27,7 +28,6 @@ import org.jetbrains.annotations.ApiStatus
  *
  * @see ApplicationRemoteTopic
  */
-@ApiStatus.Internal
 @ApiStatus.OverrideOnly
 interface ApplicationRemoteTopicListener<E : Any> {
   /**
@@ -41,6 +41,7 @@ interface ApplicationRemoteTopicListener<E : Any> {
   fun handleEvent(event: E)
 
   companion object {
+    @ApiStatus.Internal
     val EP_NAME: ExtensionPointName<ApplicationRemoteTopicListener<*>> = ExtensionPointName<ApplicationRemoteTopicListener<*>>("com.intellij.platform.rpc.applicationRemoteTopicListener")
   }
 }

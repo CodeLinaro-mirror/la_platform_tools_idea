@@ -2,6 +2,9 @@
 
   <resource-bundle>messages.ActionsBundle</resource-bundle>
 
+  <dependencies>
+    <module name="intellij.platform.backend"/>
+  </dependencies>
   <projectListeners>
     <listener class="com.intellij.debugger.impl.DebuggerManagerImpl$DebuggerRunContentWithExecutorListener" topic="com.intellij.xdebugger.XDebuggerManagerListener"/>
     <listener class="com.intellij.debugger.impl.HotSwapManager$HotSwapDebuggerManagerListener"
@@ -64,16 +67,28 @@
                     dynamic="true">
       <with attribute="implementationClass" implements="com.intellij.debugger.engine.dfaassist.DfaAssistProvider"/>
     </extensionPoint>
+
+    <extensionPoint qualifiedName="com.intellij.debugger.specialLineBreakpointCaseProvider" beanClass="com.intellij.lang.LanguageExtensionPoint"
+                    dynamic="true">
+      <with attribute="implementationClass" implements="com.intellij.debugger.ui.breakpoints.JvmSpecialLineBreakpointCaseProvider"/>
+    </extensionPoint>
+
     <extensionPoint qualifiedName="com.intellij.debugger.extraDebugNodesProvider"
                     interface="com.intellij.debugger.ui.tree.ExtraDebugNodesProvider" dynamic="true"/>
     <extensionPoint qualifiedName="com.intellij.debugger.steppingListener"
                     interface="com.intellij.debugger.engine.SteppingListener" dynamic="true"/>
     <extensionPoint qualifiedName="com.intellij.debugger.dumpItemsProvider"
                     interface="com.intellij.debugger.impl.ThreadDumpItemsProviderFactory" dynamic="true"/>
+    <extensionPoint qualifiedName="com.intellij.debugger.breakpointThreadDumpCapture"
+                    interface="com.intellij.debugger.ui.breakpoints.BreakpointThreadDumpCapture" dynamic="true"/>
     <extensionPoint qualifiedName="com.intellij.debugger.agentParametersModifier"
                     interface="com.intellij.debugger.engine.DebuggerAgentParametersModifier" dynamic="true"/>
+    <extensionPoint qualifiedName="com.intellij.debugger.agentProvider"
+                    interface="com.intellij.debugger.engine.DebuggerAgentProvider" dynamic="true"/>
     <extensionPoint qualifiedName="com.intellij.debugger.hotSwapSourceFileFilterProvider"
                     interface="com.intellij.debugger.impl.hotswap.HotSwapSourceFileFilterProvider" dynamic="true"/>
+    <extensionPoint qualifiedName="com.intellij.debugger.hotSwapSourceChangeCompatibilityCheckerProvider"
+                    interface="com.intellij.debugger.impl.hotswap.HotSwapSourceChangeCompatibilityCheckerProvider" dynamic="true"/>
     <extensionPoint qualifiedName="com.intellij.debugger.jvmHotSwapListener"
                     interface="com.intellij.debugger.impl.hotswap.JvmHotSwapListener" dynamic="true"/>
   </extensionPoints>
@@ -88,6 +103,8 @@
     <applicationService serviceImplementation="com.intellij.debugger.settings.TraceSettings"/>
     <projectService serviceInterface="com.intellij.debugger.ui.HotSwapUI" serviceImplementation="com.intellij.debugger.ui.HotSwapUIImpl"/>
     <xdebugger.hotSwapInDebugSessionEnabler implementation="com.intellij.debugger.impl.hotswap.JvmHotSwapInDebugSessionEnabler"/>
+    <debugger.hotSwapSourceChangeCompatibilityCheckerProvider
+      implementation="com.intellij.debugger.impl.hotswap.JavaHotSwapSourceChangeCompatibilityCheckerProvider"/>
     <projectService serviceInterface="com.intellij.debugger.DebuggerManager"
                     serviceImplementation="com.intellij.debugger.impl.DebuggerManagerImpl"/>
     <applicationService serviceInterface="com.intellij.debugger.ui.breakpoints.MethodBreakpointProgressSupport"
@@ -107,9 +124,6 @@
 
     <xdebugger.breakpointGroupingRule implementation="com.intellij.debugger.ui.XBreakpointGroupingByPackageRule"/>
     <xdebugger.breakpointGroupingRule implementation="com.intellij.debugger.ui.XBreakpointGroupingByClassRule"/>
-
-    <projectConfigurable parentId="project.propDebugger" instance="com.intellij.debugger.settings.CaptureConfigurable"
-                         key="async.stacktraces.configurable.display.name" bundle="messages.JavaDebuggerBundle"/>
 
     <xdebugger.attachDebuggerProvider implementation="com.intellij.debugger.impl.attach.JavaAttachDebuggerProvider"/>
     <xdebugger.attachDebuggerProvider implementation="com.intellij.debugger.impl.attach.JavaSAAttachDebuggerProvider"/>
@@ -207,6 +221,8 @@
                  description="When enabled uses unique coroutine id to filter stepping"/>
     <registryKey key="debugger.how.to.switch.to.suspend.all" defaultValue="[IMMEDIATE_PAUSE*|PAUSE_WAITING_EVALUATION|METHOD_BREAKPOINT|DISABLE]"
                  description="It is a way how the debugger engine will switch from suspend-thread context to suspend-all context"/>
+    <registryKey key="debugger.hotswap.source.change.compatibility.checks.enabled" defaultValue="true"
+                 description="Enable HotSwap source change compatibility checks before reload"/>
     <registryKey key="coroutine.panel.live.update" defaultValue="false"
                  description="When enabled, Coroutine View will update its contents after every step. By default, the Coroutine View is collapsed after every step in favor of stepping performance."/>
     <registryKey key="coroutine.panel.show.jobs.hierarchy" defaultValue="true"
@@ -254,7 +270,7 @@
     <registryKey key="debugger.run.to.cursor.any.hit.timeout.ms" defaultValue="1000"
                  description="The timeout between the hit run-to-cursor breakpoint in another thread/coroutine and pause the debugger"/>
     <registryKey key="debugger.run.to.cursor.waited.threads.limit" defaultValue="1"
-                 description="How many of threads allow to wait on the hit run-to-cursor breakpoint for the desired hit"/>"/>
+                 description="How many of threads allow to wait on the hit run-to-cursor breakpoint for the desired hit"/>
     <registryKey key="debugger.log.jdi.in.unit.tests" defaultValue="false"
                  description="Enable full JDI logging under DebugProcessImpl.LOG.debug for unit tests"/>
 
@@ -334,6 +350,8 @@
                  description="Use instrumentation conditional and logging breakpoints if possible"/>
     <registryKey key="debugger.breakpoint.instrumentation.hotswap.mode" defaultValue="[NONE|SUPPORT_ONLY_EXTERNAL_HOTSWAP|INSTALL_WHEN_TARGET_METHODS_NOT_ON_STACK|WITH_INSTRUMENTATION_PENDING*]"
                  description="Nested breakpoint instrumentation HotSwap mode. Each option includes previous ones."/>
+    <registryKey key="debugger.breakpoint.instrumentation.source.baseline.match.delay.ms" defaultValue="1000"
+                 description="Delay in milliseconds before breakpoint instrumentation checks a changed source against the accepted source baseline"/>
     <registryKey key="debugger.helper.method.stack.scan.timeout.ms" defaultValue="200"
                  description="Timeout (in ms) for helper-based method stack scans"/>
     <registryKey key="debugger.breakpoint.instrumentation.suspend.context.wait.timeout.ms" defaultValue="200"
@@ -346,7 +364,7 @@
                  description="Enable async stack traces for coroutines"/>
     <registryKey key="debugger.async.stacks.max.depth" defaultValue="500"
                  description="Maximum depth of captured async stacks"/>
-    <registryKey key="debugger.log.async.stacks" defaultValue="false"
+    <registryKey key="debugger.log.async.stacks" defaultValue="true"
                  description="Log async stack trace when log stack trace is checked in breakpoint properties"/>
     <registryKey key="debugger.batch.evaluation" defaultValue="true"
                  description="Evaluate multiple values in a single batch request to the debuggee"/>
@@ -360,10 +378,8 @@
                  description="Watch if a thread we do stepping in is blocked by another suspended thread"/>
     <registryKey key="debugger.check.source" defaultValue="true"
                  description="Check that the source code matches the bytecode"/>
-    <registryKey key="debugger.target.remote.client" defaultValue="true"
-                 description="If set to false, IDEA will connect to the debugger; otherwise, the debugger will connect to IDEA"/>
-    <registryKey key="debugger.target.listen.any.address" defaultValue="true"
-                 description="If set to false, the application will listen only on the address 127.0.0.1"/>
+    <registryKey key="debugger.emulated.method.return.values" defaultValue="true"
+                 description="Show method return values at emulated method exit breakpoints"/>
     <applicationSettings service="com.intellij.debugger.settings.TraceSettings"/>
     <applicationSettings service="com.intellij.debugger.settings.ViewsGeneralSettings"/>
     <applicationSettings service="com.intellij.debugger.settings.ThreadsViewSettings"/>
@@ -407,7 +423,6 @@
         <add-to-group group-id="XDebugger.Frames.Tree.Popup" anchor="last"/>
         <add-to-group group-id="XDebugger.Threads.View.Popup" anchor="last"/>
       </action>
-      <action id="Debugger.EditFrameSource" class="com.intellij.debugger.actions.EditFrameSourceAction" use-shortcut-of="EditSource"/>
       <action id="Debugger.FilterArray" class="com.intellij.debugger.actions.ArrayAction$FilterArrayAction">
         <add-to-group group-id="XDebugger.ValueGroup" anchor="last"/>
       </action>
@@ -417,10 +432,6 @@
       <action id="Debugger.ShowRelatedStack" class="com.intellij.debugger.actions.ShowRelatedStackAction">
         <add-to-group group-id="XDebugger.ValueGroup" anchor="first"/>
       </action>
-      <action id="Debugger.ResumeThread" class="com.intellij.debugger.actions.ResumeThreadAction"/>
-      <action id="Debugger.FreezeThread" class="com.intellij.debugger.actions.FreezeThreadAction"/>
-      <action id="Debugger.InterruptThread" class="com.intellij.debugger.actions.InterruptThreadAction"/>
-
       <action id="Debugger.ForceEarlyReturn" class="com.intellij.debugger.actions.ForceEarlyReturnAction">
         <add-to-group group-id="XDebugger.Frames.Tree.Popup" anchor="after" relative-to-action="Debugger.PopFrame"/>
         <add-to-group group-id="DebuggingActionsGroup" anchor="after" relative-to-action="Debugger.PopFrame"/>
@@ -522,18 +533,6 @@
             icon="AllIcons.General.Gear">
       <add-to-group group-id="DebuggingActionsGroup"/>
     </action>
-
-    <group id="Debugger.ThreadsPanelPopup">
-      <reference ref="Debugger.ResumeThread"/>
-      <reference ref="Debugger.FreezeThread"/>
-      <reference ref="Debugger.InterruptThread"/>
-      <reference ref="Debugger.PopFrame"/>
-      <separator/>
-      <reference ref="ExportThreads"/>
-      <reference ref="Debugger.AddSteppingFilter"/>
-      <separator/>
-      <reference ref="Debugger.CustomizeThreadsView"/>
-    </group>
 
     <action id="com.intellij.debugger.feedback.KotlinDebuggerFeedbackTestAction"
             class="com.intellij.debugger.feedback.KotlinDebuggerFeedbackTestAction" internal="true"/>

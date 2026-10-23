@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.markdown.spellchecker` start
+content_module_jar(module = ":spellchecker")
+### auto-generated section `dev intellij.markdown.spellchecker` end
 
 ### auto-generated section `build intellij.markdown.spellchecker` start
-
 jvm_library(
     name = "spellchecker",
     srcs = glob(
@@ -55,6 +59,7 @@ jvm_library(
 exports_files(
     [
         "intellij.markdown.spellchecker.iml",
+        "src/main/resources/intellij.markdown.spellchecker.xml",
     ],
     visibility = ["//visibility:public"],
 )

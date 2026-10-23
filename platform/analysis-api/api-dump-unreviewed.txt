@@ -1243,6 +1243,7 @@ f:com.intellij.modcommand.ActionContext
 - findLeafOnTheLeft():com.intellij.psi.PsiElement
 - s:from(com.intellij.openapi.editor.Editor,com.intellij.psi.PsiFile):com.intellij.modcommand.ActionContext
 - f:hashCode():I
+- mapToInjected():com.intellij.modcommand.ActionContext
 - mapToInjected(com.intellij.psi.PsiFile):com.intellij.modcommand.ActionContext
 - withFile(com.intellij.psi.PsiFile):com.intellij.modcommand.ActionContext
 f:com.intellij.modcommand.ModChooseAction
@@ -1574,7 +1575,7 @@ f:com.intellij.openapi.fileEditor.FileEditorComposite$Companion
 - f:createFileEditorComposite(java.util.List,java.util.List,Z):com.intellij.openapi.fileEditor.FileEditorComposite
 - bs:createFileEditorComposite$default(com.intellij.openapi.fileEditor.FileEditorComposite$Companion,java.util.List,java.util.List,Z,I,java.lang.Object):com.intellij.openapi.fileEditor.FileEditorComposite
 - f:fromPair(kotlin.Pair):com.intellij.openapi.fileEditor.FileEditorComposite
-a:com.intellij.openapi.fileEditor.FileEditorManager
+Fa:com.intellij.openapi.fileEditor.FileEditorManager
 - sf:SEPARATOR_BORDER:com.intellij.openapi.util.Key
 - sf:SEPARATOR_COLOR:com.intellij.openapi.util.Key
 - sf:SEPARATOR_DISABLED:com.intellij.openapi.util.Key

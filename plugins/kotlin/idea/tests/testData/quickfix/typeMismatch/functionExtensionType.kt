@@ -1,11 +1,10 @@
 // "Change return type of enclosing function 'myFunction' to '(Int) -> Boolean'" "true"
 // WITH_STDLIB
-// K2_ERROR: Return type mismatch: expected '(String, Int) -> Boolean', actual 'KFunction1<Int, Boolean>'.
+// K2_ERROR: RETURN_TYPE_MISMATCH
 
 fun foo() {
     fun myFunction(s: String): (String, Int) -> Boolean = <caret>s::verifyData
 }
 
 fun String.verifyData(a: Int) = this.length > a
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ChangeCallableReturnTypeFix$ForEnclosing
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeTypeQuickFixFactories$UpdateTypeQuickFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeTypeQuickFixFactories$UpdateTypeQuickFix

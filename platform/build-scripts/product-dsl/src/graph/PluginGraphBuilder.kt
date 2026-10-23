@@ -16,6 +16,7 @@ import com.intellij.platform.pluginGraph.EDGE_CONTAINS_MODULE
 import com.intellij.platform.pluginGraph.EDGE_INCLUDES_MODULE_SET
 import com.intellij.platform.pluginGraph.EDGE_MAIN_TARGET
 import com.intellij.platform.pluginGraph.EDGE_NESTED_SET
+import com.intellij.platform.pluginGraph.EDGE_PLUGIN_DECLARES_ALIAS
 import com.intellij.platform.pluginGraph.EDGE_PLUGIN_XML_DEPENDS_ON_CONTENT_MODULE
 import com.intellij.platform.pluginGraph.EDGE_PLUGIN_XML_DEPENDS_ON_PLUGIN
 import com.intellij.platform.pluginGraph.EDGE_TARGET_DEPENDS_ON
@@ -31,7 +32,6 @@ import com.intellij.platform.pluginGraph.NODE_FLAG_IS_ALIAS
 import com.intellij.platform.pluginGraph.NODE_FLAG_IS_DSL_DEFINED
 import com.intellij.platform.pluginGraph.NODE_FLAG_IS_MODULE_SET_WRAPPER
 import com.intellij.platform.pluginGraph.NODE_FLAG_IS_TEST
-import com.intellij.platform.pluginGraph.NODE_FLAG_IS_TEST_DESCRIPTOR
 import com.intellij.platform.pluginGraph.NODE_FLAG_SELF_CONTAINED
 import com.intellij.platform.pluginGraph.NODE_MODULE_SET
 import com.intellij.platform.pluginGraph.NODE_PLUGIN
@@ -42,7 +42,6 @@ import com.intellij.platform.pluginGraph.PLUGIN_DEP_MODERN_MASK
 import com.intellij.platform.pluginGraph.PluginGraph
 import com.intellij.platform.pluginGraph.PluginId
 import com.intellij.platform.pluginGraph.PluginModuleId
-import com.intellij.platform.pluginGraph.TEST_DESCRIPTOR_SUFFIX
 import com.intellij.platform.pluginGraph.TargetDependencyScope
 import com.intellij.platform.pluginGraph.TargetName
 import com.intellij.platform.pluginGraph.aliasNodeName
@@ -57,11 +56,7 @@ import com.intellij.platform.pluginGraph.unpackPluginDepFormats
 import com.intellij.platform.pluginGraph.unpackPluginDepHasConfigFile
 import com.intellij.platform.pluginGraph.unpackPluginDepOptional
 import com.intellij.platform.pluginSystem.parser.impl.elements.ModuleLoadingRuleValue
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import org.jetbrains.intellij.build.ModuleOutputProvider
-import org.jetbrains.intellij.build.productLayout.LIB_MODULE_PREFIX
 import org.jetbrains.intellij.build.productLayout.ModuleSet
 import org.jetbrains.intellij.build.productLayout.contentName
 import org.jetbrains.intellij.build.productLayout.dependency.ModuleDescriptorCache
@@ -71,11 +66,10 @@ import org.jetbrains.intellij.build.productLayout.isModuleSetPluginModuleName
 import org.jetbrains.intellij.build.productLayout.model.ErrorSink
 import org.jetbrains.intellij.build.productLayout.model.error.MissingPluginInGraphError
 import org.jetbrains.intellij.build.productLayout.validator.rule.isTestPlugin
+import org.jetbrains.intellij.build.mapConcurrent
 import org.jetbrains.jps.model.java.JpsJavaDependencyScope
 import org.jetbrains.jps.model.java.JpsJavaExtensionService
-import org.jetbrains.jps.model.module.JpsLibraryDependency
 import org.jetbrains.jps.model.module.JpsModuleDependency
-import org.jetbrains.jps.model.module.JpsModuleReference
 
 /**
  * Builder for [PluginGraph] using AndroidX primitive collections.
@@ -140,10 +134,9 @@ internal class PluginGraphBuilder(
     isDslDefined: Boolean = false,
     pluginId: PluginId? = null,
     pluginAliases: List<PluginId> = emptyList(),
-    isModuleSetWrapper: Boolean = false,
     isAlias: Boolean = false,
   ): Int {
-    val moduleSetWrapper = isModuleSetWrapper || isModuleSetPluginModuleName(name.value)
+    val moduleSetWrapper = isModuleSetPluginModuleName(name.value)
     val existing = store.nameIndex[NODE_PLUGIN].getOrDefault(name.value, -1)
     if (existing >= 0) {
       val flags = (if (isTest) NODE_FLAG_IS_TEST else 0) or
@@ -224,8 +217,7 @@ internal class PluginGraphBuilder(
 
     val id = store.names.size
     store.names.add(name.value)
-    val flags = if (name.value.endsWith("._test")) NODE_FLAG_IS_TEST_DESCRIPTOR else 0
-    store.kinds.add(NODE_CONTENT_MODULE or flags)
+    store.kinds.add(NODE_CONTENT_MODULE)
     store.mutableNameIndex(NODE_CONTENT_MODULE).set(name.value, id)
     store.descriptorFlagsComplete = false
     return id
@@ -241,8 +233,7 @@ internal class PluginGraphBuilder(
 
     val id = store.names.size
     store.names.add(stringId)
-    val flags = if (moduleId.name.endsWith("._test")) NODE_FLAG_IS_TEST_DESCRIPTOR else 0
-    store.kinds.add(NODE_CONTENT_MODULE_WITH_NAMESPACE or flags)
+    store.kinds.add(NODE_CONTENT_MODULE_WITH_NAMESPACE)
     store.mutableNameIndex(NODE_CONTENT_MODULE_WITH_NAMESPACE).set(stringId, id)
     store.descriptorFlagsComplete = false
     return id
@@ -420,7 +411,13 @@ internal class PluginGraphBuilder(
     val contentModuleNames = content.contentModules.mapTo(HashSet()) { it.moduleId.contentName() }
     val isTest = content.isTestPlugin || isTestPlugin(pluginModule, contentModuleNames, testFrameworkContentModules)
 
-    addPlugin(pluginModule, isTest = isTest, isDslDefined = content.isDslDefined, pluginId = content.pluginId, pluginAliases = content.pluginAliases)
+    addPlugin(
+      name = pluginModule,
+      isTest = isTest,
+      isDslDefined = content.isDslDefined,
+      pluginId = content.pluginId,
+      pluginAliases = content.pluginAliases,
+    )
     linkPluginMainTarget(pluginModule)
 
     for (module in content.contentModules) {
@@ -434,6 +431,10 @@ internal class PluginGraphBuilder(
    * Add plugin.xml dependency edges (plugin + content-module deps).
    * Uses plugin IDs only; aliases must be modeled as dedicated alias nodes.
    * Unresolved IDs become placeholder plugin nodes.
+   *
+   * The last step adds [EDGE_PLUGIN_DECLARES_ALIAS] from each plugin to the nodes that carry its
+   * aliases. A dependency edge keeps its target, so a caller that must follow an alias dependency
+   * takes the alias edge as an extra hop.
    */
   fun addPluginDependencyEdges(pluginInfos: Map<TargetName, PluginContentInfo>) {
     if (pluginInfos.isEmpty()) {
@@ -481,6 +482,32 @@ internal class PluginGraphBuilder(
       }
       for (moduleDep in content.moduleDependencies) {
         addPluginModuleDependencyEdge(sourceId, moduleDep)
+      }
+    }
+
+    // last, so that a placeholder node which the loop above created is already in the index
+    linkPluginAliases(idIndex)
+  }
+
+  /**
+   * Link each plugin to the nodes that carry its aliases.
+   *
+   * A plugin declares an alias with `<module value="..."/>`. The graph keeps the alias on the
+   * declaring plugin, and it keeps the alias ID on a separate node. That node is an alias node
+   * which a product bundles, or a placeholder node for an unresolved ID.
+   * A dependency on the alias points at that node, so this edge is the hop to the declaring plugin.
+   *
+   * The step creates no node. An alias that no node names stays out of the graph, because no
+   * dependency edge can point at it.
+   */
+  private fun linkPluginAliases(index: Map<String, MutableList<Int>>) {
+    store.aliases.forEach { nodeId, aliases ->
+      for (alias in aliases) {
+        for (targetId in index.get(alias).orEmpty()) {
+          if (targetId != nodeId) {
+            addEdge(nodeId, targetId, EDGE_PLUGIN_DECLARES_ALIAS)
+          }
+        }
       }
     }
   }
@@ -680,17 +707,13 @@ internal class PluginGraphBuilder(
    * This ensures classifyTarget can treat descriptor-backed targets as ModuleDep
    * even when they are not yet declared as content sources.
    */
-  suspend fun markDescriptorModules(descriptorCache: ModuleDescriptorCache) {
+  fun markDescriptorModules(descriptorCache: ModuleDescriptorCache) {
     store.descriptorFlagsComplete = false
     val targetNames = ArrayList<String>()
     store.nameIndex[NODE_TARGET].forEachKey { targetNames.add(it) }
     for (targetName in targetNames) {
       if (descriptorCache.getOrAnalyze(targetName) != null) {
         markContentModuleHasDescriptor(ContentModuleName(targetName))
-      }
-      val testDescriptorName = targetName + TEST_DESCRIPTOR_SUFFIX
-      if (descriptorCache.getOrAnalyze(testDescriptorName) != null) {
-        markContentModuleHasDescriptor(ContentModuleName(testDescriptorName))
       }
     }
 
@@ -732,11 +755,10 @@ internal class PluginGraphBuilder(
   /**
    * Add JPS dependency edges for all targets in the graph.
    */
-  fun addJpsDependencies(outputProvider: ModuleOutputProvider, projectLibraryToModuleMap: Map<String, String>) {
+  fun addJpsDependencies(outputProvider: ModuleOutputProvider) {
     val javaExtensionService = JpsJavaExtensionService.getInstance()
     val processedTargets = HashSet<String>()
     val targetsToProcess = ArrayDeque<String>()
-    val libraryMap = projectLibraryToModuleMap.ifEmpty { outputProvider.getProjectLibraryToModuleMap() }
 
     // Get initial targets from existing nodes
     val targetIndex = store.nameIndex[NODE_TARGET]
@@ -750,49 +772,23 @@ internal class PluginGraphBuilder(
       if (targetId < 0) continue
       val jpsModule = outputProvider.findModule(targetName) ?: continue
 
+      // a library dependency adds no edge: a library reaches a module only through its wrapper module, which is a module dependency
       for (element in jpsModule.dependenciesList.dependencies) {
-        when (element) {
-          is JpsModuleDependency -> {
-            val depName = element.moduleReference.moduleName
-            val depTargetId = addTarget(depName)
-            if (depName !in processedTargets) {
-              targetsToProcess.addLast(depName)
-            }
-
-            val jpsScope = javaExtensionService.getDependencyExtension(element)?.scope ?: JpsJavaDependencyScope.COMPILE
-            val scope = jpsScope.toTargetDependencyScope()
-            addTargetDependencyEdge(targetId, depTargetId, scope)
-          }
-          is JpsLibraryDependency -> {
-            if (libraryMap.isEmpty()) continue
-            val libRef = element.libraryReference
-            if (libRef.parentReference is JpsModuleReference) {
-              continue
-            }
-            val libraryModuleName = libraryMap.get(libRef.libraryName) ?: continue
-            val depTargetId = addTarget(libraryModuleName)
-            ensureLibraryModuleNode(ContentModuleName(libraryModuleName))
-            if (libraryModuleName !in processedTargets) {
-              targetsToProcess.addLast(libraryModuleName)
-            }
-            val jpsScope = javaExtensionService.getDependencyExtension(element)?.scope ?: JpsJavaDependencyScope.COMPILE
-            val scope = jpsScope.toTargetDependencyScope()
-            addTargetDependencyEdge(targetId, depTargetId, scope)
-          }
-          else -> Unit
+        if (element !is JpsModuleDependency) {
+          continue
         }
+
+        val depName = element.moduleReference.moduleName
+        val depTargetId = addTarget(depName)
+        if (depName !in processedTargets) {
+          targetsToProcess.addLast(depName)
+        }
+
+        val jpsScope = javaExtensionService.getDependencyExtension(element)?.scope ?: JpsJavaDependencyScope.COMPILE
+        val scope = jpsScope.toTargetDependencyScope()
+        addTargetDependencyEdge(targetId, depTargetId, scope)
       }
     }
-  }
-
-  private fun ensureLibraryModuleNode(moduleName: ContentModuleName) {
-    if (!moduleName.value.startsWith(LIB_MODULE_PREFIX)) {
-      return
-    }
-    val moduleId = addModule(moduleName)
-    val targetName = TargetName(moduleName.baseModuleName().value)
-    val targetId = addTarget(targetName)
-    addEdge(moduleId, targetId, EDGE_BACKED_BY)
   }
 
   /**
@@ -813,7 +809,7 @@ internal class PluginGraphBuilder(
    * @param pluginContentCache Cache for extracting plugin info from modules
    * @return Map of newly discovered plugin modules to their extracted content
    */
-  suspend fun registerReferencedPlugins(pluginContentCache: PluginContentProvider): Map<TargetName, PluginContentInfo> {
+  fun registerReferencedPlugins(pluginContentCache: PluginContentProvider): Map<TargetName, PluginContentInfo> {
     val targetIndex = store.nameIndex[NODE_TARGET]
     val candidates = ArrayList<TargetName>()
 
@@ -830,14 +826,10 @@ internal class PluginGraphBuilder(
       candidates.add(TargetName(targetName))
     }
 
-    val discoveredInfos = coroutineScope {
-      candidates.map { pluginModule ->
-        async {
-          val pluginInfo = pluginContentCache.getOrExtract(pluginModule) ?: return@async null
-          pluginModule to pluginInfo
-        }
-      }.awaitAll().filterNotNull()
-    }
+    val discoveredInfos = candidates.mapConcurrent { pluginModule ->
+      val pluginInfo = pluginContentCache.getOrExtract(pluginModule) ?: return@mapConcurrent null
+      pluginModule to pluginInfo
+    }.filterNotNull()
 
     val discovered = LinkedHashMap<TargetName, PluginContentInfo>(discoveredInfos.size)
     for ((pluginModule, pluginInfo) in discoveredInfos) {

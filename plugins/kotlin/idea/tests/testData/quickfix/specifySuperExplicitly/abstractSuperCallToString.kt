@@ -1,6 +1,6 @@
 // "Generate 'toString()'" "true"
 // WITH_STDLIB
-// K2_ERROR: Abstract member cannot be accessed directly.
+// K2_ERROR: ABSTRACT_SUPER_CALL
 
 interface I
 
@@ -14,5 +14,4 @@ class B : A(), I {
         return super.<caret>toString()
     }
 }
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AbstractSuperCallFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.UpdateToCorrectMethodFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.UpdateToCorrectMethodFix

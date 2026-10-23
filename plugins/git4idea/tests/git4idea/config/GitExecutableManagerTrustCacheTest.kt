@@ -2,31 +2,30 @@
 package git4idea.config
 
 import com.intellij.ide.trustedProjects.TrustedProjects
-import com.intellij.testFramework.junit5.SystemProperty
+import com.intellij.openapi.Disposable
+import com.intellij.testFramework.TrustedProjectsTestUtil
 import com.intellij.testFramework.junit5.TestApplication
-import com.intellij.testFramework.junit5.fixture.projectFixture
-import com.intellij.vcs.test.vcsPlatformFixture
+import com.intellij.testFramework.junit5.TestDisposable
 import git4idea.commands.GitCommandNotTrustedException
-import git4idea.config.GitSaveChangesPolicy
 import git4idea.test.GitPlatformTestContext
-import git4idea.test.gitPlatformFixture
+import git4idea.test.gitPlatformContextFixture
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 @TestApplication
-@SystemProperty("idea.trust.headless.disabled", "false")
 internal class GitExecutableManagerTrustCacheTest {
 
-  private val contextFixture = projectFixture(openAfterCreation = true).let { projectFixture ->
-    projectFixture
-      .vcsPlatformFixture()
-      .gitPlatformFixture(projectFixture, defaultSaveChangesPolicy = GitSaveChangesPolicy.SHELVE, hasRemoteGitOperation = false)
-  }
+  private val contextFixture = gitPlatformContextFixture()
   private val context: GitPlatformTestContext get() = contextFixture.get()
+
+  @TestDisposable
+  private lateinit var testDisposable: Disposable
 
   @Test
   fun `an untrusted-project failure is not cached and does not poison a later trusted call`(): Unit = with(context) {
+    TrustedProjectsTestUtil.enableTrustedProjectsCheck(testDisposable)
+
     val manager = GitExecutableManager.getInstance()
     val executable = manager.getExecutable(project)
 

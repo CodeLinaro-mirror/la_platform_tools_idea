@@ -13,8 +13,10 @@ import com.intellij.openapi.application.WriteIntentReadAction;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.DumbService;
+import com.intellij.openapi.project.DumbUtil;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.popup.JBPopupFactory;
+import com.intellij.openapi.util.Condition;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiNamedElement;
@@ -54,11 +56,14 @@ public class RenameElementAction extends DumbAwareAction {
     if (project == null) {
       return false;
     }
+    if (!RefactoringSafeMode.isRefactoringAllowed(dataContext)) {
+      return false;
+    }
     Editor editor = dataContext.getData(CommonDataKeys.EDITOR);
     if (editor != null && InplaceRefactoringContinuation.hasInplaceContinuation(editor, RenameElementAction.class)) {
       return true;
     }
-    return getAvailableRenamers(dataContext).findAny().isPresent();
+    return getAllRenamers(dataContext).anyMatch(getAvailableCondition(project));
   }
 
   @Override
@@ -67,6 +72,9 @@ public class RenameElementAction extends DumbAwareAction {
       DataContext dataContext = e.getDataContext();
       Project project = dataContext.getData(CommonDataKeys.PROJECT);
       if (project == null) {
+        return;
+      }
+      if (!RefactoringSafeMode.isRefactoringAllowed(dataContext)) {
         return;
       }
       Editor editor = dataContext.getData(CommonDataKeys.EDITOR);
@@ -80,14 +88,16 @@ public class RenameElementAction extends DumbAwareAction {
       }
 
       List<Renamer> allRenamers = Utils.computeWithProgressIcon(e.getDataContext(), e.getPlace(), _ -> ReadAction.computeBlocking(
-        () -> getAvailableRenamers(dataContext).toList()));
+        () -> getAllRenamers(dataContext).toList()));
 
-      List<Renamer> availableRenamers = ContainerUtil.filter(allRenamers, DumbService.getInstance(project)::isUsableInCurrentContext);
+      List<Renamer> availableRenamers = ContainerUtil.filter(allRenamers, getAvailableCondition(project));
 
       if (availableRenamers.isEmpty()) {
         // check if rename is not performed due to dumb mode
         if (!allRenamers.isEmpty() && DumbService.isDumb(project)) {
-          String actionUnavailableMessage = IdeBundle.message("dumb.balloon.0.is.not.available.while.indexing", this.getTemplateText());
+          String actionUnavailableMessage = DumbUtil.dumbModeMessage(
+            IdeBundle.message("dumb.balloon.0.is.not.available.while.indexing", this.getTemplateText()),
+            IdeBundle.message("dumb.balloon.0.is.not.available.in.light.mode", this.getTemplateText()));
           Runnable rerunAction = () -> {
             ActionManager.getInstance().tryToExecute(this, null, null, null, true);
           };
@@ -123,8 +133,13 @@ public class RenameElementAction extends DumbAwareAction {
     });
   }
 
-  private static @NotNull Stream<Renamer> getAvailableRenamers(@NotNull DataContext dataContext) {
+  private static @NotNull Stream<Renamer> getAllRenamers(@NotNull DataContext dataContext) {
     return RenamerFactory.EP_NAME.getExtensionList().stream().flatMap(factory -> factory.createRenamers(dataContext).stream());
+  }
+
+  private static @NotNull Condition<Renamer> getAvailableCondition(@NotNull Project project) {
+    DumbService dumbService = DumbService.getInstance(project);
+    return dumbService::isUsableInCurrentContext;
   }
 
   public static boolean isRenameEnabledOnElements(PsiElement @NotNull [] elements) {

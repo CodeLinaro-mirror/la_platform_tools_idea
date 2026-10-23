@@ -1,5 +1,5 @@
 // "Replace with generated @PublishedApi bridge call '`access$test`(...)'" "true"
-// K2_ERROR: Protected function call from public-API inline function is prohibited.
+// K2_ERROR: PROTECTED_CALL_FROM_PUBLIC_INLINE_ERROR
 
 open class ABase {
     protected fun test(p: Int) {
@@ -16,4 +16,3 @@ open class ABase {
     internal fun `access$test`(p: Int) = test(p)
 }
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.replaceWith.ReplaceProtectedToPublishedApiCallFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.replaceWith.ReplaceProtectedToPublishedApiCallFix

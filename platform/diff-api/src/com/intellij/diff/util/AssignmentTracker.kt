@@ -32,7 +32,7 @@ open class AssignmentTracker {
 
   private var assignments: Int = 0
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun onAssigned(isAssigned: Boolean) {
     if (isAssigned) {
       assignments++
@@ -67,9 +67,15 @@ open class AssignmentTracker {
     }
   }
 
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   open fun onEachAssignment() {}
+
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   open fun onEachUnassignment() {}
 
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   open fun onFirstAssignment() {}
+
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   open fun onLastUnassignment() {}
 }

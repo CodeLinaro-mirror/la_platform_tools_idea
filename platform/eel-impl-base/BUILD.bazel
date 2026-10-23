@@ -1,6 +1,17 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//build:compiler-options.bzl", "create_kotlinc_options")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.platform.eel.impl.base` start
+content_module_jar(module = ":eel-impl-base")
+### auto-generated section `dev intellij.platform.eel.impl.base` end
 
 ### auto-generated section `build intellij.platform.eel.impl.base` start
+create_kotlinc_options(
+    name = "custom_eel-impl-base",
+    warn = "error",
+    x_warning_level = ["DEPRECATION:warning"],
+)
 
 jvm_library(
     name = "eel-impl-base",
@@ -12,14 +23,20 @@ jvm_library(
         ],
         allow_empty = True,
     ),
+    kotlinc_opts = ":custom_eel-impl-base",
     module_name = "intellij.platform.eel.impl.base",
+    resource_strip_prefix = "resources",
+    resources = glob(
+        ["resources/**/*"],
+    ),
     visibility = ["//visibility:public"],
     deps = [
         # do not sort,
         "//platform/eel-nioFs",
         "//libraries/kotlinx/coroutines/core",
         "@lib//:kotlin-stdlib",
-        "@lib//:jetbrains-annotations",
+        "//platform/util/annotations",
+        "//libraries/jetbrains/annotations",
     ],
 )
 
@@ -30,6 +47,7 @@ jvm_library(
         [],
         allow_empty = True,
     ),
+    kotlinc_opts = ":custom_eel-impl-base",
     module_name = "intellij.platform.eel.impl.base",
     visibility = ["//visibility:public"],
     runtime_deps = [
@@ -37,6 +55,8 @@ jvm_library(
         ":eel-impl-base",
         "//platform/eel-nioFs:eel-nioFs_test_lib",
         "//libraries/kotlinx/coroutines/core:core_test_lib",
+        "//platform/util/annotations:annotations_test_lib",
+        "//libraries/jetbrains/annotations:annotations_test_lib",
     ],
 )
 ### auto-generated section `build intellij.platform.eel.impl.base` end
@@ -45,6 +65,7 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.eel.impl.base.iml",
+        "resources/intellij.platform.eel.impl.base.xml",
     ],
     visibility = ["//visibility:public"],
 )

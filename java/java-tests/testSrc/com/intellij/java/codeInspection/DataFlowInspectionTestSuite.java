@@ -18,8 +18,6 @@ import com.intellij.codeInsight.daemon.impl.quickfix.ReplaceWithTrivialLambdaFix
 import com.intellij.codeInsight.daemon.impl.quickfix.StreamFilterNotNullFixTest;
 import com.intellij.codeInsight.daemon.impl.quickfix.SurroundWithIfFixTest;
 import com.intellij.codeInsight.daemon.impl.quickfix.UnwrapIfStatementFixTest;
-import com.intellij.java.codeInsight.completion.NormalCompletionDfaTest;
-import com.intellij.java.codeInsight.completion.SmartTypeCompletionDfaTest;
 import com.intellij.java.codeInspection.dataFlow.OptionalOfNullableMisuseInspectionTest;
 import com.intellij.java.slicer.SliceBackwardTest;
 import com.intellij.java.slicer.SliceTreeTest;
@@ -35,6 +33,7 @@ import org.junit.platform.suite.api.Suite;
   DataFlowInspection11Test.class,
   DataFlowInspection16Test.class,
   DataFlowInspection21Test.class,
+  DataFlowInspection26Test.class,
   DataFlowInspectionHeavyTest.class,
   DataFlowInspectionAncientTest.class,
   DataFlowInspectionCancellingTest.class,
@@ -54,11 +53,9 @@ import org.junit.platform.suite.api.Suite;
   SliceTreeTest.class,
   SliceBackwardTest.class,
 
-  SmartTypeCompletionDfaTest.class,
-  NormalCompletionDfaTest.class,
-
   NullableStuffInspectionTest.class,
   NullableStuffInspectionAncientTest.class,
+  NotNullParameterReceivesNullInspectionTest.class,
 
   CheckerNullityTest.class,
 
@@ -79,7 +76,9 @@ import org.junit.platform.suite.api.Suite;
   DeleteRedundantUpdateFixTest.class,
   ReplaceTypeInCastFixTest.class,
   ReplaceMinMaxWithArgumentFixTest.class,
-  OptionalOfNullableMisuseInspectionTest.class
+  OptionalOfNullableMisuseInspectionTest.class,
+
+  DataFlowInspectionTrackerTest.class
   })
 public class DataFlowInspectionTestSuite {
 }

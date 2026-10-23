@@ -1,5 +1,5 @@
 // "Remove explicitly specified return type of called function 'A.component2'" "true"
-// K2_ERROR: Operator call 'component2()' returns 'Int', but 'Unit' is expected.
+// K2_ERROR: COMPONENT_FUNCTION_RETURN_TYPE_MISMATCH
 abstract class A {
     abstract operator fun component1(): Int
     abstract operator fun component2(): Int
@@ -8,5 +8,4 @@ abstract class A {
 fun foo(a: A) {
     val (w: Int, x: Unit) = a<caret>
 }
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ChangeCallableReturnTypeFix$ForCalled
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeTypeQuickFixFactories$UpdateTypeQuickFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeTypeQuickFixFactories$UpdateTypeQuickFix

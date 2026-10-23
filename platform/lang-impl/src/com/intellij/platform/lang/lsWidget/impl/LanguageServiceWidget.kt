@@ -2,6 +2,7 @@
 package com.intellij.platform.lang.lsWidget.impl
 
 import com.intellij.icons.AllIcons
+import com.intellij.ide.plugins.PluginManagerConfigurable
 import com.intellij.ide.ui.LafManager
 import com.intellij.lang.LangBundle
 import com.intellij.openapi.actionSystem.ActionGroup
@@ -10,21 +11,24 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.actionSystem.DefaultActionGroup
+import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.ui.popup.ListPopup
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.wm.StatusBar
 import com.intellij.openapi.wm.StatusBarWidget
 import com.intellij.openapi.wm.impl.status.EditorBasedStatusBarPopup
 import com.intellij.openapi.wm.impl.status.TextPanel
+import com.intellij.platform.lang.lsWidget.LanguageServiceItemRunningState
 import com.intellij.platform.lang.lsWidget.LanguageServicePopupSection.ForCurrentFile
 import com.intellij.platform.lang.lsWidget.LanguageServiceWidgetItem
 import com.intellij.platform.lang.lsWidget.LanguageServiceWidgetItemsProvider
+import com.intellij.ui.IconManager
 import com.intellij.ui.LayeredIcon
 import com.intellij.ui.RowIcon
 import com.intellij.util.IconUtil
-import com.intellij.util.messages.MessageBusConnection
 import com.intellij.util.ui.EmptyIcon
 import com.intellij.util.ui.JBDimension
 import com.intellij.util.ui.JBUI
@@ -34,6 +38,7 @@ import javax.swing.Icon
 import javax.swing.JPanel
 
 private const val maxIconsInStatusBar = 4
+private const val LANGUAGE_SERVER_PLUGIN_SEARCH_TAG = "/tag:\"Language Server\""
 
 internal class LanguageServiceWidget(project: Project, scope: CoroutineScope) : EditorBasedStatusBarPopup(project, false, scope) {
   /**
@@ -51,8 +56,13 @@ internal class LanguageServiceWidget(project: Project, scope: CoroutineScope) : 
 
   override fun createInstance(project: Project): StatusBarWidget = LanguageServiceWidget(project, scope)
 
-  override fun registerCustomListeners(connection: MessageBusConnection) {
-    LanguageServiceWidgetItemsProvider.EP_NAME.extensionList.forEach { it.registerWidgetUpdaters(project, connection, ::update) }
+  /**
+   * Registers the item updaters here, not in the constructor hook `registerCustomListeners`: a provider may call `update`
+   * from another thread right away, and before construction ends the update flow of the superclass is still null.
+   */
+  override fun install(statusBar: StatusBar) {
+    LanguageServiceWidgetItemsProvider.EP_NAME.extensionList.forEach { it.registerWidgetUpdaters(project, myConnection, ::update) }
+    super.install(statusBar)
   }
 
   override fun getWidgetState(file: VirtualFile?): WidgetState {
@@ -66,8 +76,9 @@ internal class LanguageServiceWidget(project: Project, scope: CoroutineScope) : 
 
     val fileSpecificItems = file?.let { allItems.filter { it.widgetActionLocation == ForCurrentFile } } ?: emptyList()
 
-    val widgetIcon = fileSpecificItems.takeIf { it.isNotEmpty() }?.let { createStatusBarIcon(it) }
-                     ?: AllIcons.Json.Object
+    val widgetIcon = (fileSpecificItems.takeIf { it.isNotEmpty() }?.let { createStatusBarIcon(it) }
+                      ?: AllIcons.Json.Object)
+      .let { addLivenessBadge(it, allItems) }
 
     val widgetText = when {
       fileSpecificItems.size > maxIconsInStatusBar -> "+${fileSpecificItems.size - maxIconsInStatusBar + 1}"
@@ -84,6 +95,14 @@ internal class LanguageServiceWidget(project: Project, scope: CoroutineScope) : 
     return WidgetState(tooltip, widgetText, true).apply {
       icon = widgetIcon
     }
+  }
+
+  private fun addLivenessBadge(icon: Icon, allItems: List<LanguageServiceWidgetItem>): Icon = when {
+    allItems.any { it.runningState == LanguageServiceItemRunningState.Running } ->
+      IconManager.getInstance().withIconBadge(icon, JBUI.CurrentTheme.IconBadge.SUCCESS)
+    allItems.any { it.runningState == LanguageServiceItemRunningState.Initializing } ->
+      IconManager.getInstance().withIconBadge(icon, JBUI.CurrentTheme.IconBadge.INFORMATION)
+    else -> icon
   }
 
   private fun createStatusBarIcon(widgetItems: List<LanguageServiceWidgetItem>): Icon {
@@ -136,8 +155,18 @@ internal class LanguageServiceWidget(project: Project, scope: CoroutineScope) : 
 
     group.addSeparator(LangBundle.message("language.services.widget.section.running.on.other.files"))
     otherItems.forEach { group.add(it.createWidgetAction()) }
+    group.addSeparator()
+    group.add(MoreLanguagesAction())
 
     return group
+  }
+
+  private inner class MoreLanguagesAction : AnAction(LangBundle.message("language.services.widget.more.languages")), DumbAware {
+    override fun actionPerformed(e: AnActionEvent) {
+      ShowSettingsUtil.getInstance().showSettingsDialog(project, PluginManagerConfigurable::class.java) {
+        it.navigateToMarketplace(LANGUAGE_SERVER_PLUGIN_SEARCH_TAG)
+      }
+    }
   }
 
   private object NoServices : AnAction(LangBundle.messagePointer("language.services.widget.no.services")), DumbAware {

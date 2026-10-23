@@ -5,6 +5,7 @@ import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.terminal.TerminalTitle
 import com.intellij.terminal.frontend.toolwindow.getTerminalTab
+import com.intellij.terminal.frontend.toolwindow.impl.buildPendingTerminalTab
 import com.intellij.terminal.frontend.toolwindow.impl.getFullTitleText
 import com.intellij.ui.content.Content
 import org.jetbrains.annotations.Nls
@@ -18,31 +19,43 @@ internal class TerminalRenameTabAction : ToolWindowTabRenameActionBase(
   TerminalBundle.message("action.RenameSession.newSessionName.label")
 ), DumbAware {
   override fun getContentDisplayNameToEdit(content: Content, project: Project): String {
-    return getReworkedTerminalTitle(content)
-           ?: getClassicTerminalTitle(content)
-           ?: content.displayName
+    return getTerminalContentDisplayNameToEdit(content)
   }
 
   override fun applyContentDisplayName(content: Content, project: Project, @Nls newContentName: String) {
-    val title = findTerminalTitle(content) ?: return
-    title.change {
-      userDefinedTitle = newContentName
-    }
+    // The context menu of a tab that is not selected can target a pending tab, which has no title to change.
+    content.buildPendingTerminalTab(project)
+    applyTerminalContentDisplayName(content, newContentName)
   }
+}
 
-  private fun findTerminalTitle(content: Content): TerminalTitle? {
-    val terminalView = content.getTerminalTab()?.view
-    val terminalWidget = TerminalToolWindowManager.findWidgetByContent(content)
-    return terminalView?.title ?: terminalWidget?.terminalTitle
-  }
+@Nls
+private fun getReworkedTerminalTitle(content: Content): String? {
+  val view = content.getTerminalTab()?.view ?: return null
+  return view.getFullTitleText()
+}
 
-  private fun getReworkedTerminalTitle(content: Content): String? {
-    val view = content.getTerminalTab()?.view ?: return null
-    return view.getFullTitleText()
-  }
+private fun getClassicTerminalTitle(content: Content): String? {
+  val widget = TerminalToolWindowManager.findWidgetByContent(content) ?: return null
+  return widget.terminalTitle.buildSettingsAwareFullTitle()
+}
 
-  private fun getClassicTerminalTitle(content: Content): String? {
-    val widget = TerminalToolWindowManager.findWidgetByContent(content) ?: return null
-    return widget.terminalTitle.buildSettingsAwareFullTitle()
+internal fun findTerminalTitle(content: Content): TerminalTitle? {
+  val terminalView = content.getTerminalTab()?.view
+  val terminalWidget = TerminalToolWindowManager.findWidgetByContent(content)
+  return terminalView?.title ?: terminalWidget?.terminalTitle
+}
+
+internal fun applyTerminalContentDisplayName(content: Content, @Nls newContentName: String) {
+  val title = findTerminalTitle(content) ?: return
+  title.change {
+    userDefinedTitle = newContentName
   }
+}
+
+@Nls
+internal fun getTerminalContentDisplayNameToEdit(content: Content): String {
+  return getReworkedTerminalTitle(content)
+         ?: getClassicTerminalTitle(content)
+         ?: content.displayName
 }

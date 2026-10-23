@@ -9,9 +9,10 @@ import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiFile
 import com.intellij.util.containers.addIfNotNull
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.containingSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.symbol
 import org.jetbrains.kotlin.idea.actions.generate.createMemberInfo
 import org.jetbrains.kotlin.idea.base.analysis.api.utils.analyzeInModalWindow
-import org.jetbrains.kotlin.idea.base.psi.isInlineOrValue
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.codeinsight.api.applicable.extensions.DefaultMemberFilters
 import org.jetbrains.kotlin.idea.codeinsight.api.applicable.extensions.KotlinEqualsHashCodeGeneratorExtension
@@ -22,7 +23,6 @@ import org.jetbrains.kotlin.idea.core.insertMembersAfterAndReformat
 import org.jetbrains.kotlin.idea.k2.codeinsight.generate.GenerateEqualsAndHashCodeUtils.confirmMemberRewrite
 import org.jetbrains.kotlin.idea.k2.codeinsight.generate.GenerateEqualsAndHashCodeUtils.generateEquals
 import org.jetbrains.kotlin.idea.k2.codeinsight.generate.GenerateEqualsAndHashCodeUtils.generateHashCode
-import org.jetbrains.kotlin.idea.refactoring.memberInfo.KotlinMemberInfo
 import org.jetbrains.kotlin.idea.util.application.executeWriteCommand
 import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtClassOrObject
@@ -49,7 +49,7 @@ class KotlinGenerateEqualsAndHashcodeAction : KotlinGenerateMemberActionBase<Inf
                 && !targetClass.isEnum()
                 && !targetClass.isAnnotation()
                 && !targetClass.isInterface()
-                && !targetClass.isInlineOrValue()
+                && !targetClass.isInline()
     }
 
     override fun invoke(project: Project, editor: Editor, file: PsiFile) {
@@ -67,8 +67,8 @@ class KotlinGenerateEqualsAndHashcodeAction : KotlinGenerateMemberActionBase<Inf
             val classSymbol = klass.symbol as? KaClassSymbol ?: return@analyzeInModalWindow null
             val properties = getPropertiesToUseInGeneratedMember(klass, searchInSuper = true)
 
-            val equalsMethodForClass = this.findEqualsMethodForClass(classSymbol)
-            val hashCodeMethodForClass = this.findHashCodeMethodForClass(classSymbol)
+            val equalsMethodForClass = findEqualsMethodForClass(classSymbol)
+            val hashCodeMethodForClass = findHashCodeMethodForClass(classSymbol)
 
             val preInfo = Info(
                 klass,
@@ -80,7 +80,7 @@ class KotlinGenerateEqualsAndHashcodeAction : KotlinGenerateMemberActionBase<Inf
             Triple(
                 preInfo,
                 properties.map { createMemberInfo(it) },
-                LinkedHashMap(properties.keysToMap<KtNamedDeclaration, KotlinMemberInfo> { createMemberInfo(it) }),
+                LinkedHashMap(properties.keysToMap { createMemberInfo(it) }),
             )
         } ?: return null
 
@@ -140,8 +140,9 @@ class KotlinGenerateEqualsAndHashcodeAction : KotlinGenerateMemberActionBase<Inf
         }
 
         val anchor = with(targetClass.declarations) { lastIsInstanceOrNull<KtNamedFunction>() ?: lastOrNull() }
-        var members: List<KtDeclaration>? = null
-        project.executeWriteCommand(commandName) { members = insertMembersAfterAndReformat(editor, targetClass, prototypes, anchor) }
-        return members ?: emptyList()
+        return project.executeWriteCommand(commandName, null) {
+            insertMembersAfterAndReformat(editor, targetClass, prototypes, anchor)
+        }
     }
+
 }

@@ -1,4 +1,4 @@
-// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.env;
 
 import com.intellij.execution.process.ProcessHandler;
@@ -15,7 +15,7 @@ import com.intellij.openapi.projectRoots.ProjectJdkTable;
 import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.StandardFileSystems;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.newvfs.RefreshQueueImpl;
 import com.intellij.testFramework.EdtTestUtil;
@@ -31,7 +31,6 @@ import com.intellij.testFramework.fixtures.impl.ModuleFixtureBuilderImpl;
 import com.intellij.testFramework.fixtures.impl.ModuleFixtureImpl;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.UIUtil;
-import com.jetbrains.python.PyNames;
 import com.jetbrains.python.PythonModuleTypeBase;
 import com.jetbrains.python.PythonTestUtil;
 import com.jetbrains.python.extensions.ModuleExtKt;
@@ -39,6 +38,7 @@ import com.jetbrains.python.packaging.PyPackageManager;
 import com.jetbrains.python.psi.LanguageLevel;
 import com.jetbrains.python.sdk.InvalidSdkException;
 import com.jetbrains.python.sdk.PythonSdkType;
+import com.jetbrains.python.sdk.internal.PySdkNamesKt;
 import com.jetbrains.python.tools.sdkTools.PySdkTools;
 import com.jetbrains.python.tools.sdkTools.SdkCreationType;
 import org.jetbrains.annotations.NotNull;
@@ -116,7 +116,8 @@ public abstract class PyExecutionFixtureTestTask extends PyTestTask {
     return Collections.emptyList();
   }
 
-  public Project getProject() {
+  @Override
+  public @NotNull Project getProject() {
     return myFixture.getProject();
   }
 
@@ -131,7 +132,7 @@ public abstract class PyExecutionFixtureTestTask extends PyTestTask {
     final File fileToWorkWith = new File(path);
 
     return (fileToWorkWith.isAbsolute()
-            ? LocalFileSystem.getInstance().findFileByIoFile(fileToWorkWith)
+            ? StandardFileSystems.local().findFileByPath(fileToWorkWith.getAbsolutePath())
             : myFixture.getTempDirFixture().getFile(path));
   }
 
@@ -253,12 +254,12 @@ public abstract class PyExecutionFixtureTestTask extends PyTestTask {
 
   public static class PlatformPythonModuleType extends PythonModuleTypeBase<EmptyModuleBuilder> {
 
-    private static final String MODULE_ID = PyNames.PYTHON_MODULE_ID;
+    private static final String MODULE_ID = PySdkNamesKt.PYTHON_MODULE_ID;
 
     @NotNull
     public static PlatformPythonModuleType getInstance() {
       ensureModuleRegistered();
-      return (PlatformPythonModuleType)ModuleTypeManager.getInstance().findByID(PyNames.PYTHON_MODULE_ID);
+      return (PlatformPythonModuleType)ModuleTypeManager.getInstance().findByID(PySdkNamesKt.PYTHON_MODULE_ID);
     }
 
     static void ensureModuleRegistered() {
@@ -291,7 +292,7 @@ public abstract class PyExecutionFixtureTestTask extends PyTestTask {
   @NotNull
   protected Sdk createTempSdk(@NotNull final String sdkHome, @NotNull final SdkCreationType sdkCreationType) throws InvalidSdkException {
 
-    final VirtualFile sdkHomeFile = LocalFileSystem.getInstance().findFileByPath(sdkHome);
+    final VirtualFile sdkHomeFile = StandardFileSystems.local().findFileByPath(sdkHome);
     Assert.assertNotNull("Interpreter file not found: " + sdkHome, sdkHomeFile);
 
     // There can't be two SDKs with same path

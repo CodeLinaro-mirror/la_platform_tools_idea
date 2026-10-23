@@ -11,7 +11,7 @@ import com.jetbrains.python.PyBundle
 import com.jetbrains.python.errorProcessing.PyResult
 import com.jetbrains.python.getOrNull
 import com.jetbrains.python.packaging.PyPIPackageUtil
-import com.jetbrains.python.packaging.PyPackageVersionComparator
+import com.intellij.python.requirements.PyPackageVersionComparator
 import com.jetbrains.python.packaging.cache.PythonPackageSearchResult
 import com.jetbrains.python.packaging.common.ProjectUrl
 import com.jetbrains.python.packaging.common.PythonPackageDetails
@@ -48,28 +48,29 @@ internal fun PyPackageRepository.checkValid(): Boolean {
 object PyPiPackageRepository : PyPackageRepository("PyPI", PyPIPackageUtil.PYPI_LIST_URL, null) {
   override var enabled: Boolean
     get() = service<PyPackageRepositories>().isDefaultRepoEnabled(name)
-    set(value) { service<PyPackageRepositories>().setDefaultRepoEnabled(name, value) }
+    set(value) {
+      service<PyPackageRepositories>().setDefaultRepoEnabled(name, value)
+    }
 
-  @RequiresBackgroundThread
-  override fun search(needle: String, pageSize: Int): PythonPackageSearchResult =
+  override suspend fun search(needle: String, pageSize: Int): PythonPackageSearchResult =
     service<PyPiPackageCache>().search(needle, pageSize)
 
-  @RequiresBackgroundThread
-  override fun hasPackage(name: String): Boolean =
-    name in service<PyPiPackageCache>()
+  override suspend fun hasPackage(name: String): Boolean =
+    service<PyPiPackageCache>().contains(name)
 
-  @RequiresBackgroundThread
   override fun getSize(): Int =
     service<PyPiPackageCache>().size
-  
-  override fun getProjectUrl(packageName: String): ProjectUrl = ProjectUrl(name, PyPIPackageUtil.buildProjectUrl(packageName))
 
-  override fun buildPackageDetails(packageName: String): PyResult<PythonPackageDetails> {
+  override fun getProjectUrl(packageName: String): ProjectUrl =
+    ProjectUrl(name, PyPIPackageUtil.buildProjectUrl(packageName))
+
+  override suspend fun buildPackageDetails(packageName: String): PyResult<PythonPackageDetails> {
     super.buildPackageDetails(packageName).getOrNull()?.let {
       return PyResult.success(it)
     }
 
-    val repositoryUrl = repositoryUrl.ifEmpty { return PyResult.localizedError(PyBundle.message("python.packaging.error.no.repository.url", name)) }
+    val repositoryUrl =
+      repositoryUrl.ifEmpty { return PyResult.localizedError(PyBundle.message("python.packaging.error.no.repository.url", name)) }
 
     val versions = runCatching {
       PyPIPackageUtil.parsePackageVersionsFromRepository(repositoryUrl, packageName)

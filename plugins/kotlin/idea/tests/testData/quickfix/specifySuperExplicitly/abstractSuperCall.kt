@@ -1,5 +1,5 @@
 // "Specify super type 'IntA' explicitly" "true"
-// K2_ERROR: Abstract member cannot be accessed directly.
+// K2_ERROR: ABSTRACT_SUPER_CALL
 
 interface IntA {
     fun check(): String = "OK"
@@ -23,5 +23,4 @@ class DerivedB : DerivedA(), IntB {
     }
 }
 
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AbstractSuperCallFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.SpecifySuperTypeExplicitlyFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.SpecifySuperTypeExplicitlyFix

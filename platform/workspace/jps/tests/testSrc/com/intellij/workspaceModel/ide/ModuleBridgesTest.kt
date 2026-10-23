@@ -1,21 +1,21 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.workspaceModel.ide
 
 import com.intellij.java.workspace.entities.JavaSourceRootPropertiesEntity
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.EDT
+import com.intellij.openapi.application.edtWriteAction
 import com.intellij.openapi.application.invokeAndWaitIfNeeded
 import com.intellij.openapi.application.runWriteAction
 import com.intellij.openapi.application.runWriteActionAndWait
-import com.intellij.openapi.application.edtWriteAction
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.components.StoragePathMacros
-import com.intellij.openapi.components.impl.stores.stateStore as moduleStateStore
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.module.EmptyModuleType
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.module.ModuleManager
 import com.intellij.openapi.module.ModuleType
+import com.intellij.openapi.project.ModuleListener
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.modules
 import com.intellij.openapi.project.rootManager
@@ -68,6 +68,7 @@ import com.intellij.platform.workspace.storage.impl.url.toVirtualFileUrl
 import com.intellij.platform.workspace.storage.toBuilder
 import com.intellij.platform.workspace.storage.url.VirtualFileUrlManager
 import com.intellij.project.stateStore
+import com.intellij.serviceContainer.AlreadyDisposedException
 import com.intellij.testFramework.ApplicationRule
 import com.intellij.testFramework.DisposableRule
 import com.intellij.testFramework.PlatformTestUtil
@@ -92,11 +93,14 @@ import com.intellij.workspaceModel.ide.impl.legacyBridge.module.roots.ModuleRoot
 import com.intellij.workspaceModel.ide.legacyBridge.LegacyBridgeJpsEntitySourceFactory
 import com.intellij.workspaceModel.ide.legacyBridge.ModuleBridge
 import com.intellij.workspaceModel.ide.legacyBridge.findModuleEntity
+import com.intellij.workspaceModel.ide.legacyBridge.findModuleEntityIfNotDisposed
 import com.intellij.workspaceModel.ide.legacyBridge.impl.java.JAVA_MODULE_ENTITY_TYPE_ID_NAME
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.assertj.core.api.Assertions
+import org.jetbrains.jps.model.java.JavaSourceRootProperties
+import org.jetbrains.jps.model.java.JavaSourceRootType
 import org.jetbrains.jps.model.java.LanguageLevel
 import org.jetbrains.jps.model.module.UnknownSourceRootType
 import org.jetbrains.jps.model.module.UnknownSourceRootTypeProperties
@@ -113,10 +117,12 @@ import org.junit.Before
 import org.junit.ClassRule
 import org.junit.Rule
 import org.junit.Test
+import org.junit.jupiter.api.assertThrows
 import java.io.File
 import java.io.PrintStream
 import java.nio.file.Files
 import kotlin.random.Random
+import com.intellij.openapi.components.impl.stores.stateStore as moduleStateStore
 
 class ModuleBridgesTest {
   @Rule
@@ -342,7 +348,7 @@ class ModuleBridgesTest {
         moduleManager.disposeModule(module)
       }
 
-      val moduleDirUrl = virtualFileManager.getOrCreateFromUrl(VfsUtilCore.pathToUrl(project.basePath!!))
+      val moduleDirUrl = virtualFileManager.storeAndGet(VfsUtilCore.pathToUrl(project.basePath!!))
       val projectModel = WorkspaceModel.getInstance(project)
 
       projectModel.updateProjectModel {
@@ -373,7 +379,7 @@ class ModuleBridgesTest {
       moduleManager.disposeModule(module)
     }
 
-    val moduleDirUrl = virtualFileManager.getOrCreateFromUrl(VfsUtilCore.pathToUrl(project.basePath!!))
+    val moduleDirUrl = virtualFileManager.storeAndGet(VfsUtilCore.pathToUrl(project.basePath!!))
     val projectModel = WorkspaceModel.getInstance(project)
 
     project.messageBus.connect(disposableRule.disposable).subscribe(WorkspaceModelTopics.CHANGED,
@@ -461,7 +467,7 @@ class ModuleBridgesTest {
       val moduleManager = ModuleManager.getInstance(project)
 
       val dir = File(project.basePath, "dir")
-      val moduleDirUrl = virtualFileManager.getOrCreateFromUrl(VfsUtilCore.pathToUrl(project.basePath!!))
+      val moduleDirUrl = virtualFileManager.storeAndGet(VfsUtilCore.pathToUrl(project.basePath!!))
       val projectModel = WorkspaceModel.getInstance(project)
 
       val projectLocation = getJpsProjectConfigLocation(project)!!
@@ -721,6 +727,69 @@ class ModuleBridgesTest {
   }
 
   @Test
+  fun `test packageMatchesDirectory saving`() = runBlocking {
+    val tempDir = temporaryDirectoryRule.newDirectoryPath().toFile()
+    val moduleImlFile = File(tempDir, "my.iml")
+    Files.createDirectories(moduleImlFile.parentFile.toPath())
+
+    WriteCommandAction.runWriteCommandAction(project) {
+      val moduleManager = ModuleManager.getInstance(project)
+
+      val module = moduleManager.newModule(moduleImlFile.path, JAVA_MODULE_ENTITY_TYPE_ID_NAME)
+      ModuleRootModificationUtil.updateModel(module) { model ->
+        val url = VfsUtilCore.pathToUrl(FileUtil.toSystemIndependentName(tempDir.path))
+        val contentEntry = model.addContentEntry(url)
+        contentEntry.addSourceFolder("$url/root1", JavaSourceRootType.SOURCE)
+        contentEntry.addSourceFolder("$url/root2", JavaSourceRootType.SOURCE, JavaSourceRootProperties("", false, true))
+        contentEntry.addSourceFolder("$url/root3", JavaSourceRootType.SOURCE, JavaSourceRootProperties("", false, false))
+      }
+    }
+
+    project.stateStore.save()
+
+    // The default value 'true' must stay out of the file. Only 'false' is written.
+    val rootManagerComponent = JDomSerializationUtil.findComponent(JDOMUtil.load(moduleImlFile), "NewModuleRootManager")!!
+    assertEquals("""
+            <content url="file://${'$'}MODULE_DIR${'$'}">
+              <sourceFolder url="file://${'$'}MODULE_DIR${'$'}/root1" isTestSource="false" />
+              <sourceFolder url="file://${'$'}MODULE_DIR${'$'}/root2" isTestSource="false" />
+              <sourceFolder url="file://${'$'}MODULE_DIR${'$'}/root3" isTestSource="false" packageMatchesDirectory="false" />
+            </content>
+      """.trimIndent(), JDOMUtil.write(rootManagerComponent.getChild("content")!!))
+  }
+
+  @Test
+  fun `test packageMatchesDirectory loading`() {
+    val tempDir = temporaryDirectoryRule.newDirectoryPath()
+    val moduleImlFile = tempDir.resolve("my.iml")
+    Files.createDirectories(moduleImlFile.parent)
+    moduleImlFile.write("""
+      <module type="JAVA_MODULE" version="4">
+        <component name="NewModuleRootManager">
+          <content url="file://${'$'}MODULE_DIR${'$'}">
+            <sourceFolder url="file://${'$'}MODULE_DIR${'$'}/root1" isTestSource="false" />
+            <sourceFolder url="file://${'$'}MODULE_DIR${'$'}/root2" isTestSource="false" packageMatchesDirectory="true" />
+            <sourceFolder url="file://${'$'}MODULE_DIR${'$'}/root3" isTestSource="false" packageMatchesDirectory="false" />
+          </content>
+        </component>
+      </module>
+    """.trimIndent())
+
+    WriteCommandAction.runWriteCommandAction(project) {
+      val module = ModuleManager.getInstance(project).loadModule(moduleImlFile)
+      val contentEntry = ModuleRootManager.getInstance(module).contentEntries.single()
+
+      val properties = contentEntry.sourceFolders.map { it.jpsElement.properties as JavaSourceRootProperties }
+      assertEquals(listOf(true, true, false), properties.map { it.isPackageMatchesDirectory })
+
+      val entities = WorkspaceModel.getInstance(project).currentSnapshot.entities(JavaSourceRootPropertiesEntity::class.java)
+        .toList()
+        .sortedBy { it.sourceRoot.url.url }
+      assertEquals(listOf(true, true, false), entities.map { it.packageMatchesDirectory })
+    }
+  }
+
+  @Test
   fun `test remove module removes source roots`() = runBlocking {
     startLog()
     val moduleName = "build"
@@ -858,6 +927,51 @@ class ModuleBridgesTest {
   }
 
   @Test
+  fun `find module entity of a removed module`() {
+    val module = projectModel.createModule()
+    val moduleName = module.name
+    assertEquals(moduleName, module.findModuleEntityIfNotDisposed().name)
+
+    // `moduleRemoved` comes after the entity leaves the current storage, but before the bridge is disposed. ModuleBridgeCleaner pins the
+    // storage of a removed module to the snapshot taken before the removal, so a caller in this window still gets the entity.
+    // Before PY-91832 this window gave an `IllegalStateException`.
+    val namesInListener = mutableListOf<String>()
+    project.messageBus.connect(disposableRule.disposable).subscribe(ModuleListener.TOPIC, object : ModuleListener {
+      override fun moduleRemoved(project: Project, module: Module) {
+        namesInListener.add(module.findModuleEntityIfNotDisposed().name)
+      }
+    })
+
+    projectModel.removeModule(module)
+
+    assertEquals(listOf(moduleName), namesInListener)
+
+    // The pin outlives the disposal, but a disposed module must stop the activity of the caller.
+    assertTrue(module.isDisposed)
+    assertThrows<AlreadyDisposedException> { module.findModuleEntityIfNotDisposed() }
+
+    // Only `findModuleEntityIfNotDisposed` reads the pinned storage. This function reads the current storage alone.
+    assertNull(module.findModuleEntity())
+  }
+
+  @Test
+  fun `find module entity after the entity is removed from the storage`() {
+    WriteCommandAction.runWriteCommandAction(project) {
+      val module = projectModel.createModule()
+
+      // A project reload removes the entity through the workspace model, not through the module manager. This is the PY-91832 path.
+      WorkspaceModel.getInstance(project).updateProjectModel {
+        it.removeEntity(it.entities(ModuleEntity::class.java).single())
+      }
+
+      // The bridge is disposed at this point. `AlreadyDisposedException` is a `ProcessCanceledException`, so a background job that holds a
+      // stale module stops instead of failing. Before PY-91832 this path gave an `IllegalStateException`.
+      assertTrue(module.isDisposed)
+      assertThrows<AlreadyDisposedException> { module.findModuleEntityIfNotDisposed() }
+    }
+  }
+
+  @Test
   fun `recreate module`() = WriteCommandAction.runWriteCommandAction(project) {
     val moduleManager = ModuleManager.getInstance(project)
 
@@ -892,7 +1006,7 @@ class ModuleBridgesTest {
     assertEquals(NonPersistentEntitySource, moduleEntity.entitySource)
 
     val moduleDirPath = temporaryDirectoryRule.newDirectoryPath(moduleName).toString()
-    val moduleDirVfu = virtualFileUrlManager.getOrCreateFromUrl(VfsUtilCore.pathToUrl(moduleDirPath))
+    val moduleDirVfu = virtualFileUrlManager.storeAndGet(VfsUtilCore.pathToUrl(moduleDirPath))
     val moduleEntitySource = LegacyBridgeJpsEntitySourceFactory.getInstance(project).createEntitySourceForModule(
       baseModuleDir = moduleDirVfu,
       externalSource = null,
@@ -922,7 +1036,7 @@ class ModuleBridgesTest {
     assertFalse(newNonPersistentModule.canStoreSettings())
 
     val moduleDirPath = temporaryDirectoryRule.newDirectoryPath(renamedModuleName)
-    val moduleDirVfu = virtualFileUrlManager.getOrCreateFromUrl(VfsUtilCore.pathToUrl(moduleDirPath.toString()))
+    val moduleDirVfu = virtualFileUrlManager.storeAndGet(VfsUtilCore.pathToUrl(moduleDirPath.toString()))
     val moduleEntitySource = LegacyBridgeJpsEntitySourceFactory.getInstance(project).createEntitySourceForModule(
       baseModuleDir = moduleDirVfu,
       externalSource = null,

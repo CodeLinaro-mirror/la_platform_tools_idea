@@ -2,10 +2,10 @@
 // ERROR: No value passed for parameter 'foo'
 // ERROR: No value passed for parameter 'foo'
 // ERROR: No value passed for parameter 'foo'
-// K2_ERROR: Unresolved reference 'foo'.
-// K2_AFTER_ERROR: No value passed for parameter 'foo'.
-// K2_AFTER_ERROR: No value passed for parameter 'foo'.
-// K2_AFTER_ERROR: No value passed for parameter 'foo'.
+// K2_AFTER_ERROR: NO_VALUE_FOR_PARAMETER
+// K2_AFTER_ERROR: NO_VALUE_FOR_PARAMETER
+// K2_AFTER_ERROR: NO_VALUE_FOR_PARAMETER
+// K2_ERROR: UNRESOLVED_REFERENCE
 
 enum class E {
     A,
@@ -14,6 +14,5 @@ enum class E {
 
     val t: Int = <caret>foo
 }
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.createFromUsage.createVariable.CreateParameterFromUsageFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.quickFixes.createFromUsage.K2CreateParameterFromUsageBuilder$CreateParameterFromUsageAction
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.quickFixes.createFromUsage.K2CreateParameterFromUsageBuilder$CreateParameterFromUsageAction
 // TEST_PREVIEW: foo: kotlin.Int

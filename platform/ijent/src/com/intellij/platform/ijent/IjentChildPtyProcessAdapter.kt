@@ -1,13 +1,12 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.platform.ijent
 
+import com.intellij.execution.process.PtyProcessControl
 import com.intellij.execution.process.SelfKiller
 import com.intellij.platform.eel.EelProcess
-import com.pty4j.PtyProcess
-import com.pty4j.WinSize
+import com.intellij.platform.eel.EelProcessManagementApi
 import kotlinx.coroutines.CoroutineScope
 import org.jetbrains.annotations.ApiStatus
-import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.concurrent.CompletableFuture
@@ -20,9 +19,10 @@ import java.util.concurrent.TimeUnit
  */
 @ApiStatus.Internal
 class IjentChildPtyProcessAdapter(
-  coroutineScope: CoroutineScope,
+  private val coroutineScope: CoroutineScope,
   private val ijentChildProcess: EelProcess,
-) : PtyProcess(), SelfKiller {
+  private val processManagement: EelProcessManagementApi? = null,
+) : Process(), PtyProcessControl, SelfKiller {
   private val delegate = IjentChildProcessAdapterDelegate(
     coroutineScope,
     ijentChildProcess,
@@ -44,10 +44,9 @@ class IjentChildPtyProcessAdapter(
   override fun destroy(): Unit = delegate.destroy()
 
   @Throws(InterruptedException::class)
-  override fun setWinSize(winSize: WinSize): Unit = delegate.runBlockingInContext {
-    // Notice that setWinSize doesn't throw InterruptedException in contrast with many other methods of Process.
+  override fun setWindowSize(columns: Int, rows: Int): Unit = delegate.runBlockingInContext {
     try {
-      delegate.ijentChildProcess.resizePty(columns = winSize.columns, rows = winSize.rows)
+      delegate.ijentChildProcess.resizePty(columns = columns, rows = rows)
     }
     catch (err: EelProcess.ResizePtyError) {
       // The other implementation throw IllegalStateException in such cases.
@@ -55,11 +54,7 @@ class IjentChildPtyProcessAdapter(
     }
   }
 
-  @Throws(IOException::class)
-  override fun getWinSize(): WinSize {
-    // The method seems to be unused, while it requires efforts for implementation.
-    TODO("Not yet implemented")
-  }
+  override val enterKeyCode: Byte get() = 13
 
   @Throws(InterruptedException::class)
   override fun waitFor(timeout: Long, unit: TimeUnit): Boolean = delegate.waitFor(timeout, unit)
@@ -77,6 +72,18 @@ class IjentChildPtyProcessAdapter(
    */
   override fun pid(): Long =
     throw UnsupportedOperationException()
+
+  /**
+   * Returns a [ProcessHandle] for the remote process backed by [ijentChildProcess].
+   *
+   * Unlike [pid], the handle intentionally exposes the environment-side pid and the process tree of the environment, so that callers
+   * can navigate [ProcessHandle.children] / [ProcessHandle.descendants] and terminate subtrees.
+   */
+  override fun toHandle(): ProcessHandle =
+    if (processManagement != null)
+      IjentChildProcessHandlerAdapter(processManagement, coroutineScope, ijentChildProcess.pid.value, ownProcess = ijentChildProcess, cachedInfo = null)
+    else
+      super.toHandle()
 
   override fun onExit(): CompletableFuture<Process> =
     delegate.onExit().thenApply { this }

@@ -94,12 +94,14 @@ public class ExpressionSelectorModExpander implements PostfixModExpander {
         return new ModCommandAction() {
           @Override
           public @NotNull Presentation getPresentation(@NotNull ActionContext ctx) {
-            return Presentation.of(title).withHighlighting(expr.getTextRange());
+            return Presentation.of(title)
+              .withHighlighting(PostfixModExpander.rangesToHighlight(actionContext, expr.getTextRange()));
           }
 
           @Override
           public @NotNull ModCommand perform(@NotNull ActionContext ctx) {
-            return prepareAndExpandModForChooseExpression(ctx, new TextRange(keyRange.getStartOffset(), keyRange.getStartOffset()), expr, provider);
+            return prepareAndExpandModForChooseExpression(ctx, new TextRange(keyRange.getStartOffset(), keyRange.getStartOffset()), expr,
+                                                          provider);
           }
 
           @Override
@@ -117,15 +119,10 @@ public class ExpressionSelectorModExpander implements PostfixModExpander {
                                                                      @NotNull TextRange key,
                                                                      @NotNull PsiElement virtualExpression,
                                                                      @NotNull PostfixTemplateProvider provider) {
-    return ModCommand.psiUpdate(ctx,
-                                true,
-                                updater -> {
-                                  updater.select(TextRange.from(key.getStartOffset(), 0));
-                                  updater.getDocument().deleteString(PostfixLiveTemplate.positiveOffset(key.getStartOffset()), ctx.selection().getStartOffset());
-                                  PsiDocumentManager.getInstance(ctx.project()).commitDocument(updater.getDocument());
-                                  provider.prepareCopyForModCommand(updater.getPsiFile(), PostfixLiveTemplate.positiveOffset(key.getStartOffset()));
-                                  PsiElement elementInCopy = PsiTreeUtil.findSameElementInCopy(virtualExpression, updater.getPsiFile());
-                                  myExpandAction.expand(ctx, updater, elementInCopy);
-                                });
+    return PostfixModExpander.psiUpdateRemovingTemplateKey(ctx, key, updater -> {
+      provider.prepareCopyForModCommand(updater.getPsiFile(), PostfixLiveTemplate.positiveOffset(key.getStartOffset()));
+      PsiElement elementInCopy = PsiTreeUtil.findSameElementInCopy(virtualExpression, updater.getPsiFile());
+      myExpandAction.expand(ctx, updater, elementInCopy);
+    });
   }
 }

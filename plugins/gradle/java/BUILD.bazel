@@ -1,8 +1,12 @@
 load("@community//build:tests-options.bzl", "jps_test")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.gradle.java` start
+content_module_jar(module = ":java")
+### auto-generated section `dev intellij.gradle.java` end
 
 ### auto-generated section `build intellij.gradle.java` start
-
 jvm_library(
     name = "java",
     srcs = glob(
@@ -54,6 +58,7 @@ jvm_library(
         "//platform/workspace/storage",
         "//java/execution/impl",
         "//platform/lang-impl",
+        "//platform/buildView",
         "//java/openapi:java",
         "//java/java-syntax:syntax",
         "//java/java-impl:impl",
@@ -84,8 +89,10 @@ jvm_library(
         "//java/java-frontback-psi-api:frontback-psi",
         "//platform/eel-provider",
         "//platform/execution",
+        "//platform/consoleView",
         "//platform/testRunner",
         "//plugins/properties/properties-psi-impl:backend-psi",
+        "//plugins/gradle/properties",
     ],
 )
 
@@ -134,6 +141,7 @@ jvm_library(
         "//platform/workspace/storage:storage_test_lib",
         "//java/execution/impl:impl_test_lib",
         "//platform/lang-impl:lang-impl_test_lib",
+        "//platform/buildView:buildView_test_lib",
         "//java/openapi:java_test_lib",
         "//java/java-syntax:syntax_test_lib",
         "//java/java-impl:impl_test_lib",
@@ -164,8 +172,10 @@ jvm_library(
         "//java/java-frontback-psi-api:frontback-psi_test_lib",
         "//platform/eel-provider:eel-provider_test_lib",
         "//platform/execution:execution_test_lib",
+        "//platform/consoleView:consoleView_test_lib",
         "//platform/testRunner:testRunner_test_lib",
         "//plugins/properties/properties-psi-impl:backend-psi_test_lib",
+        "//plugins/gradle/properties:properties_test_lib",
     ],
 )
 ### auto-generated section `build intellij.gradle.java` end
@@ -174,13 +184,13 @@ jvm_library(
 exports_files(
     [
         "intellij.gradle.java.iml",
+        "resources/intellij.gradle.java.xml",
     ],
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.gradle.java` end
 
 ### auto-generated section `build intellij.gradle.java.tests` start
-
 jvm_library(
     name = "java-tests",
     srcs = glob(
@@ -225,7 +235,8 @@ jvm_library(
     deps = [
         # do not sort,
         "@lib//:jmock",
-        "@lib//:junit4",
+        "//libraries/junit4",
+        "//libraries/junit4:junit4_test_lib",
         "//platform/analysis-api:analysis",
         "//platform/analysis-api:analysis_test_lib",
         "//platform/util/concurrency",
@@ -238,6 +249,8 @@ jvm_library(
         "//platform/execution-impl:execution-impl_test_lib",
         "//platform/external-system-impl:externalSystem-impl",
         "//platform/external-system-impl:externalSystem-impl_test_lib",
+        "//platform/buildView",
+        "//platform/buildView:buildView_test_lib",
         "//platform/indexing-api:indexing",
         "//platform/indexing-api:indexing_test_lib",
         "//jps/model-api:model",
@@ -257,8 +270,6 @@ jvm_library(
         "//java/java-psi-api:psi",
         "//java/java-psi-api:psi_test_lib",
         "//platform/observable",
-        "//java/java-runtime:rt",
-        "//java/java-runtime:rt_test_lib",
         "//plugins/gradle/properties",
         "//plugins/gradle/properties:properties_test_lib",
         "//plugins/gradle/java",
@@ -281,7 +292,8 @@ jvm_library(
         "//plugins/maven-server-api:maven-server_test_lib",
         "//libraries/mockito",
         "//libraries/mockito:mockito_test_lib",
-        "@lib//:mockito-kotlin",
+        "//libraries/mockito-kotlin",
+        "//libraries/mockito-kotlin:mockito-kotlin_test_lib",
         "//java/execution/impl",
         "//java/execution/impl:impl_test_lib",
         "//java/java-frontback-psi-api:frontback-psi",
@@ -314,8 +326,6 @@ jvm_library(
         "//libraries/kotlinx/coroutines/core:core_test_lib",
         "//platform/testFramework/junit5",
         "//platform/testFramework/junit5:junit5_test_lib",
-        "//tools/intellij.tools.ide.metrics.benchmark:ide-metrics-benchmark",
-        "//tools/intellij.tools.ide.metrics.benchmark:ide-metrics-benchmark_test_lib",
         "//platform/backend/workspace",
         "//platform/backend/workspace:workspace_test_lib",
         "//platform/backend/observation",
@@ -336,6 +346,8 @@ jvm_library(
         "//platform/statistics:statistics_test_lib",
         "//platform/execution",
         "//platform/execution:execution_test_lib",
+        "//platform/consoleView",
+        "//platform/consoleView:consoleView_test_lib",
         "//platform/refactoring",
         "//platform/refactoring:refactoring_test_lib",
         "//plugins/gradle/java/toml",
@@ -346,8 +358,8 @@ jvm_library(
         "//plugins/gradle/java/groovy/toml:toml_test_lib",
         "//plugins/gradle/java/properties",
         "//plugins/gradle/java/properties:properties_test_lib",
-        "//plugins/groovy:groovy-tests",
-        "//plugins/groovy:groovy-tests_test_lib",
+        "//plugins/groovy/testFramework",
+        "//plugins/groovy/testFramework:testFramework_test_lib",
         "//platform/smRunner:smRunner-tests",
         "//platform/smRunner:smRunner-tests_test_lib",
         "//platform/util:util-ui",
@@ -356,10 +368,12 @@ jvm_library(
         "//platform/util-ex:util-ex_test_lib",
         "//platform/testRunner",
         "//platform/testRunner:testRunner_test_lib",
-        "//libraries/junit5",
-        "//libraries/junit5:junit5_test_lib",
-        "//libraries/junit5-params",
-        "//libraries/junit5-params:junit5-params_test_lib",
+        "//libraries/junit6",
+        "//libraries/junit6:junit6_test_lib",
+        "//libraries/junit6-params",
+        "//libraries/junit6-params:junit6-params_test_lib",
+        "//plugins/gradle/codeInsight/backend",
+        "//plugins/gradle/codeInsight/backend:backend_test_lib",
     ],
 )
 ### auto-generated section `build intellij.gradle.java.tests` end
@@ -374,7 +388,6 @@ exports_files(
 ### auto-generated section `iml intellij.gradle.java.tests` end
 
 ### auto-generated section `test intellij.gradle.java.tests` start
-
 jps_test(
     name = "java-tests_test",
     runtime_deps = [":java-tests_test_lib"],

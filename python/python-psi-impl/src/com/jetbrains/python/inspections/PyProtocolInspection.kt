@@ -3,6 +3,7 @@ package com.jetbrains.python.inspections
 
 import com.intellij.codeInspection.LocalInspectionToolSession
 import com.intellij.codeInspection.ProblemHighlightType.GENERIC_ERROR
+import com.intellij.codeInspection.ProblemHighlightType.GENERIC_ERROR_OR_WARNING
 import com.intellij.codeInspection.ProblemsHolder
 import com.intellij.psi.PsiElementVisitor
 import com.intellij.psi.PsiNameIdentifierOwner
@@ -79,9 +80,9 @@ class PyProtocolInspection : PyInspection() {
         .filterIsInstance<PyClassType>()
         .filter { it.isProtocol(myTypeEvalContext) }
         .forEach { protocol ->
-          inspectProtocolSubclass(protocol, type, myTypeEvalContext).forEach {
+          inspectProtocolSubclass(protocol.toInstance(), type.toInstance(), myTypeEvalContext).forEach {
             val subclassElements = it.second
-            if (subclassElements.isNotEmpty()) {
+            if (subclassElements.isNotEmpty() && it.first.name !in CONSTRUCTOR_NAMES) {
               checkMemberCompatibility(it.first, subclassElements, type, protocol)
             }
           }
@@ -248,7 +249,14 @@ class PyProtocolInspection : PyInspection() {
           val elementName = if (element is PsiNameIdentifierOwner) element.name else return@forEach
 
           if (!PyTypeChecker.match(expectedMember.type, it.type, myTypeEvalContext)) {
-            registerProblem(place, PyPsiBundle.problemMessage("INSP.protocol.element.type.incompatible.with.protocol", elementName, CodifiedParam.ofReference(protocol.pyClass)))
+            val actualType = it.type
+            val message = PyPsiBundle.problemMessage("INSP.protocol.element.type.incompatible.with.protocol", elementName, CodifiedParam.ofReference(protocol.pyClass))
+            // The aligned diff (for structural members) with the assignability breakdown appended below it on-the-fly.
+            val diff = PyTypeDiff.diffTooltip(expectedMember.type, actualType, myTypeEvalContext)
+            val enriched = if (diff != null) message.copy(tooltip = diff) else message
+            registerProblemWithTooltip(place, enriched, GENERIC_ERROR_OR_WARNING) {
+              PyTypeCheckerInspectionProblemRegistrar.breakdownTooltip(enriched, expectedMember.type, actualType, myTypeEvalContext, place)
+            }
           }
           else if (expectedMember.isWritable && !it.isWritable || expectedMember.isDeletable && !it.isDeletable) {
             registerProblem(place, PyPsiBundle.problemMessage("INSP.protocol.element.type.not.writable", elementName, CodifiedParam.ofReference(protocol.pyClass)))
@@ -270,3 +278,6 @@ class PyProtocolInspection : PyInspection() {
     }
   }
 }
+
+/** The inspection does not check these protocol members against a subclass, because a subclass can change its constructor signature. */
+private val CONSTRUCTOR_NAMES = setOf(PyNames.INIT, PyNames.NEW)

@@ -13,8 +13,10 @@ import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.PlatformDataKeys
 import com.intellij.openapi.actionSystem.Separator
 import com.intellij.openapi.actionSystem.remoting.ActionRemoteBehaviorSpecification
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
+import com.intellij.openapi.components.serviceAsync
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.extensions.ExtensionPointListener
 import com.intellij.openapi.extensions.PluginDescriptor
@@ -31,16 +33,18 @@ import com.intellij.openapi.wm.StatusBarWidgetFactory
 import com.intellij.openapi.wm.impl.status.IdeStatusBarImpl
 import com.intellij.ui.ExperimentalUI
 import com.intellij.ui.UIBundle
-import com.intellij.util.asDisposable
 import com.intellij.util.ui.UIUtil
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import org.intellij.lang.annotations.Language
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.NonNls
 
 internal class StatusBarWidgetsActionGroup : DefaultActionGroup() {
   companion object {
-    @Language("devkit-action-id") const val GROUP_ID: String = "ViewStatusBarWidgetsGroup"
+    @Language("devkit-action-id")
+    const val GROUP_ID: String = "ViewStatusBarWidgetsGroup"
   }
 
   override fun getChildren(e: AnActionEvent?): Array<AnAction> {
@@ -59,7 +63,15 @@ internal class StatusBarWidgetsActionGroup : DefaultActionGroup() {
     }
 
     val widgetFactories = project.service<StatusBarWidgetsManager>().getWidgetFactories()
-    actions += StatusBarActionManager.getInstance().getActionsFor(widgetFactories)
+    val widgetActions = StatusBarActionManager.getInstance().getActionsFor(widgetFactories)
+    val (internalActions, regularActions) = widgetActions.partition { it is ToggleWidgetAction && it.isInternalWidget() }
+
+    actions += regularActions
+    if (internalActions.isNotEmpty() && ApplicationManager.getApplication().isInternal) {
+      actions.add(Separator.getInstance())
+      actions += internalActions
+    }
+
     actions.add(Separator.getInstance())
     actions.add(HideCurrentWidgetAction())
     return actions.toTypedArray()
@@ -93,6 +105,11 @@ internal class ToggleWidgetAction(val widgetFactory: StatusBarWidgetFactory) : D
       return
     }
 
+    if (!widgetFactory.isAllowedByInternalMode()) {
+      e.presentation.isEnabledAndVisible = false
+      return
+    }
+
     if (ActionPlaces.isMainMenuOrActionSearch(e.place)) {
       e.presentation.isEnabledAndVisible = widgetFactory.isConfigurable && widgetFactory.isAvailable(project)
       return
@@ -113,16 +130,16 @@ internal class ToggleWidgetAction(val widgetFactory: StatusBarWidgetFactory) : D
       project.service<StatusBarWidgetsManager>().updateWidget(widgetFactory)
     }
   }
+
+  fun isInternalWidget(): Boolean = widgetFactory.isInternal
 }
 
 internal class HideCurrentWidgetAction : DumbAwareAction() {
-  companion object {
-    private fun getFactory(e: AnActionEvent): StatusBarWidgetFactory? {
-      val project = e.project ?: return null
-      val hoveredWidgetId = e.getData(IdeStatusBarImpl.HOVERED_WIDGET_ID)  ?: return null
-      e.getData(PlatformDataKeys.STATUS_BAR)  ?: return null
-      return project.service<StatusBarWidgetsManager>().findWidgetFactory(hoveredWidgetId)
-    }
+  private fun getFactory(e: AnActionEvent): StatusBarWidgetFactory? {
+    val project = e.project ?: return null
+    val hoveredWidgetId = e.getData(IdeStatusBarImpl.HOVERED_WIDGET_ID) ?: return null
+    e.getData(PlatformDataKeys.STATUS_BAR) ?: return null
+    return project.service<StatusBarWidgetsManager>().findWidgetFactory(hoveredWidgetId)
   }
 
   override fun actionPerformed(e: AnActionEvent) {
@@ -158,29 +175,36 @@ class StatusBarActionManager(coroutineScope: CoroutineScope) {
     }
   }
 
-  init {
-    StatusBarWidgetFactory.EP_NAME.point.addExtensionPointListener(object : ExtensionPointListener<StatusBarWidgetFactory> {
-      override fun extensionAdded(widgetFactory: StatusBarWidgetFactory, pluginDescriptor: PluginDescriptor) {
-        if (widgetFactory.isConfigurable) { // avoid creating actions in 'Settings | Keymap' for implementation-detail widgets
-          val actionId = getToggleActionId(widgetFactory)
+  private val toggleActionRegistration: Job = coroutineScope.launch {
+    val actionManager = serviceAsync<ActionManager>()
+    StatusBarWidgetFactory.EP_NAME.point.addExtensionPointListener(
+      coroutineScope, true, object : ExtensionPointListener<StatusBarWidgetFactory> {
+        override fun extensionAdded(extension: StatusBarWidgetFactory, pluginDescriptor: PluginDescriptor) {
+          if (extension.isConfigurable) { // avoid creating actions in 'Settings | Keymap' for implementation-detail widgets
+            val actionId = getToggleActionId(extension)
 
-          val oldAction = ActionManager.getInstance().getAction(actionId)
-          if (oldAction == null) {
-            ActionManager.getInstance().registerAction(actionId, ToggleWidgetAction(widgetFactory))
-          }
-          else {
-            logger<StatusBarWidgetFactory>().debug("Skip $actionId - already registered as $oldAction");
+            val oldAction = actionManager.getAction(actionId)
+            if (oldAction == null) {
+              actionManager.registerAction(actionId, ToggleWidgetAction(extension))
+            }
+            else {
+              logger<StatusBarWidgetFactory>().debug("Skip $actionId - already registered as $oldAction")
+            }
           }
         }
-      }
 
-      override fun extensionRemoved(widgetFactory: StatusBarWidgetFactory, pluginDescriptor: PluginDescriptor) {
-        val actionId = getToggleActionId(widgetFactory)
-        if (ActionManager.getInstance().getAction(actionId) is ToggleWidgetAction) {
-          ActionManager.getInstance().unregisterAction(actionId)
+        override fun extensionRemoved(extension: StatusBarWidgetFactory, pluginDescriptor: PluginDescriptor) {
+          val actionId = getToggleActionId(extension)
+          if (actionManager.getAction(actionId) is ToggleWidgetAction) {
+            actionManager.unregisterAction(actionId)
+          }
         }
-      }
-    }, true, coroutineScope.asDisposable())
+      })
+  }
+
+  /** Suspends until [ActionManager] contains the toggle actions of the loaded widget factories. */
+  suspend fun awaitToggleActions() {
+    toggleActionRegistration.join()
   }
 
   internal fun getStatusBarToggleActions(): List<AnAction> {

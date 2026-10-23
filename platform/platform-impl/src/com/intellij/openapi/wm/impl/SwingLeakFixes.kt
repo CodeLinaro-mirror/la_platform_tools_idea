@@ -2,19 +2,37 @@
 package com.intellij.openapi.wm.impl
 
 import com.intellij.ide.dnd.SmoothAutoScroller
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.ui.treeStructure.Tree
 import java.awt.Component
+import java.awt.Point
+import java.awt.dnd.DnDConstants
+import java.awt.dnd.DropTargetDragEvent
+import java.awt.dnd.DropTargetEvent
 import java.awt.event.MouseEvent
 import javax.swing.JPanel
+import javax.swing.JTree
 import javax.swing.ToolTipManager
+import javax.swing.TransferHandler
 import javax.swing.UIManager
 
+private val LOG = Logger.getInstance("com.intellij.openapi.wm.impl.SwingLeakFixes")
 
 internal fun fixSwingLeaks() {
-  fixDragRecognitionSupportLeak()
-  fixSmoothAutoScrollerDragListenerLeak()
-  fixTooltipManagerLeak()
-  fixTreeUiBaselineComponentLeak()
+  fixSwingLeak(::fixDragRecognitionSupportLeak)
+  fixSwingLeak(::fixDropHandlerLeak)
+  fixSwingLeak(::fixSmoothAutoScrollerDragListenerLeak)
+  fixSwingLeak(::fixTooltipManagerLeak)
+  fixSwingLeak(::fixTreeUiBaselineComponentLeak)
+}
+
+private fun fixSwingLeak(fix: () -> Unit) {
+  try {
+    fix()
+  }
+  catch (e: Throwable) {
+    LOG.warn(e)
+  }
 }
 
 private fun fixDragRecognitionSupportLeak() {
@@ -27,6 +45,24 @@ private fun fixDragRecognitionSupportLeak() {
   }
   fakeTree.dragEnabled = true
   fakeTree.releaseDND()
+}
+
+private fun fixDropHandlerLeak() {
+  // Need a regular JTree here so it uses the default drop listener, not our "smooth autoscroll" one.
+  @Suppress("UndesirableClassUsage") val fakeTree = JTree()
+  fakeTree.dragEnabled = true
+  fakeTree.transferHandler = TransferHandler(null) // this call creates the default drop target
+  // Clean up the global DropHandler, created in javax.swing.TransferHandler.getDropTargetListener.
+  // Its support.component can contain a reference to literally anything.
+  // This will replace DropHandler.support.component with our harmless tree:
+  fakeTree.dropTarget.dragEnter(DropTargetDragEvent(
+    fakeTree.dropTarget.dropTargetContext,
+    Point(0, 0),
+    DnDConstants.ACTION_COPY,
+    DnDConstants.ACTION_COPY
+  ))
+  // And this will clean up DropHandler.component:
+  fakeTree.dropTarget.dragExit(DropTargetEvent(fakeTree.dropTarget.dropTargetContext))
 }
 
 private fun fixSmoothAutoScrollerDragListenerLeak() {
@@ -63,4 +99,3 @@ private fun mouseEvent(source: Component, id: Int) = MouseEvent(
   false,
   MouseEvent.BUTTON1
 )
-

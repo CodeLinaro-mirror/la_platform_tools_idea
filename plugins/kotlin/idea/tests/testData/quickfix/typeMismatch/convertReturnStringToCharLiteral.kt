@@ -1,7 +1,6 @@
 // "Convert string to character literal" "true"
-// K2_ERROR: Return type mismatch: expected 'Char', actual 'String'.
+// K2_ERROR: RETURN_TYPE_MISMATCH
 fun bar(): Char {
     return <caret>"a"
 }
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ConvertStringToCharLiteralFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ConvertStringToCharLiteralFixFactory$ConvertStringToCharLiteralFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ConvertStringToCharLiteralFixFactory$ConvertStringToCharLiteralFix

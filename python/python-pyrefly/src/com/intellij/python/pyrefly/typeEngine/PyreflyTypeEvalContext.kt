@@ -1,0 +1,490 @@
+package com.intellij.python.pyrefly.typeEngine
+
+import com.intellij.openapi.diagnostic.debug
+import com.intellij.openapi.diagnostic.thisLogger
+import com.intellij.openapi.editor.Document
+import com.intellij.openapi.fileEditor.FileDocumentManager
+import com.intellij.openapi.util.Ref
+import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.vfs.VirtualFileManager
+import com.intellij.platform.lsp.api.LspClient
+import com.intellij.platform.lsp.impl.LspClientImpl
+import com.intellij.platform.lsp.util.getLsp4jPosition
+import com.intellij.platform.lsp.util.getOffsetInDocument
+import com.intellij.psi.PsiElement
+import com.intellij.psi.PsiFile
+import com.intellij.psi.util.PsiTreeUtil
+import com.intellij.python.lsp.core.type.LspTypeEvalContext
+import com.intellij.python.lsp.core.type.PyStringTypeResolver
+import com.intellij.python.pyrefly.PyreflyUsageCollector
+import com.intellij.python.pyrefly.lsp.PyreflyLsp4jServer
+import com.jetbrains.python.PyCustomType
+import com.jetbrains.python.PyNames
+import com.jetbrains.python.codeInsight.typing.PyTypingTypeProvider
+import com.jetbrains.python.psi.PyCallable
+import com.jetbrains.python.psi.PyClass
+import com.jetbrains.python.psi.PyFile
+import com.jetbrains.python.psi.PyTargetExpression
+import com.jetbrains.python.psi.PyTypeParameter
+import com.jetbrains.python.psi.PyTypedElement
+import com.jetbrains.python.psi.impl.PyBuiltinCache
+import com.jetbrains.python.psi.types.PyAnyType
+import com.jetbrains.python.psi.types.PyCallableParameterImpl
+import com.jetbrains.python.psi.types.PyCallableParameterListTypeImpl
+import com.jetbrains.python.psi.types.PyCallableType
+import com.jetbrains.python.psi.types.PyCallableTypeImpl
+import com.jetbrains.python.psi.types.PyClassLikeType
+import com.jetbrains.python.psi.types.PyClassTypeImpl
+import com.jetbrains.python.psi.types.PyCollectionTypeImpl
+import com.jetbrains.python.psi.types.PyLiteralType
+import com.jetbrains.python.psi.types.PyModuleType
+import com.jetbrains.python.psi.types.PyNeverType
+import com.jetbrains.python.psi.types.PyOverloadType
+import com.jetbrains.python.psi.types.PyTupleType
+import com.jetbrains.python.psi.types.PyType
+import com.jetbrains.python.psi.types.PyTypeVarType
+import com.jetbrains.python.psi.types.PyTypeVarTypeImpl
+import com.jetbrains.python.psi.types.PyUnionType
+import com.jetbrains.python.psi.types.TypeEvalContext
+import org.eclipse.lsp4j.Position
+import org.eclipse.lsp4j.Range
+import org.eclipse.lsp4j.TextDocumentIdentifier
+import org.jetbrains.annotations.ApiStatus
+import org.jetbrains.annotations.Unmodifiable
+import org.jetbrains.annotations.VisibleForTesting
+import kotlin.time.measureTimedValue
+
+open class PyreflyTypeEvalContext internal constructor(val lspClient: LspClient, psiFile: PsiFile) : LspTypeEvalContext(psiFile) {
+
+  /**
+   * The last snapshot the server reported. The server moves its snapshot forward when it analyzes an
+   * opened file, and it rejects a request that names an older one. This context lives as long as the
+   * PSI of its file, and a library context longer, so the value goes stale. See [requestComputedType].
+   */
+  @Volatile
+  private var snapshot: Int? = null
+
+  override fun provideType(element: PyTypedElement, isUserInitiated: Boolean): Ref<PyType?>? {
+    if (element is PsiFile) return null
+    val file = psiFile.virtualFile ?: return null
+    val document = FileDocumentManager.getInstance().getDocument(file) ?: return null
+
+    val textRange = element.textRange
+    if (textRange.isEmpty) return null
+
+    val offsetDetector = PyreflyOffsetDetectorVisitor()
+    element.accept(offsetDetector)
+    // A notebook cell is its own document for the server, so the offset maps to the cell and its URI.
+    val request = getDocumentPosition(file, document, offsetDetector.offset)
+    val node = PyreflyLsp4jServer.TspNode(request.textDocument.uri, Range(request.position, request.position))
+
+    val tspType = requestComputedType(node)
+    thisLogger().debug { "Pyrefly TSP: answer for '${element.text.take(60)}' at ${request.position.line}:${request.position.character}: $tspType" }
+    if (tspType == null) return null
+
+    return buildPyType(element, tspType)
+  }
+
+  /**
+   * Asks the server for the type at [node] with the known snapshot. A rejected request comes back as
+   * `null`. Then the snapshot is read again, and the request repeats one time when the server moved
+   * on. A request that fails with the current snapshot stays `null`.
+   */
+  private fun requestComputedType(node: PyreflyLsp4jServer.TspNode): PyreflyLsp4jServer.TspType? {
+    val known = snapshot ?: fetchSnapshot() ?: return null
+    getComputedType(node, known)?.let { return it }
+    val fresh = fetchSnapshot() ?: return null
+    if (fresh == known) return null
+    thisLogger().info("Pyrefly TSP: snapshot moved from $known to $fresh, repeating the request")
+    return getComputedType(node, fresh)
+  }
+
+  private fun fetchSnapshot(): Int? =
+    lspClient.sendRequestSync { (it as PyreflyLsp4jServer).getSnapshot() }?.also { snapshot = it }
+
+  private fun getComputedType(node: PyreflyLsp4jServer.TspNode, snapshot: Int): PyreflyLsp4jServer.TspType? =
+    lspClient.sendRequestSync {
+      (it as PyreflyLsp4jServer).getComputedType(PyreflyLsp4jServer.GetComputedTypeParams(arg = node, snapshot = snapshot))
+    }
+
+  private fun buildPyType(pyElement: PyTypedElement, tspType: PyreflyLsp4jServer.TspType): Ref<PyType?>? {
+    // Pyrefly marks `Literal[...]` types via the LITERAL bit (0x8) of TypeFlags and stores
+    // the value in `literalValue`. Detect this before falling through to the generic
+    // class-type path so we surface `Literal[5]` / `Literal["foo"]` instead of bare `int` /
+    // `str` — otherwise `tuple[Literal[1], Literal[2], Literal[3]]` collapses to `tuple[int, int, int]`.
+    if (tspType.kind == "3" && tspType.flags != null && tspType.flags.and(PyreflyLsp4jServer.LITERAL_FLAG) != 0) {
+      buildPyLiteralType(pyElement, tspType)?.let { return it }
+    }
+    return when (tspType.kind) {
+      "0" -> buildPyBuiltInType(pyElement, tspType)
+      "2" -> buildPyFunctionType(pyElement, tspType)
+      "3" -> buildPyClassType(pyElement, tspType)
+      "4" -> buildPyUnionType(pyElement, tspType)
+      "5" -> buildPyModuleType(pyElement, tspType)
+      "6" -> buildPyTypeVarType(pyElement, tspType)
+      "7" -> buildPyOverloadedType(pyElement, tspType)
+      else -> null
+    }
+  }
+
+  private fun buildPyTypeOrAny(pyElement: PyTypedElement, tspType: PyreflyLsp4jServer.TspType): PyType? =
+    buildPyType(pyElement, tspType)?.get() ?: PyAnyType.any
+
+  private fun findElement(tspNode: PyreflyLsp4jServer.TspNode): PsiElement? {
+    val virtualFile = VirtualFileManager.getInstance().findFileByUrl(tspNode.uri) ?: return null
+    val file = psiFile.manager.findFile(virtualFile) ?: return null
+    val document = FileDocumentManager.getInstance().getDocument(virtualFile) ?: return null
+    val startOffset = getOffsetInDocument(document, tspNode.range.start) ?: return null
+    val endOffset = getOffsetInDocument(document, tspNode.range.end) ?: return null
+    return PsiTreeUtil.findElementOfClassAtRange(file, startOffset, endOffset, PsiElement::class.java)
+  }
+
+  /**
+   * Build a `PyLiteralType` for a Class-kind TSP type that carries `LITERAL` flag.
+   *
+   * Pyrefly emits the literal payload as `literalValue` — Kotlin sees it as `Int`,
+   * `Boolean`, or `String` after Gson-deserialization of the untagged TSP enum.
+   * Bytes / enum / sentinel literals come through as JSON objects or `null` from our
+   * `Any?` field and fall back to the regular class-type path.
+   */
+  private fun buildPyLiteralType(pyElement: PyTypedElement, tspType: PyreflyLsp4jServer.TspType): Ref<PyType?>? {
+    val value = tspType.literalValue ?: return null
+    val literal = PyLiteralType.fromLiteralValue(pyElement, value) ?: return null
+    thisLogger().info("Pyrefly TSP: built PyLiteralType ${literal.name}")
+    return Ref.create(literal)
+  }
+
+  private fun buildPyBuiltInType(pyElement: PyTypedElement, tspType: PyreflyLsp4jServer.TspType): Ref<PyType?>? {
+    val name = tspType.name ?: return null
+    val type: PyType? = when (name.lowercase()) {
+      "any" -> PyAnyType.any
+      "never" -> PyNeverType.NEVER
+      "noreturn" -> PyNeverType.NO_RETURN
+      "ellipsis" -> PyBuiltinCache.getInstance(pyElement).ellipsisType
+      "unknown" -> PyAnyType.unknown
+      "unbound" -> null
+      "callable" -> PyTypingTypeProvider.createTypingCallableType(pyElement)
+      else -> PyClassTypeImpl.createTypeByQName(pyElement, "typing.$name", tspType.isInstantiable())
+              ?: PyClassTypeImpl.createTypeByQName(pyElement, PyTypingTypeProvider.SPECIAL_FORM, false)
+    }
+    if (type == null) return null
+    thisLogger().info("Pyrefly TSP: built builtin type for $name")
+    return Ref.create(type)
+  }
+
+  private fun buildPyClassType(pyElement: PyTypedElement, tspType: PyreflyLsp4jServer.TspType): Ref<PyType?>? {
+    val declaration = tspType.declaration ?: return null
+    val defNode = declaration.node
+    // The `INSTANTIABLE` flag marks a class object, such as the base class expression `Model` in
+    // `class Book(Model)`. `PyClassImpl` keeps only a definition type in the ancestor list, so an
+    // instance type here drops the base class and its members from the hierarchy.
+    val isDefinition = tspType.isInstantiable()
+    if (defNode == null || defNode.uri.isEmpty()) {
+      // Pyrefly emits a synthesized stub class with `typeArgs` for built-in generic instances
+      // such as `tuple[...]`. Recover the element types from `typeArgs`. An empty list is `tuple[()]`.
+      tspType.typeArgs?.let { typeArgs ->
+        buildPyTupleType(pyElement, typeArgs, isDefinition)?.let { return it }
+      }
+      return buildBuiltinClassType(pyElement, declaration.name, isDefinition)
+    }
+    val target = findElement(defNode)
+    val pyClass = target?.let { PsiTreeUtil.getParentOfType(it, PyClass::class.java) }
+    if (pyClass == null) {
+      // A `typing` special form such as `Generic` is an assignment in typeshed, not a class. Pyrefly
+      // points its declaration at that assignment, so no `PyClass` is found. PyCharm models the form
+      // with a dedicated type.
+      buildSpecialFormType(pyElement, declaration.name, isDefinition)?.let { return it }
+      // Pyrefly emits a sentinel `range=(0,0)` for builtin instances (e.g. `int` for the literal
+      // default value `5`). The offset points to the start of `builtins.pyi`, so PSI gives us no
+      // class — fall back to looking up the class by `declaration.name` in the builtin cache.
+      return buildBuiltinClassType(pyElement, declaration.name, isDefinition)
+    }
+    val typeArgs = tspType.typeArgs
+    val instanceType: PyClassLikeType = if (!typeArgs.isNullOrEmpty()) {
+      val elementTypes = typeArgs.map { buildPyTypeOrAny(pyElement, it) }
+      if (pyClass.qualifiedName == PyNames.FQN.TUPLE) {
+        PyTupleType.create(pyElement, elementTypes) ?: PyClassTypeImpl(pyClass, false)
+      }
+      else {
+        PyCollectionTypeImpl(pyClass, false, elementTypes)
+      }
+    }
+    else {
+      PyClassTypeImpl(pyClass, false)
+    }
+    val classType = instanceType.asDefinitionIf(isDefinition)
+    thisLogger().info("Pyrefly TSP: built PyClassType for ${pyClass.qualifiedName ?: pyClass.name} at ${defNode.uri}:${defNode.range.start} (typeArgs=${typeArgs?.size ?: 0}, isDefinition=$isDefinition)")
+    return Ref.create(classType)
+  }
+
+  /**
+   * The type PyCharm uses for the `typing` special form [name]. Pyrefly reports the form as a class
+   * object, so the result is a definition type unless the server says otherwise.
+   */
+  private fun buildSpecialFormType(pyElement: PyTypedElement, name: String?, isDefinition: Boolean): Ref<PyType?>? {
+    val builtins = PyBuiltinCache.getInstance(pyElement)
+    val classObjectType: PyType = when (name) {
+      "Generic" -> PyCustomType(PyTypingTypeProvider.GENERIC, null, false, true, builtins.objectType)
+      "Protocol" -> PyCustomType(PyTypingTypeProvider.PROTOCOL, null, false, true, builtins.objectType)
+      "TypedDict" -> PyCustomType(PyTypingTypeProvider.TYPED_DICT, null, false, true, builtins.dictType)
+      "Callable" -> PyTypingTypeProvider.createTypingCallableType(pyElement)
+      "Literal" -> PyClassTypeImpl.createTypeByQName(pyElement, PyTypingTypeProvider.SPECIAL_FORM, false) ?: return null
+      else -> return null
+    }
+    val type = if (!isDefinition && classObjectType is PyClassLikeType) classObjectType.toInstance() else classObjectType
+    thisLogger().info("Pyrefly TSP: built special form type for typing.$name (isDefinition=$isDefinition)")
+    return Ref.create(type)
+  }
+
+  private fun buildBuiltinClassType(pyElement: PyTypedElement, name: String?, isDefinition: Boolean): Ref<PyType?>? {
+    if (name.isNullOrEmpty()) return null
+    val type = PyBuiltinCache.getInstance(pyElement).getObjectType(name) ?: return null
+    thisLogger().info("Pyrefly TSP: built PyClassType for builtin $name (isDefinition=$isDefinition)")
+    return Ref.create(type.asDefinitionIf(isDefinition))
+  }
+
+  private fun buildPyTupleType(pyElement: PyTypedElement, typeArgs: List<PyreflyLsp4jServer.TspType>, isDefinition: Boolean): Ref<PyType?>? {
+    val elementTypes = typeArgs.map { buildPyTypeOrAny(pyElement, it) }
+    val tupleType = PyTupleType.create(pyElement, elementTypes) ?: return null
+    thisLogger().info("Pyrefly TSP: built PyTupleType with ${elementTypes.size} elements (isDefinition=$isDefinition)")
+    return Ref.create(tupleType.asDefinitionIf(isDefinition))
+  }
+
+  private fun buildPyFunctionType(pyElement: PyTypedElement, tspType: PyreflyLsp4jServer.TspType): Ref<PyType?>? {
+    val declaration = tspType.declaration ?: return null
+    val defNode = declaration.node
+    if (defNode == null || defNode.uri.isEmpty()) {
+      // A callable with no declaration of its own, such as the result of `dataclass(slots=True)`.
+      // Pyrefly marks it `CALLABLE` and sends the signature in `specializedTypes`.
+      if (tspType.isCallable()) {
+        buildSynthesizedCallableType(pyElement, tspType)?.let { return it }
+      }
+      // Pyrefly wraps class/type references in a Function envelope whose top-level
+      // declaration is a Synthesized stub. The real symbol lives on `returnType`.
+      val returnType = tspType.returnType
+      if (returnType != null && returnType.hasSourceLocation()) {
+        val builtReturnType = buildPyType(pyElement, returnType) ?: return null
+        // For `type[X]` Pyrefly sets `INSTANTIABLE` on the envelope, not on `returnType`.
+        val type = builtReturnType.get()
+        if (tspType.isInstantiable() && type is PyClassLikeType) {
+          return Ref.create(type.asDefinitionIf(true))
+        }
+        return builtReturnType
+      }
+      return buildBuiltinFunctionType(pyElement, declaration.name, tspType)
+    }
+    val target = findElement(defNode)
+    val callable = target?.let { PsiTreeUtil.getParentOfType(it, PyCallable::class.java) }
+    if (callable == null) {
+      // Sentinel `range=(0,0)` for builtin callables: PSI lookup at offset 0 misses the actual
+      // `def`, so resolve by `declaration.name` via the builtin cache.
+      return buildBuiltinFunctionType(pyElement, declaration.name, tspType)
+    }
+    thisLogger().info("Pyrefly TSP: built PyFunctionType for ${callable.name} at ${defNode.uri}:${defNode.range.start}")
+    return Ref.create(buildFunctionType(pyElement, callable, tspType))
+  }
+
+  private fun buildSynthesizedCallableType(pyElement: PyTypedElement, tspType: PyreflyLsp4jServer.TspType): Ref<PyType?>? {
+    val signature = tspType.specializedTypes ?: return null
+    val parameters = signature.parameterTypes.orEmpty().map { PyCallableParameterImpl.nonPsi(buildPyTypeOrAny(pyElement, it)) }
+    val returnType = (signature.returnType ?: tspType.returnType)?.let { buildPyTypeOrAny(pyElement, it) } ?: PyAnyType.unknown
+    thisLogger().info("Pyrefly TSP: built PyCallableType with ${parameters.size} parameters")
+    return Ref.create(PyCallableTypeImpl(parameters, returnType))
+  }
+
+  private fun buildBuiltinFunctionType(pyElement: PyTypedElement, name: String?, tspType: PyreflyLsp4jServer.TspType): Ref<PyType?>? {
+    if (name.isNullOrEmpty()) return null
+    val callable = PyBuiltinCache.getInstance(pyElement).getByName(name) as? PyCallable ?: return null
+    thisLogger().info("Pyrefly TSP: built PyFunctionType for builtin $name")
+    return Ref.create(buildFunctionType(pyElement, callable, tspType))
+  }
+
+  private fun buildFunctionType(
+    pyElement: PyTypedElement,
+    callable: PyCallable,
+    tspType: PyreflyLsp4jServer.TspType,
+  ): PyCallableType {
+    val psiParams = callable.parameterList.parameters
+    val substituted = tspType.specializedTypes?.parameterTypes
+    val parameters = psiParams.mapIndexed { i, p ->
+      val resolved = substituted?.getOrNull(i)?.let { buildPyTypeOrAny(pyElement, it) }
+      if (resolved != null) PyCallableParameterImpl.psi(p, resolved) else PyCallableParameterImpl.psi(p)
+    }
+    val returnTsp = tspType.specializedTypes?.returnType ?: tspType.returnType
+    val returnType = returnTsp?.let { buildPyTypeOrAny(pyElement, it) } ?: PyAnyType.unknown
+    return PyCallableTypeImpl(null, PyCallableParameterListTypeImpl(parameters), returnType, callable, null)
+  }
+
+  private fun buildPyUnionType(pyElement: PyTypedElement, tspType: PyreflyLsp4jServer.TspType): Ref<PyType?>? {
+    val subTypes = tspType.subTypes ?: return null
+    if (subTypes.isEmpty()) return null
+    val members = subTypes.map { buildPyTypeOrAny(pyElement, it) }
+    if (members.all { it == null }) return null
+    thisLogger().info("Pyrefly TSP: built PyUnionType with ${members.size} members")
+    return Ref.create(PyUnionType.unionOrUnknown(members))
+  }
+
+  private fun buildPyModuleType(pyElement: PyTypedElement, tspType: PyreflyLsp4jServer.TspType): Ref<PyType?>? {
+    val uri = tspType.uri
+    if (uri.isNullOrEmpty()) return null
+    val virtualFile = VirtualFileManager.getInstance().findFileByUrl(uri) ?: return null
+    val moduleFile = pyElement.manager.findFile(virtualFile) as? PyFile ?: return null
+    thisLogger().info("Pyrefly TSP: built PyModuleType for ${tspType.moduleName ?: moduleFile.name}")
+    return Ref.create(PyModuleType(moduleFile))
+  }
+
+  /** The `INSTANTIABLE` flag on a type variable stands for `type[T]`, such as the parameter of `dataclass(slots=True)`. */
+  private fun buildPyTypeVarType(pyElement: PyTypedElement, tspType: PyreflyLsp4jServer.TspType): Ref<PyType?>? {
+    val instance = buildPyTypeVarInstanceType(pyElement, tspType) ?: return null
+    val typeVar = instance.get() as? PyTypeVarType ?: return instance
+    return if (tspType.isInstantiable() && !typeVar.isDefinition) Ref.create(typeVar.toClass()) else instance
+  }
+
+  private fun buildPyTypeVarInstanceType(pyElement: PyTypedElement, tspType: PyreflyLsp4jServer.TspType): Ref<PyType?>? {
+    val declaration = tspType.declaration ?: return null
+    val name = declaration.name
+    if (name.isNullOrEmpty()) return null
+    val defNode = declaration.node
+    if (defNode == null || defNode.uri.isEmpty()) {
+      thisLogger().info("Pyrefly TSP: built minimal PyTypeVarType for $name (no declaration node)")
+      return Ref.create(PyTypeVarTypeImpl(name, PyAnyType.unknown))
+    }
+    val target = findElement(defNode)
+    if (target != null) {
+      val context = TypeEvalContext.codeAnalysis(pyElement.project, target.containingFile)
+
+      // Not strict: the declaration range can be the element itself.
+      val typeParameter = PsiTreeUtil.getParentOfType(target, PyTypeParameter::class.java, false)
+      if (typeParameter != null) {
+        val pep695Type = PyTypingTypeProvider.getTypeParameterTypeFromTypeParameter(typeParameter, context)
+        if (pep695Type is PyTypeVarType) {
+          thisLogger().info("Pyrefly TSP: built PyTypeVarType for $name from PyTypeParameter at ${defNode.uri}:${defNode.range.start}")
+          return Ref.create(pep695Type)
+        }
+      }
+
+      val targetExpression = PsiTreeUtil.getParentOfType(target, PyTargetExpression::class.java, false)
+      if (targetExpression != null) {
+        // The typing provider reads the declaration `TypeVar("_T", bound=...)`: the bound, the
+        // constraints, and the variance. It anchors the declaration element to a type-hint
+        // reference, and there is none here, so the target is set afterwards. The renderer shows
+        // its qualified name. Asking the engine for the target would come back to this method.
+        val declaredType = targetExpression.findAssignedValue()?.let { PyTypingTypeProvider.getType(it, context)?.get() }
+        val typeVar = (declaredType as? PyTypeVarTypeImpl ?: PyTypeVarTypeImpl(name, PyAnyType.unknown)).withDeclarationElement(targetExpression)
+        thisLogger().info("Pyrefly TSP: built PyTypeVarType for $name from the declaration ${targetExpression.qualifiedName} (bound=${typeVar.bound})")
+        return Ref.create(typeVar)
+      }
+    }
+    thisLogger().info("Pyrefly TSP: fell back to minimal PyTypeVarType for $name")
+    return Ref.create(PyTypeVarTypeImpl(name, PyAnyType.unknown))
+  }
+
+  private fun buildPyOverloadedType(pyElement: PyTypedElement, tspType: PyreflyLsp4jServer.TspType): Ref<PyType?>? {
+    val overloads = tspType.overloads
+    val implementationTsp = tspType.implementation
+    if (overloads.isNullOrEmpty() && implementationTsp == null) return null
+    val items = overloads?.mapNotNull { buildPyType(pyElement, it)?.get() as? PyCallableType } ?: emptyList()
+    val impl = implementationTsp?.let { buildPyType(pyElement, it) }
+    if (items.isEmpty() && impl == null) return null
+    thisLogger().info("Pyrefly TSP: built PyOverloadType with ${items.size} overloads (impl=${impl?.get() != null})")
+    return Ref.create(PyOverloadType(items, impl))
+  }
+
+  override fun requestTypes(pyTypedElements: @Unmodifiable Collection<PyTypedElement>): List<String?>? {
+    val file = psiFile.virtualFile ?: return null
+    val document = FileDocumentManager.getInstance().getDocument(file) ?: return null
+    val documentRequests = pyTypedElements.mapNotNull { psiElement ->
+      getDocumentRequest(file, document, psiElement)
+    }
+    if (documentRequests.isEmpty()) return emptyList()
+
+    val groupedRequests = LinkedHashMap<String, MutableList<IndexedValue<DocumentRequest>>>()
+    documentRequests.forEachIndexed { index, request ->
+      groupedRequests.computeIfAbsent(request.textDocument.uri) { mutableListOf() }.add(IndexedValue(index, request))
+    }
+
+    val contents = arrayOfNulls<String?>(documentRequests.size)
+    for (group in groupedRequests.values) {
+      val textDocument = group.first().value.textDocument
+      val positions = group.map { it.value.position }
+
+      val response = lspClient.sendRequestSync {
+        (it as PyreflyLsp4jServer).provideType(textDocument, positions)
+      }
+      val groupContents = response?.contents?.map { it.value } ?: return null
+      if (groupContents.size != group.size) return null
+
+      group.zip(groupContents).forEach { (indexedRequest, content) ->
+        contents[indexedRequest.index] = content
+      }
+    }
+    return contents.toList()
+  }
+
+  override fun resolveStringType(element: PyTypedElement, stringType: String): Ref<PyType?>? {
+    return resolveStringTypeImpl(element, stringType)
+  }
+
+  /** True for a class object. A server that sends no `flags` reports an instance. */
+  private fun PyreflyLsp4jServer.TspType.isInstantiable(): Boolean =
+    flags != null && flags.and(PyreflyLsp4jServer.INSTANTIABLE_FLAG) != 0
+
+  private fun PyreflyLsp4jServer.TspType.isCallable(): Boolean =
+    flags != null && flags.and(PyreflyLsp4jServer.CALLABLE_FLAG) != 0
+
+  private fun PyClassLikeType.asDefinitionIf(isDefinition: Boolean): PyClassLikeType =
+    if (isDefinition && !this.isDefinition) toClass() else this
+
+  private fun PyreflyLsp4jServer.TspType.hasSourceLocation(): Boolean {
+    if (declaration != null) {
+      val nodeUri = declaration.node?.uri
+      if (!nodeUri.isNullOrEmpty() || !declaration.uri.isNullOrEmpty()) return true
+    }
+    // Class/type references wrapped in a Function envelope keep their real declaration on returnType.
+    return returnType?.hasSourceLocation() == true
+  }
+
+  companion object {
+    @ApiStatus.Internal
+    @VisibleForTesting
+    fun resolveStringTypeImpl(
+      element: PyTypedElement,
+      stringType: String,
+    ): Ref<PyType?>? {
+      val (result, duration) = measureTimedValue {
+        PyStringTypeResolver.resolvePyType(element, stringType)
+      }
+      PyreflyUsageCollector.logStringTypeResolutionTime(duration)
+      return result
+    }
+  }
+
+  private data class DocumentRequest(val textDocument: TextDocumentIdentifier, val position: Position)
+
+  private fun getDocumentRequest(
+    file: VirtualFile,
+    document: Document,
+    psiElement: PyTypedElement,
+  ): DocumentRequest? {
+    if (psiElement is PsiFile) return null
+
+    val textRange = psiElement.textRange
+    if (textRange.isEmpty) return null
+
+    val offsetDetector = PyreflyOffsetDetectorVisitor()
+    psiElement.accept(offsetDetector)
+    return getDocumentPosition(file, document, offsetDetector.offset)
+  }
+
+  private fun getDocumentPosition(
+    file: VirtualFile,
+    document: Document,
+    offset: Int,
+  ): DocumentRequest {
+    val mappedPosition = (lspClient as? LspClientImpl)?.documentMapping?.getDocumentPosition(file, document, offset)
+    if (mappedPosition != null) {
+      return DocumentRequest(mappedPosition.document.id, mappedPosition.position)
+    }
+    return DocumentRequest(lspClient.getDocumentIdentifier(file), getLsp4jPosition(document, offset))
+  }
+}

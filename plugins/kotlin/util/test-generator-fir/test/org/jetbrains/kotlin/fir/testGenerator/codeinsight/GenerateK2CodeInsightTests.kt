@@ -1,7 +1,6 @@
 // Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.kotlin.fir.testGenerator.codeinsight
 
-import org.jetbrains.kotlin.checkers.AbstractJavaAgainstKotlinBinariesCheckerTest
 import org.jetbrains.kotlin.checkers.AbstractJavaAgainstKotlinSourceCheckerTest
 import org.jetbrains.kotlin.idea.codeInsight.codevision.AbstractKotlinCodeVisionProviderTest
 import org.jetbrains.kotlin.idea.k2.AbstractK2ExpressionTypeTest
@@ -19,14 +18,17 @@ import org.jetbrains.kotlin.idea.k2.hierarchy.AbstractFirHierarchyWithLibTest
 import org.jetbrains.kotlin.idea.k2.hierarchy.AbstractHierarchyMultiplatformTest
 import org.jetbrains.kotlin.idea.k2.hints.AbstractKtCallChainHintsProviderTest
 import org.jetbrains.kotlin.idea.k2.hints.AbstractKtDefaultParameterInlayHintsProviderTest
-import org.jetbrains.kotlin.idea.k2.hints.AbstractKtLambdasHintsProvider
+import org.jetbrains.kotlin.idea.k2.hints.AbstractKtLambdasHintsProviderTest
 import org.jetbrains.kotlin.idea.k2.hints.AbstractKtParameterHintsProviderTest
 import org.jetbrains.kotlin.idea.k2.hints.AbstractKtReferenceTypeHintsProviderTest
 import org.jetbrains.kotlin.idea.k2.hints.AbstractKtValuesHintsProviderTest
 import org.jetbrains.kotlin.idea.k2.hints.compilerPlugins.AbstractCompilerPluginDeclarationHighlighterTest
-import org.jetbrains.kotlin.idea.k2.hints.compilerPlugins.AbstractKtCompilerDeclarationsHintProviderTest
-import org.jetbrains.kotlin.idea.k2.hints.compilerPlugins.AbstractKtCompilerPluginModalityHintProviderTest
-import org.jetbrains.kotlin.idea.k2.hints.compilerPlugins.AbstractKtCompilerSupertypesHintProviderTest
+import org.jetbrains.kotlin.idea.k2.hints.compilerPlugins.AbstractKtBundledCompilerDeclarationsHintProviderTest
+import org.jetbrains.kotlin.idea.k2.hints.compilerPlugins.AbstractKtBundledCompilerPluginModalityHintProviderTest
+import org.jetbrains.kotlin.idea.k2.hints.compilerPlugins.AbstractKtBundledCompilerSupertypesHintProviderTest
+import org.jetbrains.kotlin.idea.k2.hints.compilerPlugins.AbstractKtThirdPartyCompilerDeclarationsHintProviderTest
+import org.jetbrains.kotlin.idea.k2.hints.compilerPlugins.AbstractKtThirdPartyCompilerPluginModalityHintProviderTest
+import org.jetbrains.kotlin.idea.k2.hints.compilerPlugins.AbstractKtThirdPartyCompilerSupertypesHintProviderTest
 import org.jetbrains.kotlin.idea.k2.moveUpDown.AbstractFirMoveLeftRightTest
 import org.jetbrains.kotlin.idea.k2.moveUpDown.AbstractKotlinFirMoveStatementTest
 import org.jetbrains.kotlin.idea.k2.quickDoc.AbstractFirRenderingKDocTest
@@ -103,7 +105,7 @@ internal fun MutableTWorkspace.generateK2CodeInsightTests() {
             model("../../../idea/tests/testData/navigationToolbar", isRecursive = false, pattern = KT_OR_KTS)
         }
         testClass<AbstractNameSuggestionProviderTest>(generatedClassName = "org.jetbrains.kotlin.idea.k2.KotlinNameSuggestionProviderTestGenerated") {
-            model("../../../idea/tests/testData/refactoring/nameSuggestionProvider")
+            model("refactoring/nameSuggestionProvider")
         }
         testClass<AbstractKotlinFirSurroundWithTest> {
             model("../../../idea/tests/testData/codeInsight/surroundWith/if", testMethodName = "doTestWithIfSurrounder")
@@ -185,7 +187,7 @@ internal fun MutableTWorkspace.generateK2CodeInsightTests() {
         testClass<AbstractKtReferenceTypeHintsProviderTest> {
             model("../../../idea/tests/testData/codeInsight/hints/types", pattern = inlayHintsFileRegexp)
         }
-        testClass<AbstractKtLambdasHintsProvider> {
+        testClass<AbstractKtLambdasHintsProviderTest> {
             model("../../../idea/tests/testData/codeInsight/hints/lambda")
         }
         testClass<AbstractKtValuesHintsProviderTest> {
@@ -201,11 +203,19 @@ internal fun MutableTWorkspace.generateK2CodeInsightTests() {
             model("../../../idea/tests/testData/codeInsight/hints/defaultParameters", pattern = inlayHintsFileRegexp)
         }
 
-        testClass<AbstractKtCompilerPluginModalityHintProviderTest> {
+        testClass<AbstractKtBundledCompilerPluginModalityHintProviderTest> {
             model("hints/compilerPlugins/modality", pattern = inlayHintsFileRegexp)
         }
 
-        testClass<AbstractKtCompilerDeclarationsHintProviderTest> {
+        testClass<AbstractKtThirdPartyCompilerPluginModalityHintProviderTest> {
+            model("hints/compilerPlugins/modality", pattern = inlayHintsFileRegexp)
+        }
+
+        testClass<AbstractKtBundledCompilerDeclarationsHintProviderTest> {
+            model("hints/compilerPlugins/declarations", pattern = inlayHintsFileRegexp)
+        }
+
+        testClass<AbstractKtThirdPartyCompilerDeclarationsHintProviderTest> {
             model("hints/compilerPlugins/declarations", pattern = inlayHintsFileRegexp)
         }
 
@@ -213,7 +223,11 @@ internal fun MutableTWorkspace.generateK2CodeInsightTests() {
             model("hints/compilerPlugins/highlighger", pattern = inlayHintsFileRegexp)
         }
 
-        testClass<AbstractKtCompilerSupertypesHintProviderTest> {
+        testClass<AbstractKtBundledCompilerSupertypesHintProviderTest> {
+            model("hints/compilerPlugins/supertypes", pattern = inlayHintsFileRegexp)
+        }
+
+        testClass<AbstractKtThirdPartyCompilerSupertypesHintProviderTest> {
             model("hints/compilerPlugins/supertypes", pattern = inlayHintsFileRegexp)
         }
 
@@ -286,10 +300,6 @@ internal fun MutableTWorkspace.generateK2CodeInsightTests() {
         testClass<AbstractJavaAgainstKotlinSourceCheckerTest>(generatedClassName = "org.jetbrains.kotlin.idea.k2.K2JavaAgainstKotlinSourceCheckerTestGenerated") {
             model("../../../idea/tests/testData/kotlinAndJavaChecker/javaAgainstKotlin")
             model("../../../idea/tests/testData/kotlinAndJavaChecker/javaWithKotlin")
-        }
-
-        testClass<AbstractJavaAgainstKotlinBinariesCheckerTest>(generatedClassName = "org.jetbrains.kotlin.idea.k2.K2JavaAgainstKotlinBinariesCheckerTestGenerated") {
-            model("../../../idea/tests/testData/kotlinAndJavaChecker/javaAgainstKotlin")
         }
 
         testClass<AbstractScriptGotoDeclarationMultifileTest>(generatedClassName = "org.jetbrains.kotlin.idea.k2.navigation.K2MainKtsGotoDeclarationTestGenerated") {

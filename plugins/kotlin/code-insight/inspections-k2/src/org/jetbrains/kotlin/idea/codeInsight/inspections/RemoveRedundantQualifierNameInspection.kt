@@ -3,35 +3,44 @@ package org.jetbrains.kotlin.idea.codeInsight.inspections
 
 import com.intellij.codeInspection.CleanupLocalInspectionTool
 import com.intellij.codeInspection.InspectionManager
-import com.intellij.codeInspection.LocalQuickFix
 import com.intellij.codeInspection.ProblemDescriptor
 import com.intellij.codeInspection.ProblemHighlightType
+import com.intellij.modcommand.ModPsiUpdater
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiFile
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.analyze
 import org.jetbrains.kotlin.analysis.api.components.ShortenStrategy
-import org.jetbrains.kotlin.analysis.api.components.containingDeclaration
+import org.jetbrains.kotlin.analysis.api.resolution.resolveSuccessfulSymbol
+import org.jetbrains.kotlin.analysis.api.session.analyze
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassKind
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaDeclarationSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaEnumEntrySymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaNamedClassSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.containingDeclaration
+import org.jetbrains.kotlin.analysis.api.symbols.importableFqName
 import org.jetbrains.kotlin.idea.base.analysis.api.utils.ShortenCommandForIde
 import org.jetbrains.kotlin.idea.base.analysis.api.utils.collectPossibleReferenceShorteningsInElementForIde
 import org.jetbrains.kotlin.idea.base.analysis.isNotInjectedOrShouldBeAnalyzed
 import org.jetbrains.kotlin.idea.base.codeInsight.ShortenOptionsForIde
 import org.jetbrains.kotlin.idea.base.psi.textRangeIn
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
+import org.jetbrains.kotlin.idea.codeinsight.api.applicable.inspections.KotlinModCommandQuickFix
 import org.jetbrains.kotlin.idea.codeinsight.api.classic.inspections.AbstractKotlinInspection
 import org.jetbrains.kotlin.psi.KtDotQualifiedExpression
 import org.jetbrains.kotlin.psi.KtElement
 import org.jetbrains.kotlin.psi.KtExpression
 import org.jetbrains.kotlin.psi.KtFile
-import org.jetbrains.kotlin.psi.KtNonPublicApi
+import org.jetbrains.kotlin.psi.KtNameReferenceExpression
 import org.jetbrains.kotlin.psi.KtPsiMutationService
 import org.jetbrains.kotlin.psi.KtUserType
 
+/**
+ * Important: this inspection intentionally does not report qualifiers which are redundant due to
+ * context-sensitive resolution (CSR) feature. See KTIJ-38137.
+ *
+ * There is a separate inspection for this - see [RedundantContextSensitiveResolutionQualifierInspection].
+ */
 internal class RemoveRedundantQualifierNameInspection : AbstractKotlinInspection(), CleanupLocalInspectionTool {
     override fun isAvailableForFile(file: PsiFile): Boolean =
         file.isNotInjectedOrShouldBeAnalyzed
@@ -46,15 +55,14 @@ internal class RemoveRedundantQualifierNameInspection : AbstractKotlinInspection
             .toTypedArray()
     }
 
-    private fun collectPossibleShortenings(file: KtFile): List<KtElement> {
-        val shortenings = analyze(file) {
-            collectShortenings(file)
-        }
+    private fun collectPossibleShortenings(file: KtFile): List<KtElement> = analyze(file) {
+        val shortenings = collectShortenings(file)
 
         val qualifiersToShorten = shortenings.listOfQualifierToShortenInfo.mapNotNull { it.qualifierToShorten.element }
         val typesToShorten = shortenings.listOfTypeToShortenInfo.mapNotNull { it.typeToShorten.element }
 
-        return qualifiersToShorten + typesToShorten
+        return (qualifiersToShorten + typesToShorten)
+            .filter {  shorteningPreservesResolve(it)  }
     }
 
     /**
@@ -88,6 +96,20 @@ internal class RemoveRedundantQualifierNameInspection : AbstractKotlinInspection
             },
         )
 
+    context(_: KaSession)
+    private fun shorteningPreservesResolve(element: KtElement): Boolean {
+        val reference = when (element) {
+            is KtDotQualifiedExpression -> element.selectorExpression as? KtNameReferenceExpression
+            is KtUserType -> element.referenceExpression as? KtNameReferenceExpression
+            else -> null
+        } ?: return true
+        val intendedFqName = reference.resolveSuccessfulSymbol()?.importableFqName ?: return true
+
+        return element.containingKtFile.importDirectives.none { import ->
+            import.aliasName != null && import.importedFqName == intendedFqName
+        }
+    }
+
     private fun InspectionManager.createRedundantQualifierProblemDescriptor(element: KtElement, isOnTheFly: Boolean): ProblemDescriptor {
         val qualifierToRemove = element.getQualifier()
 
@@ -100,18 +122,17 @@ internal class RemoveRedundantQualifierNameInspection : AbstractKotlinInspection
             RemoveQualifierQuickFix,
         )
     }
+}
 
-    private object RemoveQualifierQuickFix : LocalQuickFix {
-        override fun getFamilyName(): String = KotlinBundle.message("remove.redundant.qualifier.name.quick.fix.text")
+internal object RemoveQualifierQuickFix : KotlinModCommandQuickFix<KtElement>() {
+    override fun getFamilyName(): String = KotlinBundle.message("remove.redundant.qualifier.name.quick.fix.text")
 
-        @OptIn(KtNonPublicApi::class)
-        override fun applyFix(project: Project, descriptor: ProblemDescriptor) {
-            val elementWithQualifier = descriptor.psiElement ?: return
+    override fun applyFix(project: Project, element: KtElement, updater: ModPsiUpdater) {
+        when (element) {
+            is KtUserType if (element.qualifier != null) -> KtPsiMutationService.getInstance()
+                .removeQualifier(element)
 
-            when (elementWithQualifier) {
-                is KtUserType if (elementWithQualifier.qualifier != null) -> KtPsiMutationService.getInstance().removeQualifier(elementWithQualifier)
-                is KtDotQualifiedExpression -> elementWithQualifier.deleteQualifier()
-            }
+            is KtDotQualifiedExpression -> element.deleteQualifier()
         }
     }
 }
@@ -131,7 +152,7 @@ private fun KaDeclarationSymbol?.isEnumClass(): Boolean {
 
 context(_: KaSession)
 private fun KaDeclarationSymbol?.isEnumCompanionObject(): Boolean =
-  this?.getContainingClassForCompanionObject().isEnumClass()
+    this?.getContainingClassForCompanionObject().isEnumClass()
 
 private fun KtDotQualifiedExpression.deleteQualifier(): KtExpression? {
     val selectorExpression = selectorExpression ?: return null

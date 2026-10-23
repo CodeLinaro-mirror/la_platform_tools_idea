@@ -12,13 +12,13 @@ import com.intellij.ide.plugins.marketplace.statistics.PluginManagerUsageCollect
 import com.intellij.ide.plugins.newui.ListPluginComponent
 import com.intellij.ide.plugins.newui.MultiSelectionEventHandler
 import com.intellij.ide.plugins.newui.MyPluginModel
-import com.intellij.ide.plugins.newui.PluginUpdatesService
 import com.intellij.ide.plugins.newui.PluginDetailsPageComponent
 import com.intellij.ide.plugins.newui.PluginInstallationState
 import com.intellij.ide.plugins.newui.PluginLogo
 import com.intellij.ide.plugins.newui.PluginModelFacade
 import com.intellij.ide.plugins.newui.PluginUiModel
 import com.intellij.ide.plugins.newui.PluginUpdateSubscription
+import com.intellij.ide.plugins.newui.PluginUpdatesService
 import com.intellij.ide.plugins.newui.PluginsGroup
 import com.intellij.ide.plugins.newui.PluginsGroupComponent
 import com.intellij.ide.plugins.newui.PluginsGroupComponentWithProgress
@@ -37,9 +37,12 @@ import com.intellij.openapi.actionSystem.ToggleAction
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.ModalityState.any
 import com.intellij.openapi.application.asContextElement
+import com.intellij.diagnostic.rethrowControlFlowException
 import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.project.DumbAware
+import com.intellij.openapi.updateSettings.impl.PluginUpdateSource
+import com.intellij.openapi.updateSettings.impl.getPresentableName
 import com.intellij.openapi.util.NlsSafe
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.util.text.HtmlChunk
@@ -50,6 +53,7 @@ import com.intellij.ui.components.labels.LinkListener
 import com.intellij.util.concurrency.annotations.RequiresEdt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jetbrains.annotations.ApiStatus
@@ -59,9 +63,10 @@ import java.util.function.Consumer
 import java.util.function.Supplier
 import javax.swing.JComponent
 import javax.swing.JLabel
+import kotlin.time.TimeSource
 
 @ApiStatus.Internal
-class InstalledPluginsTab @RequiresEdt constructor(
+class InstalledPluginsTab @RequiresEdt(generateAssertion = false /* IJPL-115548 */) constructor(
   private val pluginModelFacade: PluginModelFacade,
   private val coroutineScope: CoroutineScope,
   private val searchInMarketplaceTabHandler: Consumer<String>?,
@@ -92,6 +97,10 @@ class InstalledPluginsTab @RequiresEdt constructor(
   private val installedPanel = createInstalledPanel(eventHandler)
 
   private var pluginUpdateSubscription: PluginUpdateSubscription? = null
+  @Volatile
+  private var installedPanelModelJob: Job? = null
+
+  private val tracker: PluginManagerUiTracker = PluginManagerUiTracker()
 
   init {
     updateAllLink.isVisible = false
@@ -117,7 +126,7 @@ class InstalledPluginsTab @RequiresEdt constructor(
 
   fun getInstalledGroups(): List<UIPluginGroup> = getInstalledPanel().groups
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   override fun createPluginsPanel(): JComponent {
     installedPanel.showLoadingIcon()
     computeAndApplyInstalledPanelModel()
@@ -126,40 +135,68 @@ class InstalledPluginsTab @RequiresEdt constructor(
 
   private fun computeAndApplyInstalledPanelModel() {
     val myPluginModel = pluginModelFacade.getModel()
-    coroutineScope.launch(Dispatchers.IO) {
-      myPluginModel.waitForSessionInitialization()
-      val pluginManager = UiPluginManager.getInstance()
-      val installedPlugins = pluginManager.getInstalledPlugins()
-      val visiblePlugins = pluginManager.getVisiblePlugins(Registry.`is`("plugins.show.implementation.details"))
-      val errorCheckResults = pluginManager.loadErrors(myPluginModel.mySessionId.toString())
-      val visiblePluginsRequiresUltimate = pluginManager.getPluginsRequiresUltimateMap(visiblePlugins.map { it.pluginId })
-      val errors = MyPluginModel.getErrors(errorCheckResults)
-      val installationStates = pluginManager.getInstallationStates()
-      withContext(Dispatchers.EDT + any().asContextElement()) {
-        try {
-          PluginLogo.startBatchMode()
-          val model = CreateInstalledPanelModel(
-            installedPlugins,
-            visiblePlugins,
-            errors,
-            visiblePluginsRequiresUltimate,
-            installationStates
-          )
-          applyInstalledPanelModel(model)
-        }
-        finally {
-          PluginLogo.endBatchMode()
-        }
+    installedPanelModelJob = coroutineScope.launch(Dispatchers.IO) {
+      val totalStart = TimeSource.Monotonic.markNow()
+      try {
+        val model = fetchInstalledPanelModel(myPluginModel)
+        tracker.measure(PluginManagerUiMetric.INSTALLED_TAB_FETCH, totalStart)
+
+        renderInstalledPanelModel(model)
+        tracker.measure(PluginManagerUiMetric.INSTALLED_TAB_TOTAL, totalStart)
+      }
+      catch (e: Exception) {
+        rethrowControlFlowException(e)
+        tracker.logEvent(PluginManagerUiEvent.INSTALLED_TAB_LOAD_ERROR)
+        throw e
       }
     }
   }
 
-  @RequiresEdt
+  private suspend fun waitForInstalledPanelModel() {
+    installedPanelModelJob?.join()
+  }
+
+  private suspend fun fetchInstalledPanelModel(myPluginModel: MyPluginModel): CreateInstalledPanelModel {
+    myPluginModel.waitForSessionInitialization()
+    val pluginManager = UiPluginManager.getInstance()
+    val installedPlugins = pluginManager.getInstalledPlugins()
+    val visiblePlugins = pluginManager.getVisiblePlugins(Registry.`is`("plugins.show.implementation.details"))
+    val errorCheckResults = pluginManager.loadErrors(myPluginModel.mySessionId.toString())
+    val pluginIds = visiblePlugins.map { it.pluginId }
+    val visiblePluginsRequiresUltimate = pluginManager.getPluginsRequiresUltimateMap(pluginIds)
+    val errors = MyPluginModel.getErrors(errorCheckResults)
+    val installationStates = pluginManager.getInstallationStates()
+    val updateSources = pluginModelFacade.getPendingPluginUpdateSourcesSync(pluginIds)
+    return CreateInstalledPanelModel(
+      installedPlugins,
+      visiblePlugins,
+      errors,
+      visiblePluginsRequiresUltimate,
+      installationStates,
+      updateSources,
+      MyPluginModel.getExpectedExplanations(errorCheckResults),
+    )
+  }
+
+  private suspend fun renderInstalledPanelModel(model: CreateInstalledPanelModel) {
+    withContext(Dispatchers.EDT + any().asContextElement()) {
+      val renderStart = TimeSource.Monotonic.markNow()
+      try {
+        PluginLogo.startBatchMode()
+        applyInstalledPanelModel(model)
+      }
+      finally {
+        PluginLogo.endBatchMode()
+        tracker.measure(PluginManagerUiMetric.INSTALLED_TAB_RENDER, renderStart)
+      }
+    }
+  }
+
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private fun applyInstalledPanelModel(model: CreateInstalledPanelModel) {
     try {
       pluginModelFacade.getModel().setDownloadedGroup(installedPanel, userInstalled, installing)
-      installing.getPreloadedModel().setErrors(model.errors)
-      installing.getPreloadedModel().setPluginInstallationStates(model.installationStates)
+      installing.loadIntoPreloadedModel(model)
       installing.addModels(MyPluginModel.installingPlugins)
       if (!installing.getModels().isEmpty()) {
         installing.sortByName()
@@ -167,12 +204,10 @@ class InstalledPluginsTab @RequiresEdt constructor(
         installedPanel.addGroup(installing)
       }
 
-      userInstalled.getPreloadedModel().setErrors(model.errors)
-      userInstalled.getPreloadedModel().setPluginInstallationStates(model.installationStates)
+      userInstalled.loadIntoPreloadedModel(model)
       userInstalled.addModels(model.installedPlugins)
 
-      bundledUpdateGroup.getPreloadedModel().setErrors(model.errors)
-      bundledUpdateGroup.getPreloadedModel().setPluginInstallationStates(model.installationStates)
+      bundledUpdateGroup.loadIntoPreloadedModel(model)
 
       // bundled includes bundled plugin updates
       val visibleNonBundledPlugins = ArrayList<PluginUiModel>()
@@ -259,8 +294,7 @@ class InstalledPluginsTab @RequiresEdt constructor(
         // Add priority groups with promotion panel before userInstalled
         for (group in sortedBundledGroups) {
           if (group.promotionPanel != null) {
-            group.getPreloadedModel().setErrors(model.errors)
-            group.getPreloadedModel().setPluginInstallationStates(model.installationStates)
+            group.loadIntoPreloadedModel(model)
             installedPanel.addGroup(group)
             pluginModelFacade.getModel().addEnabledGroup(group)
           }
@@ -285,15 +319,14 @@ class InstalledPluginsTab @RequiresEdt constructor(
 
       for (group in sortedBundledGroups) {
         if (!Registry.`is`("ide.plugins.category.promotion.enabled") || group.promotionPanel == null) {
-          group.getPreloadedModel().setErrors(model.errors)
-          group.getPreloadedModel().setPluginInstallationStates(model.installationStates)
+          group.loadIntoPreloadedModel(model)
           installedPanel.addGroup(group)
           pluginModelFacade.getModel().addEnabledGroup(group)
         }
       }
 
       pluginUpdateSubscription = PluginUpdatesService.getInstance().subscribe { updates ->
-        val updateModels = updates.all.filter{ plugin -> pluginModelFacade.isEnabled(plugin) }
+        val updateModels = updates.all.filter { plugin -> pluginModelFacade.isEnabled(plugin) }
         setUpdateDescriptors(installedPanel, updateModels)
         setUpdateDescriptors(searchPanel.panel, updateModels)
         applyBundledUpdates(updateModels)
@@ -370,17 +403,20 @@ class InstalledPluginsTab @RequiresEdt constructor(
   private fun createSearchPanel(selectionListener: Consumer<in PluginsGroupComponent?>): InstalledPluginsTabSearchResultPanel {
     val installedController = object : SearchUpDownPopupController(searchTextField) {
       override fun getAttributes(): List<String> {
-        return listOf(
-          "/userInstalled",
-          "/outdated",
-          "/enabled",
-          "/disabled",
-          "/invalid",
-          "/bundled",
-          "/updatedBundled",
-          SearchWords.VENDOR.value,
-          SearchWords.TAG.value,
-        )
+        return buildList {
+          add("/userInstalled")
+          add("/outdated")
+          add("/enabled")
+          add("/disabled")
+          add("/invalid")
+          add("/bundled")
+          add("/updatedBundled")
+          add(SearchWords.VENDOR.value)
+          add(SearchWords.TAG.value)
+          if (UiPluginManager.getInstance().isPluginUpdateSourceVisibleInUI()) {
+            add(SearchWords.PLUGIN_UPDATE_SOURCE.value)
+          }
+        }
       }
 
       override fun getValues(attribute: String): SortedSet<String>? {
@@ -390,6 +426,9 @@ class InstalledPluginsTab @RequiresEdt constructor(
         }
         else if (SearchWords.TAG.value == attribute) {
           pluginModelFacade.getModel().tags as SortedSet<String>?
+        }
+        else if (SearchWords.PLUGIN_UPDATE_SOURCE.value == attribute && UiPluginManager.getInstance().isPluginUpdateSourceVisibleInUI()) {
+          sortedSetOf(null.getPresentableName())
         }
         else {
           null
@@ -425,8 +464,9 @@ class InstalledPluginsTab @RequiresEdt constructor(
       installedSearchGroup,
       Supplier { installedPanel },
       selectionListener,
-      if (searchInMarketplaceTabHandler == null) null else Consumer<String?> { query -> searchInMarketplaceTabHandler.accept(query!!) },
+      if (searchInMarketplaceTabHandler == null) null else Consumer { query -> searchInMarketplaceTabHandler.accept(query!!) },
       pluginModelFacade,
+      ::waitForInstalledPanelModel,
     )
     return searchPanel
   }
@@ -592,7 +632,6 @@ class InstalledPluginsTab @RequiresEdt constructor(
     bundledUpdateCounter.isVisible = visible
   }
 
-  @ApiStatus.Internal
   internal inner class InstalledSearchOptionAction(private val myOption: InstalledSearchOption)
     : ToggleAction(myOption.myPresentableNameSupplier), DumbAware {
     var myIsSelected: Boolean = false
@@ -706,4 +745,14 @@ private data class CreateInstalledPanelModel(
   val errors: Map<PluginId, List<HtmlChunk>>,
   val visiblePluginsRequiresUltimate: Map<PluginId, Boolean>,
   val installationStates: Map<PluginId, PluginInstallationState>,
+  val updateSources: Map<PluginId, PluginUpdateSource>,
+  val expectedExplanations: Map<PluginId, List<@Nls String>>,
 )
+
+private fun PluginsGroup.loadIntoPreloadedModel(model: CreateInstalledPanelModel) {
+  val preloadedModel = getPreloadedModel()
+  preloadedModel.setErrors(model.errors)
+  preloadedModel.setExpectedExplanations(model.expectedExplanations)
+  preloadedModel.setPluginInstallationStates(model.installationStates)
+  preloadedModel.setPluginUpdateSources(model.updateSources)
+}

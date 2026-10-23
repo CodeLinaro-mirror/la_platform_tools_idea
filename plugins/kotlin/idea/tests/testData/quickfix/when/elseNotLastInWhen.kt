@@ -1,5 +1,5 @@
 // "Move else branch to the end" "true"
-// K2_ERROR: 'else' entry must be the last one in a 'when' expression.
+// K2_ERROR: ELSE_MISPLACED_IN_WHEN
 fun test() {
     val a = 12
     when (a) {
@@ -10,4 +10,3 @@ fun test() {
 }
 
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.MoveWhenElseBranchFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.MoveWhenElseBranchFix

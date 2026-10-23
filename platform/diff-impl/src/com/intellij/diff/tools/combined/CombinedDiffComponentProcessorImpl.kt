@@ -8,6 +8,7 @@ import com.intellij.diff.DiffTool
 import com.intellij.diff.DiffToolType
 import com.intellij.diff.FrameDiffTool
 import com.intellij.diff.editor.DiffEditorTabFilesUtil
+import com.intellij.diff.frontend.impl.LocalFrontendDiffExtensionBridge
 import com.intellij.diff.impl.DiffEditorViewer
 import com.intellij.diff.impl.DiffEditorViewerListener
 import com.intellij.diff.impl.DiffRequestProcessor
@@ -171,7 +172,7 @@ class CombinedDiffComponentProcessorImpl(
       combinedViewer = createCombinedViewer(false)
     }
 
-    @RequiresEdt
+    @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
     override fun onRequestsLoaded(blockId: CombinedBlockId, request: DiffRequest) {
       val viewer = combinedViewer ?: return
       buildBlockContent(mainUi, model.context, request, blockId)?.let { newContent ->
@@ -182,7 +183,7 @@ class CombinedDiffComponentProcessorImpl(
       viewer.contentChanged()
     }
 
-    @RequiresEdt
+    @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
     override fun onRequestContentsUnloaded(requests: Map<CombinedBlockId, DiffRequest>) {
       val viewer = combinedViewer ?: return
 
@@ -265,6 +266,7 @@ class CombinedDiffComponentProcessorImpl(
           LOG.error(e)
         }
       }
+      LocalFrontendDiffExtensionBridge.notifyViewerCreated(viewer, context, request)
     }
   }
 }

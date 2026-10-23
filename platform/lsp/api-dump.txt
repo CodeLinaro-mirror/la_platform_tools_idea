@@ -13,6 +13,7 @@ c:com.intellij.platform.lsp.api.Lsp4jClient
 - f:refreshInlayHints():java.util.concurrent.CompletableFuture
 - f:refreshInlineValues():java.util.concurrent.CompletableFuture
 - f:refreshSemanticTokens():java.util.concurrent.CompletableFuture
+- f:refreshTextDocumentContent(org.eclipse.lsp4j.TextDocumentContentRefreshParams):java.util.concurrent.CompletableFuture
 - f:registerCapability(org.eclipse.lsp4j.RegistrationParams):java.util.concurrent.CompletableFuture
 - f:showDocument(org.eclipse.lsp4j.ShowDocumentParams):java.util.concurrent.CompletableFuture
 - f:showMessage(org.eclipse.lsp4j.MessageParams):V
@@ -30,6 +31,7 @@ com.intellij.platform.lsp.api.LspClient
 - a:getProject():com.intellij.openapi.project.Project
 - a:getProviderClass():java.lang.Class
 - a:getState():com.intellij.platform.lsp.api.LspServerState
+- a:nextDocumentVersion(com.intellij.openapi.editor.Document):I
 - a:sendNotification(kotlin.jvm.functions.Function1):V
 - a:sendRequest(kotlin.jvm.functions.Function1,kotlin.coroutines.Continuation):java.lang.Object
 - a:sendRequestSync(I,kotlin.jvm.functions.Function1):java.lang.Object
@@ -47,7 +49,6 @@ a:com.intellij.platform.lsp.api.LspClientDescriptor
 - findFileByUri(java.lang.String):com.intellij.openapi.vfs.VirtualFile
 - p:findLocalFileByPath(java.lang.String):com.intellij.openapi.vfs.VirtualFile
 - getClientCapabilities():org.eclipse.lsp4j.ClientCapabilities
-- p:getFilePath(com.intellij.openapi.vfs.VirtualFile):java.lang.String
 - getFileUri(com.intellij.openapi.vfs.VirtualFile):java.lang.String
 - getLanguageId(com.intellij.openapi.vfs.VirtualFile):java.lang.String
 - getLsp4jServerClass():java.lang.Class
@@ -99,6 +100,12 @@ f:com.intellij.platform.lsp.api.LspIntegrationProvider$Companion
 - f:getEP_NAME():com.intellij.openapi.extensions.ExtensionPointName
 com.intellij.platform.lsp.api.LspIntegrationProvider$LspClientStarter
 - a:ensureClientStarted(com.intellij.platform.lsp.api.LspClientDescriptor):V
+com.intellij.platform.lsp.api.LspIntegrationSettings
+- sf:Companion:com.intellij.platform.lsp.api.LspIntegrationSettings$Companion
+- s:getInstanceOrNull(com.intellij.openapi.project.Project):com.intellij.platform.lsp.api.LspIntegrationSettings
+- a:getPluginConfiguration(java.lang.String):com.intellij.platform.lsp.api.LspPluginServerConfiguration
+f:com.intellij.platform.lsp.api.LspIntegrationSettings$Companion
+- f:getInstanceOrNull(com.intellij.openapi.project.Project):com.intellij.platform.lsp.api.LspIntegrationSettings
 com.intellij.platform.lsp.api.LspServer
 - com.intellij.platform.lsp.api.LspClient
 - sf:Companion:com.intellij.platform.lsp.api.LspServer$Companion
@@ -154,6 +161,7 @@ com.intellij.platform.lsp.api.LspServerNotificationsHandler
 - a:refreshInlayHints():java.util.concurrent.CompletableFuture
 - a:refreshInlineValues():java.util.concurrent.CompletableFuture
 - a:refreshSemanticTokens():java.util.concurrent.CompletableFuture
+- refreshTextDocumentContent(org.eclipse.lsp4j.TextDocumentContentRefreshParams):java.util.concurrent.CompletableFuture
 - a:registerCapability(org.eclipse.lsp4j.RegistrationParams):java.util.concurrent.CompletableFuture
 - a:showDocument(org.eclipse.lsp4j.ShowDocumentParams):java.util.concurrent.CompletableFuture
 - a:showMessage(org.eclipse.lsp4j.MessageParams):V
@@ -208,8 +216,11 @@ c:com.intellij.platform.lsp.api.customization.LspCodeActionsSupport
 - createIntentionAction(com.intellij.platform.lsp.api.LspServer,org.eclipse.lsp4j.CodeAction):com.intellij.platform.lsp.api.customization.LspIntentionAction
 - createQuickFix(com.intellij.platform.lsp.api.LspClient,org.eclipse.lsp4j.CodeAction):com.intellij.platform.lsp.api.customization.LspIntentionAction
 - createQuickFix(com.intellij.platform.lsp.api.LspServer,org.eclipse.lsp4j.CodeAction):com.intellij.platform.lsp.api.customization.LspIntentionAction
+- getExtractRefactoringSupport():Z
+- getInlineRefactoringSupport():Z
 - getIntentionActionsSupport():Z
 - getQuickFixesSupport():Z
+- shouldRunRefactoring(com.intellij.psi.PsiFile):Z
 a:com.intellij.platform.lsp.api.customization.LspCodeLensCustomizer
 f:com.intellij.platform.lsp.api.customization.LspCodeLensDisabled
 - com.intellij.platform.lsp.api.customization.LspCodeLensCustomizer
@@ -263,8 +274,10 @@ c:com.intellij.platform.lsp.api.customization.LspCustomization
 - getFoldingRangeCustomizer():com.intellij.platform.lsp.api.customization.LspFoldingRangeCustomizer
 - getFormattingCustomizer():com.intellij.platform.lsp.api.customization.LspFormattingCustomizer
 - getGoToDefinitionCustomizer():com.intellij.platform.lsp.api.customization.LspGoToDefinitionCustomizer
+- getGoToImplementationCustomizer():com.intellij.platform.lsp.api.customization.LspGoToImplementationCustomizer
 - getGoToTypeDefinitionCustomizer():com.intellij.platform.lsp.api.customization.LspGoToTypeDefinitionCustomizer
 - getHoverCustomizer():com.intellij.platform.lsp.api.customization.LspHoverCustomizer
+- getInheritanceMarkersCustomizer():com.intellij.platform.lsp.api.customization.LspInheritanceMarkersCustomizer
 - getInlayHintCustomizer():com.intellij.platform.lsp.api.customization.LspInlayHintCustomizer
 - getOnTypeFormattingCustomizer():com.intellij.platform.lsp.api.customization.LspOnTypeFormattingCustomizer
 - getOptimizeImportsCustomizer():com.intellij.platform.lsp.api.customization.LspOptimizeImportsCustomizer
@@ -352,6 +365,13 @@ f:com.intellij.platform.lsp.api.customization.LspGoToDefinitionDisabled
 c:com.intellij.platform.lsp.api.customization.LspGoToDefinitionSupport
 - com.intellij.platform.lsp.api.customization.LspGoToDefinitionCustomizer
 - <init>():V
+a:com.intellij.platform.lsp.api.customization.LspGoToImplementationCustomizer
+f:com.intellij.platform.lsp.api.customization.LspGoToImplementationDisabled
+- com.intellij.platform.lsp.api.customization.LspGoToImplementationCustomizer
+- sf:INSTANCE:com.intellij.platform.lsp.api.customization.LspGoToImplementationDisabled
+c:com.intellij.platform.lsp.api.customization.LspGoToImplementationSupport
+- com.intellij.platform.lsp.api.customization.LspGoToImplementationCustomizer
+- <init>():V
 a:com.intellij.platform.lsp.api.customization.LspGoToTypeDefinitionCustomizer
 f:com.intellij.platform.lsp.api.customization.LspGoToTypeDefinitionDisabled
 - com.intellij.platform.lsp.api.customization.LspGoToTypeDefinitionCustomizer
@@ -366,6 +386,31 @@ f:com.intellij.platform.lsp.api.customization.LspHoverDisabled
 c:com.intellij.platform.lsp.api.customization.LspHoverSupport
 - com.intellij.platform.lsp.api.customization.LspHoverCustomizer
 - <init>():V
+f:com.intellij.platform.lsp.api.customization.LspInheritanceMarker
+- <init>(com.intellij.platform.lsp.api.customization.LspInheritanceMarkerKind,java.lang.String,org.eclipse.lsp4j.SymbolKind,java.util.List):V
+- f:getKind():com.intellij.platform.lsp.api.customization.LspInheritanceMarkerKind
+- f:getSymbolKind():org.eclipse.lsp4j.SymbolKind
+- f:getSymbolName():java.lang.String
+- f:getTargets():java.util.List
+e:com.intellij.platform.lsp.api.customization.LspInheritanceMarkerKind
+- java.lang.Enum
+- sf:IMPLEMENTED_CLASS:com.intellij.platform.lsp.api.customization.LspInheritanceMarkerKind
+- sf:IMPLEMENTED_METHOD:com.intellij.platform.lsp.api.customization.LspInheritanceMarkerKind
+- sf:OVERRIDDEN_METHOD:com.intellij.platform.lsp.api.customization.LspInheritanceMarkerKind
+- sf:SUBCLASSED_CLASS:com.intellij.platform.lsp.api.customization.LspInheritanceMarkerKind
+- s:getEntries():kotlin.enums.EnumEntries
+- s:valueOf(java.lang.String):com.intellij.platform.lsp.api.customization.LspInheritanceMarkerKind
+- s:values():com.intellij.platform.lsp.api.customization.LspInheritanceMarkerKind[]
+a:com.intellij.platform.lsp.api.customization.LspInheritanceMarkersCustomizer
+f:com.intellij.platform.lsp.api.customization.LspInheritanceMarkersDisabled
+- com.intellij.platform.lsp.api.customization.LspInheritanceMarkersCustomizer
+- sf:INSTANCE:com.intellij.platform.lsp.api.customization.LspInheritanceMarkersDisabled
+c:com.intellij.platform.lsp.api.customization.LspInheritanceMarkersSupport
+- com.intellij.platform.lsp.api.customization.LspInheritanceMarkersCustomizer
+- <init>():V
+- isClassLikeSymbol(org.eclipse.lsp4j.SymbolKind):Z
+- isMethodLikeSymbol(org.eclipse.lsp4j.SymbolKind):Z
+- shouldAskServerForMarkers(com.intellij.openapi.vfs.VirtualFile):Z
 a:com.intellij.platform.lsp.api.customization.LspInlayHintCustomizer
 f:com.intellij.platform.lsp.api.customization.LspInlayHintDisabled
 - com.intellij.platform.lsp.api.customization.LspInlayHintCustomizer
@@ -391,7 +436,6 @@ c:com.intellij.platform.lsp.api.customization.LspIntentionAction
 - f:invoke(com.intellij.openapi.vfs.VirtualFile):V
 - f:isAvailable():Z
 - isAvailable(com.intellij.openapi.project.Project,com.intellij.openapi.editor.Editor,com.intellij.psi.PsiFile):Z
-- f:isAvailable(kotlin.jvm.functions.Function1):Z
 - f:startInWriteAction():Z
 a:com.intellij.platform.lsp.api.customization.LspOnTypeFormattingCustomizer
 f:com.intellij.platform.lsp.api.customization.LspOnTypeFormattingDisabled
@@ -510,10 +554,12 @@ a:com.intellij.platform.lsp.util.Lsp4jService
 f:com.intellij.platform.lsp.util.Lsp4jService$Companion
 - f:getInstance():com.intellij.platform.lsp.util.Lsp4jService
 f:com.intellij.platform.lsp.util.Lsp4jUtilKt
+- sf:applySimpleTextEdits(com.intellij.openapi.editor.Document,java.util.List):Z
 - sf:applyTextEdit(com.intellij.openapi.editor.Document,org.eclipse.lsp4j.TextEdit):Z
 - sf:applyTextEdits(com.intellij.openapi.editor.Document,java.util.List):Z
 - sf:getLsp4jPosition(com.intellij.openapi.editor.Document,I):org.eclipse.lsp4j.Position
 - sf:getLsp4jRange(com.intellij.openapi.editor.Document,I,I):org.eclipse.lsp4j.Range
+- sf:getMessageIfStringOrEmpty(org.eclipse.lsp4j.Diagnostic):java.lang.String
 - sf:getOffsetInDocument(com.intellij.openapi.editor.Document,org.eclipse.lsp4j.Position):java.lang.Integer
 - sf:getRangeInDocument(com.intellij.openapi.editor.Document,org.eclipse.lsp4j.Range):com.intellij.openapi.util.TextRange
 f:com.intellij.platform.lsp.util.LspNavigationUtilsKt

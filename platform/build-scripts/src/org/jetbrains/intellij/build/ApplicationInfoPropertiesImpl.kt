@@ -5,6 +5,7 @@ import com.intellij.openapi.util.JDOMUtil
 import com.intellij.util.xml.dom.readXmlAsModel
 import org.jdom.Element
 import org.jdom.Namespace
+import org.jetbrains.annotations.ApiStatus.Internal
 import org.jetbrains.annotations.VisibleForTesting
 import org.jetbrains.intellij.build.impl.BuildUtils
 import org.jetbrains.intellij.build.impl.SnapshotBuildNumber
@@ -17,7 +18,6 @@ import java.time.Instant
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
-import java.time.temporal.ChronoUnit
 import kotlin.io.path.name
 
 private val BUILD_DATE_PATTERN = DateTimeFormatter.ofPattern("uuuuMMddHHmm")
@@ -61,7 +61,11 @@ internal class ApplicationInfoPropertiesImpl(
     get() = if (edition == null) fullProductName else "$fullProductName $edition"
 
   init {
-    val root = readXmlAsModel(findApplicationInfoInSources(project, productProperties))
+    val appInfoXml = Files.readString(findApplicationInfoInSources(project, productProperties))
+    val replacedAppInfoXml = productProperties.appInfoXmlReplacements
+                               ?.let { BuildUtils.replaceAll(appInfoXml, it) } ?: appInfoXml
+    val root = readXmlAsModel(replacedAppInfoXml.encodeToByteArray())
+
     @Suppress("DEPRECATION")
     val applicationInfoOverrides = productProperties.applicationInfoOverride(project)
     val versionTag = root.getChild("version")!!
@@ -96,19 +100,19 @@ internal class ApplicationInfoPropertiesImpl(
     this.productCode = productCode!!
     this.majorReleaseDate = run {
       val majorReleaseDate = (System.getProperty(BuildOptions.INTELLIJ_BUILD_OVERRIDE_APPLICATION_VERSION_MAJOR_RELEASE_DATE)
-                             ?: applicationInfoOverrides?.majorReleaseDate
-                             ?: buildTag.getAttributeValue("majorReleaseDate"))?.takeIf { it.isNotEmpty() }
+                              ?: applicationInfoOverrides?.majorReleaseDate
+                              ?: buildTag.getAttributeValue("majorReleaseDate"))?.takeIf { it.isNotEmpty() }
       when {
         isEAP -> {
-          val buildDate = Instant.ofEpochSecond(buildOptions.buildDateInSeconds)
-          val expirationDate = buildDate.plus(30, ChronoUnit.DAYS)
-          val now = Instant.ofEpochMilli(System.currentTimeMillis())
-          if (expirationDate < now) {
-            reportBuildProblem(
-              "Supplied build date is $buildDate, " +
-              "so expiration date is in the past, " +
-              "distribution won't be able to start"
-            )
+          // A dev distribution stamps no build date at all (see `computeAppInfoXml`), so its `buildDateInSeconds` -
+          // pinned for reproducible archive entries - says nothing about whether the IDE will start.
+          if (!buildOptions.isDevDistribution) {
+            eapBuildExpirationProblem(
+              buildTime = Instant.ofEpochSecond(buildOptions.buildDateInSeconds),
+              now = Instant.ofEpochMilli(System.currentTimeMillis()),
+            )?.let { problem ->
+              reportBuildProblem("Supplied build date is unusable: $problem; distribution won't be able to start")
+            }
           }
         }
         majorReleaseDate == null || majorReleaseDate.startsWith("__") -> {
@@ -118,7 +122,7 @@ internal class ApplicationInfoPropertiesImpl(
       formatMajorReleaseDate(majorReleaseDateRaw = majorReleaseDate, buildDateInSeconds = buildOptions.buildDateInSeconds)
     }
     fullProductName = applicationInfoOverrides?.fullProductName ?: namesTag.getAttributeValue("fullname") ?: shortProductName
-    edition = applicationInfoOverrides?.editionName ?: namesTag.getAttributeValue("edition")
+    edition = (applicationInfoOverrides?.editionName ?: namesTag.getAttributeValue("edition"))?.takeIf { it.isNotEmpty() }
     motto = applicationInfoOverrides?.motto ?: namesTag.getAttributeValue("motto")
     launcherName = namesTag.getAttributeValue("script")!!
     val companyTag = root.getChild("company")!!
@@ -153,12 +157,25 @@ internal fun computeAppInfoXml(appInfo: ApplicationInfoProperties, context: Buil
   val buildDate = ZonedDateTime.ofInstant(Instant.ofEpochSecond(context.options.buildDateInSeconds), ZoneOffset.UTC)
   var patchedAppInfo = BuildUtils.replaceAll(
     text = Files.readString(appInfoXmlPath),
-    replacements = mapOf(
-      "BUILD_NUMBER" to "${appInfo.productCode}-${context.buildNumber}",
-      "BUILD_DATE" to buildDate.format(BUILD_DATE_PATTERN),
-      "BUILD" to context.buildNumber,
-      "BUILTIN_PLUGINS_URL" to builtinPluginsRepoUrl
-    ),
+    replacements = buildMap {
+      // A dev distribution deliberately stamps no build date. It is launched rather than shipped, and it is reused for as
+      // long as its inputs are unchanged - so any date written here is a countdown to the day the IDE refuses to start:
+      // an EAP build is expired both when it is older than `EAPProfile.getExpirationPeriodDays()` and when its date is
+      // more than a day in the future (see `com.intellij.ide.license.impl.UnifiedLicenseManager.initLicenses`).
+      // Leaving the placeholder is the platform's own "this build has no build date": `ApplicationInfoImpl.readBuildInfo`
+      // skips it and `getBuildTime()` answers the startup time, so a dev IDE is always inside its budget.
+      // A dev distribution stamps no build number either. `BuildNumber.fromString` treats `__BUILD__` and
+      // `__BUILD_NUMBER__` as placeholders and reads the number from `build.txt` of the IDE home.
+      if (!context.options.isDevDistribution) {
+        put("BUILD_NUMBER", "${appInfo.productCode}-${context.buildNumber}")
+        put("BUILD_DATE", buildDate.format(BUILD_DATE_PATTERN))
+        put("BUILD", context.buildNumber)
+      }
+      put("BUILTIN_PLUGINS_URL", builtinPluginsRepoUrl)
+    }
+      .let { base ->
+        context.productProperties.appInfoXmlReplacements?.let { it + base } ?: base
+      },
     marker = "__"
   )
 
@@ -171,7 +188,7 @@ internal fun computeAppInfoXml(appInfo: ApplicationInfoProperties, context: Buil
   @Suppress("DEPRECATION")
   val appInfoOverride = context.productProperties.applicationInfoOverride(context.project)
   if (isEapOverride != null || suffixOverride != null || appInfoOverride != null || (context.isNightlyBuild && !isBranchDefault && branchName != null)) {
-    patchedAppInfo = withAppInfoOverride(
+    patchedAppInfo = applyApplicationInfoOverrides(
       originalPatchedAppInfo = patchedAppInfo,
       isEapOverride = isEapOverride,
       suffixOverride = suffixOverride,
@@ -183,7 +200,7 @@ internal fun computeAppInfoXml(appInfo: ApplicationInfoProperties, context: Buil
   return patchedAppInfo
 }
 
-private fun withAppInfoOverride(
+internal fun applyApplicationInfoOverrides(
   originalPatchedAppInfo: String,
   isEapOverride: String?,
   suffixOverride: String?,
@@ -228,6 +245,11 @@ private fun withAppInfoOverride(
     replaceAttribute(version, "suffix", appInfoOverride.versionSuffix)
 
     replaceAttribute(build, "majorReleaseDate", appInfoOverride.majorReleaseDate)
+
+    element.removeChildren("keymap", namespace)
+    appInfoOverride.reassignAltClickToMultipleCarets?.let {
+      element.addContent(Element("keymap", names.namespace).setAttribute("reassignAltClickToMultipleCarets", it))
+    }
   }
 
   if (isEapOverride != null || suffixOverride != null) {
@@ -245,6 +267,31 @@ private fun withAppInfoOverride(
   }
 
   return JDOMUtil.write(element)
+}
+
+/**
+ * The application-info scalars of a dev distribution of [productProperties], with no build context.
+ *
+ * The dev-distribution descriptor plan stamps `release_date`, `release_version` and the EAP flag into every produced
+ * plugin descriptor, and the assembly stamps the same three from [BuildContext.applicationInfo]. One reader, so the
+ * two cannot disagree.
+ *
+ * [buildDateInSeconds] is the value the descriptor action pins, because an EAP product states no `majorReleaseDate`
+ * and [formatMajorReleaseDate] then formats the build date instead.
+ */
+@Internal
+fun loadDevDistributionApplicationInfo(
+  project: JpsProject,
+  productProperties: ProductProperties,
+  buildDateInSeconds: Long,
+): ApplicationInfoProperties {
+  return ApplicationInfoPropertiesImpl(
+    project = project,
+    productProperties = productProperties,
+    // `isDevDistribution` holds back the EAP expiration report: a dev distribution stamps no build date, so a pinned
+    // one that is months old says nothing about whether the IDE starts.
+    buildOptions = BuildOptions(buildDateInSeconds = buildDateInSeconds, isDevDistribution = true),
+  )
 }
 
 //copy of ApplicationInfoImpl.shortenCompanyName

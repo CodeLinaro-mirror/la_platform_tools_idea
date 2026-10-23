@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.refactoring.actions;
 
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer;
@@ -6,6 +6,7 @@ import com.intellij.codeInsight.lookup.Lookup;
 import com.intellij.codeInsight.lookup.LookupEx;
 import com.intellij.codeInsight.lookup.LookupManager;
 import com.intellij.codeInsight.lookup.impl.LookupImpl;
+import com.intellij.codeInsight.multiverse.EditorContextManager;
 import com.intellij.ide.IdeEventQueue;
 import com.intellij.internal.statistic.eventLog.events.EventFields;
 import com.intellij.internal.statistic.eventLog.events.EventPair;
@@ -33,6 +34,7 @@ import com.intellij.psi.PsiCompiledElement;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
+import com.intellij.psi.impl.source.tree.injected.InjectedLanguageEditorUtil;
 import com.intellij.refactoring.RefactoringActionHandler;
 import com.intellij.refactoring.RefactoringBundle;
 import com.intellij.refactoring.RefactoringUsageCollector;
@@ -104,6 +106,7 @@ public abstract class BaseRefactoringAction extends AnAction {
     DataContext dataContext = e.getDataContext();
     Project project = e.getProject();
     if (project == null) return;
+    if (!RefactoringSafeMode.isRefactoringAllowed(dataContext)) return;
     int eventCount = IdeEventQueue.getInstance().getEventCount();
     if (!PsiDocumentManager.getInstance(project).commitAllDocumentsUnderProgress()) {
       return;
@@ -141,7 +144,11 @@ public abstract class BaseRefactoringAction extends AnAction {
     }
 
     if (activeInplaceRenamer == null &&
-        !(editor != null && editor.getCaretModel() instanceof CaretModelImpl caretModel && caretModel.isIteratingOverCarets())) {
+        !(editor != null &&
+          //prevent infinite recursion for refactoring called from
+          //injected fragments
+          InjectedLanguageEditorUtil.getTopLevelEditor(editor).getCaretModel() instanceof CaretModelImpl caretModel &&
+          caretModel.isIteratingOverCarets())) {
       final LookupEx lookup = LookupManager.getActiveLookup(editor);
       if (lookup instanceof LookupImpl) {
         Runnable command = () -> ((LookupImpl)lookup).finishLookup(Lookup.NORMAL_SELECT_CHAR);
@@ -153,7 +160,7 @@ public abstract class BaseRefactoringAction extends AnAction {
       }
     }
 
-    final PsiFile file = editor != null ? PsiDocumentManager.getInstance(project).getPsiFile(editor.getDocument()) : null;
+    final PsiFile file = editor != null ? EditorContextManager.getPsiFileForEditor(editor, project) : null;
     final Language language = file != null
                               ? file.getLanguage()
                               : (elements.length > 0 ? elements[0].getLanguage() : null);
@@ -190,6 +197,10 @@ public abstract class BaseRefactoringAction extends AnAction {
       hideAction(e);
       return;
     }
+    if (!RefactoringSafeMode.isRefactoringAllowed(dataContext)) {
+      hideAction(e);
+      return;
+    }
 
     Editor editor = e.getData(CommonDataKeys.EDITOR);
     PsiFile file = e.getData(CommonDataKeys.PSI_FILE);
@@ -220,7 +231,8 @@ public abstract class BaseRefactoringAction extends AnAction {
       }
     }
     else {
-      PsiElement element = findRefactoringTargetInEditor(dataContext, this::isAvailableForLanguage);
+      boolean availableForAnyLanguage = file != null && isAvailableForAnyLanguage(file);
+      PsiElement element = findRefactoringTargetInEditor(dataContext, language -> availableForAnyLanguage || isAvailableForLanguage(language));
       if (element != null) {
         boolean isEnabled = file != null && isAvailableOnElementInEditorAndFile(element, editor, file, dataContext, e.getPlace());
         if (!isEnabled) {
@@ -294,6 +306,14 @@ public abstract class BaseRefactoringAction extends AnAction {
 
   protected boolean isAvailableForLanguage(Language language) {
     return true;
+  }
+
+  /**
+   * Whether a language-agnostic refactoring support, registered for {@link Language#ANY} (e.g. an LSP server), is available in the file.
+   * Such support cannot be decided by language, so it is checked per file and shows the action in the editor only.
+   */
+  protected boolean isAvailableForAnyLanguage(@NotNull PsiFile file) {
+    return false;
   }
 
   protected boolean isAvailableForFile(PsiFile file) {

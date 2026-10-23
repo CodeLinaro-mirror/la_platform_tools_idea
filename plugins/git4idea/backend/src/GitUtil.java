@@ -26,13 +26,13 @@ import com.intellij.openapi.vcs.VcsException;
 import com.intellij.openapi.vcs.VcsRoot;
 import com.intellij.openapi.vcs.changes.Change;
 import com.intellij.openapi.vcs.changes.ChangeListManager;
-import com.intellij.openapi.vcs.changes.ChangeListManagerEx;
 import com.intellij.openapi.vcs.changes.ChangesUtil;
 import com.intellij.openapi.vcs.update.RefreshVFsSynchronously;
 import com.intellij.openapi.vcs.versionBrowser.CommittedChangeList;
-import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.StandardFileSystems;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.vfs.VirtualFileManager;
 import com.intellij.platform.eel.path.EelPath;
 import com.intellij.platform.eel.path.EelPathException;
 import com.intellij.platform.eel.provider.EelNioBridgeServiceKt;
@@ -45,7 +45,6 @@ import com.intellij.util.containers.Convertor;
 import com.intellij.util.ui.UIUtil;
 import com.intellij.vcs.log.Hash;
 import com.intellij.vcs.log.impl.HashImpl;
-import com.intellij.vcs.log.util.VcsLogUtil;
 import com.intellij.vcsUtil.VcsFileUtil;
 import com.intellij.vcsUtil.VcsImplUtil;
 import com.intellij.vcsUtil.VcsUtil;
@@ -59,6 +58,7 @@ import git4idea.commands.GitHandler;
 import git4idea.commands.GitLineHandler;
 import git4idea.i18n.GitBundle;
 import git4idea.repo.GitBranchTrackInfo;
+import git4idea.repo.GitObjectFormat;
 import git4idea.repo.GitRemote;
 import git4idea.repo.GitRepository;
 import git4idea.repo.GitRepositoryFiles;
@@ -120,7 +120,7 @@ public final class GitUtil {
   private static final Logger LOG = Logger.getInstance(GitUtil.class);
   private static final @NonNls String HEAD_FILE = "HEAD";
 
-  private static final Pattern HASH_STRING_PATTERN = Pattern.compile("[a-fA-F0-9]{40}");
+  public static final Pattern HASH_REGEX = Pattern.compile("[a-fA-F0-9]{7,64}");
 
   /**
    * A private constructor to suppress instance creation
@@ -163,7 +163,7 @@ public final class GitUtil {
     if (pathToDir == null) return null;
     Path file = findRealRepositoryDir(rootDir.toNioPath(), pathToDir);
     if (file == null) return null;
-    return LocalFileSystem.getInstance().refreshAndFindFileByNioFile(file);
+    return VirtualFileManager.getInstance().refreshAndFindFileByNioPath(file);
   }
 
   private static @Nullable Path findRealRepositoryDir(@NotNull @NonNls Path rootPath, @NotNull @NonNls String path) {
@@ -399,7 +399,7 @@ public final class GitUtil {
       Path root = path;
       while (root != null) {
         if (isGitRoot(root)) {
-          return LocalFileSystem.getInstance().findFileByNioFile(root);
+          return VirtualFileManager.getInstance().findFileByNioPath(root);
         }
         root = root.getParent();
       }
@@ -553,13 +553,13 @@ public final class GitUtil {
 
   /**
    * @throws VcsException if the path is invalid
-   * @see VcsFileUtil#unescapeGitPath(String, String)
+   * @see VcsFileUtil#unescapeGitPath(String)
    */
   public static @NotNull String unescapePath(@NotNull @NonNls String path) throws VcsException {
     try {
       return VcsFileUtil.unescapeGitPath(path);
     }
-    catch (IllegalStateException e) {
+    catch (IllegalArgumentException e) {
       throw new VcsException(e);
     }
   }
@@ -804,9 +804,9 @@ public final class GitUtil {
   }
 
   public static @Nullable VirtualFile findRefreshFileOrLog(@NotNull @NonNls String absolutePath) {
-    VirtualFile file = LocalFileSystem.getInstance().findFileByPath(absolutePath);
+    VirtualFile file = StandardFileSystems.local().findFileByPath(absolutePath);
     if (file == null) {
-      file = LocalFileSystem.getInstance().refreshAndFindFileByPath(absolutePath);
+      file = StandardFileSystems.local().refreshAndFindFileByPath(absolutePath);
     }
     if (file == null) {
       LOG.debug("VirtualFile not found for " + absolutePath);
@@ -830,7 +830,7 @@ public final class GitUtil {
    */
   public static @NotNull List<Change> findLocalChangesForPaths(@NotNull Project project, @NotNull VirtualFile root,
                                                                @NotNull Collection<@NonNls String> affectedPaths, boolean relativePaths) {
-    ChangeListManagerEx changeListManager = ChangeListManagerEx.getInstanceEx(project);
+    ChangeListManager changeListManager = ChangeListManager.getInstance(project);
     List<Change> affectedChanges = new ArrayList<>();
     for (String path : affectedPaths) {
       String absolutePath = relativePaths ? toAbsolute(root, path) : path;
@@ -1164,16 +1164,17 @@ public final class GitUtil {
     return HashImpl.build(head);
   }
 
-  public static boolean isHashString(@NotNull @NonNls String revision) {
-    return isHashString(revision, true);
+  public static boolean isPossibleHash(@NotNull String revision) {
+    return HASH_REGEX.matcher(revision).matches();
   }
 
-  public static boolean isHashString(@NotNull @NonNls String revision, boolean fullHashOnly) {
-    if (fullHashOnly) {
-      return HASH_STRING_PATTERN.matcher(revision).matches();
+  public static boolean isPossibleFullHash(@NotNull String revision) {
+    int length = revision.length();
+    for (GitObjectFormat format : GitObjectFormat.getEntries()) {
+      if (length == format.getHexSize()) {
+        return isPossibleHash(revision);
+      }
     }
-    else {
-      return VcsLogUtil.HASH_REGEX.matcher(revision).matches();
-    }
+    return false;
   }
 }

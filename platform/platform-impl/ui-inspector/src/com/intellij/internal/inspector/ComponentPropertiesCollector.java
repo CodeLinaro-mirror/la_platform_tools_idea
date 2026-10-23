@@ -131,9 +131,9 @@ public final class ComponentPropertiesCollector {
   private void collectProperties(@NotNull Component component) {
     addProperties("", component, PROPERTIES);
 
-    myProperties.add(new PropertyBean("baseline", component.getBaseline(component.getWidth(), component.getHeight())));
+    myProperties.add(new PropertyBean("baseline", getBaseline(component)));
 
-    Pair<String, String> addedAt = getAddedAtStacktrace(component);
+    Pair<String, Object> addedAt = getAddedAtStacktrace(component);
     myProperties.add(new PropertyBean(addedAt.first, addedAt.second, addedAt.second != null));
 
     // Add properties related to Accessibility support. This is useful for manually
@@ -160,9 +160,12 @@ public final class ComponentPropertiesCollector {
           addMigLayoutComponentConstraints(cc);
         }
       }
-      else if (layout instanceof com.intellij.ui.dsl.gridLayout.GridLayout && component instanceof JComponent) {
-        addGridLayoutComponentConstraints(
-          Objects.requireNonNull(((com.intellij.ui.dsl.gridLayout.GridLayout)layout).getConstraints((JComponent)component)));
+      else if (layout instanceof GridLayout && component instanceof JComponent) {
+        // GridSource does not register per-component constraints.
+        Constraints constraints = ((GridLayout)layout).getConstraints((JComponent)component);
+        if (constraints != null) {
+          addGridLayoutComponentConstraints(constraints);
+        }
       }
     }
 
@@ -177,6 +180,22 @@ public final class ComponentPropertiesCollector {
       if (placeholder != null && !placeholder.isEmpty()) {
         myProperties.add(new PropertyBean("Editor Placeholder", placeholder));
       }
+    }
+  }
+
+  private static @Nullable Integer getBaseline(@NotNull Component component) {
+    int width = component.getWidth();
+    int height = component.getHeight();
+    if (width < 0 || height < 0) {
+      return null;
+    }
+
+    try {
+      return component.getBaseline(width, height);
+    }
+    catch (IllegalArgumentException ignored) {
+      // UI delegates can reject the effective size after subtracting insets from a component's dimensions.
+      return null;
     }
   }
 
@@ -706,13 +725,24 @@ public final class ComponentPropertiesCollector {
     return ClientProperty.get(c, ACTION_KEY);
   }
 
-  private static @NotNull Pair<@NotNull String, @Nullable String> getAddedAtStacktrace(@NotNull Component component) {
+  private static @NotNull Pair<@NotNull String, @Nullable Object> getAddedAtStacktrace(@NotNull Component component) {
+    if (ComposeUiInspector.INSTANCE.isComposeComponent(component)) {
+      return new Pair<>(ComposeUiInspector.ADDED_AT_ROW, ComposeUiInspector.INSTANCE.stackTrace(component));
+    }
+
     Throwable throwable = null;
     String propertyName = "added-at";
     String text;
     int first;
     if (component instanceof JComponent c) {
-      throwable = (Throwable)c.getClientProperty(DslComponentPropertyInternal.CREATION_STACKTRACE);
+      throwable = ComposeUiInspector.INSTANCE.creationStackTrace(c);
+      if (throwable != null) {
+        propertyName = ComposeUiInspector.ADDED_AT_ROW;
+      }
+      else {
+        throwable = (Throwable)c.getClientProperty(DslComponentPropertyInternal.CREATION_STACKTRACE);
+        if (throwable != null) propertyName = "added-at (UI DSL)";
+      }
     }
 
     if (throwable == null) {
@@ -725,7 +755,6 @@ public final class ComponentPropertiesCollector {
       first = text.indexOf("at com.intellij", text.indexOf("at java."));
     }
     else {
-      propertyName = "added-at (UI DSL)";
       text = ExceptionUtil.getThrowableText(throwable);
       first = text.indexOf("at com.intellij");
     }

@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.platform.eel.impl.local
 
 import com.intellij.execution.CommandLineUtil
@@ -19,11 +19,15 @@ import com.intellij.platform.eel.EelExecPosixApi
 import com.intellij.platform.eel.EelExecWindowsApi
 import com.intellij.platform.eel.EelPlatform
 import com.intellij.platform.eel.EelPosixProcess
+import com.intellij.platform.eel.EelProcessManagementPosixApi
+import com.intellij.platform.eel.EelProcessManagementWindowsApi
 import com.intellij.platform.eel.EelUserPosixInfo
 import com.intellij.platform.eel.EelWindowsProcess
 import com.intellij.platform.eel.ExecuteProcessException
 import com.intellij.platform.eel.LocalEelExecApi
+import com.intellij.platform.eel.SafeDeferred
 import com.intellij.platform.eel.channels.EelDelicateApi
+import com.intellij.platform.eel.environmentVariablesAwaitReporter
 import com.intellij.platform.eel.impl.base.EelExecApiEnvironmentVariableCache
 import com.intellij.platform.eel.impl.base.bindProcessToScopeIfSet
 import com.intellij.platform.eel.impl.base.commandLineForDebug
@@ -32,15 +36,15 @@ import com.intellij.platform.eel.provider.LocalEelDescriptor
 import com.intellij.platform.eel.provider.utils.awaitProcessResult
 import com.intellij.platform.eel.provider.utils.stdoutString
 import com.intellij.platform.eel.spawnProcess
+import com.intellij.platform.eel.toSafeDeferred
 import com.intellij.util.EnvironmentUtil
 import com.intellij.util.ShellEnvironmentReader
 import com.intellij.util.fastutil.skip
-import com.pty4j.PtyProcess
+import com.intellij.util.system.LowLevelLocalMachineAccess
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
@@ -53,9 +57,11 @@ import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.InvalidPathException
 import java.nio.file.Path
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.io.path.Path
 import kotlin.io.path.absolutePathString
 import kotlin.io.path.isDirectory
+import kotlin.time.Duration.Companion.nanoseconds
 
 @OptIn(EelDelicateApi::class)
 @ApiStatus.Internal
@@ -67,10 +73,15 @@ class EelLocalExecPosixApi(
     generatedBuilder: EelExecApi.ExecuteProcessOptions,
   ): EelPosixProcess {
     val process = executeImpl(generatedBuilder)
-    val r = if (process is PtyProcess)
-      LocalEelPosixProcess.create(process, process::setWinSize, platform)
-    else
-      LocalEelPosixProcess.create(process, null, platform)
+    // `create` suspends, so cancellation here would leave a running process that no caller can kill.
+    val r = try {
+      val control = LocalProcessService.getInstance().getPtyControl(process)
+      LocalEelPosixProcess.create(process, control?.let { it::setWindowSize }, platform)
+    }
+    catch (e: Throwable) {
+      destroyUndeliveredProcess(process, e)
+      throw e
+    }
     generatedBuilder.bindProcessToScopeIfSet(r)
     return r
   }
@@ -92,11 +103,11 @@ class EelLocalExecPosixApi(
 
     return when (val mode = opts.mode) {
       EelExecApi.EnvironmentVariablesOptions.Mode.DEFAULT -> {
-        EnvironmentVariablesDeferred(CompletableDeferred(EnvironmentUtil.getEnvironmentMap()))
+        EnvironmentVariablesDeferred(SafeDeferred(CompletableDeferred(EnvironmentUtil.getEnvironmentMap())))
       }
 
       EelExecApi.EnvironmentVariablesOptions.Mode.MINIMAL -> {
-        EnvironmentVariablesDeferred(CompletableDeferred(EnvironmentUtil.getSystemEnv()))
+        EnvironmentVariablesDeferred(SafeDeferred(CompletableDeferred(EnvironmentUtil.getSystemEnv())))
       }
 
       EelExecApi.EnvironmentVariablesOptions.Mode.LOGIN_NON_INTERACTIVE,
@@ -110,7 +121,7 @@ class EelLocalExecPosixApi(
     }
   }
 
-  private fun makeEnvironmentVariablesDeferred(mode: EelExecApi.EnvironmentVariablesOptions.Mode?): Deferred<Map<String, String>> {
+  private fun makeEnvironmentVariablesDeferred(mode: EelExecApi.EnvironmentVariablesOptions.Mode): SafeDeferred<Map<String, String>> {
     val interactive = when (mode) {
       EelExecApi.EnvironmentVariablesOptions.Mode.LOGIN_NON_INTERACTIVE -> false
       EelExecApi.EnvironmentVariablesOptions.Mode.LOGIN_INTERACTIVE -> true
@@ -118,23 +129,31 @@ class EelLocalExecPosixApi(
       EelExecApi.EnvironmentVariablesOptions.Mode.DEFAULT,
       EelExecApi.EnvironmentVariablesOptions.Mode.MINIMAL,
       EelExecApi.EnvironmentVariablesOptions.Mode.LOGIN_INTERACTIVE_VIA_SHELL,
-      null
         -> error("unreachable")
     }
 
     return service<CoroutineScopeService>().coroutineScope.async(Dispatchers.IO, start = CoroutineStart.LAZY) {
+      val reporter = environmentVariablesAwaitReporter()
+      reporter?.started(descriptor, mode)
+      val startNs = System.nanoTime()
       try {
         val shell = getUserShell()
         // Timeout is chosen at random.
-        ShellEnvironmentReader.readEnvironment(ShellEnvironmentReader.shellCommand(shell, null, interactive, null), 30_000).first
+        @OptIn(LowLevelLocalMachineAccess::class)
+        val envs = ShellEnvironmentReader.readEnvironment(ShellEnvironmentReader.shellCommand(shell, null, interactive, null), 30_000).first
+        reporter?.finished(descriptor, mode, (System.nanoTime() - startNs).nanoseconds, Result.success(envs))
+        envs
       }
       catch (err: CancellationException) {
+        reporter?.finished(descriptor, mode, (System.nanoTime() - startNs).nanoseconds, Result.failure(err))
         throw err
       }
       catch (err: Exception) {
-        throw EelExecApi.EnvironmentVariablesException(err.message.orEmpty(), err)
+        val wrapped = EelExecApi.EnvironmentVariablesException(err.message.orEmpty(), err)
+        reporter?.finished(descriptor, mode, (System.nanoTime() - startNs).nanoseconds, Result.failure(wrapped))
+        throw wrapped
       }
-    }
+    }.toSafeDeferred { it }
   }
 
   private suspend fun getUserShell(): String {
@@ -163,7 +182,7 @@ class EelLocalExecPosixApi(
         }
       }
 
-      is EelPlatform.FreeBSD, is EelPlatform.Linux -> {
+      is EelPlatform.FreeBSD, is EelPlatform.Linux, is EelPlatform.OHOS -> { //todo[kb] double-check HOS
         // TODO This code wasn't checked on BSD.
         var passwdLines =
           try {
@@ -216,14 +235,11 @@ class EelLocalExecPosixApi(
   override suspend fun findExeFilesInPath(binaryName: String): List<EelPath> =
     findExeFilesInPath(binaryName, LOG)
 
+  override val processManagement: EelProcessManagementPosixApi
+    get() = LocalEelPosixProcessManagementApi
+
   override suspend fun getUserLoginShell(): EelPath {
     return EelPath.parse(getUserShell(), descriptor)
-  }
-
-  override suspend fun spawnLoginShell(opts: EelExecApi.LoginShellOptions): EelExecApi.LoginShellHandle {
-    throw UnsupportedOperationException(
-      "spawnLoginShell is not implemented for local Eel; use environmentVariables() for env-only queries"
-    )
   }
 
   override suspend fun createExternalCli(options: EelExecApi.ExternalCliOptions): EelExecApi.ExternalCliEntrypoint {
@@ -242,10 +258,15 @@ class EelLocalExecWindowsApi : EelExecWindowsApi, LocalEelExecApi {
   ): EelWindowsProcess {
     val process = executeImpl(generatedBuilder)
     val commandLineForDebug = generatedBuilder.commandLineForDebug
-    val r = if (process is PtyProcess)
-      LocalEelWindowsProcess.create(process, process::setWinSize, commandLineForDebug)
-    else
-      LocalEelWindowsProcess.create(process, null, commandLineForDebug)
+    // `create` suspends, so cancellation here would leave a running process that no caller can kill.
+    val r = try {
+      val control = LocalProcessService.getInstance().getPtyControl(process)
+      LocalEelWindowsProcess.create(process, control?.let { it::setWindowSize }, commandLineForDebug)
+    }
+    catch (e: Throwable) {
+      destroyUndeliveredProcess(process, e)
+      throw e
+    }
     generatedBuilder.bindProcessToScopeIfSet(r)
     return r
   }
@@ -253,10 +274,13 @@ class EelLocalExecWindowsApi : EelExecWindowsApi, LocalEelExecApi {
   override val descriptor: EelDescriptor = LocalEelDescriptor
 
   override fun environmentVariables(opts: EelExecApi.EnvironmentVariablesOptions): EnvironmentVariablesDeferred =
-    EnvironmentVariablesDeferred(CompletableDeferred(EnvironmentUtil.getEnvironmentMap()))
+    EnvironmentVariablesDeferred(SafeDeferred(CompletableDeferred(EnvironmentUtil.getEnvironmentMap())))
 
   override suspend fun findExeFilesInPath(binaryName: String): List<EelPath> =
     findExeFilesInPath(binaryName, LOG)
+
+  override val processManagement: EelProcessManagementWindowsApi
+    get() = LocalEelWindowsProcessManagementApi
 
   override suspend fun getUserLoginShell(): EelPath {
     for (name in listOf("pwsh.exe", "powershell.exe")) {
@@ -265,12 +289,6 @@ class EelLocalExecWindowsApi : EelExecWindowsApi, LocalEelExecApi {
     }
     val systemRoot = System.getenv("SystemRoot") ?: "C:\\Windows"
     return EelPath.parse("$systemRoot\\System32\\cmd.exe", descriptor)
-  }
-
-  override suspend fun spawnLoginShell(opts: EelExecApi.LoginShellOptions): EelExecApi.LoginShellHandle {
-    throw UnsupportedOperationException(
-      "spawnLoginShell is not implemented for local Eel; use environmentVariables() for env-only queries"
-    )
   }
 
   override suspend fun createExternalCli(options: EelExecApi.ExternalCliOptions): EelExecApi.ExternalCliEntrypoint {
@@ -336,7 +354,39 @@ error
 .*
 """, RegexOption.COMMENTS)
 
-private fun executeImpl(builder: EelExecApi.ExecuteProcessOptions): Process {
+/**
+ * The OS process exists as soon as [ProcessBuilder.start] returns, but the caller can only kill it once it receives the handle.
+ * Cancellation in between makes `withContext` discard the result, and a process nobody holds a handle to can never be killed,
+ * so destroy it here instead of leaking it.
+ */
+private suspend fun executeImpl(builder: EelExecApi.ExecuteProcessOptions): Process {
+  val startedProcess = AtomicReference<Process?>()
+  try {
+    return startProcessImpl(builder, startedProcess::set)
+  }
+  catch (e: Throwable) {
+    startedProcess.get()?.let { process -> destroyUndeliveredProcess(process, e) }
+    throw e
+  }
+}
+
+/**
+ * Destroys a process whose handle is not going to reach the caller. A failure to destroy it must not replace
+ * [propagatedError], which is the reason the handle is dropped in the first place.
+ */
+private fun destroyUndeliveredProcess(process: Process, propagatedError: Throwable) {
+  try {
+    process.destroyForcibly()
+  }
+  catch (destroyError: Throwable) {
+    propagatedError.addSuppressed(destroyError)
+  }
+}
+
+private suspend fun startProcessImpl(
+  builder: EelExecApi.ExecuteProcessOptions,
+  onStarted: (Process) -> Unit,
+): Process = withContext(Dispatchers.IO) {
   val pty = builder.run {
     require(interactionOptions == null || ptyOrStdErrSettings == null)
     interactionOptions ?: (ptyOrStdErrSettings as EelExecApi.InteractionOptions?)
@@ -348,7 +398,7 @@ private fun executeImpl(builder: EelExecApi.ExecuteProcessOptions): Process {
     environment.putAll(builder.env)
     val platform = Platform.current()
     val escapedCommandLine = CommandLineUtil.toCommandLine(builder.exe, builder.args, platform)
-    return when (val p = pty) {
+    val process = when (val p = pty) {
       is EelExecApi.Pty -> {
         if (platform == Platform.UNIX && "TERM" !in environment) {
           environment.getOrPut("TERM") { "xterm" }
@@ -363,7 +413,7 @@ private fun executeImpl(builder: EelExecApi.ExecuteProcessOptions): Process {
             it.initialRows(p.rows)
           }.build(),
           false,
-        ) as PtyProcess
+        )
       }
       is EelExecApi.RedirectStdErr, null -> {
         ProcessBuilder(escapedCommandLine).apply {
@@ -383,6 +433,8 @@ private fun executeImpl(builder: EelExecApi.ExecuteProcessOptions): Process {
         }.start()
       }
     }
+    onStarted(process)
+    process
   }
   catch (e: IOException) {
     val errorCode = errorPattern.find(e.message ?: e.toString())?.let { result ->

@@ -228,6 +228,9 @@ open class TabLabel @Internal constructor(
   private val isSelected: Boolean
     get() = tabs.selectedLabel === this
 
+  @Internal
+  open val showSingleSelection: Boolean = false
+
   // we don't want the focus unless we are the selected tab
   override fun isFocusable(): Boolean = tabs.selectedLabel === this && super.isFocusable()
 
@@ -265,6 +268,15 @@ open class TabLabel @Internal constructor(
             super.paintIcon(g, icon, offset)
           }
         }
+      }
+
+      override fun getAccessibleContext(): AccessibleContext {
+        if (accessibleContext == null) {
+          accessibleContext = object : AccessibleSimpleColoredComponent() {
+            override fun getAccessibleName(): String? = accessibleNameWithoutIconTooltip
+          }
+        }
+        return accessibleContext
       }
     }
     label.isOpaque = false
@@ -322,7 +334,7 @@ open class TabLabel @Internal constructor(
       if (tabs.dropSide == -1) {
         g.color = JBUI.CurrentTheme.DragAndDrop.Area.BACKGROUND
 
-        if (IslandsPainterProvider.getInstance()?.isRoundedTabDuringDrag() == true) {
+        if (UIThemeCustomization.getInstance()?.isRoundedTabDuringDrag == true) {
           val arc = getDropTargetArc()
           val offsetTop = getDropTargetTopOffset()
           val offsetBottom = getDropTargetBottomOffset()
@@ -375,7 +387,7 @@ open class TabLabel @Internal constructor(
       if (contentRect.width < labelPlaceholder.preferredSize.width + tabs.tabHGap) {
         val rightRect = Rectangle(contentRect.x + contentRect.width - width, borderThickness, width, rect.height - 2 * borderThickness)
         if (isIslands) {
-          val composedBg = IslandsPainterProvider.getInstance()?.getEditorTabComposedBgColor(
+          val composedBg = UIThemeCustomization.getInstance()?.getEditorTabComposedBgColor(
             tabs, tabs.tabPainter, info.tabColor, tabs.isActiveTabs(info), isHovered, isSelected)
           if (composedBg != null) {
             val labelCoord = SwingUtilities.convertPoint(label, 0, 0, this)

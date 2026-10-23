@@ -2,9 +2,12 @@
 package com.intellij.util.indexing.impl;
 
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.diagnostic.ThrottledLogger;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.util.LowMemoryWatcher;
 import com.intellij.openapi.util.ThrowableComputable;
+import com.intellij.util.ExceptionUtil;
+import com.intellij.util.containers.FactoryMap;
 import com.intellij.util.indexing.DataIndexer;
 import com.intellij.util.indexing.IndexExtension;
 import com.intellij.util.indexing.IndexId;
@@ -15,6 +18,7 @@ import com.intellij.util.indexing.impl.forward.ForwardIndex;
 import com.intellij.util.indexing.impl.forward.ForwardIndexAccessor;
 import com.intellij.util.indexing.impl.forward.IntForwardIndex;
 import com.intellij.util.indexing.impl.forward.IntForwardIndexAccessor;
+import com.intellij.util.io.ClosedStorageException;
 import com.intellij.util.io.MeasurableIndexStore;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.ApiStatus.Internal;
@@ -24,9 +28,12 @@ import org.jetbrains.annotations.Nullable;
 import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static com.intellij.util.io.MeasurableIndexStore.keysCountApproximatelyIfPossible;
+import static java.util.concurrent.TimeUnit.MINUTES;
 
 //MAYBE RC: MapReduceIndex vs MapReduceIndexBase is a bit odd naming/semantics, because MapReduceIndexBase is an abstract
 //          implementation of UpdatableIndex, but significant part of UpdatableIndex methods are implemented in MapReduceIndex
@@ -367,7 +374,40 @@ public abstract class MapReduceIndex<Key, Value, Input> implements InvertedIndex
   }
 
   protected @NotNull Map<Key, Value> mapByIndexer(int inputId, @NotNull Input content) {
-    return myIndexer.map(content);
+    Map<Key, Value> map = myIndexer.map(content);
+    checkMapImplIsLegit(map);
+    return map;
+  }
+
+  private static final ConcurrentMap<IndexId<?,?>, ThrottledLogger> THROTTLED_LOGS_BY_INDEX_ID = new ConcurrentHashMap<>();
+  private void checkMapImplIsLegit(Map<Key, Value> map) {
+    //Indexing code assumes Map returned by Indexers has 'default' map semantics:
+    // `.get()` have no side effects -- i.e., it doesn't modify the map.
+    // `map.get(nonExistingKey) == null`
+    // (See DataIndexer.map() contract)
+    // If this is not true, some indexing logic will break: e.g. MapInputDataDiffBuilder uses `newMap.get()==null`
+    // to identify removed keys -- but it is not the only place.
+    // Here we check most obvious violation of that rule: FactoryMap
+    boolean inTests = IndexDebugProperties.IS_UNIT_TEST_MODE;
+    boolean suspiciousMapImplementation = (map instanceof FactoryMap);
+    //MAYBE RC: instead of checking 'is FactoryMap' => directly check `.get(new Object())==null` (in unitTests)?
+    //          The check is a bit risky, though, since strongly-typed map impls could throw ClassCastException.
+    if (suspiciousMapImplementation) {
+      Class<?> indexerClass = myIndexer.getClass();
+      ClassLoader classLoader = indexerClass.getClassLoader();
+      String message = indexerClass + "[" + indexId() + "] returns FactoryMap" +
+                       (classLoader == null ? "" : "; loaded by " + classLoader) +
+                       ": do not use Map with non-canonical .get() semantics in Indexers!";
+      if (inTests) {
+        throw new IllegalStateException(message);
+      }
+      else {
+        THROTTLED_LOGS_BY_INDEX_ID.computeIfAbsent(
+          indexId(),
+          __ -> new ThrottledLogger(LOG, MINUTES.toMillis(1))
+        ).error(message);
+      }
+    }
   }
 
   public abstract void checkCanceled();
@@ -426,7 +466,12 @@ public abstract class MapReduceIndex<Key, Value, Input> implements InvertedIndex
       }
     }
     catch (CancellationException e) {
-      LOG.error("CancellationException is not expected here! (" + e + ")");
+      if (!myDisposed) {
+        //RC: actually, AlreadyDisposedException and alike are perfectly legal here: NCS doesn't prohibit 'it is impossible
+        //    to continue the task'-like (P)CE, it only prohibits (P)CE due to explicit task cancellation. But AlreadyDisposedException
+        //    is unaccessible from this module, so we can't filter it
+        LOG.error("CancellationException is not expected here! (" + e + ")");
+      }
       throw e;
     }
     catch (Throwable e) { // e.g. IOException, AssertionError
@@ -462,9 +507,16 @@ public abstract class MapReduceIndex<Key, Value, Input> implements InvertedIndex
         MapReduceIndex.this.updateWith(updateData);
       }
       catch (StorageException | CancellationException ex) {
-        logStorageUpdateException(ex);
+        if (ExceptionUtil.causedBy(ex, ClosedStorageException.class)) {
+          //TODO RC: here we skipping the rebuild because closing index storage on shutdown is considered benign.
+          //         But this is not 100% true: index storages are not atomic/transactional, so the close may break
+          //         logical operation in the middle, some parts persisted, some not -- which is a corrupted state
+          //         and needs a rebuild. But to always rebuild here is just too many index rebuilds -- so the problem
+          //         is left for future generations to think about
+          return false;
+        }
 
-        //MAYBE RC: ClosedStorageException could legally happen (e.g., during indexes' shutdown), maybe ignore it here?
+        logStorageUpdateException(ex);
         MapReduceIndex.this.requestRebuild(ex);
         return false;
       }

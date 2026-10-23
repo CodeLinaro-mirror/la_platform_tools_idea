@@ -29,6 +29,7 @@ import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.editor.colors.EditorColors
 import com.intellij.openapi.editor.colors.EditorColorsManager
 import com.intellij.openapi.fileEditor.ClientFileEditorManager.Companion.assignClientId
+import com.intellij.openapi.fileEditor.CreatedFileEditorSink
 import com.intellij.openapi.fileEditor.FileEditor
 import com.intellij.openapi.fileEditor.FileEditorComposite
 import com.intellij.openapi.fileEditor.FileEditorManager
@@ -47,6 +48,7 @@ import com.intellij.openapi.fileEditor.impl.HistoryEntry.Companion.FILE_ID_ATTRI
 import com.intellij.openapi.fileEditor.impl.HistoryEntry.Companion.MANAGING_FS_ATTRIBUTE
 import com.intellij.openapi.fileEditor.impl.HistoryEntry.Companion.PROTOCOL_ATTRIBUTE
 import com.intellij.openapi.fileEditor.impl.HistoryEntry.Companion.TAG
+import com.intellij.openapi.fileEditor.impl.skeleton.EditorSkeleton
 import com.intellij.openapi.fileEditor.impl.text.AsyncEditorLoader
 import com.intellij.openapi.fileEditor.impl.text.TextEditorImpl
 import com.intellij.openapi.project.DumbService
@@ -86,19 +88,19 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.drop
-import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jdom.Element
@@ -128,6 +130,10 @@ private val LOG = logger<EditorComposite>()
 data class EditorCompositeModel internal constructor(
   @JvmField val fileEditorAndProviderList: List<FileEditorWithProvider>,
   @JvmField internal val state: FileEntry?,
+  /**
+   * Holds the editors until this composite adopts them, so that an open cancelled before that still releases them.
+   */
+  @JvmField internal val createdEditors: CreatedFileEditorSink? = null,
 ) {
   @Internal
   constructor(fileEditorAndProviderList: List<FileEditorWithProvider>)
@@ -186,6 +192,8 @@ open class EditorComposite internal constructor(
    * Editors opened in the composite
    */
   private val fileEditorWithProviders = MutableStateFlow<List<FileEditorWithProvider>>(INITIAL_EMPTY)
+
+  private val availableDeferred = CompletableDeferred<Unit>(coroutineScope.coroutineContext.job)
 
   private val dispatcher = EventDispatcher.create(EditorCompositeListener::class.java)
 
@@ -257,8 +265,16 @@ open class EditorComposite internal constructor(
   }
 
   internal suspend fun waitForAvailableWithoutTriggeringInit() {
-    fileEditorWithProviders.firstOrNull { it !== INITIAL_EMPTY }
+    availableDeferred.await()
   }
+
+  /**
+   * Completes when the composite publishes its editors, and is canceled with the composite.
+   * It does not start the initialization, so an observer does not change when the editors appear.
+   */
+  @get:Internal
+  val availableJob: Job
+    get() = availableDeferred
 
   @Internal
   fun isAvailable(): Boolean = fileEditorWithProviders.value !== INITIAL_EMPTY
@@ -278,12 +294,15 @@ open class EditorComposite internal constructor(
     val fileEditorWithProviders = model.fileEditorAndProviderList
     fileEditorWithProviders.assignEditorProperties()
 
+    EditorHistoryManager.preloadHistory(project)
+
     // TODO comment this and log a warning or log something
     if (fileEditorWithProviders.isEmpty()) {
       withContext(Dispatchers.EDT) {
         compositePanel.removeAll()
         setFileEditors(fileEditors = emptyList(), selectedEditor = null)
       }
+      model.createdEditors?.claim()
       return
     }
 
@@ -318,20 +337,13 @@ open class EditorComposite internal constructor(
           )
         }
 
-        span("Artificially wait if the skeleton has been set recently to avoid flickering") {
-          compositePanel.skeleton?.let { editorSkeleton ->
-            val hasBeenShownFor = System.currentTimeMillis() - editorSkeleton.initialTime.get()
-            if (hasBeenShownFor < editorSkeleton.skeletonDelayMs) {
-              delay(editorSkeleton.skeletonDelayMs - hasBeenShownFor)
-            }
-          }
-        }
-
         applyFileEditorsInEdtWithSpans(
           states = states,
           fileEditorWithProviders = fileEditorWithProviders,
           selectedFileEditorProvider = selectedFileEditor,
         )
+        // from here on the editors are listed by this composite, so `dispose` is what releases them
+        model.createdEditors?.claim()
         afterFileOpen(this, model)
         shownDeferred.complete(Unit)
 
@@ -357,7 +369,7 @@ open class EditorComposite internal constructor(
   }
 
   // for remote dev - we don't care about performance for now
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private fun blockingHandleModel(model: EditorCompositeModel) {
     val fileEditorWithProviders = model.fileEditorAndProviderList
     fileEditorWithProviders.assignEditorProperties()
@@ -379,14 +391,16 @@ open class EditorComposite internal constructor(
         EditorHistoryManager.getInstance(project).getState(file, provider)
       }
       else {
-        state.providers.get(provider.editorTypeId)?.let { provider.readState(it, project, file) }
+        state.providers.get(provider.editorTypeId)
+          ?.let { provider.readState(it, project, lazyOf(file)) }
+          ?.takeIf { it !== FileEditorState.NO_STATE }
       }
     }
     return states
   }
 
   // for remote dev - we don't care about performance for now
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private fun blockingHandleModel2(model: EditorCompositeModel) {
     val fileEditorWithProviders = model.fileEditorAndProviderList
     fileEditorWithProviders.assignEditorProperties()
@@ -430,7 +444,7 @@ open class EditorComposite internal constructor(
     }
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private suspend fun applyFileEditorsInEdtWithSpans(
     fileEditorWithProviders: List<FileEditorWithProvider>,
     states: List<FileEditorState?>,
@@ -454,7 +468,7 @@ open class EditorComposite internal constructor(
     setFileEditorsInEdt(fileEditorWithProviders = fileEditorWithProviders, selectedEditor = fileEditorWithProviderToSelect)
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private fun applyFileEditorsInEdt(
     fileEditorWithProviders: List<FileEditorWithProvider>,
     states: List<FileEditorState?>,
@@ -469,7 +483,7 @@ open class EditorComposite internal constructor(
     setFileEditorsInEdt(fileEditorWithProviders = fileEditorWithProviders, selectedEditor = fileEditorWithProviderToSelect)
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private fun restoreEditorStatesInEdt(fileEditorWithProviders: List<FileEditorWithProvider>, states: List<FileEditorState?>) =
     WriteIntentReadAction.run {
       for ((index, fileEditorWithProvider) in fileEditorWithProviders.withIndex()) {
@@ -482,7 +496,7 @@ open class EditorComposite internal constructor(
       }
     }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private fun setEditorComponentInEdt(
     fileEditorWithProviders: List<FileEditorWithProvider>,
     selectedFileEditorProvider: FileEditorProvider?,
@@ -508,7 +522,7 @@ open class EditorComposite internal constructor(
     return fileEditorWithProviderToSelect
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private fun validateEditorComponentInEdt() = WriteIntentReadAction.run {
     computeOrLogException(
       lambda = {
@@ -521,7 +535,7 @@ open class EditorComposite internal constructor(
     )
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private fun selectEditorInEdt(fileEditorWithProviderToSelect: FileEditorWithProvider?) = WriteIntentReadAction.run {
     computeOrLogException(
       lambda = { fileEditorWithProviderToSelect?.fileEditor?.selectNotify() },
@@ -529,7 +543,7 @@ open class EditorComposite internal constructor(
     )
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private fun setFileEditorsInEdt(fileEditorWithProviders: List<FileEditorWithProvider>, selectedEditor: FileEditorWithProvider?) =
     WriteIntentReadAction.run {
       // Only after applyFileEditorsInEdt - for external clients composite API should use _actual_ _applied_ state, not intermediate.
@@ -558,10 +572,10 @@ open class EditorComposite internal constructor(
     return if (state != null) {
       state.providers.get(provider.editorTypeId)?.let {
         computeOrLogException(
-          lambda = { provider.readState(it, project, file) },
+          lambda = { provider.readState(it, project, lazyOf(file)) },
           errorMessage = { "failed to read editor state" },
         )
-      }
+      }?.takeIf { it !== FileEditorState.NO_STATE }
     }
     else {
       // We have to try to get state from the history only in case of the editor is not opened.
@@ -590,6 +604,7 @@ open class EditorComposite internal constructor(
   private fun setFileEditors(fileEditors: List<FileEditorWithProvider>, selectedEditor: FileEditorWithProvider?) {
     fileEditorWithProviders.value = fileEditors
     _selectedEditorWithProvider.value = selectedEditor
+    availableDeferred.complete(Unit)
   }
 
   @get:Deprecated("use {@link #getAllEditorsWithProviders()}", ReplaceWith("allProviders"), level = DeprecationLevel.ERROR)
@@ -726,7 +741,7 @@ open class EditorComposite internal constructor(
     manageTopOrBottomComponent(editor = editor, component = component, top = false, remove = true)
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private fun manageTopOrBottomComponent(editor: FileEditor, component: JComponent, top: Boolean, remove: Boolean) {
     val container = (if (top) topComponents.get(editor) else bottomComponents.get(editor))!!
     val uICustomization = InternalUICustomization.getInstance()
@@ -875,7 +890,7 @@ open class EditorComposite internal constructor(
     }
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun addEditor(editor: FileEditor, provider: FileEditorProvider) {
     val editorWithProvider = FileEditorWithProvider(editor, provider)
     fileEditorWithProviders.update { it + editorWithProvider }
@@ -911,7 +926,7 @@ open class EditorComposite internal constructor(
     }
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   internal fun removeEditor(editorTypeId: String) {
     val fileEditorWithProviderList = fileEditorWithProviders
     val toRemove = mutableListOf<FileEditorWithProvider>()
@@ -964,7 +979,7 @@ open class EditorComposite internal constructor(
     }
     return with(FileIdAdapter.getInstance()) {
       FileEntry(
-        url = file.url,
+        url = getUrl(file),
         id = getId(file),
         selectedProvider = (selectedEditorWithProvider.value ?: fileEditorWithProviderList.first()).provider.editorTypeId,
         isPreview = isPreview,
@@ -983,8 +998,8 @@ open class EditorComposite internal constructor(
   internal fun writeCurrentStateAsHistoryEntry(project: Project): Element {
     val selectedEditorWithProvider = selectedEditorWithProvider.value
     val element = Element(TAG)
-    element.setAttribute(FILE_ATTRIBUTE, file.url)
     with(FileIdAdapter.getInstance()) {
+      element.setAttribute(FILE_ATTRIBUTE, getUrl(file))
       getId(file)?.let { element.setAttribute(FILE_ID_ATTRIBUTE, it.toString()) }
       getManagingFsCreationTimestamp(file).let { element.setAttribute(MANAGING_FS_ATTRIBUTE, it.toString()) }
       getProtocol(file)?.let { element.setAttribute(PROTOCOL_ATTRIBUTE, it) }
@@ -1058,8 +1073,6 @@ internal class EditorCompositePanel(@JvmField val composite: EditorComposite) : 
     private set
 
   private val skeletonScope = composite.coroutineScope.childScope("Editor Skeleton")
-  var skeleton: EditorSkeleton? = null
-    private set
 
   init {
     addFocusListener(object : FocusAdapter() {
@@ -1090,8 +1103,11 @@ internal class EditorCompositePanel(@JvmField val composite: EditorComposite) : 
 
     if (EditorSkeletonPolicy.shouldShowSkeleton(composite)) {
       val skeletonDelay = EditorSkeletonPolicy.getSkeletonDelayMs(composite)
-      skeletonScope.launch(Dispatchers.UI) {
-        setNewSkeleton(EditorCompositeSkeletonFactory.getInstance(composite.project).createSkeleton(skeletonScope, skeletonDelay))
+      skeletonScope.launch(Dispatchers.Default) {
+        val skeleton = EditorSkeleton(skeletonScope, composite.project, skeletonDelay)
+        withContext(Dispatchers.UI) {
+          setNewSkeleton(skeleton)
+        }
       }
     }
     else {
@@ -1100,10 +1116,10 @@ internal class EditorCompositePanel(@JvmField val composite: EditorComposite) : 
   }
 
   private fun setNewSkeleton(skeleton: EditorSkeleton?) {
-    this.skeleton = skeleton
     if (skeleton == null) return
     if (components.isEmpty()) {
       add(skeleton, BorderLayout.CENTER)
+      skeleton.startAnimation()
     }
   }
 
@@ -1241,7 +1257,7 @@ private fun isDumbAware(editor: FileEditor): Boolean {
   return editor.getUserData(FileEditorManagerKeys.DUMB_AWARE) == true && (editor !is PossiblyDumbAware || (editor as PossiblyDumbAware).isDumbAware)
 }
 
-@RequiresEdt
+@RequiresEdt(generateAssertion = false /* IJPL-115548 */)
 internal fun focusEditorOnComposite(
   composite: EditorComposite,
   splitters: EditorsSplitters,
@@ -1252,17 +1268,20 @@ internal fun focusEditorOnComposite(
   val currentSelectedComposite = currentWindow?.selectedComposite
   // while the editor was loading, the user switched to another editor - don't steal focus
   if (currentSelectedComposite === composite || forceFocus) {
-    val preferredFocusedComponent = composite.preferredFocusedComponent
-    if (preferredFocusedComponent == null) {
-      LOG.warn("Cannot focus editor (splitters=$splitters, composite=$composite, reason=preferredFocusedComponent is null)")
+    // Ignore the last focused component of the composite tracked by FocusWatcher;
+    // prefer focusing on the editor component instead.
+    // Otherwise, the focus may get trapped in a subcomponent, such as the Find / Replace text field.
+    val focusComponent = composite.selectedEditor?.preferredFocusedComponent ?: composite.focusComponent
+    if (focusComponent == null) {
+      LOG.warn("Cannot focus editor (splitters=$splitters, composite=$composite, reason=focusComponent is null)")
       return false
     }
     else {
       if (toFront) {
-        IdeFocusManager.getGlobalInstance().requestFocusInProject(preferredFocusedComponent, composite.project)
+        IdeFocusManager.getGlobalInstance().requestFocusInProject(focusComponent, composite.project)
       }
       else {
-        preferredFocusedComponent.requestFocusInWindow()
+        focusComponent.requestFocusInWindow()
       }
 
       return true

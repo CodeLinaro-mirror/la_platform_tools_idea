@@ -1,0 +1,387 @@
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+package com.intellij.ide.actions
+
+import com.intellij.ide.IdeBundle
+import com.intellij.ide.scratch.RootType
+import com.intellij.ide.scratch.ScratchFileActions
+import com.intellij.ide.scratch.ScratchFileActions.ChangeLanguageAction
+import com.intellij.ide.scratch.ScratchFileCreationHelper
+import com.intellij.ide.trustedProjects.TrustedProjects
+import com.intellij.ide.trustedProjects.TrustedProjectsLocator
+import com.intellij.ide.ui.WindowFocusFrontendService
+import com.intellij.ide.util.DeleteHandler
+import com.intellij.ide.welcomeScreen.WelcomeUtils
+import com.intellij.idea.ActionsBundle
+import com.intellij.openapi.actionSystem.ActionUpdateThread
+import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.CommonDataKeys
+import com.intellij.openapi.application.ApplicationBundle
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.command.undo.UndoUtil
+import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
+import com.intellij.openapi.fileChooser.FileChooserFactory
+import com.intellij.openapi.fileChooser.FileSaverDescriptor
+import com.intellij.openapi.fileEditor.FileDocumentManager
+import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.fileEditor.ex.IdeDocumentHistory
+import com.intellij.openapi.fileEditor.impl.EditorWindow
+import com.intellij.openapi.fileEditor.impl.FileEditorManagerImpl
+import com.intellij.openapi.fileEditor.impl.NonProjectFileWritingAccessExtension
+import com.intellij.openapi.fileEditor.impl.NonProjectFileWritingAccessProvider
+import com.intellij.openapi.project.DumbAwareAction
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.project.ProjectCloseHandler
+import com.intellij.openapi.ui.MessageConstants.YesNoCancelResult
+import com.intellij.openapi.ui.MessageDialogBuilder
+import com.intellij.openapi.ui.Messages
+import com.intellij.openapi.util.Condition
+import com.intellij.openapi.util.io.FileUtil
+import com.intellij.openapi.vfs.VfsUtil
+import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.vfs.findFile
+import com.intellij.psi.PsiElement
+import com.intellij.psi.PsiManager
+import com.intellij.util.Consumer
+import com.intellij.util.SystemProperties
+import com.intellij.util.containers.toArray
+import org.jetbrains.annotations.ApiStatus
+import java.nio.file.Path
+
+internal class WelcomeNewEmptyFileAction : DumbAwareAction() {
+  override fun getActionUpdateThread() = ActionUpdateThread.BGT
+
+  override fun update(e: AnActionEvent) {
+    val project = e.project
+    e.presentation.isEnabledAndVisible = project != null && WelcomeUtils.isWelcomeProject(project)
+  }
+
+  override fun actionPerformed(e: AnActionEvent) {
+    val project = e.project ?: return
+    val context = ScratchFileCreationHelper.Context()
+    context.defaultRootType = WelcomeFilesRootType.Util.instance
+    context.filePrefix = "Untitled"
+    context.language = CommonDataKeys.LANGUAGE.getData(e.dataContext)
+    if (context.language == null) {
+      context.fileExtension = "txt"
+    }
+    else {
+      context.prepareText = false
+    }
+    ScratchFileActions.doCreateNewScratch(project, context, e.dataContext)
+  }
+}
+
+internal class WelcomeChangeLanguageAction : ChangeLanguageAction() {
+  override fun update(e: AnActionEvent) {
+    val project = e.project
+    if (project != null && !WelcomeUtils.isWelcomeProject(project)) {
+      e.presentation.isEnabledAndVisible = false
+    }
+    else {
+      super.update(e)
+    }
+  }
+
+  override fun fileFilter(project: Project): Condition<VirtualFile> {
+    return Condition { file -> !file.isDirectory() && WelcomeFilesRootType.Util.instance.containsFile(file) }
+  }
+}
+
+@ApiStatus.Internal
+class WelcomeFilesRootType : RootType("HomeFiles", "") {
+  object Util {
+    val instance: WelcomeFilesRootType
+      get() = findByClass(WelcomeFilesRootType::class.java)
+
+    fun isWelcomeFile(project: Project, file: VirtualFile): Boolean {
+      return WelcomeUtils.isWelcomeProject(project) && instance.containsFile(file)
+    }
+  }
+}
+
+/**
+ * Lets the user write a Home file and a standalone file that is open at Home.
+ * An open file stays writable in a later session, where the access granted on the first open is gone.
+ */
+internal class WelcomeNonProjectFileWritingAccessExtension(private val project: Project) : NonProjectFileWritingAccessExtension {
+  override fun isWritable(file: VirtualFile): Boolean {
+    if (!WelcomeUtils.isWelcomeProject(project)) {
+      return false
+    }
+    return WelcomeFilesRootType.Util.instance.containsFile(file) || FileEditorManager.getInstance(project).isFileOpen(file)
+  }
+}
+
+@ApiStatus.Internal
+class WelcomeSaveFileAction : DumbAwareAction() {
+  override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+
+  override fun update(event: AnActionEvent) {
+    val project = event.project
+    event.presentation.isEnabledAndVisible = project != null && isWelcomeFile(project, event)
+    event.presentation.text = ActionsBundle.message("action.WelcomeSaveFileAction.text")
+  }
+
+  override fun actionPerformed(event: AnActionEvent) {
+    val project = event.project ?: return
+    val file = getFile(project, event) ?: return
+    saveWelcomeFileAs(project, file, true)
+  }
+
+  @ApiStatus.Internal
+  fun isWelcomeFile(project: Project, event: AnActionEvent): Boolean = getFile(project, event) != null
+
+  private fun getFile(project: Project, event: AnActionEvent): VirtualFile? {
+    if (!WelcomeUtils.isWelcomeProject(project)) {
+      return null
+    }
+    val document = event.getData(CommonDataKeys.EDITOR)?.document
+    val file = if (document == null) {
+      event.getData(EditorWindow.DATA_KEY)?.getContextFile() ?: return null
+    }
+    else {
+      FileDocumentManager.getInstance().getFile(document) ?: return null
+    }
+    if (!WelcomeFilesRootType.Util.instance.containsFile(file)) {
+      return null
+    }
+    return file
+  }
+}
+
+/**
+ * Asks the user to save the open Home files before the welcome project closes.
+ * The application exit asks nothing, because the files stay for the next session.
+ * On a split-mode host, the files are open in the client editors, and the dialogs go to the client.
+ */
+internal class WelcomeProjectCloseHandler : ProjectCloseHandler {
+  override fun canClose(project: Project): Boolean {
+    if (ApplicationManager.getApplication().isExitInProgress || !WelcomeUtils.isWelcomeProject(project)) {
+      return true
+    }
+    val rootType = WelcomeFilesRootType.Util.instance
+    val files = FileEditorManager.getInstance(project).openFilesWithRemotes.distinct().filter { rootType.containsFile(it) }
+    // The dialogs get the last focused frontend window as their parent.
+    return files.isEmpty() || WindowFocusFrontendService.getInstance().performActionWithFocus(true) {
+      closeWelcomeFilesWithProject(project, files)
+    } == true
+  }
+}
+
+private fun closeWelcomeFilesWithProject(project: Project, files: List<VirtualFile>): Boolean {
+  return when (askSaveWelcomeFiles(files, project)) {
+    Messages.CANCEL -> false
+    Messages.OK -> saveWelcomeFilesOnClose(project, files)
+    else -> {
+      deleteWelcomeFilesOnClose(project, files)
+      true
+    }
+  }
+}
+
+/**
+ * Asks the user to save the Home [file].
+ * Returns [Messages.OK] for "Save", [Messages.NO] for "Don't save", and [Messages.CANCEL] for "Cancel".
+ */
+@ApiStatus.Internal
+@YesNoCancelResult
+fun askSaveWelcomeFile(file: VirtualFile, project: Project): Int {
+  return MessageDialogBuilder.yesNoCancel(IdeBundle.message("welcome.file.dialog.title", file.name),
+                                          IdeBundle.message("welcome.file.dialog.messages"))
+    .yesText(IdeBundle.message("button.save")).noText(ApplicationBundle.message("settings.switch.project.button.dont.save")).show(project)
+}
+
+/**
+ * Asks the user to save the Home [files]. One file gets [askSaveWelcomeFile]. Several files get one dialog with their names.
+ * Returns [Messages.OK] for "Save", [Messages.NO] for "Don't save", and [Messages.CANCEL] for "Cancel".
+ */
+@ApiStatus.Internal
+@YesNoCancelResult
+fun askSaveWelcomeFiles(files: List<VirtualFile>, project: Project): Int {
+  files.singleOrNull()?.let { return askSaveWelcomeFile(it, project) }
+  return MessageDialogBuilder.yesNoCancel(IdeBundle.message("welcome.files.dialog.title"),
+                                          IdeBundle.message("welcome.files.dialog.messages",
+                                                            files.size.toString(),
+                                                            files.joinToString("<br>") { it.name }))
+    .yesText(IdeBundle.message("button.save")).noText(ApplicationBundle.message("settings.switch.project.button.dont.save")).show(project)
+}
+
+/**
+ * Copies the Home [files] to a target the user selects, then closes and deletes them.
+ * One file gets the save dialog. Several files get a directory chooser and keep their names.
+ * Returns false when the user cancels the dialog. Then nothing changes.
+ */
+@ApiStatus.Internal
+fun saveWelcomeFilesOnClose(project: Project, files: List<VirtualFile>): Boolean {
+  val file = files.singleOrNull()
+  return if (file != null) doSaveFileOnExit(project, file) else doSaveFilesOnExit(project, files)
+}
+
+/**
+ * Shows the save dialog and copies the Home [file] to the target. Then it opens the target and deletes [file].
+ * Returns false when the user cancels the dialog. Nothing is copied when [file] is deleted before the copy starts.
+ */
+@ApiStatus.Internal
+fun saveWelcomeFileAs(project: Project, file: VirtualFile, closeCurrentTab: Boolean): Boolean {
+  val targetFile = showSaveFileDialog(project, file) ?: return false
+
+  ApplicationManager.getApplication().invokeLater(
+    {
+      ApplicationManager.getApplication().runWriteAction(Runnable {
+        if (!file.isValid) {
+          return@Runnable
+        }
+        writeFile(FileDocumentManager.getInstance(), file, targetFile)
+
+        ApplicationManager.getApplication().invokeLater(
+          {
+            val fileEditorManager = FileEditorManager.getInstance(project)
+
+            if (closeCurrentTab) {
+              closeAllEditors(fileEditorManager, file)
+            }
+            fileEditorManager.openFile(targetFile)
+
+            IdeDocumentHistory.getInstance(project).includeCurrentPlaceAsChangePlace()
+
+            deleteWelcomeFile(project, file)
+          }, project.disposed)
+      })
+    }, project.disposed)
+
+  return true
+}
+
+private fun doSaveFileOnExit(project: Project, file: VirtualFile): Boolean {
+  val targetFile = showSaveFileDialog(project, file) ?: return false
+
+  ApplicationManager.getApplication().runWriteAction(Runnable {
+    writeFile(FileDocumentManager.getInstance(), file, targetFile)
+  })
+
+  deleteWelcomeFilesOnClose(project, listOf(file))
+
+  return true
+}
+
+private fun showSaveFileDialog(project: Project, file: VirtualFile): VirtualFile? {
+  val descriptor = FileSaverDescriptor(IdeBundle.message("dialog.title.save.as"), IdeBundle.message("label.choose.target.file"))
+  val dialog = FileChooserFactory.getInstance().createSaveFileDialog(descriptor, project)
+
+  val fileWrapper = dialog.save(Path.of(SystemProperties.getUserHome()), file.name)
+
+  return fileWrapper?.getVirtualFile(true) // DOTO: slowOps
+}
+
+private fun doSaveFilesOnExit(project: Project, files: List<VirtualFile>): Boolean {
+  var targetDirRef: VirtualFile? = null
+  val dialog = FileChooserFactory.getInstance().createPathChooser(FileChooserDescriptorFactory.singleDir(), project, null)
+  dialog.choose(VfsUtil.getUserHomeDir(), Consumer { targetDirRef = it.firstOrNull() })
+
+  val targetDir = targetDirRef ?: return false
+
+  ApplicationManager.getApplication().runWriteAction(Runnable {
+    val manager = FileDocumentManager.getInstance()
+
+    for (file in files) {
+      writeFile(manager, file, createChildFile(targetDir, file))
+    }
+  })
+
+  deleteWelcomeFilesOnClose(project, files)
+
+  return true
+}
+
+private fun createChildFile(targetDir: VirtualFile, file: VirtualFile): VirtualFile {
+  val name = file.name
+  val newFile = targetDir.findFile(name)
+  if (newFile != null) {
+    val ext = file.extension
+    if (ext == null) {
+      return createChildFile(targetDir, name, "")
+    }
+    return createChildFile(targetDir, file.nameWithoutExtension, ".${ext}")
+  }
+  return targetDir.createChildData(targetDir.fileSystem, name)
+}
+
+private fun createChildFile(targetDir: VirtualFile, name: String, extensionWithDot: String): VirtualFile {
+  var index = 1
+  while (true) {
+    val newName = "${name}_${index++}${extensionWithDot}"
+    val newFile = targetDir.findChild(newName)
+    if (newFile == null) {
+      return targetDir.createChildData(targetDir.fileSystem, newName)
+    }
+  }
+}
+
+private fun writeFile(manager: FileDocumentManager, file: VirtualFile, targetFile: VirtualFile) {
+  val source = manager.getDocument(file)!!
+  val target = manager.getDocument(targetFile)
+
+  if (target == null || !target.isWritable) {
+    // binary file format
+    FileUtil.copy(file.toNioPath().toFile(), targetFile.toNioPath().toFile())
+  }
+  else {
+    targetFile.refresh(false, false)
+    target.setText(source.charsSequence)
+    manager.saveDocument(target)
+
+    NonProjectFileWritingAccessProvider.allowWriting(listOf(targetFile))
+
+    val locatedProject = TrustedProjectsLocator.locateProject(targetFile.fileSystem.getNioPath(targetFile) ?: return, null)
+    TrustedProjects.setProjectTrusted(locatedProject, true)
+  }
+}
+
+/**
+ * Closes every editor of [file] in every window, and in the editors of a remote client.
+ */
+private fun closeAllEditors(fileEditorManager: FileEditorManager, file: VirtualFile) {
+  if (fileEditorManager is FileEditorManagerImpl) {
+    fileEditorManager.closeFile(file, moveFocus = true, closeAllCopies = true)
+  }
+  else {
+    fileEditorManager.closeFile(file)
+  }
+}
+
+/**
+ * Deletes the Home [file] without a confirmation.
+ */
+@ApiStatus.Internal
+fun deleteWelcomeFile(project: Project, file: VirtualFile) {
+  if (file.isValid()) {
+    val psiFile = PsiManager.getInstance(project).findFile(file)
+    if (psiFile != null) {
+      UndoUtil.disableUndoFor(file)
+      DeleteHandler.deletePsiElement(arrayOf(psiFile), project, false)
+    }
+  }
+}
+
+/**
+ * Closes the editors of the Home [files] and deletes the files without a confirmation.
+ */
+@ApiStatus.Internal
+fun deleteWelcomeFilesOnClose(project: Project, files: List<VirtualFile>) {
+  val psiManager = PsiManager.getInstance(project)
+  val fileEditorManager = FileEditorManager.getInstance(project)
+  val toDelete = mutableListOf<PsiElement>()
+
+  for (file in files) {
+    closeAllEditors(fileEditorManager, file)
+
+    if (file.isValid()) {
+      val psiFile = psiManager.findFile(file)
+      if (psiFile != null) {
+        toDelete.add(psiFile)
+      }
+    }
+  }
+
+  DeleteHandler.deletePsiElement(toDelete.toArray(PsiElement.EMPTY_ARRAY), project, false)
+}

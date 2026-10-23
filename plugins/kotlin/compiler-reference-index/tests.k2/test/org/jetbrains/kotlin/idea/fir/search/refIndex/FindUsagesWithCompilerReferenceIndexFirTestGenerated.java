@@ -91,6 +91,19 @@ public abstract class FindUsagesWithCompilerReferenceIndexFirTestGenerated exten
 
             @RunWith(JUnit3RunnerWithInners.class)
             @TestMetadata("../../idea/tests/testData/findUsages/kotlin/companionObject")
+            public static class TestNamedWithSuperType extends AbstractFindUsagesWithCompilerReferenceIndexFirTest {
+                private void runTest(String testDataFilePath) throws Exception {
+                    KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
+                }
+
+                @TestMetadata("namedWithSuperType.0.kt")
+                public void testNamedWithSuperType() throws Exception {
+                    runTest("../../idea/tests/testData/findUsages/kotlin/companionObject/namedWithSuperType.0.kt");
+                }
+            }
+
+            @RunWith(JUnit3RunnerWithInners.class)
+            @TestMetadata("../../idea/tests/testData/findUsages/kotlin/companionObject")
             public static class TestSimple extends AbstractFindUsagesWithCompilerReferenceIndexFirTest {
                 private void runTest(String testDataFilePath) throws Exception {
                     KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
@@ -2424,6 +2437,19 @@ public abstract class FindUsagesWithCompilerReferenceIndexFirTestGenerated exten
                 @TestMetadata("overrides.0.kt")
                 public void testOverrides() throws Exception {
                     runTest("../../idea/tests/testData/findUsages/kotlin/findFunctionUsages/overrides.0.kt");
+                }
+            }
+
+            @RunWith(JUnit3RunnerWithInners.class)
+            @TestMetadata("../../idea/tests/testData/findUsages/kotlin/findFunctionUsages")
+            public static class TestPrivateInterfaceMemberUsedThroughNonPrivateSubclass extends AbstractFindUsagesWithCompilerReferenceIndexFirTest {
+                private void runTest(String testDataFilePath) throws Exception {
+                    KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
+                }
+
+                @TestMetadata("privateInterfaceMemberUsedThroughNonPrivateSubclass.0.kt")
+                public void testPrivateInterfaceMemberUsedThroughNonPrivateSubclass() throws Exception {
+                    runTest("../../idea/tests/testData/findUsages/kotlin/findFunctionUsages/privateInterfaceMemberUsedThroughNonPrivateSubclass.0.kt");
                 }
             }
 

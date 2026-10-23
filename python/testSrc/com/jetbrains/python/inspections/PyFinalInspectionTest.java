@@ -1,6 +1,9 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python.inspections;
 
+import com.jetbrains.python.allure.Layers;
+import com.jetbrains.python.allure.Subsystems;
+
 import com.intellij.idea.TestFor;
 import com.intellij.psi.PsiFile;
 import com.jetbrains.python.fixtures.PyInspectionTestCase;
@@ -8,6 +11,8 @@ import com.jetbrains.python.psi.LanguageLevel;
 import com.jetbrains.python.pyi.PyiFileType;
 import org.jetbrains.annotations.NotNull;
 
+@Subsystems.Inspections
+@Layers.Functional
 public class PyFinalInspectionTest extends PyInspectionTestCase {
 
   // PY-79743
@@ -747,6 +752,23 @@ public class PyFinalInspectionTest extends PyInspectionTestCase {
   // PY-85519
   public void testImportAsFinal() {
     doMultiFileTest();
+  }
+
+  @TestFor(classes = PyFinalInspection.class)
+  public void testFinalMethodOfSecondBaseOverridden() {
+    doTestByText("""
+                   from typing import final
+
+                   class BaseA:
+                       def meth(self) -> int: ...
+
+                   class BaseB:
+                       @final
+                       def meth(self) -> int: ...
+
+                   class Child(BaseA, BaseB):
+                       def meth(self) -> int: ...  # FIXME: 'BaseB.meth' is marked as '@final' and should not be overridden
+                   """);
   }
 
   @NotNull

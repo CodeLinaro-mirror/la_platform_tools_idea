@@ -10,6 +10,7 @@ import com.intellij.execution.ExecutorRegistry;
 import com.intellij.execution.executors.DefaultRunExecutor;
 import com.intellij.execution.lineMarker.RunLineMarkerContributor.Info;
 import com.intellij.icons.AllIcons;
+import com.intellij.ide.TrustedFiles;
 import com.intellij.lang.injection.InjectedLanguageManager;
 import com.intellij.openapi.actionSystem.ActionGroup;
 import com.intellij.openapi.actionSystem.AnAction;
@@ -28,6 +29,7 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.SmartPointerManager;
 import com.intellij.psi.SmartPsiElementPointer;
+import com.intellij.psi.util.PsiUtilCore;
 import com.intellij.ui.ColorUtil;
 import com.intellij.util.Function;
 import com.intellij.util.SmartList;
@@ -86,13 +88,15 @@ public class RunLineMarkerProvider extends LineMarkerProviderDescriptor implemen
       infos.add(info);
     }
     if (icon == null) return null;
+    if (isUntrustedFile(element)) return null;
 
-    return createLineMarker(element, icon, infos);
+    return doCreateLineMarker(element, icon, infos);
   }
 
   @Override
   public void collectSlowLineMarkers(@NotNull List<? extends PsiElement> elements,
                                      @NotNull Collection<? super LineMarkerInfo<?>> result) {
+    Boolean untrusted = null;
     for (PsiElement element : elements) {
       List<RunLineMarkerContributor> contributors = DumbService.getInstance(element.getProject())
         .filterByDumbAwareness(RunLineMarkerContributor.EXTENSION.allForLanguageOrAny(element.getLanguage()));
@@ -112,16 +116,32 @@ public class RunLineMarkerProvider extends LineMarkerProviderDescriptor implemen
         }
         infos.add(info);
       }
-      if (icon != null) {
-         result.add(createLineMarker(element, icon, infos));
+      if (icon == null) continue;
+      if (untrusted == null) {
+        untrusted = isUntrustedFile(element);
       }
+      if (untrusted) return;
+      result.add(doCreateLineMarker(element, icon, infos));
     }
 
   }
 
-  public static @NotNull LineMarkerInfo<PsiElement> createLineMarker(@NotNull PsiElement element,
-                                                                     @NotNull Icon icon,
-                                                                     @NotNull List<? extends Info> infos) {
+  /** Run actions execute code from the file, so their gutter markers must not appear in the safe mode. */
+  private static boolean isUntrustedFile(@NotNull PsiElement element) {
+    VirtualFile virtualFile = PsiUtilCore.getVirtualFile(element);
+    return virtualFile != null && !TrustedFiles.isTrusted(virtualFile, element.getProject());
+  }
+
+  public static @Nullable LineMarkerInfo<PsiElement> createLineMarker(@NotNull PsiElement element,
+                                                                      @NotNull Icon icon,
+                                                                      @NotNull List<? extends Info> infos) {
+    if (isUntrustedFile(element)) return null;
+    return doCreateLineMarker(element, icon, infos);
+  }
+
+  private static @NotNull LineMarkerInfo<PsiElement> doCreateLineMarker(@NotNull PsiElement element,
+                                                                        @NotNull Icon icon,
+                                                                        @NotNull List<? extends Info> infos) {
     if (infos.size() > 1) {
       infos = new ArrayList<>(infos);
       infos.sort(COMPARATOR);

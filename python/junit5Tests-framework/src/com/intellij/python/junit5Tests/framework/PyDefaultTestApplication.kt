@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.python.junit5Tests.framework
 
 import com.intellij.openapi.application.EDT
@@ -7,6 +7,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiDirectory
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.python.junit5Tests.framework.metaInfo.TestMetaInfoExtension
+import com.intellij.python.pyproject.model.evolution.EvoPyProjectModel
 import com.intellij.python.junit5Tests.framework.metaInfo.TestMetaInfoExtension.Companion.getTestClassInfo
 import com.intellij.python.junit5Tests.framework.metaInfo.TestMetaInfoExtension.Companion.getTestMethodInfo
 import com.intellij.testFramework.EditorTestUtil
@@ -18,11 +19,9 @@ import com.intellij.testFramework.junit5.fixture.LookupFixtureExtension.Companio
 import com.intellij.testFramework.junit5.fixture.LookupFixtureExtension.Companion.registerImplicitFixtures
 import com.intellij.testFramework.junit5.fixture.TestFixture
 import com.intellij.testFramework.junit5.fixture.editorFixture
-import com.intellij.testFramework.junit5.fixture.moduleFixture
 import com.intellij.testFramework.junit5.fixture.pathInProjectFixture
 import com.intellij.testFramework.junit5.fixture.projectFixture
 import com.intellij.testFramework.junit5.fixture.sourceRootFixture
-import com.jetbrains.python.PyNames
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -72,7 +71,7 @@ private class PyWithDefaultFixturesExtension : BeforeAllCallback, BeforeEachCall
     }
 
     val module = manager.getOrDefault {
-      project.moduleFixture(project.pathInProjectFixture(Path.of(".")), moduleTypeId = PyNames.PYTHON_MODULE_ID).also {
+      project.pyModuleFixture(project.pathInProjectFixture(Path.of("."))).also {
         implicitFixtures += LookupFixture(DEFAULT_PY_MODULE, it, true)
       }
     }
@@ -133,6 +132,8 @@ private class PyWithDefaultFixturesExtension : BeforeAllCallback, BeforeEachCall
         FileDocumentManager.getInstance().saveDocument(document)
         PsiDocumentManager.getInstance(project).commitAllDocuments()
       }
+      // The Python project structure follows the module in the background. Its restart cancels a pass that is already running.
+      EvoPyProjectModel.getInstance(project).awaitCurrentInterpreters()
     }
 
     IndexingTestUtil.waitUntilIndexesAreReady(project)

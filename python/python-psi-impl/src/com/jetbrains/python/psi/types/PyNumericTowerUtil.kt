@@ -18,7 +18,16 @@ object PyNumericTowerUtil {
   fun enrich(type: PyType?): PyType? {
     PyAnyType.validate(type)
     if (!isEnabled) return type
-    return type.toStream().map(::expand).collect(PyTypeUtil.toUnion(type))
+    if (type is PyCompositeType) {
+      val mappedMembers = type.members.map { typeArg -> expand(typeArg) }
+      return when (type) {
+        is PyUnionType -> PyUnionType.unionOrUnknown(mappedMembers)
+        is PyIntersectionType -> PyIntersectionType.intersectionOrTop(mappedMembers)
+        is PyUnsafeUnionType -> PyUnsafeUnionType.unsafeUnion(mappedMembers)
+        else -> throw IllegalStateException("Unknown type: ${type.name}")
+      }
+    }
+    return expand(type)
   }
 
 
@@ -37,6 +46,6 @@ object PyNumericTowerUtil {
       PyNames.FQN.COMPLEX -> listOf(PyBuiltinCache.getInstance(source).complexType, floatType, intType)
       else -> throw IllegalStateException("Not a numeric tower type: $classQName")
     }
-    return PyUnionType.union(members)
+    return PyUnionType.unionOrUnknown(members)
   }
 }

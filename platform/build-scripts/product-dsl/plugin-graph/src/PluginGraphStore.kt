@@ -159,7 +159,7 @@ class PluginGraphStore internal constructor(
   /** Check if plugin is DSL-defined (auto-computed dependencies) */
   fun isDslDefined(nodeId: Int): Boolean = (kinds[nodeId] and NODE_FLAG_IS_DSL_DEFINED) != 0
 
-  /** Check if plugin is a module-set wrapper */
+  /** Check if plugin is a build-declared module-set wrapper */
   fun isModuleSetWrapper(nodeId: Int): Boolean = (kinds[nodeId] and NODE_FLAG_IS_MODULE_SET_WRAPPER) != 0
 
   /** Check if plugin node is a synthetic alias target. */
@@ -187,9 +187,6 @@ class PluginGraphStore internal constructor(
 
   /** Check if module set is self-contained */
   fun isSelfContained(nodeId: Int): Boolean = (kinds[nodeId] and NODE_FLAG_SELF_CONTAINED) != 0
-
-  /** Check if content module is a test descriptor (._test suffix) */
-  fun isTestDescriptor(nodeId: Int): Boolean = (kinds[nodeId] and NODE_FLAG_IS_TEST_DESCRIPTOR) != 0
 
   /** Check if content module has a descriptor on disk */
   fun hasDescriptor(nodeId: Int): Boolean = (kinds[nodeId] and NODE_FLAG_HAS_DESCRIPTOR) != 0

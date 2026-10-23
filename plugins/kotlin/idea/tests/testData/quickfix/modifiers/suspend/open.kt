@@ -1,5 +1,5 @@
 // "Make bar suspend" "true"
-// K2_ERROR: Suspend function 'suspend fun foo(): Unit' can only be called from a coroutine or another suspend function.
+// K2_ERROR: ILLEGAL_SUSPEND_FUNCTION_CALL
 
 suspend fun foo() {}
 
@@ -9,5 +9,4 @@ open class A {
     }
 }
 
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AddSuspendModifierFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.AddSuspendModifierFixFactory$AddSuspendModifierFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.AddSuspendModifierFixFactory$AddSuspendModifierFix

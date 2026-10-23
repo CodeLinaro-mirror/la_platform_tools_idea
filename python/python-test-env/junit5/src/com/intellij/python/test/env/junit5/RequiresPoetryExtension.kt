@@ -1,10 +1,11 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.python.test.env.junit5
 
-import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.diagnostic.Logger
-import com.intellij.python.community.impl.poetry.common.poetryPath
+import com.intellij.platform.eel.provider.localEel
+import com.intellij.python.community.impl.poetry.backend.PoetryPyTool
 import com.intellij.python.junit5Tests.framework.resolvePythonTool
+import com.intellij.python.pytools.backend.setCustomExecutablePath
 import com.intellij.python.test.env.core.LATEST_PYTHON_VERSION
 import com.intellij.python.test.env.core.PyEnvironment
 import com.intellij.python.test.env.plain.pythonEnvironment
@@ -41,14 +42,14 @@ class RequiresPoetryExtension : BeforeAllCallback, BeforeEachCallback {
   
   private fun configurePoetry(context: ExtensionContext) {
     val store = context.getStore(namespace)
-    val poetryEnv = store.getOrComputeIfAbsent(POETRY_ENV_KEY, {
+    val poetryEnv = store.computeIfAbsent(POETRY_ENV_KEY, {
       createPoetryEnvironment(context)
     }, PyEnvironment::class.java)
     
     val pythonBinary = poetryEnv.pythonPath
     val poetryPath = VirtualEnvReader().resolvePythonHomeFromPythonBinary(pythonBinary).resolvePythonTool("poetry")
     
-    PropertiesComponent.getInstance().poetryPath = poetryPath.toString()
+    PoetryPyTool.getInstance().setCustomExecutablePath(localEel.descriptor, poetryPath)
     LOG.info("Poetry configured at: $poetryPath")
   }
   

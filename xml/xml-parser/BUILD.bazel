@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.xml.parser` start
+content_module_jar(module = ":parser")
+### auto-generated section `dev intellij.xml.parser` end
 
 ### auto-generated section `build intellij.xml.parser` start
-
 jvm_library(
     name = "parser",
     srcs = glob(
@@ -68,6 +72,7 @@ jvm_library(
 exports_files(
     [
         "intellij.xml.parser.iml",
+        "resources/intellij.xml.parser.xml",
     ],
     visibility = ["//visibility:public"],
 )

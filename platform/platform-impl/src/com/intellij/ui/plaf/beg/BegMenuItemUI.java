@@ -8,17 +8,19 @@ import com.intellij.openapi.actionSystem.impl.ActionMenuItem;
 import com.intellij.openapi.actionSystem.impl.Utils;
 import com.intellij.openapi.application.WriteIntentReadAction;
 import com.intellij.openapi.client.ClientSystemInfo;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.keymap.MacKeymapUtil;
 import com.intellij.openapi.options.advanced.AdvancedSettings;
 import com.intellij.openapi.ui.JBPopupMenuDragSupportKt;
 import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.util.NlsSafe;
+import com.intellij.openapi.util.SystemInfo;
 import com.intellij.ui.ExperimentalUI;
 import com.intellij.ui.JBColor;
+import com.intellij.ui.RealClickDetector;
 import com.intellij.util.IconUtil;
 import com.intellij.util.ui.JBInsets;
 import com.intellij.util.ui.UIUtil;
-import org.jdesktop.swingx.util.OS;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
@@ -63,6 +65,7 @@ import java.util.function.Consumer;
  */
 @ApiStatus.Internal
 public final class BegMenuItemUI extends BasicMenuItemUI {
+  private static final @NotNull Logger LOG = Logger.getInstance(BegMenuItemUI.class);
   private static final String KEEP_MENU_OPEN_PROP = "BegMenuItemUI.keep-menu-open";
 
   private static final Rectangle ourEmptyRect = new Rectangle(0, 0, 0, 0);
@@ -570,9 +573,23 @@ public final class BegMenuItemUI extends BasicMenuItemUI {
   }
 
   private final class MyMouseInputHandler extends MouseInputHandler {
+    private final RealClickDetector realClickDetector = new RealClickDetector();
+
+    @Override
+    public void mousePressed(MouseEvent e) {
+      realClickDetector.mousePressed();
+      super.mousePressed(e);
+    }
+
     @Override
     public void mouseReleased(MouseEvent e){
+      if (!realClickDetector.isRealClick()) {
+        return;
+      }
       MenuSelectionManager manager=MenuSelectionManager.defaultManager();
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Handling a regular MOUSE_RELEASED event: " + e);
+      }
       if (handleReleaseOnMenuItem(e, manager)) return;
       manager.processMouseEvent(e);
     }
@@ -601,15 +618,18 @@ public final class BegMenuItemUI extends BasicMenuItemUI {
 
     @Override
     public void menuDragMouseReleased(MenuDragMouseEvent e) {
-      if (!triggerMenuActionsOnRmbRelease()) return;
+      if (e.getButton() != MouseEvent.BUTTON1 && !triggerMenuActionsOnRmbRelease()) return;
       MenuSelectionManager manager=e.getMenuSelectionManager();
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Handling a drag MOUSE_RELEASED event: " + e);
+      }
       if (handleReleaseOnMenuItem(e, manager)) return;
       manager.clearSelectedPath();
     }
   }
 
   private static boolean triggerMenuActionsOnRmbRelease() {
-    return !OS.isWindows() && AdvancedSettings.getBoolean("ide.trigger.menu.actions.on.rmb.release");
+    return !SystemInfo.isWindows && AdvancedSettings.getBoolean("ide.trigger.menu.actions.on.rmb.release");
   }
 
   private boolean handleReleaseOnMenuItem(@NotNull MouseEvent e, @NotNull MenuSelectionManager manager) {
@@ -619,6 +639,13 @@ public final class BegMenuItemUI extends BasicMenuItemUI {
         e.getButton() == MouseEvent.BUTTON1 ||
         (triggerMenuActionsOnRmbRelease() && isClickOrNoticeableDrag())
       ) {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug(
+            "Clicking the menu item: " +
+            "button = " + e.getButton() + ", " +
+            "triggerMenuActionsOnRmbRelease = " + triggerMenuActionsOnRmbRelease()
+          );
+        }
         doClick(manager, e);
       }
       return true;

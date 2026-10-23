@@ -42,11 +42,11 @@ fun List<FileViewProvider>.isEventSystemEnabled(): Boolean {
   if (size == 0) return false
 
   val first = first()
-  val value = first.isEventSystemEnabled
+  val value = first.supportsSendingPsiEvents()
   if (size == 1) return value
 
   for (provider in this) {
-    if (!provider.isEventSystemEnabled) {
+    if (!provider.supportsSendingPsiEvents()) {
       log.error("files with multiple file providers must have event system enabled")
       return false
     }
@@ -59,7 +59,7 @@ fun List<FileViewProvider>.isEventSystemEnabled(): Boolean {
  * Ensures that `context` is still relevant for the `file`.
  * It's relevant if [CodeInsightContextManager.getCodeInsightContexts] contain `context` or if `context` is `default` or `any`.
  */
-@RequiresReadLock
+@RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
 fun ensureContextRelevant(file: VirtualFile, context: CodeInsightContext, project: Project) {
   if (!isSharedSourceSupportEnabled(project)) return
   if (areIrrelevantContextsAllowed()) return

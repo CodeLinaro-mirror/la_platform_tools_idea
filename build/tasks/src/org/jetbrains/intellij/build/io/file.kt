@@ -7,19 +7,18 @@ import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.trace.Span
 import org.jetbrains.annotations.ApiStatus.Internal
 import java.nio.channels.FileChannel
-import java.nio.file.FileAlreadyExistsException
-import java.nio.file.FileVisitResult
 import java.nio.file.Files
-import java.nio.file.LinkOption
 import java.nio.file.Path
-import java.nio.file.SimpleFileVisitor
 import java.nio.file.StandardCopyOption
-import java.nio.file.attribute.BasicFileAttributes
 import java.util.function.Predicate
 import java.util.regex.Pattern
 
 fun copyFileToDir(file: Path, targetDir: Path) {
-  doCopyFile(file = file, target = targetDir.resolve(file.fileName), targetDir = targetDir)
+  doCopyFile(file = file, target = targetDir.resolve(file.fileName), targetDir = targetDir, overwrite = false)
+}
+
+fun copyFileToDir(file: Path, targetDir: Path, overwrite: Boolean) {
+  doCopyFile(file = file, target = targetDir.resolve(file.fileName), targetDir = targetDir, overwrite = overwrite)
 }
 
 fun moveFile(source: Path, target: Path) {
@@ -33,67 +32,50 @@ fun moveFileToDir(file: Path, targetDir: Path): Path {
 }
 
 fun copyFile(file: Path, target: Path) {
-  doCopyFile(file = file, target = target, targetDir = target.parent)
+  doCopyFile(file = file, target = target, targetDir = target.parent, overwrite = false)
 }
 
-private fun doCopyFile(file: Path, target: Path, targetDir: Path) {
-  Files.createDirectories(targetDir)
-  Files.copy(file, target, StandardCopyOption.COPY_ATTRIBUTES)
+fun copyFile(file: Path, target: Path, overwrite: Boolean) {
+  doCopyFile(file = file, target = target, targetDir = target.parent, overwrite = overwrite)
 }
 
-fun copyDir(sourceDir: Path, targetDir: Path, dirFilter: Predicate<Path>? = null, fileFilter: Predicate<Path>? = null) {
-  Files.createDirectories(targetDir)
-  val dirFilter = dirFilter ?: Predicate { true }
-  val fileFilter = fileFilter ?: Predicate { true }
-  Files.walkFileTree(sourceDir, CopyDirectoryVisitor(sourceDir, targetDir, dirFilter, fileFilter))
+/**
+ * Copies [sourceDir] into [targetDir], and returns the files it wrote.
+ *
+ * The return value is for a caller that owns the target directory's contents and therefore has to know what
+ * landed in it - a dev-mode assembly deletes whatever it did not put in `bin` itself. Most callers ignore it.
+ */
+fun copyDir(
+  sourceDir: Path,
+  targetDir: Path,
+  dirFilter: Predicate<Path>? = null,
+  fileFilter: Predicate<Path>? = null,
+): List<Path> {
+  return copyDir(sourceDir, targetDir, overwrite = false, dirFilter = dirFilter, fileFilter = fileFilter)
+}
+
+/**
+ * [copyDir] with an explicit collision policy. When [overwrite] is `true`, files from an earlier layout are
+ * replaced and still reported in the returned list; directories are merged in both modes.
+ *
+ * A symbolic link is reproduced as a link, never dereferenced: a JCEF or JBR tree is a tree of macOS frameworks, where
+ * following one would break the framework layout and multiply its size. Regular files are copied through
+ * [doCopyFile]'s option set, so the same copy-on-write path applies here, per file.
+ */
+fun copyDir(
+  sourceDir: Path,
+  targetDir: Path,
+  overwrite: Boolean,
+  dirFilter: Predicate<Path>? = null,
+  fileFilter: Predicate<Path>? = null,
+): List<Path> {
+  return doCopyDirectory(sourceDir, targetDir, overwrite, dirFilter, fileFilter)
 }
 
 inline fun writeNewFile(file: Path, task: (FileChannel) -> Unit) {
   Files.createDirectories(file.parent)
   FileChannel.open(file, W_CREATE_NEW).use {
     task(it)
-  }
-}
-
-private class CopyDirectoryVisitor(
-  private val sourceDir: Path,
-  private val targetDir: Path,
-  private val dirFilter: Predicate<Path>,
-  private val fileFilter: Predicate<Path>
-) : SimpleFileVisitor<Path>() {
-  private val sourceToTargetFile: (Path) -> Path
-
-  init {
-    val isTheSameFileStore = Files.getFileStore(sourceDir) == Files.getFileStore(targetDir)
-    // support copying to ZipFS
-    if (isTheSameFileStore) {
-      sourceToTargetFile = { targetDir.resolve(sourceDir.relativize(it)) }
-    }
-    else {
-      sourceToTargetFile = { targetDir.resolve(sourceDir.relativize(it).toString()) }
-    }
-  }
-
-  override fun preVisitDirectory(directory: Path, attributes: BasicFileAttributes): FileVisitResult {
-    if (!dirFilter.test(directory)) {
-      return FileVisitResult.SKIP_SUBTREE
-    }
-
-    try {
-      Files.createDirectory(sourceToTargetFile(directory))
-    }
-    catch (_: FileAlreadyExistsException) { }
-    return FileVisitResult.CONTINUE
-  }
-
-  override fun visitFile(sourceFile: Path, attributes: BasicFileAttributes): FileVisitResult {
-    if (!fileFilter.test(sourceFile)) {
-      return FileVisitResult.CONTINUE
-    }
-
-    val targetFile = sourceToTargetFile(sourceFile)
-    Files.copy(sourceFile, targetFile, StandardCopyOption.COPY_ATTRIBUTES, LinkOption.NOFOLLOW_LINKS)
-    return FileVisitResult.CONTINUE
   }
 }
 

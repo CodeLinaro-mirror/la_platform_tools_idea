@@ -1,8 +1,11 @@
 // Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python;
 
-import com.google.common.collect.ImmutableMap;
 import com.intellij.idea.TestFor;
+import com.jetbrains.python.allure.Layers;
+import com.jetbrains.python.allure.Subsystems;
+
+import com.google.common.collect.ImmutableMap;
 import com.jetbrains.python.fixtures.PyTestCase;
 import com.jetbrains.python.psi.LanguageLevel;
 import com.jetbrains.python.psi.PyElementGenerator;
@@ -19,6 +22,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
+@Subsystems.CodeInsight
+@Layers.Functional
 public class PyEvaluatorTest extends PyTestCase {
 
   public void testNull() {
@@ -329,6 +334,13 @@ public class PyEvaluatorTest extends PyTestCase {
   public void testTypingTypeChecking() {
     assertTrue(PyEvaluator.evaluateAsBooleanNoResolve(parseText("expr = typing.TYPE_CHECKING")));
     assertTrue(PyEvaluator.evaluateAsBooleanNoResolve(parseText("expr = TYPE_CHECKING")));
+  }
+
+  @TestFor(issues = "PY-87570")
+  public void testAliasedTypingTypeChecking() {
+    // Name resolution uses the control flow and the scopes, and they use this check. Thus, the check cannot resolve `t` to `typing`.
+    assertTrue(PyEvaluator.evaluateAsBooleanNoResolve(parseText("expr = t.TYPE_CHECKING")));
+    assertNull(PyEvaluator.evaluateAsBooleanNoResolve(parseText("expr = a.b.TYPE_CHECKING")));
   }
 
   @TestFor(issues="PY-85200")

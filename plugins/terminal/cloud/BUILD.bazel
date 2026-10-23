@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.terminal.cloud` start
+content_module_jar(module = ":cloud")
+### auto-generated section `dev intellij.terminal.cloud` end
 
 ### auto-generated section `build intellij.terminal.cloud` start
-
 jvm_library(
     name = "cloud",
     srcs = glob(
@@ -59,6 +63,7 @@ jvm_library(
 exports_files(
     [
         "intellij.terminal.cloud.iml",
+        "resources/intellij.terminal.cloud.xml",
     ],
     visibility = ["//visibility:public"],
 )

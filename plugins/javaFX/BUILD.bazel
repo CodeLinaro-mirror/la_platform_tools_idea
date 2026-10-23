@@ -1,8 +1,20 @@
 load("@community//build:tests-options.bzl", "jps_test")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+jps_test(
+    name = "javaFX-tests_test",
+    timeout = "moderate",
+    tags = ["community-aggregator"],
+    runtime_deps = [":javaFX-tests_test_lib"],
+)
+### skip generation section `test intellij.javaFX.tests`
+
+### auto-generated section `dev intellij.javaFX` start
+content_module_jar(module = ":javaFX")
+### auto-generated section `dev intellij.javaFX` end
 
 ### auto-generated section `build intellij.javaFX` start
-
 jvm_library(
     name = "javaFX",
     srcs = glob(
@@ -67,6 +79,8 @@ jvm_library(
         "//platform/execution",
         "//libraries/kotlinx/collections-immutable:libraries-kotlinx-collections-immutable",
         "//platform/util/concurrency",
+        "//libraries/kotlinx/coroutines/core",
+        "//libraries/asm",
     ],
 )
 
@@ -95,8 +109,6 @@ jvm_library(
         "//platform/lang-core:lang-core_test_lib",
         "//platform/projectModel-api:projectModel_test_lib",
         "//platform/refactoring:refactoring_test_lib",
-        "//platform/testFramework",
-        "//platform/testFramework:testFramework_test_lib",
         "//platform/platform-impl:ide-impl_test_lib",
         "//platform/ide-core-impl:ide-core-impl_test_lib",
         "//platform/ide-core:ide-core_test_lib",
@@ -112,12 +124,8 @@ jvm_library(
         "//plugins/javaFX/common:common_test_lib",
         "//java/manifest:manifest_test_lib",
         "//java/idea-ui:ui_test_lib",
-        "//java/testFramework",
-        "//java/testFramework:testFramework_test_lib",
         "//java/typeMigration:typeMigration_test_lib",
         "//platform/util/nanoxml:nanoxml_test_lib",
-        "//java/java-tests:tests",
-        "//java/java-tests:tests_test_lib",
         "//platform/core-ui:core-ui_test_lib",
         "//platform/core-impl:core-impl_test_lib",
         "//platform/forms_rt:java-guiForms-rt_test_lib",
@@ -134,6 +142,8 @@ jvm_library(
         "//platform/execution:execution_test_lib",
         "//libraries/kotlinx/collections-immutable:libraries-kotlinx-collections-immutable_test_lib",
         "//platform/util/concurrency:concurrency_test_lib",
+        "//libraries/kotlinx/coroutines/core:core_test_lib",
+        "//libraries/asm:asm_test_lib",
     ],
 )
 ### auto-generated section `build intellij.javaFX` end
@@ -142,13 +152,14 @@ jvm_library(
 exports_files(
     [
         "intellij.javaFX.iml",
+        "resources/intellij.javaFX.xml",
+        "resources/org/jetbrains/plugins/javaFX/refactoring/migration/JavaFx8__9.xml",
     ],
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.javaFX` end
 
 ### auto-generated section `build intellij.javaFX.properties` start
-
 jvm_library(
     name = "javaFX-properties",
     srcs = glob(
@@ -210,13 +221,13 @@ jvm_library(
 exports_files(
     [
         "intellij.javaFX.properties.iml",
+        "properties/resources/intellij.javaFX.properties.xml",
     ],
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.javaFX.properties` end
 
 ### auto-generated section `build intellij.javaFX.tests` start
-
 jvm_library(
     name = "javaFX-tests",
     srcs = glob(
@@ -351,11 +362,3 @@ exports_files(
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.javaFX.tests` end
-
-### auto-generated section `test intellij.javaFX.tests` start
-
-jps_test(
-    name = "javaFX-tests_test",
-    runtime_deps = [":javaFX-tests_test_lib"],
-)
-### auto-generated section `test intellij.javaFX.tests` end

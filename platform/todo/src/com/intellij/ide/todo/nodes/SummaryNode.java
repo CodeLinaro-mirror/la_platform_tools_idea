@@ -17,10 +17,12 @@ import com.intellij.openapi.roots.ProjectRootManager;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiFile;
 import org.jetbrains.annotations.NotNull;
+import static com.intellij.ide.todo.TodoImplementationChooserKt.shouldUseSplitTodo;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
+import java.util.Objects;
 
 public class SummaryNode extends BaseToDoNode<ToDoSummary> {
   public SummaryNode(Project project, @NotNull ToDoSummary value, TodoTreeBuilder builder) {
@@ -29,8 +31,11 @@ public class SummaryNode extends BaseToDoNode<ToDoSummary> {
 
   @Override
   public @NotNull Collection<? extends AbstractTreeNode<?>> getChildren() {
-    ArrayList<AbstractTreeNode<?>> children = new ArrayList<>();
+    if (shouldUseSplitTodo()) {
+      return TodoRemoteGroupingNode.createChildren(Objects.requireNonNull(getProject()), myBuilder.buildRemoteGrouping(), myBuilder);
+    }
 
+    ArrayList<AbstractTreeNode<?>> children = new ArrayList<>();
     final ProjectFileIndex projectFileIndex = ProjectRootManager.getInstance(getProject()).getFileIndex();
     if (myToDoSettings.isModulesShown()) {
       for (Iterator<? extends PsiFile> i = myBuilder.getAllFiles(); i.hasNext(); ) {
@@ -95,6 +100,9 @@ public class SummaryNode extends BaseToDoNode<ToDoSummary> {
 
   @Override
   public int getFileCount(ToDoSummary summary) {
+    if (shouldUseSplitTodo()) {
+      return myBuilder.getRemoteTodoFileCount();
+    }
     int count = 0;
     for (Iterator i = myBuilder.getAllFiles(); i.hasNext();) {
       PsiFile psiFile = (PsiFile)i.next();
@@ -110,6 +118,9 @@ public class SummaryNode extends BaseToDoNode<ToDoSummary> {
 
   @Override
   public int getTodoItemCount(final ToDoSummary val) {
+    if (shouldUseSplitTodo()) {
+      return myBuilder.getRemoteTodoItemCount();
+    }
     int count = 0;
     for(final Iterator<PsiFile> i=myBuilder.getAllFiles();i.hasNext();){
       count += ReadAction.computeBlocking(() -> getTreeStructure().getTodoItemCount(i.next()));

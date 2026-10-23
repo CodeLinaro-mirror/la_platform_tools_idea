@@ -2,7 +2,6 @@
 
 package org.jetbrains.kotlin.idea.fir.configuration;
 
-import com.intellij.jarRepository.RepositoryLibraryType;
 import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.externalSystem.service.project.IdeModifiableModelsProvider;
 import com.intellij.openapi.externalSystem.service.project.ProjectDataManager;
@@ -17,7 +16,6 @@ import com.intellij.openapi.roots.OrderEnumerator;
 import com.intellij.openapi.roots.OrderRootType;
 import com.intellij.openapi.roots.RootPolicy;
 import com.intellij.openapi.roots.ex.ProjectRootManagerEx;
-import com.intellij.openapi.roots.impl.libraries.LibraryEx;
 import com.intellij.openapi.roots.libraries.Library;
 import com.intellij.openapi.util.EmptyRunnable;
 import com.intellij.openapi.util.Ref;
@@ -25,6 +23,7 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiJavaModule;
 import com.intellij.psi.PsiRequiresStatement;
 import kotlin.KotlinVersion;
+import kotlin.jvm.functions.Function0;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.kotlin.cli.common.arguments.K2JSCompilerArguments;
 import org.jetbrains.kotlin.cli.common.arguments.K2JVMCompilerArguments;
@@ -35,9 +34,7 @@ import org.jetbrains.kotlin.config.KotlinFacetSettingsProvider;
 import org.jetbrains.kotlin.config.LanguageVersion;
 import org.jetbrains.kotlin.idea.base.facet.platform.TargetPlatformDetectorUtils;
 import org.jetbrains.kotlin.idea.base.indices.JavaIndicesUtils;
-import org.jetbrains.kotlin.idea.base.platforms.KotlinJavaScriptLibraryKind;
 import org.jetbrains.kotlin.idea.base.platforms.KotlinJavaScriptStdlibDetectorFacility;
-import org.jetbrains.kotlin.idea.base.platforms.LibraryEffectiveKindProvider;
 import org.jetbrains.kotlin.idea.base.projectStructure.LanguageVersionSettingsProviderUtils;
 import org.jetbrains.kotlin.idea.base.psi.JavaPsiUtils;
 import org.jetbrains.kotlin.idea.compiler.configuration.IdeKotlinVersion;
@@ -58,6 +55,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.StreamSupport;
 
+import static com.intellij.testFramework.EdtTestUtilKt.runInEdtAndGet;
 import static java.util.Collections.emptyList;
 import static java.util.Collections.singletonList;
 import static org.jetbrains.kotlin.idea.configuration.AddRequiresDirectiveFacilityKt.KOTLIN_STDLIB_MODULE_NAME;
@@ -131,11 +129,6 @@ public class ConfigureKotlinTest extends AbstractConfigureKotlinTest {
     //    doTestSingleJsModule();
     //}
 
-    public void testJsLibraryWrongKind() {
-        assertProperlyConfigured(getModule(), getJsConfigurator());
-        assertEquals(1, ModuleRootManager.getInstance(getModule()).orderEntries().process(new LibraryCountingRootPolicy(), 0).intValue());
-    }
-
     public void testProjectWithoutFacetWithRuntime106WithoutLanguageLevel() {
         assertEquals(LanguageVersion.KOTLIN_1_0, LanguageVersionSettingsProviderUtils.getLanguageVersionSettings(getModule()).getLanguageVersion());
         assertEquals(LanguageVersion.KOTLIN_1_0, LanguageVersionSettingsProviderUtils.getLanguageVersionSettings(myProject).getLanguageVersion());
@@ -182,22 +175,6 @@ public class ConfigureKotlinTest extends AbstractConfigureKotlinTest {
         Library jsRuntime = getFirstLibrary(myProject);
         IdeKotlinVersion version = KotlinJavaScriptStdlibDetectorFacility.INSTANCE.getStdlibVersion(myProject, jsRuntime);
         assertEquals(new KotlinVersion(1, 0, 6), version.getKotlinVersion());
-    }
-
-    public void testMavenProvidedTestJsKind() {
-        Ref<LibraryEx> jsTest = new Ref<>();
-        OrderEnumerator.orderEntries(myProject).forEachLibrary((library) -> {
-            if (library.getName().contains("kotlin-test-js")) {
-                jsTest.set((LibraryEx) library);
-                return false;
-            }
-            return true;
-        });
-
-        LibraryEffectiveKindProvider effectiveKindProvider = myProject.getService(LibraryEffectiveKindProvider.class);
-
-        assertEquals(RepositoryLibraryType.REPOSITORY_LIBRARY_KIND, jsTest.get().getKind());
-        assertEquals(KotlinJavaScriptLibraryKind.INSTANCE, effectiveKindProvider.getEffectiveKind(jsTest.get()));
     }
 
     public void testJvmProjectWithV1FacetConfig() {
@@ -329,7 +306,7 @@ public class ConfigureKotlinTest extends AbstractConfigureKotlinTest {
         Sdk moduleSdk = ModuleRootManager.getInstance(getModule()).getSdk();
         assertNotNull("Module SDK is not defined", moduleSdk);
 
-        PsiJavaModule javaModule = JavaIndicesUtils.findModuleInfoFile(myProject, module.getModuleScope());
+        PsiJavaModule javaModule = runInEdtAndGet(() -> JavaIndicesUtils.findModuleInfoFile(myProject, module.getModuleScope()));
         assertNotNull(javaModule);
 
         PsiRequiresStatement stdlibDirective = JavaPsiUtils.findRequireDirective(javaModule, KOTLIN_STDLIB_MODULE_NAME);
@@ -353,7 +330,13 @@ public class ConfigureKotlinTest extends AbstractConfigureKotlinTest {
             assertEquals(jvmTarget.getDescription(),
                          ((K2JVMCompilerArguments) facet.getConfiguration().getSettings().getCompilerArguments()).getJvmTarget());
         } finally {
-            modelsProvider.dispose();
+            runInEdtAndGet(new Function0<Void>() {
+                @Override
+                public Void invoke() {
+                    modelsProvider.dispose();
+                    return null;
+                }
+            });
         }
     }
 

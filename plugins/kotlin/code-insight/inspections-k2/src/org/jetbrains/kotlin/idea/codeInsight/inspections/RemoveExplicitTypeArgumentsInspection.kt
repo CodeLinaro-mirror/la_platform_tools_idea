@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.kotlin.idea.codeInsight.inspections
 
 import com.intellij.codeInspection.InspectionManager
@@ -10,6 +10,7 @@ import com.intellij.modcommand.ModPsiUpdater
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.TextRange
 import org.jetbrains.kotlin.analysis.api.KaSession
+import org.jetbrains.kotlin.idea.base.psi.setCallableTypeReference
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.codeinsight.api.applicable.asUnit
 import org.jetbrains.kotlin.idea.codeinsight.api.applicable.inspections.KotlinApplicableInspectionBase
@@ -39,7 +40,8 @@ internal class RemoveExplicitTypeArgumentsInspection : KotlinApplicableInspectio
         return RemoveExplicitTypeArgumentsUtils.isApplicableByPsi(callExpression)
     }
 
-    override fun KaSession.prepareContext(element: KtTypeArgumentList): Unit? = areTypeArgumentsRedundant(element).asUnit
+    context(session: KaSession)
+    override fun prepareContext(element: KtTypeArgumentList): Unit? = areTypeArgumentsRedundant(element).asUnit
 
     override fun InspectionManager.createProblemDescriptor(
         element: KtTypeArgumentList,
@@ -87,7 +89,7 @@ internal class RemoveExplicitTypeArgumentsInspection : KotlinApplicableInspectio
                 updater: ModPsiUpdater,
             ) {
                 val declaration = element.getStrictParentOfType<KtCallableDeclaration>() ?: return
-                declaration.typeReference = null
+                declaration.setCallableTypeReference(null)
             }
         }
     }

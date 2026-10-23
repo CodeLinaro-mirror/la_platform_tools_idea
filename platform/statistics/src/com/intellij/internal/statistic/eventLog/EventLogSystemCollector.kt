@@ -2,6 +2,7 @@
 package com.intellij.internal.statistic.eventLog
 
 import com.intellij.internal.statistic.collectors.fus.ClassNameRuleValidator
+import com.intellij.internal.statistic.config.eventLog.EventLogBuildType
 import com.intellij.internal.statistic.eventLog.connection.StatisticsResult
 import com.intellij.internal.statistic.eventLog.connection.metadata.EventLogMetadataLoadException
 import com.intellij.internal.statistic.eventLog.connection.metadata.EventLogMetadataParseException
@@ -36,7 +37,7 @@ open class EventLogSystemCollector(eventLoggerProvider: StatisticsEventLoggerPro
     // Increase the group's versions locally
     // and not increase the versions in all StatisticsEventLoggerProvider
     // in case of any changes in the groups
-    eventLoggerProvider.version + 4,
+    eventLoggerProvider.version + 8,
     eventLoggerProvider.recorderId
   )
   override fun getGroup(): EventLogGroup = GROUP
@@ -82,6 +83,10 @@ open class EventLogSystemCollector(eventLoggerProvider: StatisticsEventLoggerPro
                                                                                fileSizeBytes, eventsCount
   )
 
+  private val backlogSnapshot: EventId3<Int, Long, Long> = GROUP.registerEvent("logs.backlog.snapshot",
+                                                                               pendingFilesCountField, pendingTotalBytesField, oldestPendingFileWaitMsField
+  )
+
   private val dictionaryListLoadFailed = GROUP.registerEvent(
     "dictionary.list.load.failed",
     stageMetadataLoadFailedField, errorMetadataLoadFailedField, codeMetadataLoadFailedField
@@ -99,6 +104,11 @@ open class EventLogSystemCollector(eventLoggerProvider: StatisticsEventLoggerPro
   private val dictionaryUpdateFailedEvent = GROUP.registerEvent(
     "dictionary.update.failed",
     stageMetadataUpdateFailedField, errorMetadataUpdateFailedField, codeMetadataUpdateFailedField
+  )
+
+  private val fileDeletedEvent = GROUP.registerVarargEvent(
+    "logs.file.deleted",
+    deletedFileCauseField, deletedFileAgeMsField, deletedFileQueuedMsField, deletedFileSizeBytesField, deletedFileBuildTypeField
   )
 
   fun logMetadataLoaded(version: String?) = metadataLoadedEvent.log(version)
@@ -164,6 +174,26 @@ open class EventLogSystemCollector(eventLoggerProvider: StatisticsEventLoggerPro
     fileMetricsCalculated.log(fileSizeBytes, eventsCount)
   }
 
+  fun logBacklogSnapshot(pendingFilesCount: Int, pendingTotalBytes: Long, oldestPendingFileWaitMs: Long) {
+    backlogSnapshot.log(pendingFilesCount, pendingTotalBytes, oldestPendingFileWaitMs)
+  }
+
+  fun logFileDeleted(
+    cause: FileDeletionCause,
+    ageMs: Long,
+    queuedMs: Long,
+    sizeBytes: Long,
+    buildType: EventLogBuildType,
+  ) {
+    fileDeletedEvent.log(
+      deletedFileCauseField.with(cause),
+      deletedFileAgeMsField.with(ageMs),
+      deletedFileQueuedMsField.with(queuedMs),
+      deletedFileSizeBytesField.with(sizeBytes),
+      deletedFileBuildTypeField.with(buildType),
+    )
+  }
+
   fun logDictionaryListLoadFailed(error: EventLogMetadataUpdateError) {
     dictionaryListLoadFailed.log(error.updateStage, error.errorType, error.errorCode)
   }
@@ -190,22 +220,21 @@ open class EventLogSystemCollector(eventLoggerProvider: StatisticsEventLoggerPro
                                                                  "loading or parsing stages."
     private const val CODE_METADATA_UPDATE_FAILED_DESCRIPTION = "In case loading request failed - the metric is recorded response code if it " +
                                                                 "was different from 200."
-    private const val TOTAL_LOGS_SEND_DESCRIPTION = "Total amount of existing for sending event-log files"
+    private const val TOTAL_LOGS_SEND_DESCRIPTION = "Total amount of event log files ready to be sent"
     private const val SEND_LOGS_SEND_DESCRIPTION = "Amount of event log files attempted to send"
-    private const val FAILED_LOGS_SEND_DESCRIPTION = "Amount of event-log files which were failed to send"
-    private const val EXTERNAL_LOGS_SEND_DESCRIPTION = "Indicates if logs were sending from external process or not."
-    private const val SUCCEED_LOGS_SEND_DESCRIPTION = "The amount of successfully sent files."
-    private const val ERRORS_LOGS_SEND_DESCRIPTION = "The list of integers which identify error codes. If error is less than 100, the problem is " +
-                                                     "in data structure (e.g. invalid recorder code), if error is between 100 and 600 it's error " +
-                                                     "code from an HTTP request."
+    private const val FAILED_LOGS_SEND_DESCRIPTION = "Amount of event log files which failed to send"
+    private const val EXTERNAL_LOGS_SEND_DESCRIPTION = "Indicates if logs were being sent from external process or not."
+    private const val SUCCEED_LOGS_SEND_DESCRIPTION = "The amount of successfully sent files"
+    private const val ERRORS_LOGS_SEND_DESCRIPTION = "List of error codes. If the code is less than 100, the problem is in data structure " +
+                                                     "(e.g. invalid recorder code); if the code is between 100 and 600, it's an HTTP response code."
     private const val SEND_TS_EXTERNAL_SEND_STARTED_DESCRIPTION = "Actual time when sending was started"
     private const val SEND_TS_EXTERNAL_SEND_FINISHED_DESCRIPTION = "Actual time when sending was finished"
-    private const val SUCCEED_EXTERNAL_SEND_FINISHED_DESCRIPTION = "Shows if external process sent data successfully or not"
-    private const val ERROR_EXTERNAL_SEND_FINISHED_DESCRIPTION = "The error name in case the sending was failed, e.g. 'no arguments', 'not permitted server', 'no application config' etc."
-    private const val SUCCEED_EXTERNAL_SEND_COMMAND_CREATION_FINISHED_DESCRIPTION = "Shows if command to start external upload process was " +
+    private const val SUCCEED_EXTERNAL_SEND_FINISHED_DESCRIPTION = "Shows if external process has sent data successfully or not"
+    private const val ERROR_EXTERNAL_SEND_FINISHED_DESCRIPTION = "The error name in case the sending has failed, e.g. 'no arguments', 'not permitted server', 'no application config' etc."
+    private const val SUCCEED_EXTERNAL_SEND_COMMAND_CREATION_FINISHED_DESCRIPTION = "Shows if the command to start an external upload process has " +
                                                                                     "finished successfully or not"
-    private const val ERROR_EXTERNAL_SEND_COMMAND_CREATION_FINISHED_DESCRIPTION = "The error name in case command to start external upload " +
-                                                                                  "process was failed, e.g. 'no logs', 'no temp folder' etc."
+    private const val ERROR_EXTERNAL_SEND_COMMAND_CREATION_FINISHED_DESCRIPTION = "The error name in case the command to start an external upload " +
+                                                                                  "process has failed, e.g. 'no logs', 'no temp folder' etc."
     private const val ERROR_TS_LOADING_CONFIG_FAILED_DESCRIPTION = "Error time stamp is added if error happened in external process"
     private val stageMetadataLoadFailedField = EventFields.Enum<EventLogMetadataUpdateStage>("stage",
                                                                                              STAGE_METADATA_LOAD_FAILED_DESCRIPTION)
@@ -244,6 +273,14 @@ open class EventLogSystemCollector(eventLoggerProvider: StatisticsEventLoggerPro
     private val failedDeletingFilesCount = EventFields.Int("failed_deleting_files_count", "The number of log files which were failed to delete")
     private val fileSizeBytes = EventFields.Long("file_size_bytes", "File size in bytes")
     private val eventsCount = EventFields.Int("events_count", "Number of events in the file")
+    private val pendingFilesCountField = EventFields.Int("pending_files_count", "Number of log files waiting to be sent")
+    private val pendingTotalBytesField = EventFields.Long("pending_total_bytes", "Total size on disk of the pending log files, in bytes")
+    private val oldestPendingFileWaitMsField = EventFields.Long("oldest_pending_file_wait_ms", "How long the longest-waiting pending file has been idle: now minus its last-modified time, in milliseconds")
 
+    private val deletedFileCauseField = EventFields.Enum<FileDeletionCause>("deleted_file_cause", "Why the file was deleted: aged out, storage size cap exceeded, disk almost full, or rejected by the server on send (HTTP 400 / failed validation).")
+    private val deletedFileAgeMsField = EventFields.Long("deleted_file_age_ms", "Age of the data in the deleted file: now minus the timestamp of its oldest event, in milliseconds (-1 if unknown)")
+    private val deletedFileQueuedMsField = EventFields.Long("deleted_file_queued_ms", "How long the deleted file waited since its last write before being deleted: now minus last modified time, in milliseconds")
+    private val deletedFileSizeBytesField = EventFields.Long("deleted_file_size_bytes", "Size of the deleted file in bytes")
+    private val deletedFileBuildTypeField = EventFields.Enum<EventLogBuildType>("deleted_file_build_type", "Build type (EAP, RELEASE, etc.)")
   }
 }

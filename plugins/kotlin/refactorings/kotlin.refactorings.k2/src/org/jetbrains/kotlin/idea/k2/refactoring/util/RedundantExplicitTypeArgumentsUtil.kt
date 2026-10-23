@@ -3,30 +3,28 @@ package org.jetbrains.kotlin.idea.k2.refactoring.util
 
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.util.PsiTreeUtil
-import com.intellij.psi.util.isAncestor
 import com.intellij.psi.util.parentOfType
-import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaImplementationDetail
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.analyze
-import org.jetbrains.kotlin.analysis.api.components.KaDiagnosticCheckerFilter
-import org.jetbrains.kotlin.analysis.api.components.collectDiagnostics
-import org.jetbrains.kotlin.analysis.api.components.hasFlexibleNullability
-import org.jetbrains.kotlin.analysis.api.components.resolveToCall
-import org.jetbrains.kotlin.analysis.api.components.semanticallyEquals
 import org.jetbrains.kotlin.analysis.api.diagnostics.KaDiagnosticWithPsi
+import org.jetbrains.kotlin.analysis.api.diagnostics.diagnostics
 import org.jetbrains.kotlin.analysis.api.fir.diagnostics.KaFirDiagnostic
 import org.jetbrains.kotlin.analysis.api.projectStructure.copyOrigin
-import org.jetbrains.kotlin.analysis.api.resolution.singleFunctionCallOrNull
-import org.jetbrains.kotlin.analysis.api.resolution.successfulFunctionCallOrNull
-import org.jetbrains.kotlin.analysis.api.resolution.symbol
+import org.jetbrains.kotlin.analysis.api.resolution.function
+import org.jetbrains.kotlin.analysis.api.resolution.resolveSuccessfulSymbol
+import org.jetbrains.kotlin.analysis.api.resolution.single
+import org.jetbrains.kotlin.analysis.api.resolution.tryResolveCall
+import org.jetbrains.kotlin.analysis.api.session.analyze
 import org.jetbrains.kotlin.analysis.api.symbols.KaFunctionSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaNamedFunctionSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.importableFqName
 import org.jetbrains.kotlin.analysis.api.symbols.receiverType
 import org.jetbrains.kotlin.analysis.api.types.KaDefinitelyNotNullType
 import org.jetbrains.kotlin.analysis.api.types.KaType
 import org.jetbrains.kotlin.analysis.api.types.KaTypeParameterType
 import org.jetbrains.kotlin.analysis.api.types.KaTypePointer
+import org.jetbrains.kotlin.analysis.api.types.hasFlexibleNullability
+import org.jetbrains.kotlin.analysis.api.types.semanticallyEquals
 import org.jetbrains.kotlin.idea.base.codeInsight.handlers.fixers.end
 import org.jetbrains.kotlin.idea.base.codeInsight.handlers.fixers.range
 import org.jetbrains.kotlin.idea.base.codeInsight.handlers.fixers.start
@@ -42,12 +40,13 @@ import org.jetbrains.kotlin.psi.KtTypeProjection
 
 private val INLINE_REIFIED_FUNCTIONS_WITH_INSIGNIFICANT_TYPE_ARGUMENTS: Set<String> = setOf("kotlin.arrayOf")
 
-fun KaSession.areTypeArgumentsRedundant(
+context(session: KaSession)
+fun areTypeArgumentsRedundant(
     typeArgumentList: KtTypeArgumentList,
     approximateFlexible: Boolean = false,
 ): Boolean {
     val callExpression = typeArgumentList.parent as? KtCallExpression ?: return false
-    val symbol = callExpression.resolveToCall()?.successfulFunctionCallOrNull()?.symbol ?: return false
+    val symbol = callExpression.resolveSuccessfulSymbol() ?: return false
     if (isInlineReifiedFunction(symbol)) return false
 
     if (symbol.receiverType == null && callExpression.valueArguments.isEmpty()) {
@@ -109,13 +108,13 @@ private fun hasPropertyAccessorBetween(element: KtElement, context: KtElement): 
     return false
 }
 
-private fun KaSession.isInlineReifiedFunction(symbol: KaFunctionSymbol): Boolean =
+context(session: KaSession)
+private fun isInlineReifiedFunction(symbol: KaFunctionSymbol): Boolean =
     symbol is KaNamedFunctionSymbol &&
             symbol.importableFqName?.asString() !in INLINE_REIFIED_FUNCTIONS_WITH_INSIGNIFICANT_TYPE_ARGUMENTS &&
             symbol.isInline &&
             symbol.typeParameters.any { it.isReified }
 
-@OptIn(KaExperimentalApi::class)
 context(_: KaSession)
 private fun areTypeArgumentsEqual(
     originalCallExpression: KtCallExpression,
@@ -134,12 +133,10 @@ private fun areTypeArgumentsEqual(
     }
 }
 
-@OptIn(KaExperimentalApi::class)
 context(_: KaSession)
 private fun collectCallExpressionInfo(callExpression: KtCallExpression): List<KaTypePointer<KaType>>? {
     return callExpression
-        .resolveToCall()
-        ?.singleFunctionCallOrNull()
+        .tryResolveCall()?.single?.function
         ?.typeArgumentsMapping
         ?.values
         ?.map { it.createPointer() }
@@ -159,34 +156,31 @@ private fun areAllTypesEqual(
 
 context(_: KaSession)
 private fun hasNewDiagnostics(originalCallExpression: KtCallExpression, newCallExpression: KtCallExpression): Boolean {
-    val newDiagnostics = newCallExpression.nestedDiagnostics
-    if (newDiagnostics.isEmpty()) return false
+    val newDiagnosticsCount = newCallExpression.nestedDiagnostics.count()
+    if (newDiagnosticsCount == 0) return false
 
-    val oldDiagnostics = originalCallExpression.nestedDiagnostics
+    val oldDiagnosticsCount = originalCallExpression.nestedDiagnostics.count()
 
     // Diagnostics cannot be compared directly since they have only identity equals/hashCode
     // Also, original call expression and new call expression files have a different set of psi instances since
     // they effectively in different files
-    return newDiagnostics.size != oldDiagnostics.size
+    return newDiagnosticsCount != oldDiagnosticsCount
 }
 
-@OptIn(KaExperimentalApi::class, KaImplementationDetail::class)
+@OptIn(KaImplementationDetail::class)
 context(session: KaSession)
 private fun restoreTypes(typePointers: List<KaTypePointer<KaType>>): List<KaType>? =
     typePointers.map { it.restore(session) ?: return null }
 
-// TODO: when KT-63221 is fixed use `diagnostics(KaDiagnosticCheckerFilter.ONLY_COMMON_CHECKERS)` to reduce resolve and avoid psi checks
 context(_: KaSession)
-private val KtCallExpression.nestedDiagnostics: List<KaDiagnosticWithPsi<*>>
-    get() = containingKtFile
-        .collectDiagnostics(KaDiagnosticCheckerFilter.ONLY_COMMON_CHECKERS)
-        .filter { diagnostic ->
+private val KtCallExpression.nestedDiagnostics: Sequence<KaDiagnosticWithPsi<*>>
+    get() = diagnostics().filter { diagnostic ->
             when (diagnostic) {
                 is KaFirDiagnostic.UnresolvedReference,
                 is KaFirDiagnostic.BuilderInferenceStubReceiver,
                 is KaFirDiagnostic.ImplicitNothingReturnType,
                 is KaFirDiagnostic.AmbiguousContextArgument
-                    -> isAncestor(diagnostic.psi, strict = false)
+                    -> true
 
                 else -> false
             }
@@ -218,7 +212,6 @@ fun KtTypeProjection.canBeReplacedWithUnderscore(callExpression: KtCallExpressio
     return areTypeArgumentsEqual(callExpression, newCallExpression, false)
 }
 
-@OptIn(KaExperimentalApi::class)
 private fun buildCallExpressionWithUnderscores(element: KtCallExpression, typeProjectionToReplace: KtTypeProjection): KtCallExpression? {
     val copyOrigin = element.containingKtFile.copyOrigin
     val fileCopy = if (copyOrigin != null) {

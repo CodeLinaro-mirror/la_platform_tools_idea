@@ -56,6 +56,7 @@ import com.intellij.openapi.application.AccessToken;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.application.ReadAction;
+import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.application.impl.LaterInvocator;
 import com.intellij.openapi.command.CommandProcessor;
 import com.intellij.openapi.command.UndoConfirmationPolicy;
@@ -79,6 +80,7 @@ import com.intellij.openapi.editor.VisualPosition;
 import com.intellij.openapi.editor.colors.EditorColors;
 import com.intellij.openapi.editor.colors.EditorColorsManager;
 import com.intellij.openapi.editor.colors.EditorColorsScheme;
+import com.intellij.openapi.editor.colors.EditorColorsUtil;
 import com.intellij.openapi.editor.event.DocumentEvent;
 import com.intellij.openapi.editor.ex.EditorEx;
 import com.intellij.openapi.editor.ex.EditorMarkupModel;
@@ -146,6 +148,7 @@ import com.intellij.testFramework.LightVirtualFileBase;
 import com.intellij.ui.ClientProperty;
 import com.intellij.ui.ColorUtil;
 import com.intellij.ui.ComponentUtil;
+import com.intellij.ui.IslandsState;
 import com.intellij.ui.JBColor;
 import com.intellij.ui.ScreenUtil;
 import com.intellij.ui.components.JBLabel;
@@ -619,6 +622,22 @@ public final class DiffUtil {
     return panel;
   }
 
+  @ApiStatus.Internal
+  public static @NotNull Color getDiffContentBackground() {
+    return JBColor.lazy(() -> {
+      if (IslandsState.Companion.isEnabled()) {
+        return EditorColorsManager.getInstance().getGlobalScheme().getDefaultBackground();
+      }
+      return UIUtil.getPanelBackground();
+    });
+  }
+
+  @ApiStatus.Internal
+  public static @NotNull Color getDiffContentForeground() {
+    return JBColor.lazy(() -> EditorColorsUtil.getColorSchemeForBackground(
+      getDiffContentBackground()).getDefaultForeground());
+  }
+
   public static void addActionBlock(@NotNull DefaultActionGroup group, AnAction... actions) {
     addActionBlock(group, Arrays.asList(actions));
   }
@@ -855,8 +874,16 @@ public final class DiffUtil {
     panel.setOpaque(false);
     BorderLayoutPanel labelWithIcon = new BorderLayoutPanel().andTransparent();
     labelWithIcon.setName("Diff Editor Title Label Panel");
-    JComponent titleLabel = titleCustomizer != null ? titleCustomizer.getLabel()
-                                                    : new JBLabel(StringUtil.notNullize(title)).setCopyable(true);
+    JComponent titleLabel;
+    if (titleCustomizer != null) {
+      titleLabel = titleCustomizer.getLabel();
+    }
+    else {
+      JBLabel label = new JBLabel(StringUtil.notNullize(title));
+      label.setCopyable(true);
+      label.setForeground(getDiffContentForeground());
+      titleLabel = label;
+    }
     if (titleCustomizer != null && titleLabel instanceof Disposable disposableTitleLabel) {
       if (viewer != null) {
         Disposer.register(viewer, disposableTitleLabel);
@@ -915,7 +942,7 @@ public final class DiffUtil {
       label.setForeground(JBColor.RED);
     }
     else {
-      label.setForeground(JBColor.BLACK);
+      label.setForeground(getDiffContentForeground());
     }
     return label;
   }
@@ -933,7 +960,7 @@ public final class DiffUtil {
       color = JBColor.MAGENTA;
     }
     else {
-      color = JBColor.BLACK;
+      color = getDiffContentForeground();
     }
     label.setForeground(color);
     return label;
@@ -1677,6 +1704,7 @@ public final class DiffUtil {
    * We expect the file itself still being usable after.
    */
   @ApiStatus.Internal
+  @RequiresEdt
   public static void cleanCachesAfterUse(@Nullable Project project, VirtualFile @NotNull ... files) {
     if (project == null) return;
 
@@ -1684,7 +1712,10 @@ public final class DiffUtil {
       if (file instanceof LightVirtualFileBase) {
         PsiManager psiManager = project.getServiceIfCreated(PsiManager.class);
         if (psiManager instanceof PsiManagerEx psiManagerEx) {
-          psiManagerEx.getFileManager().setViewProvider(file, null);
+          // Dropping the view provider invalidates the file's PSI. Once a light file has been exposed to an editor it must
+          // obey the write-lock contract like a physical file (IJPL-249128); resetting it off the write lock can invalidate
+          // PSI concurrently with a background read action still reading it, breaking FileViewProvider#getPsi (IJPL-245339).
+          WriteAction.run(() -> psiManagerEx.getFileManager().setViewProvider(file, null));
         }
       }
     }
@@ -1757,7 +1788,8 @@ public final class DiffUtil {
   }
 
   /**
-   * MacOS hack. Try to minimize the window while we are navigating to sources from the window diff in full screen mode.
+   * MacOS hack. Try to minimize the diff window while we are navigating to sources from the window diff in the project's full screen mode.
+   * No need to do this if the diff window is in the full screen mode itself.
    */
   public static void minimizeDiffIfOpenedInWindow(@NotNull Component diffComponent) {
     if (!SystemInfo.isMac) return;
@@ -1769,7 +1801,7 @@ public final class DiffUtil {
     if (composites.size() != 1) return;
 
     Project project = editorWindow.getManager().getProject();
-    VirtualFile file = composites.get(0).getFile();
+    VirtualFile file = composites.getFirst().getFile();
 
     if (DiffEditorTabFilesManager.getInstance(project).isDiffOpenedInWindow(file)) {
       Window window = UIUtil.getWindow(diffComponent);
@@ -1784,9 +1816,10 @@ public final class DiffUtil {
   private static boolean canBeHiddenBehind(@NotNull Window window) {
     if (!(window instanceof Frame)) return false;
     if (SystemInfo.isMac) {
-      if (window instanceof IdeFrame) {
+      if (window instanceof IdeFrame ideFrame) {
+        if (ideFrame.isInFullScreen()) return true;
         // we can't move focus to full-screen main frame, as it will be hidden behind other frame windows
-        Project project = ((IdeFrame)window).getProject();
+        Project project = ideFrame.getProject();
         IdeFrame projectFrame = WindowManager.getInstance().getIdeFrame(project);
         if (projectFrame != null) {
           JComponent projectFrameComponent = projectFrame.getComponent();

@@ -1,6 +1,6 @@
 ---
 name: testing
-description: Comprehensive testing reference for running tests in IntelliJ codebase via tests.cmd. Use when running, debugging, or troubleshooting test execution.
+description: Run or troubleshoot IntelliJ `tests.cmd` tests and discovery.
 ---
 
 # Testing Guide for IntelliJ IDEA
@@ -79,8 +79,10 @@ xmllint --xpath '//testcase[failure or error]/@name | //testcase[failure or erro
 When changing `ProductProperties`, `productImplementationModules`, product content descriptors, plugin/module-set packaging, or generated product layout XML, also run:
 
 ```bash
-./tests.cmd --module intellij.idea.ultimate.build.tests --test com.intellij.idea.ultimate.build.smokeTests.AllProductsPackagingTest
+./bazel.cmd test //build:all-products-packaging_test
 ```
+
+This suite is the one exception to the `tests.cmd` rule above. It has a Bazel target of its own, which runs the one class, prints the Bazel summary, and writes `out/bazel-testlogs/build/all-products-packaging_test/test.xml`.
 
 ### Windows PowerShell note
 
@@ -94,7 +96,7 @@ Without `--%`, PowerShell can alter `-D...` arguments before they reach `tests.c
 
 ## Separate Bazel Modules
 
-Some parts of the repository are standalone Bazel modules and must not use `tests.cmd` or `community/tests.cmd`.
+Some parts of the repository are standalone Bazel modules and must not use `tests.cmd` or `community/tests.cmd`. The tests of a module that matches a pattern in `community/build/bazel-migrated-test-modules.txt` (`build/bazel-migrated-test-modules.txt` in a community checkout) run only under Bazel. `tests.cmd` refuses such a module with an error that names the pattern and the Bazel command. Follow that message.
 
 ### `community/platform/build-scripts/bazel`
 
@@ -172,6 +174,7 @@ Extra `-D...` arguments are passed through as JVM flags to `org.jetbrains.intell
 - Check that `--module` is the module that actually contains the test class (look at the .iml file location)
 - Check that class name ends with `Test` (or use `-Dpass.idea.include.unconventionally.named.tests=true`)
 - Before troubleshooting further, check whether the test lives in a separate Bazel module such as `community/platform/build-scripts/bazel`; those tests must be run with module-local `../../../../bazel.cmd test`, not `tests.cmd`
+- If `tests.cmd` refuses the module and names a pattern from `bazel-migrated-test-modules.txt`, the tests are Bazel-only. Run them with `./bazel.cmd test` as the message says
 
 **Tests pass locally but fail in CI:**
 - Check test isolation - tests may depend on execution order

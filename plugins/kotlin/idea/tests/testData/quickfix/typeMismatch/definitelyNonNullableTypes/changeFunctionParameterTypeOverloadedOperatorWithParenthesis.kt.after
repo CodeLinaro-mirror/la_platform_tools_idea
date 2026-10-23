@@ -1,5 +1,5 @@
 // "Change parameter 'x' type of function 'bar' to 'T & Any'" "true"
-// K2_ERROR: Argument type mismatch: actual type is 'String', but 'T (of fun <T> bar) & Any' was expected.
+// K2_ERROR: ARGUMENT_TYPE_MISMATCH
 
 abstract class B<T>() {
     abstract operator fun times(a: T & Any): B<T>
@@ -10,5 +10,4 @@ abstract class B<T>() {
 }
 
 
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ChangeParameterTypeFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.refactoring.changeSignature.quickFix.ChangeParameterTypeFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.refactoring.changeSignature.quickFix.ChangeParameterTypeFix

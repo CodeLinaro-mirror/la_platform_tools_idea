@@ -1,7 +1,6 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
 ### auto-generated section `build intellij.platform.testExtensions` start
-
 jvm_library(
     name = "testExtensions",
     srcs = glob(
@@ -33,14 +32,14 @@ jvm_library(
         "//platform/projectModel-impl",
         "//platform/testFramework",
         "//platform/util/jdom",
-        "@lib//:memoryfilesystem",
+        "//libraries/memoryfilesystem",
         "//libraries/junit4",
         "//libraries/assertj-core",
         "//libraries/snakeyaml",
         "//libraries/fastutil",
         "//platform/core-ui",
         "//platform/ide-core",
-        "//libraries/junit5",
+        "//libraries/junit6",
         "//java/java-runtime:rt",
     ],
 )
@@ -69,13 +68,14 @@ jvm_library(
         "//platform/projectModel-impl:projectModel-impl_test_lib",
         "//platform/testFramework:testFramework_test_lib",
         "//platform/util/jdom:jdom_test_lib",
+        "//libraries/memoryfilesystem:memoryfilesystem_test_lib",
         "//libraries/junit4:junit4_test_lib",
         "//libraries/assertj-core:assertj-core_test_lib",
         "//libraries/snakeyaml:snakeyaml_test_lib",
         "//libraries/fastutil:fastutil_test_lib",
         "//platform/core-ui:core-ui_test_lib",
         "//platform/ide-core:ide-core_test_lib",
-        "//libraries/junit5:junit5_test_lib",
+        "//libraries/junit6:junit6_test_lib",
         "//java/java-runtime:rt_test_lib",
     ],
 )
@@ -85,6 +85,7 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.testExtensions.iml",
+        "resources/intellij.platform.testExtensions.xml",
     ],
     visibility = ["//visibility:public"],
 )

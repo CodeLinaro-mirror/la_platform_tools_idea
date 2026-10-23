@@ -18,6 +18,7 @@ import com.intellij.openapi.vfs.VirtualFileManager;
 import com.intellij.platform.debugger.impl.shared.XDebuggerWatchesManager;
 import com.intellij.platform.debugger.impl.shared.proxy.XDebugManagerProxy;
 import com.intellij.platform.debugger.impl.shared.proxy.XDebugSessionProxy;
+import com.intellij.platform.ide.productMode.IdeProductMode;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.MultiMap;
 import com.intellij.util.ui.EDT;
@@ -31,7 +32,6 @@ import com.intellij.xdebugger.impl.inline.InlineWatchInplaceEditor;
 import com.intellij.xdebugger.impl.inline.XInlineWatchesView;
 import com.intellij.xdebugger.impl.ui.XDebugSessionTab;
 import kotlinx.coroutines.CoroutineScope;
-import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -201,6 +201,19 @@ public final class XDebuggerWatchesManagerImpl implements XDebuggerWatchesManage
 
   private class MyDocumentListener implements DocumentListener {
     @Override
+    public void beforeDocumentChange(final @NotNull DocumentEvent e) {
+      if (IdeProductMode.isFrontend()) {
+        var isDocumentReload = e.getOffset() == 0 && e.getOldLength() == e.getDocument().getTextLength();
+        if (isDocumentReload) {
+          // In RemDev, document text is set to empty and reloaded.
+          // We should not consider this change as an update.
+          // Inlines will be later recreated from fileContentLoaded.
+          getDocumentInlines(e.getDocument()).forEach(InlineWatch::disposeMarker);
+        }
+      }
+    }
+
+    @Override
     public void documentChanged(final @NotNull DocumentEvent e) {
       final Document document = e.getDocument();
       Collection<InlineWatch> inlines = getDocumentInlines(document);
@@ -246,10 +259,11 @@ public final class XDebuggerWatchesManagerImpl implements XDebuggerWatchesManage
   }
 
   private Stream<XInlineWatchesView> getWatchesViews() {
-    return StreamEx.of(XDebugManagerProxy.getInstance().getSessions(myProject))
+    return XDebugManagerProxy.getInstance().getSessions(myProject).stream()
       .map(XDebugSessionProxy::getSessionTab)
-      .select(XDebugSessionTab.class)
-      .filter(t -> t != null && t.getWatchesView() instanceof XInlineWatchesView)
+      .filter(XDebugSessionTab.class::isInstance)
+      .map(XDebugSessionTab.class::cast)
+      .filter(t -> t.getWatchesView() instanceof XInlineWatchesView)
       .map(t -> (XInlineWatchesView)t.getWatchesView());
   }
 

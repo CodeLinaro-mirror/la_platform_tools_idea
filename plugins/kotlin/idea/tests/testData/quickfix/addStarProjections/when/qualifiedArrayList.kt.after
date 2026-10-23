@@ -1,5 +1,5 @@
 // "Add '<*>'" "true"
-// K2_ERROR: One type argument expected. Use 'ArrayList<*>' if you do not intend to pass type arguments.
+// K2_ERROR: NO_TYPE_ARGUMENTS_ON_RHS
 public fun foo(a: Any) {
     when (a) {
         is java.util.ArrayList<*> -> {}
@@ -7,4 +7,3 @@ public fun foo(a: Any) {
     }
 }
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AddStarProjectionsFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AddStarProjectionsFix

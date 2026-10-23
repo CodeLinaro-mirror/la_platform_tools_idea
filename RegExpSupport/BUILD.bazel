@@ -1,8 +1,20 @@
 load("@community//build:tests-options.bzl", "jps_test")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+jps_test(
+    name = "regexp-tests_test",
+    timeout = "moderate",
+    tags = ["community-aggregator"],
+    runtime_deps = [":regexp-tests_test_lib"],
+)
+### skip generation section `test intellij.regexp.tests`
+
+### auto-generated section `dev intellij.regexp` start
+content_module_jar(module = ":regexp")
+### auto-generated section `dev intellij.regexp` end
 
 ### auto-generated section `build intellij.regexp` start
-
 jvm_library(
     name = "regexp",
     srcs = glob(
@@ -34,7 +46,6 @@ jvm_library(
         "//platform/projectModel-impl",
         "//platform/lang-impl",
         "//platform/refactoring",
-        "//xml/xml-psi-api:psi",
         "//platform/core-impl",
         "//libraries/fastutil",
         "//platform/ide-core-impl",
@@ -69,7 +80,6 @@ jvm_library(
         "//platform/projectModel-impl:projectModel-impl_test_lib",
         "//platform/lang-impl:lang-impl_test_lib",
         "//platform/refactoring:refactoring_test_lib",
-        "//xml/xml-psi-api:psi_test_lib",
         "//platform/core-impl:core-impl_test_lib",
         "//libraries/fastutil:fastutil_test_lib",
         "//platform/ide-core-impl:ide-core-impl_test_lib",
@@ -86,13 +96,13 @@ jvm_library(
 exports_files(
     [
         "intellij.regexp.iml",
+        "resources/intellij.regexp.xml",
     ],
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.regexp` end
 
 ### auto-generated section `build intellij.regexp.tests` start
-
 jvm_library(
     name = "regexp-tests",
     srcs = glob(
@@ -101,6 +111,7 @@ jvm_library(
     ),
     module_name = "intellij.regexp.tests",
     visibility = ["//visibility:public"],
+    runtime_deps = ["//xml/plugin"],
 )
 
 jvm_library(
@@ -124,6 +135,7 @@ jvm_library(
         ":regexp-tests",
         "//platform/platform-impl:ide-impl_test_lib",
         "//platform/ide-core-impl:ide-core-impl_test_lib",
+        "//xml/plugin:plugin_test_lib",
     ],
     deps = [
         # do not sort,
@@ -146,15 +158,14 @@ jvm_library(
         "//platform/platform-impl:ide-impl",
         "//platform/projectModel-impl",
         "//platform/projectModel-impl:projectModel-impl_test_lib",
-        "@lib//:junit4",
+        "//libraries/junit4",
+        "//libraries/junit4:junit4_test_lib",
         "//platform/lang-impl",
         "//platform/lang-impl:lang-impl_test_lib",
         "//platform/refactoring",
         "//platform/refactoring:refactoring_test_lib",
         "//platform/testFramework",
         "//platform/testFramework:testFramework_test_lib",
-        "//xml/xml-psi-api:psi",
-        "//xml/xml-psi-api:psi_test_lib",
         "//platform/core-impl",
         "//platform/core-impl:core-impl_test_lib",
         "//libraries/fastutil",
@@ -180,11 +191,3 @@ exports_files(
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.regexp.tests` end
-
-### auto-generated section `test intellij.regexp.tests` start
-
-jps_test(
-    name = "regexp-tests_test",
-    runtime_deps = [":regexp-tests_test_lib"],
-)
-### auto-generated section `test intellij.regexp.tests` end

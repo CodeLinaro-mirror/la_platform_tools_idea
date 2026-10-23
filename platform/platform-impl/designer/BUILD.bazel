@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.platform.ide.designer` start
+content_module_jar(module = ":designer")
+### auto-generated section `dev intellij.platform.ide.designer` end
 
 ### auto-generated section `build intellij.platform.ide.designer` start
-
 jvm_library(
     name = "designer",
     srcs = glob(
@@ -62,6 +66,7 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.ide.designer.iml",
+        "resources/intellij.platform.ide.designer.xml",
     ],
     visibility = ["//visibility:public"],
 )

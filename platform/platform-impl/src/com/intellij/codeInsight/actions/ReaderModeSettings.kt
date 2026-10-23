@@ -55,7 +55,7 @@ interface ReaderModeSettings : Disposable {
       project.getService(ReaderModeSettingsImpl::class.java)
       ?: throw IllegalStateException("Cannot find ReaderModeSettingsImpl service for ${ClientId.currentOrNull}")
 
-    @RequiresEdt
+    @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
     fun applyReaderMode(project: Project,
                         editor: Editor,
                         file: VirtualFile,
@@ -65,7 +65,7 @@ interface ReaderModeSettings : Disposable {
         return
       }
 
-      if (isBlockingApplication()) {
+      if (canComputeSynchronously()) {
         val matchMode = matchMode(project, file, editor)
         if (matchMode || forceUpdate) {
           applyModeChanged(project = project, editor = editor, matchMode = matchMode, fileIsOpenAlready = fileIsOpenAlready)
@@ -113,7 +113,7 @@ interface ReaderModeSettings : Disposable {
       this.putUserData(MATCHES_READER_MODE_KEY, value)
     }
 
-    @RequiresEdt
+    @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
     private fun applyModeChanged(project: Project, editor: Editor, matchMode: Boolean, fileIsOpenAlready: Boolean) {
       if (editor.isDisposed) {
         return
@@ -128,7 +128,7 @@ interface ReaderModeSettings : Disposable {
       }
     }
 
-    @RequiresReadLock
+    @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
     fun matchMode(project: Project, file: VirtualFile, editor: Editor? = null): Boolean {
       if (PsiManager.getInstance(project).findFile(file) == null || (editor != null && editor.isDisposed)) {
         return false
@@ -138,7 +138,7 @@ interface ReaderModeSettings : Disposable {
       }
     }
 
-    @RequiresReadLock
+    @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
     private fun matchMode(project: Project, file: VirtualFile, editor: Editor?, mode: ReaderMode): Boolean {
       if (ApplicationManager.getApplication().isHeadlessEnvironment) {
         return false
@@ -163,9 +163,18 @@ interface ReaderModeSettings : Disposable {
       }
     }
 
-    private fun isBlockingApplication(): Boolean {
+    /**
+     * A headless or unit-test application wants the mode at once, because it has no later frame to paint in.
+     *
+     * A caller that forbids the RW lock is the exception. `matchMode` reads the PSI, and
+     * `ThreadingAssertions.softAssertReadAccess` reports that read while a dispatcher such as `Dispatchers.UI`
+     * forbids the lock, even from inside a read action. So such a caller gets the background path that a
+     * running IDE already uses. See IJPL-243574.
+     */
+    private fun canComputeSynchronously(): Boolean {
       val application = ApplicationManager.getApplication()
-      return application.isHeadlessEnvironment || application.isUnitTestMode
+      return application.lockProhibitedAdvice == null &&
+             (application.isHeadlessEnvironment || application.isUnitTestMode)
     }
   }
 

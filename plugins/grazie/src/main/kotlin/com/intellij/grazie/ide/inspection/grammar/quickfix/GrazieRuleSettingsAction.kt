@@ -11,13 +11,14 @@ import com.intellij.grazie.text.Rule
 import com.intellij.grazie.utils.TextStyleDomain
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Iconable
 import com.intellij.psi.PsiFile
 import javax.swing.Icon
 
 class GrazieRuleSettingsAction(private val rule: Rule, private val domain: TextStyleDomain)
-  : IntentionAndQuickFixAction(), Iconable, CustomizableIntentionAction, Comparable<IntentionAction>
+  : IntentionAndQuickFixAction(), Iconable, CustomizableIntentionAction, Comparable<IntentionAction>, DumbAware
 {
 
   override fun isShowSubmenu(): Boolean = false
@@ -43,7 +44,7 @@ class GrazieRuleSettingsAction(private val rule: Rule, private val domain: TextS
   override fun applyFix(project: Project, psiFile: PsiFile?, editor: Editor?) {
     val state = GrazieConfig.get()
     val availableLang = state.availableLanguages.first { it.iso == rule.language.iso }
-    val ok = StyleConfigurable.focusSetting(rule.featuredSetting, rule, domain, availableLang, project)
+    val ok = StyleConfigurable.focusSetting(rule, domain, availableLang, project)
     val result = if (!ok) "canceled" else analyzeStateChange(state, GrazieConfig.get())
     GrazieFUSCounter.settingsUpdated("rule.settings:$result", rule, project)
   }

@@ -1,6 +1,7 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.intellij.build.productLayout.pipeline
 
+import com.intellij.platform.buildScripts.concurrency.SharedTaskOwner
 import com.intellij.platform.pluginGraph.TargetName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -10,7 +11,9 @@ import org.jetbrains.intellij.build.productLayout.dependency.createTestModuleOut
 import org.jetbrains.intellij.build.productLayout.dependency.jpsProject
 import org.jetbrains.intellij.build.productLayout.discovery.DiscoveredProduct
 import org.jetbrains.intellij.build.productLayout.discovery.ModuleSetGenerationConfig
+import org.jetbrains.intellij.build.productLayout.discovery.PluginSource
 import org.jetbrains.intellij.build.productLayout.discovery.ProductConfiguration
+import org.jetbrains.intellij.build.productLayout.generator.PluginDependencyPlanner
 import org.jetbrains.intellij.build.productLayout.model.ErrorSink
 import org.jetbrains.intellij.build.productLayout.productModules
 import org.jetbrains.jps.model.java.JavaResourceRootType
@@ -23,80 +26,181 @@ import java.nio.file.Path
 
 @ExtendWith(TestFailureLogger::class)
 class ModelBuildingStageTest {
+  private val owner = SharedTaskOwner("ModelBuildingStageTest")
+
+  @org.junit.jupiter.api.AfterEach
+  fun closeSharedTasks() {
+    owner.close()
+  }
+
   @Test
-  fun `execute reads static module set wrapper from disk`(@TempDir tempDir: Path) {
+  fun `compatibility and packing seeds preserve descriptor ownership`(@TempDir tempDir: Path) {
+    assertDescriptorOwnership(updateSuppressions = false, tempDir = tempDir)
+  }
+
+  @Test
+  fun `updating suppressions preserves descriptor ownership`(@TempDir tempDir: Path) {
+    assertDescriptorOwnership(updateSuppressions = true, tempDir = tempDir)
+  }
+
+  private fun assertDescriptorOwnership(updateSuppressions: Boolean, tempDir: Path) {
     runBlocking(Dispatchers.Default) {
+      val pluginNames = listOf("bundled", "test", "compatible", "known", "packing", "managed", "legacy", "outer")
+        .map { "intellij.scope.$it" }
       val jps = jpsProject(tempDir) {
-        module("intellij.grid.core.plugin") {
-          resourceRoot = "resources"
+        for (pluginName in pluginNames) {
+          module(pluginName) {
+            resourceRoot = "resources"
+          }
         }
       }
+      for (pluginName in pluginNames) {
+        val dependencies = when (pluginName.substringAfterLast('.')) {
+          "managed" -> """
+            <dependencies>
+              <!-- region Generated dependencies - run `Generate Product Layouts` to regenerate -->
+              <!-- endregion -->
+            </dependencies>
+          """.trimIndent()
+          "legacy" -> """
+            <!-- editor-fold desc="Generated dependencies" -->
+            <dependencies/>
+            <!-- end editor-fold -->
+          """.trimIndent()
+          "outer" -> """
+            <!-- region Generated dependencies - run `Generate Product Layouts` to regenerate -->
+            <dependencies/>
+            <!-- endregion -->
+          """.trimIndent()
+          else -> "<dependencies/>"
+        }
+        val descriptor = tempDir.resolve("${pluginName.replace('.', '/')}/resources/META-INF/plugin.xml")
+        Files.createDirectories(descriptor.parent)
+        Files.writeString(descriptor, "<idea-plugin><id>$pluginName</id>\n$dependencies\n</idea-plugin>")
+      }
       val outputProvider = createTestModuleOutputProvider(jps.project)
-      val wrapperModule = TargetName("intellij.grid.core.plugin")
-      val pluginXmlPath = tempDir.resolve("intellij/grid/core/plugin/resources/META-INF/plugin.xml")
-      Files.createDirectories(pluginXmlPath.parent)
-      Files.writeString(
-        pluginXmlPath,
-        """
-        <idea-plugin>
-          <id>intellij.grid.core.plugin</id>
-          <content namespace="jetbrains">
-            <module name="intellij.grid"/>
-          </content>
-        </idea-plugin>
-        """.trimIndent(),
-      )
-      val discovery = DiscoveryResult(
-        moduleSetsByLabel = emptyMap(),
-        products = listOf(
-          DiscoveredProduct(
-            name = "Idea",
-            config = ProductConfiguration(modules = emptyList(), className = "IdeaProperties"),
-            properties = null,
-            spec = null,
-            pluginXmlPath = null,
-            bundledModuleSetPluginModules = listOf(wrapperModule),
-          )
-        ),
-        testProductSpecs = emptyList(),
-        moduleSetSources = emptyMap(),
-      )
+      val products = listOf(DiscoveredProduct(
+        name = "Demo",
+        config = ProductConfiguration(modules = emptyList(), className = "DemoProperties"),
+        properties = null,
+        spec = productModules { bundledPlugins(listOf("intellij.scope.bundled")) },
+        pluginXmlPath = null,
+      ))
       val config = ModuleSetGenerationConfig(
         moduleSetSources = emptyMap(),
-        discoveredProducts = emptyList(),
+        discoveredProducts = products,
         projectRoot = tempDir,
         outputProvider = outputProvider,
-        projectLibraryToModuleMap = outputProvider.getProjectLibraryToModuleMap(),
+        nonBundledPlugins = mapOf("Demo" to pluginNames.filter { it.substringAfterLast('.') !in setOf("known", "packing") }
+          .mapTo(LinkedHashSet(), ::TargetName)),
+        knownPlugins = setOf(TargetName("intellij.scope.known")),
+        testPluginsByProduct = mapOf("Demo" to setOf(TargetName("intellij.scope.test"))),
+        includeTestPluginDescriptorsFromSources = true,
+        contentPluginPopulation = pluginNames.toSet(),
       )
-
       val model = ModelBuildingStage.execute(
-        discovery = discovery,
+        discovery = DiscoveryResult(
+          moduleSetsByLabel = emptyMap(),
+          products = products,
+          testProductSpecs = emptyList(),
+          moduleSetSources = emptyMap(),
+        ),
         config = config,
-        scope = this,
-        updateSuppressions = false,
+        owner = owner,
+        updateSuppressions = updateSuppressions,
         commitChanges = false,
         errorSink = ErrorSink(),
       )
 
-      val wrapperPlugin = model.pluginContentCache.getOrExtract(wrapperModule)
-      assertThat(wrapperPlugin).isNotNull
-      assertThat(wrapperPlugin!!.pluginXmlPath).isEqualTo(pluginXmlPath)
-      assertThat(wrapperPlugin.pluginId).isNotNull
-      assertThat(wrapperPlugin.pluginId!!.value).isEqualTo("intellij.grid.core.plugin")
-
       model.pluginGraph.query {
-        val plugin = requireNotNull(plugin(wrapperModule.value))
-        assertThat(plugin.isModuleSetWrapper).isTrue()
-
-        val contentNames = mutableListOf<String>()
-        plugin.containsContent { module, _ -> contentNames.add(module.name().value) }
-        assertThat(contentNames).containsExactly("intellij.grid")
+        for (pluginName in pluginNames) {
+          assertThat(plugin(pluginName)).describedAs(pluginName).isNotNull()
+        }
       }
+      for (pluginName in pluginNames) {
+        val expectedSource = when (pluginName.substringAfterLast('.')) {
+          "bundled" -> PluginSource.BUNDLED
+          "test" -> PluginSource.TEST
+          else -> PluginSource.DISCOVERED
+        }
+        assertThat(model.pluginContentCache.getOrExtract(TargetName(pluginName))?.source)
+          .describedAs(pluginName).isEqualTo(expectedSource)
+      }
+
+      val context = ComputeContextImpl(model)
+      context.initSlot(Slots.PLUGIN_DEPENDENCY_PLAN)
+      PluginDependencyPlanner.execute(context.forNode(PluginDependencyPlanner.id))
+      val plans = context.get(Slots.PLUGIN_DEPENDENCY_PLAN).plans
+      assertThat(plans.map { it.pluginContentModuleName.value }).containsExactlyInAnyOrder(
+        "intellij.scope.bundled", "intellij.scope.test", "intellij.scope.managed", "intellij.scope.legacy", "intellij.scope.outer",
+      )
     }
   }
 
   @Test
-  fun `discoverPluginDescriptorsFromSources finds test plugin xml and plugin-content yaml`(@TempDir tempDir: Path) {
+  fun `an ignored compatible plugin keeps descriptor ownership`(@TempDir tempDir: Path) {
+    runBlocking(Dispatchers.Default) {
+      val pluginName = "intellij.scope.ignored"
+      val jps = jpsProject(tempDir) {
+        module(pluginName) {
+          resourceRoot = "resources"
+        }
+      }
+      val descriptor = tempDir.resolve("${pluginName.replace('.', '/')}/resources/META-INF/plugin.xml")
+      Files.createDirectories(descriptor.parent)
+      Files.writeString(
+        descriptor,
+        """
+        <idea-plugin><id>$pluginName</id>
+        <dependencies>
+          <!-- region Generated dependencies - run `Generate Product Layouts` to regenerate -->
+          <!-- endregion -->
+        </dependencies>
+        </idea-plugin>
+        """.trimIndent(),
+      )
+      // no product bundles the plugin, and no product publishes it, so only the ignore list names it
+      val products = listOf(DiscoveredProduct(
+        name = "Demo",
+        config = ProductConfiguration(modules = emptyList(), className = "DemoProperties"),
+        properties = null,
+        spec = productModules { },
+        pluginXmlPath = null,
+      ))
+
+      fun ownedPlugins(ignored: Set<TargetName>): List<String> {
+        val model = ModelBuildingStage.execute(
+          discovery = DiscoveryResult(
+            moduleSetsByLabel = emptyMap(),
+            products = products,
+            testProductSpecs = emptyList(),
+            moduleSetSources = emptyMap(),
+          ),
+          config = ModuleSetGenerationConfig(
+            moduleSetSources = emptyMap(),
+            discoveredProducts = products,
+            projectRoot = tempDir,
+            outputProvider = createTestModuleOutputProvider(jps.project),
+            ignoredCompatiblePlugins = ignored,
+          ),
+          owner = owner,
+          updateSuppressions = false,
+          commitChanges = false,
+          errorSink = ErrorSink(),
+        )
+        val context = ComputeContextImpl(model)
+        context.initSlot(Slots.PLUGIN_DEPENDENCY_PLAN)
+        PluginDependencyPlanner.execute(context.forNode(PluginDependencyPlanner.id))
+        return context.get(Slots.PLUGIN_DEPENDENCY_PLAN).plans.map { it.pluginContentModuleName.value }
+      }
+
+      assertThat(ownedPlugins(emptySet())).isEmpty()
+      assertThat(ownedPlugins(setOf(TargetName(pluginName)))).containsExactly(pluginName)
+    }
+  }
+
+  @Test
+  fun `discoverPluginDescriptorsFromSources finds test plugin xml and the content population`(@TempDir tempDir: Path) {
     val jps = jpsProject(tempDir) {
       module("intellij.test.plugin")
       module("intellij.content.plugin")
@@ -109,13 +213,10 @@ class ModelBuildingStageTest {
     testModule.addSourceRoot(JpsPathUtil.pathToUrl(testResources.toString()), JavaResourceRootType.TEST_RESOURCE)
     Files.writeString(testResources.resolve("META-INF/plugin.xml"), "<idea-plugin/>")
 
-    val contentModuleDir = tempDir.resolve("intellij/content/plugin")
-    Files.createDirectories(contentModuleDir)
-    val contentModule = jps.project.modules.first { it.name == "intellij.content.plugin" }
-    contentModule.contentRootsList.addUrl(JpsPathUtil.pathToUrl(contentModuleDir.toString()))
-    Files.writeString(contentModuleDir.resolve("plugin-content.yaml"), "content: []")
-
-    val descriptors = ModelBuildingStage.discoverPluginDescriptorsFromSources(createTestModuleOutputProvider(jps.project))
+    val descriptors = ModelBuildingStage.discoverPluginDescriptorsFromSources(
+      outputProvider = createTestModuleOutputProvider(jps.project),
+      contentPluginPopulation = setOf("intellij.content.plugin", "intellij.plugin.this.project.does.not.hold"),
+    )
 
     assertThat(descriptors.testPluginModules).containsExactly(TargetName("intellij.test.plugin"))
     assertThat(descriptors.pluginModules).containsExactly(TargetName("intellij.content.plugin"))

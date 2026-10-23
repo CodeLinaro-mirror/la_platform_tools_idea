@@ -3,16 +3,16 @@
 // ERROR: Unresolved reference: x
 // ERROR: Unresolved reference: x
 // ERROR: Unresolved reference: x
-// K2_ERROR: Unresolved reference 'x' on receiver of type 'A'.
-// K2_ERROR: Unresolved reference 'x' on receiver of type 'A'.
-// K2_ERROR: Unresolved reference 'x' on receiver of type 'A'.
-// K2_ERROR: Unresolved reference 'x' on receiver of type 'A'.
-// K2_ERROR: Unresolved reference 'x' on receiver of type 'A'.
-// K2_ERROR: Unresolved reference 'x' on receiver of type 'B'.
-// K2_AFTER_ERROR: Unresolved reference 'x' on receiver of type 'A'.
-// K2_AFTER_ERROR: Unresolved reference 'x' on receiver of type 'A'.
-// K2_AFTER_ERROR: Unresolved reference 'x' on receiver of type 'A'.
-// K2_AFTER_ERROR: Unresolved reference 'x' on receiver of type 'B'.
+// K2_AFTER_ERROR: UNRESOLVED_REFERENCE
+// K2_AFTER_ERROR: UNRESOLVED_REFERENCE
+// K2_AFTER_ERROR: UNRESOLVED_REFERENCE
+// K2_AFTER_ERROR: UNRESOLVED_REFERENCE
+// K2_ERROR: UNRESOLVED_REFERENCE
+// K2_ERROR: UNRESOLVED_REFERENCE
+// K2_ERROR: UNRESOLVED_REFERENCE
+// K2_ERROR: UNRESOLVED_REFERENCE
+// K2_ERROR: UNRESOLVED_REFERENCE
+// K2_ERROR: UNRESOLVED_REFERENCE
 class A {
     val a = 1
     val s = ""
@@ -37,5 +37,4 @@ fun foo(a: A, b: B) {
     bar(aa.x)
     bar(b.x)
 }
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.RenameUnresolvedReferenceFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.imprt.RenameUnresolvedReferenceFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.imprt.RenameUnresolvedReferenceFix

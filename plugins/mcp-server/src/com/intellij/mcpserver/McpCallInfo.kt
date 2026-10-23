@@ -4,6 +4,7 @@ import com.intellij.concurrency.IntelliJContextElement
 import com.intellij.mcpserver.impl.McpServerService
 import com.intellij.mcpserver.impl.McpSessionHandler
 import com.intellij.mcpserver.impl.util.projectPathParameterName
+import com.intellij.mcpserver.util.getPathForMcp
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
 import kotlinx.serialization.Serializable
@@ -11,8 +12,20 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.jsonObject
+import java.util.UUID
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
+
+/**
+ * Identity of one MCP tool call as reported to analytics, unlike [McpCallInfo.callId], which is an in-run counter that
+ * restarts with the IDE and so cannot join rows across sessions.
+ */
+@JvmInline
+value class McpToolCallId(val value: String) {
+  companion object {
+    fun generate(): McpToolCallId = McpToolCallId(UUID.randomUUID().toString())
+  }
+}
 
 class McpCallInfo(
   val callId: Int,
@@ -22,9 +35,11 @@ class McpCallInfo(
   val rawArguments: JsonObject,
   val meta: JsonObject,
   val mcpSessionOptions: McpServerService.McpSessionOptions,
-  val headers: Map<String, List<String>> = emptyMap(),
+  val headers: McpCallHeaders = emptyMcpCallHeaders(),
   // todo drop default, drop nullability
   val sessionId: String? = null,
+  // Minted here rather than by the caller so that every construction site gets a value unique to its call.
+  val toolCallId: McpToolCallId = McpToolCallId.generate(),
 ) {
   internal var sessionHandler: McpSessionHandler? = null
 
@@ -32,6 +47,18 @@ class McpCallInfo(
     return "McpCallAdditionalData(id=$callId, clientInfo=$clientInfo, toolName=${mcpToolDescriptor.name}"
   }
 }
+
+class McpCallHeaders {
+  private val headers: Map<String, List<String>>
+
+  constructor(headers: Map<String, List<String>>) {
+    this.headers = headers.entries.associateBy({ it.key.lowercase() }, { it.value })
+  }
+
+  fun get(header: String): List<String>? = headers[header.lowercase()]
+}
+
+fun emptyMcpCallHeaders(): McpCallHeaders = McpCallHeaders(emptyMap())
 
 class ClientInfo(val name: String, val version: String)
 
@@ -41,6 +68,8 @@ class McpCallAdditionalDataElement(val additionalData: McpCallInfo) : AbstractCo
 
 val CoroutineContext.mcpCallInfoOrNull: McpCallInfo? get() = get(McpCallAdditionalDataElement)?.additionalData
 val CoroutineContext.mcpCallInfo: McpCallInfo get() = mcpCallInfoOrNull ?: error("mcpCallAdditionalData called outside of a MCP call")
+
+val CoroutineContext.mcpToolCallIdOrNull: McpToolCallId? get() = mcpCallInfoOrNull?.toolCallId
 
 /**
  * Returns information about the MCP client that is calling a tool.
@@ -81,7 +110,7 @@ val CoroutineContext.projectOrNull: Project?
 
 fun noSuitableProjectError(messagePrefix: String): McpExpectedError {
   val openProjects = ProjectManager.getInstance().openProjects
-  val projects = OpenProjects(openProjects.mapNotNull { project -> project.basePath?.let { ProjectInfo(project.basePath.toString()) } })
+  val projects = OpenProjects(openProjects.mapNotNull { project -> project.getPathForMcp()?.let { ProjectInfo(it) } })
 
   return McpExpectedError(mcpErrorText = """$messagePrefix
               | You may specify the project path via `$projectPathParameterName` parameter when calling a tool. 

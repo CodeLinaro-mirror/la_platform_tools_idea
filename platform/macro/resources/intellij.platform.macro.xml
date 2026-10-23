@@ -2,10 +2,11 @@
   <!-- region Generated dependencies - run `Generate Product Layouts` to regenerate -->
   <dependencies>
     <module name="intellij.platform.analysis"/>
+    <module name="intellij.platform.concurrency"/>
     <module name="intellij.platform.core"/>
     <module name="intellij.platform.core.ui"/>
     <module name="intellij.platform.editor.ui"/>
-    <module name="intellij.platform.execution"/>
+    <module name="intellij.platform.eel.provider"/>
     <module name="intellij.platform.ide.core"/>
     <module name="intellij.platform.lang.core"/>
     <module name="intellij.platform.projectModel"/>
@@ -13,4 +14,13 @@
     <module name="intellij.platform.util.ui"/>
   </dependencies>
   <!-- endregion -->
+  <extensionPoints>
+    <extensionPoint qualifiedName="com.intellij.macro" interface="com.intellij.ide.macro.Macro" dynamic="true"/>
+    <extensionPoint qualifiedName="com.intellij.macroFilter" interface="com.intellij.ide.macro.MacroFilter" dynamic="true"/>
+  </extensionPoints>
+  <extensions defaultExtensionNs="com.intellij">
+    <applicationService serviceInterface="com.intellij.openapi.application.PathMacros"
+                        serviceImplementation="com.intellij.ide.macro.IdePathMacros"
+                        overrides="true"/>
+  </extensions>
 </idea-plugin>

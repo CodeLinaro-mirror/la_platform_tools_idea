@@ -5,6 +5,8 @@
 package com.intellij.platform.ijent.community.impl.nio
 
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.progress.CeProcessCanceledException
+import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.prepareThreadContext
 import com.intellij.platform.eel.EelDescriptor
 import com.intellij.platform.eel.EelOwnedBuilder
@@ -13,15 +15,15 @@ import com.intellij.platform.eel.fs.EelFileSystemApi
 import com.intellij.platform.eel.fs.EelFsError
 import com.intellij.platform.eel.path.EelPath
 import com.intellij.platform.eel.provider.utils.getOrThrowFileSystemException
-import com.intellij.platform.ijent.IjentCalledContextElement
+import com.intellij.platform.ijent.IjentCallerContextElement
 import com.intellij.platform.ijent.IjentCallerContext
 import com.intellij.platform.ijent.allowCancellableNio
-import com.intellij.platform.ijent.unavailableDialogTimeout
 import com.intellij.util.IntelliJCoroutinesFacade
 import kotlinx.coroutines.runBlocking
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.VisibleForTesting
 import java.nio.file.Path
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.milliseconds
 
 internal fun Path.toEelPath(): EelPath =
@@ -86,9 +88,12 @@ fun <T> EelDescriptor.fsBlocking(body: suspend () -> T): T {
   //
   // Trade-off: while a remote FS is slow or wants to show UI the EDT stays blocked (the original IJPL-245001 problem).
   // That is preferable to the hard freeze and is tracked in IJPL-245001.
+  // Deployers that may need user interaction (SSH) fail fast when triggered from inside this call
+  // instead of deadlocking: see com.intellij.platform.ijent.throwIfInsideIjentFsBlocking.
   return IntelliJCoroutinesFacade.runAndCompensateParallelism(500.milliseconds) {
-    fsBlockingWithoutParallelismCompensation {
-      showModalDialogOnTimeout(this, IjentCallerContext.computeCallerContext().unavailableDialogTimeout()) {
+    val callerContext = IjentCallerContext.computeCallerContext()
+    fsBlockingWithoutParallelismCompensation(callerContext) {
+      showModalDialogOnTimeout(this, callerContext) {
         body()
       }
     }
@@ -100,28 +105,52 @@ fun IjentCallerContext.Companion.computeCallerContext(): IjentCallerContext {
   return IjentCallerContext(
     isRead = application.isReadAccessAllowed,
     isWrite = application.isWriteAccessAllowed,
-    isDispatchThread = application.isDispatchThread
+    isDispatchThread = application.isDispatchThread,
+    reconnectUi = ReconnectUiHandleImpl(),
   )
 }
 
 @Suppress("RAW_RUN_BLOCKING")
 @VisibleForTesting
 @ApiStatus.Internal
-fun <T> fsBlockingWithoutParallelismCompensation(body: suspend (IjentCallerContext) -> T): T {
-  val callerContext = IjentCallerContext.computeCallerContext()
+fun <T> fsBlockingWithoutParallelismCompensation(callerContext: IjentCallerContext, body: suspend (IjentCallerContext) -> T): T {
   if (callerContext.allowCancellableNio()) {
-    return prepareThreadContext { ctx ->
-      runBlocking(ctx + IjentCalledContextElement(callerContext) + NestedBlockingEventLoop(Thread.currentThread())) {
-        body(callerContext)
+    try {
+      return prepareThreadContext { ctx ->
+        resetThreadLocalEventLoop {
+          runBlocking(ctx + IjentCallerContextElement(callerContext)) {
+            body(callerContext)
+          }
+        }
       }
     }
+    catch (pce: ProcessCanceledException) {
+      throw pce
+    }
+    catch (ce: CancellationException) {
+      throw CeProcessCanceledException(ce)
+    }
   }
-  return runBlocking(IjentCalledContextElement(callerContext) + NestedBlockingEventLoop(Thread.currentThread())) {
-    body(callerContext)
+  return resetThreadLocalEventLoop {
+    runBlocking(IjentCallerContextElement(callerContext)) {
+      body(callerContext)
+    }
   }
 }
 
-@Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE", "CANNOT_OVERRIDE_INVISIBLE_MEMBER", "ERROR_SUPPRESSION")
-private class NestedBlockingEventLoop(override val thread: Thread) : kotlinx.coroutines.EventLoopImplBase() {
-  override fun shouldBeProcessedFromContext(): Boolean = true
+/**
+ * See `resetThreadLocalEventLoop` in `com.intellij.serviceContainer.ComponentManagerImpl`
+ */
+@Suppress("INVISIBLE_REFERENCE")
+private inline fun <T> resetThreadLocalEventLoop(action: () -> T): T {
+  val existingEventLoop = kotlinx.coroutines.ThreadLocalEventLoop.currentOrNull()
+  kotlinx.coroutines.ThreadLocalEventLoop.resetEventLoop()
+  try {
+    return action()
+  }
+  finally {
+    if (existingEventLoop != null) {
+      kotlinx.coroutines.ThreadLocalEventLoop.setEventLoop(existingEventLoop)
+    }
+  }
 }

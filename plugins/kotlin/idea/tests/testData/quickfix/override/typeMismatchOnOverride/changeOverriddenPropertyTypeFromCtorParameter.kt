@@ -1,10 +1,9 @@
 // "Change type of base property 'A.x' to 'Any'" "true"
-// K2_ERROR: Type of 'val x: Any' is not a subtype of overridden property 'val x: CharSequence' defined in 'A'.
+// K2_ERROR: PROPERTY_TYPE_MISMATCH_ON_OVERRIDE
 interface A {
     val x: CharSequence
 }
 
 class B(override val x: Any<caret>) : A
 
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ChangeVariableTypeFix$ForOverridden
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeTypeQuickFixFactories$UpdateTypeQuickFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeTypeQuickFixFactories$UpdateTypeQuickFix

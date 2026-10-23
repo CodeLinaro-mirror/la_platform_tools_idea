@@ -23,7 +23,6 @@ import com.intellij.polySymbols.PolySymbolNameSegment
 import com.intellij.polySymbols.PolySymbolNamespace
 import com.intellij.polySymbols.PolySymbolQualifiedName
 import com.intellij.polySymbols.completion.PolySymbolCodeCompletionItem
-import com.intellij.polySymbols.html.PolySymbolHtmlAttributeValue
 import com.intellij.polySymbols.impl.PolySymbolNameSegmentImpl
 import com.intellij.polySymbols.impl.sortSymbolsByPriority
 import com.intellij.polySymbols.impl.withOffset
@@ -39,6 +38,7 @@ import com.intellij.polySymbols.query.PolySymbolQueryStack
 import com.intellij.polySymbols.query.PolySymbolScope
 import com.intellij.polySymbols.query.PolySymbolWithPattern
 import com.intellij.polySymbols.query.impl.PolySymbolMatchBase
+import com.intellij.polySymbols.refactoring.PolySymbolRenameTarget
 import com.intellij.polySymbols.search.PsiLinkedPolySymbol
 import com.intellij.pom.Navigatable
 import com.intellij.psi.PsiElement
@@ -126,6 +126,41 @@ private data class PolySymbolWithNavigationTarget(
   }
 }
 
+/**
+ * Reports [name] as this symbol's own name while delegating everything else (declaration,
+ * search targets, resolution equivalence, query scope) to the real symbol.
+ *
+ * Needed wherever a query is resolved by one piece of literal text to a symbol whose own declared
+ * name is different - e.g. a symbol shared across several differently-spelled reference sites, or
+ * a name normalized to a canonical form (case, whitespace, ...) that doesn't spell out the literal
+ * text at any particular occurrence.
+ */
+fun PolySymbol.withName(name: String): PolySymbolDelegate<PolySymbol> =
+  AliasedPolySymbol(this, name)
+
+private data class AliasedPolySymbol(
+  override val delegate: PolySymbol,
+  override val name: String,
+) : PolySymbolDelegate<PolySymbol> {
+
+  override val renameTarget: PolySymbolRenameTarget?
+    get() = null
+
+  override fun isEquivalentTo(symbol: Symbol): Boolean =
+    symbol === this
+    || delegate.isEquivalentTo(symbol)
+    || (symbol is AliasedPolySymbol
+        && delegate.isEquivalentTo(symbol.delegate))
+
+  override fun createPointer(): Pointer<out PolySymbolDelegate<PolySymbol>> {
+    val symbolPtr = delegate.createPointer()
+    val aliasName = name
+    return Pointer {
+      symbolPtr.dereference()?.withName(aliasName)
+    }
+  }
+}
+
 fun PolySymbol.unwrapMatchedSymbols(): Sequence<PolySymbol> =
   if (this is PolySymbolMatch)
     Sequence {
@@ -169,6 +204,9 @@ fun PolySymbolNameSegment.withSymbols(symbols: List<PolySymbol>): PolySymbolName
 
 fun PolySymbolMatch.withSegments(segments: List<PolySymbolNameSegment>): PolySymbolMatch =
   (this as PolySymbolMatchBase).withSegments(segments)
+
+fun PolySymbolMatch.reversedSegments(): Sequence<PolySymbolNameSegment> =
+  (this as PolySymbolMatchBase).reversedSegments()
 
 fun PolySymbol.match(
   nameToMatch: String,
@@ -321,40 +359,6 @@ fun <T : Any> coalesceApiStatus(collection: Iterable<T>?, mapper: (T) -> PolySym
 
 fun <T : Any> coalesceApiStatus(sequence: Sequence<T>?, mapper: (T) -> PolySymbolApiStatus?): PolySymbolApiStatus =
   sequence?.map(mapper)?.reduceOrNull { a, b -> a.coalesceWith(b) } ?: PolySymbolApiStatus.Stable
-
-fun Sequence<PolySymbolHtmlAttributeValue?>.merge(): PolySymbolHtmlAttributeValue? {
-  var kind: PolySymbolHtmlAttributeValue.Kind? = null
-  var type: PolySymbolHtmlAttributeValue.Type? = null
-  var required: Boolean? = null
-  var default: String? = null
-  var langType: Any? = null
-
-  for (value in this) {
-    if (value == null) continue
-    if (kind == null || kind == PolySymbolHtmlAttributeValue.Kind.PLAIN) {
-      kind = value.kind
-    }
-    if (type == null) {
-      type = value.type
-    }
-    if (required == null) {
-      required = value.required
-    }
-    if (default == null) {
-      default = value.default
-    }
-    if (langType == null) {
-      langType = value.langType
-    }
-  }
-  return if (kind != null
-             || type != null
-             || required != null
-             || langType != null
-             || default != null)
-    PolySymbolHtmlAttributeValue.create(kind, type, required, default, langType)
-  else null
-}
 
 fun NavigationTarget.createPsiRangeNavigationItem(element: PsiElement, offsetWithinElement: Int): Navigatable {
   val vf = element.containingFile.virtualFile

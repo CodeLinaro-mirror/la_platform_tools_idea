@@ -1,10 +1,20 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.intellij.plugins.markdown.preview
 
+import com.intellij.markdown.jcef.preview.impl.IncrementalDOMBuilder
+import com.intellij.openapi.application.runWriteActionAndWait
+import com.intellij.openapi.util.Disposer
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import junit.framework.TestCase
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.plus
 import org.intellij.plugins.markdown.MarkdownTestingUtil
-import com.intellij.markdown.jcef.preview.impl.IncrementalDOMBuilder
+import org.intellij.plugins.markdown.ui.preview.MarkdownImageResourceProvider
+import org.intellij.plugins.markdown.ui.preview.MarkdownImageWatcher
+import org.intellij.plugins.markdown.ui.preview.ResourceProvider
+import org.intellij.plugins.markdown.ui.preview.html.PreviewEncodingUtil
+import org.intellij.plugins.markdown.util.MarkdownPluginScope
 import java.io.File
 
 /**
@@ -27,6 +37,74 @@ class MarkdownIncrementalDOMTest : BasePlatformTestCase() {
   fun testSpecialCharactersEscape() = doTest()
 
   fun testHtmlAttributes() = doTest()
+
+  fun testReferrerPolicyAttributeIsStripped() {
+    val html = """<body><p>a</p><img src="image.png" referrerpolicy="unsafe-url"><a href="page.html" referrerpolicy="unsafe-url">link</a></body>"""
+    val js = IncrementalDOMBuilder(html, null, null).generateDomBuildCalls()
+    assertGeneratedDoesNotContain(js, "referrerpolicy")
+    assertGeneratedContains(js, "o('img','src','image.png')")
+    assertGeneratedContains(js, "o('a','href'")
+  }
+
+  /** The `other` meta is the control: it proves traversal sees meta at all, so the filter did the work. */
+  fun testReferrerMetaIsDropped() {
+    val html = """<body><p>a</p><meta name="referrer" content="unsafe-url"><meta name="other" content="value"></body>"""
+    val js = IncrementalDOMBuilder(html, null, null).generateDomBuildCalls()
+    assertGeneratedDoesNotContain(js, "referrer")
+    assertGeneratedContains(js, "o('meta','name','other'")
+  }
+
+  /**
+   * The preview adds an alert icon and a run icon itself, so their `src` names a resource of the
+   * preview. Only a source that names a file keeps the rewrite. See IJPL-254292.
+   */
+  fun testSourceOfAPreviewResourceStaysAsItIs() {
+    val html = """<body><img src="alertIcons/note.png"><img src="picture.png"></body>"""
+    val document = myFixture.configureByText("document.md", "").virtualFile
+    val previewResources = object : ResourceProvider {
+      override fun canProvide(resourceName: String): Boolean = resourceName == "alertIcons/note.png"
+      override fun loadResource(resourceName: String): ResourceProvider.Resource? = null
+    }
+    val imageResources = MarkdownImageResourceProvider(project, document)
+    val js = IncrementalDOMBuilder(html, document, imageResources, previewResources).generateDomBuildCalls()
+    assertGeneratedContains(js, "o('img','src','alertIcons%2Fnote.png')")
+    assertGeneratedDoesNotContain(js, "'src','picture.png'")
+    assertGeneratedContains(js, "'data-original-src','picture.png'")
+  }
+
+  fun testStampOfChangedImageGoesToSource() {
+    val document = myFixture.addFileToProject("document.md", "").virtualFile
+    val changed = myFixture.addFileToProject("changed.png", "old").virtualFile
+    myFixture.addFileToProject("same.png", "old")
+    val scope = MarkdownPluginScope.createChildScope(project) + Dispatchers.Unconfined
+    Disposer.register(testRootDisposable) { scope.cancel() }
+    lateinit var provider: MarkdownImageResourceProvider
+    val watcher = MarkdownImageWatcher<Unit>(scope) { provider.resolveFile(it) }
+    provider = MarkdownImageResourceProvider(project, document, watcher)
+    watcher.watch(setOf("changed.png", "same.png"))
+    provider.loadResource(MarkdownImageResourceProvider.resourceName("changed.png"))
+    provider.loadResource(MarkdownImageResourceProvider.resourceName("same.png"))
+    runWriteActionAndWait { changed.setBinaryContent("new".toByteArray()) }
+
+    val html = """<body><img src="changed.png"><img src="same.png"></body>"""
+    val builder = IncrementalDOMBuilder(html, document, provider)
+    val js = builder.generateDomBuildCalls()
+    assertGeneratedContains(js, encodedName("changed.png") + "%3Fv%3D${changed.modificationStamp}'")
+    assertGeneratedContains(js, encodedName("same.png") + "'")
+    assertEquals(setOf("changed.png", "same.png"), builder.imageSources)
+  }
+
+  private fun encodedName(source: String): String {
+    return PreviewEncodingUtil.encodeUrl(MarkdownImageResourceProvider.resourceName(source))
+  }
+
+  private fun assertGeneratedContains(js: String, expected: String) {
+    assertTrue("expected to contain <$expected> but was <$js>", js.contains(expected))
+  }
+
+  private fun assertGeneratedDoesNotContain(js: String, unexpected: String) {
+    assertFalse("expected not to contain <$unexpected> but was <$js>", js.contains(unexpected))
+  }
 
   fun doTest() {
     val name = getTestName(true)

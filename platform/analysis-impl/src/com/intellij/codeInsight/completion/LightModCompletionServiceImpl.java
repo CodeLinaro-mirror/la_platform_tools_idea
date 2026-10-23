@@ -18,8 +18,6 @@ import com.intellij.psi.PsiFile;
 import com.intellij.util.ProcessingContext;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.indexing.DumbModeAccessType;
-import one.util.streamex.EntryStream;
-import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -40,11 +38,22 @@ import java.util.Set;
 public final class LightModCompletionServiceImpl {
   public static void getItems(PsiFile file, int caretOffset, int invocationCount, CompletionType type,
                               ModCompletionResult sink) {
-    CharSequence sequence = file.getFileDocument().getCharsSequence();
-    int start = findStart(caretOffset, sequence);
     DumbModeAccessType.RELIABLE_DATA_ONLY.ignoreDumbMode(() -> {
+      int start = computePrefixStart(file, caretOffset);
       getItems(file, start, caretOffset, invocationCount, type, sink);
     });
+  }
+
+  public static int computePrefixStart(PsiFile file, int caretOffset) {
+    int start = findStart(caretOffset, file.getFileDocument().getCharsSequence());
+    PsiElement original = file.findElementAt(start);
+    if (original != null) {
+      String prefix = CompletionUtil.findReferencePrefix(original, start);
+      if (prefix != null) {
+        start -= prefix.length();
+      }
+    }
+    return start;
   }
 
   private static int findStart(int caretOffset, CharSequence sequence) {
@@ -96,11 +105,12 @@ public final class LightModCompletionServiceImpl {
         }
       });
     }
-    EntryStream.of(sortMap)
-      .mapKeyValue((sorter, classifier) -> classifier.classify(allItems.getOrDefault(sorter, Set.of()), processingContext))
-      .flatMap(items -> StreamEx.of(items.spliterator()))
-      .map(item -> ((CompletionItemLookupElement)item).item())
-      .forEach(sink);
+    for (Map.Entry<CompletionSorterImpl, Classifier<LookupElement>> entry : sortMap.entrySet()) {
+      Iterable<LookupElement> items = entry.getValue().classify(allItems.getOrDefault(entry.getKey(), Set.of()), processingContext);
+      for (LookupElement item : items) {
+        sink.accept(((CompletionItemLookupElement)item).item());
+      }
+    }
   }
 
   private static ProcessingContext createContext(CamelHumpMatcher matcher) {

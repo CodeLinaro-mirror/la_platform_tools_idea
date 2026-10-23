@@ -37,10 +37,13 @@ internal object LibrariesRequiredForWorkspace {
   private val gradleExternalSystemImpl = ModuleLibrary("intellij.platform.externalSystem.impl")
   private val pyCommon = ModuleLibrary("intellij.python.community.common")
   private val cidrProjectModel = ModuleLibrary("intellij.cidr.projectModel")
+  private val cidrPsiBase = ModuleLibrary("intellij.cidr.psi.base")
+  private val cidrUtilExecution = ModuleLibrary("intellij.cidr.util.execution")
   private val kotlinBaseScripting = ModuleLibrary("intellij.kotlin.base.scripting")
   private val androidProjectSystem = ModuleLibrary("intellij.android.projectSystem")
   private val androidGradleModels = ModuleLibrary("intellij.android.projectSystem.gradle.models")
   private val bazelCommons = ModuleLibrary("intellij.bazel.commons")
+  private val bazelBackend = ModuleLibrary("intellij.bazel.backend")
 
   private val kotlinJpsCommon = JarLibrary("kotlinc-kotlin-jps-common", KotlinModuleKind::class.java)
   private val kotlinScriptingCommon = JarLibrary("kotlinc-kotlin-scripting-common", SourceCode::class.java)
@@ -73,10 +76,13 @@ internal object LibrariesRequiredForWorkspace {
         listOf(kotlinCompilerCommon)
       }
       "intellij.kotlin.gradle.scripting" -> {
-        listOf(kotlinBaseScripting)
+        listOf(kotlinBaseScripting, gradle, gradleToolingExtension, gradleExternalSystemImpl)
       }
       "intellij.bazel.backend" -> {
         listOf(bazelCommons)
+      }
+      "intellij.bazel.clion.common" -> {
+        listOf(bazelBackend, bazelCommons)
       }
       "intellij.gradle" -> {
         listOf(gradleToolingExtension, gradleExternalSystemImpl)
@@ -89,6 +95,9 @@ internal object LibrariesRequiredForWorkspace {
       }
       "intellij.clion.openfolder" -> {
         listOf(cidrProjectModel)
+      }
+      "intellij.cidr.projectModel" -> {
+        listOf(cidrPsiBase, cidrUtilExecution, workspaceJpsEntities)
       }
       "intellij.android.projectSystem.gradle" -> {
         listOf(androidProjectSystem, androidGradleModels, androidStudioPlatform, gradle, gradleToolingExtension)

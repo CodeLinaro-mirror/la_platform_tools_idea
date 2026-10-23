@@ -1,5 +1,5 @@
 // "Change type argument to String" "true"
-// K2_ERROR: Return type of 'fun foo(): String' is not a subtype of the return type of the overridden member 'fun foo(): Int' defined in 'FooImpl'.
+// K2_ERROR: RETURN_TYPE_MISMATCH_ON_OVERRIDE
 
 class String
 
@@ -10,4 +10,4 @@ class FooImpl : Foo<Int> {
 }
 
 
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeSuperTypeListEntryTypeArgumentFixFactory$ChangeSuperTypeListEntryTypeArgumentFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeSuperTypeListEntryTypeArgumentFixFactory$ChangeSuperTypeListEntryTypeArgumentFix

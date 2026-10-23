@@ -3,12 +3,18 @@ package org.jetbrains.plugins.terminal.view.shellIntegration.impl
 
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.diagnostic.logger
+import com.intellij.platform.eel.EelDescriptor
+import com.intellij.platform.util.coroutines.childScope
+import com.intellij.util.asDisposable
+import com.intellij.util.concurrency.annotations.RequiresEdt
 import com.intellij.util.containers.DisposableWrapperList
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.plugins.terminal.block.reworked.TerminalSessionModel
+import org.jetbrains.plugins.terminal.session.ShellName
 import org.jetbrains.plugins.terminal.session.impl.TerminalBlocksModelState
 import org.jetbrains.plugins.terminal.util.fireListenersAndLogAllExceptions
 import org.jetbrains.plugins.terminal.view.TerminalOffset
@@ -24,14 +30,17 @@ import org.jetbrains.plugins.terminal.view.shellIntegration.TerminalOutputStatus
 import org.jetbrains.plugins.terminal.view.shellIntegration.TerminalOutputStatus.WaitingForPrompt
 import org.jetbrains.plugins.terminal.view.shellIntegration.TerminalShellBasedCompletionListener
 import org.jetbrains.plugins.terminal.view.shellIntegration.TerminalShellIntegration
+import org.jetbrains.plugins.terminal.view.shellIntegration.history.ShellCommandHistoryManager
 
 @ApiStatus.Internal
 class TerminalShellIntegrationImpl(
   private val outputModel: TerminalOutputModel,
   sessionModel: TerminalSessionModel,
-  parentDisposable: Disposable,
+  private val coroutineScope: CoroutineScope,
+  private val eelDescriptor: EelDescriptor,
+  private val shellName: ShellName,
 ) : TerminalShellIntegration {
-  override val blocksModel: TerminalBlocksModelImpl = TerminalBlocksModelImpl(outputModel, sessionModel, parentDisposable)
+  override val blocksModel: TerminalBlocksModelImpl = TerminalBlocksModelImpl(outputModel, sessionModel, coroutineScope.asDisposable())
 
   private val commandExecutionListeners = DisposableWrapperList<TerminalCommandExecutionListener>()
 
@@ -44,6 +53,13 @@ class TerminalShellIntegrationImpl(
 
   override var commandAliases: Map<String, String> = emptyMap()
     private set
+
+  private val shellHistoryManager = ShellCommandHistoryManager(coroutineScope.childScope("ShellCommandHistoryManager"))
+
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
+  override fun commandHistory(): List<String> {
+    return shellHistoryManager.getHistory()
+  }
 
   private val completionListeners = DisposableWrapperList<TerminalShellBasedCompletionListener>()
 
@@ -68,6 +84,7 @@ class TerminalShellIntegrationImpl(
       block.copy(outputStartOffset = offset, executedCommand = command)
     }
     mutableOutputStatus.value = ExecutingCommand
+    shellHistoryManager.addCommand(command)
 
     val block = blocksModel.activeBlock as TerminalCommandBlock
     fireCommandExecutionListeners(TerminalCommandStartedEventImpl(outputModel, block))
@@ -87,8 +104,13 @@ class TerminalShellIntegrationImpl(
     commandAliases = aliases.toMap()
   }
 
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
+  fun onCommandHistoryFilePathReceived(path: String?) {
+    shellHistoryManager.loadHistoryFile(path, eelDescriptor, shellName)
+  }
+
   fun onCompletionFinished(result: String) {
-    fireListenersAndLogAllExceptions(completionListeners, LOG, "Exception during handling completion finished event") {
+    fireListenersAndLogAllExceptions(completionListeners, LOG, { "Exception during handling completion finished event" }) {
       it.completionFinished(result)
     }
   }
@@ -110,7 +132,7 @@ class TerminalShellIntegrationImpl(
   }
 
   private fun fireCommandExecutionListeners(event: TerminalCommandExecutionEvent) {
-    fireListenersAndLogAllExceptions(commandExecutionListeners, LOG, "Exception during handling $event") {
+    fireListenersAndLogAllExceptions(commandExecutionListeners, LOG, { "Exception during handling $event" }) {
       when (event) {
         is TerminalCommandStartedEvent -> it.commandStarted(event)
         is TerminalCommandFinishedEvent -> it.commandFinished(event)

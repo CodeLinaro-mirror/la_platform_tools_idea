@@ -1,7 +1,14 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.libraries.imgscalr` start
+content_module_jar(
+    libraries = ["@lib//:libraries-imgscalr-imgscalr"],
+    module = ":imgscalr",
+)
+### auto-generated section `dev intellij.libraries.imgscalr` end
 
 ### auto-generated section `build intellij.libraries.imgscalr` start
-
 jvm_library(
     name = "imgscalr",
     srcs = glob(
@@ -37,6 +44,7 @@ jvm_library(
 exports_files(
     [
         "intellij.libraries.imgscalr.iml",
+        "resources/intellij.libraries.imgscalr.xml",
     ],
     visibility = ["//visibility:public"],
 )

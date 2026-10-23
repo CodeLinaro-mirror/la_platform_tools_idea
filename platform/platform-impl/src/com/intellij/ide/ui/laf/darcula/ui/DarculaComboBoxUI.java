@@ -1,4 +1,4 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.ide.ui.laf.darcula.ui;
 
 import com.intellij.icons.AllIcons;
@@ -24,6 +24,7 @@ import com.intellij.ui.SimpleColoredComponent;
 import com.intellij.ui.WindowRoundedCornersManager;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.dsl.listCellRenderer.KotlinUIDslRendererComponent;
+import com.intellij.ui.paint.PaintUtil;
 import com.intellij.ui.popup.list.ComboBoxPopup;
 import com.intellij.ui.render.RenderingUtil;
 import com.intellij.ui.scale.JBUIScale;
@@ -250,13 +251,35 @@ public class DarculaComboBoxUI extends BasicComboBoxUI implements Border, ErrorB
     return component.getClientProperty(DarculaJBPopupComboPopup.CLIENT_PROP) == null;
   }
 
+  /**
+   * Horizontal offset (in pixels, relative to the combobox origin) that a popup
+   * should be shifted by so that item text/icons in the popup line up with the
+   * text/icon painted inside the collapsed combobox button.
+   *
+   * <p>New UI popup items are drawn with an extra left inset of
+   * {@code LEFT_RIGHT_INSET + innerInsets.left} to leave room for the rounded
+   * selection background. The button places its content at
+   * {@code insets.left + padding.left}. Without this compensation, popup content
+   * sits further to the right than the button label.
+   */
+  @ApiStatus.Internal
+  public int getPopupHorizontalShift() {
+    if (!ComboBoxPopup.isRendererWithInsets(comboBox.getRenderer())) {
+      return 0;
+    }
+    Insets buttonInsets = comboBox.getInsets();
+    int buttonContentLeft = buttonInsets.left + (padding == null ? 0 : padding.left);
+    int popupContentLeft = JBUI.CurrentTheme.Popup.Selection.LEFT_RIGHT_INSET.get() + JBUI.CurrentTheme.Popup.Selection.innerInsets().left;
+    return buttonContentLeft - popupContentLeft;
+  }
+
   @ApiStatus.Internal
   public ComboPopup getPopup() {
     return popup;
   }
 
   @Override
-  protected ComboPopup createPopup() {
+  protected @NotNull ComboPopup createPopup() {
     return hasSwingPopup(comboBox) ? new CustomComboPopup(comboBox) : new DarculaJBPopupComboPopup<>(comboBox);
   }
 
@@ -281,9 +304,7 @@ public class DarculaComboBoxUI extends BasicComboBoxUI implements Border, ErrorB
 
       @Override
       public void paint(Graphics g) {
-        Graphics2D g2 = (Graphics2D)g.create();
-
-        try {
+        PaintUtil.useCopy(g, g2 -> {
           g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
           g2.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_NORMALIZE);
           Rectangle r = getArrowButtonRect(this);
@@ -316,10 +337,7 @@ public class DarculaComboBoxUI extends BasicComboBoxUI implements Border, ErrorB
 
           g2.translate(-r.x, -r.y + JBUI.scale(1));
           paintArrow(g2, this);
-        }
-        finally {
-          g2.dispose();
-        }
+        });
       }
 
       @Override
@@ -396,13 +414,11 @@ public class DarculaComboBoxUI extends BasicComboBoxUI implements Border, ErrorB
       g.fillRect(0, 0, c.getWidth(), c.getHeight());
     }
 
-    Graphics2D g2 = (Graphics2D)g.create();
-
-    if (comboBox.getBorder() instanceof DarculaComboBoxBorder comboBoxBorder && isNewBorderSupported(comboBox)) {
-      comboBoxBorder.paintComboBoxBackground(g2, comboBox, getBackgroundColor());
-    }
-    else {
-      try {
+    PaintUtil.useCopy(g, g2 -> {
+      if (comboBox.getBorder() instanceof DarculaComboBoxBorder comboBoxBorder && isNewBorderSupported(comboBox)) {
+        comboBoxBorder.paintComboBoxBackground(g2, comboBox, getBackgroundColor());
+      }
+      else {
         Rectangle r = new Rectangle(c.getSize());
         JBInsets.removeFrom(r, myBorderCompensation);
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -414,10 +430,7 @@ public class DarculaComboBoxUI extends BasicComboBoxUI implements Border, ErrorB
         g2.setColor(getBackgroundColor());
         g2.fill(getOuterShape(r, bw, myArc));
       }
-      finally {
-        g2.dispose();
-      }
-    }
+    });
 
     if (!comboBox.isEditable()) {
       paintCurrentValue(g, rectangleForCurrentValue(), hasFocus);
@@ -611,11 +624,9 @@ public class DarculaComboBoxUI extends BasicComboBoxUI implements Border, ErrorB
   public void paintBorder(Component c, Graphics g, int x, int y, int width, int height) {
     if (!(c instanceof JComponent)) return;
 
-    Graphics2D g2 = (Graphics2D)g.create();
     float bw = BW.getFloat();
     Rectangle r = new Rectangle(x, y, width, height);
-
-    try {
+    PaintUtil.useCopy(g, g2 -> {
       checkFocus();
       if (!DarculaUIUtil.isTableCellEditor(c)) {
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -641,10 +652,7 @@ public class DarculaComboBoxUI extends BasicComboBoxUI implements Border, ErrorB
       else {
         paintCellEditorBorder(g2, c, r, hasFocus);
       }
-    }
-    finally {
-      g2.dispose();
-    }
+    });
   }
 
   /**
@@ -947,7 +955,7 @@ public class DarculaComboBoxUI extends BasicComboBoxUI implements Border, ErrorB
           if (isRoundBorder) {
             Window window = ComponentUtil.getWindow(popup);
             if (window != null) {
-              if ((SystemInfoRt.isMac && UIUtil.isUnderDarcula()) || SystemInfoRt.isWindows) {
+              if ((SystemInfoRt.isMac && UIUtil.isUnderDarcula()) || SystemInfoRt.isWindows || StartupUiUtil.isWaylandToolkit()) {
                 WindowRoundedCornersManager.setRoundedCorners(window, JBUI.CurrentTheme.Popup.borderColor(true));
                 popup.setBorder(null);
               }
@@ -967,13 +975,24 @@ public class DarculaComboBoxUI extends BasicComboBoxUI implements Border, ErrorB
         list.setBorder(JBUI.Borders.empty(getListVerticalInset()));
       }
 
-      if (comboBox instanceof ComboBoxWithWidePopup<?> comboBoxWithWidePopup) {
-        Dimension popupSize = comboBox.getSize();
-        int minPopupWidth = comboBoxWithWidePopup.getMinimumPopupWidth();
+      //IJPL-249224 Combobox popup items are not horizontally aligned with the combobox content
+      int shift = comboBox.getUI() instanceof DarculaComboBoxUI darculaUi ? darculaUi.getPopupHorizontalShift() : 0;
+      // Apply the width treatment to every combo (incl. plain JComboBox), not only ComboBoxWithWidePopup.
+      // When the popup is shifted, its default width (set by BasicComboPopup.getPopupLocation) would leave it
+      // narrow and skewed to one side, so recompute the width here as well.
+      if (shift != 0 || comboBox instanceof ComboBoxWithWidePopup<?>) {
         Insets insets = getInsets();
+        int comboWidth = comboBox.getSize().width;
+        int minPopupWidth = comboBox instanceof ComboBoxWithWidePopup<?> comboBoxWithWidePopup
+                            ? comboBoxWithWidePopup.getMinimumPopupWidth() : 0;
 
-        popupSize.width = Math.max(popupSize.width, minPopupWidth);
-        popupSize.setSize(popupSize.width - (insets.right + insets.left), getPopupHeightForRowCount(comboBox.getMaximumRowCount()));
+        // Width needed to fit the widest item (wide-popup case).
+        int wideWidth = Math.max(comboWidth, minPopupWidth) - (insets.right + insets.left);
+        // The popup's left edge is placed at `shift` (negative => left of the combo) to align its content
+        // with the combo. Mirror that overhang on the right so the popup stays symmetric around the combo:
+        // width = comboWidth - 2 * shift. Fall back to the content width when the items don't fit.
+        int width = shift == 0 ? wideWidth : Math.max(wideWidth, comboWidth - 2 * shift);
+        Dimension popupSize = new Dimension(width, getPopupHeightForRowCount(comboBox.getMaximumRowCount()));
 
         scroller.setMaximumSize(popupSize);
         scroller.setPreferredSize(popupSize);
@@ -982,7 +1001,7 @@ public class DarculaComboBoxUI extends BasicComboBoxUI implements Border, ErrorB
         list.revalidate();
       }
 
-      super.show(invoker, x, y);
+      super.show(invoker, x + shift, y);
     }
 
     @Override

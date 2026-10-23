@@ -1,16 +1,26 @@
 load("@community//build:tests-options.bzl", "jps_test")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 load("//build:compiler-options.bzl", "create_kotlinc_options")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.kotlin.refactorings.rename` start
+content_module_jar(module = ":kotlin-refactorings-rename")
+### auto-generated section `dev intellij.kotlin.refactorings.rename` end
 
 ### auto-generated section `build intellij.kotlin.refactorings.rename` start
-
 create_kotlinc_options(
     name = "custom_kotlin-refactorings-rename",
     opt_in = [
-        "org.jetbrains.kotlin.utils.addToStdlib.UnsafeCastFunction",
-        "org.jetbrains.kotlin.analysis.api.permissions.KaAllowProhibitedAnalyzeFromWriteAction",
+        "org.jetbrains.kotlin.psi.KtExperimentalApi",
+        "org.jetbrains.kotlin.psi.KtNonPublicApi",
+        "org.jetbrains.kotlin.psi.KtIdeApi",
+        "org.jetbrains.kotlin.analysis.api.KaExperimentalApi",
         "org.jetbrains.kotlin.analysis.api.KaIdeApi",
+        "org.jetbrains.kotlin.analysis.api.KaPlatformInterface",
+        "org.jetbrains.kotlin.analysis.api.fir.diagnostics.KaUnstableDiagnosticApi",
+        "org.jetbrains.kotlin.analysis.api.KaNonPublicApi",
         "org.jetbrains.kotlin.analysis.api.KaContextParameterApi",
+        "org.jetbrains.kotlin.analysis.api.permissions.KaAllowProhibitedAnalyzeFromWriteAction",
     ],
     x_context_parameters = True,
 )
@@ -35,8 +45,9 @@ jvm_library(
     deps = [
         # do not sort,
         "//plugins/kotlin/references",
-        "@lib//:kotlinc-kotlin-compiler-common",
-        "@lib//:kotlinc-analysis-api",
+        "//libraries/kotlinc/kotlin-compiler-common:libraries-kotlinc-kotlin-compiler-common",
+        "//libraries/kotlinc/analysis-api:libraries-kotlinc-analysis-api",
+        "//libraries/kotlinc/symbol-light-classes:libraries-kotlinc-symbol-light-classes",
         "//platform/analysis-api:analysis",
         "//platform/indexing-api:indexing",
         "//plugins/kotlin/base/psi",
@@ -53,6 +64,7 @@ jvm_library(
         "//plugins/kotlin/base/analysis-api/analysis-api-utils:kotlin-base-analysis-utils",
         "//java/java-indexing-api:indexing",
         "//java/java-impl-refactorings:impl-refactorings",
+        "//plugins/kotlin/base/code-insight",
     ],
 )
 
@@ -70,6 +82,9 @@ jvm_library(
         # do not sort,
         ":kotlin-refactorings-rename",
         "//plugins/kotlin/references:references_test_lib",
+        "//libraries/kotlinc/kotlin-compiler-common:libraries-kotlinc-kotlin-compiler-common_test_lib",
+        "//libraries/kotlinc/analysis-api:libraries-kotlinc-analysis-api_test_lib",
+        "//libraries/kotlinc/symbol-light-classes:libraries-kotlinc-symbol-light-classes_test_lib",
         "//platform/analysis-api:analysis_test_lib",
         "//platform/indexing-api:indexing_test_lib",
         "//plugins/kotlin/base/psi:psi_test_lib",
@@ -86,6 +101,7 @@ jvm_library(
         "//plugins/kotlin/base/analysis-api/analysis-api-utils:kotlin-base-analysis-utils_test_lib",
         "//java/java-indexing-api:indexing_test_lib",
         "//java/java-impl-refactorings:impl-refactorings_test_lib",
+        "//plugins/kotlin/base/code-insight:code-insight_test_lib",
     ],
 )
 ### auto-generated section `build intellij.kotlin.refactorings.rename` end
@@ -94,20 +110,26 @@ jvm_library(
 exports_files(
     [
         "intellij.kotlin.refactorings.rename.iml",
+        "resources/intellij.kotlin.refactorings.rename.xml",
     ],
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.kotlin.refactorings.rename` end
 
 ### auto-generated section `build intellij.kotlin.refactorings.rename.tests` start
-
 create_kotlinc_options(
     name = "custom_kotlin-refactorings-rename-tests",
     opt_in = [
-        "org.jetbrains.kotlin.utils.addToStdlib.UnsafeCastFunction",
-        "org.jetbrains.kotlin.analysis.api.permissions.KaAllowProhibitedAnalyzeFromWriteAction",
+        "org.jetbrains.kotlin.psi.KtExperimentalApi",
+        "org.jetbrains.kotlin.psi.KtNonPublicApi",
+        "org.jetbrains.kotlin.psi.KtIdeApi",
+        "org.jetbrains.kotlin.analysis.api.KaExperimentalApi",
         "org.jetbrains.kotlin.analysis.api.KaIdeApi",
+        "org.jetbrains.kotlin.analysis.api.KaPlatformInterface",
+        "org.jetbrains.kotlin.analysis.api.fir.diagnostics.KaUnstableDiagnosticApi",
+        "org.jetbrains.kotlin.analysis.api.KaNonPublicApi",
         "org.jetbrains.kotlin.analysis.api.KaContextParameterApi",
+        "org.jetbrains.kotlin.analysis.api.permissions.KaAllowProhibitedAnalyzeFromWriteAction",
     ],
     x_context_parameters = True,
 )
@@ -120,6 +142,7 @@ jvm_library(
     ),
     module_name = "intellij.kotlin.refactorings.rename.tests",
     visibility = ["//visibility:public"],
+    runtime_deps = ["//plugins/kotlin:kotlin-plugin-community-main"],
 )
 
 jvm_library(
@@ -139,14 +162,20 @@ jvm_library(
     ],
     kotlinc_opts = ":custom_kotlin-refactorings-rename-tests",
     visibility = ["//visibility:public"],
-    runtime_deps = [":kotlin-refactorings-rename-tests"],
+    runtime_deps = [
+        # do not sort,
+        ":kotlin-refactorings-rename-tests",
+        "//plugins/kotlin:kotlin-plugin-community-main_test_lib",
+    ],
     deps = [
         # do not sort,
-        "@lib//:kotlinc-kotlin-compiler-common",
+        "//libraries/kotlinc/kotlin-compiler-common:libraries-kotlinc-kotlin-compiler-common",
+        "//libraries/kotlinc/kotlin-compiler-common:libraries-kotlinc-kotlin-compiler-common_test_lib",
         "@lib//:kotlinc-kotlin-compiler-tests",
         "//libraries/gson",
         "//libraries/gson:gson_test_lib",
-        "@lib//:kotlinc-analysis-api",
+        "//libraries/kotlinc/analysis-api:libraries-kotlinc-analysis-api",
+        "//libraries/kotlinc/analysis-api:libraries-kotlinc-analysis-api_test_lib",
         "//platform/analysis-api:analysis",
         "//platform/analysis-api:analysis_test_lib",
         "//platform/core-ui",
@@ -155,8 +184,6 @@ jvm_library(
         "//platform/lang-core:lang-core_test_lib",
         "//platform/indexing-api:indexing",
         "//platform/indexing-api:indexing_test_lib",
-        "//plugins/kotlin/plugin/k2",
-        "//plugins/kotlin/plugin/k2:k2_test_lib",
         "//plugins/kotlin/base/plugin",
         "//plugins/kotlin/base/plugin:plugin_test_lib",
         "//plugins/kotlin/base/psi",
@@ -217,7 +244,6 @@ exports_files(
 ### auto-generated section `iml intellij.kotlin.refactorings.rename.tests` end
 
 ### auto-generated section `test intellij.kotlin.refactorings.rename.tests` start
-
 jps_test(
     name = "kotlin-refactorings-rename-tests_test",
     runtime_deps = [":kotlin-refactorings-rename-tests_test_lib"],

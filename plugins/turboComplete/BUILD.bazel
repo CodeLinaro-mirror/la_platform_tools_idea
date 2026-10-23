@@ -1,8 +1,27 @@
 load("@community//build:tests-options.bzl", "jps_test")
+load("@community//platform/build-scripts/bazel-rules:ij_plugin.bzl", "ij_plugin")
+load("@jps_dynamic_deps_community//:targets.bzl", "dev_dist_plugin")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
-### auto-generated section `build intellij.turboComplete` start
+jps_test(
+    name = "turboComplete-tests_test",
+    timeout = "moderate",
+    tags = ["community-aggregator"],
+    runtime_deps = [":turboComplete-tests_test_lib"],
+)
+### skip generation section `test intellij.turboComplete.tests`
 
+### auto-generated section `dev intellij.turboComplete` start
+dev_dist_plugin(
+    descriptor = "resources/META-INF/plugin.xml",
+    jars = {
+        "lib/turboComplete.jar": ["intellij.turboComplete"],
+    },
+    main_module = "intellij.turboComplete",
+)
+### auto-generated section `dev intellij.turboComplete` end
+
+### auto-generated section `build intellij.turboComplete` start
 jvm_library(
     name = "turboComplete",
     srcs = glob(
@@ -65,19 +84,25 @@ jvm_library(
         "//platform/ml-api:ml_test_lib",
     ],
 )
+
+ij_plugin(
+    name = "turboComplete_plugin",
+    descriptor_module = ":turboComplete",
+    visibility = ["//visibility:public"],
+)
 ### auto-generated section `build intellij.turboComplete` end
 
 ### auto-generated section `iml intellij.turboComplete` start
 exports_files(
     [
         "intellij.turboComplete.iml",
+        "resources/META-INF/plugin.xml",
     ],
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.turboComplete` end
 
 ### auto-generated section `build intellij.turboComplete.tests` start
-
 jvm_library(
     name = "turboComplete-tests",
     srcs = glob(
@@ -104,8 +129,8 @@ jvm_library(
     runtime_deps = [":turboComplete-tests"],
     deps = [
         # do not sort,
-        "//libraries/junit5",
-        "//libraries/junit5:junit5_test_lib",
+        "//libraries/junit6",
+        "//libraries/junit6:junit6_test_lib",
         "//plugins/turboComplete",
         "//plugins/turboComplete:turboComplete_test_lib",
         "@lib//:kotlin-stdlib",
@@ -125,11 +150,3 @@ exports_files(
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.turboComplete.tests` end
-
-### auto-generated section `test intellij.turboComplete.tests` start
-
-jps_test(
-    name = "turboComplete-tests_test",
-    runtime_deps = [":turboComplete-tests_test_lib"],
-)
-### auto-generated section `test intellij.turboComplete.tests` end

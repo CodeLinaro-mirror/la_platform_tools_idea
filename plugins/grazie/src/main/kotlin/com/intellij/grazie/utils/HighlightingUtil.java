@@ -13,6 +13,7 @@ import com.intellij.grazie.ide.inspection.grammar.GrazieInspection.Companion.Tex
 import com.intellij.grazie.jlanguage.Lang;
 import com.intellij.grazie.text.TextContent;
 import com.intellij.grazie.text.TextContent.TextDomain;
+import com.intellij.grazie.text.TextContentModificationTrackerProvider;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
@@ -34,10 +35,13 @@ import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Collection;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
+import static com.intellij.grazie.ide.inspection.grammar.GrazieInspection.MAX_TEXT_LENGTH_IN_FILE;
 import static com.intellij.grazie.ide.inspection.grammar.GrazieInspection.MAX_TEXT_LENGTH_IN_PSI_ELEMENT;
 import static com.intellij.grazie.text.TextExtractor.findAllTextContents;
 
@@ -61,8 +65,8 @@ public final class HighlightingUtil {
     return ApplicationManager.getApplication().getService(GrazieConfig.class);
   }
 
-  public static boolean isTooLargeText(List<TextContent> texts) {
-    return texts.stream().mapToInt(t -> t.length()).sum() > MAX_TEXT_LENGTH_IN_PSI_ELEMENT;
+  public static boolean isTooLargeFile(List<TextContent> texts) {
+    return texts.stream().mapToInt(t -> t.length()).sum() > MAX_TEXT_LENGTH_IN_FILE;
   }
 
   public static boolean isTooLargeText(TextContent text) {
@@ -105,9 +109,22 @@ public final class HighlightingUtil {
         PsiFile file = vp.getAllFiles().getFirst();
         TextContentRelatedData contentRelatedData = new TextContentRelatedData(file, contents);
         LOGGER.debug("Evaluating texts of:", contentRelatedData);
-        return CachedValueProvider.Result.create(contentRelatedData, file, grazieConfigTracker());
+        return CachedValueProvider.Result.create(contentRelatedData, cacheDependencies(vp, file));
       }).getContents();
     }
+  }
+
+  // TextExtractor's per-element caches already depend on these trackers, so the file-level aggregate must too.
+  private static Collection<Object> cacheDependencies(FileViewProvider vp, PsiFile file) {
+    Set<Object> dependencies = new LinkedHashSet<>(List.of(file, grazieConfigTracker()));
+    for (PsiFile root : vp.getAllFiles()) {
+      var provider = TextContentModificationTrackerProvider.EP_NAME.forLanguage(root.getLanguage());
+      ModificationTracker tracker = provider == null ? null : provider.getModificationTracker(root);
+      if (tracker != null) {
+        dependencies.add(tracker);
+      }
+    }
+    return dependencies;
   }
 
   public static boolean isSpace(Character symbol) {

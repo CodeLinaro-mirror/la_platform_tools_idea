@@ -115,8 +115,14 @@ class MutableLookupStorage(
   override val sessionFactors: LookupSessionFactorsStorage = LookupSessionFactorsStorage(startedTimestamp)
 
   override fun getItemStorage(id: String): MutableElementStorage =
-    item2storage.computeIfAbsent(id) {
-      MutableElementStorage()
+    try {
+      item2storage.computeIfAbsent(id) {
+        MutableElementStorage()
+      }
+    }
+    catch (e: ConcurrentModificationException) {
+      // send a exception with a unique message to make TC detect it separately
+      throw IllegalStateException("Concurrent modification of item storage", e)
     }
 
   override fun mlUsed(): Boolean = mlUsed
@@ -147,7 +153,7 @@ class MutableLookupStorage(
   }
 
   /** Lazily computes application- and project-level user factors for [project] (once per session). */
-  @RequiresReadLock
+  @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
   fun initUserFactors(project: Project) {
     if (_userFactors == null) {
       val userFactorValues = mutableMapOf<String, String>()

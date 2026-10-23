@@ -1,6 +1,10 @@
 // Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python;
 
+import com.intellij.idea.TestFor;
+import com.jetbrains.python.allure.Layers;
+import com.jetbrains.python.allure.Subsystems;
+
 import com.intellij.codeInsight.CodeInsightSettings;
 import com.intellij.openapi.actionSystem.IdeActions;
 import com.intellij.psi.codeStyle.CommonCodeStyleSettings;
@@ -9,6 +13,8 @@ import com.jetbrains.python.fixtures.PyTestCase;
 import org.jetbrains.annotations.NotNull;
 
 
+@Subsystems.Editing
+@Layers.Functional
 public class PyCopyPasteTest extends PyTestCase {
   @Override
   protected void runTestRunnable(@NotNull ThrowableRunnable<Throwable> testRunnable) throws Throwable {
@@ -316,6 +322,11 @@ public class PyCopyPasteTest extends PyTestCase {
     finally {
       indentOptions.USE_TAB_CHARACTER = false;
     }
+  }
+
+  @TestFor(issues = "PY-92147")
+  public void testCommentBeforeMethodCopiedAfterIndent() {
+    doTest();
   }
 
   public void testIndentTabIncrease() {

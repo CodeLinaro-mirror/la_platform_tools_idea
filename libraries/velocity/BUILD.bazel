@@ -1,7 +1,14 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.libraries.velocity` start
+content_module_jar(
+    libraries = ["@lib//:libraries-velocity-_velocity"],
+    module = ":velocity",
+)
+### auto-generated section `dev intellij.libraries.velocity` end
 
 ### auto-generated section `build intellij.libraries.velocity` start
-
 jvm_library(
     name = "velocity",
     srcs = glob(
@@ -37,6 +44,7 @@ jvm_library(
 exports_files(
     [
         "intellij.libraries.velocity.iml",
+        "resources/intellij.libraries.velocity.xml",
     ],
     visibility = ["//visibility:public"],
 )

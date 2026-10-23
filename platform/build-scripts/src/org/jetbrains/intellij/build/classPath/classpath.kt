@@ -1,5 +1,5 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
-@file:Suppress("ReplaceGetOrSet", "ReplaceJavaStaticMethodWithKotlinAnalog")
+@file:Suppress("ReplaceGetOrSet", "ReplaceJavaStaticMethodWithKotlinAnalog", "DestructuringDeclaration")
 
 package org.jetbrains.intellij.build.classPath
 
@@ -7,17 +7,22 @@ import com.intellij.openapi.util.JDOMUtil
 import com.intellij.openapi.util.io.BufferExposingByteArrayOutputStream
 import com.intellij.platform.util.putMoreLikelyPluginJarsFirst
 import org.jdom.Element
-import org.jetbrains.annotations.VisibleForTesting
+import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.intellij.build.BuildContext
+import org.jetbrains.intellij.build.ContentModuleFilter
+import org.jetbrains.intellij.build.DescriptorSearchPass
 import org.jetbrains.intellij.build.JvmArchitecture
+import org.jetbrains.intellij.build.ModuleOutputProvider
 import org.jetbrains.intellij.build.OsFamily
 import org.jetbrains.intellij.build.PLATFORM_LOADER_JAR
 import org.jetbrains.intellij.build.PLUGIN_XML_RELATIVE_PATH
 import org.jetbrains.intellij.build.UTIL_8_JAR
 import org.jetbrains.intellij.build.UTIL_JAR
 import org.jetbrains.intellij.build.getUnprocessedPluginXmlContent
+import org.jetbrains.intellij.build.readDescriptor
 import org.jetbrains.intellij.build.impl.DescriptorCacheContainer
 import org.jetbrains.intellij.build.impl.ModuleIncludeReasons
+import org.jetbrains.intellij.build.impl.ModuleItem
 import org.jetbrains.intellij.build.impl.PRODUCT_DESCRIPTOR_META_PATH
 import org.jetbrains.intellij.build.impl.PlatformJarNames
 import org.jetbrains.intellij.build.impl.PlatformJarNames.PLATFORM_CORE_NIO_FS
@@ -30,23 +35,21 @@ import org.jetbrains.intellij.build.impl.projectStructureMapping.CustomAssetEntr
 import org.jetbrains.intellij.build.impl.projectStructureMapping.DistributionFileEntry
 import org.jetbrains.intellij.build.impl.projectStructureMapping.ModuleOutputEntry
 import org.jetbrains.intellij.build.impl.projectStructureMapping.ModuleOwnedFileEntry
-import org.jetbrains.intellij.build.io.ZipEntryProcessorResult
-import org.jetbrains.intellij.build.io.readZipFile
+import org.jetbrains.intellij.build.io.readEntryFromZip
 import org.jetbrains.intellij.build.isWindows
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.nio.file.Path
-import kotlin.io.path.invariantSeparatorsPathString
-import kotlin.io.path.relativeToOrSelf
 
-fun generateClassPathByLayoutReport(libDir: Path, entries: List<DistributionFileEntry>, skipNioFs: Boolean, includeProductModule: (String) -> Boolean = { false }): Set<Path> {
+/**
+ * [includeProductModules] keeps the jars that hold a product content module. The module system loads them, so a
+ * launch leaves them out; a scramble classpath takes every jar of the platform.
+ */
+fun generateClassPathByLayoutReport(libDir: Path, entries: List<DistributionFileEntry>, skipNioFs: Boolean, includeProductModules: Boolean = false): Set<Path> {
   val classPath = LinkedHashSet<Path>()
   for (entry in entries) {
-    if (entry is ModuleOwnedFileEntry) {
-      val owner = entry.owner
-      if (owner != null && owner.reason == ModuleIncludeReasons.PRODUCT_MODULES && !includeProductModule(owner.moduleName)) {
-        continue
-      }
+    if (!includeProductModules && entry is ModuleOwnedFileEntry && entry.owner?.reason == ModuleIncludeReasons.PRODUCT_MODULES) {
+      continue
     }
 
     // exclude files like ext/platform-main.jar - if a file in lib, take only direct children in an account
@@ -89,28 +92,85 @@ fun generateClassPathByLayoutReport(libDir: Path, entries: List<DistributionFile
 
   val result = LinkedHashSet<Path>(classPath.size + 4)
   // add first - should be listed first
-  sequenceOf(PLATFORM_LOADER_JAR, UTIL_8_JAR, UTIL_JAR, PRODUCT_BACKEND_JAR).map(libDir::resolve).filterTo(result, classPath::contains)
+  CORE_CLASSPATH_LEADING_JARS.asSequence().map(libDir::resolve).filterTo(result, classPath::contains)
   // sorted to ensure stable performance results
   result.addAll(if (isWindows) classPath.sortedBy(Path::toString) else classPath.sorted())
   return result
 }
 
 /**
+ * Which of [externallyPackedJars] belong on the core classpath, decided from the layout instead of from packed entries.
+ *
+ * A split dev-distribution fragment hands these jars to another producer, so it neither packs them nor resolves the
+ * modules in them. `dev_dist_platform_payload` derives the core classpath of these jars in Bazel. The dev-distribution
+ * plan generator calls this function over the source layout of each product and fails when the two answers differ.
+ * The core classpath has to stay complete: it is what `PreBuiltDevMain` starts the IDE with.
+ *
+ * The rule is [generateClassPathByLayoutReport]'s, read off the layout rather than off the entries it never produced.
+ * Every entry such a jar can hold - the module output, and the libraries merged into it - is a `ModuleOwnedFileEntry`
+ * owned by one of the jar's [ModuleItem]s (`JarPackager.packLibFilesIntoModuleJar`), and that function skips exactly
+ * the ones whose owner is included as [ModuleIncludeReasons.PRODUCT_MODULES]: a content module is loaded by the module
+ * system, not from the classpath. So a jar is on the classpath when some module in it is there for another reason -
+ * `intellij.libraries.asm` is an ordinary platform dependency as well as a content module, `intellij.charts` is not.
+ *
+ * A destination is the whole `lib/`-relative path, and a jar under a subdirectory of `lib/` stays off the classpath,
+ * for the reason [generateClassPathByLayoutReport] states: only a direct child of `lib/` is on it.
+ *
+ * A change to this has to be made in [generateClassPathByLayoutReport] too, and the composed distribution's
+ * `core-classpath.txt` is what proves the two agree.
+ */
+@ApiStatus.Internal
+fun contentModuleJarCoreClasspathEntries(
+  libDir: Path,
+  includedModules: Collection<ModuleItem>,
+  externallyPackedJars: Set<String>,
+  skipNioFs: Boolean,
+): Set<Path> {
+  if (externallyPackedJars.isEmpty()) {
+    return emptySet()
+  }
+
+  val result = LinkedHashSet<Path>()
+  for (item in includedModules) {
+    val jarName = item.relativeOutputFile
+    if (!externallyPackedJars.contains(jarName) || item.reason == ModuleIncludeReasons.PRODUCT_MODULES) {
+      continue
+    }
+    // The nested-destination rule of `generateClassPathByLayoutReport`: the platform classloader takes only the direct
+    // children of `lib/`, so a jar under a subdirectory of it is not on the core classpath. This is what keeps
+    // `ext/platform-main.jar` and the two `frontend-split` jars off it now that another producer packs them.
+    if (jarName.contains('/') && item.reason != ModuleIncludeReasons.PRODUCT_EMBEDDED_MODULES) {
+      continue
+    }
+    // The two module-name exclusions of `generateClassPathByLayoutReport`. Neither module owns a content-module jar
+    // today; they are here so that the two copies of the rule stay comparable line by line.
+    if (item.moduleName.startsWith("intellij.platform.unitTestMode") ||
+        (skipNioFs && item.moduleName == "intellij.platform.core.nio.fs")) {
+      continue
+    }
+    result.add(libDir.resolve(jarName))
+  }
+  return result
+}
+
+/** The `lib/` jars the core classpath lists before everything else, in this order. */
+private val CORE_CLASSPATH_LEADING_JARS: List<String> = listOf(PLATFORM_LOADER_JAR, UTIL_8_JAR, UTIL_JAR, PRODUCT_BACKEND_JAR)
+
+/**
  * Provides a set of paths that should be included in the core classpath.
  * This generation is based on the plugins' distribution,
  * so we would like to include all distribution entities of **embedded** modules (and their libraries) from plugins marked with `use-idea-classloader`.
  */
-internal suspend fun generateCoreClasspathFromPlugins(
+internal fun generateCoreClasspathFromPlugins(
   platformLayout: PlatformLayout,
-  pluginEntities: List<PluginBuildDescriptor>,
+  pluginBuildResults: List<PluginBuildResult>,
   context: BuildContext,
 ): Set<Path> {
   val classPathResult = LinkedHashSet<Path>()
-  for (pluginEntity in pluginEntities) {
-    val pluginLayout = pluginEntity.layout
-    val cacheContainer = platformLayout.descriptorCacheContainer.forPlugin(pluginEntity.dir)
-    val classPathModules = getEmbeddedContentModulesOfPluginsWithUseIdeaClassloader(pluginLayout.mainModule, cacheContainer, context)
-    for (distributionEntry in pluginEntity.distribution) {
+  for (buildResult in pluginBuildResults) {
+    val cacheContainer = platformLayout.descriptorCacheContainer.forPlugin(buildResult.dir)
+    val classPathModules = getEmbeddedContentModulesOfPluginsWithUseIdeaClassloader(buildResult.mainModule, cacheContainer, context)
+    for (distributionEntry in buildResult.distribution) {
       if (distributionEntry is ModuleOwnedFileEntry && distributionEntry.owner?.moduleName in classPathModules) {
         classPathResult.add(distributionEntry.path)
       }
@@ -123,13 +183,32 @@ internal suspend fun generateCoreClasspathFromPlugins(
  * Provides a set of content modules ("embedded" ones) and the module of the plugin itself, if it uses `use-idea-classloader`.
  * These modules should be included in the core classpath, also their libraries should be treated as platform libraries.
  */
-internal suspend fun getEmbeddedContentModulesOfPluginsWithUseIdeaClassloader(
+internal fun getEmbeddedContentModulesOfPluginsWithUseIdeaClassloader(
   pluginMainModule: String,
   cacheContainer: ScopedCachedDescriptorContainer?,
   context: BuildContext,
 ): Set<String> {
-  val pluginModule = context.outputProvider.findRequiredModule(pluginMainModule)
-  val pluginXmlBytes = cacheContainer?.getCachedFileData(PLUGIN_XML_RELATIVE_PATH) ?: getUnprocessedPluginXmlContent(pluginModule, context.outputProvider)
+  return getEmbeddedContentModulesOfPluginsWithUseIdeaClassloader(
+    pluginMainModule, cacheContainer, context.outputProvider, context.getContentModuleFilter(), sourceOnly = false,
+  )
+}
+
+internal fun getEmbeddedContentModulesOfPluginsWithUseIdeaClassloader(
+  pluginMainModule: String,
+  cacheContainer: ScopedCachedDescriptorContainer?,
+  outputProvider: ModuleOutputProvider,
+  contentModuleFilter: ContentModuleFilter,
+  sourceOnly: Boolean,
+): Set<String> {
+  val pluginModule = outputProvider.findRequiredModule(pluginMainModule)
+  val pluginXmlBytes = cacheContainer?.getCachedFileData(PLUGIN_XML_RELATIVE_PATH) ?: if (sourceOnly) {
+    requireNotNull(readDescriptor(pluginModule, PLUGIN_XML_RELATIVE_PATH, outputProvider, DescriptorSearchPass.PRODUCTION_SOURCES)) {
+      "Cannot find the source plugin descriptor in $pluginMainModule"
+    }
+  }
+  else {
+    getUnprocessedPluginXmlContent(pluginModule, outputProvider)
+  }
   val pluginXmlContent = pluginXmlBytes.decodeToString()
   val rootElement = JDOMUtil.load(pluginXmlContent)
   if (rootElement.getAttribute("use-idea-classloader")?.value?.toBoolean() != true) {
@@ -138,7 +217,7 @@ internal suspend fun getEmbeddedContentModulesOfPluginsWithUseIdeaClassloader(
 
   val embeddedModules = LinkedHashSet<String>()
   embeddedModules.add(pluginMainModule)
-  filterAndProcessContentModules(rootElement, pluginMainModule, context) { _, moduleName, loadingRule ->
+  filterAndProcessContentModules(rootElement, pluginMainModule, contentModuleFilter) { _, moduleName, loadingRule, _ ->
     if (loadingRule == "embedded") {
       embeddedModules.add(moduleName)
     }
@@ -146,29 +225,43 @@ internal suspend fun getEmbeddedContentModulesOfPluginsWithUseIdeaClassloader(
   return embeddedModules
 }
 
-/** Build-scripts internal; not part of the public build API. */
-@org.jetbrains.annotations.ApiStatus.Internal
-data class PluginBuildDescriptor(
+/** Describe a built plugin distribution */
+@ApiStatus.Internal
+data class PluginBuildResult(
+  /** Name of JPS module containing `plugin.xml` file */
+  @JvmField val mainModule: String,
+  /** Path to the directory where the plugin distribution is built */
   @JvmField val dir: Path,
   @JvmField val os: OsFamily?,
   @JvmField val arch: JvmArchitecture?,
-  @JvmField val layout: PluginLayout,
   @JvmField val distribution: Collection<DistributionFileEntry>,
 )
 
+/**
+ * Describes a built plugin distribution and includes the information about the original layout.
+ * Since plugins built by Bazel won't have [PluginLayout] instance, [PluginBuildResult] should be used instead where possible.
+ */
+@ApiStatus.Internal
+data class PluginBuildDescriptor(
+  @JvmField val layout: PluginLayout,
+  @JvmField val buildResult: PluginBuildResult,
+)
+
+/**
+ * Writes everything in `plugin-classpath.txt` that precedes the plugin count: the format version and the product descriptor.
+ *
+ * The count is not written here because it is not always known to whoever knows the descriptor. A split dev assembly
+ * has the platform fragment produce this prefix while each plugin fragment produces only its own records, so the count
+ * is the sum the composer arrives at once every fragment is in - see `writePluginClassPathCount`.
+ */
 @Suppress("BlockingMethodInNonBlockingContext")
-internal suspend fun writePluginClassPathHeader(
+internal fun writePluginClassPathPrefix(
   out: DataOutputStream,
-  isJarOnly: Boolean,
-  pluginCount: Int,
   platformLayout: PlatformLayout,
   descriptorCacheContainer: DescriptorCacheContainer,
   context: BuildContext,
 ) {
-  // format version
-  out.write(2)
-  // jarOnly
-  out.write(if (isJarOnly) 1 else 0)
+  out.write(PLUGIN_CLASSPATH_FORMAT_VERSION)
 
   val mainPluginDescriptorContent = BufferExposingByteArrayOutputStream().use {
     JDOMUtil.write(createCachedProductDescriptor(platformLayout, descriptorCacheContainer.forPlatform(platformLayout), context), it)
@@ -177,13 +270,26 @@ internal suspend fun writePluginClassPathHeader(
 
   out.writeInt(mainPluginDescriptorContent.size())
   out.write(mainPluginDescriptorContent.internalBuffer, 0, mainPluginDescriptorContent.size())
+}
 
-  // bundled plugin metadata
+/**
+ * The first byte of `plugin-classpath.txt`. The reader is `com.intellij.ide.plugins.PluginDescriptorLoader`, and it
+ * falls back to the plugin directory scan when the byte does not match.
+ */
+private const val PLUGIN_CLASSPATH_FORMAT_VERSION = 3
+
+/** Writes the bundled plugin count, which separates the prefix written by [writePluginClassPathPrefix] from the per-plugin records. */
+internal fun writePluginClassPathCount(out: DataOutputStream, pluginCount: Int) {
   out.writeShort(pluginCount)
 }
 
-@VisibleForTesting
-suspend fun createCachedProductDescriptor(
+/**
+ * Fills the platform descriptor cache with the product content-module descriptors and returns the root element.
+ *
+ * A complete assembly and the runtime module repository fragment both need this cache before they write
+ * `plugin-classpath.txt` or `modules/module-descriptors.*`.
+ */
+fun createCachedProductDescriptor(
   platformLayout: PlatformLayout,
   platformDescriptorCache: ScopedCachedDescriptorContainer,
   context: BuildContext,
@@ -197,7 +303,7 @@ suspend fun createCachedProductDescriptor(
       modules = platformLayout.includedModules.mapTo(LinkedHashSet()) { it.moduleName },
       descriptorCache = platformDescriptorCache,
     )),
-    context = context,
+    context = descriptorResolveContext(context),
   )
   for (content in mainPluginDescriptor.getChildren("content")) {
     for (moduleElement in content.getChildren("module")) {
@@ -214,22 +320,22 @@ suspend fun createCachedProductDescriptor(
 }
 
 @Suppress("BlockingMethodInNonBlockingContext")
-internal suspend fun generatePluginClassPath(
-  pluginEntries: List<PluginBuildDescriptor>,
+internal fun generatePluginClassPath(
+  pluginEntries: List<PluginBuildResult>,
   descriptorFileProvider: DescriptorCacheContainer,
   platformLayout: PlatformLayout,
+  layoutsOfPluginsToScramble: Map<String, PluginLayout>,
   context: BuildContext,
 ): ByteArray {
   val byteOut = ByteArrayOutputStream()
   val out = DataOutputStream(byteOut)
 
-  val uniqueGuard = HashSet<Path>()
-  for (pluginAsset in pluginEntries) {
-    val pluginDir = pluginAsset.dir
+  for (plugin in pluginEntries) {
+    val pluginDir = plugin.dir
 
-    val files = ArrayList<Path>(pluginAsset.distribution.size)
-    uniqueGuard.clear()
-    for (entry in pluginAsset.distribution) {
+    val files = ArrayList<Path>(plugin.distribution.size)
+    val uniqueGuard = HashSet<Path>()
+    for (entry in plugin.distribution) {
       val relativeOutputFile = entry.relativeOutputFile
       if (relativeOutputFile != null && relativeOutputFile.contains('/')) {
         continue
@@ -239,34 +345,26 @@ internal suspend fun generatePluginClassPath(
       if (!uniqueGuard.add(file) || (entry is CustomAssetEntry && !file.toString().endsWith(".jar"))) {
         continue
       }
-
       files.add(file)
-
-      check(!file.startsWith(pluginDir) || pluginDir.relativize(file).nameCount == 2) {
-        "plugin entry is not specified correctly: $file"
-      }
     }
-
-    if (files.size > 1) {
-      // always sort
-      putMoreLikelyPluginJarsFirst(pluginDirName = pluginDir.fileName.toString(), filesInLibUnderPluginDir = files)
-    }
-
     val pluginDescriptorContainer = descriptorFileProvider.forPlugin(pluginDir)
     var pluginDescriptorContent = requireNotNull(pluginDescriptorContainer.getCachedFileData(PLUGIN_XML_RELATIVE_PATH)) {
       "Cannot find plugin descriptor file $PLUGIN_XML_RELATIVE_PATH in $pluginDir (descriptorFileProvider=$descriptorFileProvider"
     }
-    val pluginLayout = pluginAsset.layout
     val rootElement = JDOMUtil.load(pluginDescriptorContent)
 
-    if (!pluginLayout.pathsToScramble.isEmpty()) {
+    val pluginLayout = layoutsOfPluginsToScramble[plugin.mainModule]
+    if (pluginLayout != null) {
+      require(pluginLayout.pathsToScramble.isNotEmpty()) {
+        "Plugin layout for ${plugin.mainModule} does not contain any paths to scramble"
+      }
       val platformDescriptorContainer = descriptorFileProvider.forPlatform(platformLayout)
       val xIncludeResolver = XIncludeElementResolverImpl(
         searchPath = listOf(
           DescriptorSearchScope(pluginLayout.includedModules.mapTo(LinkedHashSet()) { it.moduleName }, pluginDescriptorContainer),
           DescriptorSearchScope(platformLayout.includedModules.mapTo(LinkedHashSet()) { it.moduleName }, platformDescriptorContainer),
         ),
-        context = context)
+        context = descriptorResolveContext(context))
 
       embedContentModules(
         rootElement = rootElement,
@@ -282,41 +380,24 @@ internal suspend fun generatePluginClassPath(
       it
     }.toByteArray()
 
-    writeEntry(out = out, files = files, pluginDir = pluginDir, pluginDescriptorContent = pluginDescriptorContent)
+    writePluginClassPathEntry(out = out, orderedFiles = files, pluginDir = pluginDir, pluginDescriptorContent = pluginDescriptorContent)
   }
 
   out.close()
   return byteOut.toByteArray()
 }
 
-private fun readPluginXml(file: Path): ByteArray? {
-  var result: ByteArray? = null
-  readZipFile(file) { name, dataProvider ->
-    if (name == PLUGIN_XML_RELATIVE_PATH) {
-      val byteBuffer = dataProvider()
-      val bytes = ByteArray(byteBuffer.remaining())
-      byteBuffer.get(bytes, 0, bytes.size)
-      result = bytes
-      ZipEntryProcessorResult.STOP
-    }
-    else {
-      ZipEntryProcessorResult.CONTINUE
-    }
-  }
-  return result
+private fun writePluginClassPathEntry(
+  out: DataOutputStream,
+  orderedFiles: List<Path>,
+  pluginDir: Path,
+  pluginDescriptorContent: ByteArray,
+) {
+  writeOrderedPluginClassPathEntry(out, orderedFiles, pluginDir, pluginDescriptorContent)
 }
 
 private fun writeEntry(out: DataOutputStream, files: Collection<Path>, pluginDir: Path, pluginDescriptorContent: ByteArray) {
-  // the plugin dir as the last item in the list
-  out.writeShort(files.size)
-  out.writeUTF(pluginDir.fileName.invariantSeparatorsPathString)
-
-  out.writeInt(pluginDescriptorContent.size)
-  out.write(pluginDescriptorContent)
-
-  for (file in files) {
-    out.writeUTF(file.relativeToOrSelf(pluginDir).invariantSeparatorsPathString)
-  }
+  writePluginClassPathEntryData(out, files, pluginDir, pluginDescriptorContent)
 }
 
 internal fun generatePluginClassPathFromPrebuiltPluginFiles(pluginEntries: List<Pair<Path, List<Path>>>): ByteArray {
@@ -340,7 +421,7 @@ internal fun generatePluginClassPathFromPrebuiltPluginFiles(pluginEntries: List<
 
 private fun reorderPluginClassPath(files: MutableList<Path>): ByteArray {
   for ((index, file) in files.withIndex()) {
-    val pluginDescriptorContent = readPluginXml(file)
+    val pluginDescriptorContent = readEntryFromZip(file, PLUGIN_XML_RELATIVE_PATH)
     if (pluginDescriptorContent != null) {
       files.add(0, files.removeAt(index))
       return pluginDescriptorContent

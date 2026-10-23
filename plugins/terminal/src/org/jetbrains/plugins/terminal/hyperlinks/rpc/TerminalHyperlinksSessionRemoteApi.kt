@@ -1,13 +1,16 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.plugins.terminal.hyperlinks.rpc
 
-import com.intellij.platform.rpc.RemoteApiProviderService
+import com.intellij.platform.project.ProjectId
+import com.intellij.platform.rpc.lite.LiteRemoteApiProviderService
 import fleet.rpc.RemoteApi
 import fleet.rpc.Rpc
 import fleet.rpc.remoteApiDescriptor
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.channels.SendChannel
 import org.jetbrains.annotations.ApiStatus
+import org.jetbrains.plugins.terminal.hyperlinks.session.TerminalFilterResultInfoDto
+import org.jetbrains.plugins.terminal.hyperlinks.session.TerminalHoverLineRequest
 import org.jetbrains.plugins.terminal.hyperlinks.session.TerminalHyperlinkClickedEvent
 import org.jetbrains.plugins.terminal.hyperlinks.session.TerminalHyperlinksInputEvent
 import org.jetbrains.plugins.terminal.hyperlinks.session.TerminalHyperlinksOutputEvent
@@ -16,15 +19,32 @@ import org.jetbrains.plugins.terminal.hyperlinks.session.TerminalHyperlinksSessi
 @ApiStatus.Internal
 @Rpc
 interface TerminalHyperlinksSessionRemoteApi : RemoteApi<Unit> {
-  suspend fun getInputEventsSink(sessionId: TerminalHyperlinksSessionId): SendChannel<TerminalHyperlinksInputEvent>
+  suspend fun getInputEventsSink(
+    projectId: ProjectId,
+    sessionId: TerminalHyperlinksSessionId,
+  ): SendChannel<TerminalHyperlinksInputEvent>
 
-  suspend fun getHyperlinkUpdatesChannel(sessionId: TerminalHyperlinksSessionId): ReceiveChannel<TerminalHyperlinksOutputEvent>
+  suspend fun getHyperlinkUpdatesChannel(
+    projectId: ProjectId,
+    sessionId: TerminalHyperlinksSessionId,
+  ): ReceiveChannel<TerminalHyperlinksOutputEvent>
 
-  suspend fun handleHyperlinkClick(sessionId: TerminalHyperlinksSessionId, event: TerminalHyperlinkClickedEvent)
+  suspend fun handleHyperlinkClick(
+    projectId: ProjectId,
+    sessionId: TerminalHyperlinksSessionId,
+    event: TerminalHyperlinkClickedEvent,
+  )
+
+  suspend fun findInvisibleHyperlinks(
+    projectId: ProjectId,
+    sessionId: TerminalHyperlinksSessionId,
+    request: TerminalHoverLineRequest,
+  ): List<TerminalFilterResultInfoDto>
 
   companion object {
     suspend fun getInstance(): TerminalHyperlinksSessionRemoteApi {
-      return RemoteApiProviderService.resolve(remoteApiDescriptor<TerminalHyperlinksSessionRemoteApi>())
+      // TODO: IJPL-252054
+      return LiteRemoteApiProviderService.awaitConnectionAndResolve(remoteApiDescriptor<TerminalHyperlinksSessionRemoteApi>())
     }
   }
 }

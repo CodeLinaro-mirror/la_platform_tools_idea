@@ -7,16 +7,18 @@ import com.intellij.codeInsight.lookup.LookupElement
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Key
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.components.isClassType
-import org.jetbrains.kotlin.analysis.api.components.isNullable
-import org.jetbrains.kotlin.analysis.api.components.isUnitType
 import org.jetbrains.kotlin.analysis.api.components.returnType
+import org.jetbrains.kotlin.analysis.api.types.KaStandardTypeClassIds
 import org.jetbrains.kotlin.analysis.api.types.KaType
+import org.jetbrains.kotlin.analysis.api.types.classId
+import org.jetbrains.kotlin.analysis.api.types.isNullable
+import org.jetbrains.kotlin.config.LanguageFeature
+import org.jetbrains.kotlin.idea.base.projectStructure.languageVersionSettings
 import org.jetbrains.kotlin.idea.completion.createKeywordElement
 import org.jetbrains.kotlin.idea.completion.createKeywordElementWithSpace
+import org.jetbrains.kotlin.idea.completion.implCommon.keywords.CompletionKeywordHandler
 import org.jetbrains.kotlin.idea.completion.implCommon.keywords.isInlineFunctionCall
 import org.jetbrains.kotlin.idea.completion.isLikelyInPositionForReturn
-import org.jetbrains.kotlin.idea.completion.keywords.CompletionKeywordHandler
 import org.jetbrains.kotlin.idea.completion.labelNameToTail
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.name.Name
@@ -25,14 +27,23 @@ import org.jetbrains.kotlin.psi.KtDeclarationWithBody
 import org.jetbrains.kotlin.psi.KtDeclarationWithReturnType
 import org.jetbrains.kotlin.psi.KtExpression
 import org.jetbrains.kotlin.psi.KtFunctionLiteral
+import org.jetbrains.kotlin.psi.KtNamedFunction
 import org.jetbrains.kotlin.psi.NotNullableUserDataProperty
 import org.jetbrains.kotlin.psi.psiUtil.findLabelAndCall
 import org.jetbrains.kotlin.psi.psiUtil.parentsWithSelf
 
-/**
- * Implementation in K1: [org.jetbrains.kotlin.idea.completion.returnExpressionItems]
- */
 internal object ReturnKeywordHandler : CompletionKeywordHandler<KaSession>(KtTokens.RETURN_KEYWORD) {
+
+    private fun KtDeclarationWithBody.canUseReturnInDeclaration(expression: KtExpression?): Boolean {
+        if (hasBlockBody()) return true
+        // No returns in property initializers.
+        // Also, no return should be suggested if we are exactly the expression body of a function.
+        if (this !is KtNamedFunction || bodyExpression == expression) return false
+
+        // Return in functions with expression body is only supported with the language feature enabled and an explicit type present
+        return typeReference != null && languageVersionSettings.supportsFeature(LanguageFeature.AllowReturnInExpressionBodyWithExplicitType)
+    }
+
     context(_: KaSession)
     override fun createLookups(
         parameters: CompletionParameters,
@@ -56,12 +67,12 @@ internal object ReturnKeywordHandler : CompletionKeywordHandler<KaSession>(KtTok
                     break
                 }
             } else {
-                if (parent.hasBlockBody()) {
+                if (parent.canUseReturnInDeclaration(expression)) {
                     addAllReturnVariants(
                         result,
                         returnType,
                         label = null,
-                        isLikelyInPositionForReturn(expression, parent, returnType.isUnitType)
+                        isLikelyInPositionForReturn(expression, parent, returnType.classId == KaStandardTypeClassIds.UNIT)
                     )
                 }
                 break
@@ -78,7 +89,7 @@ internal object ReturnKeywordHandler : CompletionKeywordHandler<KaSession>(KtTok
         label: Name?,
         isLikelyInPositionForReturn: Boolean = false
     ) {
-        val isUnit = returnType.isUnitType
+        val isUnit = returnType.classId == KaStandardTypeClassIds.UNIT
         result.add(createKeywordElementWithSpace("return", tail = label?.labelNameToTail().orEmpty(), addSpaceAfter = !isUnit).also {
             it.isReturnAtHighlyLikelyPosition = isLikelyInPositionForReturn
         })
@@ -100,12 +111,12 @@ internal object ReturnKeywordHandler : CompletionKeywordHandler<KaSession>(KtTok
         }
 
         fun emptyListShouldBeSuggested(): Boolean =
-            returnType.isClassType(StandardClassIds.Collection)
-                    || returnType.isClassType(StandardClassIds.List)
-                    || returnType.isClassType(StandardClassIds.Iterable)
+            returnType.classId == StandardClassIds.Collection
+                    || returnType.classId == StandardClassIds.List
+                    || returnType.classId == StandardClassIds.Iterable
 
         when {
-            returnType.isClassType(StandardClassIds.Boolean) -> {
+            returnType.classId == StandardClassIds.Boolean -> {
                 add(ExpressionTarget("true", addToLookupElementTail = false))
                 add(ExpressionTarget("false", addToLookupElementTail = false))
             }
@@ -114,7 +125,7 @@ internal object ReturnKeywordHandler : CompletionKeywordHandler<KaSession>(KtTok
                 add(ExpressionTarget("emptyList()", addToLookupElementTail = true))
             }
 
-            returnType.isClassType(StandardClassIds.Set) -> {
+            returnType.classId == StandardClassIds.Set -> {
                 add(ExpressionTarget("emptySet()", addToLookupElementTail = true))
             }
         }

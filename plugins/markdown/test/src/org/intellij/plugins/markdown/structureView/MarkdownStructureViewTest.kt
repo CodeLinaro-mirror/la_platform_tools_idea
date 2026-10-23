@@ -31,6 +31,18 @@ open class MarkdownStructureViewTest : MarkdownStructureViewTestCase() {
     doTest()
   }
 
+  fun testHeaderWithLink() {
+    doTest()
+  }
+
+  fun testHeadersWithHtmlTags() {
+    doTest()
+  }
+
+  fun testHeadersWithImages() {
+    doTest()
+  }
+
   fun testPuppetlabsCoreTypes() {
     doTest()
   }

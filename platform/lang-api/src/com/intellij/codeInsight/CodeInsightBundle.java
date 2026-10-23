@@ -29,4 +29,5 @@ public final class CodeInsightBundle {
     }
     return IdeDeprecatedMessagesBundle.messagePointer(key, params);
   }
+
 }

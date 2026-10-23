@@ -6,7 +6,9 @@ import com.intellij.platform.eel.EelOsFamily
 import com.intellij.platform.eel.path.EelPath
 import com.intellij.platform.eel.path.EelPathException
 import com.intellij.platform.eel.path.platform
+import com.intellij.platform.eel.provider.getResolvedEelMachine
 import com.intellij.platform.eel.provider.utils.getOrThrowFileSystemException
+import com.intellij.platform.ijent.IjentMachine
 import org.jetbrains.annotations.ApiStatus
 import java.net.URI
 import java.nio.file.InvalidPathException
@@ -60,6 +62,8 @@ sealed class IjentNioPath protected constructor(
 
   abstract override fun toRealPath(vararg options: LinkOption): IjentNioPath
 
+  abstract override fun toString(): String
+
 
   override fun register(watcher: WatchService, events: Array<out WatchEvent.Kind<*>>, vararg modifiers: WatchEvent.Modifier): WatchKey {
     if (watcher is IjentNioWatchService) {
@@ -82,7 +86,7 @@ class AbsoluteIjentNioPath(val eelPath: EelPath, nioFs: IjentNioFileSystem, cach
   }
 
   override fun getFileName(): IjentNioPath? {
-    return createRelativePath(eelPath.fileName)
+    return if (nameCount == 0) null else createRelativePath(eelPath.fileName)
   }
 
   private fun EelPath.toNioPath(preserveAttributes: Boolean): IjentNioPath =
@@ -150,8 +154,8 @@ class AbsoluteIjentNioPath(val eelPath: EelPath, nioFs: IjentNioFileSystem, cach
     var firstDifferenceIndex = 0
     while (firstDifferenceIndex < nameCount.coerceAtMost(other.nameCount)) {
       val different = getName(firstDifferenceIndex) != other.getName(firstDifferenceIndex)
-      ++firstDifferenceIndex
       if (different) break
+      ++firstDifferenceIndex
     }
 
     val result = mutableListOf<String>()
@@ -163,7 +167,7 @@ class AbsoluteIjentNioPath(val eelPath: EelPath, nioFs: IjentNioFileSystem, cach
       result += otherEelPath.getName(index)
     }
 
-    return RelativeIjentNioPath(result, nioFs)
+    return if (result.isEmpty()) createRelativePath("") else RelativeIjentNioPath(result, nioFs)
   }
 
   override fun toUri(): URI {
@@ -182,14 +186,19 @@ class AbsoluteIjentNioPath(val eelPath: EelPath, nioFs: IjentNioFileSystem, cach
   override fun toRealPath(vararg options: LinkOption): IjentNioPath {
     return eelPath.normalize()
       .let { normalizedPath ->
-        if (LinkOption.NOFOLLOW_LINKS in options)
+        // NOFOLLOW: caller opted out. Unavailable backend: avoid spinning up a fresh session against a torn-down IJent that would hang fsBlocking.
+        if (LinkOption.NOFOLLOW_LINKS in options || (eelPath.descriptor.getResolvedEelMachine() as? IjentMachine)?.isBackendAvailable() == false)
           normalizedPath
         else
           nioFs.ijentFs.fsBlocking { canonicalize(normalizedPath) }.getOrThrowFileSystemException()
       }.toNioPath(true)
   }
 
-  override fun toString(): String = eelPath.toString()
+  private val asString by lazy(LazyThreadSafetyMode.PUBLICATION) {
+    eelPath.toString()
+  }
+
+  override fun toString(): String = asString
 
   /**
    * Commonly, instances of Path are not considered as equal if they actually represent the same path but come from different file systems.
@@ -329,7 +338,11 @@ internal class RelativeIjentNioPath(val segments: List<String>, nioFs: IjentNioF
     throw InvalidPathException(toString(), "Can't find a real path for a relative path")
   }
 
-  override fun toString(): String = segments.joinToString(nioFs.separator)
+  private val asString by lazy(LazyThreadSafetyMode.PUBLICATION) {
+    segments.joinToString(nioFs.separator)
+  }
+
+  override fun toString(): String = asString
 
   /**
    * Commonly, instances of Path are not considered as equal if they actually represent the same path but come from different file systems.

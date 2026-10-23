@@ -1,6 +1,6 @@
 // "Surround with lambda" "true"
 // PRIORITY: HIGH
-// K2_ERROR: Argument type mismatch: actual type is 'Leaf', but '() -> Base' was expected.
+// K2_ERROR: ARGUMENT_TYPE_MISMATCH
 fun subclass() {
     base(<caret>Leaf())
 }
@@ -10,4 +10,3 @@ fun base(base: () -> Base) {}
 open class Base {}
 class Leaf : Base()
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.SurroundWithLambdaForTypeMismatchFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.SurroundWithLambdaForTypeMismatchFix

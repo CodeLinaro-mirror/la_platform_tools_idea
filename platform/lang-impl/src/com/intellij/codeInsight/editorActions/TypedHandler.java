@@ -2,6 +2,7 @@
 package com.intellij.codeInsight.editorActions;
 
 import com.intellij.codeInsight.completion.NewRdCompletionSupport;
+import com.intellij.codeInsight.multiverse.EditorContextManager;
 import com.intellij.codeInsight.template.impl.editorActions.TypedActionHandlerBase;
 import com.intellij.injected.editor.DocumentWindow;
 import com.intellij.injected.editor.EditorWindow;
@@ -132,7 +133,7 @@ public final class TypedHandler extends TypedActionHandlerBase {
       return;
     }
     PsiDocumentManager psiDocumentManager = PsiDocumentManager.getInstance(project);
-    Document originalDocument = originalEditor.getElfDocument();
+    Document originalDocument = originalEditor.getDocument();
     TypedDelegateImpl.fireNewTypingStarted(originalEditor, dataContext, charTyped);
     originalEditor.getCaretModel().runForEachCaret(caret -> {
       doExecutePerCaret(
@@ -162,7 +163,7 @@ public final class TypedHandler extends TypedActionHandlerBase {
       psiDocumentManager.doPostponedOperationsAndUnblockDocument(originalDocument); // to clean up after previous caret processing
     }
     Editor editor = injectedEditorIfCharTypedIsSignificant(charTyped, originalEditor, originalFile);
-    PsiFile file = getPsiFileForEditor(psiDocumentManager, originalFile, originalEditor, editor);
+    PsiFile file = getPsiFileForEditor(project, originalFile, originalEditor, editor);
     try {
       if (caret == originalEditor.getCaretModel().getPrimaryCaret()) {
         boolean handled = TypedDelegateImpl.fireCheckAutoPopup(project, file, editor, charTyped);
@@ -174,7 +175,7 @@ public final class TypedHandler extends TypedActionHandlerBase {
       if (editor instanceof EditorWindow editorWindow && !editorWindow.isValid()) {
         // delegate must have invalidated injected editor by calling commitDocument() or similar
         editor = injectedEditorIfCharTypedIsSignificant(charTyped, originalEditor, originalFile);
-        file = getPsiFileForEditor(psiDocumentManager, originalFile, originalEditor, editor);
+        file = getPsiFileForEditor(project, originalFile, originalEditor, editor);
       }
       if (!editor.isInsertMode()) {
         TypedCharImpl.typeChar(originalEditor, project, charTyped);
@@ -194,7 +195,7 @@ public final class TypedHandler extends TypedActionHandlerBase {
       if (TypedQuoteImpl.beforeQuoteTyped(project, file, editor, charTyped)) {
         return;
       }
-      long modStampBefore = editor.getElfDocument().getModificationStamp();
+      long modStampBefore = editor.getDocument().getModificationStamp();
       TypedCharImpl.typeChar(originalEditor, project, charTyped);
       AutoHardWrapHandler.getInstance().wrapLineIfNecessary(originalEditor, dataContext, modStampBefore);
       if (editor.isDisposed()) { // can be that injected editor disappear
@@ -225,7 +226,7 @@ public final class TypedHandler extends TypedActionHandlerBase {
           // IDEA-52375/WEB-9105/KTNB-470 fix: last quote in editable fragment should be handled by outer language quote handler,
           // except injection-first editors
           TextRange hostRange = documentWindow.getHostRange(offset);
-          CharSequence sequence = editor.getElfDocument().getCharsSequence();
+          CharSequence sequence = editor.getDocument().getCharsSequence();
           if (sequence.length() > offset && charTyped != Character.codePointAt(sequence, offset) ||
               hostRange != null && (
                 hostRange.contains(offset) ||
@@ -259,7 +260,7 @@ public final class TypedHandler extends TypedActionHandlerBase {
   }
 
   private static PsiFile getPsiFileForEditor(
-    @NotNull PsiDocumentManager psiDocumentManager,
+    @NotNull Project project,
     @NotNull PsiFile originalFile,
     @NotNull Editor originalEditor,
     Editor editor
@@ -269,7 +270,7 @@ public final class TypedHandler extends TypedActionHandlerBase {
     }
     Document document = editor.getDocument();
     return Objects.requireNonNull(
-      psiDocumentManager.getPsiFile(document),
+      EditorContextManager.getPsiFileForEditor(editor, project),
       "no psi for document " + document
     );
   }

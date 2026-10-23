@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.platform.util.ex` start
+content_module_jar(module = ":util-ex")
+### auto-generated section `dev intellij.platform.util.ex` end
 
 ### auto-generated section `build intellij.platform.util.ex` start
-
 jvm_library(
     name = "util-ex",
     srcs = glob(
@@ -76,6 +80,7 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.util.ex.iml",
+        "resources/intellij.platform.util.ex.xml",
     ],
     visibility = ["//visibility:public"],
 )

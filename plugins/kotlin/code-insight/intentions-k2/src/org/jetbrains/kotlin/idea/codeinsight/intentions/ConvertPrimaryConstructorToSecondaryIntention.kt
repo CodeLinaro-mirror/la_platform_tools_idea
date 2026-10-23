@@ -8,8 +8,12 @@ import com.intellij.modcommand.ModPsiUpdater
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.analysis.api.KaSession
+import org.jetbrains.kotlin.analysis.api.components.returnType
 import org.jetbrains.kotlin.analysis.api.types.KaErrorType
+import org.jetbrains.kotlin.idea.base.psi.addMemberDeclarationAfter
+import org.jetbrains.kotlin.idea.base.psi.addMemberDeclarationBefore
 import org.jetbrains.kotlin.idea.base.psi.mustHaveOnlyPropertiesInPrimaryConstructor
+import org.jetbrains.kotlin.idea.base.psi.removeModifierKeyword
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.codeinsight.api.applicable.intentions.KotlinApplicableModCommandAction
 import org.jetbrains.kotlin.idea.codeinsights.impl.base.CallableReturnTypeUpdaterUtils
@@ -62,7 +66,8 @@ class ConvertPrimaryConstructorToSecondaryIntention :
         return true
     }
 
-    override fun KaSession.prepareContext(element: KtClass): List<Item> {
+    context(session: KaSession)
+    override fun prepareContext(element: KtClass): List<Item> {
         val items = mutableListOf<Item>()
         for (property in element.getProperties()) {
             val propertyName = property.name ?: continue
@@ -119,7 +124,7 @@ class ConvertPrimaryConstructorToSecondaryIntention :
                     val annotations = valueParameter.annotationEntries.joinToString(separator = " ") { it.text }
                     val vararg = if (valueParameter.isVarArg) VARARG_KEYWORD.value else ""
                     param(
-                        "$annotations $vararg ${valueParameter.name ?: ""}",
+                        "$annotations $vararg ${valueParameter.nameIdentifier?.text ?: ""}",
                         valueParameter.typeReference?.text ?: "",
                         valueParameter.defaultValue?.text
                     )
@@ -133,14 +138,14 @@ class ConvertPrimaryConstructorToSecondaryIntention :
                 }
                 val valueParameterInitializers =
                     primaryCtor.valueParameters.asSequence().filter { it.hasValOrVar() }.joinToString(separator = "\n") {
-                        val name = it.name!!
+                        val name = it.nameIdentifier!!.text
                         "this.$name = $name"
                     }
                 val classBodyInitializers = element.declarations.asSequence().filter {
                     (it is KtProperty && initializerMap[it] != null) || it is KtAnonymousInitializer
                 }.joinToString(separator = "\n") {
                     if (it is KtProperty) {
-                        val name = it.name!!
+                        val name = it.nameIdentifier!!.text
                         val text = initializerMap[it]
                         if (text != null) {
                             "${THIS_KEYWORD.value}.$name = $text"
@@ -162,7 +167,7 @@ class ConvertPrimaryConstructorToSecondaryIntention :
 
         val lastEnumEntry = element.declarations.lastOrNull { it is KtEnumEntry } as? KtEnumEntry
         val secondaryConstructor =
-            lastEnumEntry?.let { element.addDeclarationAfter(constructor, it) } ?: element.addDeclarationBefore(constructor, null)
+            lastEnumEntry?.let { element.addMemberDeclarationAfter(constructor, it) } ?: element.addMemberDeclarationBefore(constructor, null)
         commentSaver.restore(secondaryConstructor)
 
         convertValueParametersToProperties(primaryCtor, element, psiFactory, lastEnumEntry)
@@ -179,16 +184,16 @@ class ConvertPrimaryConstructorToSecondaryIntention :
         for (valueParameter in element.valueParameters.reversed()) {
             if (!valueParameter.hasValOrVar()) continue
             val isVararg = valueParameter.hasModifier(VARARG_KEYWORD)
-            valueParameter.removeModifier(VARARG_KEYWORD)
+            valueParameter.removeModifierKeyword(VARARG_KEYWORD)
             val typeText = valueParameter.typeReference?.text
             val property = factory.createProperty(
                 valueParameter.modifierList?.text,
-                valueParameter.name!!,
+                valueParameter.nameIdentifier!!.text,
                 if (isVararg && typeText != null) "Array<out $typeText>" else typeText,
                 valueParameter.isMutable,
                 null
             )
-            if (anchorBefore == null) klass.addDeclarationBefore(property, null) else klass.addDeclarationAfter(property, anchorBefore)
+            if (anchorBefore == null) klass.addMemberDeclarationBefore(property, null) else klass.addMemberDeclarationAfter(property, anchorBefore)
         }
     }
 }

@@ -32,6 +32,7 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.VirtualFileSetFactory
 import com.intellij.platform.ide.progress.withBackgroundProgress
 import com.intellij.platform.util.progress.reportProgress
+import com.intellij.platform.util.progress.reportSequentialProgress
 import com.intellij.util.concurrency.annotations.RequiresBackgroundThread
 import com.intellij.util.concurrency.annotations.RequiresEdt
 import com.intellij.util.concurrency.annotations.RequiresReadLock
@@ -62,7 +63,7 @@ class ActionsOnSaveFileDocumentManagerListener private constructor(private val p
      *
      * @param project it's initialized, open, not disposed, and not the default one; no need to double-check in implementations
      */
-    @RequiresReadLock
+    @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
     open fun isEnabledForProject(project: Project): Boolean = false
 
     /**
@@ -75,7 +76,7 @@ class ActionsOnSaveFileDocumentManagerListener private constructor(private val p
      * Implementations don't need to save modified documents.
      * Note that the passed documents may be unsaved if already modified by some other save action.
      */
-    @RequiresEdt
+    @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
     open fun processDocuments(project: Project, documents: Array<Document>) {
     }
   }
@@ -127,7 +128,7 @@ class ActionsOnSaveFileDocumentManagerListener private constructor(private val p
      * }
      * ```
      */
-    @RequiresBackgroundThread
+    @RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
     abstract suspend fun updateDocument(project: Project, document: Document)
   }
 
@@ -195,7 +196,7 @@ class ActionsOnSaveManager private constructor(private val project: Project, pri
     }
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private suspend fun processSavedDocuments() {
     val documentsAndModStamps = filesToProcess.associate { file ->
       val document = FileDocumentManager.getInstance().getDocument(file)
@@ -242,7 +243,7 @@ class ActionsOnSaveManager private constructor(private val project: Project, pri
    * It's invoked in a background thread with a cancelable background progress bar.
    * This API is preferred for actions that update the saved file contents, for example, format files on save.
    */
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private suspend fun runActionsOnSave(projectDocuments: List<Document>) {
     val projectActionsOnSave = EP_NAME.extensionList.filter { it.isEnabledForProject(project) }
 
@@ -278,17 +279,16 @@ class ActionsOnSaveManager private constructor(private val project: Project, pri
    * if it has been already manually edited after save but before Actions on Save have been started.
    * This can be checked by comparing the current modification stamp with the one from this map.
    */
-  @RequiresBackgroundThread
+  @RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
   private suspend fun runDocumentUpdatingActionsOnSave(
     actionsOnSave: List<DocumentUpdatingActionOnSave>,
     documentsToModStamps: Map<Document, Long>,
   ) {
     @Suppress("DialogTitleCapitalization") val progressTitle = IdeBundle.message("actions.on.save.background.progress")
     withBackgroundProgress(project, progressTitle) {
-      reportProgress(size = documentsToModStamps.size) { progressReporter ->
+      reportSequentialProgress(size = documentsToModStamps.size) { progressReporter ->
         for ((document, modStamp) in documentsToModStamps) {
-          // Not only does the `progressReporter.itemStep` call help with progress reporting,
-          // it also makes sure that the documents are processed one at a time, not in parallel.
+          // Documents are processed one at a time, not in parallel.
           // It's a safer path than parallel processing because there may be a lot of documents,
           // and Actions on Save may perform heavy operations or start external processes.
           progressReporter.itemStep {
@@ -322,7 +322,7 @@ class ActionsOnSaveManager private constructor(private val project: Project, pri
    * @param documentScope the [CoroutineScope] in which the [actionsOnSave] run for the given [document].
    * Used to cancel Actions on Save for this document if it has been manually edited before the Actions on Save have finished.
    */
-  @RequiresBackgroundThread
+  @RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
   private suspend fun runDocumentUpdatingActionsOnSaveAndSaveDocument(
     actionsOnSave: List<DocumentUpdatingActionOnSave>,
     document: Document,
@@ -405,7 +405,7 @@ class ActionsOnSaveManager private constructor(private val project: Project, pri
 private class CurrentActionListener : AnActionListener {
   override fun beforeActionPerformed(action: AnAction, event: AnActionEvent) {
     val project = event.project
-    if (project != null && action is SaveDocumentAction) {
+    if (project != null && SaveDocumentAction.isSaveDocumentAction(action)) {
       ActionsOnSaveManager.getInstance(project).runningSaveDocumentAction = true
     }
   }

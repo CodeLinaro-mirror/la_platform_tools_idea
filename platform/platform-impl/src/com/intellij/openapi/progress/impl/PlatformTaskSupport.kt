@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.progress.impl
 
 import com.intellij.codeWithMe.ClientId
@@ -14,6 +14,7 @@ import com.intellij.openapi.application.asContextElement
 import com.intellij.openapi.application.contextModality
 import com.intellij.openapi.application.ex.ApplicationManagerEx
 import com.intellij.openapi.application.impl.JobProvider
+import com.intellij.openapi.application.impl.ModalityLockAssociation
 import com.intellij.openapi.application.impl.inModalContext
 import com.intellij.openapi.application.isModalAwareContext
 import com.intellij.openapi.application.runReadActionBlocking
@@ -22,6 +23,7 @@ import com.intellij.openapi.diagnostic.trace
 import com.intellij.openapi.progress.CeProcessCanceledException
 import com.intellij.openapi.progress.CoroutineSuspenderElementKey
 import com.intellij.openapi.progress.CoroutineSuspenderImpl
+import com.intellij.openapi.progress.LockParallelizationSharingPolicy
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressIndicatorModel
@@ -39,12 +41,13 @@ import com.intellij.openapi.ui.impl.DialogWrapperPeerImpl.isHeadlessEnv
 import com.intellij.openapi.util.EmptyRunnable
 import com.intellij.openapi.util.NlsContexts.ModalProgressTitle
 import com.intellij.openapi.util.NlsContexts.ProgressTitle
-import com.intellij.openapi.util.registry.Registry
+import com.intellij.openapi.util.registry.RegistryManager
 import com.intellij.openapi.wm.ex.IdeFrameEx
 import com.intellij.openapi.wm.ex.ProgressIndicatorEx
 import com.intellij.openapi.wm.ex.WindowManagerEx
 import com.intellij.openapi.wm.impl.status.IdeStatusBarImpl
 import com.intellij.platform.diagnostic.telemetry.TelemetryManager
+import com.intellij.platform.ide.progress.BackgroundTaskOwner
 import com.intellij.platform.ide.progress.CancellableTaskCancellation
 import com.intellij.platform.ide.progress.ComponentModalTaskOwner
 import com.intellij.platform.ide.progress.GuessModalTaskOwner
@@ -76,8 +79,35 @@ import com.intellij.util.ui.RawSwingDispatcher
 import fleet.kernel.rete.collect
 import fleet.kernel.rete.filter
 import fleet.kernel.tryWithEntities
-import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.InternalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.takeWhile
+import kotlinx.coroutines.job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.withContext
 import org.jetbrains.annotations.ApiStatus.Internal
 import org.jetbrains.annotations.Nls
 import java.awt.AWTEvent
@@ -90,9 +120,10 @@ import javax.swing.SwingUtilities
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.coroutineContext
+import kotlin.time.Duration.Companion.milliseconds
 
-internal val isRhizomeProgressModelEnabled
-  get() = Registry.`is`("rhizome.progress.model")
+internal suspend fun isRhizomeProgressModelEnabled(): Boolean =
+  RegistryManager.getInstanceAsync().`is`("rhizome.progress.model")
 
 private val LOG = logger<PlatformTaskSupport>()
 
@@ -124,20 +155,20 @@ class PlatformTaskSupport(private val cs: CoroutineScope) : TaskSupport {
   }
 
   override suspend fun <T> withBackgroundProgressInternal(
-    project: Project,
+    owner: BackgroundTaskOwner,
     title: @ProgressTitle String,
     cancellation: TaskCancellation,
     suspender: TaskSuspender?,
     visibleInStatusBar: Boolean,
     action: suspend CoroutineScope.() -> T,
   ): T = coroutineScope {
-    LOG.trace { "Task received: title=$title, project=$project" }
+    LOG.trace { "Task received: title=$title, owner=$owner" }
 
     val taskSuspender = retrieveSuspender(suspender)
     val pipe = cs.createProgressPipe()
 
     val taskContext = currentCoroutineContext()
-    val taskInfoEntityJob = cs.createTaskInfoEntity(project, title, cancellation, taskSuspender, visibleInStatusBar, taskContext, pipe)
+    val taskInfoEntityJob = cs.createTaskInfoEntity(owner, title, cancellation, taskSuspender, visibleInStatusBar, taskContext, pipe)
 
     try {
       taskSuspender?.attachTask()
@@ -161,8 +192,8 @@ class PlatformTaskSupport(private val cs: CoroutineScope) : TaskSupport {
   }
 
   private fun CoroutineScope.createTaskInfoEntity(
-    project: Project,
-    title: String,
+    owner: BackgroundTaskOwner,
+    title: @ProgressTitle String,
     cancellation: TaskCancellation,
     suspender: TaskSuspender?,
     visibleInStatusBar: Boolean,
@@ -171,7 +202,7 @@ class PlatformTaskSupport(private val cs: CoroutineScope) : TaskSupport {
   ): Job = launch {
     val taskStorage = TaskStorage.getInstance()
 
-    val taskInfoEntity = taskStorage.addTask(project, title, cancellation, suspender.getSuspendableInfo(), visibleInStatusBar) ?: return@launch
+    val taskInfoEntity = taskStorage.addTask(owner, title, cancellation, suspender.getSuspendableInfo(), visibleInStatusBar)
     val entityId = taskInfoEntity.eid
     LOG.trace { "Task added to storage: entityId=$entityId, title=$title" }
 
@@ -375,44 +406,43 @@ class PlatformTaskSupport(private val cs: CoroutineScope) : TaskSupport {
       val dispatcherCtx = dispatcher ?: EmptyCoroutineContext
       val modalityContext = newModalityState.asContextElement()
       val pipe = cs.createProgressPipe()
-      val (permitCtx, cleanup) = if (ApplicationManager.getApplication().isWriteAccessAllowed) {
-        runReadActionBlocking { getLockPermitContext(true) }
+      val (permitCtx, permitCleanup) = if (ApplicationManager.getApplication().isWriteAccessAllowed) {
+        runReadActionBlocking { getLockPermitContext(LockParallelizationSharingPolicy.SHARING_CHECK_TOPMOST_RA) }
       } else {
-        getLockPermitContext(true)
+        getLockPermitContext(LockParallelizationSharingPolicy.SHARING_NO_CHECK_TOPMOST_RA)
       }
-      val taskJob = async(dispatcherCtx + modalityContext + permitCtx) {
-        progressStarted(descriptor.title, descriptor.cancellation, pipe.progressUpdates())
-        // an unhandled exception in `async` can kill the entire computation tree
-        // we need to propagate the exception to the caller, since they may have some way to handle it.
-        runCatching {
-          handleCurrentThreadScopeCoroutines { pipe.collectProgressUpdates(action) }
+      permitCleanup.use {
+        ModalityLockAssociation.associate(newModalityState, permitCtx).use {
+          val taskJob = async(dispatcherCtx + modalityContext + permitCtx) {
+            progressStarted(descriptor.title, descriptor.cancellation, pipe.progressUpdates())
+            // an unhandled exception in `async` can kill the entire computation tree
+            // we need to propagate the exception to the caller, since they may have some way to handle it.
+            runCatching {
+              handleCurrentThreadScopeCoroutines { pipe.collectProgressUpdates(action) }
+            }
+          }
+          val modalJob = cs.launch(modalityContext) {
+            val showIndicatorJob = showModalIndicator(taskJob, descriptor, pipe.progressUpdates(), deferredDialog)
+            try {
+              taskJob.join()
+            }
+            finally {
+              showIndicatorJob.cancel()
+            }
+          }
+          modalJob.invokeOnCompletion {
+            // Unblock `getNextEvent()` in case it's blocked.
+            SwingUtilities.invokeLater(EmptyRunnable.INSTANCE)
+          }
+          resetThreadLocalEventLoop {
+            IdeEventQueue.getInstance().pumpEventsForHierarchy(
+              exitCondition = modalJob::isCompleted,
+              modalComponent = deferredDialog::modalComponent,
+            )
+          }
+          @OptIn(ExperimentalCoroutinesApi::class)
+          taskJob.getCompleted().getOrThrow()
         }
-      }
-      val modalJob = cs.launch(modalityContext) {
-        val showIndicatorJob = showModalIndicator(taskJob, descriptor, pipe.progressUpdates(), deferredDialog)
-        try {
-          taskJob.join()
-        }
-        finally {
-          showIndicatorJob.cancel()
-        }
-      }
-      modalJob.invokeOnCompletion {
-        // Unblock `getNextEvent()` in case it's blocked.
-        SwingUtilities.invokeLater(EmptyRunnable.INSTANCE)
-      }
-      resetThreadLocalEventLoop {
-        IdeEventQueue.getInstance().pumpEventsForHierarchy(
-          exitCondition = modalJob::isCompleted,
-          modalComponent = deferredDialog::modalComponent,
-        )
-      }
-      try {
-        @OptIn(ExperimentalCoroutinesApi::class)
-        taskJob.getCompleted().getOrThrow()
-      }
-      finally {
-        cleanup.finish()
       }
     }
   }
@@ -424,14 +454,14 @@ class PlatformTaskSupport(private val cs: CoroutineScope) : TaskSupport {
  */
 @Suppress("INVISIBLE_REFERENCE")
 private inline fun <T> resetThreadLocalEventLoop(action: () -> T): T {//
-  val existingEventLoop = ThreadLocalEventLoop.currentOrNull()
-  ThreadLocalEventLoop.resetEventLoop()
+  val existingEventLoop = kotlinx.coroutines.ThreadLocalEventLoop.currentOrNull()
+  kotlinx.coroutines.ThreadLocalEventLoop.resetEventLoop()
   try {
     return action()
   }
   finally {
     if (existingEventLoop != null) {
-      ThreadLocalEventLoop.setEventLoop(existingEventLoop)
+      kotlinx.coroutines.ThreadLocalEventLoop.setEventLoop(existingEventLoop)
     }
   }
 }
@@ -464,13 +494,16 @@ private val progressManagerTracer by lazy {
   TelemetryManager.getInstance().getSimpleTracer(ProgressManagerScope)
 }
 
+/**
+ * @param project the project whose frame shows the indicator, or null for the last focused frame
+ */
 internal fun CoroutineScope.showIndicator(
-  project: Project,
+  project: Project?,
   progressModel: ProgressModel,
   stateFlow: Flow<ProgressState>,
 ): Job {
   return launch(Dispatchers.Default) {
-    delay(ProgressUIUtil.DEFAULT_PROGRESS_DELAY_MILLIS)
+    delay(ProgressUIUtil.DEFAULT_PROGRESS_DELAY_MILLIS.milliseconds)
     withContext(progressManagerTracer.span("Progress: ${progressModel.title}")) {
       withContext(Dispatchers.UI + ModalityState.any().asContextElement()) {
         val taskInfo = taskInfo(progressModel.title, progressModel.cancellation)
@@ -538,7 +571,7 @@ suspend fun ProgressIndicatorEx.updateFromFlow(updates: Flow<ProgressState>): No
   error("collect call must be cancelled")
 }
 
-private fun showIndicatorInUI(project: Project, taskInfo: TaskInfo, progressModel: ProgressModel): Boolean {
+private fun showIndicatorInUI(project: Project?, taskInfo: TaskInfo, progressModel: ProgressModel): Boolean {
   val frameEx: IdeFrameEx = WindowManagerEx.getInstanceEx().findFrameHelper(project) ?: return false
   val statusBar = frameEx.statusBar as? IdeStatusBarImpl ?: return false
   statusBar.addProgressImpl(progressModel, taskInfo)

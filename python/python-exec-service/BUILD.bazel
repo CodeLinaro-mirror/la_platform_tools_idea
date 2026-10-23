@@ -1,12 +1,27 @@
 load("@community//build:tests-options.bzl", "jps_test")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 load("//build:compiler-options.bzl", "create_kotlinc_options")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+jps_test(
+    name = "community-execService-tests_test",
+    timeout = "moderate",
+    jvm_flags = ["-Djava.nio.file.spi.DefaultFileSystemProvider=com.intellij.platform.core.nio.fs.MultiRoutingFileSystemProvider"],
+    tags = ["community-aggregator"],
+    runtime_deps = [":community-execService-tests_test_lib"],
+)
+### skip generation section `test intellij.python.community.execService.tests`
+
+### auto-generated section `dev intellij.python.community.execService` start
+content_module_jar(module = ":community-execService")
+### auto-generated section `dev intellij.python.community.execService` end
 
 ### auto-generated section `build intellij.python.community.execService` start
-
 create_kotlinc_options(
     name = "custom_community-execService",
     opt_in = ["kotlin.time.ExperimentalTime"],
+    warn = "error",
+    x_warning_level = ["DEPRECATION:warning"],
 )
 
 jvm_library(
@@ -28,8 +43,9 @@ jvm_library(
     visibility = ["//visibility:public"],
     deps = [
         # do not sort,
+        "//libraries/caffeine",
         "@lib//:kotlin-stdlib",
-        "@lib//:jetbrains-annotations",
+        "//libraries/jetbrains/annotations",
         "//python/openapi:community",
         "//platform/eel-provider",
         "//platform/util",
@@ -41,7 +57,6 @@ jvm_library(
         "//platform/projectModel-api:projectModel",
         "//libraries/kotlinx/serialization/json",
         "//libraries/kotlinx/serialization/core",
-        "//platform/remote-servers/impl",
         "//libraries/guava",
         "//python/python-process-output/common",
         "//python/impl.helperLocator:community-helpersLocator",
@@ -66,32 +81,19 @@ jvm_library(
     runtime_deps = [
         # do not sort,
         ":community-execService",
+        "//libraries/caffeine:caffeine_test_lib",
+        "//libraries/jetbrains/annotations:annotations_test_lib",
         "//python/openapi:community_test_lib",
         "//platform/eel-provider:eel-provider_test_lib",
         "//platform/util:util_test_lib",
         "//libraries/kotlinx/coroutines/core:core_test_lib",
-        "//platform/testFramework/junit5",
-        "//platform/testFramework/junit5:junit5_test_lib",
-        "//libraries/junit5",
-        "//libraries/junit5:junit5_test_lib",
-        "//libraries/hamcrest",
-        "//libraries/hamcrest:hamcrest_test_lib",
-        "//libraries/junit5-params",
-        "//libraries/junit5-params:junit5-params_test_lib",
         "//platform/core-api:core_test_lib",
         "//platform/eel:eel_test_lib",
-        "//platform/testFramework/junit5/eel",
-        "//platform/testFramework/junit5/eel:eel_test_lib",
-        "//libraries/junit5-pioneer",
-        "//libraries/junit5-pioneer:junit5-pioneer_test_lib",
-        "//platform/testFramework/common",
-        "//platform/testFramework/common:common_test_lib",
         "//platform/util/progress:progress_test_lib",
         "//platform/execution:execution_test_lib",
         "//platform/projectModel-api:projectModel_test_lib",
         "//libraries/kotlinx/serialization/json:json_test_lib",
         "//libraries/kotlinx/serialization/core:core_test_lib",
-        "//platform/remote-servers/impl:impl_test_lib",
         "//libraries/guava:guava_test_lib",
         "//python/python-process-output/common:common_test_lib",
         "//python/impl.helperLocator:community-helpersLocator_test_lib",
@@ -108,16 +110,18 @@ jvm_library(
 exports_files(
     [
         "intellij.python.community.execService.iml",
+        "resources/intellij.python.community.execService.xml",
     ],
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.python.community.execService` end
 
 ### auto-generated section `build intellij.python.community.execService.tests` start
-
 create_kotlinc_options(
     name = "custom_community-execService-tests",
     opt_in = ["kotlin.time.ExperimentalTime"],
+    warn = "error",
+    x_warning_level = ["DEPRECATION:warning"],
 )
 
 jvm_library(
@@ -155,7 +159,8 @@ jvm_library(
     deps = [
         # do not sort,
         "@lib//:kotlin-stdlib",
-        "@lib//:jetbrains-annotations",
+        "//libraries/jetbrains/annotations",
+        "//libraries/jetbrains/annotations:annotations_test_lib",
         "//python/openapi:community",
         "//python/openapi:community_test_lib",
         "//platform/eel-provider",
@@ -166,12 +171,12 @@ jvm_library(
         "//libraries/kotlinx/coroutines/core:core_test_lib",
         "//platform/testFramework/junit5",
         "//platform/testFramework/junit5:junit5_test_lib",
-        "//libraries/junit5",
-        "//libraries/junit5:junit5_test_lib",
+        "//libraries/junit6",
+        "//libraries/junit6:junit6_test_lib",
         "//libraries/hamcrest",
         "//libraries/hamcrest:hamcrest_test_lib",
-        "//libraries/junit5-params",
-        "//libraries/junit5-params:junit5-params_test_lib",
+        "//libraries/junit6-params",
+        "//libraries/junit6-params:junit6-params_test_lib",
         "//platform/core-api:core",
         "//platform/core-api:core_test_lib",
         "//platform/eel",
@@ -198,6 +203,8 @@ jvm_library(
         "//libraries/guava:guava_test_lib",
         "//python/python-process-output/common",
         "//python/python-process-output/common:common_test_lib",
+        "//python/pluginCore:community-plugin",
+        "//python/pluginCore:community-plugin_test_lib",
         "//platform/testFramework/junit5/eel:testFramework-junit5-eel-tests",
         "//platform/testFramework/junit5/eel:testFramework-junit5-eel-tests_test_lib",
     ],
@@ -212,11 +219,3 @@ exports_files(
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.python.community.execService.tests` end
-
-### auto-generated section `test intellij.python.community.execService.tests` start
-
-jps_test(
-    name = "community-execService-tests_test",
-    runtime_deps = [":community-execService-tests_test_lib"],
-)
-### auto-generated section `test intellij.python.community.execService.tests` end

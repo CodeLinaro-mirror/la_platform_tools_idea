@@ -1,18 +1,18 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.sdk.add.v2.venv
 
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.observable.properties.ObservableMutableProperty
 import com.intellij.openapi.observable.properties.ObservableProperty
 import com.intellij.openapi.observable.util.isNotNull
-import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.openapi.ui.validation.DialogValidationRequestor
+import com.intellij.platform.util.progress.withProgressText
+import com.intellij.python.sdk.backend.PythonInterpreter
 import com.intellij.ui.components.ActionLink
 import com.intellij.ui.dsl.builder.Align
 import com.intellij.ui.dsl.builder.Panel
 import com.intellij.ui.dsl.builder.bindSelected
 import com.intellij.ui.dsl.builder.components.validationTooltip
-import com.intellij.platform.util.progress.withProgressText
 import com.jetbrains.python.PyBundle.message
 import com.jetbrains.python.errorProcessing.PyResult
 import com.jetbrains.python.newProject.collector.InterpreterStatisticsInfo
@@ -28,6 +28,8 @@ import com.jetbrains.python.sdk.add.v2.PythonSupportedEnvironmentManagers
 import com.jetbrains.python.sdk.add.v2.ValidatedPath
 import com.jetbrains.python.sdk.add.v2.ValidatedPathField
 import com.jetbrains.python.sdk.add.v2.VenvAlreadyExistsError
+import com.jetbrains.python.sdk.add.v2.errorOrNull
+import com.jetbrains.python.sdk.add.v2.pathHolder
 import com.jetbrains.python.sdk.add.v2.pythonInterpreterComboBox
 import com.jetbrains.python.sdk.add.v2.toStatisticsField
 import com.jetbrains.python.sdk.add.v2.validatablePathField
@@ -52,7 +54,8 @@ class EnvironmentCreatorVenv<P : PathHolder>(model: PythonMutableTargetAddInterp
 
   init {
     propertyGraph.dependsOn(venvAlreadyExistsError, model.venvViewModel.backProperty, deleteWhenChildModified = false) {
-      model.venvViewModel.backProperty.get()?.validationResult?.errorOrNull as? VenvAlreadyExistsError<P>
+      @Suppress("UNCHECKED_CAST") // TODO: Express it in the type-safe manner
+      model.venvViewModel.backProperty.get()?.errorOrNull as? VenvAlreadyExistsError<P>
     }
     propertyGraph.dependsOn(venvAlreadyExistsErrorMessage, venvAlreadyExistsError, deleteWhenChildModified = false) {
       venvAlreadyExistsError.get()?.message ?: ""
@@ -106,10 +109,6 @@ class EnvironmentCreatorVenv<P : PathHolder>(model: PythonMutableTargetAddInterp
         checkBox(message("sdk.create.custom.inherit.packages"))
           .bindSelected(model.venvViewModel.inheritSitePackages)
       }
-      row("") {
-        checkBox(message("available.to.all.projects"))
-          .bindSelected(model.venvViewModel.makeAvailableForAllProjects)
-      }
     }
   }
 
@@ -125,8 +124,8 @@ class EnvironmentCreatorVenv<P : PathHolder>(model: PythonMutableTargetAddInterp
     }.launchIn(scope + Dispatchers.EDT)
   }
 
-  override suspend fun getOrCreateSdk(moduleOrProject: ModuleOrProject): PyResult<Sdk> {
-    val venv = model.venvViewModel.backProperty.get()?.pathHolder
+  override suspend fun getOrCreateSdk(moduleOrProject: ModuleOrProject): PyResult<PythonInterpreter> {
+    val venv = model.venvViewModel.backProperty.get()?.pathHolder?.getOr { return it }
                ?: return PyResult.localizedError(message("no.venv.path.specified"))
     return withProgressText(message("python.sdk.progress.virtualenv.creating")) {
       model.setupVirtualenv(venv, moduleOrProject)
@@ -138,7 +137,7 @@ class EnvironmentCreatorVenv<P : PathHolder>(model: PythonMutableTargetAddInterp
       type = InterpreterType.VIRTUALENV,
       target = target.toStatisticsField(),
       globalSitePackage = model.venvViewModel.inheritSitePackages.get(),
-      makeAvailableToAllProjects = model.venvViewModel.makeAvailableForAllProjects.get(),
+      makeAvailableToAllProjects = false,
       previouslyConfigured = false,
       isWSLContext = false, // todo fix for wsl
       creationMode = InterpreterCreationMode.CUSTOM

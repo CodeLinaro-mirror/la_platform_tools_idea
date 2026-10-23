@@ -13,6 +13,7 @@ import com.intellij.codeInsight.daemon.impl.analysis.FileHighlightingSetting
 import com.intellij.codeInsight.daemon.impl.analysis.HighlightingSettingsPerFile
 import com.intellij.codeInsight.hints.InlayHintsUtils
 import com.intellij.codeInsight.multiverse.EditorContextManager
+import com.intellij.codeInsight.multiverse.codeInsightContext
 import com.intellij.codeInsight.navigation.actions.GotoDeclarationAction
 import com.intellij.ide.scratch.ScratchUtil
 import com.intellij.openapi.application.ApplicationManager
@@ -22,7 +23,6 @@ import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.util.TextRange
-import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.SyntaxTraverser
@@ -58,7 +58,10 @@ abstract class RenameAwareReferencesCodeVisionProvider : CodeVisionProvider<Noth
     val cacheService = project.service<CodeVisionCacheService>()
     val cached = cacheService.getVisionDataForEditor(editor, id)
     val stamp = ModificationStampUtil.getModificationStamp(editor)
-    if (stamp != null && cached?.modificationStamp == stamp) return CodeVisionState.Ready(cached.codeVisionEntries)
+    if (stamp != null && cached?.modificationStamp == stamp &&
+        cached.context == EditorContextManager.getCachedEditorContext(editor, project)) {
+      return CodeVisionState.Ready(cached.codeVisionEntries)
+    }
 
     return InlayHintsUtils.computeCodeVisionUnderReadAction(expectsIndicator = true) ra@{
       if (DumbService.isDumb(project)) {
@@ -68,12 +71,11 @@ abstract class RenameAwareReferencesCodeVisionProvider : CodeVisionProvider<Noth
     }
   }
 
-  @RequiresReadLock
+  @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
   private fun recomputeLenses(editor: Editor, project: Project, stamp: Long?, cacheService: CodeVisionCacheService): CodeVisionState {
     if (DumbService.isDumb(project)) return CodeVisionState.READY_EMPTY
 
-    val mainContext = EditorContextManager.getEditorContext(editor, project)
-    val file = PsiDocumentManager.getInstance(project).getPsiFile(editor.document, mainContext) ?: return CodeVisionState.READY_EMPTY
+    val file = EditorContextManager.getPsiFileForEditor(editor, project) ?: return CodeVisionState.READY_EMPTY
 
     if (file.project.isDefault) return CodeVisionState.READY_EMPTY
     if (!acceptsFile(file)) return CodeVisionState.READY_EMPTY
@@ -102,14 +104,15 @@ abstract class RenameAwareReferencesCodeVisionProvider : CodeVisionProvider<Noth
       val hint = getHint(element, file)
       if (hint == null) continue
       val range = InlayHintsUtils.getTextRangeWithoutLeadingCommentsAndWhitespaces(element)
-      lenses.add(range to ClickableTextCodeVisionEntry(hint, id, { event, sourceEditor ->
-        handleClick(sourceEditor, element, event)
-        logClickToFUS(element, hint)
-      }))
+      val handler = PsiElementClickHandler(element) { clicked, event, sourceEditor ->
+        handleClick(sourceEditor, clicked, event)
+        logClickToFUS(clicked, hint)
+      }
+      lenses.add(range to ClickableTextCodeVisionEntry(hint, id, handler))
     }
 
     if (stamp != null) {
-      cacheService.storeVisionDataForEditor(editor, id, CodeVisionCacheService.CodeVisionWithStamp(lenses, stamp))
+      cacheService.storeVisionDataForEditor(editor, id, CodeVisionCacheService.CodeVisionWithStamp(lenses, stamp, file.codeInsightContext))
     }
     return CodeVisionState.Ready(lenses)
   }

@@ -1,6 +1,7 @@
 // Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.hints.codeVision
 
+import com.intellij.concurrency.ConcurrentCollectionFactory
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiFile
@@ -9,7 +10,6 @@ import com.intellij.psi.PsiTreeAnyChangeAbstractAdapter
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.SearchScope
 import com.intellij.psi.util.PsiUtilCore
-import com.intellij.util.containers.CollectionFactory
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.ApiStatus.OverrideOnly
 import java.util.concurrent.ConcurrentMap
@@ -39,6 +39,8 @@ abstract class UsagesCountManagerBase<ELEMENT>(project: Project, private val con
    * Counts the number of usages of a specified member.
    * Cache contains number of usages outside the current file on hard ref.
    * On any change in file, the cache is cleared everywhere but in this file.
+   * Returns [Int.MAX_VALUE] if the count exceeds the display cap,
+   * negative value if the search is disabled, or the number of usages in the normal case.
    */
   fun countMemberUsages(file: PsiFile, member: ELEMENT): Int {
     val virtualFile = PsiUtilCore.getVirtualFile(file)
@@ -67,9 +69,11 @@ abstract class UsagesCountManagerBase<ELEMENT>(project: Project, private val con
       val localScope = GlobalSearchScope.fileScope(file)
       val externalScope = GlobalSearchScope.notScope(localScope)
       val externalUsages = externalUsagesCache.getOrPut(key) { configuration.countUsages(file, superMembers, externalScope) }
-      if (externalUsages < 0) return externalUsages
+      // a negative value means "not computed", Int.MAX_VALUE means "exceeded the display cap"; in both cases
+      // propagate the sentinel as-is instead of summing (also avoids Int overflow on the addition below)
+      if (externalUsages < 0 || externalUsages == Int.MAX_VALUE) return externalUsages
       val localUsages = configuration.countUsages(file, superMembers, localScope)
-      if (localUsages < 0) return localUsages
+      if (localUsages < 0 || localUsages == Int.MAX_VALUE) return localUsages
       return externalUsages + localUsages
     }
   }
@@ -79,8 +83,12 @@ abstract class UsagesCountManagerBase<ELEMENT>(project: Project, private val con
 @OverrideOnly
 interface UsageCounterConfigurationBase<ELEMENT> {
   fun <K: Any, V: Any> createCacheMap(): ConcurrentMap<K, V> {
-    return CollectionFactory.createConcurrentWeakKeySoftValueMap()
+    return ConcurrentCollectionFactory.createConcurrentWeakKeySoftValueMap()
   }
 
+  /**
+   * Returns the number of usages, or one of two sentinels: a negative value when the count could not be
+   * computed, and [Int.MAX_VALUE] when the count exceeded the display cap (rendered as "N+").
+   */
   fun countUsages(file: PsiFile, members: List<ELEMENT>, scope: SearchScope): Int
 }

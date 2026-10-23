@@ -1,4 +1,4 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.pycharm.community.ide.impl
 
 import com.intellij.application.options.ModulesComboBox
@@ -7,7 +7,7 @@ import com.intellij.execution.util.PathMappingsComponent
 import com.intellij.ide.DataManager
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.options.ex.Settings
-import com.intellij.openapi.projectRoots.Sdk
+import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogPanel
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.ui.RawCommandLineEditor
@@ -23,9 +23,10 @@ import com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable
 import com.jetbrains.python.run.AbstractPyCommonOptionsForm
 import com.jetbrains.python.run.PyCommonOptionsFormData
 import javax.swing.JCheckBox
+import com.intellij.python.sdk.common.PyInterpreterItem
 import javax.swing.JComboBox
 
-internal class PyIdeCommonOptionsPanel(data: PyCommonOptionsFormData, showModules: Boolean, pythonSdks: List<Sdk>) {
+internal class PyIdeCommonOptionsPanel(data: PyCommonOptionsFormData, showModules: Boolean, interpreters: List<PyInterpreterItem?>) {
 
   @JvmField
   val moduleCombo = ModulesComboBox()
@@ -33,7 +34,7 @@ internal class PyIdeCommonOptionsPanel(data: PyCommonOptionsFormData, showModule
   @JvmField
   val envsComponent = EnvironmentVariablesComponent()
     .apply { remove(label) }
-  lateinit var interpreterComboBox: JComboBox<Sdk>
+  lateinit var interpreterComboBox: JComboBox<PyInterpreterItem?>
 
   @JvmField
   val interpreterOptionsTextField = RawCommandLineEditor()
@@ -47,7 +48,8 @@ internal class PyIdeCommonOptionsPanel(data: PyCommonOptionsFormData, showModule
   lateinit var pathMappingsRow: Row
   lateinit var addContentRootsCheckbox: JCheckBox
   lateinit var addSourceRootsCheckbox: JCheckBox
-  lateinit var panel: DialogPanel
+  @JvmField
+  var panel: DialogPanel
 
   init {
     panel = panel {
@@ -66,7 +68,7 @@ internal class PyIdeCommonOptionsPanel(data: PyCommonOptionsFormData, showModule
         }
 
         row(PyBundle.message("runcfg.labels.python.interpreter")) {
-          interpreterComboBox = comboBox(pythonSdks)
+          interpreterComboBox = comboBox(interpreters)
             .columns(COLUMNS_LARGE)
             .align(AlignX.FILL)
             .component

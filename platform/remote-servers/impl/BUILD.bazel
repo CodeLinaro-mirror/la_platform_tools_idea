@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.platform.remoteServers.impl` start
+content_module_jar(module = ":impl")
+### auto-generated section `dev intellij.platform.remoteServers.impl` end
 
 ### auto-generated section `build intellij.platform.remoteServers.impl` start
-
 jvm_library(
     name = "impl",
     srcs = glob(
@@ -43,6 +47,7 @@ jvm_library(
         "//platform/util/jdom",
         "//platform/util-ex",
         "//platform/execution",
+        "//platform/consoleView",
         "//platform/util:util-ui",
     ],
 )
@@ -82,6 +87,7 @@ jvm_library(
         "//platform/util/jdom:jdom_test_lib",
         "//platform/util-ex:util-ex_test_lib",
         "//platform/execution:execution_test_lib",
+        "//platform/consoleView:consoleView_test_lib",
         "//platform/util:util-ui_test_lib",
     ],
 )
@@ -91,6 +97,7 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.remoteServers.impl.iml",
+        "resources/intellij.platform.remoteServers.impl.xml",
     ],
     visibility = ["//visibility:public"],
 )

@@ -6,6 +6,7 @@ import com.intellij.ide.plugins.ProductRulesImposedExclusion.ProductRulesImposed
 import com.intellij.idea.AppMode
 import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.util.BuildNumber
+import com.intellij.platform.productMode.ProductMode
 import org.jetbrains.annotations.ApiStatus
 
 @ApiStatus.Internal
@@ -39,12 +40,22 @@ interface PluginInitializationContext {
    */
   val disablePluginLoadingCompletely: Boolean
 
+  /**
+   * **TODO: Remove after IJPL-255400**
+   *
+   * If true, treats `required-if-available` modules as optional unless their loading rule is `REQUIRED` or `EMBEDDED`.
+   */
+  val disableRequiredIfAvailable: Boolean
+
   val pluginsPerProjectConfig: PluginsPerProjectConfig?
 
   /**
-   * Returns ID of the current [com.intellij.platform.runtime.product.ProductMode]
+   * The product mode this context describes.
+   *
+   * This is a declared input of the context and not a read of a global. [environmentConfiguredModules]
+   * is derived from it.
    */
-  val currentProductModeId: String
+  val productMode: ProductMode
 
   /**
    * A map consisting of special modules that are configured by the environment (app mode, OS-specific modules, etc.).
@@ -102,11 +113,6 @@ interface PluginInitializationContext {
   fun provideModuleExclusionsImposedByProductRules(pluginSet: UnambiguousPluginSet): Sequence<Pair<PluginModuleDescriptor, ProductRulesImposedExclusionReason>>
 
   /**
-   * Tells the plugin set resolver that [module] should belong to the same [RuntimeModuleGroup] (the same classloader) as the returned result (if not null).
-   */
-  fun provideCustomRuntimeModuleGroupAffiliation(module: PluginModuleDescriptor, pluginSet: UnambiguousPluginSet): PluginModuleDescriptor?
-
-  /**
    * To preserve compatibility, all "active" `<depends>` dependencies imply extra dependencies on all "active" content modules of the target.
    * This method allows controlling this mechanism.
    * @return `false` if additional edges to content modules should not be generated when there is a `<depends>` edge to the [resolvedTarget].
@@ -116,28 +122,28 @@ interface PluginInitializationContext {
   /**
    * Only is called once during the startup initialization
    */
-  fun runConfigurationDuringStartup(totalPluginSet: AmbiguousPluginSet)
+  fun runConfigurationDuringStartup(candidateSubset: UnambiguousPluginSet)
 
   companion object
 }
 
 @ApiStatus.Internal
-fun PluginInitializationContext.validatePluginIsCompatible(plugin: PluginMainDescriptor): PluginNonLoadReason? {
+fun PluginInitializationContext.validatePluginIsCompatible(plugin: PluginMainDescriptor): DescriptorExclusionReason? {
   if (plugin.isBundled) {
     return null
   }
-  if (AppMode.isDisableNonBundledPlugins()) {
-    return NonBundledPluginsAreExplicitlyDisabled(plugin)
+  if (AppMode.isDisableNonBundledPlugins()) { // TODO: move this out of here
+    return ProductRulesImposedExclusion(plugin, NonBundledPluginsLoadingIsDisabled)
   }
-  PluginManagerCore.checkBuildNumberCompatibility(plugin, productBuildNumber)?.let {
-    return it
+  PluginCompatibilityUtils.checkBuildNumberCompatibility(plugin, productBuildNumber)?.let {
+    return PluginIsIncompatibleWithProduct(plugin, it)
   }
   // "Show broken plugins in Settings | Plugins so that users can uninstall them and resolve 'Plugin Error' (IDEA-232675)"
   if (isPluginBroken(plugin.pluginId, plugin.version)) {
-    return PluginIsMarkedBroken(plugin)
+    return PluginIsIncompatibleWithProduct(plugin, PluginIncompatibilityReason.PluginIsMarkedBroken())
   }
   if (requirePlatformAliasDependencyForLegacyPlugins && PluginCompatibilityUtils.isLegacyPluginWithoutPlatformAliasDependencies(plugin)) {
-    return PluginIsCompatibleOnlyWithIntelliJIDEA(plugin)
+    return ProductRulesImposedExclusion(plugin, LegacyPluginIsCompatibleOnlyWithIntelliJIDEA)
   }
   return null
 }

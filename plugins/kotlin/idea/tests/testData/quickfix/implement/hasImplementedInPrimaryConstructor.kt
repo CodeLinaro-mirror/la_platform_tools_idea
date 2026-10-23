@@ -1,6 +1,6 @@
 // "Implement members" "true"
 // WITH_STDLIB
-// K2_ERROR: Class 'MyImpl' is not abstract and does not implement abstract base class member:<br>fun test(): Unit
+// K2_ERROR: ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED
 abstract class B {
     abstract val p: String?
     abstract fun test()
@@ -9,5 +9,4 @@ abstract class B {
 <caret>class MyImpl(
     override val p: String? = null
 ) : B()
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.core.overrideImplement.ImplementMembersHandler
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.core.overrideImplement.KtImplementMembersQuickfix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.core.overrideImplement.KtImplementMembersQuickfix

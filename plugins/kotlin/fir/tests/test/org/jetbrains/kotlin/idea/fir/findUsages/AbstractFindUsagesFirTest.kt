@@ -3,11 +3,11 @@
 package org.jetbrains.kotlin.idea.fir.findUsages
 
 import com.intellij.testFramework.LightProjectDescriptor
-import org.jetbrains.kotlin.analysis.api.analyze
-import org.jetbrains.kotlin.analysis.api.components.KaDiagnosticCheckerFilter
 import org.jetbrains.kotlin.analysis.api.diagnostics.KaSeverity
+import org.jetbrains.kotlin.analysis.api.diagnostics.diagnostics
 import org.jetbrains.kotlin.analysis.api.permissions.KaAllowAnalysisOnEdt
 import org.jetbrains.kotlin.analysis.api.permissions.allowAnalysisOnEdt
+import org.jetbrains.kotlin.analysis.api.session.analyze
 import org.jetbrains.kotlin.diagnostics.Severity
 import org.jetbrains.kotlin.findUsages.AbstractFindUsagesTest
 import org.jetbrains.kotlin.idea.test.Diagnostic
@@ -47,7 +47,7 @@ fun k2DiagnosticProviderForFindUsages(): (KtFile) -> List<Diagnostic> {
                 val diagnostics =
                 // filter level has to be consistent with
                     // [org.jetbrains.kotlin.idea.highlighting.visitor.KotlinDiagnosticHighlightVisitor#analyzeFile]
-                    file.collectDiagnostics(KaDiagnosticCheckerFilter.ONLY_COMMON_CHECKERS)
+                    file.diagnostics()
                 diagnostics
                     .map {
                         Diagnostic(
@@ -59,6 +59,7 @@ fun k2DiagnosticProviderForFindUsages(): (KtFile) -> List<Diagnostic> {
                             }
                         )
                     }
+                    .toList()
             }
         }
     }

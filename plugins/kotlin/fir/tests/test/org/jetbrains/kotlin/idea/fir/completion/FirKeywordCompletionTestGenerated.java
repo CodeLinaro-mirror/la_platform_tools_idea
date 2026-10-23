@@ -153,11 +153,6 @@ public class FirKeywordCompletionTestGenerated extends AbstractFirKeywordComplet
         runTest("../../completion/testData/keywords/ContextParameter.kt");
     }
 
-    @TestMetadata("ContextReceiver.kt")
-    public void testContextReceiver() throws Exception {
-        runTest("../../completion/testData/keywords/ContextReceiver.kt");
-    }
-
     @TestMetadata("ContinuePrefixMatching.kt")
     public void testContinuePrefixMatching() throws Exception {
         runTest("../../completion/testData/keywords/ContinuePrefixMatching.kt");
@@ -311,6 +306,11 @@ public class FirKeywordCompletionTestGenerated extends AbstractFirKeywordComplet
     @TestMetadata("InIf.kt")
     public void testInIf() throws Exception {
         runTest("../../completion/testData/keywords/InIf.kt");
+    }
+
+    @TestMetadata("InInterfaceCompanionBlockScope.kt")
+    public void testInInterfaceCompanionBlockScope() throws Exception {
+        runTest("../../completion/testData/keywords/InInterfaceCompanionBlockScope.kt");
     }
 
     @TestMetadata("InInterfaceScope.kt")
@@ -593,6 +593,11 @@ public class FirKeywordCompletionTestGenerated extends AbstractFirKeywordComplet
         runTest("../../completion/testData/keywords/Return9.kt");
     }
 
+    @TestMetadata("ReturnAsExpressionBody.kt")
+    public void testReturnAsExpressionBody() throws Exception {
+        runTest("../../completion/testData/keywords/ReturnAsExpressionBody.kt");
+    }
+
     @TestMetadata("ReturnBoolean.kt")
     public void testReturnBoolean() throws Exception {
         runTest("../../completion/testData/keywords/ReturnBoolean.kt");
@@ -601,6 +606,21 @@ public class FirKeywordCompletionTestGenerated extends AbstractFirKeywordComplet
     @TestMetadata("ReturnCollection.kt")
     public void testReturnCollection() throws Exception {
         runTest("../../completion/testData/keywords/ReturnCollection.kt");
+    }
+
+    @TestMetadata("ReturnInExpressionBody.kt")
+    public void testReturnInExpressionBody() throws Exception {
+        runTest("../../completion/testData/keywords/ReturnInExpressionBody.kt");
+    }
+
+    @TestMetadata("ReturnInExpressionBodyBeforeLanguageFeature.kt")
+    public void testReturnInExpressionBodyBeforeLanguageFeature() throws Exception {
+        runTest("../../completion/testData/keywords/ReturnInExpressionBodyBeforeLanguageFeature.kt");
+    }
+
+    @TestMetadata("ReturnInExpressionBodyWithoutExplicitType.kt")
+    public void testReturnInExpressionBodyWithoutExplicitType() throws Exception {
+        runTest("../../completion/testData/keywords/ReturnInExpressionBodyWithoutExplicitType.kt");
     }
 
     @TestMetadata("ReturnIterable.kt")

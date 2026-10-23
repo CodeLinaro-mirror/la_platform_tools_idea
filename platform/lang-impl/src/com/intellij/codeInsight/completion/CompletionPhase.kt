@@ -7,6 +7,7 @@ import com.intellij.codeInsight.completion.CompletionPhase.CommittingDocuments.C
 import com.intellij.codeInsight.completion.CompletionPhase.CommittingDocuments.CommittingState.Success
 import com.intellij.codeInsight.completion.impl.CompletionServiceImpl
 import com.intellij.codeInsight.completion.impl.CompletionServiceImpl.Companion.assertPhase
+import com.intellij.codeInsight.multiverse.EditorContextManager
 import com.intellij.codeWithMe.ClientId
 import com.intellij.codeWithMe.ClientId.Companion.withExplicitClientId
 import com.intellij.openapi.Disposable
@@ -14,6 +15,7 @@ import com.intellij.openapi.application.ApplicationListener
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.application.ex.ApplicationManagerEx
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.diagnostic.trace
@@ -26,6 +28,7 @@ import com.intellij.openapi.editor.event.SelectionEvent
 import com.intellij.openapi.editor.event.SelectionListener
 import com.intellij.openapi.editor.ex.EditorEx
 import com.intellij.openapi.editor.ex.FocusChangeListener
+import com.intellij.openapi.editor.ex.util.EditorUtil
 import com.intellij.openapi.project.IndexNotReadyException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Condition
@@ -33,7 +36,6 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.Pair
 import com.intellij.patterns.ElementPattern
-import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiFile
 import com.intellij.psi.impl.source.tree.injected.InjectedLanguageEditorUtil
 import com.intellij.psi.impl.source.tree.injected.InjectedLanguageUtil
@@ -129,7 +131,7 @@ sealed class CompletionPhase @ApiStatus.Internal constructor(
      * Several typedHandlers can request auto-popup completion during processing of a single event.
      * We need to trigger read-action for them independently because they can have different conditions for starting completion.
      */
-    @RequiresEdt
+    @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
     private fun addRequest() {
       when (val cur = myState) {
         Cancelled, Disposed, Success -> {
@@ -146,7 +148,7 @@ sealed class CompletionPhase @ApiStatus.Internal constructor(
     /**
      * the current request was not successful (most likely because of the failed condition), but other requests still have a chance to succeed.
      */
-    @RequiresEdt
+    @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
     private fun cancelThisRequest() {
       when (val cur = myState) {
         Disposed, Cancelled, Success -> {
@@ -173,7 +175,7 @@ sealed class CompletionPhase @ApiStatus.Internal constructor(
     /**
      * At least one of the requests succeeded, the completion process has been started, no more requests are necessary.
      */
-    @RequiresEdt
+    @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
     private fun requestCompleted() {
       LOG.trace { "Request completed" }
       LOG.assertTrue(myState is InProgress, "myState=$myState")
@@ -229,7 +231,7 @@ sealed class CompletionPhase @ApiStatus.Internal constructor(
        * @param prevIndicator   the completion indicator, if any. The indicator exists if completion was already started and we restart it with new parameters.
        */
       @ApiStatus.Internal
-      @RequiresEdt
+      @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
       @JvmStatic
       fun scheduleAsyncCompletion(
         editor: Editor,
@@ -261,7 +263,7 @@ sealed class CompletionPhase @ApiStatus.Internal constructor(
           .submit(ourExecutor)
       }
 
-      @RequiresReadLock
+      @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
       private fun prepareEditorAndDocumentsForAsyncCompletion(
         phase: CommittingDocuments,
         topLevelEditor: Editor,
@@ -278,9 +280,9 @@ sealed class CompletionPhase @ApiStatus.Internal constructor(
         LOG.trace { "Start non-blocking read action :: phase=${phase.replaced}" }
 
         // retrieve the injected file from scratch since our typing might have destroyed the old one completely
-        val topLevelFile = PsiDocumentManager.getInstance(project).getPsiFile(topLevelEditor.getDocument())
+        val topLevelFile = EditorContextManager.getPsiFileForEditor(topLevelEditor, project)
         val completionEditor = InjectedLanguageUtil.getEditorForInjectedLanguageNoCommit(topLevelEditor, topLevelFile, offset)
-        val completionFile = PsiDocumentManager.getInstance(project).getPsiFile(completionEditor.getDocument())
+        val completionFile = EditorContextManager.getPsiFileForEditor(completionEditor, project)
 
         if (completionFile == null || autopopup && shouldSkipAutoPopup(completionEditor, completionFile) || condition != null && !condition.value(completionFile)) {
           LOG.trace { "File is null or should skip auto popup or condition is not met :: file=$completionFile, condition=$condition" }
@@ -291,7 +293,7 @@ sealed class CompletionPhase @ApiStatus.Internal constructor(
         return completionEditor
       }
 
-      @RequiresEdt
+      @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
       private fun startAsyncCompletionIfNotExpired(
         phase: CommittingDocuments,
         completionEditor: Editor?,
@@ -339,7 +341,7 @@ sealed class CompletionPhase @ApiStatus.Internal constructor(
         doInvokeCompletionOnCommittedDocument(completionType, autopopup, project, completionEditor, phase.indicator?.invocationCount ?: 0)
       }
 
-      @RequiresEdt
+      @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
       private fun doInvokeCompletionOnCommittedDocument(
         completionType: CompletionType,
         isAutopopup: Boolean,
@@ -358,7 +360,7 @@ sealed class CompletionPhase @ApiStatus.Internal constructor(
         handler.invokeCompletion(project, editor, invocationCount, false)
       }
 
-      @RequiresEdt
+      @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
       private fun getCompletionPhase(
         prevIndicator: CompletionProgressIndicator?,
         topLevelEditor: Editor,
@@ -380,7 +382,7 @@ sealed class CompletionPhase @ApiStatus.Internal constructor(
       }
 
       @ApiStatus.Internal
-      @RequiresBackgroundThread
+      @RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
       @JvmStatic
       fun loadContributorsOutsideEdt(editor: Editor, file: PsiFile) {
         ThreadingAssertions.assertBackgroundThread()
@@ -414,7 +416,7 @@ sealed class CompletionPhase @ApiStatus.Internal constructor(
       }
     }
 
-    @RequiresEdt
+    @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
     private fun cancelPhase() {
       when (myState) {
         Cancelled, Disposed, Success -> {}
@@ -445,30 +447,39 @@ sealed class CompletionPhase @ApiStatus.Internal constructor(
       cancelOnEditorLoseFocus(indicator)
     }
 
+    @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
     private fun restartOnWriteAction() {
+      if (ApplicationManagerEx.getApplicationEx().isWriteActionPending) {
+        doRestartBecauseOfWriteAction()
+        return
+      }
       ApplicationManager.getApplication().addApplicationListener(object : ApplicationListener {
         override fun beforeWriteActionStart(action: Any) {
-          if (!indicator!!.lookup.isLookupDisposed && !indicator.isCanceled) {
-            withExplicitClientId(ownerId) {
-              indicator.cancel()
-              if (EDT.isCurrentThreadEdt()) {
-                indicator.scheduleRestart()
-              }
-              else {
-                // this branch is possible because completion can be canceled on background write action
-                ApplicationManager.getApplication().invokeLater(
-                  /* runnable = */ { indicator.scheduleRestart() },
-
-                  // since we break the synchronous execution here, it is possible that some other EDT event finishes completion before us
-                  // in this case, the current indicator becomes obsolete, and we don't need to reschedule the session anymore
-
-                  /* expired = */ { CompletionServiceImpl.currentCompletionProgressIndicator != indicator }
-                )
-              }
-            }
-          }
+          doRestartBecauseOfWriteAction()
         }
       }, this)
+    }
+
+    private fun doRestartBecauseOfWriteAction() {
+      if (!indicator!!.lookup.isLookupDisposed && !indicator.isCanceled) {
+        withExplicitClientId(ownerId) {
+          indicator.cancel()
+          if (EDT.isCurrentThreadEdt()) {
+            indicator.scheduleRestart()
+          }
+          else {
+            // this branch is possible because completion can be canceled on background write action
+            ApplicationManager.getApplication().invokeLater(
+              /* runnable = */ { indicator.scheduleRestart() },
+
+              // since we break the synchronous execution here, it is possible that some other EDT event finishes completion before us
+              // in this case, the current indicator becomes obsolete, and we don't need to reschedule the session anymore
+
+              /* expired = */ { CompletionServiceImpl.currentCompletionProgressIndicator != indicator }
+            )
+          }
+        }
+      }
     }
 
     private fun cancelOnEditorLoseFocus(indicator: CompletionProgressIndicator) {
@@ -505,6 +516,15 @@ sealed class CompletionPhase @ApiStatus.Internal constructor(
   }
 
   abstract class ZombiePhase internal constructor(indicator: CompletionProgressIndicator?) : CompletionPhase(indicator) {
+    internal fun expireOnEditorRelease(editor: Editor) {
+      val phase = this
+      EditorUtil.disposeWithEditor(editor, Disposable {
+        if (CompletionServiceImpl.completionPhase === phase) {
+          CompletionServiceImpl.setCompletionPhase(NoCompletion)
+        }
+      })
+    }
+
     internal fun expireOnAnyEditorChange(editor: Editor) {
       editor.getDocument().addDocumentListener(object : DocumentListener {
         override fun beforeDocumentChange(e: DocumentEvent) {
@@ -532,6 +552,7 @@ sealed class CompletionPhase @ApiStatus.Internal constructor(
     val restorePrefix: Runnable
   ) : ZombiePhase(indicator) {
     init {
+      expireOnEditorRelease(indicator.editor)
       expireOnAnyEditorChange(indicator.editor)
     }
 
@@ -548,6 +569,7 @@ sealed class CompletionPhase @ApiStatus.Internal constructor(
   @ApiStatus.Internal
   class NoSuggestionsHint internal constructor(hint: LightweightHint?, indicator: CompletionProgressIndicator) : ZombiePhase(indicator) {
     init {
+      expireOnEditorRelease(indicator.editor)
       expireOnAnyEditorChange(indicator.editor)
       if (hint != null) {
         val hintListener = HintListener { CompletionServiceImpl.setCompletionPhase(NoCompletion) }
@@ -569,6 +591,13 @@ sealed class CompletionPhase @ApiStatus.Internal constructor(
   ) : ZombiePhase(null) {
     private val myTracker: ActionTracker = ActionTracker(editor, this)
     private val myEditor: Editor = editor
+
+    init {
+      // Do not call expireOnAnyEditorChange here: EmptyAutoPopup must survive document/caret changes
+      // so that allowsSkippingNewAutoPopup can suppress a redundant re-popup while the user keeps typing.
+      // We only need to release the editor when it is disposed (IJPL-249705).
+      expireOnEditorRelease(editor)
+    }
 
     fun allowsSkippingNewAutoPopup(editor: Editor, toType: Char): Boolean {
       if (myEditor === editor && !myTracker.hasAnythingHappened() && !CompletionProgressIndicator.shouldRestartCompletion(editor, restartingPrefixConditions, toType.toString())) {

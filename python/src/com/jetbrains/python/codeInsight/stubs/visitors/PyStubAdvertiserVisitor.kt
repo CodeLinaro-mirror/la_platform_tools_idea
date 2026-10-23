@@ -17,10 +17,6 @@ internal class PyStubAdvertiserVisitor(
   val session: LocalInspectionToolSession,
 ) : PyStubVisitor(holder, session) {
 
-  init {
-    downgradeHighlightForTypeEngine = getContext(session).usesExternalTypeEngine
-  }
-
   override fun checkImports(file: PyFile, importedPackages: Set<String>, packageManager: PythonPackageManager) {
     val checker = PyNotInstalledStubsChecker.getInstance(project = packageManager.project)
     val cached = checker.getCached(packageManager.sdk)
@@ -29,7 +25,7 @@ internal class PyStubAdvertiserVisitor(
       val message = PyBundle.message("code.insight.type.hints.are.not.installed", stub.stubRequirement.name)
       registerProblem(file,
                       message,
-                      InstallStubQuickFix(stub.stubRequirement, packageManager.sdk),
+                      InstallStubQuickFix(stub.stubRequirement, packageManager),
                       IgnoreStubAdvertiseQuickFix(stub.packageName, ignoredPackages))
     }
   }

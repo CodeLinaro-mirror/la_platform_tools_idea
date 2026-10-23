@@ -4,39 +4,23 @@ import {deepStrictEqual, ok, strictEqual} from 'node:assert/strict'
 import {describe, it} from 'bun:test'
 import {buildUpstreamTool, SUITE_TIMEOUT_MS, withProxy} from '../test-utils'
 
-const legacyReformatTool = buildUpstreamTool('reformat_file', {
-  path: {type: 'string'}
-}, ['path'])
-
-const legacyBatchReformatTool = buildUpstreamTool('reformat_file', {
-  path: {type: 'string'},
-  paths: {type: 'array', items: {type: 'string'}}
-})
-
 const nativeReformatTool = buildUpstreamTool('reformat_file', {
   files: {type: 'array', items: {type: 'string'}}
 }, ['files'])
 
-describe('ij MCP proxy reformat_file compatibility', {timeout: SUITE_TIMEOUT_MS}, () => {
-  it('exposes files for legacy reformat_file and calls upstream once per unique file', async () => {
-    const calls: Array<{path: unknown; paths: unknown}> = []
+describe('ij MCP proxy reformat_file', {timeout: SUITE_TIMEOUT_MS}, () => {
+  it('trims and de-duplicates files before calling upstream', async () => {
+    const calls: Array<{files: unknown}> = []
 
     await withProxy({
-      tools: [legacyReformatTool],
+      tools: [nativeReformatTool],
       onToolCall({name, args}) {
         strictEqual(name, 'reformat_file')
-        calls.push({path: args.path, paths: args.paths})
+        calls.push({files: args.files})
         return {text: 'ok'}
       }
     }, async ({proxyClient}) => {
-      const listResponse = await proxyClient.send('tools/list')
-      const reformatTool = listResponse.result.tools.find((tool) => tool.name === 'reformat_file')
-      ok(reformatTool)
-      const properties = reformatTool.inputSchema?.properties ?? {}
-      ok('files' in properties)
-      ok(!('path' in properties))
-      ok(!('paths' in properties))
-
+      await proxyClient.send('tools/list')
       const response = await proxyClient.send('tools/call', {
         name: 'reformat_file',
         arguments: {
@@ -48,36 +32,27 @@ describe('ij MCP proxy reformat_file compatibility', {timeout: SUITE_TIMEOUT_MS}
     })
 
     deepStrictEqual(calls, [
-      {path: 'src/Main.kt', paths: undefined},
-      {path: 'src/Second.kt', paths: undefined}
+      {files: ['src/Main.kt', 'src/Second.kt']}
     ])
   })
 
-  it('translates files to legacy paths batch calls', async () => {
-    const calls: Array<{path: unknown; paths: unknown}> = []
+  it('passes the diff of native reformat_file through', async () => {
+    const diff = '--- a/src/Main.kt\n+++ b/src/Main.kt\n@@ -1 +1 @@\n-fun main(){}\n+fun main() {}'
 
     await withProxy({
-      tools: [legacyBatchReformatTool],
-      onToolCall({name, args}) {
-        strictEqual(name, 'reformat_file')
-        calls.push({path: args.path, paths: args.paths})
-        return {text: 'ok'}
+      tools: [nativeReformatTool],
+      onToolCall() {
+        return {text: diff}
       }
     }, async ({proxyClient}) => {
       await proxyClient.send('tools/list')
       const response = await proxyClient.send('tools/call', {
         name: 'reformat_file',
-        arguments: {
-          files: ['src/Main.kt', 'src/Second.kt', 'src/Main.kt']
-        }
+        arguments: {files: ['src/Main.kt']}
       })
 
-      strictEqual(response.result.content[0].text, 'ok')
+      strictEqual(response.result.content[0].text, diff)
     })
-
-    deepStrictEqual(calls, [
-      {path: undefined, paths: ['src/Main.kt', 'src/Second.kt']}
-    ])
   })
 
   it('passes files through to native reformat_file', async () => {
@@ -142,7 +117,7 @@ describe('ij MCP proxy reformat_file compatibility', {timeout: SUITE_TIMEOUT_MS}
     let calls = 0
 
     await withProxy({
-      tools: [legacyReformatTool],
+      tools: [nativeReformatTool],
       onToolCall() {
         calls += 1
         return {text: 'ok'}

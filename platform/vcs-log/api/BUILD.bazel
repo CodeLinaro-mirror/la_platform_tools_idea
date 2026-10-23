@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.platform.vcs.log` start
+content_module_jar(module = ":vcs-log")
+### auto-generated section `dev intellij.platform.vcs.log` end
 
 ### auto-generated section `build intellij.platform.vcs.log` start
-
 jvm_library(
     name = "vcs-log",
     srcs = glob(
@@ -70,6 +74,7 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.vcs.log.iml",
+        "resources/intellij.platform.vcs.log.xml",
     ],
     visibility = ["//visibility:public"],
 )

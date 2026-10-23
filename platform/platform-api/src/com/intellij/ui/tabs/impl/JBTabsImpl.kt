@@ -203,6 +203,7 @@ private val ABC_COMPARATOR: Comparator<TabInfo> = Comparator { o1, o2 -> Natural
 private val LOG = logger<JBTabsImpl>()
 private const val SCROLL_BAR_THICKNESS = 5
 private const val LAYOUT_DONE: @NonNls String = "Layout.done"
+private const val MINIMUM_SIZE_LOG_PREFIX = "[JBTABS_MIN_SIZE]"
 
 @Internal
 data class TabListOptions(
@@ -463,7 +464,7 @@ open class JBTabsImpl internal constructor(
 
   protected open fun createTabBorder(): JBTabsBorder = JBDefaultTabsBorder(this)
 
-  protected open fun createTabPainterAdapter(): TabPainterAdapter = IslandsPainterProvider.getInstance()?.createCommonTabPainter() ?: DefaultTabPainterAdapter(DEFAULT)
+  protected open fun createTabPainterAdapter(): TabPainterAdapter = UIThemeCustomization.getInstance()?.commonTabPainterAdapter ?: DefaultTabPainterAdapter(DEFAULT)
 
   private var tabLabelAtMouse: TabLabel? = null
   private val scrollBar: JBScrollBar
@@ -820,7 +821,7 @@ open class JBTabsImpl internal constructor(
 
   fun ignoreTabLabelLimitedWidthWhenPaint(): Boolean = effectiveLayout.isScrollable
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun resetTabsCache() {
     allTabs = null
   }
@@ -1499,7 +1500,7 @@ open class JBTabsImpl internal constructor(
   }
 
   @Internal
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun setTabs(tabs: List<TabInfo>) {
     for (tab in tabs) {
       tab.changeSupport.addPropertyChangeListener(this)
@@ -1652,7 +1653,7 @@ open class JBTabsImpl internal constructor(
   }
 
   @Internal
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun selectTabSilently(tab: TabInfo) {
     setSelectedInfo(tab)
     setComponentZOrder(tab.tabLabel!!, 0)
@@ -2037,7 +2038,7 @@ open class JBTabsImpl internal constructor(
 
   override fun getTabAt(tabIndex: Int): TabInfo = tabs.get(tabIndex)
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   override fun getTabs(): List<TabInfo> {
     allTabs?.let {
       return it
@@ -2490,7 +2491,95 @@ open class JBTabsImpl internal constructor(
   }
 
   override fun getMinimumSize(): Dimension {
-    return computeSize({ it.minimumSize }, 1)
+    val result = computeSize({ it.minimumSize }, 1)
+    logMinimumSize(result)
+    return result
+  }
+
+  private var lastMinimumSizeLog: String? = null
+
+  private fun logMinimumSize(result: Dimension) {
+    if (!LOG.isDebugEnabled) {
+      lastMinimumSizeLog = null
+      return
+    }
+
+    val signature = buildString {
+      append(result).append(effectiveLayout.javaClass.name)
+      for (info in visibleInfos) {
+        append(System.identityHashCode(info)).append(info.text).append(info.isPinned).append(info === selectedInfo)
+        append(info.tabLabel?.minimumSize)
+        append(info.tabLabel?.preferredSize)
+        append(info.component.minimumSize)
+        append(info.component.preferredSize)
+      }
+    }
+    if (signature == lastMinimumSizeLog) return
+    lastMinimumSizeLog = signature
+
+    val contentMinimumWidth = visibleInfos.maxOfOrNull { it.component.minimumSize.width } ?: 0
+    val contentMinimumSources = visibleInfos.filter { it.component.minimumSize.width == contentMinimumWidth }
+    val headerPreferredSize = computeHeaderPreferredSize(1)
+    val firstLabel = visibleInfos.firstNotNullOfOrNull { it.tabLabel }
+    val insets = layoutInsets
+    val message = buildString {
+      append(MINIMUM_SIZE_LOG_PREFIX).append(" Tabs minimum size: tabs=")
+      append(System.identityHashCode(this@JBTabsImpl))
+      append(", minimum=").append(result)
+      append(", size=").append(size)
+      append(", layout=").append(effectiveLayout.javaClass.name)
+      append(", position=").append(tabsPosition)
+      append(", visibleTabs=").append(visibleInfos.size)
+      append(", contentMinimumWidth=").append(contentMinimumWidth)
+      append(", contentMinimumSources=").append(contentMinimumSources.joinToString { it.text.replace('\n', ' ') })
+      append(", headerPreferredSize=").append(headerPreferredSize)
+      append(", firstLabelPreferredSize=").append(firstLabel?.preferredSize)
+      append(", layoutInsets=").append(insets)
+      append(", expectedWidth=max(").append(contentMinimumWidth).append(", ").append(headerPreferredSize.width).append(") + ")
+      append(insets.left + insets.right + 1)
+      for ((index, info) in visibleInfos.withIndex()) {
+        val label = info.tabLabel
+        val component = info.component
+        append('\n').append(MINIMUM_SIZE_LOG_PREFIX).append(" tab[").append(index).append("]: text=").append(info.text.replace('\n', ' '))
+        append(", pinned=").append(info.isPinned)
+        append(", selected=").append(info === selectedInfo)
+        append(", labelClass=").append(label?.javaClass?.name)
+        append(", labelMinimum=").append(label?.minimumSize)
+        append(", labelPreferred=").append(label?.preferredSize)
+        append(", labelBounds=").append(label?.bounds)
+        append(", componentClass=").append(component.javaClass.name)
+        append(", componentMinimum=").append(component.minimumSize)
+        append(", componentPreferred=").append(component.preferredSize)
+        append(", componentBounds=").append(component.bounds)
+      }
+      if (firstLabel != null) {
+        append('\n').append(MINIMUM_SIZE_LOG_PREFIX).append(" first label component tree:")
+        appendComponentTree(firstLabel, depth = 1)
+      }
+    }
+    LOG.debug(message)
+  }
+
+  private fun StringBuilder.appendComponentTree(component: Component, depth: Int) {
+    append('\n').append(MINIMUM_SIZE_LOG_PREFIX).append(' ')
+    repeat(depth) { append("  ") }
+    append(component.javaClass.name)
+    append(": minimum=").append(component.minimumSize)
+    append(", preferred=").append(component.preferredSize)
+    append(", size=").append(component.size)
+    append(", bounds=").append(component.bounds)
+    append(", minimumSet=").append(component.isMinimumSizeSet)
+    append(", preferredSet=").append(component.isPreferredSizeSet)
+    if (component is JComponent) {
+      append(", border=").append(component.border?.javaClass?.name)
+      append(", insets=").append(component.insets)
+    }
+    if (component is Container) {
+      append(", layout=").append(component.layout?.javaClass?.name)
+      for (child in component.components) {
+        appendComponentTree(child, depth + 1)
+      }
+    }
   }
 
   override fun getPreferredSize(): Dimension {
@@ -2563,7 +2652,7 @@ open class JBTabsImpl internal constructor(
 
   override fun removeTab(info: TabInfo?): ActionCallback = removeTab(info = info, forcedSelectionTransfer = null)
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   @Internal
   fun removeTab(
     info: TabInfo?,
@@ -2623,7 +2712,7 @@ open class JBTabsImpl internal constructor(
     return result
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   @Internal
   fun removeTabWithoutChangingSelection(info: TabInfo) {
     if (removeNotifyInProgress) {

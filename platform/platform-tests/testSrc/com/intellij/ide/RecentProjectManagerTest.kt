@@ -4,17 +4,25 @@ package com.intellij.ide
 import com.intellij.configurationStore.deserializeInto
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.util.JDOMUtil
+import com.intellij.openapi.wm.ex.ProjectFrameTypeBean
+import com.intellij.openapi.wm.ex.ProjectFrameTypeService
 import com.intellij.platform.util.coroutines.childScope
 import com.intellij.testFramework.ApplicationRule
+import com.intellij.testFramework.DisposableRule
+import com.intellij.testFramework.ExtensionTestUtil
 import com.intellij.testFramework.assertions.Assertions.assertThat
+import com.intellij.ui.ColorUtil
+import com.intellij.ui.JBColor
 import junit.framework.TestCase.assertFalse
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import org.intellij.lang.annotations.Language
 import org.junit.ClassRule
+import org.junit.Rule
 import org.junit.Test
 import java.awt.Color
+import javax.swing.UIManager
 import kotlin.test.assertTrue
 
 class RecentProjectManagerTest {
@@ -22,6 +30,106 @@ class RecentProjectManagerTest {
     @ClassRule
     @JvmField
     val appRule = ApplicationRule()
+  }
+
+  @Rule
+  @JvmField
+  val disposableRule = DisposableRule()
+
+  @Test
+  fun `hidden project startup eligibility follows project frame policy`() {
+    val policyFrameType = "TEST_HIDDEN_REOPEN"
+    ExtensionTestUtil.maskExtensions(
+      ProjectFrameTypeService.EP_NAME,
+      listOf(ProjectFrameTypeBean().also {
+        it.id = policyFrameType
+        it.reopenWhenHidden = true
+      }),
+      disposableRule.disposable,
+    )
+
+    val settings = GeneralSettings.getInstance()
+    val originalState = settings.state.copy()
+    try {
+      settings.loadState(originalState.copy(reopenLastProject = true))
+      test { manager ->
+        val policyEnabled = RecentProjectMetaInfo().also {
+          it.opened = true
+          it.hidden = true
+          it.projectFrameTypeId = policyFrameType
+        }
+        val ordinaryHidden = RecentProjectMetaInfo().also {
+          it.opened = true
+          it.hidden = true
+          it.projectFrameTypeId = "ORDINARY_HIDDEN"
+        }
+        val closedPolicyEnabled = RecentProjectMetaInfo().also {
+          it.opened = false
+          it.hidden = true
+          it.projectFrameTypeId = policyFrameType
+        }
+
+        val policyState = RecentProjectManagerState()
+        policyState.additionalInfo["/hidden/policy-enabled"] = policyEnabled
+        manager.loadState(policyState)
+        assertThat(manager.willReopenProjectOnStart()).isTrue()
+
+        val ordinaryState = RecentProjectManagerState()
+        ordinaryState.additionalInfo["/hidden/ordinary"] = ordinaryHidden
+        manager.loadState(ordinaryState)
+        assertThat(manager.willReopenProjectOnStart()).isFalse()
+
+        val closedState = RecentProjectManagerState()
+        closedState.additionalInfo["/hidden/closed"] = closedPolicyEnabled
+        manager.loadState(closedState)
+        assertThat(manager.willReopenProjectOnStart()).isFalse()
+
+        val recentState = RecentProjectManagerState()
+        recentState.additionalInfo["/hidden/policy-enabled"] = policyEnabled
+        recentState.additionalInfo["/hidden/ordinary"] = ordinaryHidden
+        manager.loadState(recentState)
+        assertThat(manager.getRecentPaths()).isEmpty()
+      }
+    }
+    finally {
+      settings.loadState(originalState)
+    }
+  }
+
+  @Test
+  fun `global reopen setting excludes policy-enabled hidden project`() {
+    val policyFrameType = "TEST_HIDDEN_REOPEN"
+    ExtensionTestUtil.maskExtensions(
+      ProjectFrameTypeService.EP_NAME,
+      listOf(ProjectFrameTypeBean().also {
+        it.id = policyFrameType
+        it.reopenWhenHidden = true
+      }),
+      disposableRule.disposable,
+    )
+
+    val settings = GeneralSettings.getInstance()
+    val originalState = settings.state.copy()
+    try {
+      test { manager ->
+        val state = RecentProjectManagerState()
+        state.additionalInfo["/hidden/policy-enabled"] = RecentProjectMetaInfo().also {
+          it.opened = true
+          it.hidden = true
+          it.projectFrameTypeId = policyFrameType
+        }
+        manager.loadState(state)
+
+        settings.loadState(originalState.copy(reopenLastProject = false))
+        assertThat(manager.willReopenProjectOnStart()).isFalse()
+
+        settings.loadState(originalState.copy(reopenLastProject = true))
+        assertThat(manager.willReopenProjectOnStart()).isTrue()
+      }
+    }
+    finally {
+      settings.loadState(originalState)
+    }
   }
 
   // IDEA-298050
@@ -756,6 +864,8 @@ class RecentProjectManagerTest {
   fun `recent project color palette resolves indexed and custom soft backgrounds`() {
     val indexedInfo = RecentProjectColorInfo().also { it.associatedIndex = 3 }
     assertThat(RecentProjectColorPalette.softBackground(indexedInfo)).isEqualTo(RecentProjectColorPalette.softBackground(3))
+    assertThat(RecentProjectColorPalette.softBackground(3))
+      .isEqualTo(RecentProjectColorPalette.softBackground(ProjectIconPalette.gradients[3].first))
     assertThat(RecentProjectColorPalette.softBackground(-1)).isNull()
     assertThat(RecentProjectColorPalette.softBackground(RecentProjectColorInfo().also { it.associatedIndex = 99 })).isNull()
 
@@ -765,9 +875,31 @@ class RecentProjectManagerTest {
     assertThat(RecentProjectColorPalette.softBackground(customInfo)).isNotEqualTo(customColor)
     assertThat(RecentProjectColorPalette.softBackground(RecentProjectColorInfo().also { it.customColor = "not-a-color" })).isNull()
   }
+
+  @Test
+  fun `recent project soft background keeps the panel brightness under a header of the other brightness`() {
+    val isPanelDark = ColorUtil.isDark(JBColor.PanelBackground)
+    val headerColor = if (isPanelDark) Color(0xCBE4F7) else Color(0x31515F)
+    val keys = (1..RecentProjectColorPalette.COLOR_COUNT).map { "RecentProject.Color$it.MainToolbarGradientStart" }
+    val previousValues = keys.map { UIManager.get(it) }
+    try {
+      for (key in keys) {
+        UIManager.put(key, headerColor)
+      }
+
+      for (index in 0 until RecentProjectColorPalette.COLOR_COUNT) {
+        assertThat(ColorUtil.isDark(RecentProjectColorPalette.softBackground(index)!!))
+          .describedAs("soft background of the color index $index")
+          .isEqualTo(isPanelDark)
+      }
+    }
+    finally {
+      keys.zip(previousValues).forEach { (key, value) -> UIManager.put(key, value) }
+    }
+  }
 }
 
-fun test(task: (manager: RecentProjectsManagerBase) -> Unit) {
+fun test(task: suspend (manager: RecentProjectsManagerBase) -> Unit) {
   runBlocking(Dispatchers.Default) {
     val coroutineScope = childScope()
     val manager = RecentProjectsManagerBase(coroutineScope)

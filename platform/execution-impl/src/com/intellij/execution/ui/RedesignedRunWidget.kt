@@ -12,6 +12,7 @@ import com.intellij.execution.RunnerAndConfigurationSettings
 import com.intellij.execution.actions.ExecutorAction
 import com.intellij.execution.actions.RunConfigurationsComboBoxAction
 import com.intellij.execution.actions.StopAction
+import com.intellij.execution.actions.areExecutionActionsHiddenInLightMode
 import com.intellij.execution.compound.CompoundRunConfiguration
 import com.intellij.execution.impl.ExecutionManagerImpl
 import com.intellij.execution.impl.RunnerAndConfigurationSettingsImpl
@@ -21,6 +22,7 @@ import com.intellij.ide.DataManager
 import com.intellij.ide.IdeBundle
 import com.intellij.ide.IdeEventQueue
 import com.intellij.ide.ui.laf.darcula.ui.ToolbarComboWidgetUiSizes
+import com.intellij.ide.welcomeScreen.WelcomeUtils
 import com.intellij.internal.statistic.collectors.fus.actions.persistence.ActionIdProvider
 import com.intellij.openapi.actionSystem.ActionButtonComponent
 import com.intellij.openapi.actionSystem.ActionGroup
@@ -171,6 +173,11 @@ internal class RedesignedRunToolbarWrapper : WindowHeaderPlaceholder() {
 
   override fun update(e: AnActionEvent) {
     super.update(e)
+    val project = e.project
+    if (project != null && WelcomeUtils.isWelcomeProject(project)) {
+      e.presentation.isEnabledAndVisible = false
+      return
+    }
     e.presentation.putClientProperty(runToolbarDataKey, isSomeRunningNow(e))
   }
 
@@ -221,10 +228,10 @@ class RunToolbarTopLevelExecutorActionGroup : ActionGroup() {
 
   override fun getChildren(e: AnActionEvent?): Array<AnAction> {
     e ?: return emptyArray()
-    return arrayOf(
+    return listOfNotNull(
       e.actionManager.getAction(IdeActions.ACTION_DEFAULT_RUNNER),
       e.actionManager.getAction(IdeActions.ACTION_DEFAULT_DEBUGGER)
-    )
+    ).toTypedArray()
   }
 }
 
@@ -453,6 +460,14 @@ internal class MoreRunToolbarActions : TogglePopupAction(
   }
 
   override fun getActionUpdateThread() = ActionUpdateThread.BGT
+
+  override fun update(e: AnActionEvent) {
+    super.update(e)
+
+    if (areExecutionActionsHiddenInLightMode()) {
+      e.presentation.isEnabledAndVisible = false
+    }
+  }
 }
 
 internal fun filterOutRunIfDebugResumeIsPresent(e: AnActionEvent, actions: List<AnAction>): List<AnAction> {

@@ -2,10 +2,15 @@
 package org.jetbrains.kotlin.idea.k2.codeinsight.fixes
 
 import com.intellij.psi.PsiElement
-import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
+import com.intellij.psi.impl.source.tree.LeafPsiElement
 import org.jetbrains.kotlin.analysis.api.KaSession
+import org.jetbrains.kotlin.analysis.api.expressions.expressionType
+import org.jetbrains.kotlin.analysis.api.expressions.isDefinitelyNull
 import org.jetbrains.kotlin.analysis.api.fir.diagnostics.KaFirDiagnostic
+import org.jetbrains.kotlin.analysis.api.scopes.declarationScope
+import org.jetbrains.kotlin.analysis.api.scopes.scope
 import org.jetbrains.kotlin.analysis.api.symbols.KaNamedFunctionSymbol
+import org.jetbrains.kotlin.analysis.api.types.isNullable
 import org.jetbrains.kotlin.idea.codeinsight.api.applicators.fixes.KotlinQuickFixFactory
 import org.jetbrains.kotlin.idea.quickfix.AddExclExclCallFix
 import org.jetbrains.kotlin.psi.KtArrayAccessExpression
@@ -20,7 +25,6 @@ import org.jetbrains.kotlin.psi.KtPsiUtil
 import org.jetbrains.kotlin.psi.KtUnaryExpression
 import org.jetbrains.kotlin.psi.psiUtil.unwrapParenthesesLabelsAndAnnotations
 import org.jetbrains.kotlin.util.OperatorNameConventions
-import org.jetbrains.kotlin.utils.addToStdlib.safeAs
 
 object AddExclExclCallFixFactories {
 
@@ -40,7 +44,8 @@ object AddExclExclCallFixFactories {
         getFixForUnsafeCall(diagnostic.psi)
     }
 
-    private fun KaSession.getFixForUnsafeCall(psi: PsiElement): List<AddExclExclCallFix> {
+    context(session: KaSession)
+    private fun getFixForUnsafeCall(psi: PsiElement): List<AddExclExclCallFix> {
         val (target, hasImplicitReceiver) = when (val unwrapped = psi.unwrapParenthesesLabelsAndAnnotations()) {
             // `foo.bar` -> `foo!!.bar`
             is KtDotQualifiedExpression -> unwrapped.receiverExpression to false
@@ -49,6 +54,9 @@ object AddExclExclCallFixFactories {
             is KtArrayAccessExpression -> unwrapped.arrayExpression to false
 
             is KtCallableReferenceExpression -> unwrapped.lhs.let { lhs ->
+                // `String?::length` should not be fixed as `String!!?::length`
+                if (lhs is LeafPsiElement) return emptyList()
+
                 if (lhs != null) {
                     // `foo::bar` -> `foo!!::bar`
                     lhs to false
@@ -95,14 +103,13 @@ object AddExclExclCallFixFactories {
         //   if (nullableInt == null) {
         //     val x = nullableInt.length  // No AddExclExclCallFix here
         //   }
-        if (target?.safeAs<KtExpression>()?.isDefinitelyNull == true) {
+        if ((target as? KtExpression)?.isDefinitelyNull == true) {
             return emptyList()
         }
 
         return listOfNotNull(target.asAddExclExclCallFix(hasImplicitReceiver = hasImplicitReceiver))
     }
 
-    @OptIn(KaExperimentalApi::class)
     val iteratorOnNullableFactory: KotlinQuickFixFactory.ModCommandBased<KaFirDiagnostic.IteratorOnNullable> = KotlinQuickFixFactory.ModCommandBased { diagnostic: KaFirDiagnostic.IteratorOnNullable ->
         val expression = diagnostic.psi
         val type = expression.expressionType

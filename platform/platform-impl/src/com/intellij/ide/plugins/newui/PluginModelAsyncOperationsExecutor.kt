@@ -2,6 +2,7 @@
 package com.intellij.ide.plugins.newui
 
 import com.intellij.ide.plugins.marketplace.PluginSearchResult
+import com.intellij.ide.plugins.marketplace.CheckErrorsResult
 import com.intellij.ide.plugins.marketplace.SetEnabledStateResult
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.application.EDT
@@ -13,37 +14,138 @@ import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.text.HtmlChunk
 import com.intellij.platform.ide.CoreUiCoroutineScopeHolder
+import com.intellij.util.concurrency.annotations.RequiresEdt
+import fleet.rpc.client.RpcClientDisconnectedException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jetbrains.annotations.ApiStatus
 import java.util.function.Consumer
 import java.util.function.Function
 import javax.swing.JComponent
+import kotlin.coroutines.CoroutineContext
+
+internal class PluginOperationUiBridge {
+  private val handles = mutableSetOf<PluginOperationUiHandle>()
+
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
+  fun createHandle(parentComponent: JComponent): PluginOperationUiHandle {
+    return PluginOperationUiHandle(parentComponent) { handle ->
+      handles.remove(handle)
+    }.also(handles::add)
+  }
+
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
+  fun detach() {
+    handles.toList().forEach(PluginOperationUiHandle::detach)
+  }
+}
+
+internal class PluginOperationUiHandle(
+  parentComponent: JComponent,
+  private val onDetached: (PluginOperationUiHandle) -> Unit = {},
+) {
+  private var parentComponent: JComponent? = parentComponent
+  private var detached = false
+
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
+  fun captureContext(modalityComponent: JComponent? = parentComponent): PluginOperationUiContext {
+    if (modalityComponent == null) return PluginOperationUiContext.withoutParent()
+    val modalityState = ModalityState.stateForComponent(modalityComponent)
+    return PluginOperationUiContext(modalityState, ::getParentComponent)
+  }
+
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
+  fun detach() {
+    if (detached) return
+    detached = true
+    parentComponent = null
+    onDetached(this)
+  }
+
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
+  private fun getParentComponent(): JComponent? = parentComponent
+}
+
+internal class PluginOperationUiContext(
+  val modalityState: ModalityState,
+  private val parentComponent: () -> JComponent?,
+) {
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
+  fun getParentComponent(): JComponent? = parentComponent()
+
+  companion object {
+    fun withoutParent(modalityState: ModalityState = ModalityState.defaultModalityState()): PluginOperationUiContext {
+      return PluginOperationUiContext(modalityState) { null }
+    }
+  }
+}
+
+internal class PluginOperationLauncher(
+  private val coroutineScope: CoroutineScope,
+  private val onOperationSubmitted: () -> Unit = {},
+  private val onOperationCompleted: () -> Unit = {},
+) {
+  fun launch(context: CoroutineContext, operation: suspend CoroutineScope.() -> Unit): Job {
+    onOperationSubmitted()
+    val job = try {
+      coroutineScope.launch(context, block = operation)
+    }
+    catch (t: Throwable) {
+      onOperationCompleted()
+      throw t
+    }
+    job.invokeOnCompletion { onOperationCompleted() }
+    return job
+  }
+}
 
 internal object PluginModelAsyncOperationsExecutor {
   fun performAutoInstall(
-    cs: CoroutineScope,
+    operationLauncher: PluginOperationLauncher,
     modelFacade: PluginModelFacade,
     descriptor: PluginUiModel,
     customizer: PluginManagerCustomizer?,
-    component: JComponent,
-    pluginUpdateSourceApplier: PluginUpdateSourceApplier,
+    operationUi: PluginOperationUiContext,
   ) {
-    cs.launch(Dispatchers.IO) {
-      val stateForComponent = ModalityState.stateForComponent(component)
-      val customizationModel = customizer?.getInstallButonCustomizationModel(modelFacade, descriptor, stateForComponent)
-      withContext(Dispatchers.EDT + stateForComponent.asContextElement()) {
-        val customAction = customizationModel?.mainAction
-        if (customAction != null) {
-          customAction()
-          return@withContext
+    operationLauncher.launch(Dispatchers.IO) {
+      val pluginUpdateSourceApplier = PluginUpdateSourceApplier.createApplier(descriptor, modelFacade)
+      pluginUpdateSourceApplier.runWithRevertOnException {
+        val pluginToInstall = loadModelForAutoInstall(descriptor, customizer)
+        if (pluginToInstall == null) {
+          pluginUpdateSourceApplier.applyPluginUpdateSourcesBasedOnResult(null)
+          return@runWithRevertOnException
         }
-        val result = modelFacade.installOrUpdatePlugin(component, descriptor, null, stateForComponent)
-        pluginUpdateSourceApplier.applyPluginUpdateSourcesBasedOnResult(result)
+        val customizationModel = customizer?.getInstallButonCustomizationModel(
+          modelFacade,
+          pluginToInstall,
+          operationUi.modalityState,
+        )
+        withContext(Dispatchers.EDT + operationUi.modalityState.asContextElement()) {
+          val customAction = customizationModel?.mainAction
+          if (customAction != null) {
+            customAction()
+            return@withContext
+          }
+          val result = modelFacade.installOrUpdatePlugin(
+            operationUi,
+            pluginToInstall,
+            null,
+          )
+          pluginUpdateSourceApplier.applyPluginUpdateSourcesBasedOnResult(result)
+        }
       }
-    }.invokeOnCompletion (pluginUpdateSourceApplier::revertIfNeeded)
+    }
+  }
+
+  private suspend fun loadModelForAutoInstall(
+    descriptor: PluginUiModel,
+    customizer: PluginManagerCustomizer?,
+  ): PluginUiModel? {
+    if (customizer == null || descriptor.detailsLoaded) return descriptor
+    return UiPluginManager.getInstance().loadPluginDetails(descriptor)
   }
 
   suspend fun performMarketplaceSearch(
@@ -71,11 +173,19 @@ internal object PluginModelAsyncOperationsExecutor {
   @JvmOverloads
   @ApiStatus.Internal
   fun updateErrors(cs: CoroutineScope = service<FrontendRpcCoroutineContext>().coroutineScope, sessionId: String, pluginId: PluginId, callback: (List<HtmlChunk>) -> Unit) {
+    updateLoadingProblems(cs, sessionId, pluginId) { callback(MyPluginModel.getErrors(it)) }
+  }
+
+  fun updateLoadingProblems(cs: CoroutineScope, sessionId: String, pluginId: PluginId, callback: (CheckErrorsResult) -> Unit) {
     cs.launch(Dispatchers.IO) {
-      val errors = UiPluginManager.getInstance().getErrors(sessionId, pluginId)
-      val htmlChunks = MyPluginModel.getErrors(errors)
-      withContext(Dispatchers.EDT + ModalityState.any().asContextElement()) {
-        callback(htmlChunks)
+      try {
+        val errors = UiPluginManager.getInstance().getErrors(sessionId, pluginId)
+        withContext(Dispatchers.EDT + ModalityState.any().asContextElement()) {
+          callback(errors)
+        }
+      }
+      catch (_: RpcClientDisconnectedException) {
+        // Error refresh can race with remote plugin manager disconnect.
       }
     }
   }
@@ -89,36 +199,58 @@ internal object PluginModelAsyncOperationsExecutor {
     callback: (SetEnabledStateResult) -> Unit,
   ) {
     cs.launch(Dispatchers.IO) {
-      val result = UiPluginManager.getInstance().enablePlugins(sessionId, descriptorIds, enable, project)
-      withContext(Dispatchers.EDT + ModalityState.any().asContextElement()) {
-        PluginManagerCustomizer.getInstance()?.updateAfterModificationAsync { }
-        callback(result)
+      try {
+        val result = UiPluginManager.getInstance().enablePlugins(sessionId, descriptorIds, enable, project)
+        withContext(Dispatchers.EDT + ModalityState.any().asContextElement()) {
+          PluginManagerCustomizer.getInstance()?.updateAfterModificationAsync { }
+          callback(result)
+        }
+      }
+      catch (_: RpcClientDisconnectedException) {
+        // Plugin state update can race with remote plugin manager disconnect.
       }
     }
   }
 
   fun updatePlugin(
-    cs: CoroutineScope,
+    operationLauncher: PluginOperationLauncher,
     modelFacade: PluginModelFacade,
     plugin: PluginUiModel,
     updateDescriptor: PluginUiModel?,
     pluginManagerCustomizer: PluginManagerCustomizer?,
-    modalityState: ModalityState,
-    component: JComponent?,
-    pluginUpdateSourceApplier: PluginUpdateSourceApplier,
-  ) {
-    cs.launch(Dispatchers.IO) {
-      val model = pluginManagerCustomizer?.getUpdateButtonCustomizationModel(modelFacade, plugin, updateDescriptor, modalityState)
-      withContext(Dispatchers.EDT + modalityState.asContextElement()) {
-        if (model != null) {
-          model.action()
-        }
-        else {
-          val result = modelFacade.installOrUpdatePlugin(component, plugin, updateDescriptor, modalityState)
-          pluginUpdateSourceApplier.applyPluginUpdateSourcesBasedOnResult(result)
+    operationUi: PluginOperationUiContext,
+    pluginDescriptorForPluginUpdateSourceApplier: PluginUiModel,
+    operationContext: PluginOperationContext? = null,
+  ): Job {
+    return operationLauncher.launch(Dispatchers.IO) {
+      val pluginUpdateSourceApplier = PluginUpdateSourceApplier.createApplier(pluginDescriptorForPluginUpdateSourceApplier, modelFacade)
+      pluginUpdateSourceApplier.runWithRevertOnException {
+        val model = pluginManagerCustomizer?.getUpdateButtonCustomizationModel(
+          modelFacade, plugin, updateDescriptor, operationUi.modalityState
+        )
+        withContext(Dispatchers.EDT + operationUi.modalityState.asContextElement()) {
+          if (model != null) {
+            model.action(operationContext)
+          }
+          else {
+            try {
+              val result = modelFacade.installOrUpdatePlugin(
+                operationUi,
+                plugin,
+                updateDescriptor,
+                operationContext = operationContext,
+              )
+              pluginUpdateSourceApplier.applyPluginUpdateSourcesBasedOnResult(result)
+            }
+            finally {
+              if (operationContext != null) {
+                modelFacade.finishOperation(operationContext)
+              }
+            }
+          }
         }
       }
-    }.invokeOnCompletion(pluginUpdateSourceApplier::revertIfNeeded)
+    }
   }
 
   fun loadPopupMenuActions(
@@ -132,7 +264,7 @@ internal object PluginModelAsyncOperationsExecutor {
       return
     }
     val modelFacade = component.getModelFacade()
-    component.getCoroutineScope().launch(Dispatchers.IO) {
+    component.getUiCoroutineScope().launch(Dispatchers.IO) {
       val stateForComponent = ModalityState.stateForComponent(component)
       val popupSelection = selection.map {
         PluginPopupMenuActionData(it.getPluginModel(), it.getInstalledDescriptorForMarketplace(), it.getDescriptorForActions())
@@ -147,9 +279,14 @@ internal object PluginModelAsyncOperationsExecutor {
   fun findPlugins(pluginIds: Collection<PluginId>, callback: Function<Map<PluginId, PluginUiModel>, Unit>) {
     val coroutineScope = service<CoreUiCoroutineScopeHolder>().coroutineScope
     coroutineScope.launch(Dispatchers.IO) {
-      val pluginModels = UiPluginManager.getInstance().findInstalledPlugins(pluginIds.toSet())
-      withContext(Dispatchers.EDT + ModalityState.any().asContextElement()) {
-        callback.apply(pluginModels)
+      try {
+        val pluginModels = UiPluginManager.getInstance().findInstalledPlugins(pluginIds.toSet())
+        withContext(Dispatchers.EDT + ModalityState.any().asContextElement()) {
+          callback.apply(pluginModels)
+        }
+      }
+      catch (_: RpcClientDisconnectedException) {
+        // The remote plugin manager may be gone before this UI refresh completes.
       }
     }
   }
@@ -162,40 +299,67 @@ internal object PluginModelAsyncOperationsExecutor {
     callback: (PluginInstallationState, PluginUiModel?) -> Unit,
   ) {
     cs.launch(Dispatchers.IO) {
-      val installationState = UiPluginManager.getInstance().getPluginInstallationState(pluginId)
-      val installedDescriptor = if (isMarketplace && installationState.status != PluginStatus.INSTALLED_AND_REQUIRED_RESTART) {
-        UiPluginManager.getInstance().getPlugin(pluginId)
+      try {
+        val installationState = UiPluginManager.getInstance().getPluginInstallationState(pluginId)
+        val installedDescriptor = if (isMarketplace && installationState.status != PluginStatus.INSTALLED_AND_REQUIRED_RESTART) {
+          UiPluginManager.getInstance().getPlugin(pluginId)
+        }
+        else null
+        withContext(Dispatchers.EDT + ModalityState.stateForComponent(component).asContextElement()) {
+          callback(installationState, installedDescriptor)
+        }
       }
-      else null
-      withContext(Dispatchers.EDT + ModalityState.stateForComponent(component).asContextElement()) {
-        callback(installationState, installedDescriptor)
+      catch (_: RpcClientDisconnectedException) {
+        // Button refresh can race with remote plugin manager disconnect.
       }
     }
   }
 
   fun switchPlugins(coroutineScope: CoroutineScope, pluginModelFacade: PluginModelFacade, enable: Boolean, callback: (List<PluginUiModel>) -> Unit) {
     coroutineScope.launch(Dispatchers.EDT + ModalityState.any().asContextElement()) {
-      val models = mutableListOf<PluginUiModel>()
-      val group = pluginModelFacade.getModel().userInstalled
-      if (group == null || group.ui == null) {
-        val appInfo = ApplicationInfoEx.getInstanceEx()
+      try {
+        val models = mutableListOf<PluginUiModel>()
+        val group = pluginModelFacade.getModel().userInstalled
+        if (group == null || group.ui == null) {
+          val appInfo = ApplicationInfoEx.getInstanceEx()
 
-        val plugins = withContext(Dispatchers.IO) { UiPluginManager.getInstance().getPlugins() }
-        for (descriptor in plugins) {
-          if (!appInfo.isEssentialPlugin(descriptor.pluginId) && !descriptor.isBundled && descriptor.isEnabled != enable) {
-            models.add(descriptor)
+          val plugins = withContext(Dispatchers.IO) { UiPluginManager.getInstance().getPlugins() }
+          for (descriptor in plugins) {
+            if (!appInfo.isEssentialPlugin(descriptor.pluginId) && !descriptor.isBundled && descriptor.isEnabled != enable) {
+              models.add(descriptor)
+            }
           }
         }
-      }
-      else {
-        for (component in group.ui!!.plugins) {
-          val plugin: PluginUiModel = component.getPluginModel()
-          if (pluginModelFacade.isEnabled(plugin) != enable) {
-            models.add(plugin)
+        else {
+          for (component in group.ui!!.plugins) {
+            val plugin: PluginUiModel = component.getPluginModel()
+            if (pluginModelFacade.isEnabled(plugin) != enable) {
+              models.add(plugin)
+            }
           }
         }
+        callback(models)
       }
-      callback(models)
+      catch (_: RpcClientDisconnectedException) {
+        // Bulk plugin switch refresh can race with remote plugin manager disconnect.
+      }
+    }
+  }
+
+  fun switchPlugins(
+    coroutineScope: CoroutineScope,
+    pluginModelFacade: PluginModelFacade,
+    installedPlugins: List<PluginUiModel>,
+    enable: Boolean,
+    callback: (List<PluginUiModel>) -> Unit,
+  ) {
+    coroutineScope.launch(Dispatchers.EDT + ModalityState.any().asContextElement()) {
+      try {
+        callback(installedPlugins.filter { pluginModelFacade.isEnabled(it) != enable })
+      }
+      catch (_: RpcClientDisconnectedException) {
+        // Bulk plugin switch refresh can race with remote plugin manager disconnect.
+      }
     }
   }
 }

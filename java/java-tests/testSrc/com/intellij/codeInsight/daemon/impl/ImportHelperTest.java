@@ -44,7 +44,7 @@ import com.intellij.openapi.util.Segment;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.util.ThrowableComputable;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.StandardFileSystems;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.CommonClassNames;
@@ -544,7 +544,8 @@ public class ImportHelperTest extends ProductionDaemonAnalyzerTestCase {
 
 
   public void testAutoImportAfterUncomment() {
-    assertNotNull(JavaPsiFacade.getInstance(getProject()).findClass("java.util.ArrayList", GlobalSearchScope.allScope(getProject())));
+    assertOneElement(JavaPsiFacade.getInstance(getProject()).findClasses("java.util.ArrayList", GlobalSearchScope.allScope(getProject())));
+    assertOneElement(JavaPsiFacade.getInstance(getProject()).findClasses("java.util.HashMap", GlobalSearchScope.allScope(getProject())));
     @Language("JAVA")
     @NonNls String text = "class S { /*ArrayList l; HashMap h; <caret>*/ }";
     configureByText(text);
@@ -558,8 +559,9 @@ public class ImportHelperTest extends ProductionDaemonAnalyzerTestCase {
 
     EditorTestUtil.executeAction(getEditor(), IdeActions.ACTION_COMMENT_BLOCK);
 
-    assertEmpty(myTestDaemonCodeAnalyzer.waitHighlightingSurviveCancellations(getFile(), HighlightSeverity.ERROR));
+    myTestDaemonCodeAnalyzer.waitHighlightingSurviveCancellations(getFile(), HighlightSeverity.ERROR);
     waitForAutoOptimizeImports();
+    assertEmpty(myTestDaemonCodeAnalyzer.waitHighlightingSurviveCancellations(getFile(), HighlightSeverity.ERROR));
 
     assertSize(2, ((PsiJavaFile)getFile()).getImportList().getAllImportStatements());
   }
@@ -569,7 +571,7 @@ public class ImportHelperTest extends ProductionDaemonAnalyzerTestCase {
     File tempFile = new File(createTempDirectory(), relativePath);
     tempFile.getParentFile().mkdirs();
     tempFile.createNewFile();
-    VirtualFile vFile = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(tempFile);
+    VirtualFile vFile = StandardFileSystems.local().refreshAndFindFileByPath(tempFile.getAbsolutePath());
     assert vFile != null;
     WriteAction.runAndWait(() -> {
       vFile.setCharset(StandardCharsets.UTF_8);
@@ -748,8 +750,9 @@ public class ImportHelperTest extends ProductionDaemonAnalyzerTestCase {
     configureByText(text);
     CodeInsightWorkspaceSettings.getInstance(getProject()).setOptimizeImportsOnTheFly(true, getTestRootDisposable());
     EditorTestUtil.executeAction(getEditor(), IdeActions.ACTION_COMMENT_LINE);
-    List<HighlightInfo> errors = myTestDaemonCodeAnalyzer.waitHighlightingSurviveCancellations(getFile(), HighlightSeverity.ERROR);
+    myTestDaemonCodeAnalyzer.waitHighlightingSurviveCancellations(getFile(), HighlightSeverity.ERROR);
     waitForAutoOptimizeImports();
+    List<HighlightInfo> errors = myTestDaemonCodeAnalyzer.waitHighlightingSurviveCancellations(getFile(), HighlightSeverity.ERROR);
     assertEmpty(errors);
     assertEquals("""
                    final class UndoTestJava {
@@ -759,8 +762,9 @@ public class ImportHelperTest extends ProductionDaemonAnalyzerTestCase {
                    }
                    """, getFile().getText());
     EditorTestUtil.executeAction(getEditor(), IdeActions.ACTION_UNDO);
-    errors = myTestDaemonCodeAnalyzer.waitHighlightingSurviveCancellations(getFile(), HighlightSeverity.ERROR);
+    myTestDaemonCodeAnalyzer.waitHighlightingSurviveCancellations(getFile(), HighlightSeverity.ERROR);
     waitForAutoOptimizeImports();
+    errors = myTestDaemonCodeAnalyzer.waitHighlightingSurviveCancellations(getFile(), HighlightSeverity.ERROR);
     assertEmpty(errors);
     assertEquals("""
                    import java.util.*;

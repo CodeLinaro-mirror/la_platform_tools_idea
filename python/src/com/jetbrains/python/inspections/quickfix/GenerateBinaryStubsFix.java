@@ -18,8 +18,8 @@ import com.intellij.openapi.progress.impl.BackgroundableProcessIndicator;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.vfs.VirtualFileManager;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.util.QualifiedName;
@@ -27,6 +27,7 @@ import com.jetbrains.python.PyBundle;
 import com.jetbrains.python.PythonHelper;
 import com.jetbrains.python.psi.PyFromImportStatement;
 import com.jetbrains.python.psi.PyImportStatementBase;
+import com.jetbrains.python.sdk.SdkExtKt;
 import com.jetbrains.python.sdk.InvalidSdkException;
 import com.jetbrains.python.sdk.PySdkUtil;
 import com.jetbrains.python.sdk.legacy.PythonSdkUtil;
@@ -38,6 +39,7 @@ import org.jetbrains.annotations.Nullable;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 
 public final class GenerateBinaryStubsFix implements LocalQuickFix {
@@ -128,7 +130,7 @@ public final class GenerateBinaryStubsFix implements LocalQuickFix {
               .runGeneration(indicator);
           }
           final VirtualFile skeletonDir;
-          skeletonDir = LocalFileSystem.getInstance().findFileByPath(refresher.getSkeletonsPath());
+          skeletonDir = VirtualFileManager.getInstance().findFileByNioPath(refresher.getSkeletonsPath());
           if (skeletonDir != null) {
             skeletonDir.refresh(true, true);
           }
@@ -146,9 +148,10 @@ public final class GenerateBinaryStubsFix implements LocalQuickFix {
     final String homePath = mySdk.getHomePath();
     if (homePath == null) return false;
     GeneralCommandLine cmd = PythonHelper.EXTRA_SYSPATH.newCommandLine(homePath, Lists.newArrayList(myQualifiedName));
+    final Map<String, String> activation = SdkExtKt.activationEnvironmentBlocking(mySdk).getSuccessOrNull();
     final ProcessOutput runResult = PySdkUtil.getProcessOutput(cmd,
                                                                new File(homePath).getParent(),
-                                                               PySdkUtil.activateVirtualEnv(mySdk), 5000
+                                                               activation != null ? activation : Map.of(), 5000
     );
     if (runResult.checkSuccess(LOG)) {
       final PySkeletonGenerator.Builder builder = refresher.getGenerator()

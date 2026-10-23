@@ -286,7 +286,7 @@ public final class PersistentMapImpl<Key, Value> implements PersistentMapBase<Ke
         myEnumerator.lockStorageWrite();
         try {
           long previousRecord;
-          final int id;
+          int id;
           if (myDirectlyStoreLongFileOffsetMode) {
             previousRecord = ((PersistentBTreeEnumerator<Key>)myEnumerator).getNonNegativeValue(key);
             id = -1;
@@ -296,7 +296,10 @@ public final class PersistentMapImpl<Key, Value> implements PersistentMapBase<Ke
             previousRecord = readValueId(id);
           }
 
-          long headerRecord = myValueStorage.appendBytes(bytes.toByteArraySequence(), previousRecord);
+          long headerRecord = myValueStorage.appendBytes(
+            bytes.getInternalBuffer(), 0, bytes.size(),
+            previousRecord
+          );
 
           if (myDirectlyStoreLongFileOffsetMode) {
             ((PersistentBTreeEnumerator<Key>)myEnumerator).putNonNegativeValue(key, headerRecord);
@@ -370,6 +373,9 @@ public final class PersistentMapImpl<Key, Value> implements PersistentMapBase<Ke
     catch (IOException ignored) {
     }
     try {
+      //If the map is reopened concurrently -- the new channel for the same file could already be opened in cache, concurrently,
+      // and detected here as-if it is 'our' channel, unclosed.
+      // ... but in this case stop on exception here is still marginally better than continue to deleteAllFilesStartingWith() below
       assertNoOpenChannelsForFilesStartingWith(baseFile, myStorageLockContext);
     }
     catch (IOException e) {

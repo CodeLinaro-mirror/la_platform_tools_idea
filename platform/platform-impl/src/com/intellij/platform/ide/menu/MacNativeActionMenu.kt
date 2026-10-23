@@ -14,16 +14,21 @@ import com.intellij.openapi.actionSystem.impl.MenuCancelledControlFlowException
 import com.intellij.openapi.actionSystem.impl.PresentationFactory
 import com.intellij.openapi.actionSystem.impl.Utils
 import com.intellij.openapi.actionSystem.impl.actionholder.createActionRef
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.WriteIntentReadAction
 import com.intellij.openapi.diagnostic.ControlFlowException
 import com.intellij.openapi.diagnostic.logger
-import com.intellij.openapi.progress.ProcessCanceledException
+import com.intellij.openapi.progress.util.SuvorovProgress
 import com.intellij.openapi.wm.IdeFocusManager
 import com.intellij.ui.ExperimentalUI
 import com.intellij.ui.icons.getMenuBarIcon
 import com.intellij.ui.mac.screenmenu.Menu
+import com.intellij.ui.mac.screenmenu.MenuItem
 import java.util.concurrent.CancellationException
 import javax.swing.JFrame
+
+private const val MAX_FILL_ATTEMPTS = 3
 
 @Throws(MenuCancelledControlFlowException::class)
 internal fun createMacNativeActionMenu(context: DataContext?,
@@ -39,10 +44,18 @@ internal fun createMacNativeActionMenu(context: DataContext?,
   if (group is Toggleable && Toggleable.isSelected(presentation)) {
     menuPeer.setState(true)
   }
-  menuPeer.setOnOpen(frame) {
+  // the session holds this attempt's items and the open it serves;
+  // applySession decides currency on AppKit, the volatile checks here only skip wasted work
+  fun fillOrRetry(session: Menu.FillSession, attempt: Int) {
+    var retryScheduled = false
     try {
+      if (SuvorovProgress.isOnStack()) {
+        // the EDT waits for a lock permit, and the event stealer dispatched this fill event.
+        // a write-intent acquisition here would nest a new SuvorovProgress and stop the EDT.
+        throw MenuCancelledControlFlowException()
+      }
       WriteIntentReadAction.run {
-        Utils.fillMenu(uiKind = FrameMenuUiKind(frame, menuPeer),
+        Utils.fillMenu(uiKind = FrameMenuUiKind(frame, session.items),
                        group = groupRef.getAction(),
                        enableMnemonics = isMnemonicEnabled,
                        presentationFactory = presentationFactory,
@@ -54,17 +67,53 @@ internal fun createMacNativeActionMenu(context: DataContext?,
     }
     catch (e: Throwable) {
       if (e is CancellationException || e is ControlFlowException) {
-        // a possible fix is to update PotemkinProgress.isUrgentInvocationEvent()
-        logger<Menu>().warn("CancellationException/ControlFlowException is not expected", Throwable().initCause(e))
+        // JBR can pump the fill event while the EDT holds the tree lock, waits for a lock permit, or has a pending write action.
+        // the fill aborts in that state.
+        // a retry runs with a regular event while the menu is still open.
+        when {
+          // a newer open runs its own fill chain; this one only logs
+          menuPeer.openTimeNs != session.openTimeNs -> logger<Menu>().debug("menu fill is cancelled, a newer open owns the menu", e)
+          menuPeer.isOpened && attempt < MAX_FILL_ATTEMPTS -> {
+            retryScheduled = true
+            logger<Menu>().debug("menu fill is cancelled, attempt ${attempt + 1} is scheduled", e)
+            session.disposeItems()
+            if (attempt == 0) {
+              // keep a stub item for the open apply: AppKit closes a menu that becomes empty
+              session.items.add(MenuItem())
+            }
+            val modality = ModalityState.current()
+            ApplicationManager.getApplication().invokeLater({
+              if (menuPeer.isOpened && menuPeer.openTimeNs == session.openTimeNs) {
+                val retrySession = session.nextAttempt()
+                try {
+                  fillOrRetry(retrySession, attempt + 1)
+                }
+                finally {
+                  menuPeer.applySession(retrySession)
+                }
+              }
+              else {
+                // the menu was closed or reopened before the retry; keep the canceled sample
+                UILatencyLogger.logMainMenuLatency(session.openTimeNs)
+              }
+            }, modality)
+          }
+          menuPeer.isOpened -> logger<Menu>().warn("CancellationException/ControlFlowException is not expected", Throwable().initCause(e))
+          else -> logger<Menu>().debug("menu fill is cancelled, the menu is closed", e)
+        }
       }
       else {
         logger<Menu>().error(e)
       }
     }
     finally {
-      UILatencyLogger.logMainMenuLatency(menuPeer.openTimeNs);
+      // one FUS event per open: a scheduled retry continues this chain and logs later
+      if (!retryScheduled) {
+        UILatencyLogger.logMainMenuLatency(session.openTimeNs)
+      }
     }
   }
+  menuPeer.setOnOpen(frame) { session -> fillOrRetry(session, 0) }
   menuPeer.listenPresentationChanges(presentation)
 
   if (!ExperimentalUI.isNewUI() && UISettings.getInstance().showIconsInMenus) {
@@ -87,6 +136,7 @@ private fun getDataContext(frame: JFrame): DataContext {
   return context
 }
 
-internal class FrameMenuUiKind(val frame: JFrame, val peer: Menu) : ActionUiKind.Popup {
+// items is a model of a mutable JComponent with children in non-native path of Utils.fillMenu
+internal class FrameMenuUiKind(val frame: JFrame, val items: MutableList<MenuItem?>) : ActionUiKind.Popup {
   override fun isMainMenu(): Boolean = true
 }

@@ -14,11 +14,13 @@ import com.intellij.codeInsight.lookup.CharFilter;
 import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.codeInsight.lookup.LookupManager;
 import com.intellij.codeInsight.lookup.impl.actions.ChooseItemAction;
+import com.intellij.codeInsight.multiverse.EditorContextManager;
 import com.intellij.codeInsight.template.impl.editorActions.TypedActionHandlerBase;
 import com.intellij.featureStatistics.FeatureUsageTracker;
 import com.intellij.ide.DataManager;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.actionSystem.DataContext;
+import com.intellij.openapi.application.WriteIntentReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
@@ -26,7 +28,6 @@ import com.intellij.openapi.editor.EditorModificationUtil;
 import com.intellij.openapi.editor.actionSystem.TypedActionHandler;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Key;
-import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.util.PsiUtilBase;
 import org.jetbrains.annotations.ApiStatus;
@@ -70,7 +71,7 @@ public final class LookupTypedHandler extends TypedActionHandlerBase {
 
     Editor editor = TypedHandler.injectedEditorIfCharTypedIsSignificant(charTyped, originalEditor, file);
     if (editor != originalEditor) {
-      file = PsiDocumentManager.getInstance(project).getPsiFile(editor.getDocument());
+      file = EditorContextManager.getPsiFileForEditor(editor, project);
     }
 
     if (originalEditor.isInsertMode() && beforeCharTyped(charTyped, project, originalEditor, editor, file)) {
@@ -204,7 +205,8 @@ public final class LookupTypedHandler extends TypedActionHandlerBase {
   }
 
   public static @NotNull CharFilter.Result getLookupAction(char charTyped, @NotNull LookupImpl lookup) {
-    CharFilter.Result filtersDecision = getFilterDecision(charTyped, lookup);
+    // WI is caused by IJPL-254001
+    CharFilter.Result filtersDecision = WriteIntentReadAction.compute(() -> getFilterDecision(charTyped, lookup));
     if (filtersDecision != null) {
       return filtersDecision;
     }

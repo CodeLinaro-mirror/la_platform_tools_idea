@@ -4,17 +4,34 @@ package com.intellij.openapi.actionSystem
 import com.intellij.concurrency.currentThreadContext
 import com.intellij.concurrency.installThreadContext
 import com.intellij.ide.IdeEventQueue
+import com.intellij.ide.actions.CollapseAllAction
+import com.intellij.ide.actions.ExpandAllAction
 import com.intellij.ide.actions.NonTrivialActionGroup
 import com.intellij.ide.actions.PopupInMainMenuActionGroup
+import com.intellij.ide.projectView.actions.ExpandRecursivelyAction
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.impl.PresentationFactory
 import com.intellij.openapi.actionSystem.impl.SkipOperation
 import com.intellij.openapi.actionSystem.impl.Utils
 import com.intellij.openapi.application.EDT
+import com.intellij.openapi.application.UI
+import com.intellij.openapi.application.UiWithModelAccess
+import com.intellij.openapi.application.WriteActionListener
+import com.intellij.openapi.application.WriteIntentReadAction
 import com.intellij.openapi.application.edtWriteAction
+import com.intellij.openapi.application.ex.ApplicationEx
 import com.intellij.openapi.application.impl.LaterInvocator
+import com.intellij.openapi.application.runReadActionBlocking
+import com.intellij.openapi.keymap.impl.ActionProcessor
+import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.util.ProgressIndicatorUtils.awaitWithCheckCanceled
+import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.registry.Registry
+import com.intellij.openapi.wm.impl.DockToolWindowAction
+import com.intellij.platform.ide.productMode.IdeProductMode
+import com.intellij.platform.productMode.ProductMode
+import com.intellij.testFramework.LoggedErrorProcessor
 import com.intellij.testFramework.TestLoggerFactory.TestLoggerAssertionError
 import com.intellij.testFramework.UsefulTestCase.assertEmpty
 import com.intellij.testFramework.UsefulTestCase.assertOrderedEquals
@@ -22,27 +39,44 @@ import com.intellij.testFramework.common.timeoutRunBlocking
 import com.intellij.testFramework.junit5.RunInEdt
 import com.intellij.testFramework.junit5.RunMethodInEdt
 import com.intellij.testFramework.junit5.TestApplication
+import com.intellij.testFramework.junit5.TestDisposable
+import com.intellij.testFramework.replaceService
 import com.intellij.util.ExceptionUtil
 import com.intellij.util.ObjectUtils
 import com.intellij.util.TimeoutUtil
 import com.intellij.util.application
 import com.intellij.util.containers.ContainerUtil
 import com.intellij.util.ui.EDT
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
-import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertSame
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
+import java.awt.event.KeyEvent
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import javax.swing.JLabel
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 
 @TestApplication
 @RunInEdt(allMethods = false)
 class ActionUpdaterTest {
+
+  @TestDisposable
+  lateinit var disposable: Disposable
 
   @BeforeEach
   internal fun setUp() {
@@ -77,9 +111,13 @@ class ActionUpdaterTest {
     assertEmpty(actions)
   }
 
-  @Test
-  @RunMethodInEdt
-  fun testNonTrivialActionGroupDisabled() {
+  @ParameterizedTest(name = "lightMode={0}")
+  @ValueSource(booleans = [false, true])
+  fun testNonTrivialActionGroupHidesEmptyPopup(lightMode: Boolean): Unit = timeoutRunBlocking {
+    application.replaceService(IdeProductMode::class.java, object : IdeProductMode {
+      override val currentMode: ProductMode = if (lightMode) ProductMode.LIGHT else ProductMode.MONOLITH
+    }, disposable)
+
     val group = NonTrivialActionGroup()
     group.add(DefaultActionGroup(DefaultActionGroup(
       newAction(ActionUpdateThread.BGT) { it.presentation.isEnabledAndVisible = false })))
@@ -87,6 +125,24 @@ class ActionUpdaterTest {
     val actions = expandActionGroup(group, presentations)
     assertEmpty(actions)
     assertFalse(presentations.getPresentation(group).isEnabled)
+  }
+
+  @Test
+  fun testLightModeSkipsIncompatibleActionUpdate(): Unit = timeoutRunBlocking {
+    application.replaceService(IdeProductMode::class.java, object : IdeProductMode {
+      override val currentMode: ProductMode = ProductMode.LIGHT
+    }, disposable)
+
+    val childUpdated = AtomicBoolean()
+    withContext(Dispatchers.EDT) {
+      val child = newAction(ActionUpdateThread.BGT) {
+        childUpdated.set(true)
+      }
+      val rootGroup = object : DefaultActionGroup(child), DumbAware {}
+
+      assertEmpty(expandActionGroup(rootGroup))
+      assertFalse(childUpdated.get())
+    }
   }
 
   @Test
@@ -226,18 +282,87 @@ class ActionUpdaterTest {
   }
 
   @Test
-  fun testSessionComputeOnEDTWorksAsExpected() = timeoutRunBlocking {
+  fun testFastTrackYieldsToLockProhibition() = timeoutRunBlocking {
+    // scenario: expand on `Dispatchers.UI` with the fast track requested; the group needs the read lock on the EDT
+    // expected: no lock is taken inline in the prohibited frame, and the expansion completes through the dispatched path
+    val group = object : ActionGroup() {
+      override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+      override fun getChildren(e: AnActionEvent?): Array<AnAction> = arrayOf(EmptyAction.createEmptyAction("", null, true))
+    }
+    val actions = withContext(Dispatchers.UI) {
+      val result = async(start = CoroutineStart.UNDISPATCHED) {
+        Utils.expandActionGroupSuspend(group, PresentationFactory(), DataContext.EMPTY_CONTEXT,
+                                       ActionPlaces.UNKNOWN, ActionUiKind.NONE, fastTrack = true)
+      }
+      assertFalse(result.isCompleted, "The fast track must not run inside a frame that forbids the lock")
+      result.await()
+    }
+    assertEquals(1, actions.size)
+  }
+
+  @Test
+  fun testSkippedFastTrackReportsLockRequiringEdtActions() = timeoutRunBlocking {
+    // scenario: expand on `Dispatchers.UI` with the fast track requested; one EDT action needs the read lock, one does not
+    // expected: the fast track is skipped, and only the lock-requiring action class is reported
+    val group = DefaultActionGroup(LockRequiringEdtAction(), LockFreeEdtAction())
+    val actions = withContext(Dispatchers.UI) {
+      Utils.expandActionGroupSuspend(group, PresentationFactory(), DataContext.EMPTY_CONTEXT,
+                                     ActionPlaces.UNKNOWN, ActionUiKind.NONE, fastTrack = true)
+    }
+    assertEquals(2, actions.size)
+    val reported = Utils.getReportedEdtLockActions()
+    assertTrue(LockRequiringEdtAction::class.java.name in reported, "The lock-requiring EDT action must be reported, actual $reported")
+    assertFalse(LockFreeEdtAction::class.java.name in reported, "The lock-free EDT action must not be reported, actual $reported")
+  }
+
+  @Test
+  fun testHeaderActionsNeedNoLock() {
+    // scenario: the EDT actions of the tool window header toolbar read Swing or `ToolWindow` state only
+    // expected: they update without the read lock, so a header added under `Dispatchers.UI` takes no lock on the EDT
+    for (action in listOf(DockToolWindowAction(), ExpandAllAction(), ExpandAllAction { null }, CollapseAllAction(), CollapseAllAction { null },
+                          ExpandRecursivelyAction())) {
+      assertEquals(ActionUpdateThread.EDT, action.actionUpdateThread, "$action must update on the EDT")
+      assertFalse(Utils.isLockRequired(action), "$action must update without the read lock")
+    }
+  }
+
+  private class LockRequiringEdtAction : AnAction() {
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+    override fun update(e: AnActionEvent) {
+      assertTrue(EDT.isCurrentThreadEdt(), "Must be in EDT")
+      assertTrue(application.isReadAccessAllowed(), "Must be in RA")
+    }
+    override fun actionPerformed(e: AnActionEvent) = Unit
+  }
+
+  private class LockFreeEdtAction : AnAction() {
+    init {
+      templatePresentation.isRWLockRequired = false
+    }
+
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+    override fun update(e: AnActionEvent) {
+      assertTrue(EDT.isCurrentThreadEdt(), "Must be in EDT")
+    }
+    override fun actionPerformed(e: AnActionEvent) = Unit
+  }
+
+  @Test
+  fun testSessionComputeOnEDTWorksAsExpected(@TestDisposable disposable: Disposable) = timeoutRunBlocking {
     // scenario: call expandGroup that schedules a block on EDT in RA while WA is requested
     // expected: RA is cancelled, WA is performed, and the expansion is retried
     var getChildrenCount = 0
     var supplierCount = 0
-    val semaphore = Semaphore(1, 1)
+    val getChildrenStarted = CompletableDeferred<Unit>()
+    val waPendingLatch = CountDownLatch(1)
+    val waBlock = { true }
     val action = EmptyAction.createEmptyAction("", null, true)
     val actionGroup = object : ActionGroup() {
       override fun getChildren(e: AnActionEvent?): Array<AnAction> {
         e!!
         if (getChildrenCount++ == 0) {
-          semaphore.release()
+          getChildrenStarted.complete(Unit)
+          awaitWithCheckCanceled(waPendingLatch)
         }
         assertFalse(EDT.isCurrentThreadEdt(), "Must not be in EDT")
         assertTrue(application.isReadAccessAllowed(), "Must be in RA")
@@ -245,20 +370,23 @@ class ActionUpdaterTest {
           supplierCount++
           assertTrue(EDT.isCurrentThreadEdt(), "Must be in EDT")
           assertTrue(application.isReadAccessAllowed(), "Must be in RA")
-          arrayOf<AnAction>(action)
+          arrayOf(action)
         }
       }
     }
+    (application as ApplicationEx).addWriteActionListener(object : WriteActionListener {
+      override fun beforeWriteActionStart(action: Class<*>) {
+        if (action == waBlock.javaClass) waPendingLatch.countDown()
+      }
+    }, disposable)
     withContext(Dispatchers.EDT) {
       val result = async(start = CoroutineStart.UNDISPATCHED) {
         Utils.expandActionGroupSuspend(actionGroup, PresentationFactory(), DataContext.EMPTY_CONTEXT,
                                        ActionPlaces.UNKNOWN, ActionUiKind.NONE, fastTrack = false)
       }
       assertFalse(result.isCompleted, "The update must still be in progress")
-      semaphore.acquire()
-      val waIsExecuted = edtWriteAction {
-        true
-      }
+      getChildrenStarted.await()
+      val waIsExecuted = edtWriteAction(waBlock)
       val actions = result.await()
       assertEquals(1, actions.size)
       assertEquals(2, getChildrenCount, "getChildrenCount must be retried due to WA")
@@ -285,7 +413,7 @@ class ActionUpdaterTest {
         e.updateSession.sharedData(key1) { supplierCount++; awaitWithCheckCanceled(10); 1 }
         e.updateSession.sharedData(key2) { supplierCount++; awaitWithCheckCanceled(10); 2 }
         e.updateSession.sharedData(key2) { supplierCount++; awaitWithCheckCanceled(10); 2 }
-        return arrayOf<AnAction>(action)
+        return arrayOf(action)
       }
     }
     val actions = try {
@@ -308,7 +436,7 @@ class ActionUpdaterTest {
       override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
       override fun getChildren(e: AnActionEvent?): Array<AnAction> {
         assertTrue(EDT.isCurrentThreadEdt(), "Must be in EDT")
-        return arrayOf<AnAction>(EmptyAction.createEmptyAction("", null, true))
+        return arrayOf(EmptyAction.createEmptyAction("", null, true))
       }
     }
     val actions = withContext(Dispatchers.EDT) {
@@ -341,7 +469,7 @@ class ActionUpdaterTest {
             0
           }
         }
-        return arrayOf<AnAction>(EmptyAction.createEmptyAction("", null, true))
+        return arrayOf(EmptyAction.createEmptyAction("", null, true))
       }
     }
     val actions = withContext(Dispatchers.EDT + MyContextElement(1)) {
@@ -356,7 +484,7 @@ class ActionUpdaterTest {
     val actionGroup = object : ActionGroup() {
       val extra = newAction(ActionUpdateThread.BGT) { awaitWithCheckCanceled(10) }
       override fun getChildren(e: AnActionEvent?): Array<AnAction> {
-        return arrayOf<AnAction>(EmptyAction.createEmptyAction("", null, true))
+        return arrayOf(EmptyAction.createEmptyAction("", null, true))
       }
 
       override fun postProcessVisibleChildren(e: AnActionEvent, visibleChildren: List<AnAction>): List<AnAction> {
@@ -377,7 +505,7 @@ class ActionUpdaterTest {
     val prevRetries = retries.asInteger()
     val quickRetries = 10
     var currentMethodId = 0
-    var checkedCounts = IntArray(3)
+    val checkedCounts = IntArray(3)
     fun updateNewInstance(session: UpdateSession, methodId: Int) {
       if (methodId != currentMethodId) return
       checkedCounts[currentMethodId]++
@@ -390,7 +518,7 @@ class ActionUpdaterTest {
       }
       override fun getChildren(e: AnActionEvent?): Array<AnAction> {
         updateNewInstance(e!!.updateSession, 1)
-        return arrayOf<AnAction>(EmptyAction.createEmptyAction("", null, true))
+        return arrayOf(EmptyAction.createEmptyAction("", null, true))
       }
 
       override fun postProcessVisibleChildren(e: AnActionEvent, visibleChildren: List<AnAction>): List<AnAction> {
@@ -433,7 +561,7 @@ class ActionUpdaterTest {
         val edtAction = newAction(ActionUpdateThread.EDT) {
           throw SkipOperation("update")
         }
-        return arrayOf<AnAction>(
+        return arrayOf(
           EmptyAction.createEmptyAction("", null, true),
           newAction(ActionUpdateThread.BGT) {
             throw SkipOperation("update")
@@ -454,6 +582,27 @@ class ActionUpdaterTest {
                                      ActionPlaces.UNKNOWN, ActionUiKind.NONE, fastTrack = false)
     }
     assertEquals(1, actions.size)
+  }
+
+  @Test
+  fun testSkipOperationInNestedUpdateDoesNotStopChildrenUpdate() = timeoutRunBlocking {
+    val updated = ConcurrentHashMap.newKeySet<Int>()
+    val children = (0 until 3).map { index ->
+      newAction(ActionUpdateThread.BGT) {
+        updated.add(index)
+        throw SkipOperation("update")
+      }
+    }
+    // `NonTrivialActionGroup.update` expands its own children with `ActionGroupUtil.isGroupEmpty`
+    val group = NonTrivialActionGroup().apply {
+      addAll(children)
+      templatePresentation.isPopupGroup = true
+    }
+    withContext(Dispatchers.EDT) {
+      Utils.expandActionGroupSuspend(DefaultActionGroup(group), PresentationFactory(), DataContext.EMPTY_CONTEXT,
+                                     ActionPlaces.UNKNOWN, ActionUiKind.NONE, fastTrack = false)
+    }
+    assertEquals(setOf(0, 1, 2), updated)
   }
 
   @Test
@@ -485,12 +634,15 @@ class ActionUpdaterTest {
 
       val lockingActionHadReadAccess = AtomicBoolean(false)
       val nonLockingActionHadReadAccess = AtomicBoolean(false)
+      val nonLockingActionPerformHadWriteIntentAccess = AtomicBoolean(false)
+
 
       val lockingAction = object : AnAction("locking") {
         override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
         override fun actionPerformed(e: AnActionEvent) {}
         override fun update(e: AnActionEvent) {
           lockingActionHadReadAccess.set(application.isReadAccessAllowed)
+          runReadActionBlocking {  }
         }
       }
 
@@ -499,9 +651,16 @@ class ActionUpdaterTest {
           templatePresentation.isRWLockRequired = false
         }
         override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
-        override fun actionPerformed(e: AnActionEvent) {}
+        override fun actionPerformed(e: AnActionEvent) {
+          nonLockingActionPerformHadWriteIntentAccess.set(application.isWriteIntentLockAcquired)
+          WriteIntentReadAction.run {  } // check that no (logged) errors are happening, we permit running explicit WI
+        }
         override fun update(e: AnActionEvent) {
           nonLockingActionHadReadAccess.set(application.isReadAccessAllowed)
+          val error = LoggedErrorProcessor.executeAndReturnLoggedError {
+            runReadActionBlocking {  }
+          }
+          assertTrue { error.message!!.contains("The Read/Write lock is disallowed for an action") }
         }
       }
 
@@ -514,12 +673,52 @@ class ActionUpdaterTest {
         )
       }
 
+      withContext(Dispatchers.UiWithModelAccess) {
+        ActionManager.getInstance().tryToExecute(nonLockingAction, null, null, null, true)
+      }
+
       assertTrue(lockingActionHadReadAccess.get(), "Locking action should have read access")
       assertTrue(!nonLockingActionHadReadAccess.get(), "Non-locking action should NOT have read access")
+      assertTrue(!nonLockingActionPerformHadWriteIntentAccess.get(), "Non-locking actionPerformed should NOT have write-intent access")
     }
     finally {
       registryKey.setValue(prevValue)
     }
+  }
+
+  @Test
+  fun testSuspendedEdtWriteActionDoesNotDeadlockUpdateForInputEvent() = timeoutRunBlocking {
+    // scenario: EDT updates a BGT action for an input event, and a suspended edtWriteAction starts during the update (IJPL-255143)
+    // expected: the write action does not take the write lock while EDT blocks, so the update and the write action both complete
+    val updateCount = AtomicInteger(0)
+    val updateStarted = CompletableDeferred<Unit>()
+    val action = object : AnAction() {
+      override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+      override fun actionPerformed(e: AnActionEvent) {}
+      override fun update(e: AnActionEvent) {
+        if (updateCount.getAndIncrement() == 0) {
+          updateStarted.complete(Unit)
+          // a pending write action cancels this read action, and the retry needs the read lock again
+          repeat(100) {
+            ProgressManager.checkCanceled()
+            TimeoutUtil.sleep(10)
+          }
+        }
+      }
+    }
+    val writeAction = launch(Dispatchers.Default) {
+      updateStarted.await()
+      edtWriteAction {}
+    }
+    val presentation = withContext(Dispatchers.UI) {
+      val inputEvent = KeyEvent(JLabel(), KeyEvent.KEY_PRESSED, 0L, 0, KeyEvent.VK_UNDEFINED, '\u0000')
+      Utils.runUpdateSessionForInputEvent(listOf(action), inputEvent, Utils.createAsyncDataContext(DataContext.EMPTY_CONTEXT),
+                                          ActionPlaces.KEYBOARD_SHORTCUT, object : ActionProcessor() {}, PresentationFactory()) { _, updater, _ ->
+        updater(action)
+      }
+    }
+    writeAction.join()
+    assertTrue(presentation != null, "The update must complete")
   }
 
   private suspend fun assertCyclicDependencyReported(group: ActionGroup) {

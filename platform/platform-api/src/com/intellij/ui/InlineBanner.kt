@@ -2,19 +2,23 @@
 package com.intellij.ui
 
 import com.intellij.icons.AllIcons
+import com.intellij.ide.DataManager
 import com.intellij.ide.IdeBundle
 import com.intellij.ide.IdeCoreBundle
+import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.ui.popup.IconButton
+import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.util.NlsContexts
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.labels.LinkLabel
 import com.intellij.ui.components.labels.LinkListener
 import com.intellij.ui.components.panels.HorizontalLayout
 import com.intellij.ui.dsl.builder.DslComponentProperty
+import com.intellij.ui.dsl.builder.VerticalComponentGap
 import com.intellij.ui.dsl.gridLayout.UnscaledGaps
 import com.intellij.ui.scale.JBUIScale
 import com.intellij.util.ui.FinalLayoutWrapper
@@ -30,6 +34,7 @@ import java.awt.LayoutManager2
 import java.awt.event.ActionListener
 import java.awt.event.MouseEvent
 import javax.swing.Icon
+import javax.swing.JButton
 import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.Timer
@@ -54,6 +59,7 @@ open class InlineBanner private constructor(
   private val myButtonPanel: JPanel
   private val myCloseButton: JComponent
   private var myGearButton: JComponent? = null
+  private var myMenuButton: JComponent? = null
   private var myCloseAction: Runnable? = null
   private val myActionPanel: JPanel
 
@@ -77,7 +83,7 @@ open class InlineBanner private constructor(
     layout = object : BorderLayout(gap, gap) {
       @Suppress("OVERRIDE_DEPRECATION", "DEPRECATION")
       override fun addLayoutComponent(name: String?, comp: Component) {
-        if (comp !== myCloseButton && comp !== myGearButton) {
+        if (comp !== myCloseButton && comp !== myGearButton && comp !== myMenuButton) {
           super.addLayoutComponent(name, comp)
         }
       }
@@ -88,16 +94,21 @@ open class InlineBanner private constructor(
         val y = JBUI.scale(7)
         var x = target.width - JBUI.scale(7)
 
-        if (myCloseButton.isVisible) {
-          val size = myCloseButton.preferredSize
+        fun layoutButton(button: JComponent) {
+          val size = button.preferredSize
           x -= size.width
-          myCloseButton.setBounds(x, y, size.width, size.height)
+          button.setBounds(x, y, size.width, size.height)
           x -= JBUI.scale(2)
         }
-        if (myGearButton != null) {
-          val size = myGearButton!!.preferredSize
-          x -= size.width
-          myGearButton!!.setBounds(x, y, size.width, size.height)
+
+        if (myCloseButton.isVisible) {
+          layoutButton(myCloseButton)
+        }
+        myMenuButton?.let { menuButton ->
+          layoutButton(menuButton)
+        }
+        myGearButton?.let { gearButton ->
+          layoutButton(gearButton)
         }
       }
     }
@@ -127,6 +138,7 @@ open class InlineBanner private constructor(
     centerPanel.add(myActionPanel)
 
     putClientProperty(DslComponentProperty.VISUAL_PADDINGS, UnscaledGaps.EMPTY)
+    putClientProperty(DslComponentProperty.VERTICAL_COMPONENT_GAP, VerticalComponentGap.BOTH)
   }
 
   private fun createInplaceButton(tooltip: @Nls String, icon: Icon, listener: ActionListener): JComponent {
@@ -182,12 +194,32 @@ open class InlineBanner private constructor(
   }
 
   fun addAction(name: @Nls String, icon: Icon?, action: Runnable): LinkLabel<Runnable> {
-    myActionPanel.isVisible = true
     val label = object : LinkLabel<Runnable>(name, icon, { _, action -> action.run() }, action) {
       override fun getTextColor() = JBUI.CurrentTheme.Link.Foreground.ENABLED
     }
-    myActionPanel.add(label, myActionPanel.componentCount - 1)
+    addAction(label)
     return label
+  }
+
+  @ApiStatus.Internal
+  fun addButtonAction(name: @Nls String, action: Runnable): JButton {
+    val button = JButton(name)
+    button.isOpaque = false
+    button.putClientProperty("JButton.backgroundColor", Gray.TRANSPARENT)
+    button.putClientProperty("JButton.paintShadow", false) // The background is transparent, so the shadow would be disabled
+    button.putClientProperty("JButton.borderColor", JBColor.namedColor(
+      "Notification.Button.borderColor", JBUI.CurrentTheme.Button.buttonOutlineColorStart(false)))
+    button.addActionListener {
+      action.run()
+    }
+    addAction(button)
+    return button
+  }
+
+  @ApiStatus.Internal
+  fun addAction(action: JComponent) {
+    myActionPanel.isVisible = true
+    myActionPanel.add(action, myActionPanel.componentCount - 1)
   }
 
   fun addAction(name: @Nls String, action: Runnable): InlineBanner {
@@ -207,6 +239,9 @@ open class InlineBanner private constructor(
     updateButtonsSize()
     return this
   }
+
+  @ApiStatus.Internal
+  fun getCloseAction(): Runnable? = myCloseAction
 
   fun setCloseAction(action: Runnable): InlineBanner {
     myCloseAction = action
@@ -240,12 +275,38 @@ open class InlineBanner private constructor(
     return this
   }
 
+  fun setMenu(tooltip: @Nls String, actionGroup: ActionGroup): InlineBanner {
+    if (myMenuButton != null) {
+      remove(myMenuButton)
+    }
+
+    myMenuButton = createInplaceButton(tooltip, AllIcons.Ide.Notification.Gear) {
+      myMenuButton?.let { component ->
+        JBPopupFactory.getInstance()
+          .createActionGroupPopup(null,
+                                  actionGroup,
+                                  DataManager.getInstance().getDataContext(component),
+                                  false,
+                                  null,
+                                  -1)
+          .showUnderneathOf(component)
+      }
+    }
+    add(myMenuButton)
+    updateButtonsSize()
+
+    return this
+  }
+
   private fun updateButtonsSize() {
     var buttons = 0
     if (myCloseButton.isVisible) {
       buttons++
     }
     if (myGearButton != null) {
+      buttons++
+    }
+    if (myMenuButton != null) {
       buttons++
     }
     myButtonPanel.preferredSize = JBDimension(buttons * 22, 16)

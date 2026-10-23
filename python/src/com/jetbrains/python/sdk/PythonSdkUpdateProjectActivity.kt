@@ -1,6 +1,7 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.sdk
 
+import com.intellij.python.sdk.backend.PythonInterpreter
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.DumbAware
@@ -14,20 +15,17 @@ import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.newvfs.RefreshQueue
 import com.jetbrains.python.packaging.common.PythonPackageManagementListener
 import com.jetbrains.python.packaging.management.PythonPackageManager
-import com.jetbrains.python.packaging.utils.PyPackageCoroutine
 import com.jetbrains.python.sdk.skeleton.PySkeletonUtil.getSitePackagesDirectory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.jetbrains.annotations.ApiStatus
 
-@ApiStatus.Internal
-class PythonSdkUpdateProjectActivity : ProjectActivity, DumbAware {
+internal class PythonSdkUpdateProjectActivity : ProjectActivity, DumbAware {
   override suspend fun execute(project: Project) {
     val application = ApplicationManager.getApplication()
 
     val messageBusConnection = project.messageBus.connect()
     messageBusConnection.subscribe(PythonPackageManager.PACKAGE_MANAGEMENT_TOPIC, object : PythonPackageManagementListener {
-      override fun packagesChanged(sdk: Sdk) {
+      override fun packagesChanged(interpreter: PythonInterpreter) {
         // Restarts the daemon when the installed-packages snapshot is (re)populated. Without
         // this, inspections that consult `listInstalledPackagesSnapshot()` (notably
         // [com.jetbrains.python.requirements.inspections.tools.RequirementInspection])
@@ -40,7 +38,7 @@ class PythonSdkUpdateProjectActivity : ProjectActivity, DumbAware {
         DaemonCodeAnalyzer.getInstance(project).restart("PythonSdkUpdateProjectActivity.packagesChanged")
       }
 
-      override fun outdatedPackagesChanged(sdk: Sdk) {
+      override fun outdatedPackagesChanged(interpreter: PythonInterpreter) {
         DaemonCodeAnalyzer.getInstance(project).restart("PythonSdkUpdateProjectActivity.outdatedPackagesChanged")
       }
     })
@@ -56,8 +54,7 @@ class PythonSdkUpdateProjectActivity : ProjectActivity, DumbAware {
   }
 }
 
-@ApiStatus.Internal
-suspend fun refreshPaths(project: Project, sdk: Sdk) = withContext(Dispatchers.IO) {
+internal suspend fun refreshPaths(project: Project, sdk: Sdk): Unit = withContext(Dispatchers.IO) {
   // Background refreshing breaks structured concurrency: there is a some activity in background that locks files.
   // Temporary folders can't be deleted on Windows due to that.
   // That breaks tests.
@@ -72,9 +69,11 @@ suspend fun refreshPaths(project: Project, sdk: Sdk) = withContext(Dispatchers.I
     RefreshQueue.getInstance().refresh(true, listOfNotNull(getSitePackagesDirectory(sdk), sdk.associatedModuleDir))
   }
 
-  PyPackageCoroutine.launch(project) {
-    PythonSdkUpdater.scheduleUpdate(sdk, project, false)
-  }
+  // Do not start the update on a separate scope. `ProgressManager.run` returns at once for a background task, so a
+  // caller does not wait. A test gets a synchronous update, and no test must wait for a job it cannot see.
+  // The synchronous behaviour comes from `CoreProgressManager.isSynchronousHeadless`, and the property
+  // `intellij.progress.task.ignoreHeadless` removes it. `PythonSdkUpdater.setEnabledInTests` asserts that.
+  PythonSdkUpdater.scheduleUpdate(sdk, project, false)
 }
 
 internal fun dropUpdaterInHeadless(): Boolean {

@@ -1,11 +1,18 @@
 // Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python.grazie
 
+import com.jetbrains.python.allure.Components
+import com.jetbrains.python.allure.Layers
+import com.jetbrains.python.allure.Subsystems
 import com.intellij.grazie.GrazieConfig
 import com.intellij.grazie.GrazieTestBase
 import com.intellij.grazie.jlanguage.Lang
 import com.intellij.grazie.utils.TextStyleDomain
+import com.intellij.idea.TestFor
 
+@Subsystems.Inspections
+@Components.Grazie
+@Layers.Functional
 class PythonGrazieSupportTest : GrazieTestBase() {
   override fun getBasePath() = "python/testData/grazie/"
   override fun isCommunity() = true
@@ -35,5 +42,21 @@ class PythonGrazieSupportTest : GrazieTestBase() {
   fun `test docstring tags are excluded`() {
     GrazieConfig.update { it.withDomainEnabledRules(TextStyleDomain.CodeDocumentation, enabledRules) }
     runHighlightTestForFile("DocstringTagsAreExcluded.py")
+  }
+
+  @TestFor(issues=["PY-27635", "PY-62267"])
+  fun `test sphinx roles are excluded`() {
+    GrazieConfig.update { it.withDomainEnabledRules(TextStyleDomain.CodeDocumentation, enabledRules) }
+    runHighlightTestForFile("SphinxRolesAreExcluded.py")
+  }
+
+  @TestFor(issues=["PY-27635"])
+  fun `test sphinx markup in comments is excluded`() {
+    runHighlightTestForFile("SphinxInCommentsExcluded.py")
+  }
+
+  @TestFor(issues=["IJPL-257025"])
+  fun `test docstring parameter names are excluded`() {
+    runHighlightTestForFile("DocstringParameterNamesAreExcluded.py")
   }
 }

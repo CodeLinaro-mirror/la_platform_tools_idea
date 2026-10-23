@@ -8,29 +8,32 @@ import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.psi.util.descendantsOfType
 import com.intellij.refactoring.util.RefactoringUIUtil
 import com.intellij.util.containers.MultiMap
-import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaImplementationDetail
-import org.jetbrains.kotlin.analysis.api.KaNonPublicApi
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.analyze
-import org.jetbrains.kotlin.analysis.api.analyzeCopy
 import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotation
 import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotationValue
-import org.jetbrains.kotlin.analysis.api.components.KaDataFlowExitPointSnapshot
-import org.jetbrains.kotlin.analysis.api.components.KaDiagnosticCheckerFilter
-import org.jetbrains.kotlin.analysis.api.components.diagnostics
-import org.jetbrains.kotlin.analysis.api.components.expandedSymbol
-import org.jetbrains.kotlin.analysis.api.components.resolveToSymbol
+import org.jetbrains.kotlin.analysis.api.dataflow.KaDataFlowExitPointSnapshot
+import org.jetbrains.kotlin.analysis.api.diagnostics.diagnostics
+import org.jetbrains.kotlin.analysis.api.expressions.expressionType
+import org.jetbrains.kotlin.analysis.api.expressions.isUsedAsExpression
 import org.jetbrains.kotlin.analysis.api.fir.diagnostics.KaFirDiagnostic
 import org.jetbrains.kotlin.analysis.api.impl.base.components.KaBaseIllegalPsiException
 import org.jetbrains.kotlin.analysis.api.projectStructure.KaDanglingFileResolutionMode
 import org.jetbrains.kotlin.analysis.api.renderer.declarations.impl.KaDeclarationRendererForSource
+import org.jetbrains.kotlin.analysis.api.resolution.resolveSuccessfulSymbol
+import org.jetbrains.kotlin.analysis.api.session.analyze
+import org.jetbrains.kotlin.analysis.api.session.analyzeCopy
+import org.jetbrains.kotlin.analysis.api.session.useSiteSession
 import org.jetbrains.kotlin.analysis.api.symbols.KaCallableSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.findClass
 import org.jetbrains.kotlin.analysis.api.symbols.markers.KaAnnotatedSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.symbol
 import org.jetbrains.kotlin.analysis.api.types.KaClassType
+import org.jetbrains.kotlin.analysis.api.types.KaStandardTypeClassIds
 import org.jetbrains.kotlin.analysis.api.types.KaType
+import org.jetbrains.kotlin.analysis.api.types.builtinTypes
+import org.jetbrains.kotlin.analysis.api.types.classId
+import org.jetbrains.kotlin.analysis.api.types.expandedSymbol
 import org.jetbrains.kotlin.analysis.utils.printer.PrettyPrinter
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.base.util.names.FqNames
@@ -169,12 +172,12 @@ internal class ExtractionDataAnalyzer(private val extractionData: ExtractionData
         abstract fun registerModifiedVar(e: KtProperty)
     }
 
-    @OptIn(KaNonPublicApi::class)
     override fun createOutputDescriptor(): OutputDescriptor<KaType> = analyze(extractionData.commonParent) {
         // FIXME: KTIJ-34278
         @OptIn(KaImplementationDetail::class)
         KaBaseIllegalPsiException.allowIllegalPsiAccess {
-            val exitSnapshot: KaDataFlowExitPointSnapshot = computeExitPointSnapshot(extractionData.expressions)
+            val exitSnapshot: KaDataFlowExitPointSnapshot =
+                org.jetbrains.kotlin.analysis.api.dataflow.computeExitPointSnapshot(extractionData.expressions)
 
             val defaultExpressionInfo = exitSnapshot.defaultExpressionInfo
             val typeOfDefaultFlow = defaultExpressionInfo?.type?.takeIf {
@@ -187,7 +190,7 @@ internal class ExtractionDataAnalyzer(private val extractionData: ExtractionData
                 defaultResultExpression = defaultExpressionInfo?.expression,
                 typeOfDefaultFlow = approximateWithResolvableType(typeOfDefaultFlow, scope) ?: builtinTypes.unit,
                 implicitReturn = exitSnapshot.valuedReturnExpressions.filter { it !is KtReturnExpression }.singleOrNull(),
-                lastExpressionHasNothingType = extractionData.expressions.lastOrNull()?.expressionType?.isNothingType == true,
+                lastExpressionHasNothingType = extractionData.expressions.lastOrNull()?.expressionType?.classId == KaStandardTypeClassIds.NOTHING,
                 valuedReturnExpressions = exitSnapshot.valuedReturnExpressions.filter { it is KtReturnExpression },
                 returnValueType = approximateWithResolvableType(exitSnapshot.returnValueType, scope) ?: builtinTypes.unit,
                 jumpExpressions = exitSnapshot.jumpExpressions.filter { it is KtBreakExpression || it is KtContinueExpression || it is KtReturnExpression && it.returnedExpression == null },
@@ -214,7 +217,6 @@ internal class ExtractionDataAnalyzer(private val extractionData: ExtractionData
         }
     }
 
-    @OptIn(KaExperimentalApi::class)
     override fun createDescriptor(
         suggestedFunctionNames: List<String>,
         defaultVisibility: KtModifierKeywordToken?,
@@ -250,8 +252,7 @@ internal class ExtractionDataAnalyzer(private val extractionData: ExtractionData
         val illegalSuspendInside = analyzeCopy(generatedDeclaration, KaDanglingFileResolutionMode.PREFER_SELF) {
             generatedDeclaration.descendantsOfType<KtExpression>()
                 .flatMap {
-                    it.diagnostics(KaDiagnosticCheckerFilter.ONLY_COMMON_CHECKERS)
-                        .map { it.diagnosticClass }
+                    it.diagnostics().directOnly(true).map { it.diagnosticClass }
                 }
                 .any { it == KaFirDiagnostic.IllegalSuspendFunctionCall::class || it == KaFirDiagnostic.IllegalSuspendPropertyAccess::class || it == KaFirDiagnostic.NonLocalSuspensionPoint::class }
         }
@@ -266,7 +267,6 @@ internal class ExtractionDataAnalyzer(private val extractionData: ExtractionData
         return descriptor
     }
 
-    @OptIn(KaExperimentalApi::class)
     private fun getRenderedAnnotations(annotationClassIds: Set<ClassId>): List<String> {
         if (annotationClassIds.isEmpty()) return emptyList()
         val container = extractionData.commonParent.getStrictParentOfType<KtNamedFunction>() ?: return emptyList()
@@ -351,7 +351,7 @@ private fun IExtractionData.getExperimentalMarkers(): ExperimentalMarkers {
                         }
                     }
 
-                    val targetSymbol = expression.mainReference.resolveToSymbol() as? KaAnnotatedSymbol ?: return
+                    val targetSymbol = expression.resolveSuccessfulSymbol() as? KaAnnotatedSymbol ?: return
                     processSymbolAnnotations(targetSymbol)
 
                     val typeSymbol = (targetSymbol as? KaCallableSymbol)?.returnType?.expandedSymbol ?: return
@@ -387,7 +387,6 @@ fun ExtractableCodeDescriptor.validate(target: ExtractionTarget = ExtractionTarg
     }
 }
 
-@OptIn(KaExperimentalApi::class)
 context(_: KaSession)
 private fun ExtractableCodeDescriptor.validateTempResult(
     result: ExtractionResult,
@@ -409,7 +408,7 @@ private fun ExtractableCodeDescriptor.validateTempResult(
         val resolveResult = currentRefExpr.resolveResult as? ResolveResult<PsiNamedElement, KtSimpleNameExpression> ?: return
         if (currentRefExpr.parent is KtThisExpression) return
 
-        val diagnostics = currentRefExpr.diagnostics(KaDiagnosticCheckerFilter.ONLY_COMMON_CHECKERS)
+        val diagnostics = currentRefExpr.diagnostics().directOnly(true)
 
         val currentDescriptor = currentRefExpr.mainReference.resolve()
         if (currentDescriptor is KtParameter && currentDescriptor.parent == valueParameterList) return
@@ -453,7 +452,7 @@ private fun ExtractableCodeDescriptor.validateTempResult(
         object : KtTreeVisitorVoid() {
             override fun visitUserType(userType: KtUserType) {
                 val refExpr = userType.referenceExpression ?: return
-                val diagnostics = refExpr.diagnostics(KaDiagnosticCheckerFilter.ONLY_COMMON_CHECKERS)
+                val diagnostics = refExpr.diagnostics().directOnly(true)
                 diagnostics.firstOrNull { it.diagnosticClass == KaFirDiagnostic.InvisibleReference::class }?.let {
                     val declaration = refExpr.mainReference.resolve() as? PsiNamedElement ?: return
                     conflicts.putValue(declaration, getDeclarationMessage(declaration, "0.will.become.invisible.after.extraction"))

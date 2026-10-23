@@ -1,20 +1,445 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.platform.ijent.spi
 
+import com.intellij.platform.eel.EelDescriptor
+import com.intellij.platform.eel.EelPlatform
+import com.intellij.platform.eel.EelUnavailableException
+import com.intellij.platform.eel.ReadResult
+import com.intellij.platform.eel.SafeDeferred
+import com.intellij.platform.eel.channels.EelReceiveChannel
+import com.intellij.platform.eel.channels.EelSendChannel
+import com.intellij.platform.eel.channels.EelSendChannelException
+import com.intellij.platform.eel.channels.PeekableEelReceiveChannel
+import com.intellij.platform.eel.channels.peekable
+import com.intellij.platform.eel.provider.utils.EelPipe
+import com.intellij.platform.eel.provider.utils.lines
+import com.intellij.platform.eel.provider.utils.sendWholeText
+import com.intellij.platform.eel.testFramework.executeAndCollectLoggedErrors
+import com.intellij.platform.ijent.IjentApi
+import com.intellij.platform.ijent.IjentDeploymentFailed
+import com.intellij.platform.ijent.IjentEventBus
+import com.intellij.platform.ijent.IjentExecFileProvider
+import com.intellij.platform.ijent.IjentMissingBinary
+import com.intellij.platform.ijent.IjentProcessExited
+import com.intellij.platform.ijent.IjentScope
+import com.intellij.platform.ijent.IjentSession
+import com.intellij.platform.ijent.ParentOfIjentScopes
+import com.intellij.platform.ijent.tcp.MutualTlsCertificates
+import com.intellij.platform.ijent.tcp.TcpDeployInfo
+import com.intellij.platform.util.coroutines.childScope
+import com.intellij.testFramework.LoggedErrorProcessorEnabler
+import com.intellij.testFramework.common.timeoutRunBlocking
 import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.assertions.withClue
 import io.kotest.matchers.be
 import io.kotest.matchers.collections.beIn
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.should
+import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.include
-import kotlinx.coroutines.runBlocking
+import io.kotest.matchers.types.shouldBeInstanceOf
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.job
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.yield
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.extension.ExtendWith
+import org.junit.jupiter.api.io.TempDir
+import java.io.IOException
+import java.nio.ByteBuffer
+import java.nio.charset.StandardCharsets
+import java.nio.file.Path
+import java.util.Base64
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.cancellation.CancellationException
+import kotlin.io.path.writeBytes
+import kotlin.time.Duration.Companion.seconds
 
+@Timeout(30)
 class IjentDeployingOverShellProcessStrategyUnitTest {
+  @Test
+  fun `bootstrap detects PowerShell without a known dialect`(): Unit = timeoutRunBlocking(10.seconds) {
+    val strategy = TestShellCommandStrategy(this, "OS=Windows_NT ARCH=AMD64 SHELL=powershell.exe")
+
+    try {
+      strategy.detectPlatform().shouldBeInstanceOf<EelPlatform.Windows>().arch shouldBe EelPlatform.Arch.X86_64
+    }
+    finally {
+      strategy.closeStrategy()
+      strategy.shellProcess.destroyed.await()
+    }
+  }
+
+  @Test
+  fun `bootstrap cleanup failure does not mask a malformed response`(): Unit = timeoutRunBlocking(10.seconds) {
+    val loggedErrors = mutableListOf<Throwable>()
+    executeAndCollectLoggedErrors(loggedErrors) {
+      withContext(CoroutineExceptionHandler { _, err -> loggedErrors += err }) {
+        supervisorScope {
+          val cleanupFailure = IOException("test bootstrap cleanup failure")
+          val strategy = TestShellCommandStrategy(this, "malformed", destroyFailure = cleanupFailure)
+
+          val error = shouldThrow<IjentDeploymentFailed> {
+            strategy.createIjentSession(failingProvider("Connection must not be attempted when shell detection fails"))
+          }
+          withClue("The cause chain must contain the malformed response: ${error.stackTraceToString()}") {
+            generateSequence<Throwable>(error) { it.cause }.any { it.message?.contains("Malformed target shell marker") == true } shouldBe true
+          }
+          // The caller can get a copy of the exit reason. Then the cleanup failure is suppressed into its cause.
+          cleanupFailure should beIn(generateSequence<Throwable>(error) { it.cause }.flatMap { it.suppressed.asSequence() }.toList())
+          strategy.shellProcess.destroyed.await()
+          error
+        }
+      }
+    }
+
+    // A malformed answer of the remote shell is a failure of the environment, not a bug. So nothing logs it as an error.
+    loggedErrors.shouldBeEmpty()
+  }
+
+  @Test
+  @ExtendWith(LoggedErrorProcessorEnabler.DoNoRethrowErrors::class)
+  fun `shell write failure is reported and the owned process is closed`(): Unit = timeoutRunBlocking(10.seconds) {
+    val expectedFailure = IOException("test shell write failure")
+    // The session can report the failure to the parent scope asynchronously. The test waits for the whole session below,
+    // so that the report does not reach the next test.
+    val parentScope = CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, _ -> })
+    val strategy = TestShellStrategy(parentScope, shellWriteFailure = expectedFailure)
+
+    try {
+      val error = shouldThrow<IjentDeploymentFailed> {
+        strategy.createIjentSession(failingProvider("Connection must not be attempted when shell initialization fails"))
+      }
+      // The caller gets a copy of the exit reason, and the exit reason is its cause.
+      error.cause.shouldBeInstanceOf<IjentDeploymentFailed>()
+        .cause.shouldBeInstanceOf<EelUnavailableException.CommunicationFailure>()
+        .cause.shouldBeInstanceOf<EelSendChannelException>()
+        .cause shouldBe expectedFailure
+
+      strategy.shellProcess.destroyed.await()
+      strategy.shellProcess.isAlive shouldBe false
+      parentScope.coroutineContext.job.children.toList().joinAll()
+    }
+    finally {
+      parentScope.cancel()
+    }
+  }
+
+  @Test
+  fun `shell command failure is not masked as cancellation during cleanup`(): Unit = timeoutRunBlocking(10.seconds) {
+    val expectedFailure = IOException("test path mapping failure")
+    val strategy = TestShellStrategy(this, pathMapper = { throw expectedFailure })
+
+    val error = shouldThrow<IjentDeploymentFailed> {
+      strategy.createIjentSession(failingProvider("Connection must not be attempted when path mapping fails"))
+    }
+    error.cause.shouldBeInstanceOf<IjentDeploymentFailed>().cause shouldBe expectedFailure
+
+    strategy.shellProcess.destroyed.await()
+    strategy.shellProcess.isAlive shouldBe false
+  }
+
+  @Test
+  fun `provider connection failure closes the shell process still owned by the deployer`(): Unit = timeoutRunBlocking(10.seconds) {
+    val expectedFailure = IOException("protocol handshake failed")
+    val parentScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val strategy = TestShellStrategy(
+      parentScope,
+      usePowerShell = true,
+      pathMapper = { "C:\\remote\\ijent.exe" },
+    )
+    val provider = object : IjentSessionProvider {
+      override suspend fun connect(deploymentResult: IjentConnectionContext): IjentSession = throw expectedFailure
+    }
+
+    try {
+      shouldThrow<IOException> {
+        strategy.createIjentSession(provider)
+      } shouldBe expectedFailure
+
+      strategy.shellProcess.destroyed.await()
+      strategy.shellProcess.isAlive shouldBe false
+    }
+    finally {
+      parentScope.cancel()
+    }
+  }
+
+  @Test
+  fun `cleanup failure is suppressed without masking the shell command failure`(): Unit = timeoutRunBlocking(10.seconds) {
+    val expectedFailure = IOException("test path mapping failure")
+    val cleanupFailure = IOException("test destroy failure")
+    val strategy = TestShellStrategy(
+      this,
+      pathMapper = { throw expectedFailure },
+      destroyFailure = cleanupFailure,
+    )
+
+    val error = shouldThrow<IjentDeploymentFailed> {
+      strategy.createIjentSession(failingProvider("Connection must not be attempted when path mapping fails"))
+    }
+    error.cause.shouldBeInstanceOf<IjentDeploymentFailed>().cause shouldBe expectedFailure
+    error.suppressed.single() shouldBe cleanupFailure
+    strategy.shellProcess.destroyed.await()
+  }
+
+  @Test
+  fun `cancelling deployment during shell command closes the owned shell process`(): Unit = timeoutRunBlocking(10.seconds) {
+    val parentScope = childScope("ParentOfIjentScope", Dispatchers.Default, supervisor = true)
+    val strategy = TestShellStrategy(
+      parentScope,
+      blockPlatformProbe = true,
+      binaryProvider = { _, _ -> error("Binary provider must not be reached while the platform probe is blocked") },
+    )
+
+    try {
+      supervisorScope {
+        val deployment = async {
+          strategy.createIjentSession(failingProvider("Connection must not be attempted while the platform probe is blocked"))
+        }
+        strategy.shellCreated.await()
+        strategy.shellProcess.platformProbeStarted.await()
+        val cancellation = CancellationException("Test cancellation during shell command")
+        parentScope.cancel(cancellation)
+
+        strategy.shellProcess.destroyed.await()
+        strategy.shellProcess.isAlive shouldBe false
+      }
+    }
+    finally {
+      parentScope.cancel()
+    }
+  }
+
+  @Test
+  fun `binary provider failure after platform probe closes the owned shell process`(): Unit = timeoutRunBlocking(10.seconds) {
+    val expectedFailure = IjentMissingBinary(EelPlatform.Linux(EelPlatform.Arch.X86_64), "test failure")
+    val strategy = TestShellStrategy(this, binaryProvider = { platform, shellProcess ->
+      shellProcess.platformProbed.isCompleted shouldBe true
+      platform.shouldBeInstanceOf<EelPlatform.Linux>()
+      (platform as EelPlatform.Linux).arch shouldBe EelPlatform.Arch.X86_64
+      throw expectedFailure
+    })
+
+    shouldThrow<IjentMissingBinary> {
+      strategy.createIjentSession(failingProvider("Connection must not be attempted when the binary provider fails"))
+    } shouldBe expectedFailure
+
+    strategy.shellProcess.platformProbed.isCompleted shouldBe true
+    strategy.shellProcess.destroyed.await()
+    strategy.shellProcess.isAlive shouldBe false
+  }
+
+  @Test
+  fun `closing the deployer after process handoff does not close the session process`(): Unit = timeoutRunBlocking(10.seconds) {
+    val remotePath = "C:\\remote\\ijent.exe"
+    val strategy = TestShellStrategy(this, usePowerShell = true, pathMapper = { remotePath })
+    val session = strategy.createIjentSession(strategy.successfulProvider(remotePath))
+
+    strategy.closeStrategy()
+    strategy.shellProcess.isAlive shouldBe true
+    session.sessionCoroutineScope.s.isActive shouldBe true
+    strategy.shellProcess.destroyed.isCompleted shouldBe false
+
+    session.close()
+    strategy.shellProcess.destroyed.await()
+  }
+
+  @Test
+  fun `expected process exit cancels the session without failing its parent`(): Unit = timeoutRunBlocking(10.seconds) {
+    val parentScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val remotePath = "C:\\remote\\ijent.exe"
+    val strategy = TestShellStrategy(parentScope, usePowerShell = true, pathMapper = { remotePath })
+    val session = strategy.createIjentSession(strategy.successfulProvider(remotePath))
+    val completion = CompletableDeferred<Throwable?>()
+    session.sessionCoroutineScope.s.coroutineContext.job.invokeOnCompletion { completion.complete(it) }
+
+    try {
+      strategy.shellProcess.exitNormally()
+
+      completion.await().shouldBeInstanceOf<Throwable>()
+      session.sessionCoroutineScope.s.coroutineContext[IjentScope.Key]!!
+        .resolveExitReason(1.seconds)
+        .shouldBeInstanceOf<EelUnavailableException.IntendedExit>()
+      session.sessionCoroutineScope.s.isActive shouldBe false
+      parentScope.isActive shouldBe true
+    }
+    finally {
+      parentScope.cancel()
+    }
+  }
+
+  @OptIn(DelicateCoroutinesApi::class)
+  @Test
+  @ExtendWith(LoggedErrorProcessorEnabler.DoNoRethrowErrors::class)
+  fun `unexpected process exit ends the session but does not fail the parent`(): Unit = timeoutRunBlocking(10.seconds) {
+    val parentFailure = CompletableDeferred<Throwable>()
+    val parentScope = childScope(
+      "ParentOfIjentScope",
+      Dispatchers.Default + CoroutineExceptionHandler { _, error -> parentFailure.complete(error) },
+      supervisor = true,
+    )
+    val remotePath = "C:\\remote\\ijent.exe"
+    val strategy = TestShellStrategy(parentScope, usePowerShell = true, pathMapper = { remotePath })
+    val session = strategy.createIjentSession(strategy.successfulProvider(remotePath))
+    val completion = CompletableDeferred<Throwable?>()
+    session.sessionCoroutineScope.s.coroutineContext.job.invokeOnCompletion { completion.complete(it) }
+
+    try {
+      strategy.shellProcess.exitUnexpectedly()
+
+      completion.await()
+      session.sessionCoroutineScope.resolveExitReason().shouldBeInstanceOf<IjentProcessExited>()
+      // A sudden exit is a failure of the environment, not a bug. So the watcher of the session does not report it.
+      parentScope.coroutineContext.job.children.toList().joinAll()
+      parentFailure.isCompleted shouldBe false
+    }
+    finally {
+      parentScope.cancel()
+    }
+  }
+
+  @Test
+  fun `cancellation while publishing connection completion keeps process cleanup with deployer`(): Unit = timeoutRunBlocking(10.seconds) {
+    val parentScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val remotePath = "C:\\remote\\ijent.exe"
+    val strategy = TestShellStrategy(parentScope, usePowerShell = true, pathMapper = { remotePath })
+    val providerConnected = CompletableDeferred<Unit>()
+    val eventsCollector = launch(start = CoroutineStart.UNDISPATCHED) {
+      IjentDeployingStrategy.deployEvents.collect { event ->
+        if (event == IjentDeployingStrategy.DeployEvent.CONNECT_STARTED) {
+          awaitCancellation()
+        }
+      }
+    }
+
+    try {
+      val successfulProvider = strategy.successfulProvider(remotePath)
+      val deployment = async {
+        strategy.createIjentSession(object : IjentSessionProvider {
+          override suspend fun connect(deploymentResult: IjentConnectionContext): IjentSession {
+            val session = successfulProvider.connect(deploymentResult)
+            providerConnected.complete(Unit)
+            return session
+          }
+        })
+      }
+      providerConnected.await()
+      yield()
+      deployment.isCompleted shouldBe false
+      deployment.cancelAndJoin()
+
+      strategy.shellProcess.destroyed.await()
+      strategy.shellProcess.isAlive shouldBe false
+    }
+    finally {
+      eventsCollector.cancelAndJoin()
+      parentScope.cancel()
+    }
+  }
+
+  @Test
+  fun `Windows target uses PowerShell and quotes the binary path`(): Unit = timeoutRunBlocking(10.seconds) {
+    val remotePath = "C:\\temp\\Scarlet O'hara\\ijent.exe"
+    val binaryPlatform = CompletableDeferred<EelPlatform>()
+    val strategy = TestShellStrategy(
+      this,
+      usePowerShell = true,
+      binaryProvider = { platform, _ ->
+        binaryPlatform.complete(platform)
+        Path.of("test-ijent.exe")
+      },
+      pathMapper = { remotePath },
+    )
+    val session = strategy.createIjentSession(strategy.successfulProvider(remotePath))
+
+    val selectedPlatform = binaryPlatform.await()
+    selectedPlatform.shouldBeInstanceOf<EelPlatform.Windows>()
+    (selectedPlatform as EelPlatform.Windows).arch shouldBe EelPlatform.Arch.X86_64
+    (session.platform === selectedPlatform) shouldBe true
+    strategy.shellProcess.receivedCommands.any { it.startsWith("Write-Output '") } shouldBe true
+    strategy.shellProcess.receivedCommands.none {
+      it.startsWith("echo ") || "set -e" in it || "uname" in it || "type busybox" in it
+    } shouldBe true
+    strategy.shellProcess.receivedCommands.single {
+      "& 'C:\\temp\\Scarlet O''hara\\ijent.exe' 'grpc-server' '--self-delete-on-exit'" in it
+    }
+
+    session.close()
+    strategy.shellProcess.destroyed.await()
+  }
+
+  @Test
+  fun `Windows upload sends binary data as PowerShell commands`(@TempDir directory: Path): Unit = timeoutRunBlocking {
+    val content = ByteArray(128 * 1024 + 17) { it.toByte() }
+    val binary = directory.resolve("ijent.exe").also { it.writeBytes(content) }
+    val strategy = TestShellStrategy(this, usePowerShell = true)
+    try {
+      strategy.upload(binary) shouldBe TestShellProcessFacade.UPLOADED_BINARY
+
+      val chunks = strategy.shellProcess.receivedCommands.mapNotNull { command ->
+        Regex("FromBase64String\\('([^']+)'\\)").find(command)?.groupValues?.get(1)
+      }
+      (chunks.size > 1) shouldBe true
+      chunks.flatMap { Base64.getDecoder().decode(it).asIterable() } shouldBe content.toList()
+      strategy.shellProcess.receivedCommands.none { "OpenStandardInput" in it } shouldBe true
+    }
+    finally {
+      strategy.closeStrategy()
+      strategy.shellProcess.destroyed.await()
+    }
+  }
+
+  @Test
+  fun `Windows TCP launch sends the server TLS material through stdin`(): Unit = timeoutRunBlocking {
+    val remotePath = "C:\\temp\\Scarlet O'hara\\ijent.exe"
+    val certificates = MutualTlsCertificates(
+      authority = "localhost",
+      certificateAuthorityPem = "test CA certificate\n",
+      serverCertificatePem = "test server certificate\n",
+      serverPrivateKeyPem = "test server private key\n",
+      clientCertificatePem = "test client certificate\n",
+      clientPrivateKeyPem = "test client private key\n",
+    )
+    val strategy = TestShellStrategy(this, usePowerShell = true, pathMapper = { remotePath }, tlsCertificates = certificates)
+    val session = strategy.createIjentSession(strategy.successfulProvider(remotePath))
+    try {
+      val command = strategy.shellProcess.receivedCommands.single { "'grpc-server'" in it }
+      val encoded = Regex("FromBase64String\\('([^']+)'\\)").find(command)!!.groupValues[1]
+      String(Base64.getDecoder().decode(encoded), StandardCharsets.UTF_8) shouldBe
+        "test server certificate\ntest server private key\ntest CA certificate\n"
+      command should include(" | & 'C:\\temp\\Scarlet O''hara\\ijent.exe'")
+      command should include("'--use-tls'")
+      command should include("'--address=127.0.0.1'")
+    }
+    finally {
+      session.close()
+      strategy.shellProcess.destroyed.await()
+    }
+  }
+
   @Nested
   inner class `test createDeployingContext` {
     @Test
-    fun `all commands with busybox`(): Unit = runBlocking {
+    fun `all commands with busybox`(): Unit = timeoutRunBlocking(10.seconds) {
       val context = createDeployingContext { commands ->
         commands
       }
@@ -23,7 +448,6 @@ class IjentDeployingOverShellProcessStrategyUnitTest {
         cp = "cp",
         cut = "cut",
         env = "env",
-        getent = "getent",
         head = "head",
         mktemp = "mktemp",
         rm = "rm",
@@ -31,11 +455,14 @@ class IjentDeployingOverShellProcessStrategyUnitTest {
         tail = "tail",
         uname = "uname",
         whoami = "whoami",
+        getent = "getent",
+        id = "id",
+        cacheCommands = cacheCommands(),
       ))
     }
 
     @Test
-    fun `all commands without busybox`(): Unit = runBlocking {
+    fun `all commands without busybox`(): Unit = timeoutRunBlocking(10.seconds) {
       val context = createDeployingContext { commands ->
         "busybox" should beIn(commands)
         (commands - "busybox")
@@ -45,7 +472,6 @@ class IjentDeployingOverShellProcessStrategyUnitTest {
         cp = "cp",
         cut = "cut",
         env = "env",
-        getent = "getent",
         head = "head",
         mktemp = "mktemp",
         rm = "rm",
@@ -53,11 +479,14 @@ class IjentDeployingOverShellProcessStrategyUnitTest {
         tail = "tail",
         uname = "uname",
         whoami = "whoami",
+        getent = "getent",
+        id = "id",
+        cacheCommands = cacheCommands(),
       ))
     }
 
     @Test
-    fun `all commands without chmod`(): Unit = runBlocking {
+    fun `all commands without chmod`(): Unit = timeoutRunBlocking(10.seconds) {
       val context = createDeployingContext { commands ->
         "chmod" should beIn(commands)
         (commands - "chmod")
@@ -67,7 +496,6 @@ class IjentDeployingOverShellProcessStrategyUnitTest {
         cp = "cp",
         cut = "cut",
         env = "env",
-        getent = "getent",
         head = "head",
         mktemp = "mktemp",
         rm = "rm",
@@ -75,11 +503,40 @@ class IjentDeployingOverShellProcessStrategyUnitTest {
         tail = "tail",
         uname = "uname",
         whoami = "whoami",
+        getent = "getent",
+        id = "id",
+        cacheCommands = cacheCommands(),
+      ))
+    }
+
+    /** macOS has neither `getent` nor `busybox`, but the deployment must work there anyway. */
+    @Test
+    fun `all commands without getent and without busybox`(): Unit = timeoutRunBlocking(10.seconds) {
+      val context = createDeployingContext { commands ->
+        "busybox" should beIn(commands)
+        "getent" should beIn(commands)
+        commands - "busybox" - "getent"
+      }
+      context should be(DeployingContext(
+        chmod = "chmod",
+        cp = "cp",
+        cut = "cut",
+        env = "env",
+        head = "head",
+        mktemp = "mktemp",
+        rm = "rm",
+        sed = "sed",
+        tail = "tail",
+        uname = "uname",
+        whoami = "whoami",
+        getent = null,
+        id = "id",
+        cacheCommands = cacheCommands(),
       ))
     }
 
     @Test
-    fun `only busybox`(): Unit = runBlocking {
+    fun `only busybox`(): Unit = timeoutRunBlocking(10.seconds) {
       val context = createDeployingContext { commands ->
         "busybox" should beIn(commands)
         listOf("busybox")
@@ -89,7 +546,6 @@ class IjentDeployingOverShellProcessStrategyUnitTest {
         cp = "busybox cp",
         cut = "busybox cut",
         env = "busybox env",
-        getent = "busybox getent",
         head = "busybox head",
         mktemp = "busybox mktemp",
         rm = "busybox rm",
@@ -97,12 +553,15 @@ class IjentDeployingOverShellProcessStrategyUnitTest {
         tail = "busybox tail",
         uname = "busybox uname",
         whoami = "busybox whoami",
+        getent = "busybox getent",
+        id = "busybox id",
+        cacheCommands = cacheCommands("busybox "),
       ))
     }
 
     @Test
-    fun `no chmod and no busybox`(): Unit = runBlocking {
-      val errorAssertion = shouldThrow<IjentStartupError.IncompatibleTarget> {
+    fun `no chmod and no busybox`(): Unit = timeoutRunBlocking(10.seconds) {
+      val errorAssertion = shouldThrow<EelUnavailableException.CommunicationFailure> {
         createDeployingContext { commands ->
           "busybox" should beIn(commands)
           "chmod" should beIn(commands)
@@ -111,5 +570,292 @@ class IjentDeployingOverShellProcessStrategyUnitTest {
       }
       errorAssertion.message should include("busybox")
     }
+
+    @Test
+    fun `macOS uses shasum for the cache`(): Unit = timeoutRunBlocking {
+      createDeployingContext { it - setOf("busybox", "sha256sum") }
+        .cacheCommands?.checksum shouldBe "shasum -a 256"
+    }
+
+    @Test
+    fun `deployment does not require cache utilities`(): Unit = timeoutRunBlocking {
+      createDeployingContext { it - setOf("busybox", "mkdir", "mv", "sha256sum", "shasum", "touch", "ls") }
+        .cacheCommands shouldBe null
+    }
+
+    @Test
+    fun `the cache requires LRU utilities`(): Unit = timeoutRunBlocking {
+      for (command in listOf("touch", "ls")) {
+        createDeployingContext { it - setOf("busybox", command) }.cacheCommands shouldBe null
+      }
+    }
+
+    private fun cacheCommands(prefix: String = ""): IjentBinaryCache.PosixCommands = IjentBinaryCache.PosixCommands(
+      mkdir = "${prefix}mkdir",
+      mv = "${prefix}mv",
+      checksum = "${prefix}sha256sum",
+      touch = "${prefix}touch",
+      ls = "${prefix}ls",
+    )
+  }
+}
+
+private fun failingProvider(message: String): IjentSessionProvider = object : IjentSessionProvider {
+  override suspend fun connect(deploymentResult: IjentConnectionContext): IjentSession = error(message)
+}
+
+private class TestShellStrategy(
+  parentScope: CoroutineScope,
+  private val blockPlatformProbe: Boolean = false,
+  private val usePowerShell: Boolean = false,
+  private val binaryProvider: suspend (EelPlatform, TestShellProcessFacade) -> Path = { _, _ -> Path.of("test-ijent") },
+  private val pathMapper: suspend (Path) -> String? = { null },
+  private val destroyFailure: Exception? = null,
+  private val shellWriteFailure: IOException? = null,
+  private val tlsCertificates: MutualTlsCertificates? = null,
+) : IjentDeployingOverShellProcessStrategy(ParentOfIjentScopes(parentScope), Dispatchers.Default, "test shell") {
+  override val executionStrategy: ExecutionStrategy
+    get() = tlsCertificates?.let { ExecutionStrategy.Tcp(TcpDeployInfo.RandomPort("127.0.0.1"), it) } ?: ExecutionStrategy.Default
+  val shellCreated = CompletableDeferred<Unit>()
+  lateinit var shellProcess: TestShellProcessFacade
+    private set
+
+  override val ijentExecFileProvider: IjentExecFileProvider = object : IjentExecFileProvider {
+    override suspend fun getIjentBinary(targetPlatform: EelPlatform): Path = binaryProvider(targetPlatform, shellProcess)
+  }
+
+  override suspend fun getShellDialect(process: IjentSessionProcessMediator.ProcessFacade): ShellDialect =
+    if (usePowerShell) ShellDialect.POWERSHELL else ShellDialect.POSIX
+
+  override suspend fun mapPath(path: Path): String? = pathMapper(path)
+
+  override suspend fun createShellProcessFacade(ijentProcessScope: IjentScope): IjentSessionProcessMediator.ProcessFacade =
+    TestShellProcessFacade(ijentProcessScope, blockPlatformProbe, destroyFailure, shellWriteFailure).also {
+      shellProcess = it
+      shellCreated.complete(Unit)
+    }
+
+  fun successfulProvider(remoteBinaryPath: String): IjentSessionProvider = object : IjentSessionProvider {
+    override suspend fun connect(deploymentResult: IjentConnectionContext): IjentSession {
+      when (val mediator = deploymentResult.mediator) {
+        // A real stdio transport reads the stdout of IJent until its end.
+        is IjentSessionProcessMediator -> {
+          mediator.useStdoutAsTransport()
+          mediator.ijentProcessScope.s.launch { readToEnd(mediator.process.stdout) }
+        }
+        is IjentTcpSessionMediator -> error("The test shell uses the stdio transport")
+      }
+      return fakeSession(deploymentResult, remoteBinaryPath)
+    }
+  }
+
+  @Suppress("checkedExceptions") // The fake transport ends together with the session.
+  private suspend fun readToEnd(stdout: EelReceiveChannel) {
+    val buffer = ByteBuffer.allocate(4096)
+    while (stdout.receive(buffer.clear()) == ReadResult.NOT_EOF) Unit
+  }
+
+  private fun fakeSession(deploymentResult: IjentConnectionContext, remoteBinaryPath: String): IjentSession =
+    object : IjentSession {
+      override val isRunning: Boolean get() = shellProcess.isAlive
+      override val platform: EelPlatform = deploymentResult.targetPlatform
+      override val remotePathToBinary: String = remoteBinaryPath
+      override val transportConnected = MutableStateFlow(true)
+
+      @OptIn(DelicateCoroutinesApi::class)
+      override val sessionCoroutineScope: IjentScope = deploymentResult.mediator.ijentProcessScope
+
+      override suspend fun updateLogLevel() = Unit
+      override suspend fun setParentProcessToWatch(pid: Long) = Unit
+      override fun getIjentInstance(descriptor: EelDescriptor): IjentApi = error("Unused in this test")
+      override val eventBus: IjentEventBus get() = error("Unused in this test")
+
+      override fun close() {
+        sessionCoroutineScope.s.cancel()
+      }
+    }
+
+  fun closeStrategy() {
+    close()
+  }
+
+  suspend fun upload(binary: Path): String {
+    getTargetPlatform()
+    return copyFile(binary)
+  }
+}
+
+private class TestShellCommandStrategy(
+  parentScope: CoroutineScope,
+  private val shellProbe: String,
+  private val destroyFailure: Exception? = null,
+) : IjentDeployingOverShellProcessStrategy.WithShellBootstrap(
+  ParentOfIjentScopes(parentScope),
+  Dispatchers.Default,
+  "test shell bootstrap",
+) {
+  lateinit var shellProcess: TestShellProcessFacade
+    private set
+
+  override val ijentExecFileProvider: IjentExecFileProvider = object : IjentExecFileProvider {
+    override suspend fun getIjentBinary(targetPlatform: EelPlatform): Path = error("The shell probe must not request an IJent binary")
+  }
+
+  override suspend fun mapPath(path: Path): String? = null
+
+  override suspend fun createShellProcessFacade(
+    ijentProcessScope: IjentScope,
+    script: String,
+  ): IjentSessionProcessMediator.ProcessFacade {
+    val marker = requireNotNull(Regex("IJENT_SHELL_PROBE_[a-z0-9]+").find(script)).value
+    return TestShellProcessFacade(ijentProcessScope, destroyFailure = destroyFailure, bootstrapOutput = "$marker $shellProbe\r\n").also {
+      shellProcess = it
+    }
+  }
+
+  suspend fun detectPlatform(): EelPlatform = getTargetPlatform()
+
+  fun closeStrategy() = close()
+}
+
+@Suppress("checkedExceptions") // The fake shell can close while it sends a response.
+private class TestShellProcessFacade(
+  val ijentProcessScope: IjentScope,
+  private val blockPlatformProbe: Boolean = false,
+  private val destroyFailure: Exception? = null,
+  shellWriteFailure: IOException? = null,
+  bootstrapOutput: String? = null,
+) : IjentSessionProcessMediator.ProcessFacade {
+  private val stdinPipe = EelPipe("test shell stdin", prefersDirectBuffers = false)
+  private val stdoutPipe = EelPipe("test shell stdout", prefersDirectBuffers = false)
+  private val stderrPipe = EelPipe("test shell stderr", prefersDirectBuffers = false)
+  private val exitCodeImpl = CompletableDeferred<Int>()
+  private val alive = AtomicBoolean(true)
+
+  val platformProbed = CompletableDeferred<Unit>()
+  val platformProbeStarted = CompletableDeferred<Unit>()
+  val destroyed = CompletableDeferred<Unit>()
+  val receivedCommands = CopyOnWriteArrayList<String>()
+
+  override val stdin: EelSendChannel = shellWriteFailure?.let { failure ->
+    object : EelSendChannel by stdinPipe.sink {
+      override suspend fun send(src: ByteBuffer) {
+        throw EelSendChannelException(this, failure)
+      }
+    }
+  } ?: stdinPipe.sink
+  override val stdout: PeekableEelReceiveChannel = stdoutPipe.source.peekable()
+  override val stderr: EelReceiveChannel = stderrPipe.source
+  override val exitCode: SafeDeferred<Int> = SafeDeferred(exitCodeImpl)
+  override val destroyIsGraceful: Boolean = true
+  override val isAlive: Boolean get() = alive.get()
+
+  init {
+    ijentProcessScope.s.launch {
+      try {
+        bootstrapOutput?.let { stdoutPipe.sink.sendWholeText(it) }
+        stdinPipe.source.lines(StandardCharsets.UTF_8).collect { command ->
+          respondTo(command)
+        }
+      }
+      catch (err: EelSendChannelException) {
+        // A real shell cannot fail the session after it exits.
+        if (alive.get()) throw err
+      }
+    }
+  }
+
+  override suspend fun destroyForcibly() {
+    destroyFailure?.let { throw it }
+    finish(0)
+  }
+
+  override suspend fun destroy() {
+    finish(0)
+  }
+
+  suspend fun exitNormally() {
+    finish(0)
+  }
+
+  suspend fun exitUnexpectedly() {
+    finish(42)
+  }
+
+  private suspend fun respondTo(command: String) {
+    receivedCommands += command
+    val powerShellCommand = "Write-Output" in command
+    val lineEnding = if (powerShellCommand) "\r\n" else "\n"
+    val commandBoundary = run {
+      Regex("echo ([a-z0-9]{32})_START").find(command)
+      ?: Regex("Write-Output '([a-z0-9]{32})_START'").find(command)
+    }?.groupValues?.get(1)
+    if (commandBoundary != null) {
+      stdoutPipe.sink.sendWholeText("${commandBoundary}_START$lineEnding")
+      when {
+        "type busybox" in command -> AVAILABLE_SHELL_COMMANDS.forEach {
+          stdoutPipe.sink.sendWholeText("$it$lineEnding")
+        }
+        "uname -spm" in command -> {
+          platformProbeStarted.complete(Unit)
+          if (blockPlatformProbe) return
+          platformProbed.complete(Unit)
+          stdoutPipe.sink.sendWholeText("Linux x86_64 x86_64$lineEnding")
+        }
+        "PROCESSOR_ARCHITECTURE" in command -> {
+          platformProbed.complete(Unit)
+          stdoutPipe.sink.sendWholeText("AMD64$lineEnding")
+        }
+        "[IO.Directory]::CreateDirectory" in command -> {
+          val markers = Regex("Write-Output \\('([a-z0-9]{32})' \\+ \\$(ijentDir|ijentBinary)\\)").findAll(command)
+          for (marker in markers) {
+            val path = if (marker.groupValues[2] == "ijentDir") UPLOADED_BINARY.substringBeforeLast('\\') else UPLOADED_BINARY
+            stdoutPipe.sink.sendWholeText("${marker.groupValues[1]}$path$lineEnding")
+          }
+        }
+      }
+      stdoutPipe.sink.sendWholeText("${commandBoundary}_END$lineEnding")
+      return
+    }
+
+    val processBoundary = run {
+      Regex("^echo ([a-z0-9]{32})(?:;|$)").find(command)
+      ?: Regex("^Write-Output '([a-z0-9]{32})';").find(command)
+    }?.groupValues?.get(1)
+    if (processBoundary != null) stdoutPipe.sink.sendWholeText("$processBoundary$lineEnding")
+    else if ($$"$ijentOutput.Dispose()" in command) {
+      val boundary = Regex("Write-Output '([a-z0-9]{32})'").find(command)?.groupValues?.get(1)
+      if (boundary != null) stdoutPipe.sink.sendWholeText("$boundary$lineEnding")
+    }
+  }
+
+  private suspend fun finish(exitCode: Int) {
+    if (!alive.compareAndSet(true, false)) return
+
+    stdoutPipe.sink.close(null)
+    stderrPipe.sink.close(null)
+    exitCodeImpl.complete(exitCode)
+    destroyed.complete(Unit)
+  }
+
+  companion object {
+    const val UPLOADED_BINARY: String = "C:\\temp\\test ijent\\ijent.exe"
+
+    private val AVAILABLE_SHELL_COMMANDS = listOf(
+      "busybox",
+      "chmod",
+      "cp",
+      "cut",
+      "env",
+      "head",
+      "mktemp",
+      "rm",
+      "sed",
+      "tail",
+      "uname",
+      "whoami",
+      "getent",
+      "id",
+    )
   }
 }

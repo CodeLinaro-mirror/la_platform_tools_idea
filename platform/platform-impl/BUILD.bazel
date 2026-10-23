@@ -1,8 +1,31 @@
 load("@community//build:tests-options.bzl", "jps_test")
 load("@rules_jvm//:jvm.bzl", "jvm_library", "kt_javac_options")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+# The `--add-opens` inventory a distribution's vmoptions are generated from, read off disk by
+# `getCommandLineArgumentsForOpenPackages` - so a dev assembly with no checkout has to declare it.
+exports_files(
+    ["resources/META-INF/OpenedPackages.txt"],
+    visibility = ["//visibility:public"],
+)
+
+jps_test(
+    name = "ide-impl-tests_test",
+    timeout = "moderate",
+    env = {"JB_TEST_JAR": "ide-impl-tests_test_lib.jar"},
+    tags = ["community-aggregator"],
+    runtime_deps = [":ide-impl-tests_test_lib"],
+)
+### skip generation section `test intellij.platform.ide.impl.tests`
+
+### auto-generated section `dev intellij.platform.ide.impl` start
+content_module_jar(
+    libraries = ["@lib//:diogen-analysis"],
+    module = ":ide-impl",
+)
+### auto-generated section `dev intellij.platform.ide.impl` end
 
 ### auto-generated section `build intellij.platform.ide.impl` start
-
 kt_javac_options(
     name = "custom-javac-options",
     add_exports = [
@@ -35,9 +58,16 @@ jvm_library(
     resource_strip_prefix = "resources",
     resources = glob(
         ["resources/**/*"],
+        exclude = ["resources/**/icon-robots.txt"],
     ),
     visibility = ["//visibility:public"],
-    exports = ["//platform/platform-api:ide"],
+    exports = [
+        # do not sort,
+        "//platform/platform-api:ide",
+        "//platform/undo",
+        "//platform/ui.tree",
+        "//platform/vfs-impl",
+    ],
     runtime_deps = [
         # do not sort,
         "@lib//:slf4j-api",
@@ -65,15 +95,17 @@ jvm_library(
         "//platform/credential-store",
         "//platform/editor-ui-api:editor-ui",
         "//platform/platform-api:ide",
+        "//platform/undo",
+        "//platform/ui.tree",
+        "//platform/vfs-impl",
+        "//platform/icons",
         "//platform/welcome-screen",
         "//platform/welcome-screen-impl:welcomeScreen-impl",
         "//libraries/oro-matcher",
         "//jps/model-api:model",
         "//jps/model-serialization",
         "//platform/lang-api:lang",
-        "@lib//:jna",
         "//libraries/winp",
-        "//libraries/swingx",
         "//platform/core-impl",
         "//libraries/miglayout-swing",
         "//platform/indexing-api:indexing",
@@ -96,7 +128,7 @@ jvm_library(
         "//platform/built-in-server-api:builtInServer",
         "//platform/observable",
         "@lib//:kotlin-stdlib",
-        "//libraries/stream",
+        "@lib//:diogen-analysis",
         "//libraries/kotlinx/coroutines/core",
         "//libraries/netty/codec-http:libraries-netty-codec-http",
         "//libraries/java-compatibility",
@@ -121,11 +153,9 @@ jvm_library(
         "//platform/util/progress",
         "//platform/util/concurrency",
         "//platform/core-ui",
-        "@lib//:zip-signer",
         "//libraries/caffeine",
         "//libraries/classgraph",
         "//platform/util/zip",
-        "//libraries/icu4j",
         "//platform/util/xmlDom",
         "//platform/ide-core-impl",
         "//platform/ide-core/plugins",
@@ -136,7 +166,6 @@ jvm_library(
         "//libraries/kotlinx/serialization/json",
         "//libraries/kotlinx/serialization/core",
         "//platform/util/jdom",
-        "//libraries/jvm-native-trusted-roots",
         "//libraries/opentelemetry",
         "//libraries/opentelemetry-semconv",
         "//platform/diagnostic/telemetry",
@@ -153,10 +182,9 @@ jvm_library(
         "//platform/diagnostic",
         "//platform/ijent",
         "//platform/backend/observation",
-        "//libraries/pty4j",
         "//platform/settings",
         "//platform/util/coroutines",
-        "@lib//:jetbrains-annotations",
+        "//libraries/jetbrains/annotations",
         "//libraries/lz4",
         "//libraries/kotlinx/collections-immutable:libraries-kotlinx-collections-immutable",
         "//platform/util/storages",
@@ -184,11 +212,11 @@ jvm_library(
         "//platform/eel-impl",
         "//platform/platform-impl/recentProjects",
         "//platform/runtime/product",
-        "//platform/execution",
         "//libraries/rd/core",
         "//platform/forms_rt:java-guiForms-rt",
         "//fleet/rhizomedb",
         "@lib//:jetbrains-intellij-deps-java-atk-wrapper-linux",
+        "//platform/eel-nioFs-impl",
     ],
 )
 
@@ -206,6 +234,12 @@ jvm_library(
         # do not sort,
         "//platform/platform-api:ide",
         "//platform/platform-api:ide_test_lib",
+        "//platform/undo",
+        "//platform/undo:undo_test_lib",
+        "//platform/ui.tree",
+        "//platform/ui.tree:ui.tree_test_lib",
+        "//platform/vfs-impl",
+        "//platform/vfs-impl:vfs-impl_test_lib",
     ],
     runtime_deps = [
         # do not sort,
@@ -217,6 +251,10 @@ jvm_library(
         "//platform/credential-store:credential-store_test_lib",
         "//platform/editor-ui-api:editor-ui_test_lib",
         "//platform/platform-api:ide_test_lib",
+        "//platform/undo:undo_test_lib",
+        "//platform/ui.tree:ui.tree_test_lib",
+        "//platform/vfs-impl:vfs-impl_test_lib",
+        "//platform/icons:icons_test_lib",
         "//platform/welcome-screen:welcome-screen_test_lib",
         "//platform/welcome-screen-impl:welcomeScreen-impl_test_lib",
         "//libraries/oro-matcher:oro-matcher_test_lib",
@@ -224,7 +262,6 @@ jvm_library(
         "//jps/model-serialization:model-serialization_test_lib",
         "//platform/lang-api:lang_test_lib",
         "//libraries/winp:winp_test_lib",
-        "//libraries/swingx:swingx_test_lib",
         "//platform/core-impl:core-impl_test_lib",
         "//libraries/miglayout-swing:miglayout-swing_test_lib",
         "//platform/indexing-api:indexing_test_lib",
@@ -246,7 +283,6 @@ jvm_library(
         "//libraries/imgscalr:imgscalr_test_lib",
         "//platform/built-in-server-api:builtInServer_test_lib",
         "//platform/observable:observable_test_lib",
-        "//libraries/stream:stream_test_lib",
         "//libraries/kotlinx/coroutines/core:core_test_lib",
         "//libraries/netty/codec-http:libraries-netty-codec-http_test_lib",
         "//libraries/java-compatibility:java-compatibility_test_lib",
@@ -276,7 +312,6 @@ jvm_library(
         "//libraries/classgraph:classgraph_test_lib",
         "//libraries/protobuf:protobuf_test_lib",
         "//platform/util/zip:zip_test_lib",
-        "//libraries/icu4j:icu4j_test_lib",
         "//platform/util/xmlDom:xmlDom_test_lib",
         "//platform/ide-core-impl:ide-core-impl_test_lib",
         "//platform/ide-core/plugins:plugins_test_lib",
@@ -288,10 +323,7 @@ jvm_library(
         "//libraries/jbr:jbr_test_lib",
         "//libraries/kotlinx/serialization/json:json_test_lib",
         "//libraries/kotlinx/serialization/core:core_test_lib",
-        "//libraries/assertj-core",
-        "//libraries/assertj-core:assertj-core_test_lib",
         "//platform/util/jdom:jdom_test_lib",
-        "//libraries/jvm-native-trusted-roots:jvm-native-trusted-roots_test_lib",
         "//libraries/opentelemetry:opentelemetry_test_lib",
         "//libraries/opentelemetry-semconv:opentelemetry-semconv_test_lib",
         "//platform/diagnostic/telemetry:telemetry_test_lib",
@@ -308,9 +340,9 @@ jvm_library(
         "//platform/diagnostic:diagnostic_test_lib",
         "//platform/ijent:ijent_test_lib",
         "//platform/backend/observation:observation_test_lib",
-        "//libraries/pty4j:pty4j_test_lib",
         "//platform/settings:settings_test_lib",
         "//platform/util/coroutines:coroutines_test_lib",
+        "//libraries/jetbrains/annotations:annotations_test_lib",
         "//libraries/lz4:lz4_test_lib",
         "//libraries/kotlinx/collections-immutable:libraries-kotlinx-collections-immutable_test_lib",
         "//platform/util/storages:storages_test_lib",
@@ -347,10 +379,10 @@ jvm_library(
         "//platform/eel-impl:eel-impl_test_lib",
         "//platform/platform-impl/recentProjects:recentProjects_test_lib",
         "//platform/runtime/product:product_test_lib",
-        "//platform/execution:execution_test_lib",
         "//libraries/rd/core:core_test_lib",
         "//platform/forms_rt:java-guiForms-rt_test_lib",
         "//fleet/rhizomedb:rhizomedb_test_lib",
+        "//platform/eel-nioFs-impl:eel-nioFs-impl_test_lib",
     ],
 )
 ### auto-generated section `build intellij.platform.ide.impl` end
@@ -359,13 +391,17 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.ide.impl.iml",
+        "resources/idea/ExecutionActions.xml",
+        "resources/idea/LangActions.xml",
+        "resources/idea/PlatformActions.xml",
+        "resources/intellij.platform.ide.impl.actions.xml",
+        "resources/intellij.platform.ide.impl.xml",
     ],
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.platform.ide.impl` end
 
 ### auto-generated section `build intellij.platform.ide.impl.tests` start
-
 jvm_library(
     name = "ide-impl-tests",
     srcs = glob(
@@ -388,13 +424,14 @@ jvm_library(
         "//libraries/bouncy-castle-provider",
         "//platform/platform-resources:resources",
         "//platform/platform-resources-en:resources-en",
+        "//platform/platform-resources-file-types:resources-fileTypes",
+        "//platform/platform-resources-en-file-templates:resources-en-fileTemplates",
         "//platform/syntax/syntax-api:syntax",
         "//platform/syntax/syntax-psi:psi",
         "//platform/syntax/syntax-i18n:i18n",
         "//platform/syntax/syntax-util:util",
         "//platform/syntax/syntax-tree:tree",
         "//platform/syntax/syntax-extensions:extensions",
-        "//fleet/rhizomedb",
     ],
 )
 
@@ -410,6 +447,10 @@ jvm_library(
         allow_empty = True,
     ),
     associates = ["//platform/platform-impl:ide-impl"],
+    resource_strip_prefix = "spec/plugin-manager",
+    resources = glob(
+        ["spec/plugin-manager/**/*"],
+    ),
     visibility = ["//visibility:public"],
     exports = [
         # do not sort,
@@ -436,6 +477,8 @@ jvm_library(
         "//libraries/bouncy-castle-provider:bouncy-castle-provider_test_lib",
         "//platform/platform-resources:resources_test_lib",
         "//platform/platform-resources-en:resources-en_test_lib",
+        "//platform/platform-resources-file-types:resources-fileTypes_test_lib",
+        "//platform/platform-resources-en-file-templates:resources-en-fileTemplates_test_lib",
         "//platform/platform-impl/ui:ui_test_lib",
         "//platform/syntax/syntax-api:syntax_test_lib",
         "//platform/syntax/syntax-psi:psi_test_lib",
@@ -447,13 +490,14 @@ jvm_library(
         "//platform/platform-impl/concurrency:concurrency_test_lib",
         "//platform/platform-impl/recentProjects:recentProjects_test_lib",
         "//platform/platform-impl:ide-impl_test_lib",
-        "//fleet/rhizomedb:rhizomedb_test_lib",
     ],
     deps = [
         # do not sort,
         "@lib//:mac-provided",
         "//platform/testFramework",
         "//platform/testFramework:testFramework_test_lib",
+        "//platform/pluginManager/testFramework",
+        "//platform/pluginManager/testFramework:testFramework_test_lib",
         "//platform/analysis-api:analysis",
         "//platform/analysis-api:analysis_test_lib",
         "//platform/code-style-api:codeStyle",
@@ -466,6 +510,8 @@ jvm_library(
         "//platform/editor-ui-api:editor-ui_test_lib",
         "//platform/platform-api:ide",
         "//platform/platform-api:ide_test_lib",
+        "//platform/welcome-screen",
+        "//platform/welcome-screen:welcome-screen_test_lib",
         "//platform/welcome-screen-impl:welcomeScreen-impl",
         "//platform/welcome-screen-impl:welcomeScreen-impl_test_lib",
         "//libraries/oro-matcher",
@@ -476,11 +522,10 @@ jvm_library(
         "//jps/model-serialization:model-serialization_test_lib",
         "//platform/lang-api:lang",
         "//platform/lang-api:lang_test_lib",
-        "@lib//:jna",
+        "//libraries/jna",
+        "//libraries/jna:jna_test_lib",
         "//libraries/winp",
         "//libraries/winp:winp_test_lib",
-        "//libraries/swingx",
-        "//libraries/swingx:swingx_test_lib",
         "//platform/core-impl",
         "//platform/core-impl:core-impl_test_lib",
         "//libraries/miglayout-swing",
@@ -523,8 +568,7 @@ jvm_library(
         "//platform/built-in-server-api:builtInServer_test_lib",
         "//platform/observable",
         "@lib//:kotlin-stdlib",
-        "//libraries/stream",
-        "//libraries/stream:stream_test_lib",
+        "@lib//:diogen-analysis",
         "//libraries/kotlinx/coroutines/core",
         "//libraries/kotlinx/coroutines/core:core_test_lib",
         "//libraries/netty/codec-http:libraries-netty-codec-http",
@@ -574,15 +618,12 @@ jvm_library(
         "//platform/util/concurrency:concurrency_test_lib",
         "//platform/core-ui",
         "//platform/core-ui:core-ui_test_lib",
-        "@lib//:zip-signer",
         "//libraries/caffeine",
         "//libraries/caffeine:caffeine_test_lib",
         "//libraries/classgraph",
         "//libraries/classgraph:classgraph_test_lib",
         "//platform/util/zip",
         "//platform/util/zip:zip_test_lib",
-        "//libraries/icu4j",
-        "//libraries/icu4j:icu4j_test_lib",
         "//platform/util/xmlDom",
         "//platform/util/xmlDom:xmlDom_test_lib",
         "//platform/ide-core-impl",
@@ -640,8 +681,10 @@ jvm_library(
         "//platform/settings:settings_test_lib",
         "//platform/util/coroutines",
         "//platform/util/coroutines:coroutines_test_lib",
-        "@lib//:jetbrains-annotations",
-        "@lib//:kotlinx-coroutines-test",
+        "//libraries/jetbrains/annotations",
+        "//libraries/jetbrains/annotations:annotations_test_lib",
+        "//libraries/kotlinx/coroutines/test",
+        "//libraries/kotlinx/coroutines/test:test_test_lib",
         "//libraries/lz4",
         "//libraries/lz4:lz4_test_lib",
         "//libraries/kotlinx/collections-immutable:libraries-kotlinx-collections-immutable",
@@ -676,6 +719,8 @@ jvm_library(
         "//platform/kernel/pasta:pasta_test_lib",
         "//platform/workspace/storage",
         "//platform/workspace/storage:storage_test_lib",
+        "//platform/pluginSystem/testFramework",
+        "//platform/pluginSystem/testFramework:testFramework_test_lib",
         "//platform/pluginSystem/parser/impl",
         "//platform/pluginSystem/parser/impl:impl_test_lib",
         "//platform/eel",
@@ -699,10 +744,15 @@ jvm_library(
         "//libraries/rd/core:core_test_lib",
         "//platform/forms_rt:java-guiForms-rt",
         "//platform/forms_rt:java-guiForms-rt_test_lib",
-        "//libraries/junit5",
-        "//libraries/junit5:junit5_test_lib",
+        "//fleet/rhizomedb",
+        "//fleet/rhizomedb:rhizomedb_test_lib",
+        "//libraries/junit6",
+        "//libraries/junit6:junit6_test_lib",
         "//platform/testFramework/junit5",
         "//platform/testFramework/junit5:junit5_test_lib",
+        "//platform/statistics/testFramework",
+        "//platform/statistics/testFramework:testFramework_test_lib",
+        "@lib//:jimfs",
     ],
 )
 ### auto-generated section `build intellij.platform.ide.impl.tests` end
@@ -715,11 +765,3 @@ exports_files(
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.platform.ide.impl.tests` end
-
-### auto-generated section `test intellij.platform.ide.impl.tests` start
-
-jps_test(
-    name = "ide-impl-tests_test",
-    runtime_deps = [":ide-impl-tests_test_lib"],
-)
-### auto-generated section `test intellij.platform.ide.impl.tests` end

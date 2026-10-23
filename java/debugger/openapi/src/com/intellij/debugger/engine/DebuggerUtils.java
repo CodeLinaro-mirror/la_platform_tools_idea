@@ -15,6 +15,7 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.extensions.ExtensionPointName;
 import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.fileTypes.LanguageFileType;
+import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.project.IndexNotReadyException;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.LanguageLevelProjectExtension;
@@ -71,6 +72,7 @@ import com.sun.jdi.ShortValue;
 import com.sun.jdi.StringReference;
 import com.sun.jdi.Type;
 import com.sun.jdi.TypeComponent;
+import com.sun.jdi.VMDisconnectedException;
 import com.sun.jdi.Value;
 import com.sun.jdi.VirtualMachine;
 import com.sun.jdi.VoidType;
@@ -164,8 +166,8 @@ public abstract class DebuggerUtils {
 
     Method method = null;
     // speedup the search by not gathering all methods through the class hierarchy
-    if (refType instanceof ClassType) {
-      method = concreteMethodByName((ClassType)refType, methodName, methodSignature);
+    if (refType instanceof ClassType type) {
+      method = concreteMethodByName(type, methodName, methodSignature);
     }
     if (method == null) {
       //noinspection SSBasedInspection
@@ -196,16 +198,16 @@ public abstract class DebuggerUtils {
     Set<ReferenceType> checkedInterfaces = new HashSet<>();
     ReferenceType t;
     while ((t = types.poll()) != null) {
-      if (t instanceof ClassType) {
-        types.addAll(0, ((ClassType)t).interfaces());
+      if (t instanceof ClassType classType) {
+        types.addAll(0, classType.interfaces());
       }
-      else if (t instanceof InterfaceType && checkedInterfaces.add(t)) {
+      else if (t instanceof InterfaceType interfaceType && checkedInterfaces.add(t)) {
         for (Method candidate : t.methods()) {
           if (candidate.name().equals(name) && signatureChecker.process(candidate) && !candidate.isAbstract()) {
             return candidate;
           }
         }
-        types.addAll(0, ((InterfaceType)t).superinterfaces());
+        types.addAll(0, interfaceType.superinterfaces());
       }
     }
     return null;
@@ -231,16 +233,16 @@ public abstract class DebuggerUtils {
     Set<ReferenceType> checkedInterfaces = new HashSet<>();
     ReferenceType t;
     while ((t = types.poll()) != null) {
-      if (t instanceof ClassType) {
-        types.addAll(0, ((ClassType)t).interfaces());
+      if (t instanceof ClassType classType) {
+        types.addAll(0, classType.interfaces());
       }
-      else if (t instanceof InterfaceType && checkedInterfaces.add(t)) {
+      else if (t instanceof InterfaceType interfaceType && checkedInterfaces.add(t)) {
         for (Field candidate : t.fields()) {
           if (candidate.name().equals(name)) {
             return candidate;
           }
         }
-        types.addAll(0, ((InterfaceType)t).superinterfaces());
+        types.addAll(0, interfaceType.superinterfaces());
       }
     }
     return null;
@@ -371,9 +373,8 @@ public abstract class DebuggerUtils {
     }
 
     Type result;
-    if (subType instanceof ClassType) {
+    if (subType instanceof ClassType clsType) {
       try {
-        ClassType clsType = (ClassType)subType;
         result = getSuperType(clsType.superclass(), superType);
         if (result != null) {
           return result;
@@ -392,9 +393,9 @@ public abstract class DebuggerUtils {
       return null;
     }
 
-    if (subType instanceof InterfaceType) {
+    if (subType instanceof InterfaceType interfaceType) {
       try {
-        for (InterfaceType iface : ((InterfaceType)subType).superinterfaces()) {
+        for (InterfaceType iface : interfaceType.superinterfaces()) {
           result = getSuperType(iface, superType);
           if (result != null) {
             return result;
@@ -405,11 +406,11 @@ public abstract class DebuggerUtils {
         LOG.info(e);
       }
     }
-    else if (subType instanceof ArrayType) {
+    else if (subType instanceof ArrayType type) {
       if (superType.endsWith("[]")) {
         try {
           String superTypeItem = superType.substring(0, superType.length() - 2);
-          Type subTypeItem = ((ArrayType)subType).componentType();
+          Type subTypeItem = type.componentType();
           return instanceOf(subTypeItem, superTypeItem) ? subType : null;
         }
         catch (ClassNotLoadedException e) {
@@ -516,9 +517,9 @@ public abstract class DebuggerUtils {
       @Override
       public void visitReferenceExpression(final @NotNull PsiReferenceExpression expression) {
         final PsiElement psiElement = expression.resolve();
-        if (psiElement instanceof PsiLocalVariable) {
+        if (psiElement instanceof PsiLocalVariable variable) {
           if (visibleLocalVariables != null) {
-            if (!visibleLocalVariables.contains(((PsiLocalVariable)psiElement).getName())) {
+            if (!visibleLocalVariables.contains(variable.getName())) {
               rv.set(Boolean.TRUE);
             }
           }
@@ -597,8 +598,8 @@ public abstract class DebuggerUtils {
     final Field messageField = findField(type, "detailMessage");
     if (messageField == null) return null;
     final Value message = exception.getValue(messageField);
-    if (message instanceof StringReference) {
-      return ((StringReference)message).value();
+    if (message instanceof StringReference reference) {
+      return reference.value();
     }
 
     return null;
@@ -657,16 +658,41 @@ public abstract class DebuggerUtils {
    * Safely iterates through the provided {@code iterable} and applies the given {@code action} to each element.
    * Any exceptions thrown during the action execution are caught and handled using {@code logErrorImpl},
    * while execution continues for the other elements.
+   * <p>
+   * The first control-flow exception (or the first exception if there are none) is handled only after the iteration;
+   * other exceptions are attached to it as suppressed. {@code logErrorImpl} rethrows control-flow exceptions like
+   * {@code VMDisconnectedException}, so making one primary ensures it is still rethrown when an earlier action also failed.
+   * Handling it in place would skip the remaining elements — e.g. leave a {@code RemoteDebugProcessHandler} whose
+   * {@code processDetached} listener didn't run stuck in the terminating state forever, never disposing its {@code DebugProcessImpl}.
    */
   public static <T> void forEachSafe(Iterable<? extends T> iterable, Consumer<? super T> action) {
+    Throwable failure = null;
     for (T o : iterable) {
       try {
         action.accept(o);
       }
       catch (Throwable e) {
-        getInstance().logErrorImpl(e);
+        if (failure == null) {
+          failure = e;
+        }
+        else if (isControlFlowException(e) && !isControlFlowException(failure)) {
+          e.addSuppressed(failure);
+          failure = e;
+        }
+        else if (failure != e) {
+          failure.addSuppressed(e);
+        }
       }
     }
+    if (failure != null) {
+      getInstance().logErrorImpl(failure);
+    }
+  }
+
+  private static boolean isControlFlowException(@NotNull Throwable e) {
+    return e instanceof VMDisconnectedException ||
+           e instanceof ProcessCanceledException ||
+           e instanceof InterruptedException;
   }
 
   protected abstract void logErrorImpl(@NotNull Throwable e);

@@ -1,10 +1,16 @@
 // Copyright 2000-2017 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python.inspections;
 
+import com.jetbrains.python.allure.Layers;
+import com.jetbrains.python.allure.Subsystems;
+
 import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.util.containers.ContainerUtil;
+import com.intellij.testFramework.LightProjectDescriptor;
 import com.jetbrains.python.fixtures.PyInspectionTestCase;
+import com.jetbrains.python.fixtures.PyModuleLightProjectDescriptor;
+import com.jetbrains.python.fixtures.PyProjectStructureTestUtilKt;
 import com.jetbrains.python.packaging.PyRequirement;
 import com.jetbrains.python.packaging.common.PythonPackage;
 import com.jetbrains.python.packaging.management.RequirementsProviderType;
@@ -22,7 +28,15 @@ import static com.jetbrains.python.packaging.management.TestPythonPackageManager
 import static com.jetbrains.python.packaging.management.TestPythonPackageManagerService.replacePythonPackageManagerServiceWithTestInstance;
 
 
+@Subsystems.Inspections
+@Layers.Functional
 public class PyPackageRequirementsInspectionTest extends PyInspectionTestCase {
+  private static final LightProjectDescriptor PYTHON_MODULE_DESCRIPTOR = new PyModuleLightProjectDescriptor(LanguageLevel.getLatest());
+
+  @Override
+  protected @NotNull LightProjectDescriptor getProjectDescriptor() {
+    return PYTHON_MODULE_DESCRIPTOR;
+  }
   @NotNull
   @Override
   protected Class<? extends PyInspection> getInspectionClass() {
@@ -41,6 +55,7 @@ public class PyPackageRequirementsInspectionTest extends PyInspectionTestCase {
 
     replacePyPiPackageCacheService(myFixture.getProject(), cachedPackages);
     replacePythonPackageManagerServiceWithTestInstance(myFixture.getProject(), List.of());
+    PyProjectStructureTestUtilKt.awaitPythonInterpreters(myFixture.getProject());
   }
 
   public void testPartiallySatisfiedRequirementsTxt() {

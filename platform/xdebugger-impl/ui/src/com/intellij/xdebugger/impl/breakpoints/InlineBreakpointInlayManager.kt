@@ -32,6 +32,7 @@ import com.intellij.platform.debugger.impl.shared.proxy.XLineBreakpointProxy
 import com.intellij.platform.util.coroutines.childScope
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.util.DocumentUtil
+import com.intellij.util.asDisposable
 import com.intellij.util.concurrency.annotations.RequiresReadLock
 import com.intellij.util.concurrency.annotations.RequiresWriteLock
 import com.intellij.util.containers.isEmpty
@@ -79,15 +80,15 @@ class InlineBreakpointInlayManager(private val project: Project, parentScope: Co
   private val breakpointModificationStamp = AtomicLong(0)
 
   init {
-    val busConnection = project.messageBus.connect()
     if (!project.isDefault) {
+      val breakpointManager = XDebugManagerProxy.getInstance().getBreakpointManagerProxy(project)
       EditorFactory.getInstance().addEditorFactoryListener(object : EditorFactoryListener {
         override fun editorCreated(event: EditorFactoryEvent) {
           initializeInNewEditor(event.editor)
         }
 
         override fun editorReleased(event: EditorFactoryEvent) {
-          XDebugManagerProxy.getInstance().getBreakpointManagerProxy(project).inlineBreakpointsCache.editorReleased(event.editor)
+          breakpointManager.inlineBreakpointsCache.editorReleased(event.editor)
         }
       }, project)
 
@@ -99,7 +100,7 @@ class InlineBreakpointInlayManager(private val project: Project, parentScope: Co
         }, project)
       }
 
-      XDebugManagerProxy.getInstance().getBreakpointManagerProxy(project).subscribeOnBreakpointsChanges(busConnection) {
+      breakpointManager.subscribeOnBreakpointsChanges(scope.asDisposable()) {
         breakpointModificationStamp.incrementAndGet()
       }
     }
@@ -321,7 +322,7 @@ class InlineBreakpointInlayManager(private val project: Project, parentScope: Co
     val line: Int,
   )
 
-  @RequiresReadLock
+  @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
   context(_: RedrawSnapshot)
   private fun collectInlayData(
     document: Document,
@@ -364,7 +365,7 @@ class InlineBreakpointInlayManager(private val project: Project, parentScope: Co
     return breakpointRange?.startOffset?.coerceIn(lineRange) ?: lineRange.first
   }
 
-  @RequiresWriteLock
+  @RequiresWriteLock(generateAssertion = false /* IJPL-115548 */)
   private fun insertInlays(
     document: Document,
     onlyEditor: Editor?,
@@ -381,7 +382,7 @@ class InlineBreakpointInlayManager(private val project: Project, parentScope: Co
     }
   }
 
-  @RequiresWriteLock
+  @RequiresWriteLock(generateAssertion = false /* IJPL-115548 */)
   private fun insertInlays(
     document: Document,
     inlayModel: InlayModel,
@@ -400,7 +401,7 @@ class InlineBreakpointInlayManager(private val project: Project, parentScope: Co
   }
 
   private fun getAllExistingInlays(inlayModel: InlayModel): List<Inlay<out InlineBreakpointInlayRenderer>> {
-    return getExistingInlays(inlayModel, Int.MIN_VALUE, Int.MAX_VALUE)
+    return getExistingInlays(inlayModel, 0, Int.MAX_VALUE)
   }
 
   private fun getExistingInlays(inlayModel: InlayModel, document: Document, onlyLine: Int?): List<Inlay<out InlineBreakpointInlayRenderer>> {

@@ -16,7 +16,10 @@ import com.intellij.util.Processor
 import com.intellij.util.Query
 import com.intellij.util.QueryFactory
 import com.intellij.util.concurrency.annotations.RequiresReadLock
-import org.jetbrains.kotlin.analysis.api.analyze
+import org.jetbrains.kotlin.analysis.api.scopes.declaredMemberScope
+import org.jetbrains.kotlin.analysis.api.session.analyze
+import org.jetbrains.kotlin.analysis.api.symbols.directlyOverriddenSymbols
+import org.jetbrains.kotlin.analysis.api.symbols.symbol
 import org.jetbrains.kotlin.asJava.toLightMethods
 import org.jetbrains.kotlin.asJava.unwrapped
 import org.jetbrains.kotlin.idea.base.analysis.api.utils.getSymbolContainingMemberDeclarations
@@ -57,7 +60,7 @@ object DirectKotlinOverridingCallableSearch {
 }
 
 class DirectKotlinOverridingMethodSearcher : Searcher<SearchParameters, PsiElement> {
-    @RequiresReadLock
+    @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
     override fun collectSearchRequest(parameters: SearchParameters): Query<out PsiElement>? {
         val ktCallableDeclaration = runReadAction {
             parameters.ktCallableDeclaration.originalElement
@@ -113,7 +116,7 @@ private val EVERYTHING_BUT_KOTLIN by lazy(LazyThreadSafetyMode.PUBLICATION) {
 }
 
 internal class DirectKotlinOverridingMethodDelegatedSearcher : Searcher<SearchParameters, PsiElement> {
-    @RequiresReadLock
+    @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
     override fun collectSearchRequests(parameters: SearchParameters): Collection<Query<out PsiElement>> {
         val baseFunction = parameters.ktCallableDeclaration
         val methods = baseFunction.toLightMethods()

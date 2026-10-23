@@ -1,5 +1,5 @@
 // "Change return type of enclosing function 'A.foo' to 'Int'" "true"
-// K2_ERROR: Return type mismatch: expected 'String', actual 'Int'.
+// K2_ERROR: RETURN_TYPE_MISMATCH
 package foo.bar
 
 class A {
@@ -9,5 +9,4 @@ class A {
 }
 
 
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ChangeCallableReturnTypeFix$ForEnclosing
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeTypeQuickFixFactories$UpdateTypeQuickFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeTypeQuickFixFactories$UpdateTypeQuickFix

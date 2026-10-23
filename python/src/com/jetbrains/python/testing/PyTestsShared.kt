@@ -39,7 +39,7 @@ import com.intellij.openapi.util.JDOMExternalizerUtil.writeField
 import com.intellij.openapi.util.Pair
 import com.intellij.openapi.util.Ref
 import com.intellij.openapi.util.registry.Registry
-import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.vfs.StandardFileSystems
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiDirectory
@@ -226,7 +226,7 @@ private fun getElementByUrl(
   matcher: Matcher = PATH_URL.matcher(protocol),
   metainfo: String? = null,
 ): Location<out PsiElement>? = runReadAction {
-  val folder = getFolderFromMatcher(matcher, module)?.let { LocalFileSystem.getInstance().findFileByPath(it) }
+  val folder = getFolderFromMatcher(matcher, module)?.let { StandardFileSystems.local().findFileByPath(it) }
 
   val qualifiedName = QualifiedName.fromDottedString(path)
   // Assume qname id good and resolve it directly
@@ -336,6 +336,10 @@ abstract class PyAbstractTestSettingsEditor(private val sharedForm: PyTestShared
  */
 private const val DEFAULT_PATH = ""
 
+/** The options the bundled test runners read a path and a python target from. */
+private val PATH_OPTION = PyTestSpecArg.Plain("--path")
+private val TARGET_OPTION = PyTestSpecArg.Plain("--target")
+
 /**
  * Target depends on target type. It could be path to file/folder or python target
  */
@@ -370,10 +374,20 @@ data class ConfigurationTarget(
    * *To be deprecated. The part of the legacy implementation based on [GeneralCommandLine].*
    */
   fun generateArgumentsLine(configuration: PyAbstractTestConfiguration): List<String> =
+    generateArgumentsSpec(configuration).asLocalStrings()
+
+  /**
+   * The same arguments as [generateArgumentsLine], with the path of each argument still apart from the runner syntax.
+   *
+   * A launcher that has to convert the path for another environment reads this. [PyTestSpecArg] says why.
+   */
+  @Internal
+  fun generateArgumentsSpec(configuration: PyAbstractTestConfiguration): List<PyTestSpecArg> =
     when (targetType) {
       PyRunTargetVariant.CUSTOM -> emptyList()
       PyRunTargetVariant.PYTHON -> getArgumentsForPythonTarget(configuration)
-      PyRunTargetVariant.PATH -> expandPathTarget(configuration)?.let { listOf("--path", it) } ?: emptyList()
+      PyRunTargetVariant.PATH -> expandPathTarget(configuration)?.let { listOf(PATH_OPTION, PyTestSpecArg.WithPath(it)) }
+                                 ?: emptyList()
     }
 
   fun generateArgumentsLine(
@@ -382,8 +396,9 @@ data class ConfigurationTarget(
   ): List<TargetEnvironmentFunction<String>> =
     when (targetType) {
       PyRunTargetVariant.CUSTOM -> emptyList()
-      PyRunTargetVariant.PYTHON -> getArgumentsForPythonTarget(configuration).map(::constant)
-      PyRunTargetVariant.PATH -> expandPathTarget(configuration)?.let { listOf(constant("--path"), targetPath(Path.of(it))) } ?: emptyList()
+      PyRunTargetVariant.PYTHON -> getArgumentsForPythonTarget(configuration).asLocalStrings().map(::constant)
+      PyRunTargetVariant.PATH -> expandPathTarget(configuration)?.let { listOf(constant(PATH_OPTION.value), targetPath(Path.of(it))) }
+                                 ?: emptyList()
     }
 
   /**
@@ -394,19 +409,19 @@ data class ConfigurationTarget(
     target.trim().takeIf { it.isNotEmpty() }
       ?.let { ProgramParametersUtil.expandPathAndMacros(it, configuration.module, configuration.project) }
 
-  private fun getArgumentsForPythonTarget(configuration: PyAbstractTestConfiguration): List<String> = runReadAction ra@{
+  private fun getArgumentsForPythonTarget(configuration: PyAbstractTestConfiguration): List<PyTestSpecArg> = runReadAction ra@{
     val element = asPsiElement(configuration) ?: throw ExecutionException(PyBundle.message("python.testing.cant.resolve", target))
 
     if (element is PsiDirectory) {
       // Directory is special case: we can't run it as package for now, so we run it as path
-      return@ra listOf("--path", element.virtualFile.path)
+      return@ra listOf(PATH_OPTION, PyTestSpecArg.WithPath(element.virtualFile.path))
     }
 
     val context = TypeEvalContext.userInitiated(configuration.project, null)
     val qNameResolveContext = QNameResolveContext(
       contextAnchor = ModuleBasedContextAnchor(configuration.module!!),
       evalContext = context,
-      folderToStart = LocalFileSystem.getInstance().findFileByPath(configuration.workingDirectorySafe),
+      folderToStart = StandardFileSystems.local().findFileByPath(configuration.workingDirectorySafe),
       allowInaccurateResult = true
     )
     val qualifiedNameParts = QualifiedName.fromDottedString(target.trim()).tryResolveAndSplit(qNameResolveContext)
@@ -447,16 +462,20 @@ data class ConfigurationTarget(
 
       if (pyTarget.componentCount == 0) {
         // If python part is empty we are launching file. To prevent junk like "foo.py::" we run it as file instead
-        return@ra listOf("--path", fileSystemPartOfTarget)
+        return@ra listOf(PATH_OPTION, PyTestSpecArg.WithPath(fileSystemPartOfTarget))
       }
 
-      return@ra generatePythonTarget("$fileSystemPartOfTarget::$pyTarget", configuration)
+      // The path and the test name are joined here, so this is the only place that knows where the path ends.
+      return@ra generatePythonTarget(PyTestSpecArg.WithPath(fileSystemPartOfTarget, "::$pyTarget"), configuration)
 
     }
   }
 
+  private fun generatePythonTarget(target: PyTestSpecArg.WithPath, configuration: PyAbstractTestConfiguration) =
+    listOf(TARGET_OPTION, target.copy(suffix = target.suffix + configuration.pythonTargetAdditionalParams))
+
   private fun generatePythonTarget(target: String, configuration: PyAbstractTestConfiguration) =
-    listOf("--target", target + configuration.pythonTargetAdditionalParams)
+    listOf(TARGET_OPTION, PyTestSpecArg.Plain(target + configuration.pythonTargetAdditionalParams))
 
   /**
    * @return directory which target is situated
@@ -562,7 +581,7 @@ abstract class PyAbstractTestConfiguration(
    */
   internal fun getWorkingDirectoryAsVirtual(): VirtualFile? {
     if (!workingDirectory.isNullOrEmpty()) {
-      return LocalFileSystem.getInstance().findFileByPath(workingDirectory)
+      return StandardFileSystems.local().findFileByPath(workingDirectory)
     }
     return null
   }
@@ -675,7 +694,16 @@ abstract class PyAbstractTestConfiguration(
   /**
    * *To be deprecated. The part of the legacy implementation based on [GeneralCommandLine].*
    */
-  fun getTestSpec(): List<String> = target.generateArgumentsLine(this) + generateRawArguments()
+  fun getTestSpec(): List<String> = getTestSpecArgs().asLocalStrings()
+
+  /**
+   * The same specification as [getTestSpec], with the path of each argument still apart from the runner syntax.
+   *
+   * A launcher that has to convert the path for another environment reads this. [PyTestSpecArg] says why.
+   */
+  @Internal
+  fun getTestSpecArgs(): List<PyTestSpecArg> =
+    target.generateArgumentsSpec(this) + generateRawArguments().map(PyTestSpecArg::Plain)
 
   fun getTestSpec(request: TargetEnvironmentRequest): List<TargetEnvironmentFunction<String>> =
     target.generateArgumentsLine(request, this) + generateRawArguments().map(::constant)
@@ -786,6 +814,12 @@ abstract class PyAbstractTestConfiguration(
    *  Second approach is prefered if this flag is set. It is generally better because filesystem path does not need __init__.py
    */
   internal open fun shouldSeparateTargetPath(): Boolean = true
+
+  /**
+   * @return the working directory for a configuration that the IDE creates from the context,
+   * or null to use the directory that the target is imported from
+   */
+  internal open fun getWorkingDirectoryForContext(): String? = null
 
   /**
    * @param metaInfo String "metainfo" field provided by test runner.
@@ -911,7 +945,7 @@ internal class PyTestsConfigurationProducer : AbstractPythonTestConfigurationPro
       targetForConfig.configurationTarget.copyTo(configuration.target)
       // Directory may be set in Default configuration. In that case no need to rewrite it.
       if (configuration.workingDirectory.isNullOrEmpty()) {
-        configuration.workingDirectory = targetForConfig.workingDirectory.path
+        configuration.workingDirectory = configuration.getWorkingDirectoryForContext() ?: targetForConfig.workingDirectory.path
       }
       else {
         // Template has working directory set

@@ -2923,7 +2923,7 @@
     {
       "name": "ScriptedLoadersAssociations",
       "scope": "app",
-      "pluginId": "intellij.grid.plugin",
+      "pluginId": "com.intellij.grid",
       "classFqn": "com.intellij.grid.scripting.impl.DataLoaderManager$Associations",
       "storage": "csvSettings.xml",
       "properties": [
@@ -3232,7 +3232,7 @@
     {
       "name": "Minimap",
       "scope": "app",
-      "pluginId": "com.intellij",
+      "pluginId": "com.intellij.minimap",
       "classFqn": "com.intellij.ide.minimap.settings.MinimapSettings",
       "storage": "Minimap.xml",
       "properties": [
@@ -4371,7 +4371,7 @@
       "name": "ExternalResourceManagerImpl",
       "scope": "app",
       "pluginId": "com.intellij",
-      "classFqn": "com.intellij.javaee.ExternalResourceManagerExImpl",
+      "classFqn": "com.intellij.javaee.ExternalResourceManagerExBase",
       "storage": "javaeeExternalResources.xml"
     },
     {

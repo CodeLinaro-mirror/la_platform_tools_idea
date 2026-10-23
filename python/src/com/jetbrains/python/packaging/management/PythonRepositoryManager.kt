@@ -2,21 +2,22 @@
 package com.jetbrains.python.packaging.management
 
 import com.intellij.openapi.project.Project
+import com.intellij.python.requirements.PyPackageVersion
 import com.intellij.util.concurrency.annotations.RequiresBackgroundThread
 import com.jetbrains.python.Result
 import com.jetbrains.python.errorProcessing.PyResult
 import com.jetbrains.python.packaging.PyPackageName
-import com.jetbrains.python.packaging.PyPackageVersion
 import com.jetbrains.python.packaging.PyRequirement
 import com.jetbrains.python.packaging.cache.PythonPackageSearchResult
 import com.jetbrains.python.packaging.common.PythonPackageDetails
 import com.jetbrains.python.packaging.common.PythonRepositoryPackageSpecification
-import com.jetbrains.python.packaging.repository.PyPiPackageRepository
 import com.jetbrains.python.packaging.repository.PyPackageRepository
+import com.jetbrains.python.packaging.repository.PyPiPackageRepository
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.CheckReturnValue
 
-internal interface PythonRepositoryManager {
+@ApiStatus.Internal
+interface PythonRepositoryManager {
   val project: Project
 
   /**
@@ -59,19 +60,16 @@ internal interface PythonRepositoryManager {
   @ApiStatus.Internal
   suspend fun awaitReady() {}
 
-  @RequiresBackgroundThread
-  fun searchPackages(repository: PyPackageRepository, needle: String, pageSize: Int = 100): PythonPackageSearchResult {
+  suspend fun searchPackages(repository: PyPackageRepository, needle: String, pageSize: Int = 100): PythonPackageSearchResult {
     val normalizedNeedle = PyPackageName.normalizePackageName(needle)
     return repository.search(normalizedNeedle, pageSize)
   }
 
-  @RequiresBackgroundThread
-  fun searchPackages(needle: String, pageSize: Int = 100): Map<PyPackageRepository, PythonPackageSearchResult> {
+  suspend fun searchPackages(needle: String, pageSize: Int = 100): Map<PyPackageRepository, PythonPackageSearchResult> {
     return repositories.associateWith { searchPackages(it, needle, pageSize) }
   }
 
-  @RequiresBackgroundThread
-  fun hasPackageSnapshot(packageName: String): Boolean {
+  suspend fun hasPackageSnapshot(packageName: String): Boolean {
     return repositories.any { it.hasPackage(packageName) }
   }
 
@@ -98,12 +96,10 @@ internal interface PythonRepositoryManager {
   class PythonRepositorySearchApi internal constructor(private val manager: PythonRepositoryManager) {
     val repositories: List<PyPackageRepository> get() = manager.repositories
 
-    @RequiresBackgroundThread
-    fun searchPackages(query: String, pageSize: Int = 100): Map<PyPackageRepository, PythonPackageSearchResult> =
+    suspend fun searchPackages(query: String, pageSize: Int = 100): Map<PyPackageRepository, PythonPackageSearchResult> =
       manager.searchPackages(query, pageSize)
 
-    @RequiresBackgroundThread
-    fun searchPackages(repository: PyPackageRepository, needle: String, pageSize: Int = 100): PythonPackageSearchResult =
+    suspend fun searchPackages(repository: PyPackageRepository, needle: String, pageSize: Int = 100): PythonPackageSearchResult =
       manager.searchPackages(repository, needle, pageSize)
   }
 
@@ -118,7 +114,6 @@ internal interface PythonRepositoryManager {
  * readiness is required — the type system then enforces that a caller has waited, so it can't
  * accidentally search against a half-initialised manager.
  */
-@ApiStatus.Internal
 internal suspend fun PythonRepositoryManager.getSearchApi(): PythonRepositoryManager.PythonRepositorySearchApi {
   awaitReady()
   return PythonRepositoryManager.PythonRepositorySearchApi(this)

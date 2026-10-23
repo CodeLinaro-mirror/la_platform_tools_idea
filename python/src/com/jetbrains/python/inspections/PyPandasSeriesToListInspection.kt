@@ -1,4 +1,4 @@
-// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.inspections
 
 import com.intellij.codeInspection.LocalInspectionToolSession
@@ -23,6 +23,7 @@ import com.jetbrains.python.psi.types.PyLiteralStringType
 import com.jetbrains.python.psi.types.PyLiteralType
 import com.jetbrains.python.psi.types.PyType
 import com.jetbrains.python.psi.types.TypeEvalContext
+import com.jetbrains.python.psi.types.isUnknown
 
 class PyPandasSeriesToListInspection : PyInspection() {
   override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean, session: LocalInspectionToolSession): PsiElementVisitor {
@@ -57,7 +58,7 @@ class PyPandasSeriesToListInspection : PyInspection() {
       val expressionType = context.getType(expression)
       if (expressionType.isPyClassWithName("Series")) return true
 
-      if (expressionType != null) return false
+      if (!expressionType.isUnknown) return false
       return isQualifiedDataframeCall(expression, context)
     }
 

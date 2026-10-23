@@ -1,3 +1,4 @@
+load("@ij_backend_config//:defs.bzl", _USE_RULES_KOTLIN_BACKEND = "USE_RULES_KOTLIN_BACKEND")
 load("@rules_java//java:defs.bzl", "JavaInfo")
 load(
     "@rules_kotlin//kotlin/internal:defs.bzl",
@@ -13,11 +14,11 @@ load(
     "KotlincExtraOptionsInfo",
     "KotlincOptions",
 )
-load("//:rules/impl/transitions.bzl", "scrubbed_host_platform_transition")
 
 visibility("private")
 
-USE_RULES_KOTLIN_BACKEND = False
+# Re-export the loading-phase backend constant so it is visible at the module level
+USE_RULES_KOTLIN_BACKEND = _USE_RULES_KOTLIN_BACKEND
 
 common_toolchains = [
     _TOOLCHAIN_TYPE,
@@ -105,9 +106,9 @@ common_attr = add_dicts(
         "_jvm_builder": attr.label(
             doc = """Worker code to use. Usually this is not needed, but can be used to override the default
             worker to build compiler plugins used in default worker.""",
-            default = "//:jvm-builder",
+            default = "//:jvm-builder-scrubbed_host_tool",
             allow_single_file = True,
-            cfg = scrubbed_host_platform_transition,
+            cfg = "exec",
         ),
         "_jvm_builder_jvm_flags": attr.label(
             doc = """Worker jvm_flags to use. Usually this is not needed, but can be used to override the default

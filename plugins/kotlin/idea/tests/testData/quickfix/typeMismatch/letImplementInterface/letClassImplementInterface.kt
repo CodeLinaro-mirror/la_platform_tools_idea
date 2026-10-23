@@ -1,6 +1,6 @@
 // "Let 'B' implement interface 'A'" "true"
 // WITH_STDLIB
-// K2_ERROR: Argument type mismatch: actual type is 'B', but 'A' was expected.
+// K2_ERROR: ARGUMENT_TYPE_MISMATCH
 package let.implement
 
 fun bar() {
@@ -15,5 +15,4 @@ interface A {
     fun gav()
 }
 class B
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.LetImplementInterfaceFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.LetImplementInterfaceFixFactories$LetImplementInterfaceFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.LetImplementInterfaceFixFactories$LetImplementInterfaceFix

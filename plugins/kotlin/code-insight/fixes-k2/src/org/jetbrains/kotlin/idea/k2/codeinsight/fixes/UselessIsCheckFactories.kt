@@ -5,6 +5,7 @@ import org.jetbrains.kotlin.analysis.api.fir.diagnostics.KaFirDiagnostic
 import org.jetbrains.kotlin.idea.codeinsight.api.applicators.fixes.KotlinQuickFixFactory
 import org.jetbrains.kotlin.idea.quickfix.RemoveUselessIsCheckFix
 import org.jetbrains.kotlin.idea.quickfix.RemoveUselessIsCheckFixForWhen
+import org.jetbrains.kotlin.idea.quickfix.ReplaceIsCheckWithNullCheckFix
 import org.jetbrains.kotlin.psi.KtElement
 import org.jetbrains.kotlin.psi.KtIsExpression
 import org.jetbrains.kotlin.psi.KtWhenConditionIsPattern
@@ -22,6 +23,25 @@ internal object UselessIsCheckFactories {
     val impossibleIsCheckErrorFactory =
         prepareRemoveUselessIsCheckFix<KaFirDiagnostic.ImpossibleIsCheckError> { compileTimeCheckResult }
 
+    val impossibleIsCheckDeprecationWarningFactory =
+        prepareRemoveUselessIsCheckFix<KaFirDiagnostic.ImpossibleIsCheckDeprecationWarning> { compileTimeCheckResult }
+
+    val impossibleIsCheckDeprecationErrorFactory =
+        prepareRemoveUselessIsCheckFix<KaFirDiagnostic.ImpossibleIsCheckDeprecationError> { compileTimeCheckResult }
+
+    val impossibleIsCheckRelyingOnNullWarningFactory =
+        prepareReplaceIsCheckWithNullCheckFix<KaFirDiagnostic.ImpossibleIsCheckRelyingOnNullWarning>()
+
+    val impossibleIsCheckRelyingOnNullErrorFactory =
+        prepareReplaceIsCheckWithNullCheckFix<KaFirDiagnostic.ImpossibleIsCheckRelyingOnNullError>()
+
+    private fun <T: KaFirDiagnostic<KtElement>> prepareReplaceIsCheckWithNullCheckFix() =
+        KotlinQuickFixFactory.ModCommandBased { diagnostic: T ->
+            val element = diagnostic.psi.takeIf { it.isWritable } ?: return@ModCommandBased emptyList()
+            val expression = element.getNonStrictParentOfType<KtIsExpression>() ?: return@ModCommandBased emptyList()
+            listOf(ReplaceIsCheckWithNullCheckFix(expression))
+        }
+
     private inline fun <T: KaFirDiagnostic<KtElement>> prepareRemoveUselessIsCheckFix(crossinline compileTimeCheckResult: T.() -> Boolean) =
         KotlinQuickFixFactory.ModCommandBased { diagnostic: T ->
             val element = diagnostic.psi.takeIf { it.isWritable } ?: return@ModCommandBased emptyList()
@@ -37,6 +57,12 @@ internal object UselessIsCheckFactories {
 
     val impossibleWhenCheckErrorFactory =
         prepareRemoveUselessIsCheckFixForWhen<KaFirDiagnostic.ImpossibleIsCheckError> { compileTimeCheckResult }
+
+    val impossibleWhenCheckDeprecationWarningFactory =
+        prepareRemoveUselessIsCheckFixForWhen<KaFirDiagnostic.ImpossibleIsCheckDeprecationWarning> { compileTimeCheckResult }
+
+    val impossibleWhenCheckDeprecationErrorFactory =
+        prepareRemoveUselessIsCheckFixForWhen<KaFirDiagnostic.ImpossibleIsCheckDeprecationError> { compileTimeCheckResult }
 
     private inline fun <T: KaFirDiagnostic<KtElement>> prepareRemoveUselessIsCheckFixForWhen(crossinline compileTimeCheckResult: T.() -> Boolean) =
         KotlinQuickFixFactory.ModCommandBased { diagnostic: T ->

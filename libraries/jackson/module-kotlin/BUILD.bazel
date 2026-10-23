@@ -1,7 +1,14 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.libraries.jackson.module.kotlin` start
+content_module_jar(
+    libraries = ["@lib//:libraries-jackson-module-kotlin-jackson-module-kotlin"],
+    module = ":libraries-jackson-module-kotlin",
+)
+### auto-generated section `dev intellij.libraries.jackson.module.kotlin` end
 
 ### auto-generated section `build intellij.libraries.jackson.module.kotlin` start
-
 jvm_library(
     name = "libraries-jackson-module-kotlin",
     srcs = glob(
@@ -19,6 +26,7 @@ jvm_library(
         # do not sort,
         "@lib//:libraries-jackson-module-kotlin-jackson-module-kotlin",
         "//libraries/jackson/jackson",
+        "//libraries/jackson/databind",
     ],
 )
 
@@ -37,6 +45,7 @@ jvm_library(
         # do not sort,
         ":libraries-jackson-module-kotlin",
         "//libraries/jackson/jackson:jackson_test_lib",
+        "//libraries/jackson/databind:databind_test_lib",
     ],
 )
 ### auto-generated section `build intellij.libraries.jackson.module.kotlin` end
@@ -45,6 +54,7 @@ jvm_library(
 exports_files(
     [
         "intellij.libraries.jackson.module.kotlin.iml",
+        "resources/intellij.libraries.jackson.module.kotlin.xml",
     ],
     visibility = ["//visibility:public"],
 )

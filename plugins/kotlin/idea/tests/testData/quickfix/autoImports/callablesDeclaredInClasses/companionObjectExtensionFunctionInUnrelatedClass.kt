@@ -1,5 +1,5 @@
 // "Import extension function 'Companion.baz'" "true"
-// K2_ERROR: Unresolved reference 'baz'.
+// K2_ERROR: UNRESOLVED_REFERENCE
 package p
 
 open class A {
@@ -16,5 +16,4 @@ fun usage() {
     A.<caret>baz()
 }
 
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ImportFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.imprt.ImportQuickFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.imprt.ImportQuickFix

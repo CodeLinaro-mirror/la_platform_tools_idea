@@ -28,7 +28,6 @@ import com.intellij.codeInspection.htmlInspections.RequiredAttributesInspectionB
 import com.intellij.codeInspection.unusedSymbol.UnusedSymbolLocalInspection;
 import com.intellij.codeInspection.varScopeCanBeNarrowed.FieldCanBeLocalInspection;
 import com.intellij.concurrency.ConcurrentCollectionFactory;
-import com.intellij.configurationStore.StorageUtilKt;
 import com.intellij.configurationStore.StoreUtil;
 import com.intellij.configurationStore.StoreUtilKt;
 import com.intellij.diagnostic.ThreadDumper;
@@ -38,6 +37,7 @@ import com.intellij.execution.ui.ConsoleViewContentType;
 import com.intellij.ide.GeneralSettings;
 import com.intellij.ide.highlighter.JavaFileType;
 import com.intellij.ide.highlighter.XmlFileType;
+import com.intellij.idea.IJIgnore;
 import com.intellij.javaee.ExternalResourceManagerExBase;
 import com.intellij.lang.LanguageFilter;
 import com.intellij.lang.annotation.AnnotationHolder;
@@ -54,6 +54,7 @@ import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.command.CommandProcessor;
 import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.command.undo.UndoManager;
+import com.intellij.openapi.components.ComponentManagerEx;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.EditorFactory;
@@ -122,6 +123,7 @@ import com.intellij.testFramework.SkipSlowTestLocally;
 import com.intellij.testFramework.fixtures.impl.CodeInsightTestFixtureImpl;
 import com.intellij.ui.EditorNotifications;
 import com.intellij.ui.EditorNotificationsImpl;
+import com.intellij.util.ConcurrencyUtil;
 import com.intellij.util.DocumentUtil;
 import com.intellij.util.ExceptionUtil;
 import com.intellij.util.TestTimeOut;
@@ -135,6 +137,10 @@ import com.intellij.util.ref.GCWatcher;
 import com.intellij.util.ui.UIUtil;
 import com.intellij.xml.util.CheckDtdReferencesInspection;
 import kotlin.Unit;
+import kotlinx.coroutines.BuildersKt;
+import kotlinx.coroutines.CoroutineScope;
+import kotlinx.coroutines.CoroutineStart;
+import kotlinx.coroutines.future.FutureKt;
 import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
@@ -152,6 +158,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
@@ -161,10 +168,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * tests general daemon behaviour/interruptibility/restart during highlighting
  */
+@IJIgnore(issue = "IJPL-251500")
 @SkipSlowTestLocally
 @DaemonAnalyzerTestCase.CanChangeDocumentDuringHighlighting
 public class DaemonRespondToChangesTest extends ProductionDaemonAnalyzerTestCase {
@@ -526,14 +535,11 @@ public class DaemonRespondToChangesTest extends ProductionDaemonAnalyzerTestCase
     AtomicBoolean ran = new AtomicBoolean();
     Disposable disposable = Disposer.newDisposable();
     AtomicReference<RuntimeException> stopDaemonReason = new AtomicReference<>();
-    StorageUtilKt.setDEBUG_LOG("");
     getProject().getMessageBus().connect(disposable).subscribe(DaemonCodeAnalyzer.DAEMON_EVENT_TOPIC,
         new DaemonCodeAnalyzer.DaemonListener() {
           @Override
           public void daemonCancelEventOccurred(@NotNull String reason) {
-            RuntimeException e = new RuntimeException("Some bastard's restarted daemon: " + reason +
-                                                      "\nStorage write log: ----------\n" +
-                                                      StorageUtilKt.getDEBUG_LOG() + "\n--------------");
+            RuntimeException e = new RuntimeException("Some bastard's restarted daemon: " + reason);
             stopDaemonReason.compareAndSet(null, e);
           }
 
@@ -562,7 +568,6 @@ public class DaemonRespondToChangesTest extends ProductionDaemonAnalyzerTestCase
       }
     }
     finally {
-      StorageUtilKt.setDEBUG_LOG(null);
       Disposer.dispose(disposable);
     }
   }
@@ -1368,9 +1373,7 @@ public class DaemonRespondToChangesTest extends ProductionDaemonAnalyzerTestCase
     assertTrue("codeblocks :"+N_BLOCKS, N_BLOCKS > 1000);
     Random random = new Random();
     int N = 10;
-    // try with both serialized and not-serialized passes
-    myDaemonCodeAnalyzer.serializeCodeInsightPasses(false);
-    for (int i=0; i<N*2; i++) {
+    for (int i=0; i<N; i++) {
       PsiCodeBlock block = codeBlocks(psiFile).get(random.nextInt(N_BLOCKS));
       getEditor().getCaretModel().moveToOffset(block.getLBrace().getTextOffset() + 1);
       type("\n/*xxx*/");
@@ -1379,10 +1382,6 @@ public class DaemonRespondToChangesTest extends ProductionDaemonAnalyzerTestCase
         System.out.println("\n-----\n"+getEditor().getDocument().getText()+"\n--------\n");
       }
       assertEmpty(warnings);
-      if (i == N) {
-        // repeat the same steps with serialized passes
-        myDaemonCodeAnalyzer.serializeCodeInsightPasses(true);
-      }
     }
   }
 
@@ -1495,38 +1494,32 @@ public class DaemonRespondToChangesTest extends ProductionDaemonAnalyzerTestCase
   }
 
   public void testHighlightingInSplittedWindowFinishesEventually() {
-    myDaemonCodeAnalyzer.serializeCodeInsightPasses(true); // reproduced only for serialized passes
-    try {
-      Collection<Editor> applied = ContainerUtil.createConcurrentList();
-      Collection<Editor> collected = ContainerUtil.createConcurrentList();
-      registerFakePass(applied, collected);
+    Collection<Editor> applied = ContainerUtil.createConcurrentList();
+    Collection<Editor> collected = ContainerUtil.createConcurrentList();
+    registerFakePass(applied, collected);
 
-      @Language("JAVA")
-      String text = "class X {" + "\n".repeat(1000) +
-                    "}";
-      configureByText(JavaFileType.INSTANCE, text);
-      Editor editor1 = getEditor();
-      Editor editor2 = EditorFactory.getInstance().createEditor(editor1.getDocument(),getProject());
-      Disposer.register(getTestRootDisposable(), () -> EditorFactory.getInstance().releaseEditor(editor2));
-      setActiveEditors(editor1, editor2);
+    @Language("JAVA")
+    String text = "class X {" + "\n".repeat(1000) +
+                  "}";
+    configureByText(JavaFileType.INSTANCE, text);
+    Editor editor1 = getEditor();
+    Editor editor2 = EditorFactory.getInstance().createEditor(editor1.getDocument(),getProject());
+    Disposer.register(getTestRootDisposable(), () -> EditorFactory.getInstance().releaseEditor(editor2));
+    setActiveEditors(editor1, editor2);
 
-      myTestDaemonCodeAnalyzer.waitForDaemonToFinish(getFile());
+    myTestDaemonCodeAnalyzer.waitForDaemonToFinish(getFile());
 
-      assertSameElements(collected, Arrays.asList(editor1, editor2));
-      assertSameElements(applied, Arrays.asList(editor1, editor2));
+    assertSameElements(collected, Arrays.asList(editor1, editor2));
+    assertSameElements(applied, Arrays.asList(editor1, editor2));
 
-      applied.clear();
-      collected.clear();
-      setActiveEditors(editor1, editor2);
-      type("/* xxx */");
-      myTestDaemonCodeAnalyzer.waitForDaemonToFinish(getFile());
+    applied.clear();
+    collected.clear();
+    setActiveEditors(editor1, editor2);
+    type("/* xxx */");
+    myTestDaemonCodeAnalyzer.waitForDaemonToFinish(getFile());
 
-      assertSameElements(collected, Arrays.asList(editor1, editor2));
-      assertSameElements(applied, Arrays.asList(editor1, editor2));
-    }
-    finally {
-      myDaemonCodeAnalyzer.serializeCodeInsightPasses(false);
-    }
+    assertSameElements(collected, Arrays.asList(editor1, editor2));
+    assertSameElements(applied, Arrays.asList(editor1, editor2));
   }
 
   private void registerFakePass(@NotNull Collection<? super Editor> applied, @NotNull Collection<? super Editor> collected) {
@@ -1896,10 +1889,10 @@ public class DaemonRespondToChangesTest extends ProductionDaemonAnalyzerTestCase
 
     PsiFile originalPsiFile = getPsiManager().findFile(getTempDir().createVirtualFile("X.txt", ""));
     assertNotNull(originalPsiFile);
-    assertTrue(originalPsiFile.getViewProvider().isEventSystemEnabled());
+    assertTrue(originalPsiFile.getViewProvider().supportsSendingPsiEvents());
 
     PsiFile copyPsiFile = (PsiFile)originalPsiFile.copy();
-    assertFalse(copyPsiFile.getViewProvider().isEventSystemEnabled());
+    assertFalse(copyPsiFile.getViewProvider().supportsSendingPsiEvents());
 
     Document documentCopy = copyPsiFile.getViewProvider().getDocument();
     assertNotNull(documentCopy);
@@ -2742,4 +2735,38 @@ public class DaemonRespondToChangesTest extends ProductionDaemonAnalyzerTestCase
     });
   }
 
+  public void testLaunchingZillionCoroutinesDoesNotSaturateDefaultPoolToThePointOfFrozenHighlighting() throws Exception {
+    CountDownLatch latch = new CountDownLatch(1);
+    List<CompletableFuture<Unit>> jobs;
+    List<HighlightInfo> errs;
+    try {
+      @Language("JAVA")
+      String text = "class X {  void foo() {\n" +
+                    "     String xxx;\n".repeat(1000) +
+                    "}}";
+
+      configureByText(JavaFileType.INSTANCE, text); // first give a chance an indexer to complete indexing
+      PsiDocumentManager.getInstance(getProject()).commitAllDocuments(); // give chance daemon to queue status update on doc commit
+      myTestDaemonCodeAnalyzer.waitForUpdateFileStatusBackgroundQueueInTests(); // it uses Alarm which uses coroutines, so we'll give it a chance
+      CoroutineScope scope = ((ComponentManagerEx)getProject()).getCoroutineScope();
+      jobs = IntStream.range(0, 200)
+        .mapToObj(_ -> BuildersKt.launch(scope, scope.getCoroutineContext(), CoroutineStart.DEFAULT, (_, _) -> {
+          try {
+            latch.await(1, TimeUnit.MINUTES);
+          }
+          catch (InterruptedException e) {
+            throw new RuntimeException(e);
+          }
+          return Unit.INSTANCE;
+        }))
+        .map(job -> FutureKt.asCompletableFuture(job))
+        .toList();
+      errs = myTestDaemonCodeAnalyzer.waitHighlighting(getFile(), HighlightSeverity.ERROR);
+    }
+    finally {
+      latch.countDown();
+    }
+    assertTrue(errs.toString(), errs.size()>900);
+    ConcurrencyUtil.getAll(jobs);
+  }
 }

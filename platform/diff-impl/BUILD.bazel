@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.platform.diff.impl` start
+content_module_jar(module = ":diff-impl")
+### auto-generated section `dev intellij.platform.diff.impl` end
 
 ### auto-generated section `build intellij.platform.diff.impl` start
-
 jvm_library(
     name = "diff-impl",
     srcs = glob(
@@ -32,6 +36,8 @@ jvm_library(
         "//platform/analysis-impl",
         "//platform/editor-ui-ex:editor-ex",
         "//platform/lang-api:lang",
+        "//platform/consoleView",
+        "//platform/consoleView/impl",
         "//libraries/guava",
         "//platform/ide-core-impl",
         "//platform/ide-core",
@@ -48,6 +54,7 @@ jvm_library(
         "//platform/util/diff",
         "//platform/util/jdom",
         "//libraries/kotlinx/serialization/core",
+        "//libraries/kotlinx/serialization/json",
         "//libraries/kotlinx/collections-immutable:libraries-kotlinx-collections-immutable",
         "//platform/platform-util-io:ide-util-io",
         "//platform/progress/shared:ide-progress",
@@ -78,6 +85,8 @@ jvm_library(
         "//platform/analysis-impl:analysis-impl_test_lib",
         "//platform/editor-ui-ex:editor-ex_test_lib",
         "//platform/lang-api:lang_test_lib",
+        "//platform/consoleView:consoleView_test_lib",
+        "//platform/consoleView/impl:impl_test_lib",
         "//libraries/guava:guava_test_lib",
         "//platform/ide-core-impl:ide-core-impl_test_lib",
         "//platform/ide-core:ide-core_test_lib",
@@ -94,6 +103,7 @@ jvm_library(
         "//platform/util/diff:diff_test_lib",
         "//platform/util/jdom:jdom_test_lib",
         "//libraries/kotlinx/serialization/core:core_test_lib",
+        "//libraries/kotlinx/serialization/json:json_test_lib",
         "//libraries/kotlinx/collections-immutable:libraries-kotlinx-collections-immutable_test_lib",
         "//platform/platform-util-io:ide-util-io_test_lib",
         "//platform/progress/shared:ide-progress_test_lib",
@@ -105,6 +115,8 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.diff.impl.iml",
+        "resources/intellij.platform.diff.impl.actions.xml",
+        "resources/intellij.platform.diff.impl.xml",
     ],
     visibility = ["//visibility:public"],
 )

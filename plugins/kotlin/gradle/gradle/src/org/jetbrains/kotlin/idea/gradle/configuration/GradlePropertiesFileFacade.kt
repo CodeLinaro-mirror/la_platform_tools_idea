@@ -3,7 +3,7 @@
 package org.jetbrains.kotlin.idea.gradle.configuration
 
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.vfs.StandardFileSystems
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.plugins.gradle.model.ExternalProject
 import java.util.Properties
@@ -16,14 +16,32 @@ import kotlin.io.path.writeText
 class GradlePropertiesFileFacade(private val baseDir: String) {
 
     fun readProperty(propertyName: String): String? {
+        return readProperty(
+            propertyName = propertyName,
+            propertyFileNames = GRADLE_PROPERTY_FILES,
+        )
+    }
 
-        val baseVirtualDir = LocalFileSystem.getInstance().findFileByPath(baseDir) ?: return null
+    fun readPropertyFromGradleProperties(propertyName: String): String? {
+        return readProperty(
+            propertyName = propertyName,
+            propertyFileNames = listOf(GRADLE_PROPERTIES_FILE_NAME),
+        )
+    }
 
-        for (propertyFileName in GRADLE_PROPERTY_FILES) {
+    private fun readProperty(
+        propertyName: String,
+        propertyFileNames: List<String>,
+    ): String? {
+        val baseVirtualDir = StandardFileSystems.local().findFileByPath(baseDir) ?: return null
+
+        for (propertyFileName in propertyFileNames) {
             val propertyFile = baseVirtualDir.findChild(propertyFileName) ?: continue
-            Properties().also { it.load(propertyFile.inputStream) }.getProperty(propertyName)?.let {
-                return it
-            }
+
+            val properties = Properties()
+            propertyFile.inputStream.use(properties::load)
+
+            properties.getProperty(propertyName)?.let { return it }
         }
 
         return null

@@ -8,14 +8,23 @@ import com.intellij.modcommand.ModPsiUpdater
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.TextRange
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.components.resolveToCall
-import org.jetbrains.kotlin.analysis.api.resolution.singleConstructorCallOrNull
+import org.jetbrains.kotlin.analysis.api.components.returnType
+import org.jetbrains.kotlin.analysis.api.resolution.constructor
+import org.jetbrains.kotlin.analysis.api.resolution.resolveSuccessfulSymbol
+import org.jetbrains.kotlin.analysis.api.resolution.single
 import org.jetbrains.kotlin.analysis.api.resolution.symbol
+import org.jetbrains.kotlin.analysis.api.resolution.tryResolveCall
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassKind
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassifierSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaTypeAliasSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.symbol
 import org.jetbrains.kotlin.analysis.api.types.KaClassType
+import org.jetbrains.kotlin.analysis.api.types.semanticallyEquals
+import org.jetbrains.kotlin.idea.base.psi.addMemberDeclaration
+import org.jetbrains.kotlin.idea.base.psi.appendParameter
+import org.jetbrains.kotlin.idea.base.psi.getOrCreatePrimaryConstructor
+import org.jetbrains.kotlin.idea.base.psi.setPropertyInitializer
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.codeinsight.api.applicable.inspections.KotlinApplicableInspectionBase
 import org.jetbrains.kotlin.idea.codeinsight.api.applicable.inspections.KotlinModCommandQuickFix
@@ -40,7 +49,6 @@ import org.jetbrains.kotlin.psi.KtTreeVisitorVoid
 import org.jetbrains.kotlin.psi.KtUserType
 import org.jetbrains.kotlin.psi.KtVisitor
 import org.jetbrains.kotlin.psi.KtVisitorVoid
-import org.jetbrains.kotlin.psi.createPrimaryConstructorIfAbsent
 import org.jetbrains.kotlin.psi.psiUtil.containingClassOrObject
 
 /**
@@ -97,12 +105,14 @@ internal class ConvertSecondaryConstructorToPrimaryInspection :
     ): Boolean {
         if (constructor == this) return true
         if (constructor in visited) return false
-        val delegatedConstructor = constructor.getDelegationCall().resolveToCall()
-            ?.singleConstructorCallOrNull()?.symbol?.psi as? KtSecondaryConstructor ?: return false
+        val delegatedConstructor = constructor
+            .getDelegationCall()
+            .tryResolveCall()?.single?.constructor?.symbol?.psi as? KtSecondaryConstructor ?: return false
         return isReachableByDelegationFrom(delegatedConstructor, visited + constructor)
     }
 
-    override fun KaSession.prepareContext(element: KtSecondaryConstructor): SecondaryConstructorContext? {
+    context(session: KaSession)
+    override fun prepareContext(element: KtSecondaryConstructor): SecondaryConstructorContext? {
         val klass = element.containingClassOrObject ?: return null
 
         for (constructorDescriptor in klass.secondaryConstructors) {
@@ -156,7 +166,7 @@ internal class ConvertSecondaryConstructorToPrimaryInspection :
 
         val classRefIdx = klass.superTypeListEntries.indexOfFirst {
             val classifierSymbol =
-                (it.typeReference?.typeElement as? KtUserType)?.referenceExpression?.mainReference?.resolveToSymbol() as? KaClassifierSymbol
+                (it.typeReference?.typeElement as? KtUserType)?.referenceExpression?.resolveSuccessfulSymbol() as? KaClassifierSymbol
 
             fun isClassSymbol(symbol: KaClassifierSymbol?): Boolean = symbol is KaClassSymbol && symbol.classKind == KaClassKind.CLASS
 
@@ -235,14 +245,14 @@ internal class ConvertSecondaryConstructorToPrimaryInspection :
                 }
             }
 
-            val replacedConstructor = klass.createPrimaryConstructorIfAbsent().replace(constructor)
+            val replacedConstructor = klass.getOrCreatePrimaryConstructor().replace(constructor)
             constructorCommentSaver.restore(replacedConstructor)
 
             val initializer = context.initializer
             if ((initializer.body as? KtBlockExpression)?.statements?.isNotEmpty() == true) {
                 if (context.hasPropertyAfterInitializer) {
                     // In this case we must move init {} down, because it uses a property declared below
-                    klass.addDeclaration(initializer)
+                    klass.addMemberDeclaration(initializer)
                     writableSecondaryConstructor.delete()
                 } else {
                     writableSecondaryConstructor.replace(initializer)
@@ -276,10 +286,10 @@ internal class ConvertSecondaryConstructorToPrimaryInspection :
                         }
                         property.delete()
                     } else {
-                        property.initializer = factory.createSimpleName(parameterName)
+                        property.setPropertyInitializer(factory.createSimpleName(parameterName))
                     }
                 }
-                val addedParameter = parameterList.addParameter(newParameter)
+                val addedParameter = parameterList.appendParameter(newParameter)
                 propertyCommentSaver?.restore(addedParameter)
             }
         }

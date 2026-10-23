@@ -3,23 +3,12 @@
 
 package org.jetbrains.intellij.build.impl
 
+import com.intellij.platform.buildScripts.concurrency.Subtask
+import com.intellij.platform.buildScripts.concurrency.TaskScope
+import com.intellij.platform.buildScripts.concurrency.taskScope
 import com.intellij.platform.ijent.community.buildConstants.isMultiRoutingFileSystemEnabledForProduct
-import com.intellij.util.io.Compressor
 import io.opentelemetry.api.trace.Span
-import io.opentelemetry.context.Context
-import io.opentelemetry.extension.kotlin.asContextElement
 import kotlinx.collections.immutable.persistentListOf
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineName
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.jetbrains.annotations.VisibleForTesting
 import org.jetbrains.intellij.build.BuildContext
 import org.jetbrains.intellij.build.BuildOptions
@@ -36,38 +25,30 @@ import org.jetbrains.intellij.build.PluginBundlingRestrictions
 import org.jetbrains.intellij.build.PluginDistribution
 import org.jetbrains.intellij.build.ScrambleTool
 import org.jetbrains.intellij.build.SearchableOptionSetDescriptor
-import org.jetbrains.intellij.build.buildSearchableOptions
-import org.jetbrains.intellij.build.classPath.PluginBuildDescriptor
+import org.jetbrains.intellij.build.buildSearchableOptionsForAllPlugins
+import org.jetbrains.intellij.build.classPath.PluginBuildResult
 import org.jetbrains.intellij.build.classPath.generateClassPathByLayoutReport
 import org.jetbrains.intellij.build.classPath.generateCoreClasspathFromPlugins
-import org.jetbrains.intellij.build.executeStep
+import org.jetbrains.intellij.build.dev.collectLayoutsOfPluginsToScramble
 import org.jetbrains.intellij.build.fus.createStatisticsRecorderBundledMetadataProviderTask
 import org.jetbrains.intellij.build.impl.moduleRepository.generateRuntimeModuleRepositoryForDistribution
 import org.jetbrains.intellij.build.impl.plugins.BundledPluginsBuildResult
-import org.jetbrains.intellij.build.impl.plugins.buildBundledPlugins
 import org.jetbrains.intellij.build.impl.plugins.buildBundledPluginsForAllPlatforms
 import org.jetbrains.intellij.build.impl.plugins.buildNonBundledPlugins
 import org.jetbrains.intellij.build.impl.plugins.scrambleAlreadyLaidOutPlugins
 import org.jetbrains.intellij.build.impl.plugins.writeBundledPluginInfoAfterScramble
 import org.jetbrains.intellij.build.impl.projectStructureMapping.ContentReport
 import org.jetbrains.intellij.build.impl.projectStructureMapping.DistributionFileEntry
-import org.jetbrains.intellij.build.impl.projectStructureMapping.buildJarContentReport
 import org.jetbrains.intellij.build.impl.projectStructureMapping.getIncludedModules
-import org.jetbrains.intellij.build.injectAppInfo
 import org.jetbrains.intellij.build.io.copyDir
 import org.jetbrains.intellij.build.io.copyFileToDir
-import org.jetbrains.intellij.build.io.writeNewZipWithoutIndex
-import org.jetbrains.intellij.build.io.zip
 import org.jetbrains.intellij.build.productLayout.ProductModulesLayout
 import org.jetbrains.intellij.build.productLayout.createPluginLayoutSet
 import org.jetbrains.intellij.build.telemetry.TraceManager.spanBuilder
 import org.jetbrains.intellij.build.telemetry.use
 import org.jetbrains.jps.util.JpsPathUtil
-import java.nio.charset.StandardCharsets
 import java.nio.file.Files
-import java.nio.file.NoSuchFileException
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption
 import kotlin.io.path.listDirectoryEntries
 
 /**
@@ -75,31 +56,37 @@ import kotlin.io.path.listDirectoryEntries
  * bundled plugins' JARs (in [distAll][BuildPaths.distAllDir]/plugins directory) and zip archives with
  * non-bundled plugins (in [artifacts][BuildPaths.artifactDir]/plugins directory).
  */
-internal suspend fun buildDistribution(
+internal fun buildDistribution(
   context: BuildContext,
   isUpdateFromSources: Boolean = false,
-): ContentReport = coroutineScope {
+): ContentReport = taskScope {
   val state = context.distributionState()
   val platformLayout = state.platformLayout
   validateModuleStructure(platformLayout, context)
-  context.productProperties.validateLayout(platformLayout, context)
   createBuildBrokenPluginListJob(context)
 
-  val productRunner = suspendingLazy("distribution product runner") {
+  // The authoring assets must describe the distribution, so their runner loads the bundled plugins only.
+  val productRunner = sharedLazy(context.lifetime, "distribution product runner") {
     context.createProductRunner()
   }
   if (context.productProperties.buildDocAuthoringAssets && !context.isStepSkipped(BuildOptions.DOC_AUTHORING_ASSETS_STEP)) {
-    launch(CoroutineName("build authoring assets")) {
-      buildAdditionalAuthoringArtifacts(productRunner.await(), context)
+    fork("build authoring assets") {
+      buildAdditionalAuthoringArtifacts(productRunner.get(), context)
     }
   }
 
-  val traceContext = Context.current().asContextElement()
-  val contentReport = coroutineScope {
+  val contentReport = taskScope {
     // must be completed before plugin building
-    val searchableOptionSet = context.executeStep(spanBuilder("build searchable options index"), BuildOptions.SEARCHABLE_OPTIONS_INDEX_STEP) {
-      buildSearchableOptions(productRunner.await(), context)
+    // the index also covers the plugins to publish, so it takes one run per conflict-free subset of them
+    // the build makes no archive for a skipped step, so the index of those plugins has no consumer
+    val pluginsToIndex = if (context.isStepSkipped(BuildOptions.NON_BUNDLED_PLUGINS_STEP) ||
+                             !context.productProperties.productLayout.buildSearchableOptionsForPluginsToPublish) {
+      emptyList()
     }
+    else {
+      state.pluginsToPublish
+    }
+    val searchableOptionSet = buildSearchableOptionsForAllPlugins(context = context, pluginsToPublish = pluginsToIndex)
 
     val pluginLayouts = getPluginLayoutsByJpsModuleNames(modules = context.getBundledPluginModules(), productLayout = context.productProperties.productLayout)
     val moduleOutputPatcher = ModuleOutputPatcher()
@@ -116,8 +103,8 @@ internal suspend fun buildDistribution(
     else {
       emptySet()
     }
-    if (coScramblePluginLayouts.isEmpty()) {
-      val buildPlatformJob: Deferred<List<DistributionFileEntry>> = async(traceContext + CoroutineName("build platform lib")) {
+    val scopeResult = if (coScramblePluginLayouts.isEmpty()) {
+      val buildPlatformJob = fork("build platform lib") {
         spanBuilder("build platform lib").use {
           buildPlatform(
             moduleOutputPatcher = moduleOutputPatcher,
@@ -129,12 +116,12 @@ internal suspend fun buildDistribution(
         }
       }
 
-      val buildNonBundledPlugins = async(CoroutineName("build non-bundled plugins")) {
+      val buildNonBundledPlugins = fork("build non-bundled plugins") {
         val compressPluginArchive = !isUpdateFromSources && context.options.compressZipFiles
         buildNonBundledPlugins(
           pluginsToPublish = state.pluginsToPublish,
           compressPluginArchive = compressPluginArchive,
-          buildPlatformLibJob = buildPlatformJob,
+          platformEntriesProvider = { buildPlatformJob.await() },
           state = state,
           searchableOptionSet = searchableOptionSet,
           isUpdateFromSources = isUpdateFromSources,
@@ -147,7 +134,7 @@ internal suspend fun buildDistribution(
         state = state,
         pluginLayouts = pluginLayouts,
         isUpdateFromSources = isUpdateFromSources,
-        buildPlatformJob = buildPlatformJob,
+        platformEntriesProvider = { buildPlatformJob.await() },
         searchableOptionSetDescriptor = searchableOptionSet,
         descriptorCacheContainer = platformLayout.descriptorCacheContainer,
         context = context,
@@ -160,17 +147,17 @@ internal suspend fun buildDistribution(
       ContentReport(platform = platformItems, bundledPlugins = bundledPluginItems, nonBundledPlugins = buildNonBundledPlugins.await())
     }
     else {
-      val additionalPluginsDeferred = async(CoroutineName("build additional plugins")) {
+      val additionalPluginsJob = fork("build additional plugins") {
         copyAdditionalPlugins(pluginDir = context.paths.distAllDir.resolve(PLUGINS_DIRECTORY), context = context)
       }
       // Lay out only co-scramble plugins and their explicit scramble-classpath closure before platform scramble.
-      val coScramblePluginLayoutJob: Deferred<BundledPluginsBuildResult> = async(traceContext + CoroutineName("lay out co-scramble plugins")) {
+      val coScramblePluginLayoutJob = fork("lay out co-scramble plugins") {
         buildBundledPluginsForAllPlatforms(
           state = state,
           pluginLayouts = coScramblePluginLayouts,
           isUpdateFromSources = isUpdateFromSources,
           // never await platform here (would deadlock); per-plugin scramble runs after platform scramble below
-          buildPlatformJob = CompletableDeferred(emptyList()),
+          platformEntriesProvider = { emptyList() },
           searchableOptionSetDescriptor = searchableOptionSet,
           descriptorCacheContainer = platformLayout.descriptorCacheContainer,
           context = context,
@@ -179,11 +166,12 @@ internal suspend fun buildDistribution(
         )
       }
 
-      val coScrambleEntriesDeferred: Deferred<List<ScrambleTool.CoScrambleEntry>> = async(traceContext + CoroutineName("collect co-scramble entries")) {
-        collectCoScrambleEntries(coScramblePluginLayoutJob.await().descriptors)
+      val layoutsOfPluginsToScramble = collectLayoutsOfPluginsToScramble(pluginLayouts)
+      val coScrambleEntriesJob = fork("collect co-scramble entries") {
+        collectCoScrambleEntries(coScramblePluginLayoutJob.await().descriptors, layoutsOfPluginsToScramble = layoutsOfPluginsToScramble)
       }
 
-      val buildPlatformJob: Deferred<List<DistributionFileEntry>> = async(traceContext + CoroutineName("build platform lib")) {
+      val buildPlatformJob = fork("build platform lib") {
         spanBuilder("build platform lib").use {
           buildPlatform(
             moduleOutputPatcher = moduleOutputPatcher,
@@ -191,18 +179,18 @@ internal suspend fun buildDistribution(
             searchableOptionSet = searchableOptionSet,
             context = context,
             isUpdateFromSources = isUpdateFromSources,
-            coScrambleEntriesProvider = { coScrambleEntriesDeferred.await() },
+            coScrambleEntriesProvider = { coScrambleEntriesJob.await() },
             classpathDirsProvider = { collectAllPluginClasspathDirs(coScramblePluginLayoutJob.await().descriptors) },
           )
         }
       }
 
-      val buildNonBundledPlugins = async(CoroutineName("build non-bundled plugins")) {
+      val buildNonBundledPlugins = fork("build non-bundled plugins") {
         val compressPluginArchive = !isUpdateFromSources && context.options.compressZipFiles
         buildNonBundledPlugins(
           pluginsToPublish = state.pluginsToPublish,
           compressPluginArchive = compressPluginArchive,
-          buildPlatformLibJob = buildPlatformJob,
+          platformEntriesProvider = { buildPlatformJob.await() },
           state = state,
           searchableOptionSet = searchableOptionSet,
           isUpdateFromSources = isUpdateFromSources,
@@ -221,7 +209,7 @@ internal suspend fun buildDistribution(
         pluginLayouts = remainingPluginLayouts,
         isUpdateFromSources = false,
         // remaining plugins are laid out after platform scramble; per-plugin scramble runs below
-        buildPlatformJob = CompletableDeferred(emptyList()),
+        platformEntriesProvider = { emptyList() },
         searchableOptionSetDescriptor = searchableOptionSet,
         descriptorCacheContainer = platformLayout.descriptorCacheContainer,
         context = context,
@@ -234,6 +222,7 @@ internal suspend fun buildDistribution(
         descriptors = bundledPluginItems,
         state = state,
         platformEntries = platformItems,
+        layoutsOfPluginsToScramble = layoutsOfPluginsToScramble,
         context = context,
       )
       // Write plugin classpath/info now that descriptors reflect the scrambled layout.
@@ -241,7 +230,8 @@ internal suspend fun buildDistribution(
         state = state,
         isUpdateFromSources = false,
         descriptors = bundledPluginItems,
-        additionalPlugins = additionalPluginsDeferred.await(),
+        additionalPlugins = additionalPluginsJob.await(),
+        layoutsOfPluginsToScramble = layoutsOfPluginsToScramble,
         descriptorCacheContainer = platformLayout.descriptorCacheContainer,
         context = context,
       )
@@ -250,36 +240,28 @@ internal suspend fun buildDistribution(
 
       ContentReport(platform = platformItems, bundledPlugins = bundledPluginItems, nonBundledPlugins = buildNonBundledPlugins.await())
     }
+    join { scopeResult }
   }
 
-  coroutineScope {
-    launch(Dispatchers.IO + CoroutineName("generate content report")) {
-      spanBuilder("generate content report").use {
-        Files.createDirectories(context.paths.artifactDir)
-        val contentReportFile = context.paths.artifactDir.resolve("content-report.zip")
-        writeNewZipWithoutIndex(contentReportFile) { zipFileWriter ->
-          buildJarContentReport(contentReport, zipFileWriter, context.paths, context)
-        }
-        context.notifyArtifactBuilt(contentReportFile)
-      }
-    }
+  taskScope {
     createBuildThirdPartyLibraryListJob(contentReport.bundled(), context)
     if (context.useModularLoader || context.generateRuntimeModuleRepository) {
-      launch(CoroutineName("generate runtime module repository")) {
+      fork("generate runtime module repository") {
         spanBuilder("generate runtime module repository").use {
           generateRuntimeModuleRepositoryForDistribution(contentReport, context, platformLayout)
         }
       }
     }
+    join()
   }
-  contentReport
+  join { contentReport }
 }
 
-private suspend fun generateCoreClassPath(
+private fun generateCoreClassPath(
   platformLayout: PlatformLayout,
   context: BuildContext,
   platformDistribution: List<DistributionFileEntry>,
-  bundledPluginsDistribution: List<PluginBuildDescriptor>,
+  bundledPluginsDistribution: List<PluginBuildResult>,
 ): List<String> {
   if (context.useModularLoader) {
     return listOf(PLATFORM_LOADER_JAR)
@@ -299,14 +281,14 @@ private suspend fun generateCoreClassPath(
 }
 
 @VisibleForTesting
-suspend fun buildPlatform(
+fun buildPlatform(
   moduleOutputPatcher: ModuleOutputPatcher,
   state: DistributionBuilderState,
   searchableOptionSet: SearchableOptionSetDescriptor?,
   isUpdateFromSources: Boolean,
   context: BuildContext,
-  coScrambleEntriesProvider: (suspend () -> List<ScrambleTool.CoScrambleEntry>)? = null,
-  classpathDirsProvider: (suspend () -> List<Path>)? = null,
+  coScrambleEntriesProvider: (() -> List<ScrambleTool.CoScrambleEntry>)? = null,
+  classpathDirsProvider: (() -> List<Path>)? = null,
 ): List<DistributionFileEntry> {
   val distributionFileEntries = buildLib(
     moduleOutputPatcher = moduleOutputPatcher,
@@ -342,18 +324,20 @@ suspend fun buildPlatform(
   return distributionFileEntries
 }
 
-fun collectCoScrambleEntries(descriptors: List<PluginBuildDescriptor>): List<ScrambleTool.CoScrambleEntry> {
-  if (descriptors.isEmpty()) return emptyList()
-  val result = ArrayList<ScrambleTool.CoScrambleEntry>(descriptors.size)
-  for (descriptor in descriptors) {
-    val layout = descriptor.layout
-    if (!layout.scrambleWithPlatform) continue
+fun collectCoScrambleEntries(plugins: List<PluginBuildResult>, layoutsOfPluginsToScramble: Map<String, PluginLayout>): List<ScrambleTool.CoScrambleEntry> {
+  if (plugins.isEmpty()) return emptyList()
+  val result = ArrayList<ScrambleTool.CoScrambleEntry>(plugins.size)
+  for (plugin in plugins) {
+    val layout = layoutsOfPluginsToScramble[plugin.mainModule]
+    if (layout == null || !layout.scrambleWithPlatform) continue
     for (jarRelative in layout.pathsToScramble) {
-      result.add(ScrambleTool.CoScrambleEntry(
-        jarFile = descriptor.dir.resolve(jarRelative),
-        pluginLayout = layout,
-        pluginDir = descriptor.dir,
-      ))
+      result.add(
+        ScrambleTool.CoScrambleEntry(
+          jarFile = plugin.dir.resolve(jarRelative),
+          pluginLayout = layout,
+          pluginDir = plugin.dir,
+        )
+      )
     }
   }
   return result
@@ -410,11 +394,11 @@ fun validateCoScramblePluginsAreNotPublished(pluginsToPublish: Collection<Plugin
  * [ScrambleTool.scramble]'s `classpathDirs` so the run can resolve any cross-plugin reference
  * during trim/obfuscate.
  */
-fun collectAllPluginClasspathDirs(descriptors: List<PluginBuildDescriptor>): List<Path> {
-  if (descriptors.isEmpty()) return emptyList()
+fun collectAllPluginClasspathDirs(plugins: List<PluginBuildResult>): List<Path> {
+  if (plugins.isEmpty()) return emptyList()
   val result = LinkedHashSet<Path>()
-  for (descriptor in descriptors) {
-    val libDir = descriptor.dir.resolve("lib")
+  for (buildResult in plugins) {
+    val libDir = buildResult.dir.resolve("lib")
     if (!Files.isDirectory(libDir)) continue
     Files.walk(libDir).use { stream ->
       stream
@@ -426,7 +410,7 @@ fun collectAllPluginClasspathDirs(descriptors: List<PluginBuildDescriptor>): Lis
   return result.toList()
 }
 
-private fun orderBundledPluginDescriptors(descriptors: List<PluginBuildDescriptor>): List<PluginBuildDescriptor> {
+private fun orderBundledPluginDescriptors(descriptors: List<PluginBuildResult>): List<PluginBuildResult> {
   if (descriptors.size < 2) return descriptors
   val distributionOrder = HashMap<Pair<OsFamily?, JvmArchitecture?>, Int>(SUPPORTED_DISTRIBUTIONS.size + 1)
   distributionOrder.put(Pair(null, null), 0)
@@ -434,16 +418,16 @@ private fun orderBundledPluginDescriptors(descriptors: List<PluginBuildDescripto
     distributionOrder.put(Pair(distribution.os, distribution.arch), index + 1)
   }
   return descriptors.sortedWith(
-    compareBy<PluginBuildDescriptor> { distributionOrder.get(Pair(it.os, it.arch)) ?: Int.MAX_VALUE }
-      .thenBy { it.layout.mainModule }
+    compareBy<PluginBuildResult> { distributionOrder.get(Pair(it.os, it.arch)) ?: Int.MAX_VALUE }
+      .thenBy { it.mainModule }
   )
 }
 
 @VisibleForTesting
-suspend fun testBuildBundledPluginsForAllPlatforms(
+fun testBuildBundledPluginsForAllPlatforms(
   state: DistributionBuilderState,
   pluginLayouts: Set<PluginLayout>,
-  buildPlatformJob: Deferred<List<DistributionFileEntry>>,
+  platformEntriesProvider: () -> List<DistributionFileEntry>,
   descriptorCacheContainer: DescriptorCacheContainer,
   context: BuildContext,
   includeAdditionalPlugins: Boolean = true,
@@ -451,7 +435,7 @@ suspend fun testBuildBundledPluginsForAllPlatforms(
   buildBundledPluginsForAllPlatforms(
     state = state,
     context = context,
-    buildPlatformJob = buildPlatformJob,
+    platformEntriesProvider = platformEntriesProvider,
     pluginLayouts = pluginLayouts,
     isUpdateFromSources = false,
     searchableOptionSetDescriptor = null,
@@ -464,11 +448,10 @@ suspend fun testBuildBundledPluginsForAllPlatforms(
 /**
  * Lays out the given bundled plugins (no scrambling) so the caller can invoke [buildPlatform] with
  * `coScrambleEntriesProvider` / `classpathDirsProvider` populated from [collectCoScrambleEntries]
- * and [collectAllPluginClasspathDirs]. Per-plugin scramble for the laid-out plugins runs later via
- * [testScrambleAlreadyLaidOutPlugins].
+ * and [collectAllPluginClasspathDirs].
  */
 @VisibleForTesting
-suspend fun testLayoutBundledPlugins(
+fun testLayoutBundledPlugins(
   state: DistributionBuilderState,
   pluginLayouts: Set<PluginLayout>,
   descriptorCacheContainer: DescriptorCacheContainer,
@@ -480,7 +463,7 @@ suspend fun testLayoutBundledPlugins(
     pluginLayouts = pluginLayouts,
     isUpdateFromSources = false,
     // never await platform here (would deadlock)
-    buildPlatformJob = CompletableDeferred(emptyList()),
+    platformEntriesProvider = { emptyList() },
     searchableOptionSetDescriptor = null,
     descriptorCacheContainer = descriptorCacheContainer,
     context = context,
@@ -488,38 +471,6 @@ suspend fun testLayoutBundledPlugins(
     includeAdditionalPlugins = includeAdditionalPlugins,
   )
 }
-
-/**
- * Per-plugin scramble pass for plugins that were laid out earlier via [testLayoutBundledPlugins],
- * followed by writing plugin-classpath info (so [BuildContext.getDistFiles] reflects it). Co-scramble
- * plugins ([PluginLayout.scrambleWithPlatform]) are skipped during scramble — they were already
- * scrambled in the platform ZKM run.
- */
-@VisibleForTesting
-suspend fun testScrambleAlreadyLaidOutPlugins(
-  descriptors: List<PluginBuildDescriptor>,
-  state: DistributionBuilderState,
-  platformEntries: List<DistributionFileEntry>,
-  additionalPlugins: List<Pair<Path, List<Path>>>?,
-  descriptorCacheContainer: DescriptorCacheContainer,
-  context: BuildContext,
-) {
-  scrambleAlreadyLaidOutPlugins(
-    descriptors = descriptors,
-    state = state,
-    platformEntries = platformEntries,
-    context = context,
-  )
-  writeBundledPluginInfoAfterScramble(
-    state = state,
-    isUpdateFromSources = false,
-    descriptors = descriptors,
-    additionalPlugins = additionalPlugins,
-    descriptorCacheContainer = descriptorCacheContainer,
-    context = context,
-  )
-}
-
 
 /**
  * Validates module structure to ensure all module dependencies are included.
@@ -530,31 +481,14 @@ fun validateModuleStructure(platform: PlatformLayout, context: BuildContext) {
   }
 }
 
-suspend fun buildBundledPluginsAsStandaloneTask(
-  state: DistributionBuilderState,
-  plugins: Collection<PluginLayout>,
-  searchableOptionSetDescriptor: SearchableOptionSetDescriptor?,
-  platformContent: List<DistributionFileEntry>,
-  context: BuildContext,
-) {
-  buildBundledPlugins(
-    state = state,
-    plugins = plugins,
-    isUpdateFromSources = false,
-    buildPlatformJob = CompletableDeferred(platformContent),
-    searchableOptionSet = searchableOptionSetDescriptor,
-    descriptorCacheContainer = state.platformLayout.descriptorCacheContainer,
-    context = context,
-  )
-}
-
-suspend fun copyAdditionalPlugins(pluginDir: Path, context: BuildContext): List<Pair<Path, List<Path>>>? {
+/** Stays `suspend` because the additional plugin paths come from a suspend member of the product properties. The copy itself blocks on the virtual thread. */
+fun copyAdditionalPlugins(pluginDir: Path, context: BuildContext): List<Pair<Path, List<Path>>>? {
   val additionalPluginPaths = context.productProperties.getAdditionalPluginPaths(context)
   if (additionalPluginPaths.isEmpty()) {
     return null
   }
 
-  return spanBuilder("copy additional plugins").use(Dispatchers.IO) {
+  return spanBuilder("copy additional plugins").use {
     val allEntries = mutableListOf<Pair<Path, List<Path>>>()
     for (sourceDir in additionalPluginPaths) {
       val targetDir = pluginDir.resolve(sourceDir.fileName)
@@ -595,7 +529,7 @@ fun getPluginLayoutsByJpsModuleNames(modules: Collection<String>, productLayout:
     return createPluginLayoutSet(expectedSize = 0)
   }
 
-  val layoutsByMainModule = productLayout.pluginLayouts.groupByTo(HashMap()) { it.mainModule }
+  val layoutsByMainModule = productLayout.pluginLayouts.value.groupByTo(HashMap()) { it.mainModule }
   val result = createPluginLayoutSet(modules.size)
   for (moduleName in modules) {
     val layouts = layoutsByMainModule.get(moduleName) ?: mutableListOf(PluginLayout.pluginAuto(listOf(moduleName)))
@@ -642,7 +576,7 @@ private fun basePath(moduleName: String, outputProvider: ModuleOutputProvider): 
   return Path.of(JpsPathUtil.urlToPath(outputProvider.findRequiredModule(moduleName).contentRootsList.urls.first()))
 }
 
-suspend fun buildLib(
+fun buildLib(
   moduleOutputPatcher: ModuleOutputPatcher,
   platform: PlatformLayout,
   searchableOptionSetDescriptor: SearchableOptionSetDescriptor?,
@@ -661,30 +595,56 @@ suspend fun buildLib(
   return libDirMappings
 }
 
-internal suspend fun layoutPlatformDistribution(
+internal fun layoutPlatformDistribution(
   moduleOutputPatcher: ModuleOutputPatcher,
   targetDir: Path,
   platform: PlatformLayout,
   searchableOptionSet: SearchableOptionSetDescriptor?,
   copyFiles: Boolean,
+  /**
+   * The modules to pack, `null` for all of [PlatformLayout.includedModules].
+   *
+   * A split dev-distribution fragment passes its share, so that the modules it does not pack are never resolved to
+   * their outputs and cannot invalidate it.
+   */
+  includedModules: Collection<ModuleItem>? = null,
+  /** Packs only the `lib/` jars this accepts; `null` packs all of them. Set by a split dev-distribution fragment. */
+  assetFilter: DistributionAssetFilter? = null,
   context: BuildContext,
 ): List<DistributionFileEntry> {
+  val selectedModules = includedModules ?: platform.includedModules
+  val selectedModuleNames = selectedModules.mapTo(HashSet(), ModuleItem::moduleName)
   if (copyFiles) {
-    coroutineScope {
-      createStatisticsRecorderBundledMetadataProviderTask(moduleOutputPatcher, context)
-      launch(CoroutineName("patch keymap with Alt click reassigned to multiple carets")) {
-        patchKeyMapWithAltClickReassignedToMultipleCarets(moduleOutputPatcher, context)
+    taskScope {
+      if (selectedModuleNames.contains("intellij.platform.ide.impl")) {
+        createStatisticsRecorderBundledMetadataProviderTask(moduleOutputPatcher, context)
       }
-      launch(CoroutineName("write patched app info")) {
-        spanBuilder("write patched app info").use {
-          val moduleName = "intellij.platform.core"
-          val module = context.outputProvider.findRequiredModule(moduleName)
-          val relativePath = "com/intellij/openapi/application/ApplicationNamesInfo.class"
-          val sourceBytes = context.outputProvider.readFileContentFromModuleOutput(module, relativePath) ?: error("app info not found")
-          val patchedBytes = injectAppInfo(inFileBytes = sourceBytes, newFieldValue = context.appInfoXml)
-          moduleOutputPatcher.patchModuleOutput(moduleName = moduleName, path = relativePath, content = patchedBytes)
+      // The stamped resource is the only application-info source at run time. See ApplicationNamesInfo.loadData.
+      val appInfoModuleName = context.productProperties.applicationInfoModule
+      if (selectedModuleNames.contains(appInfoModuleName)) fork("write application info resource") {
+        spanBuilder("write application info resource").use {
+          val appInfoResourcePath = applicationInfoResourcePath(context)
+          val outputProvider = context.outputProvider
+          checkApplicationInfoResourceOwner(
+            platformModules = platform.includedModules.mapTo(LinkedHashSet(), ModuleItem::moduleName),
+            applicationInfoModule = appInfoModuleName,
+            resourcePath = appInfoResourcePath,
+          ) { moduleName ->
+            val module = outputProvider.findRequiredModule(moduleName)
+            outputProvider.findFileInModuleSources(module = module, relativePath = appInfoResourcePath, onlyProductionSources = true) != null
+          }
+          val appInfoModule = outputProvider.findRequiredModule(appInfoModuleName)
+          outputProvider.readFileContentFromModuleOutput(appInfoModule, appInfoResourcePath)
+            ?: error("'$appInfoResourcePath' is not in the output of '$appInfoModuleName'")
+          moduleOutputPatcher.patchModuleOutput(
+            moduleName = appInfoModuleName,
+            path = appInfoResourcePath,
+            content = context.appInfoXml,
+            overwrite = PatchOverwriteMode.TRUE,
+          )
         }
       }
+      join()
     }
   }
 
@@ -697,28 +657,39 @@ internal suspend fun layoutPlatformDistribution(
         targetDir = targetDir,
         copyFiles = copyFiles,
         moduleOutputPatcher = moduleOutputPatcher,
-        includedModules = platform.includedModules,
+        includedModules = selectedModules,
         searchableOptionSet = searchableOptionSet,
         cachedDescriptorWriterProvider = null,
+        assetFilter = assetFilter,
         context = context,
       ).first
     }
 }
 
-private suspend fun patchKeyMapWithAltClickReassignedToMultipleCarets(moduleOutputPatcher: ModuleOutputPatcher, context: BuildContext) {
-  if (!context.productProperties.reassignAltClickToMultipleCarets) {
-    return
-  }
+/** The resource `ApplicationNamesInfo.loadData` reads at run time. [layoutPlatformDistribution] stamps it. */
+internal fun applicationInfoResourcePath(context: BuildContext): String {
+  return "idea/${context.productProperties.platformPrefix ?: ""}ApplicationInfo.xml"
+}
 
-  val moduleName = "intellij.platform.resources"
-  val relativePath = $$"keymaps/$default.xml"
-  val sourceFileContent = context.outputProvider.readFileContentFromModuleOutput(module = context.outputProvider.findRequiredModule(moduleName), relativePath = relativePath)
-                          ?: error("Not found '$relativePath' in module $moduleName output")
-  var text = String(sourceFileContent, StandardCharsets.UTF_8)
-  text = text.replace("<mouse-shortcut keystroke=\"alt button1\"/>", "<mouse-shortcut keystroke=\"to be alt shift button1\"/>")
-  text = text.replace("<mouse-shortcut keystroke=\"alt shift button1\"/>", "<mouse-shortcut keystroke=\"alt button1\"/>")
-  text = text.replace("<mouse-shortcut keystroke=\"to be alt shift button1\"/>", "<mouse-shortcut keystroke=\"alt shift button1\"/>")
-  moduleOutputPatcher.patchModuleOutput(moduleName, relativePath, text)
+/**
+ * Fails when a platform module other than [applicationInfoModule] holds [resourcePath].
+ *
+ * The IDE reads the first resource in classpath order, so a second owner in `lib/` would replace the stamped
+ * application info silently. [holdsResource] answers for one module name. The check asks the platform modules only,
+ * so a library jar that holds the resource is not covered.
+ */
+@VisibleForTesting
+fun checkApplicationInfoResourceOwner(
+  platformModules: Collection<String>,
+  applicationInfoModule: String,
+  resourcePath: String,
+  holdsResource: (String) -> Boolean,
+) {
+  val otherOwners = platformModules.filter { it != applicationInfoModule && holdsResource(it) }
+  check(otherOwners.isEmpty()) {
+    "The resource '$resourcePath' must be in the application-info module '$applicationInfoModule' only, " +
+    "but the platform also packs it from: ${otherOwners.joinToString()}"
+  }
 }
 
 fun getOsAndArchSpecificDistDirectory(osFamily: OsFamily, arch: JvmArchitecture, libc: LibcImpl, context: BuildContext): Path {
@@ -734,21 +705,21 @@ fun getOsAndArchSpecificDistDirectory(osFamily: OsFamily, arch: JvmArchitecture,
   )
 }
 
-private fun CoroutineScope.createBuildBrokenPluginListJob(context: BuildContext): Job {
+private fun TaskScope.createBuildBrokenPluginListJob(context: BuildContext): Subtask<Unit?> {
   val buildString = context.fullBuildNumber
   return createSkippableJob(
     spanBuilder("build broken plugin list").setAttribute("buildNumber", buildString),
     BuildOptions.BROKEN_PLUGINS_LIST_STEP,
     context,
   ) {
-    val data = buildBrokenPlugins(currentBuildString = buildString, isInDevelopmentMode = context.options.isInDevelopmentMode)
+    val data = buildBrokenPlugins(currentBuildString = buildString, isInDevelopmentMode = context.options.isInDevelopmentMode, session = context.httpSession)
     if (data != null) {
       context.addDistFile(DistFile(content = InMemoryDistFileContent(data), relativePath = "bin/brokenPlugins.db"))
     }
   }
 }
 
-private fun CoroutineScope.createBuildThirdPartyLibraryListJob(entries: Sequence<DistributionFileEntry>, context: BuildContext) {
+private fun TaskScope.createBuildThirdPartyLibraryListJob(entries: Sequence<DistributionFileEntry>, context: BuildContext) {
   createSkippableJob(
     spanBuilder("generate table of licenses for used third-party libraries"),
     BuildOptions.THIRD_PARTY_LIBRARIES_LIST_STEP, context
@@ -759,31 +730,63 @@ private fun CoroutineScope.createBuildThirdPartyLibraryListJob(entries: Sequence
       usedModulesNames = getIncludedModules(entries).toHashSet(),
     )
     val distAllDir = context.paths.distAllDir
-    withContext(Dispatchers.IO) {
-      Files.createDirectories(distAllDir)
+    Files.createDirectories(distAllDir)
 
-      val htmlFilePath = distAllDir.resolve("license/third-party-libraries.html")
-      val jsonFilePath = distAllDir.resolve("license/third-party-libraries.json")
+    val htmlFilePath = distAllDir.resolve("license/third-party-libraries.html")
+    val jsonFilePath = distAllDir.resolve("license/third-party-libraries.json")
 
-      generator.generateHtml(htmlFilePath)
-      generator.generateJson(jsonFilePath)
+    generator.generateHtml(htmlFilePath)
+    generator.generateJson(jsonFilePath)
 
-      if (context.productProperties.generateLibraryLicensesTable) {
-        val artifactNamePrefix = context.productProperties.getBaseArtifactName(context)
-        val htmlArtifact = context.paths.artifactDir.resolve("$artifactNamePrefix-third-party-libraries.html")
-        val jsonArtifact = context.paths.artifactDir.resolve("$artifactNamePrefix-third-party-libraries.json")
-        Files.createDirectories(context.paths.artifactDir)
-        Files.copy(htmlFilePath, htmlArtifact)
-        Files.copy(jsonFilePath, jsonArtifact)
-        context.notifyArtifactBuilt(htmlArtifact)
-        context.notifyArtifactBuilt(jsonArtifact)
-      }
+    if (context.productProperties.generateLibraryLicensesTable) {
+      val artifactNamePrefix = context.productProperties.getBaseArtifactName(context)
+      val htmlArtifact = context.paths.artifactDir.resolve("$artifactNamePrefix-third-party-libraries.html")
+      val jsonArtifact = context.paths.artifactDir.resolve("$artifactNamePrefix-third-party-libraries.json")
+      Files.createDirectories(context.paths.artifactDir)
+      Files.copy(htmlFilePath, htmlArtifact)
+      Files.copy(jsonFilePath, jsonArtifact)
+      context.notifyArtifactBuilt(htmlArtifact)
+      context.notifyArtifactBuilt(jsonArtifact)
     }
   }
 }
 
 internal fun satisfiesBundlingRequirements(plugin: PluginLayout, osFamily: OsFamily?, arch: JvmArchitecture?, context: BuildContext): Boolean {
-  if (context.options.bundledPluginDirectoriesToSkip.contains(plugin.directoryName)) {
+  return satisfiesBundlingRequirements(plugin, osFamily, arch, context.options.bundledPluginDirectoriesToSkip) { distribution ->
+    if (context.options.useReleaseCycleRelatedBundlingRestrictions) {
+      val isNightly = context.isNightlyBuild
+      val isEap = context.applicationInfo.isEAP
+      when (distribution) {
+        PluginDistribution.ALL -> true
+        PluginDistribution.NOT_FOR_RELEASE -> isNightly || isEap
+        PluginDistribution.NOT_FOR_PUBLIC_BUILDS -> isNightly
+        PluginDistribution.CROSS_PLATFORM_DIST_ONLY -> false
+      }
+    }
+    else {
+      true
+    }
+  }
+}
+
+/** Applies the dev path's bundling rules without release-cycle restrictions or build context access. */
+internal fun satisfiesDevBundlingRequirements(
+  plugin: PluginLayout,
+  osFamily: OsFamily?,
+  arch: JvmArchitecture?,
+  bundledPluginDirectoriesToSkip: Collection<String>,
+): Boolean {
+  return satisfiesBundlingRequirements(plugin, osFamily, arch, bundledPluginDirectoriesToSkip) { true }
+}
+
+private fun satisfiesBundlingRequirements(
+  plugin: PluginLayout,
+  osFamily: OsFamily?,
+  arch: JvmArchitecture?,
+  bundledPluginDirectoriesToSkip: Collection<String>,
+  releaseCycleAllows: (PluginDistribution) -> Boolean,
+): Boolean {
+  if (bundledPluginDirectoriesToSkip.contains(plugin.directoryName)) {
     return false
   }
 
@@ -796,19 +799,8 @@ internal fun satisfiesBundlingRequirements(plugin: PluginLayout, osFamily: OsFam
     return false
   }
 
-  if (context.options.useReleaseCycleRelatedBundlingRestrictionsForContentReport) {
-    val isNightly = context.isNightlyBuild
-    val isEap = context.applicationInfo.isEAP
-
-    val distributionCondition = when (bundlingRestrictions.includeInDistribution) {
-      PluginDistribution.ALL -> true
-      PluginDistribution.NOT_FOR_RELEASE -> isNightly || isEap
-      PluginDistribution.NOT_FOR_PUBLIC_BUILDS -> isNightly
-      PluginDistribution.CROSS_PLATFORM_DIST_ONLY -> false
-    }
-    if (!distributionCondition) {
-      return false
-    }
+  if (!releaseCycleAllows(bundlingRestrictions.includeInDistribution)) {
+    return false
   }
 
   return when {
@@ -819,7 +811,7 @@ internal fun satisfiesBundlingRequirements(plugin: PluginLayout, osFamily: OsFam
   }
 }
 
-internal suspend fun layoutDistribution(
+internal fun layoutDistribution(
   layout: BaseLayout,
   platformLayout: PlatformLayout,
   targetDir: Path,
@@ -828,20 +820,22 @@ internal suspend fun layoutDistribution(
   includedModules: Collection<ModuleItem>,
   searchableOptionSet: SearchableOptionSetDescriptor?,
   cachedDescriptorWriterProvider: ScopedCachedDescriptorContainer?,
+  assetFilter: DistributionAssetFilter? = null,
   context: BuildContext,
 ): Pair<List<DistributionFileEntry>, Path> {
   if (copyFiles) {
-    withContext(Dispatchers.IO) {
-      Files.createDirectories(targetDir)
-
-      if (!layout.moduleExcludes.isEmpty()) {
-        launch(CoroutineName("check module excludes")) {
-          checkModuleExcludes(layout.moduleExcludes, context.outputProvider)
+    taskScope {
+      val includedModuleNames = includedModules.mapTo(HashSet(), ModuleItem::moduleName)
+      val relevantModuleExcludes = layout.moduleExcludes.filterKeys(includedModuleNames::contains)
+      if (relevantModuleExcludes.isNotEmpty()) {
+        fork("check module excludes") {
+          checkModuleExcludes(relevantModuleExcludes, context.outputProvider)
         }
       }
 
+      Files.createDirectories(targetDir)
       // patchers must be executed _before_ packing, because patchers patch the module output
-      val patchers = layout.patchers
+      val patchers = layout.patchersFor(classicDev = context.options.isDevDistribution)
       if (!patchers.isEmpty()) {
         spanBuilder("execute custom patchers").setAttribute("count", patchers.size.toLong()).use {
           for (patcher in patchers) {
@@ -849,24 +843,27 @@ internal suspend fun layoutDistribution(
           }
         }
       }
+      join()
     }
   }
 
-  val entries = coroutineScope {
-    val tasks = ArrayList<Deferred<Collection<DistributionFileEntry>>>(3)
+  val entries = taskScope {
+    val tasks = ArrayList<Subtask<Collection<DistributionFileEntry>>>(2)
     val outputDir = targetDir.resolve(LIB_DIRECTORY)
-    tasks.add(async(CoroutineName("pack $outputDir")) {
+    // a virtual thread, because the layout computation under `JarPackager.pack` blocks. It reads a module
+    // output, a library root and a file attribute.
+    tasks.add(fork("pack $outputDir") {
       spanBuilder("pack").setAttribute("outputDir", outputDir.toString()).use {
         JarPackager.pack(
           includedModules = includedModules,
           outputDir = outputDir,
-          isRootDir = layout is PlatformLayout,
           layout = layout,
           platformLayout = platformLayout,
           moduleOutputPatcher = moduleOutputPatcher,
           searchableOptionSet = searchableOptionSet,
           dryRun = !copyFiles,
           descriptorCache = cachedDescriptorWriterProvider,
+          assetFilter = assetFilter,
           context = context,
         )
       }
@@ -875,7 +872,7 @@ internal suspend fun layoutDistribution(
     if (copyFiles &&
         !context.options.skipCustomResourceGenerators &&
         (layout.resourcePaths.isNotEmpty() || layout is PluginLayout && !layout.resourceGenerators.isEmpty())) {
-      tasks.add(async(Dispatchers.IO + CoroutineName("pack additional resources")) {
+      tasks.add(fork("pack additional resources") {
         spanBuilder("pack additional resources").use {
           layoutAdditionalResources(layout, targetDir, context)
           emptyList()
@@ -883,76 +880,43 @@ internal suspend fun layoutDistribution(
       })
     }
 
-    tasks
-  }.awaitAll().flatten()
+    join { tasks.flatMap { it.get() } }
+  }
 
   return entries to targetDir
 }
 
-private fun layoutResourcePaths(layout: BaseLayout, targetDirectory: Path, overwrite: Boolean, outputProvider: ModuleOutputProvider) {
+private fun layoutResourcePaths(layout: BaseLayout, targetDirectory: Path, outputProvider: ModuleOutputProvider) {
+  val missing = ArrayList<String>()
   for (resourceData in layout.resourcePaths) {
     val source = basePath(resourceData.moduleName, outputProvider).resolve(resourceData.resourcePath).normalize()
-    var target = targetDirectory.resolve(resourceData.relativeOutputPath).normalize()
-    if (resourceData.packToZip) {
-      if (Files.isDirectory(source)) {
-        // do not compress - doesn't make sense as it is a part of distribution
-        zip(targetFile = target, dirs = mapOf(source to ""), overwrite = overwrite)
-      }
-      else {
-        target = target.resolve(source.fileName)
-        Compressor.Zip(target).use { it.addFile(target.fileName.toString(), source) }
-      }
+    if (!Files.exists(source)) {
+      // All of them, not just the first: these name checkout paths, and a build assembling from a materialized
+      // project tree has to declare every one of them, so discovering them one failed build at a time is a trap.
+      missing.add("'${resourceData.resourcePath}' of module '${resourceData.moduleName}' (expected at $source)")
+      continue
+    }
+    val target = targetDirectory.resolve(resourceData.relativeOutputPath).normalize()
+    if (Files.isRegularFile(source)) {
+      copyFileToDir(source, target)
     }
     else {
-      if (Files.isRegularFile(source)) {
-        if (overwrite) {
-          val targetFile = target.resolve(source.fileName)
-          Files.createDirectories(target)
-          Files.copy(source, targetFile, StandardCopyOption.COPY_ATTRIBUTES, StandardCopyOption.REPLACE_EXISTING)
-        }
-        else {
-          copyFileToDir(source, target)
-        }
-      }
-      else {
-        if (overwrite) {
-          copyDir(source, target, fileFilter = {
-            copyIfChanged(target, source, it)
-          })
-        }
-        else {
-          copyDir(source, target)
-        }
-      }
+      copyDir(source, target)
     }
   }
+
+  check(missing.isEmpty()) {
+    "Resource paths of layout '$layout' do not exist:\n  " + missing.joinToString(separator = "\n  ")
+  }
 }
 
-private fun copyIfChanged(targetDir: Path, sourceDir: Path, sourceFile: Path): Boolean {
-  val targetFile = targetDir.resolve(sourceDir.relativize(sourceFile))
-  val t = try {
-    Files.getLastModifiedTime(targetFile).toMillis()
-  }
-  catch (_: NoSuchFileException) {
-    return true
-  }
-  val s = Files.getLastModifiedTime(sourceFile).toMillis()
-  if (t == s) {
-    return false
-  }
-  Files.delete(targetFile)
-  return true
-}
-
-private suspend fun layoutAdditionalResources(layout: BaseLayout, targetDirectory: Path, context: BuildContext) {
-  // quick fix for a very annoying FileAlreadyExistsException in CLion dev build
-  val overwrite = ("intellij.clion.radler" == (layout as? PluginLayout)?.mainModule)
-  layoutResourcePaths(layout = layout, targetDirectory = targetDirectory, overwrite = overwrite, outputProvider = context.outputProvider)
+private fun layoutAdditionalResources(layout: BaseLayout, targetDirectory: Path, context: BuildContext) {
+  layoutResourcePaths(layout = layout, targetDirectory = targetDirectory, outputProvider = context.outputProvider)
   if (layout !is PluginLayout) {
     return
   }
 
-  val resourceGenerators = layout.resourceGenerators
+  val resourceGenerators = layout.resourceGeneratorsFor(classicDev = context.options.isDevDistribution)
   if (!resourceGenerators.isEmpty()) {
     spanBuilder("generate and pack resources").use {
       for (item in resourceGenerators) {

@@ -1,14 +1,19 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.types
 
+import com.jetbrains.python.allure.Subsystems
+import com.jetbrains.python.allure.Layers
+import com.jetbrains.python.allure.Components
 import com.intellij.idea.TestFor
 import com.jetbrains.python.fixtures.PyCodeInsightTestCase
-import com.jetbrains.python.psi.LanguageLevel
 import org.junit.jupiter.api.Test
 
 /**
- * Type and type-checker tests for [typing.NewType][https://docs.python.org/3/library/typing.html#newtype].
+ * Type and type-checker tests for [typing.NewType](https://docs.python.org/3/library/typing.html#newtype).
  */
+@Subsystems.Typing
+@Components.TypeInference
+@Layers.Functional
 class PyNewTypeTypeTest : PyCodeInsightTestCase() {
 
   @Test
@@ -18,7 +23,7 @@ class PyNewTypeTypeTest : PyCodeInsightTestCase() {
       UserId = NewType('UserId', int)
       expr = UserId(12)
       # └ TYPE UserId
-      """)
+      """.trimIndent())
 
   @Test
   @TestFor(issues = ["PY-21302"])
@@ -27,7 +32,7 @@ class PyNewTypeTypeTest : PyCodeInsightTestCase() {
       UserId = NewType(tp=int, name='UserId')
       expr = UserId(12)
       #└ TYPE UserId
-      """)
+      """.trimIndent())
 
   @Test
   @TestFor(issues = ["PY-21302"])
@@ -36,7 +41,7 @@ class PyNewTypeTypeTest : PyCodeInsightTestCase() {
       UserId = NewType('UserId', Dict[int, str])
       expr = UserId
       #└ TYPE (dict[int, str]) -> UserId
-      """)
+      """.trimIndent())
 
   @Test
   @TestFor(issues = ["PY-21302"])
@@ -48,7 +53,7 @@ class PyNewTypeTypeTest : PyCodeInsightTestCase() {
           pass
       expr = foo
       #└ TYPE (a: UserId) -> str
-      """)
+      """.trimIndent())
 
   @Test
   @TestFor(issues = ["PY-21302"])
@@ -57,7 +62,7 @@ class PyNewTypeTypeTest : PyCodeInsightTestCase() {
       UserId = nt('UserId', int)
       expr = UserId(12)
       #└ TYPE UserId
-      """)
+      """.trimIndent())
 
   @Test
   @TestFor(issues = ["PY-21302"])
@@ -66,7 +71,7 @@ class PyNewTypeTypeTest : PyCodeInsightTestCase() {
       UserId = typing.NewType('UserId', int)
       expr = UserId(12)
       #└ TYPE UserId
-      """)
+      """.trimIndent())
 
   @Test
   @TestFor(issues = ["PY-21302"])
@@ -75,7 +80,7 @@ class PyNewTypeTypeTest : PyCodeInsightTestCase() {
       UserId = t.NewType('UserId', int)
       expr = UserId(12)
       #└ TYPE UserId
-      """)
+      """.trimIndent())
 
   @Test
   @TestFor(issues = ["PY-21302"])
@@ -85,7 +90,7 @@ class PyNewTypeTypeTest : PyCodeInsightTestCase() {
       SuperId = NewType('SuperId', UserId)
       expr = SuperId(UserId(12))
       #└ TYPE SuperId
-      """)
+      """.trimIndent())
 
   @Test
   fun `NewType factory type`() = test("""
@@ -93,18 +98,7 @@ class PyNewTypeTypeTest : PyCodeInsightTestCase() {
       UserId = NewType('UserId', int)
       expr = UserId
       #└ TYPE (int) -> UserId
-      """)
-
-  @Test
-  fun `NewType factory type before 310`() = test(
-    TestOptions(languageLevel = LanguageLevel.PYTHON39, assertRecursionPrevention = false),
-    """
-      from typing import NewType
-      UserId = NewType('UserId', int)
-      expr = UserId
-      #└ TYPE (int) -> UserId
-      """,
-  )
+      """.trimIndent())
 
   @Test
   @TestFor(issues = ["PY-21302"])
@@ -121,7 +115,7 @@ class PyNewTypeTypeTest : PyCodeInsightTestCase() {
       KeyValue({"key": 13})
       KeyValue(42) # WARNING Expected type 'dict[str, int]', got 'Literal[42]' instead
       KeyValue({"key1": "key2"}) # WARNING Expected type 'dict[str, int]', got 'dict[Literal["key1"], Literal["key2"]]' instead
-      """)
+      """.trimIndent())
 
   @Test
   @TestFor(issues = ["PY-21302"])
@@ -137,7 +131,7 @@ class PyNewTypeTypeTest : PyCodeInsightTestCase() {
       get_user(UserId(5))
       get_user("John") # WARNING Expected type 'UserId', got 'Literal["John"]' instead
       get_user(4) # WARNING Expected type 'UserId', got 'Literal[4]' instead
-      """)
+      """.trimIndent())
 
   @Test
   @TestFor(issues = ["PY-21302"])
@@ -173,5 +167,5 @@ class PyNewTypeTypeTest : PyCodeInsightTestCase() {
       get_user_child_new(user) # WARNING Expected type 'ChildNewId', got 'UserId' instead
       get_user_child_new(new_id) # WARNING Expected type 'ChildNewId', got 'NewId' instead
       get_user_child_new(child_new_id)
-      """)
+      """.trimIndent())
 }

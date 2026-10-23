@@ -11,14 +11,15 @@ import com.intellij.psi.search.searches.ReferencesSearch
 import com.intellij.util.containers.MultiMap
 import org.jetbrains.kotlin.analysis.api.KaSession
 import org.jetbrains.kotlin.analysis.api.components.compositeScope
-import org.jetbrains.kotlin.analysis.api.components.isMarkedNullable
+import org.jetbrains.kotlin.analysis.api.types.isMarkedNullable
 import org.jetbrains.kotlin.analysis.api.components.scopeContext
-import org.jetbrains.kotlin.analysis.api.components.type
+import org.jetbrains.kotlin.analysis.api.types.type
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassifierSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.symbol
 import org.jetbrains.kotlin.analysis.api.types.KaClassType
 import org.jetbrains.kotlin.idea.base.analysis.api.utils.analyzeInModalWindow
 import org.jetbrains.kotlin.idea.base.codeInsight.KotlinNameSuggester
+import org.jetbrains.kotlin.idea.base.psi.addModifierKeyword
 import org.jetbrains.kotlin.idea.base.psi.replaced
 import org.jetbrains.kotlin.idea.base.psi.unifier.KotlinPsiRange
 import org.jetbrains.kotlin.idea.base.psi.unifier.toRange
@@ -291,7 +292,7 @@ fun IntroduceTypeAliasDescriptor.generateTypeAlias(previewOnly: Boolean = false)
         psiFactory.createTypeAlias(name, typeParameterNames, originalElement.text)
     }
     if (visibility != null && visibility != DEFAULT_VISIBILITY_KEYWORD) {
-        typeAlias.addModifier(visibility)
+        typeAlias.addModifierKeyword(visibility)
     }
 
     for (typeParameter in typeParameters) for (it in typeParameter.typeReferenceInfos) {

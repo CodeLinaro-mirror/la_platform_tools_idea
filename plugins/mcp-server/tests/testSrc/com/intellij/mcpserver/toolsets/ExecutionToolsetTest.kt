@@ -2,14 +2,21 @@
 
 package com.intellij.mcpserver.toolsets
 
+import com.intellij.build.DefaultBuildDescriptor
+import com.intellij.build.events.FinishBuildEvent
+import com.intellij.build.events.MessageEvent
+import com.intellij.build.events.StartBuildEvent
+import com.intellij.build.events.impl.FailureResultImpl
 import com.intellij.execution.CommonProgramRunConfigurationParameters
 import com.intellij.execution.DefaultExecutionResult
+import com.intellij.execution.ExecutionException
 import com.intellij.execution.ExecutionManager
 import com.intellij.execution.ExecutionResult
 import com.intellij.execution.Executor
 import com.intellij.execution.RunManager
 import com.intellij.execution.RunnerAndConfigurationSettings
 import com.intellij.execution.configurations.ConfigurationFactory
+import com.intellij.execution.configurations.ConfigurationInfoProvider
 import com.intellij.execution.configurations.ConfigurationTypeBase
 import com.intellij.execution.configurations.RunConfiguration
 import com.intellij.execution.configurations.RunConfigurationBase
@@ -26,14 +33,16 @@ import com.intellij.execution.runners.RunContentBuilder
 import com.intellij.execution.ui.RunContentDescriptor
 import com.intellij.mcpserver.GeneralMcpToolsetTestBase
 import com.intellij.mcpserver.toolsets.general.ExecutionToolset
-import com.intellij.mcpserver.util.prepareRunConfigurationForExecution
+import com.intellij.mcpserver.toolsets.util.prepareRunConfigurationForExecution
 import com.intellij.mcpserver.util.relativizeIfPossible
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.runWriteAction
+import com.intellij.openapi.externalSystem.service.execution.ExternalSystemRunConfigurationViewManager
 import com.intellij.openapi.options.SettingsEditor
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.Conditions
+import com.intellij.openapi.util.Disposer
+import com.intellij.testFramework.common.timeoutRunBlocking
 import com.intellij.testFramework.common.waitUntilAssertSucceedsBlocking
 import com.intellij.testFramework.junit5.fixture.virtualFileFixture
 import com.intellij.util.ui.EmptyIcon
@@ -48,10 +57,13 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
+import java.lang.reflect.Proxy
 import java.nio.file.Files
 import java.nio.file.Path
-import kotlin.time.Duration.Companion.seconds
+import java.util.concurrent.atomic.AtomicReference
 import javax.swing.JPanel
+import kotlin.time.Duration.Companion.seconds
 
 class ExecutionToolsetTest : GeneralMcpToolsetTestBase() {
   private val mainKotlinFileFixture = sourceRootFixture.virtualFileFixture(
@@ -140,6 +152,56 @@ class ExecutionToolsetTest : GeneralMcpToolsetTestBase() {
   }
 
   @Test
+  @Timeout(30)
+  fun execute_run_configuration_preserves_start_failure(): Unit = timeoutRunBlocking {
+    val runManager = RunManager.getInstance(project)
+    val settings = createEditableConfiguration(runManager, "failed-config")
+    val failure = ExecutionException("Cannot launch", IllegalStateException("The executable does not exist"))
+    (settings.configuration as TestRunConfiguration).stateFactory = { _, _ ->
+      object : RunProfileState {
+        override fun execute(executor: Executor, runner: ProgramRunner<*>): ExecutionResult = throw failure
+      }
+    }
+    runWriteAction { runManager.addConfiguration(settings) }
+
+    withTestProgramRunner {
+      testMcpTool(
+        ExecutionToolset::execute_run_configuration.name,
+        buildJsonObject { put("configurationName", JsonPrimitive(settings.name)) },
+        "Execution failed: Cannot launch\nThe executable does not exist",
+      )
+    }
+  }
+
+  @Test
+  @Timeout(30)
+  fun execute_run_configuration_reports_external_build_failure(): Unit = timeoutRunBlocking {
+    val runManager = RunManager.getInstanceAsync(project)
+    val settings = createEditableConfiguration(runManager, "external-build-failure")
+    (settings.configuration as TestRunConfiguration).stateFactory = { _, environment ->
+      RunProfileState { _, _ ->
+        val viewManager = project.getService(ExternalSystemRunConfigurationViewManager::class.java)
+        val buildId = "external-build"
+        val descriptor = DefaultBuildDescriptor(buildId, "Build", requireNotNull(project.basePath), 0)
+          .withExecutionEnvironment(environment)
+        viewManager.onEvent(buildId, StartBuildEvent.builder("Build", descriptor).build())
+        viewManager.onEvent(buildId, MessageEvent.builder("Cannot resolve example:library:1.0", MessageEvent.Kind.ERROR).build())
+        viewManager.onEvent(buildId, FinishBuildEvent.builder(buildId, "Failed", FailureResultImpl()).build())
+        throw ExecutionException("Before-launch task failed")
+      }
+    }
+    runWriteAction { runManager.addConfiguration(settings) }
+
+    withTestProgramRunner {
+      testMcpTool(
+        ExecutionToolset::execute_run_configuration.name,
+        buildJsonObject { put("configurationName", JsonPrimitive(settings.name)) },
+        "Execution failed: Cannot resolve example:library:1.0\nBefore-launch task failed",
+      )
+    }
+  }
+
+  @Test
   fun execute_run_configuration_rejects_mixed_targets() = runBlocking(Dispatchers.Default) {
     testMcpTool(
       ExecutionToolset::execute_run_configuration.name,
@@ -180,6 +242,46 @@ class ExecutionToolsetTest : GeneralMcpToolsetTestBase() {
       },
       "Run configuration 'compound-config' of type 'Compound' doesn't support dynamic launch overrides (programArguments, workingDirectory, envs)."
     )
+  }
+
+  @Test
+  fun execute_run_configuration_with_dynamic_launch_overrides_initializes_runner_settings() = runBlocking(Dispatchers.Default) {
+    val runManager = RunManager.getInstance(project)
+    val observedRunnerSettings = AtomicReference<RunnerSettings?>()
+    val script = TestProcessScript(
+      initialOutput = "started\n",
+      delayBeforeExitMs = 0,
+      finalOutput = "finished\n",
+    )
+    val settings = createExecutableConfiguration(
+      runManager = runManager,
+      name = "overridden-config",
+      script = script,
+    )
+    (settings.configuration as TestRunConfiguration).stateFactory = { _, environment ->
+      observedRunnerSettings.set(environment.runnerSettings)
+      TestRunProfileState(script)
+    }
+
+    runWriteAction {
+      runManager.addConfiguration(settings)
+    }
+
+    withTestProgramRunner {
+      testMcpTool(
+        ExecutionToolset::execute_run_configuration.name,
+        buildJsonObject {
+          put("configurationName", JsonPrimitive("overridden-config"))
+          put("programArguments", JsonPrimitive("--override"))
+          put("timeout", JsonPrimitive(5_000))
+        },
+      ) { result ->
+        val executionResult = Json.parseToJsonElement(result.textContent.text).jsonObject
+        assertThat(executionResult.getValue("exitCode").jsonPrimitive.content.toInt()).isZero()
+        assertThat(observedRunnerSettings.get()).isSameAs(TEST_RUNNER_SETTINGS)
+        cleanupRunningDescriptors()
+      }
+    }
   }
 
   @Test
@@ -574,8 +676,15 @@ class ExecutionToolsetTest : GeneralMcpToolsetTestBase() {
   }
 
   companion object {
+    private val TEST_RUNNER_SETTINGS = Proxy.newProxyInstance(
+      RunnerSettings::class.java.classLoader,
+      arrayOf(RunnerSettings::class.java),
+    ) { _, _, _ -> null } as RunnerSettings
+
     private val TEST_PROGRAM_RUNNER = object : GenericProgramRunner<RunnerSettings>() {
       override fun getRunnerId(): String = "ExecutionToolsetTestProgramRunner"
+
+      override fun createConfigurationData(settingsProvider: ConfigurationInfoProvider): RunnerSettings = TEST_RUNNER_SETTINGS
 
       override fun canRun(executorId: String, profile: RunProfile): Boolean {
         return profile is TestRunConfiguration

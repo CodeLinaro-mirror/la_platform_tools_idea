@@ -8,13 +8,14 @@ import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.psi.util.PsiUtilCore
 import org.jetbrains.kotlin.analysis.api.KaSession
 import org.jetbrains.kotlin.analysis.api.base.KaConstantValue
-import org.jetbrains.kotlin.analysis.api.components.containingDeclaration
-import org.jetbrains.kotlin.analysis.api.components.evaluate
-import org.jetbrains.kotlin.analysis.api.components.expressionType
-import org.jetbrains.kotlin.analysis.api.components.isStringType
 import org.jetbrains.kotlin.analysis.api.components.resolveToSymbol
+import org.jetbrains.kotlin.analysis.api.evaluation.evaluate
+import org.jetbrains.kotlin.analysis.api.expressions.expressionType
 import org.jetbrains.kotlin.analysis.api.symbols.KaCallableSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaNamedClassSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.containingDeclaration
+import org.jetbrains.kotlin.analysis.api.types.KaStandardTypeClassIds
+import org.jetbrains.kotlin.analysis.api.types.classId
 import org.jetbrains.kotlin.builtins.StandardNames
 import org.jetbrains.kotlin.idea.base.psi.replaced
 import org.jetbrains.kotlin.idea.codeinsight.utils.isToString
@@ -41,7 +42,6 @@ import org.jetbrains.kotlin.psi.KtThisExpression
 import org.jetbrains.kotlin.psi.KtVisitorVoid
 import org.jetbrains.kotlin.psi.psiUtil.getContentRange
 import org.jetbrains.kotlin.psi.psiUtil.isSingleQuoted
-import org.jetbrains.kotlin.utils.addToStdlib.safeAs
 
 /**
  * Recursively visits all operands of binary expression with plus and,
@@ -70,7 +70,7 @@ fun isStringPlusExpressionWithoutNewLineInOperands(expression: KtBinaryExpressio
 
     if (!expression.containNoNewLine()) return false
 
-    if (expression.expressionType?.isStringType != true) return false
+    if (expression.expressionType?.classId != KaStandardTypeClassIds.STRING) return false
     val plusOperation = expression.operationReference.mainReference.resolveToSymbol() as? KaCallableSymbol
     val classContainingPlus = plusOperation?.containingDeclaration as? KaNamedClassSymbol
     return if (classContainingPlus != null) {
@@ -315,8 +315,8 @@ fun KtStringTemplateExpression.calculateIndent(): String =
 
 fun KtStringTemplateEntry.isStartOfLine(): Boolean =
     this.text != "\n" &&
-            prevSibling.safeAs<KtStringTemplateEntry>()?.text == "\n" &&
-            nextSibling.safeAs<KtStringTemplateEntry>() != null
+            (prevSibling as? KtStringTemplateEntry)?.text == "\n" &&
+            (nextSibling as? KtStringTemplateEntry) != null
 
 fun KtCallExpression.marginPrefix(): String? {
     val argument = valueArguments.firstOrNull()?.getArgumentExpression()

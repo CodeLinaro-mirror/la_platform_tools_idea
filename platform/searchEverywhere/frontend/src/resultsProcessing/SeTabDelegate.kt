@@ -10,10 +10,11 @@ import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.actionSystem.DataKey
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.readAction
-import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.wm.ex.WelcomeScreenProjectProvider
+import com.intellij.platform.ide.productMode.IdeProductMode
+import com.intellij.platform.productMode.ProductMode
 import com.intellij.platform.project.projectId
-import com.intellij.platform.rpc.RemoteApiProviderService
 import com.intellij.platform.scopes.SearchScopesInfo
 import com.intellij.platform.searchEverywhere.SeItemData
 import com.intellij.platform.searchEverywhere.SeItemsProviderFactory
@@ -23,14 +24,18 @@ import com.intellij.platform.searchEverywhere.SeProviderId
 import com.intellij.platform.searchEverywhere.SeProviderIdUtils
 import com.intellij.platform.searchEverywhere.SeResultEndEvent
 import com.intellij.platform.searchEverywhere.SeResultEvent
+import com.intellij.platform.searchEverywhere.SeResultSkippedEvent
 import com.intellij.platform.searchEverywhere.SeSession
 import com.intellij.platform.searchEverywhere.SeTransferEnd
 import com.intellij.platform.searchEverywhere.SeTransferEvent
 import com.intellij.platform.searchEverywhere.SeTransferItem
+import com.intellij.platform.searchEverywhere.SeTransferSkippedItem
+import com.intellij.platform.searchEverywhere.SeTypeFilterKeys
 import com.intellij.platform.searchEverywhere.equalityProviders.SeEqualityChecker
 import com.intellij.platform.searchEverywhere.frontend.SeFrontendItemDataProvidersFacade
 import com.intellij.platform.searchEverywhere.frontend.SeFrontendOnlyItemsProviderFactory
 import com.intellij.platform.searchEverywhere.frontend.SeFrontendService
+import com.intellij.platform.searchEverywhere.impl.SeFindToolWindowManager
 import com.intellij.platform.searchEverywhere.impl.SeRemoteApi
 import com.intellij.platform.searchEverywhere.isWildcard
 import com.intellij.platform.searchEverywhere.presentations.SeActionItemPresentation
@@ -38,6 +43,7 @@ import com.intellij.platform.searchEverywhere.presentations.SeItemPresentation
 import com.intellij.platform.searchEverywhere.providers.SeLocalItemDataProvider
 import com.intellij.platform.searchEverywhere.providers.SeLog
 import com.intellij.platform.searchEverywhere.providers.SeLog.ITEM_EMIT
+import com.intellij.platform.searchEverywhere.providers.SeProvidersHolder
 import com.intellij.platform.searchEverywhere.providers.areCommandsSupported
 import com.intellij.platform.searchEverywhere.providers.isExtendedInfoEnabled
 import com.intellij.platform.searchEverywhere.providers.isPreviewEnabled
@@ -130,6 +136,10 @@ class SeTabDelegate(
               SeLog.log(ITEM_EMIT) { "Tab delegate for ${logLabel} emits: ${checkedItemData.uuid} - ${checkedItemData.presentation.text}" }
               accumulator.add(checkedItemData)
             }
+            ?: SeResultSkippedEvent(transferEvent.itemData.providerId)
+          }
+          is SeTransferSkippedItem -> {
+            SeResultSkippedEvent(transferEvent.providerId)
           }
         }
       }.collect {
@@ -138,12 +148,21 @@ class SeTabDelegate(
     }
   }
 
+  @ApiStatus.Internal
+  fun shouldHaveScopesFilter(): Boolean =
+    // The welcome-screen project has no source, so a scope filter has no meaning.
+    // An empty list makes every tab drop its scope filter action.
+    project != null && !WelcomeScreenProjectProvider.isWelcomeScreenProject(project) &&
+    // we don't want scopes in ijLight to simplify UI: all the default scopes are equivalent to each other in ijLight
+    !IdeProductMode.isLight
+
   suspend fun getSearchScopesInfos(): List<SearchScopesInfo> {
+    if (!shouldHaveScopesFilter()) return emptyList()
     return providers.getValue().getSearchScopesInfos()
   }
 
-  suspend fun getTypeVisibilityStates(index: Int = 0): List<SeTypeVisibilityStatePresentation> {
-    return providers.getValue().getTypeVisibilityStates(index)
+  suspend fun getTypeVisibilityStates(key: String = SeTypeFilterKeys.DEFAULT): List<SeTypeVisibilityStatePresentation> {
+    return providers.getValue().getTypeVisibilityStates(key)
   }
 
   suspend fun itemSelected(itemData: SeItemData, modifiers: Int, searchText: String): Boolean {
@@ -173,12 +192,21 @@ class SeTabDelegate(
   ): Boolean {
     if (project == null) return false
 
+    val providers = providers.getValue()
+    val providerIds = providers.getProviderIds(disabledProviders ?: emptyList())
+    if (IdeProductMode.getInstance().currentMode == ProductMode.LIGHT) {
+      val providersHolder = providers.localProvidersHolder ?: return false
+      val exportableProviderIds = providerIds.filter { providersHolder.get(it, isAllTab)?.canBeShownInFindResults() == true }
+      SeFindToolWindowManager(project).openInFindToolWindow(exportableProviderIds, params, isAllTab, providersHolder, project.projectId())
+      return true
+    }
+
     return SeRemoteApi.getInstance().openInFindToolWindow(project.projectId(),
-                                                          session,
-                                                          dataContextId,
-                                                          providers.getValue().getProviderIds(disabledProviders ?: emptyList()),
-                                                          params,
-                                                          isAllTab)
+                                                        session,
+                                                        dataContextId,
+                                                        providerIds,
+                                                        params,
+                                                        isAllTab)
   }
 
   /**
@@ -215,6 +243,7 @@ class SeTabDelegate(
     private val localProviders: Map<SeProviderId, SeLocalItemDataProvider>,
     private val frontendProvidersFacade: SeFrontendItemDataProvidersFacade?,
     val essentialProviderIds: Set<SeProviderId>,
+    val localProvidersHolder: SeProvidersHolder?,
   ) {
     fun getProvidersIdToName(): Map<SeProviderId, @Nls String> = localProviders.mapValues { it.value.displayName } +
                                                                  (frontendProvidersFacade?.idsWithDisplayNames ?: emptyMap())
@@ -228,9 +257,10 @@ class SeTabDelegate(
       return localProviders.values.any { it.canBeShownInFindResults() } || frontendProvidersFacade?.canBeShownInFindResults() == true
     }
 
-    suspend fun getTypeVisibilityStates(index: Int = 0): List<SeTypeVisibilityStatePresentation> {
-      return localProviders.values.flatMap { it.getTypeVisibilityStates(index) ?: emptyList() } +
-             (frontendProvidersFacade?.getTypeVisibilityStates(index) ?: emptyList())
+    /** The states of every provider of the tab that names a filter [key], concatenated. */
+    suspend fun getTypeVisibilityStates(key: String = SeTypeFilterKeys.DEFAULT): List<SeTypeVisibilityStatePresentation> {
+      return localProviders.values.flatMap { it.getTypeVisibilityStates(key) ?: emptyList() } +
+             (frontendProvidersFacade?.getTypeVisibilityStates(key) ?: emptyList())
     }
 
     fun getLocalProviderIds(): List<SeProviderId> = localProviders.keys.toList()
@@ -355,6 +385,15 @@ class SeTabDelegate(
       scope: CoroutineScope,
     ): SeTabDelegate = SeTabDelegate(project, session, logLabel, providerIds, initEvent.dataContextId(), scope)
 
+    /**
+     * Whether the backend offers the tab of [tabId].
+     *
+     * A tab that needs the backend model to decide asks this. A tab that still wraps a legacy
+     * contributor asks [shouldShowLegacyContributorInSeparateTab] instead.
+     */
+    suspend fun isTabAvailable(project: Project, tabId: String): Boolean =
+      SeRemoteApi.getInstance().isTabAvailable(project.projectId(), tabId)
+
     suspend fun shouldShowLegacyContributorInSeparateTab(
       project: Project,
       providerId: SeProviderId,
@@ -377,7 +416,7 @@ class SeTabDelegate(
       val localProvidersHolder = SeFrontendService.getInstance(project).localProvidersHolder
                                  ?: run {
                                    SeLog.error("Local providers holder is not initialized")
-                                   return@coroutineScope Providers(emptyMap(), null, emptySet())
+                                   return@coroutineScope Providers(emptyMap(), null, emptySet(), null)
                                  }
 
       val localFactories = SeItemsProviderFactory.EP_NAME.extensionList.associateBy { SeProviderId(it.id) }
@@ -385,8 +424,7 @@ class SeTabDelegate(
 
       val availableRemoteProviders = when {
         projectId == null -> null
-        !service<RemoteApiProviderService>().isServiceOperational() -> null
-        else -> SeRemoteApi.getInstance().getAvailableProviderIds(projectId, session, dataContextId)
+        else -> SeRemoteApi.tryGetInstance()?.getAvailableProviderIds(projectId, session, dataContextId)
       }
 
       val essentialRemoteProviderIds = availableRemoteProviders?.essential?.filter {
@@ -443,7 +481,7 @@ class SeTabDelegate(
                           (frontendProvidersFacade?.essentialProviderIds ?: emptySet())
 
       SeLog.log(SeLog.THROTTLING) { "Essential contributors for $logLabel tab : " + allEssentials.joinToString(", ") { it.value } }
-      Providers(localProviders, frontendProvidersFacade, allEssentials)
+      Providers(localProviders, frontendProvidersFacade, allEssentials, localProvidersHolder)
     }
   }
 }

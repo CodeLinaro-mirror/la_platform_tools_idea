@@ -11,7 +11,9 @@ import java.util.List;
 public interface ToolbarLayoutStrategy {
 
   ToolbarLayoutStrategy NOWRAP_STRATEGY = new RightActionsAdjusterStrategyWrapper(new NoWrapLayoutStrategy(false));
+  ToolbarLayoutStrategy EQUAL_SIZE_NOWRAP_STRATEGY = new RightActionsAdjusterStrategyWrapper(new NoWrapLayoutStrategy(true));
   ToolbarLayoutStrategy WRAP_STRATEGY = new RightActionsAdjusterStrategyWrapper(new WrapLayoutStrategy(false));
+  ToolbarLayoutStrategy EQUAL_SIZE_WRAP_STRATEGY = new RightActionsAdjusterStrategyWrapper(new WrapLayoutStrategy(true));
   ToolbarLayoutStrategy AUTOLAYOUT_STRATEGY = new RightActionsAdjusterStrategyWrapper(new AutoLayoutStrategy(false, false));
   /**
    * This strategy dynamically adjusts component sizes, ranging from their preferred size to their minimum size.

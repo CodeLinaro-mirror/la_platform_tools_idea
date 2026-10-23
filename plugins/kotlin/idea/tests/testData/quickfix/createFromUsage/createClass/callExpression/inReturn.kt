@@ -1,7 +1,7 @@
 // "Create class 'BookKeeper'" "true"
 // ERROR: Type mismatch: inferred type is BookKeeper but Unit was expected
-// K2_ERROR: Unresolved reference 'BookKeeper'.
-// K2_AFTER_ERROR: Return type mismatch: expected 'Unit', actual 'BookKeeper'.
+// K2_AFTER_ERROR: RETURN_TYPE_MISMATCH
+// K2_ERROR: UNRESOLVED_REFERENCE
 package pack
 
 import pack.Currrency.EUR
@@ -14,5 +14,4 @@ fun place() {
     val transactions = listOf(Transaction(Item(10.0, EUR), Item(10.0, EUR)))
     return BookKee<caret>per(transactions)
 }
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.createFromUsage.createClass.CreateClassFromUsageFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.quickFixes.createFromUsage.CreateKotlinClassAction
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.quickFixes.createFromUsage.CreateKotlinClassAction

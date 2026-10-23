@@ -1,7 +1,14 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.libraries.javax.annotation` start
+content_module_jar(
+    libraries = ["@lib//:libraries-javax-annotation-javax-annotation-api"],
+    module = ":annotation",
+)
+### auto-generated section `dev intellij.libraries.javax.annotation` end
 
 ### auto-generated section `build intellij.libraries.javax.annotation` start
-
 jvm_library(
     name = "annotation",
     srcs = glob(
@@ -14,8 +21,8 @@ jvm_library(
         ["resources/**/*"],
     ),
     visibility = ["//visibility:public"],
-    exports = ["@lib//:javax-annotation-api"],
-    runtime_deps = ["@lib//:javax-annotation-api"],
+    exports = ["@lib//:libraries-javax-annotation-javax-annotation-api"],
+    runtime_deps = ["@lib//:libraries-javax-annotation-javax-annotation-api"],
 )
 
 jvm_library(
@@ -28,7 +35,7 @@ jvm_library(
     kotlinc_opts = "@community//:k8",
     module_name = "intellij.libraries.javax.annotation",
     visibility = ["//visibility:public"],
-    exports = ["@lib//:javax-annotation-api"],
+    exports = ["@lib//:libraries-javax-annotation-javax-annotation-api"],
     runtime_deps = [":annotation"],
 )
 ### auto-generated section `build intellij.libraries.javax.annotation` end
@@ -37,6 +44,7 @@ jvm_library(
 exports_files(
     [
         "intellij.libraries.javax.annotation.iml",
+        "resources/intellij.libraries.javax.annotation.xml",
     ],
     visibility = ["//visibility:public"],
 )

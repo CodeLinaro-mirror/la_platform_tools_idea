@@ -1,6 +1,6 @@
 // "Create object 'ClassCheckerImpl'" "true"
+// K2_ERROR: UNRESOLVED_REFERENCE
 
-// K2_ERROR: Unresolved reference 'ClassCheckerImpl'.
 interface FirDeclarationChecker<T>
 
 class FirClass
@@ -15,4 +15,4 @@ class AdditionalCheckers : Checkers {
     override val classCheckers: Set<ClassChecker> = setOf(ClassCheckerImpl)<caret>
 
 }
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.quickFixes.createFromUsage.CreateKotlinClassAction
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.quickFixes.createFromUsage.CreateKotlinClassAction

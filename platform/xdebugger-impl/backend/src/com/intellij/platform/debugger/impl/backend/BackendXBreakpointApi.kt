@@ -3,6 +3,8 @@ package com.intellij.platform.debugger.impl.backend
 
 import com.intellij.ide.rpc.DocumentPatchVersion
 import com.intellij.ide.rpc.FrontendDocumentId
+import com.intellij.ide.rpc.util.TextRangeDto
+import com.intellij.ide.rpc.util.textRange
 import com.intellij.openapi.application.readAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.findDocument
@@ -14,7 +16,7 @@ import com.intellij.platform.debugger.impl.rpc.XExpressionDto
 import com.intellij.platform.debugger.impl.rpc.XSourcePositionDto
 import com.intellij.platform.debugger.impl.rpc.xExpression
 import com.intellij.platform.project.ProjectId
-import com.intellij.platform.project.findProject
+import com.intellij.platform.project.findProjectOrNull
 import com.intellij.xdebugger.XDebuggerManager
 import com.intellij.xdebugger.breakpoints.SuspendPolicy
 import com.intellij.xdebugger.breakpoints.XLineBreakpointVerticalPlacement
@@ -37,18 +39,18 @@ internal class BackendXBreakpointApi : XBreakpointApi {
   }
 
   override suspend fun setDefaultSuspendPolicy(project: ProjectId, breakpointTypeId: XBreakpointTypeId, policy: SuspendPolicy) {
-    val project = project.findProject()
+    val project = project.findProjectOrNull() ?: return
     val type = XBreakpointUtil.findType(breakpointTypeId.id) ?: return
     getBreakpointManager(project).setDefaultSuspendPolicy(type, policy)
   }
 
   override suspend fun getDefaultGroup(project: ProjectId): String? {
-    val project = project.findProject()
+    val project = project.findProjectOrNull() ?: return null
     return getBreakpointManager(project).defaultGroup
   }
 
   override suspend fun setDefaultGroup(project: ProjectId, group: String?) {
-    val project = project.findProject()
+    val project = project.findProjectOrNull() ?: return
     getBreakpointManager(project).defaultGroup = group
   }
 
@@ -73,17 +75,17 @@ internal class BackendXBreakpointApi : XBreakpointApi {
     breakpoint.setPlacement(requestId, placement)
   }
 
-  override suspend fun setLine(breakpointId: XBreakpointId, requestId: Long, line: Int, documentPatchVersion: DocumentPatchVersion?): Boolean {
+  override suspend fun setLine(breakpointId: XBreakpointId, requestId: Long, line: Int, documentPatchVersion: DocumentPatchVersion?, highlightRange: TextRangeDto?): Boolean {
     val breakpoint = breakpointId.findValue() as? XLineBreakpointImpl<*> ?: return true
     if (!breakpoint.awaitDocumentIsInSyncAndCommitted(documentPatchVersion)) return false
-    breakpoint.setLine(requestId, line)
+    breakpoint.setLine(requestId, line, highlightRange?.textRange())
     return true
   }
 
-  override suspend fun updatePosition(breakpointId: XBreakpointId, requestId: Long, documentPatchVersion: DocumentPatchVersion?): Boolean {
+  override suspend fun updatePosition(breakpointId: XBreakpointId, requestId: Long, documentPatchVersion: DocumentPatchVersion?, highlightRange: TextRangeDto?): Boolean {
     val breakpoint = breakpointId.findValue() as? XLineBreakpointImpl<*> ?: return true
     if (!breakpoint.awaitDocumentIsInSyncAndCommitted(documentPatchVersion)) return false
-    breakpoint.resetSourcePosition(requestId)
+    breakpoint.resetSourcePosition(requestId, highlightRange?.textRange())
     return true
   }
 
@@ -109,7 +111,7 @@ internal class BackendXBreakpointApi : XBreakpointApi {
   }
 
   override suspend fun setTemporary(breakpointId: XBreakpointId, requestId: Long, isTemporary: Boolean) {
-    val breakpoint = breakpointId.findValue() as? XLineBreakpointImpl<*> ?: return
+    val breakpoint = breakpointId.findValue() ?: return
     breakpoint.setTemporary(requestId, isTemporary)
   }
 

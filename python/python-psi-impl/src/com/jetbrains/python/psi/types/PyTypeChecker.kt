@@ -16,8 +16,9 @@ import com.jetbrains.python.ProtectionLevel
 import com.jetbrains.python.PyNames
 import com.jetbrains.python.PyPsiBundle
 import com.jetbrains.python.PythonRuntimeService
-import com.jetbrains.python.ast.PyAstFunction
-import com.jetbrains.python.codeInsight.dataflow.scope.ScopeUtil
+import com.jetbrains.python.codeInsight.PyCodeInsightCounters
+import com.jetbrains.python.codeInsight.PyCodeInsightCounters.Counter
+import com.jetbrains.python.codeInsight.typing.ProtocolAndSubclassElements
 import com.jetbrains.python.codeInsight.typing.PyTypingTypeProvider
 import com.jetbrains.python.codeInsight.typing.getProtocolMembers
 import com.jetbrains.python.codeInsight.typing.inspectProtocolSubclass
@@ -27,7 +28,6 @@ import com.jetbrains.python.inspections.PyInspectionMessages
 import com.jetbrains.python.inspections.PyInspectionMessages.ProblemMessage
 import com.jetbrains.python.psi.AccessDirection
 import com.jetbrains.python.psi.LanguageLevel
-import com.jetbrains.python.psi.PyCallable
 import com.jetbrains.python.psi.PyClass
 import com.jetbrains.python.psi.PyExpression
 import com.jetbrains.python.psi.PyFile
@@ -35,6 +35,7 @@ import com.jetbrains.python.psi.PyFunction
 import com.jetbrains.python.psi.PyListLiteralExpression
 import com.jetbrains.python.psi.PySequenceExpression
 import com.jetbrains.python.psi.PyStarExpression
+import com.jetbrains.python.psi.PyTargetExpression
 import com.jetbrains.python.psi.PyTupleExpression
 import com.jetbrains.python.psi.PyTypedElement
 import com.jetbrains.python.psi.PyUtil
@@ -55,7 +56,6 @@ import com.jetbrains.python.psi.types.PyTypeChecker.match
 import com.jetbrains.python.psi.types.PyTypeChecker.recordFrame
 import com.jetbrains.python.psi.types.PyTypeChecker.recordLeaf
 import com.jetbrains.python.psi.types.PyTypeParameterMapping.Option.USE_DEFAULTS
-import com.jetbrains.python.psi.types.PyTypeParameterType.Variance
 import com.jetbrains.python.psi.types.PyTypeUtil.derefOrUnknown
 import com.jetbrains.python.psi.types.PyTypeUtil.toStream
 import com.jetbrains.python.pyi.PyiFile
@@ -64,8 +64,11 @@ import com.jetbrains.python.sdk.legacy.PythonSdkUtil
 import org.jetbrains.annotations.ApiStatus
 import java.util.Collections
 import java.util.Optional
+import kotlin.collections.component1
+import kotlin.collections.component2
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
+import kotlin.jvm.optionals.getOrDefault
 import kotlin.jvm.optionals.getOrElse
 
 object PyTypeChecker {
@@ -75,7 +78,7 @@ object PyTypeChecker {
   @JvmStatic
   fun match(expected: PyType?, actual: PyType?, context: TypeEvalContext): Boolean {
     val substitutions = GenericSubstitutions()
-    return match(expected, actual, MatchContext(context, substitutions, false, )).orElse(true)!!
+    return match(expected, actual, MatchContext(context, substitutions, false)).getOrDefault(true)
   }
 
   /**
@@ -102,7 +105,7 @@ object PyTypeChecker {
     typeVars: Map<PyTypeParameterType, PyType?>,
   ): Boolean {
     val substitutions = GenericSubstitutions(typeVars)
-    return match(expected, actual, MatchContext(context, substitutions, false, )).orElse(true)!!
+    return match(expected, actual, MatchContext(context, substitutions, false)).getOrDefault(true)
   }
 
   @JvmStatic
@@ -112,8 +115,8 @@ object PyTypeChecker {
     context: TypeEvalContext,
     substitutions: GenericSubstitutions,
   ): Boolean {
-    return match(expected, actual, MatchContext(context, substitutions, false, ))
-      .orElse(true)!!
+    return match(expected, actual, MatchContext(context, substitutions, false))
+      .getOrDefault(true)
   }
 
   /**
@@ -143,7 +146,7 @@ object PyTypeChecker {
     val collector = DiagnosticsCollector()
     matchContext.diagnostics = collector
     matchContext.anchor = anchor
-    val matched = match(expected, actual, matchContext).orElse(true)!!
+    val matched = match(expected, actual, matchContext).getOrDefault(true)
     if (matched) return null
     val roots = collector.current
     return when (roots.size) {
@@ -152,7 +155,8 @@ object PyTypeChecker {
       else -> PyTypeMismatchExplanation(
         PyPsiBundle.problemMessage("INSP.type.checker.type.not.assignable", codifiedType(matchContext, actual),
                                    codifiedType(matchContext, expected)),
-        roots.toList()
+        roots.toList(),
+        PyMismatchStep.Combined,
       )
     }
   }
@@ -168,6 +172,7 @@ object PyTypeChecker {
   private inline fun recordFrame(
     context: MatchContext,
     message: () -> ProblemMessage,
+    step: () -> PyMismatchStep? = { null },
     body: () -> Optional<Boolean>,
   ): Optional<Boolean> {
     val collector = context.diagnostics ?: return body()
@@ -182,7 +187,7 @@ object PyTypeChecker {
       collector.current = parent
     }
     if (result.orElse(true) == false) {
-      parent.add(PyTypeMismatchExplanation(message(), child.toList()))
+      parent.add(PyTypeMismatchExplanation(message(), child.toList(), step()))
     }
     return result
   }
@@ -191,6 +196,7 @@ object PyTypeChecker {
   private inline fun recordFrameBool(
     context: MatchContext,
     message: () -> ProblemMessage,
+    step: () -> PyMismatchStep? = { null },
     body: () -> Boolean,
   ): Boolean {
     val collector = context.diagnostics ?: return body()
@@ -205,15 +211,15 @@ object PyTypeChecker {
       collector.current = parent
     }
     if (!result) {
-      parent.add(PyTypeMismatchExplanation(message(), child.toList()))
+      parent.add(PyTypeMismatchExplanation(message(), child.toList(), step()))
     }
     return result
   }
 
   /** Records a terminal reason (no children) at the current frame, if a breakdown is being collected. */
-  private inline fun recordLeaf(context: MatchContext, message: () -> ProblemMessage) {
+  private inline fun recordLeaf(context: MatchContext, step: () -> PyMismatchStep? = { null }, message: () -> ProblemMessage) {
     val collector = context.diagnostics ?: return
-    collector.current.add(PyTypeMismatchExplanation(message(), emptyList()))
+    collector.current.add(PyTypeMismatchExplanation(message(), emptyList(), step()))
   }
 
   /**
@@ -249,12 +255,66 @@ object PyTypeChecker {
   }
 
   /**
+   * The covariant read-only supertype the user could annotate a target with to sidestep an invariant-container
+   * mismatch: `list` -> `Sequence`, `set` -> `AbstractSet`, `dict` -> `Mapping`. Null for any other owner, so the
+   * renderer only offers the hint where it is genuinely useful and correct. `Mapping` is invariant in its key type,
+   * so it is offered only for the value type argument ([typeArgIndex] 1) of a `dict`.
+   */
+  private fun readOnlyAlternativeFor(ownerClass: PyClass, typeArgIndex: Int): String? = when (ownerClass.qualifiedName) {
+    "builtins.list" -> "Sequence"
+    "builtins.set" -> "AbstractSet"
+    "builtins.dict" -> if (typeArgIndex == 1) "Mapping" else null
+    else -> null
+  }
+
+  /** The plain-text leaf message for a TypedDict key mismatch (the description; prose is built from the step). */
+  private fun typedDictKeyMessage(mismatch: PyTypedDictType.TypedDictKeyMismatch): ProblemMessage {
+    val key = mismatch.key
+    val bundleKey = when (mismatch.problem) {
+      TypedDictKeyProblem.MISSING -> "INSP.type.checker.breakdown.typed.dict.key.missing"
+      TypedDictKeyProblem.VALUE_TYPE -> "INSP.type.checker.breakdown.typed.dict.key.type"
+      TypedDictKeyProblem.READONLY -> "INSP.type.checker.breakdown.typed.dict.key.readonly"
+      TypedDictKeyProblem.REQUIRED -> "INSP.type.checker.breakdown.typed.dict.key.required"
+    }
+    return PyPsiBundle.problemMessage(bundleKey, key)
+  }
+
+  /** The structured prose step for a TypedDict key mismatch, or null when the expected side isn't a TypedDict. */
+  private fun typedDictStep(
+    context: MatchContext,
+    expected: PyType?,
+    mismatch: PyTypedDictType.TypedDictKeyMismatch?,
+  ): PyMismatchStep? {
+    if (expected !is PyTypedDictType || mismatch == null) return null
+    val actualValue = mismatch.actualValue?.let { codifiedType(context, it) }
+    val expectedValue = mismatch.expectedValue?.let { codifiedType(context, it) }
+    return PyMismatchStep.TypedDictKey(codifiedType(context, expected), mismatch.key, mismatch.problem, actualValue, expectedValue)
+  }
+
+  /**
+   * The type span for the contravariant line, pre-rendered so the sentence's words stay outside the code block:
+   * a protocol reads "protocol `X`" (only `X` in a code span, keeping its link), everything else reads "`X`". The
+   * "protocol" marker matters because otherwise two differently-named protocols look like unrelated,
+   * arbitrarily-incompatible names. The result already carries its own `<code>` span, so the contravariant
+   * templates embed it without backticks.
+   */
+  private fun codifiedContravariantType(context: MatchContext, type: PyType?): PyInspectionMessages.CodifiedParam {
+    val base = codifiedType(context, type)
+    val key = if ((type as? PyClassLikeType)?.isProtocol(context.context) == true)
+      "INSP.type.checker.prose.protocol.type"
+    else
+      "INSP.type.checker.prose.plain.type"
+    val wrapped = PyPsiBundle.problemMessage(key, base)
+    return PyInspectionMessages.CodifiedParam(wrapped.description, PyInspectionMessages.tooltipFragment(wrapped))
+  }
+
+  /**
    * Records a single "not assignable" leaf for a failed overload match (when [matched] is `false`) and
    * returns [matched] unchanged, so the overload branches stay one-liners.
    */
   private fun recordOverloadLeaf(context: MatchContext, expected: PyType?, actual: PyType?, matched: Boolean): Boolean {
     if (!matched) {
-      recordLeaf(context) {
+      recordLeaf(context, { PyMismatchStep.Nominal(codifiedType(context, actual), codifiedType(context, expected)) }) {
         PyPsiBundle.problemMessage("INSP.type.checker.type.not.assignable", codifiedType(context, actual), codifiedType(context, expected))
       }
     }
@@ -277,6 +337,7 @@ object PyTypeChecker {
   }
 
   private fun match(expected: PyType?, actual: PyType?, context: MatchContext): Optional<Boolean> {
+    PyCodeInsightCounters.inc(Counter.MATCH_STEPS)
     PyAnyType.validate(expected)
     PyAnyType.validate(actual)
     val result = RecursionManager.doPreventingRecursion(expected to actual, false) {
@@ -302,11 +363,11 @@ object PyTypeChecker {
       return Optional.of(true)
     }
 
-    for (extension in PyTypeCheckerExtension.EP_NAME.extensionList) {
-      val result = extension.match(expected, actual, context.context, context.mySubstitutions)
-      if (result.isPresent) {
-        return result
-      }
+    val extensionResult = PyTypeCheckerExtension.EP_NAME.computeSafeIfAny {
+      it.match(expected, actual, context.context, context.mySubstitutions).takeIf { result -> result.isPresent }
+    }
+    if (extensionResult != null) {
+      return extensionResult
     }
 
     if (expected is PyTypeFormType) {
@@ -394,11 +455,14 @@ object PyTypeChecker {
       return Optional.of(match(expected, actual, context))
     }
 
-    if (actual is PyIntersectionType) {
+    // Expected-first, unlike unions: an intersection's `all` quantifier lives on the expected side
+    // (`actual <: A & B` iff it matches every member), so it must be the outer check for `A & B <: C & D` to
+    // distribute correctly as `(A <: C or B <: C) and (A <: D or B <: D)`.
+    if (expected is PyIntersectionType) {
       return Optional.of(match(expected, actual, context))
     }
 
-    if (expected is PyIntersectionType) {
+    if (actual is PyIntersectionType) {
       return Optional.of(match(expected, actual, context))
     }
 
@@ -411,7 +475,7 @@ object PyTypeChecker {
         // decide `false` without recording a reason, unlike the protocol/TypedDict/type-argument paths.
         // Add the universal leaf only when nothing was recorded, so breakdowns never lose a member.
         if (collector != null && !match.get() && collector.current.size == reasonsBefore) {
-          recordLeaf(context) {
+          recordLeaf(context, { PyMismatchStep.Nominal(codifiedType(context, actual), codifiedType(context, expected)) }) {
             PyPsiBundle.problemMessage("INSP.type.checker.type.not.assignable", codifiedType(context, actual), codifiedType(context, expected))
           }
         }
@@ -433,10 +497,13 @@ object PyTypeChecker {
     }
 
     if (actual is PyCallableType && expected is PyCallableType) {
-      val match = match(expected, actual, context)
-      if (match.isPresent) {
-        return match
+      val match = if (actual is PyClassType && actual.isDefinition && expected !is PyClassLikeType) {
+        matchClassAsCallable(expected, actual, context)
       }
+      else {
+        match(expected, actual, context)
+      }
+      if (match.isPresent) return match
     }
 
     if (expected is PyModuleType) {
@@ -447,7 +514,7 @@ object PyTypeChecker {
       if (expected.isProtocol(context.context)) {
         return Optional.of(match(expected, actual, context))
       }
-      return match(expected, actual.moduleClassType, context)
+      return match(expected, actual.moduleClassType ?: PyAnyType.unknown, context)
     }
 
     // Handle PyOverloadType matching. Each branch fans out over candidate overloads; we discard the
@@ -458,7 +525,7 @@ object PyTypeChecker {
         val matched = withoutRecording(context) {
           expected.items.all { expectedItem ->
             actual.items.any { actualItem ->
-              match(expectedItem, actualItem, context).orElse(false)!!
+              match(expectedItem, actualItem, context).getOrDefault(false)
             }
           }
         }
@@ -479,10 +546,11 @@ object PyTypeChecker {
         val matched = withoutRecording(context) { matchOverloadWithCallable(actual, expected, context, false) }
         return Optional.of(recordOverloadLeaf(context, expected, actual, matched))
       }
-      // Otherwise, check if any overload in actual matches expected
+      // Otherwise, check if any overload in actual matches expected.
+      // An overload is tried on a copy first, so that a failed overload does not bind type parameters for the next one.
       val matched = withoutRecording(context) {
         actual.items.any { item ->
-          match(expected, item, context).orElse(false)!!
+          matchOnCopy(context) { match(expected, item, it) } == Optional.of(true)
         }
       }
       return Optional.of(recordOverloadLeaf(context, expected, actual, matched))
@@ -491,7 +559,7 @@ object PyTypeChecker {
     val numericMatch = !PyNumericTowerUtil.isEnabled && matchNumericTypes(expected, actual)
     if (!numericMatch) {
       // Universal terminal reason: every plain class / numeric mismatch funnels through here.
-      recordLeaf(context) {
+      recordLeaf(context, { PyMismatchStep.Nominal(codifiedType(context, actual), codifiedType(context, expected)) }) {
         PyPsiBundle.problemMessage("INSP.type.checker.type.not.assignable", codifiedType(context, actual), codifiedType(context, expected))
       }
     }
@@ -521,7 +589,7 @@ object PyTypeChecker {
       // `actual` does not denote a type expression; only an unknown type may still match.
       return actual.isAnyOrUnknown || actual.containsAny(context = context.context)
     }
-    return match(expected.representedType, representedActual, context).orElse(true)!!
+    return match(expected.representedType, representedActual, context).getOrDefault(true)
   }
 
   /**
@@ -591,7 +659,7 @@ object PyTypeChecker {
         return false
       }
       if (!matchHelper.match(safeActual, substitution)) {
-        safeActual = PyUnionType.union(safeActual, substitution)
+        safeActual = PyUnionType.unionOrUnknown(safeActual, substitution)
       }
     }
 
@@ -605,7 +673,7 @@ object PyTypeChecker {
     else {
       val finalSafeActual = safeActual
       matchedConstraintIndex =
-        constraints.indexOfFirst { constraint -> match(constraint, finalSafeActual, context).orElse(true)!! }
+        constraints.indexOfFirst { constraint -> match(constraint, finalSafeActual, context).getOrDefault(true) }
       if (matchedConstraintIndex == -1) {
         return false
       }
@@ -614,7 +682,8 @@ object PyTypeChecker {
     if (!safeActual.isUnknown) {
       val type = if (constraints.isEmpty())
         // temporary special casing to avoid Literal problems PY-90366
-        if (context.literalInference) safeActual else PyLiteralType.upcastLiteralToClass(safeActual)
+        if (isWidenBoundsCase(expected, context.context)) PyLiteralType.upcastLiteralToClass(safeActual)
+        else safeActual
       else constraints[matchedConstraintIndex]
       context.mySubstitutions.putTypeVar(expected, Ref(type), KeyImpl)
     }
@@ -629,18 +698,29 @@ object PyTypeChecker {
   }
 
   private fun match(expected: PySelfType, actual: PyType?, context: MatchContext): Boolean {
-    if (actual == null) return true
-    val qualifierType = context.mySubstitutions.qualifierType
-    if (qualifierType != null && qualifierType !is PySelfType) {
-      val substitution = if (expected.isDefinition)
-        convertToClass(qualifierType)
-      else
-        convertToInstance(qualifierType)
-      return match(substitution, actual, context).orElse(false)!!
+    if (actual.isAnyOrUnknown) return true
+    val selfType = context.mySubstitutions.selfType
+    if (selfType != null && selfType !is PySelfType) {
+      val substitution = if (expected.isDefinition) selfType.toClass() else selfType.toInstance()
+      return match(substitution, actual, context).getOrDefault(false)
     }
-    if (actual !is PySelfType) return false
+    if (actual !is PySelfType) {
+      // A final class has no subclass, so `Self` in it denotes the class itself. A class with own type parameters
+      // is excluded: `Self` then denotes the class with those parameters, which the bare scope type cannot express.
+      return PyTypingTypeProvider.isFinalClass(expected.pyClass, context.context) &&
+             !hasOwnTypeParameters(expected.pyClass, context.context) &&
+             match(expected.scopeClassType, actual, context).getOrDefault(false)
+    }
     return expected.isDefinition == actual.isDefinition &&
-           match(expected.scopeClassType, actual.scopeClassType, context).orElse(false)!!
+           match(expected.scopeClassType, actual.scopeClassType, context).getOrDefault(false)
+  }
+
+  /**
+   * Returns true if and only if [cls] declares its own type parameters. A class that only specializes
+   * a generic ancestor, for example `class C(list[int])`, declares none.
+   */
+  private fun hasOwnTypeParameters(cls: PyClass, context: TypeEvalContext): Boolean {
+    return PyTypeProvider.EP_NAME.findFirstSafe { it.getGenericType(cls, context) != null } != null
   }
 
   private fun convertToClass(type: PyType?): PyType? {
@@ -649,14 +729,8 @@ object PyTypeChecker {
       .collect(PyTypeUtil.toUnion(type))
   }
 
-  private fun convertToInstance(type: PyType?): PyType? {
-    return type.toStream()
-      .map { if (it is PyInstantiableType<*>) it.toInstance() else it }
-      .collect(PyTypeUtil.toUnion(type))
-  }
-
   private fun match(expected: PyPositionalVariadicType, actual: PyType?, context: MatchContext): Boolean {
-    if (actual == null) {
+    if (actual.isUnknown) {
       return true
     }
     if (actual !is PyPositionalVariadicType) {
@@ -670,18 +744,18 @@ object PyTypeChecker {
       if (expected.isUnbound) {
         val repeatedExpectedType = expected.elementTypes[0]
         if (actual.isUnbound) {
-          return match(repeatedExpectedType, actual.elementTypes[0], context).orElse(false)!!
+          return match(repeatedExpectedType, actual.elementTypes[0], context).getOrDefault(false)
         }
         else {
           return actual.elementTypes
-            .all { singleActualType -> match(repeatedExpectedType, singleActualType, context).orElse(false)!! }
+            .all { singleActualType -> match(repeatedExpectedType, singleActualType, context).getOrDefault(false) }
         }
       }
       else {
         if (actual.isUnbound) {
           val repeatedActualType: PyType? = actual.elementTypes[0]
           return expected.elementTypes
-            .all { singleExpectedType -> match(singleExpectedType, repeatedActualType, context).orElse(false)!! }
+            .all { singleExpectedType -> match(singleExpectedType, repeatedActualType, context).getOrDefault(false) }
         }
         else {
           return matchTypeParameters(null, expected.elementTypes, actual.elementTypes, context)
@@ -830,27 +904,55 @@ object PyTypeChecker {
       }
     }
 
-    // When collecting a breakdown, record which member(s) of `actual` aren't assignable to `expected`
-    // under one summary node; otherwise this is the original short-circuiting `all`/`any` with zero overhead.
-    return recordFrameBool(context, {
-      PyPsiBundle.problemMessage("INSP.type.checker.breakdown.union.member.not.assignable",
-                                 codifiedType(context, actual), codifiedType(context, expected))
-    }) {
-      // `||` short-circuits, so when strict semantics are off the literal scan still runs exactly as before.
-      val requireAll = PyUnionType.isStrictSemanticsEnabled() || // checking strictly separately until PY-24834 gets implemented
-                       actual.members.any { it is PyLiteralStringType || it is PyLiteralType }
-      if (context.diagnostics == null) {
-        if (requireAll) actual.members.all { type -> match(expected, type, context).orElse(false)!! }
-        else actual.members.any { type -> match(expected, type, context).orElse(false)!! }
-      }
-      else {
-        // `all`/`any` short-circuit on the first decisive member, which would drop the reasons for later
-        // non-assignable members; visit every member so each contributes a leaf (the boolean result is
-        // unchanged because `all`/`any` over the full list equals the short-circuited one).
-        val perMember = actual.members.map { type -> match(expected, type, context).orElse(false)!! }
-        if (requireAll) perMember.all { it } else perMember.any { it }
+    // `||` short-circuits, so when strict semantics are off the literal scan still runs exactly as before.
+    val requireAll = PyUnionType.isStrictSemanticsEnabled() || // checking strictly separately until PY-24834 gets implemented
+                     actual.members.any { it is PyLiteralStringType || it is PyLiteralType }
+    // The original short-circuiting `all`/`any` with zero overhead when no breakdown is being collected.
+    if (context.diagnostics == null) {
+      return if (requireAll) actual.members.all { match(expected, it, context).getOrDefault(false) }
+             else actual.members.any { match(expected, it, context).getOrDefault(false) }
+    }
+
+    // Collecting a breakdown: find the incompatible members first (discarding their trial recordings), then record
+    // only the most useful shape.
+    val failing = withoutRecording(context) {
+      actual.members.filter { !match(expected, it, context).getOrDefault(false) }
+    }
+    val matched = if (requireAll) failing.isEmpty() else failing.size < actual.members.size
+    if (matched) return true
+
+    if (failing.size == 1) {
+      // Exactly one incompatible member: the "Not all members …" umbrella and a naming frame would only add
+      // redundant levels (the member's own reason already names it, e.g. "`C` is incompatible with protocol `P`"),
+      // so record that reason directly under the headline, which already shows the whole union.
+      match(expected, failing.single(), context)
+    }
+    else {
+      // Several incompatible members: the "Not all members of X are assignable to Y" umbrella, then a frame per
+      // failing member that NAMES it (carrying a UnionMember step), so the several otherwise-indistinguishable
+      // structural reasons can be told apart. The prose renderer FOLDS a member whose reason self-names (a missing
+      // or wrong-typed protocol attribute) into one arm line and drops this wrapper, keeping the wrapper line above
+      // the reason only when it doesn't (e.g. two callables differing by a parameter name).
+      recordFrameBool(context, {
+        PyPsiBundle.problemMessage("INSP.type.checker.breakdown.union.member.not.assignable",
+                                   codifiedType(context, actual), codifiedType(context, expected))
+      }, {
+        // The PROVIDED value is the union here (`expected` is the single required type each member failed against),
+        // so mark the direction — a call-site renderer must not read the required type as a "union with members".
+        PyMismatchStep.NoUnionMember(codifiedType(context, actual), codifiedType(context, expected), actualIsUnion = true)
+      }) {
+        for (member in failing) {
+          recordFrameBool(context, {
+            PyPsiBundle.problemMessage("INSP.type.checker.breakdown.union.member.incompatible",
+                                       codifiedType(context, member), codifiedType(context, expected))
+          }, {
+            PyMismatchStep.UnionMember(codifiedType(context, member))
+          }) { match(expected, member, context).getOrDefault(false) }
+        }
+        false
       }
     }
+    return false
   }
 
   private fun match(
@@ -880,21 +982,23 @@ object PyTypeChecker {
     return recordFrameBool(context, {
       PyPsiBundle.problemMessage("INSP.type.checker.breakdown.not.assignable.to.union",
                                  codifiedType(context, actual), codifiedType(context, expected))
+    }, {
+      PyMismatchStep.NoUnionMember(codifiedType(context, actual), codifiedType(context, expected))
     }) {
-      expected.members.any { type: PyType? -> match(type, actual, context).orElse(true)!! }
+      expected.members.any { type: PyType? -> match(type, actual, context).getOrDefault(true) }
     }
   }
 
   private fun match(expected: PyType, actual: PyIntersectionType, context: MatchContext): Boolean {
-    return actual.members.any { type: PyType? -> match(expected, type, context).orElse(false)!! }
+    return actual.members.any { type: PyType? -> match(expected, type, context).getOrDefault(false) }
   }
 
   private fun match(expected: PyIntersectionType, actual: PyType, context: MatchContext): Boolean {
-    return expected.members.all { type: PyType? -> match(type, actual, context).orElse(true)!! }
+    return expected.members.all { type: PyType? -> match(type, actual, context).getOrDefault(true) }
   }
 
   private fun match(expected: PyType, actual: PyUnsafeUnionType, context: MatchContext): Boolean {
-    return actual.members.any { type: PyType? -> match(expected, type, context).orElse(false)!! }
+    return actual.members.any { type: PyType? -> match(expected, type, context).getOrDefault(false) }
   }
 
   private fun match(expected: PyUnsafeUnionType, actual: PyType, context: MatchContext): Boolean {
@@ -905,8 +1009,10 @@ object PyTypeChecker {
     return recordFrameBool(context, {
       PyPsiBundle.problemMessage("INSP.type.checker.breakdown.not.assignable.to.union",
                                  codifiedType(context, actual), codifiedType(context, expected))
+    }, {
+      PyMismatchStep.NoUnionMember(codifiedType(context, actual), codifiedType(context, expected))
     }) {
-      expected.members.any { type: PyType? -> match(type, actual, context).orElse(true)!! }
+      expected.members.any { type: PyType? -> match(type, actual, context).getOrDefault(true) }
     }
   }
 
@@ -925,9 +1031,7 @@ object PyTypeChecker {
       if (!expected.isDefinition && actual.isDefinition) {
         val metaClass = actual.getMetaClassType(context, true)
         return Optional.of(
-          metaClass != null && match(expected as PyType, metaClass.toInstance(), matchContext).orElse(
-            true
-          )!!
+          metaClass != null && match(expected as PyType, metaClass.toInstance(), matchContext).getOrDefault(true)
         )
       }
       return Optional.of(false)
@@ -942,7 +1046,8 @@ object PyTypeChecker {
     }
 
     if (expected is PyTypedDictType && actual !is PyTypedDictType) {
-      recordLeaf(matchContext) {
+      recordLeaf(matchContext,
+                 { PyMismatchStep.Nominal(codifiedType(matchContext, actual), codifiedType(matchContext, expected)) }) {
         PyPsiBundle.problemMessage("INSP.type.checker.breakdown.typed.dict.incompatible",
                                    codifiedType(matchContext, actual), codifiedType(matchContext, expected))
       }
@@ -951,18 +1056,22 @@ object PyTypeChecker {
 
     if (actual is PyTypedDictType) {
       // Capture which key fails only while collecting a breakdown; null sink keeps normal matching cheap.
-      var keyMismatchReason: ProblemMessage? = null
+      var keyMismatch: PyTypedDictType.TypedDictKeyMismatch? = null
       val matchResult = PyTypedDictType.match(expected, actual, context,
-                                              if (matchContext.diagnostics != null) ({ reason -> keyMismatchReason = reason }) else null)
+                                              if (matchContext.diagnostics != null) ({ m -> keyMismatch = m }) else null)
       if (matchResult != null) {
         if (!matchResult) {
-          recordLeaf(matchContext) {
-            if (expected is PyTypedDictType)
-              keyMismatchReason ?: PyPsiBundle.problemMessage("INSP.type.checker.breakdown.typed.dict.incompatible",
-                                                              codifiedType(matchContext, actual), codifiedType(matchContext, expected))
-            else
-              PyPsiBundle.problemMessage("INSP.type.checker.type.not.assignable",
-                                         codifiedType(matchContext, actual), codifiedType(matchContext, expected))
+          recordLeaf(matchContext, { typedDictStep(matchContext, expected, keyMismatch) }) {
+            val mismatch = keyMismatch
+            when (expected) {
+              is PyTypedDictType ->
+                if (mismatch != null) typedDictKeyMessage(mismatch)
+                else PyPsiBundle.problemMessage("INSP.type.checker.breakdown.typed.dict.incompatible",
+                                                codifiedType(matchContext, actual), codifiedType(matchContext, expected))
+              else ->
+                PyPsiBundle.problemMessage("INSP.type.checker.type.not.assignable",
+                                           codifiedType(matchContext, actual), codifiedType(matchContext, expected))
+            }
           }
         }
         return Optional.of(matchResult)
@@ -992,7 +1101,8 @@ object PyTypeChecker {
         (!subClass.isSubclass(superClass, context) || isDefinitionWithCustomMetaclass)) {
       return recordFrame(matchContext,
                          { PyPsiBundle.problemMessage("INSP.type.checker.breakdown.incompatible.with.protocol",
-                                                      codifiedType(matchContext, actual), codifiedType(matchContext, expected)) }) {
+                                                      codifiedType(matchContext, actual), codifiedType(matchContext, expected)) },
+                         { PyMismatchStep.Protocol(codifiedType(matchContext, actual), codifiedType(matchContext, expected)) }) {
         Optional.of(matchProtocols(expected, actual, matchContext))
       }
     }
@@ -1011,61 +1121,22 @@ object PyTypeChecker {
   }
 
   private fun matchProtocols(expected: PyClassType, actual: PyClassType, matchContext: MatchContext): Boolean {
-    val context = matchContext.context
-    val expectedSubstitutions = collectTypeSubstitutions(expected, context)
-    val actualSubstitutions = collectTypeSubstitutions(actual, context)
-
     // See https://typing.python.org/en/latest/spec/generics.html#use-in-protocols
     // > If a protocol uses Self in methods or attribute annotations, then a class Foo is assignable to the protocol
     //   if its corresponding methods and attribute annotations use either Self or Foo or any of Foo’s subclasses.
     //
     // It should be equivalent to replacing Self in the protocol with the Foo class we're matching it with.
     val protocolSubstitutions = GenericSubstitutions()
-    protocolSubstitutions.qualifierType = actual.toInstance()
-    val protocolContext = MatchContext(context, protocolSubstitutions, matchContext.reversedSubstitutions, matchContext.literalInference)
+    protocolSubstitutions.selfType = actual.toInstance()
+    val protocolContext = MatchContext(matchContext.context, protocolSubstitutions, matchContext.reversedSubstitutions)
     protocolContext.diagnostics = matchContext.diagnostics
     protocolContext.anchor = matchContext.anchor
 
-    for (pair in inspectProtocolSubclass(expected, actual, context)) {
-      val protocolMember = pair.first
-      val subclassElementMembers = pair.second
-      if (ContainerUtil.isEmpty(subclassElementMembers)) {
-        recordLeaf(matchContext) {
-          PyPsiBundle.problemMessage("INSP.type.checker.breakdown.member.missing", protocolMember.name)
-        }
-        return false
-      }
-      val rawProtocolElementType = dropSelfInProtocolMember(expected, protocolMember.type, context)
-
-      val protocolElementType = substitute(rawProtocolElementType, expectedSubstitutions, context)
-      val elementResult: Boolean =
-        recordFrameBool(protocolContext, { protocolMemberFailureMessage(protocolMember, subclassElementMembers) }) {
-          subclassElementMembers.any { subclassElementMember: PyTypeMember? ->
-            if (protocolMember.isWritable && !subclassElementMember!!.isWritable) {
-              return@any false
-            }
-            if (protocolMember.isDeletable && !subclassElementMember!!.isDeletable) {
-              return@any false
-            }
-            val isProtocolMemberClassVar = protocolMember.isClassVar
-            val isSubclassMemberClassVar = subclassElementMember!!.isClassVar
-            if (isSubclassMemberClassVar != isProtocolMemberClassVar) {
-              return@any false
-            }
-
-            var subclassElementType = substituteSelfInProtocolMember(actual, subclassElementMember.type, context)
-            subclassElementType = dropSelfInProtocolMember(expected, subclassElementType, context)
-            subclassElementType = substitute(subclassElementType, actualSubstitutions, context)
-
-            match(protocolElementType, subclassElementType, protocolContext).orElse(true)!!
-          }
-        }
-
-      if (!elementResult) {
-        return false
-      }
+    val matchingMembers = getMatchingProtocolMembers(expected, actual, protocolContext)
+    val hasMissingMatch = matchingMembers.any { pair -> pair.second.isEmpty() }
+    if (hasMissingMatch) {
+      return false
     }
-
 
     if (expected.isParameterized && expected.hasGenerics(matchContext.context)) {
       val concreteExpected: PyClassType = checkNotNull(
@@ -1079,6 +1150,90 @@ object PyTypeChecker {
     }
 
     return true
+  }
+
+  @ApiStatus.Internal
+  fun getMatchingProtocolMembers(expected: PyClassType, actual: PyClassType, substitutions: GenericSubstitutions,context: TypeEvalContext): List<ProtocolAndSubclassElements> {
+    substitutions.selfType = actual.toInstance()
+    val protocolContext = MatchContext(context, substitutions, false)
+    return getMatchingProtocolMembers(expected, actual, protocolContext)
+  }
+
+  private fun getMatchingProtocolMembers(expected: PyClassType, actual: PyClassType, protocolContext: MatchContext): List<ProtocolAndSubclassElements> {
+    val context = protocolContext.context
+    val expectedSubstitutions = collectTypeSubstitutions(expected, context)
+    val actualSubstitutions = collectTypeSubstitutions(actual, context)
+    val result = mutableListOf<Pair<PyTypeMember, List<PyTypeMember>>>()
+
+    for ((protocolMember, subclassElementMembers) in inspectProtocolSubclass(expected, actual, context)) {
+      val matchingMembers = mutableListOf<PyTypeMember>()
+      result.add(Pair(protocolMember, matchingMembers))
+      if (ContainerUtil.isEmpty(subclassElementMembers)) {
+        // Name the kind of member missing (a callable protocol member is a "method", everything else an "attribute").
+        val memberType = protocolMember.type
+        val isMethod = memberType is PyFunctionType || (memberType as? PyCallableType)?.isCallable == true
+        recordLeaf(protocolContext, { protocolMember.name?.let { PyMismatchStep.Missing(it, isMethod) } }) {
+          PyPsiBundle.problemMessage(
+            if (isMethod) "INSP.type.checker.breakdown.method.missing" else "INSP.type.checker.breakdown.member.missing",
+            protocolMember.name)
+        }
+        continue
+      }
+
+      val rawProtocolElementType = dropSelfInProtocolMember(expected, protocolMember.type, context)
+      val protocolElementType = substitute(rawProtocolElementType, expectedSubstitutions, context)
+
+      for (subclassElementMember in subclassElementMembers) {
+        val isMatchingProtocolMember = recordFrameBool(
+          protocolContext,
+          { protocolMemberFailureMessage(protocolMember, subclassElementMembers) },
+          // The subclass's type for the attribute, so the Attribute step can report the attribute's own types when the
+          // mismatch is buried inside a parameterized type (`list[set[int]]` vs `list[set[None]]`).
+          { protocolMember.name?.let {
+              PyMismatchStep.Attribute(it,
+                                       subclassElementType(expected, actual, subclassElementMember, actualSubstitutions, protocolContext)
+                                         ?.let { t -> codifiedType(protocolContext, t) },
+                                       codifiedType(protocolContext, protocolElementType)) } },
+          { isMatchingProtocolMember(expected, actual, protocolMember, subclassElementMember, protocolElementType, actualSubstitutions, protocolContext) }
+        )
+        if (isMatchingProtocolMember) {
+          matchingMembers.add(subclassElementMember)
+        }
+      }
+    }
+
+    return result
+  }
+
+  private fun isMatchingProtocolMember(expected: PyClassType, actual: PyClassType, protocolMember: PyTypeMember, subclassElementMember: PyTypeMember, protocolElementType: PyType?, actualSubstitutions: GenericSubstitutions, protocolContext: MatchContext): Boolean  {
+    val protocolMemberElement = protocolMember.element
+    val subclassMemberElement = subclassElementMember.element
+    val isWritableProtocolMember = protocolMemberElement is PyTargetExpression && PyExpectedVarianceJudgment.isEffectivelyReadOnly(protocolMemberElement, protocolContext.context)
+    val isWritableSubclassMember = subclassMemberElement is PyTargetExpression && PyExpectedVarianceJudgment.isEffectivelyReadOnly(subclassMemberElement, protocolContext.context)
+    if (isWritableProtocolMember && !isWritableSubclassMember) {
+      return false
+    }
+    if (protocolMember.isDeletable && !subclassElementMember.isDeletable) {
+      return false
+    }
+    val isProtocolMemberClassVar = protocolMember.isClassVar
+    val isSubclassMemberClassVar = subclassElementMember.isClassVar
+    if (isSubclassMemberClassVar != isProtocolMemberClassVar) {
+      return false
+    }
+
+    val subclassElementType = subclassElementType(expected, actual, subclassElementMember, actualSubstitutions, protocolContext)
+    return match(protocolElementType, subclassElementType, protocolContext).getOrDefault(true)
+  }
+
+  /** The subclass member's element type as compared against the protocol: `self` bound to [actual] and dropped, then
+   *  the subclass's own type substitutions applied. */
+  private fun subclassElementType(expected: PyClassType, actual: PyClassType, subclassElementMember: PyTypeMember,
+                                  actualSubstitutions: GenericSubstitutions, protocolContext: MatchContext): PyType? {
+    val context = protocolContext.context
+    var subclassElementType = substituteSelfInProtocolMember(actual, subclassElementMember.type, context)
+    subclassElementType = dropSelfInProtocolMember(expected, subclassElementType, context)
+    return substitute(subclassElementType, actualSubstitutions, context)
   }
 
   private fun match(expectedProtocol: PyClassType, actualModule: PyModuleType, matchContext: MatchContext): Boolean {
@@ -1131,46 +1286,43 @@ object PyTypeChecker {
 
   /**
    * Binds TypeVars from the self parameter annotation of protocol member to [classType].
+   * For an instance, it also replaces `Self` in the member with [classType].
    */
   private fun substituteSelfInProtocolMember(classType: PyClassType, elementType: PyType?, context: TypeEvalContext): PyType? {
     if (elementType !is PyCallableType) return elementType
     val parameters = elementType.getParameters(context)
     if (parameters.isNullOrEmpty() || !parameters.first().isSelf) return elementType
     val selfParamType = parameters.first().getType(context) ?: return elementType
-    val selfBindingTarget = prepareSelfBindingTarget(classType, elementType.callable, context)
+    if (selfParamType is PySelfType) {
+      // A class object keeps its `Self`. Resolving it breaks the match of a class object against a `__call__` protocol.
+      if (classType.isDefinition) return elementType
+      // Without another `Self`, the member needs no substitution and keeps its function type
+      if (!hasSelfOutsideSelfParameter(elementType, parameters, context)) return elementType
+    }
     val selfSubstitutions = GenericSubstitutions()
+    if (!classType.isDefinition) {
+      selfSubstitutions.selfType = classType
+    }
 
-    /**
-     * Note: intentionally does not propagate [literalInference] into the self-binding sub-context;
-     * binding `self` is a separate concern from the conversion of [convertToType], so this match keeps the widening default.
-     */
-    val selfMatchContext = MatchContext(context, selfSubstitutions, false)
-    if (!match(selfParamType, selfBindingTarget, selfMatchContext).orElse(true)) return elementType
+    // An unannotated `self` has the `Self` type. It binds no type variable, so the self match is skipped.
+    if (selfParamType !is PySelfType) {
+      /**
+       * Note: intentionally does not propagate [literalInference] into the self-binding sub-context;
+       * binding `self` is a separate concern from the conversion of [convertToType], so this match keeps the widening default.
+       */
+      val selfMatchContext = MatchContext(context, selfSubstitutions, false)
+      if (!match(selfParamType, classType, selfMatchContext).getOrDefault(true)) return elementType
+    }
     return substitute(elementType, selfSubstitutions, context) as? PyCallableType ?: elementType
   }
 
-  private fun prepareSelfBindingTarget(actualType: PyType?, callable: PyCallable?, context: TypeEvalContext): PyType? {
-    val function = callable as? PyFunction ?: return actualType
-    var actualType = when {
-      function.modifier == PyAstFunction.Modifier.CLASSMETHOD -> convertToClass(actualType)
-      PyUtil.isInitMethod(function) -> convertToInstance(actualType)
-      else -> actualType
-    }
-
-    if (PyUnionType.isStrictSemanticsEnabled()) {
-      val pyClass = function.containingClass!!
-      val classType = context.getType(pyClass) as PyClassLikeType
-      val superType =
-        (if (function.modifier == PyAstFunction.Modifier.CLASSMETHOD || PyUtil.isNewMethod(function)) classType else classType.toInstance())
-      // In a union receiver type, leave only members that actually have this function
-      // TODO how does it work with qualified calls, e.g. SomeClass.method(receiver, arg1, arg2)
-      // TODO how does it work with @classmethods?
-      actualType = actualType.toStream()
-        .filter { type: PyType? -> match(superType, type, context) }
-        .collect(PyTypeUtil.toUnion(actualType))
-    }
-
-    return actualType
+  private fun hasSelfOutsideSelfParameter(
+    callable: PyCallableType,
+    parameters: List<PyCallableParameter>,
+    context: TypeEvalContext,
+  ): Boolean {
+    return callable.getReturnType(context).collectGenerics(context).self != null ||
+           parameters.asSequence().drop(1).any { it.getType(context).collectGenerics(context).self != null }
   }
 
   // https://typing.python.org/en/latest/spec/tuples.html#type-compatibility-rules
@@ -1188,7 +1340,7 @@ object PyTypeChecker {
     if (actual.isHomogeneous) {
       // The type tuple[Any, ...] is consistent with any tuple
       val elementType = actual.iteratedItemType
-      if (elementType == null) {
+      if (elementType.isAnyOrUnknown) {
         return Optional.of(true)
       }
     }
@@ -1212,7 +1364,7 @@ object PyTypeChecker {
       val expectedElementType = expected.iteratedItemType
       return Optional.of(
         actual.iteratedItemType.toStream()
-          .allMatch { type: PyType? -> match(expectedElementType, type, context).orElse(true)!! }
+          .allMatch { type: PyType? -> match(expectedElementType, type, context).getOrDefault(true) }
       )
     }
 
@@ -1242,7 +1394,7 @@ object PyTypeChecker {
     val superElementType = expected.iteratedItemType
     val subElementType = actual.iteratedItemType
 
-    return match(superElementType, subElementType, context).orElse(true)!!
+    return match(superElementType, subElementType, context).getOrDefault(true)
   }
 
   private fun match(expected: PyStructuralType, actual: PyType, context: TypeEvalContext): Boolean {
@@ -1295,7 +1447,7 @@ object PyTypeChecker {
       val firstExpectedParam: PyCallableParameter = expectedParameters.first()
       val firstActualParam: PyCallableParameter = actualParameters.first()
       if (firstExpectedParam.isSelf && firstActualParam.isSelf) {
-        if (!match(firstExpectedParam.getType(context), firstActualParam.getType(context), matchContext).orElse(true)!!) {
+        if (!match(firstExpectedParam.getType(context), firstActualParam.getType(context), matchContext).getOrDefault(true)) {
           return false
         }
         startIndex = 1
@@ -1328,13 +1480,21 @@ object PyTypeChecker {
       val matched = recordFrame(matchContext, {
         if (parameterName != null) PyPsiBundle.problemMessage("INSP.type.checker.breakdown.parameter.type.incompatible.named", parameterName)
         else PyPsiBundle.problemMessage("INSP.type.checker.breakdown.parameter.type.incompatible")
+      }, {
+        // A callable parameter is contravariant: the actual callable must accept everything the expected one
+        // may be called with, so the required type is the expected callable's parameter (`first`) and the
+        // narrower provided type is the actual callable's parameter (`second`). Name it, or fall back to its
+        // 1-based position for the unnamed positional parameters of a `Callable[[…], …]`.
+        PyMismatchStep.ContravariantParameter(parameterName, index + 1,
+                                              codifiedContravariantType(matchContext, pair.getFirst()),
+                                              codifiedContravariantType(matchContext, pair.getSecond()))
       }) {
         if (matchContext.reverseSubstitutions().reversedSubstitutions)
           match(pair.getSecond(), pair.getFirst(), matchContext.reverseSubstitutions())
         else
           match(pair.getFirst(), pair.getSecond(), matchContext.reverseSubstitutions())
       }
-      if (!matched.orElse(true)!!) {
+      if (!matched.getOrDefault(true)) {
         return false
       }
     }
@@ -1383,7 +1543,7 @@ object PyTypeChecker {
       return Optional.of(expectedOverloads.all { expectedCall ->
         actualOverloads.any { actualCall ->
           match(dropSelfInProtocolMember(expected, expectedCall, context),
-                actualCall, matchContext).orElse(true)
+                actualCall, matchContext).getOrDefault(true)
         }
       })
     }
@@ -1392,21 +1552,51 @@ object PyTypeChecker {
       val expectedParametersType = expected.getParametersType(context)
       val actualParametersType = actual.getParametersType(context)
 
+      var allMatched = true
       if (expectedParametersType != null && actualParametersType != null) {
-        if (!match(expectedParametersType, actualParametersType, matchContext).orElse(true)!!) {
-          return Optional.of(false)
+        if (!match(expectedParametersType, actualParametersType, matchContext).getOrDefault(true)) {
+          // While collecting a breakdown, keep going to record the return-type reason too, so a callable that is
+          // wrong in both a parameter and its return type explains both; when matching normally, short-circuit.
+          if (matchContext.diagnostics == null) return Optional.of(false)
+          allMatched = false
         }
       }
       val returnMatched = recordFrame(matchContext,
-                                      { PyPsiBundle.problemMessage("INSP.type.checker.breakdown.return.type.incompatible") }) {
+                                      { PyPsiBundle.problemMessage("INSP.type.checker.breakdown.return.type.incompatible") },
+                                      { PyMismatchStep.Return }) {
         match(expected.getReturnType(context), getActualReturnType(actual, context), matchContext)
       }
-      if (!returnMatched.orElse(true)!!) {
-        return Optional.of(false)
+      if (!returnMatched.getOrDefault(true)) {
+        allMatched = false
       }
-      return Optional.of(true)
+      return Optional.of(allMatched)
     }
     return Optional.empty()
+  }
+
+  /**
+   * Matches the class [actual] against the callable [expected]. A class used as a callable exposes only the first overload of
+   * its constructor. When that overload does not match, each constructor overload is tried.
+   */
+  private fun matchClassAsCallable(expected: PyCallableType, actual: PyCallableType, matchContext: MatchContext): Optional<Boolean> {
+    val firstOverloadMatch = matchOnCopy(matchContext) { match(expected, actual, it) }
+    if (firstOverloadMatch != Optional.of(false)) return firstOverloadMatch
+    val constructorType = PyCallExpressionHelper.createCallableFromClass(actual as PyClassType, PyResolveContext.defaultContext(matchContext.context))
+    // A failed match runs again on [matchContext], so that it records the breakdown.
+    return if (constructorType is PyOverloadType) match(expected, constructorType, matchContext) else match(expected, actual, matchContext)
+  }
+
+  /**
+   * Runs [body] on a copy of the substitutions and without a breakdown.
+   * A successful match keeps the substitutions of the copy. A failed match leaves no trace in [matchContext].
+   */
+  private inline fun matchOnCopy(matchContext: MatchContext, body: (MatchContext) -> Optional<Boolean>): Optional<Boolean> {
+    val substitutions = matchContext.mySubstitutions.copy(KeyImpl)
+    val result = body(MatchContext(matchContext.context, substitutions, matchContext.reversedSubstitutions))
+    if (result == Optional.of(true)) {
+      matchContext.mySubstitutions.replaceWith(substitutions, KeyImpl)
+    }
+    return result
   }
 
   private fun getActualReturnType(actual: PyCallableType, context: TypeEvalContext): PyType? {
@@ -1421,11 +1611,8 @@ object PyTypeChecker {
   }
 
   private fun match(expected: List<PyType?>, actual: List<PyType?>, matchContext: MatchContext): Boolean {
-    if (expected.size != actual.size) return false
-    for (i in expected.indices) {
-      if (!match(expected[i], actual[i], matchContext).orElse(true)!!) return false
-    }
-    return true
+    return expected.size == actual.size &&
+           expected.zip(actual).all { (expectedItem, actualItem) -> match(expectedItem, actualItem, matchContext).getOrDefault(true) }
   }
 
   private fun isCallableProtocol(expected: PyClassLikeType, context: TypeEvalContext): Boolean {
@@ -1443,7 +1630,7 @@ object PyTypeChecker {
         .filterIsInstance<PyTupleType>()
         .map { it.getElementType(index) }
         .toList()
-        .let(PyUnionType::union)
+        .let(PyUnionType::unionOrUnknown)
     }
     val tupleClass = (unionType.members.firstOrNull() as PyTupleType).pyClass
     return PyTupleType(tupleClass, newTupleElements, false)
@@ -1517,7 +1704,7 @@ object PyTypeChecker {
           !classType.isParameterized -> {
             for (typeParameter in definitionTypeParameters) {
               when (typeParameter) {
-                is PyTypeVarType -> result.putTypeVar(typeParameter, null, KeyImpl)
+                is PyTypeVarType -> result.putTypeVar(typeParameter, Ref(PyAnyType.unknown), KeyImpl)
                 is PyTypeVarTupleType -> result.putTypeVarTuple(typeParameter, null, KeyImpl)
                 is PyParamSpecType -> result.putParamSpec(typeParameter, null, KeyImpl)
               }
@@ -1525,12 +1712,20 @@ object PyTypeChecker {
           }
           else -> {
             var elementTypes = classType.typeArguments
-            if (classType is PyTupleType && !classType.isHomogeneous) {
-              val unionTypes = classType.typeArguments.flatMap { et -> if (et is PyUnpackedTupleType) et.elementTypes else listOf(et) }
-              elementTypes = listOf(PyUnionType.union(unionTypes))
+            var typeParameters = definitionTypeParameters
+
+            if (shouldExpandElementwiseCollectionType(classType)) {
+              /** treat tuples as `class tuple[_T_co#1, _T_co#2, ..., _T_co#n](Sequence[_T_co]): ...`. @see [expandTupleTypeParameters]. */
+              val actualArguments = classType.typeArguments - definitionTypeParameters
+              val expandedTypeParameters = expandTupleTypeParameters(definitionTypeParameters, actualArguments.size)
+              if (expandedTypeParameters != null) {
+                val unionTypes = actualArguments.flatMap { et -> if (et is PyUnpackedTupleType) et.elementTypes else listOf(et) }
+                elementTypes = listOf(PyUnionType.unionOrUnknown(unionTypes)) + actualArguments
+                typeParameters = definitionTypeParameters + expandedTypeParameters
+              }
             }
             mapTypeParametersToSubstitutions(
-              result, definitionTypeParameters, elementTypes,
+              result, typeParameters, elementTypes,
               PyTypeParameterMapping.Option.MAP_UNMATCHED_EXPECTED_TYPES_TO_ANY
             )
           }
@@ -1543,16 +1738,61 @@ object PyTypeChecker {
     return result
   }
 
+  /** @see [expandTupleTypeParameters] */
+  private fun shouldExpandElementwiseCollectionType(classType: PyClassType): Boolean {
+    if (classType is PyTupleType) {
+      return !classType.isHomogeneous
+    }
+    return false
+  }
+
+  /**
+   * Creates [size] synthetic copies of the single type variable in [definitionTypeParameters].
+   * Each copy gets the name `"<name>#<index>"` to keep the copies distinct. Returns null when the expansion is not possible.
+   *
+   * Note that Python tuple types are defined as `class tuple(Sequence[_T_co]): ...`. This models the upwards type hierarchy.
+   * However, tuples can be used as `tuple[int, str]` which is not represented by that definition. The expansion will create additional
+   * type variables for tuples that can be roughly understood as `class tuple[_T_co#1, _T_co#2](Sequence[_T_co]): ...`
+   * with `_T_co = _T_co#1 | _T_co#2 | ... | _T_co#n`.
+   *
+   * Also note the explanations at the use-site of expanded type parameters: [ConstraintReducer.subtract]
+   */
+  internal fun expandTupleTypeParameters(definitionTypeParameters: List<PyType?>, size: Int): List<PyType?>? {
+    if (definitionTypeParameters.size != 1 || size <= 1) {
+      return null
+    }
+    val typeVar = definitionTypeParameters.single() as? PyTypeVarType ?: return null
+    val result = ArrayList<PyType?>(size)
+    for (index in 1..size) {
+      result.add(
+        @Suppress("UNCHECKED_CAST") // cast is necessary to select the correct constructor
+        PyTypeVarTypeImpl(
+          "${typeVar.name}#$index",
+          typeVar.constraints,
+          typeVar.bound,
+          typeVar.defaultType as Ref<PyType>?,
+          typeVar.variance
+        )
+          .withScopeOwner(typeVar.scopeOwner)
+          .withDeclarationElement(typeVar.declarationElement)
+      )
+    }
+    return result
+  }
+
+  @ApiStatus.Internal
+  fun findGenericDefinitionType(pyClass: PyClass, isDefinition: Boolean, context: TypeEvalContext): PyClassType? {
+    val genericDefinitionType = findGenericDefinitionType(pyClass, context) ?: return null
+    if (isDefinition) genericDefinitionType.toClass()
+    return genericDefinitionType
+  }
+
   @JvmStatic
   @ApiStatus.Internal
   fun findGenericDefinitionType(pyClass: PyClass, context: TypeEvalContext): PyClassType? {
-    for (provider in PyTypeProvider.EP_NAME.extensionList) {
-      val definitionType = provider.getGenericType(pyClass, context)
-      if (definitionType is PyClassType && definitionType.isParameterized) {
-        return definitionType
-      }
+    return PyTypeProvider.EP_NAME.computeSafeIfAny {
+      (it.getGenericType(pyClass, context) as? PyClassType)?.takeIf { definitionType -> definitionType.isParameterized }
     }
-    return null
   }
 
   private fun matchGenericClassesParameterWise(
@@ -1586,11 +1826,12 @@ object PyTypeChecker {
       return matchTypeParametersRespectVariance(genericType, expectedTypeParameters, actualTypeParameters, context)
     }
     else {
-      return matchTypeParametersIgnoreVariance(expectedTypeParameters, actualTypeParameters, context)
+      return matchTypeParametersIgnoreVariance(genericType, expectedTypeParameters, actualTypeParameters, context)
     }
   }
 
   private fun matchTypeParametersIgnoreVariance(
+    genericType: PyClassType?,
     expectedTypeParameters: List<PyType?>,
     actualTypeParameters: List<PyType?>,
     context: MatchContext,
@@ -1600,11 +1841,14 @@ object PyTypeChecker {
       return false
     }
     for ((typeArgIndex, pair) in mapping.mappedTypes.withIndex()) {
-      val matched = recordTypeArgumentFrame(context, typeArgIndex) {
-        if (context.reversedSubstitutions)
-          match(pair.getSecond(), pair.getFirst(), context).orElse(true)!!
-        else
-          match(pair.getFirst(), pair.getSecond(), context).orElse(true)!!
+      // Record the per-argument frame (naming the type variable + owner when resolvable, else the position; expected
+      // = the target's arg, `first`) so the breakdown names and drills in even on this variance-ignoring path; the
+      // match direction still respects reversedSubstitutions.
+      // The type parameter only names the breakdown frame, so skip the lookup on the plain matching path.
+      val typeParameter = if (context.diagnostics != null) findTypeParameter(genericType, typeArgIndex, context) else null
+      val matched = recordTypeArgumentFrame(context, typeArgIndex, typeParameter, genericType, pair.getFirst(), pair.getSecond()) {
+        (if (context.reversedSubstitutions) match(pair.getSecond(), pair.getFirst(), context)
+         else match(pair.getFirst(), pair.getSecond(), context)).getOrDefault(true)
       }
       if (!matched) {
         return false
@@ -1623,7 +1867,7 @@ object PyTypeChecker {
     for ((typeArgIndex, pair) in mapping.mappedTypes.withIndex()) {
       val (first, second) = pair
       val typeParameter = findTypeParameter(genericType, typeArgIndex, context)
-      val variance = if (typeParameter == null) Variance.COVARIANT else getDeclaredOrInferredVariance(typeParameter, context.context)
+      val variance = if (typeParameter == null) PyVariance.COVARIANT else getDeclaredOrInferredVariance(typeParameter, context.context)
 
       val matched = if (context.reversedSubstitutions)
         matchCapturedType(typeParameter, genericType, typeArgIndex, variance, second, first, context)
@@ -1636,9 +1880,35 @@ object PyTypeChecker {
     return true
   }
 
-  /** Wraps [body] in the generic "Type argument N has an incompatible type" frame for the type argument [typeArgIndex]. */
-  private inline fun recordTypeArgumentFrame(context: MatchContext, typeArgIndex: Int, body: () -> Boolean): Boolean =
-    recordFrameBool(context, { PyPsiBundle.problemMessage("INSP.type.checker.breakdown.type.argument", typeArgIndex + 1) }, body)
+  /**
+   * Wraps [body] in the "Type argument N has an incompatible type" frame for the type argument [typeArgIndex].
+   * [expected]/[actual] are the argument's types at this level (in display orientation — expected is the target's,
+   * regardless of which direction [body] matches), recorded so the breakdown can drill in readably.
+   */
+  private inline fun recordTypeArgumentFrame(
+    context: MatchContext,
+    typeArgIndex: Int,
+    typeParameter: PyTypeVarType?,
+    genericType: PyClassType?,
+    expected: PyType?,
+    actual: PyType?,
+    body: () -> Boolean,
+  ): Boolean =
+    recordFrameBool(context, {
+      // Name the parameter and its owner (`` `T` of `A` ``) when they can be resolved — the owner as a clickable
+      // reference, the type variable as a plain code span — else fall back to the 1-based position.
+      val name = typeParameter?.name
+      val ownerClass = genericType?.pyClass
+      if (name != null && ownerClass != null)
+        PyPsiBundle.problemMessage("INSP.type.checker.breakdown.type.argument.named",
+                                   name, PyInspectionMessages.CodifiedParam.ofReference(ownerClass))
+      else
+        PyPsiBundle.problemMessage("INSP.type.checker.breakdown.type.argument", typeArgIndex + 1)
+    }, {
+      // Record the argument's types at this level (display orientation: expected is the target's) so the prose
+      // breakdown can drill in readably (`expected set[int], but got set[None]`).
+      PyMismatchStep.TypeArgument(typeArgIndex + 1, codifiedType(context, actual), codifiedType(context, expected))
+    }, body)
 
   /**
    * The declared type variable at [typeArgumentIndex] of [genericType]'s class, or null when there isn't one
@@ -1660,21 +1930,21 @@ object PyTypeChecker {
     typeParameter: PyTypeVarType?,
     genericType: PyClassType?,
     typeArgIndex: Int,
-    variance: Variance,
+    variance: PyVariance,
     expectedType: PyType?,
     actualType: PyType?,
     context: MatchContext,
   ): Boolean {
     if (expectedType is PyTypeParameterType && actualType is PyTypeParameterType) {
-      return recordTypeArgumentFrame(context, typeArgIndex) { match(expectedType, actualType, context).getOrElse { false } }
+      return recordTypeArgumentFrame(context, typeArgIndex, typeParameter, genericType, expectedType, actualType) { match(expectedType, actualType, context).getOrElse { false } }
     }
 
     return when (variance) {
-      Variance.INVARIANT -> {
+      PyVariance.INVARIANT -> {
         // First leg: the actual type argument must be assignable to the expected one. If it isn't, that's an
         // ordinary subtype failure whose own breakdown ("X is not assignable to Y") is the useful reason, so
         // run it under the generic type-argument frame.
-        val assignable = recordTypeArgumentFrame(context, typeArgIndex) { match(expectedType, actualType, context).getOrElse { false } }
+        val assignable = recordTypeArgumentFrame(context, typeArgIndex, typeParameter, genericType, expectedType, actualType) { match(expectedType, actualType, context).getOrElse { false } }
         if (!assignable) {
           false
         }
@@ -1684,7 +1954,18 @@ object PyTypeChecker {
           // backwards ("int is not assignable to bool"), so discard it and emit one invariance-specific reason.
           val sameType = withoutRecording(context) { match(actualType, expectedType, context).getOrElse { false } }
           if (!sameType) {
-            recordLeaf(context) {
+            recordLeaf(context, {
+              // The prose form only earns the educational "even though … is a subtype of …" clause here, on the
+              // surprising path: the forward `assignable` leg already succeeded, so the actual argument IS a
+              // subtype of the expected one and invariance is the sole reason. Requires the owner class.
+              val ownerClass = genericType?.pyClass
+              if (ownerClass != null)
+                PyMismatchStep.Invariant(typeParameter?.name ?: (typeArgIndex + 1).toString(),
+                                         PyInspectionMessages.CodifiedParam.ofReference(ownerClass),
+                                         codifiedType(context, actualType), codifiedType(context, expectedType),
+                                         readOnlyAlternativeFor(ownerClass, typeArgIndex))
+              else null
+            }) {
               // Name the offending type variable and its owner (e.g. "`_T` of `list`"); fall back to the 1-based
               // position only if the declared parameter can't be resolved (it always can in the invariant case).
               // The owner class is rendered as a clickable reference; the type variable stays a plain code span
@@ -1700,11 +1981,11 @@ object PyTypeChecker {
           sameType
         }
       }
-      Variance.COVARIANT -> recordTypeArgumentFrame(context, typeArgIndex) { match(expectedType, actualType, context).getOrElse { false } }
-      Variance.CONTRAVARIANT -> recordTypeArgumentFrame(context, typeArgIndex) {
+      PyVariance.COVARIANT -> recordTypeArgumentFrame(context, typeArgIndex, typeParameter, genericType, expectedType, actualType) { match(expectedType, actualType, context).getOrElse { false } }
+      PyVariance.CONTRAVARIANT -> recordTypeArgumentFrame(context, typeArgIndex, typeParameter, genericType, expectedType, actualType) {
         match(actualType, expectedType, context.reverseSubstitutions()).getOrElse { false }
       }
-      Variance.BIVARIANT -> recordTypeArgumentFrame(context, typeArgIndex) { match(expectedType, actualType, context).getOrElse { false } }
+      PyVariance.BIVARIANT -> recordTypeArgumentFrame(context, typeArgIndex, typeParameter, genericType, expectedType, actualType) { match(expectedType, actualType, context).getOrElse { false } }
       else -> false
     }
   }
@@ -1760,7 +2041,7 @@ object PyTypeChecker {
         // If the __call__ is overloaded, compare overload types (subset matching)
         return overloadType.items.all { expectedItem ->
           callType.items.any { actualItem ->
-            match(expectedItem, actualItem, context).orElse(false)!!
+            match(expectedItem, actualItem, context).getOrDefault(false)
           }
         }
       }
@@ -1769,10 +2050,10 @@ object PyTypeChecker {
         return overloadType.items.any { item ->
           // Match with correct argument order based on which is expected
           if (expectedIsOverload) {
-            match(item, callType, context).orElse(false)!!
+            match(item, callType, context).getOrDefault(false)
           }
           else {
-            match(callType, item, context).orElse(false)!!
+            match(callType, item, context).getOrDefault(false)
           }
         }
       }
@@ -1788,7 +2069,7 @@ object PyTypeChecker {
     }
     // TODO Don't consider other type parameters unknown (PY-85653)
     // Since Self is always bound, don't consider it unknown, e.g. in Py3TypeCheckerInspectionTest.testSelfAssignedToOtherTypeBad
-    if (isAnyOrUnknown || (genericsAreUnknown && this is PyTypeParameterType && (this !is PySelfType))) {
+    if (this.isAnyOrUnknown || (genericsAreUnknown && this is PyTypeParameterType && (this !is PySelfType))) {
       return true
     }
     return when (this) {
@@ -1830,25 +2111,55 @@ object PyTypeChecker {
 
   @JvmStatic
   fun getSubstitutionsWithUnresolvedReturnGenerics(
-    parameters: Collection<PyCallableParameter>,
+    callableType: PyCallableType,
     returnType: PyType?,
     substitutions: GenericSubstitutions?,
     context: TypeEvalContext,
   ): GenericSubstitutions {
-    val parameterTypes = parameters.map { it.getArgumentType(context) }
-    return substituteUnboundTypeVarsWithDefaultOrAny(returnType, parameterTypes, substitutions, context)
+    if (context is TypeEvalContextImpl.TemporaryContext && context.keepUncapturedTypeParameters)
+      return substitutions ?: GenericSubstitutions()
+
+    val substitutions = substitutions ?: GenericSubstitutions()
+
+    val typeParameters = callableType.getTypeParameters(context).orEmpty()
+    typeParameters.forEach { typeParameter ->
+      when (typeParameter) {
+        is PyTypeVarType -> {
+          @Suppress("UNCHECKED_CAST")
+          substitutions.putTypeVar(typeParameter, typeParameter.defaultType as Ref<PyType?>?, KeyImpl, true)
+        }
+        is PyTypeVarTupleType -> {
+          substitutions.putTypeVarTuple(typeParameter, Ref.deref(typeParameter.defaultType), KeyImpl, true)
+        }
+        is PyParamSpecType -> {
+          substitutions.putParamSpec(typeParameter, Ref.deref(typeParameter.defaultType) as? PyCallableParameterVariadicType, KeyImpl, true)
+        }
+      }
+    }
+
+    // Restrict defaulting to `callableType`-scoped type parameters.
+    val resolvableTypeParams = GenericsImpl()
+    val callable = callableType.callable
+    if (callable != null) {
+      callableType.getParameters(context)?.forEach { parameter ->
+        collectGenerics(parameter.getArgumentType(context), context, resolvableTypeParams)
+      }
+      resolvableTypeParams.typeVars.removeAll { it.scopeOwner !== callable }
+      resolvableTypeParams.typeVarTuples.removeAll { it.scopeOwner !== callable }
+      resolvableTypeParams.paramSpecs.removeAll { it.scopeOwner !== callable }
+    }
+
+    return substituteUnboundTypeVarsWithDefaultOrAny(returnType, resolvableTypeParams, substitutions, context)
   }
 
   private fun substituteUnboundTypeVarsWithDefaultOrAny(
     targetType: PyType?,
-    typeParameterSources: List<PyType?>,
+    resolvableTypeParams: Generics,
     substitutions: GenericSubstitutions?,
     context: TypeEvalContext,
   ): GenericSubstitutions {
-    val resolvableTypeParams = GenericsImpl()
-    for (parameterType in typeParameterSources) {
-      collectGenerics(parameterType, context, resolvableTypeParams)
-    }
+    if (context is TypeEvalContextImpl.TemporaryContext && context.keepUncapturedTypeParameters)
+      return substitutions ?: GenericSubstitutions()
 
     val existingSubstitutions = substitutions ?: GenericSubstitutions()
     val requiredTypeParams = targetType.collectGenerics(context)
@@ -1877,7 +2188,7 @@ object PyTypeChecker {
       val isAlreadyBound = existingSubstitutions.paramSpecs.containsKey(paramSpecType)
       if (isResolvable && !isAlreadyBound) {
         if (paramSpecType.defaultType != null) {
-          existingSubstitutions.putParamSpec(paramSpecType, Ref.deref<PyCallableParameterVariadicType?>(paramSpecType.defaultType), KeyImpl)
+          existingSubstitutions.putParamSpec(paramSpecType, Ref.deref(paramSpecType.defaultType) as? PyCallableParameterVariadicType, KeyImpl)
         }
         else {
           existingSubstitutions.putParamSpec(paramSpecType, PyCallableParameterListTypeImpl(
@@ -1947,6 +2258,11 @@ object PyTypeChecker {
     })
   }
 
+  /**
+   * All type parameters in the given type are substituted according to the given substitutions mapping.
+   * While doing so, inserted tuple literals are widened when substituted into a generic class.
+   * TODO: PY-90853
+   */
   @JvmStatic
   fun substitute(
     type: PyType?,
@@ -2036,6 +2352,7 @@ object PyTypeChecker {
           if (substitution is PyTypeVarType) {
             val sameScopeSubstitution = substitutions.typeVars.keys.firstOrNull { typeVarType2 ->
               (typeVarType2 != substitution) && typeVarType2.declarationElement != null && typeVarType2.declarationElement == substitution.declarationElement
+              && typeVarType2.scopeOwner === substitution.scopeOwner
             }
 
             if (sameScopeSubstitution != null && substitution.defaultType != null) {
@@ -2062,6 +2379,7 @@ object PyTypeChecker {
         if (paramSpecType !in substitutions.paramSpecs) {
           val sameScopeSubstitution = substitutions.paramSpecs.keys.firstOrNull { typeVarType ->
             typeVarType.declarationElement != null && typeVarType.declarationElement == paramSpecType.declarationElement
+            && (paramSpecType.scopeOwner == null || typeVarType.scopeOwner === paramSpecType.scopeOwner)
           }
 
           if (sameScopeSubstitution != null) {
@@ -2078,47 +2396,69 @@ object PyTypeChecker {
       }
 
       override fun visitPySelfType(selfType: PySelfType): PyType {
-        val qualifierType = substitutions.qualifierType ?: return selfType
+        val qType = substitutions.selfType ?: return selfType
         val selfScopeClassType = selfType.scopeClassType
-        // TODO change unification for calls on union types
-        // so that in the following
-        //
-        // class A:
-        //     def a_method(self) -> Self:
-        //         ...
-        // x: A | B
-        //
-        // A.a_method # type: Callable[[A], A]
-        // B wasn't considered as the receiver type in the first place, instead of filtering it out during substitution
-        // (see PyTypingTest.testMatchSelfUnionType)
-        val result = qualifierType.toStream()
-          .map<PyType?> { qType: PyType? ->
-            // An enum member has a value-refined literal type (`Literal[E.a]`), but `Self` denotes the enum class itself
-            val normalizedQType = if (qType is PyLiteralType && qType.enumMemberName != null)
-              PyClassTypeImpl(qType.pyClass, false)
-            else
-              qType
-            if (normalizedQType is PyInstantiableType<*>) {
-              return@map if (selfScopeClassType.isDefinition) normalizedQType.toClass() else normalizedQType.toInstance()
-            }
-            normalizedQType
-          }
-          .filter { normalizedQType: PyType? -> match(selfScopeClassType, normalizedQType, context) }
-          .collect(PyTypeUtil.toUnion(qualifierType))
-        // If no qualifier type matched Self's scope class, Self was probably inferred from a different context
+        // An enum member has a value-refined literal type (`Literal[E.a]`), but `Self` denotes the enum class itself
+        val normalizedQType = if (qType is PyLiteralType && qType.enumMemberName != null)
+          PyClassTypeImpl(qType.pyClass, false)
+        else
+          qType
+
+        val result = if (selfScopeClassType.isDefinition) normalizedQType.toClass() else normalizedQType.toInstance()
+
+        // If qualifier type does not match Self's scope class, Self was probably inferred from a different context
         // (e.g. protocol matching for a parameter type) and should be preserved as-is.
-        return result ?: selfType
+        return if (match(selfScopeClassType, result, context)) result else selfType
       }
 
       override fun visitPyClassType(classType: PyClassType): PyType? {
         if (!classType.isParameterized) {
           return super.visitPyClassType(classType)
         }
-        return PyCollectionTypeImpl(
+        val clonedClassType = PyCollectionTypeImpl(
           classType.pyClass, classType.isDefinition,
-          classType.typeArguments.flatMap {
-            flattenUnpackedTuple(clone<PyType>(it).widenTupleLiterals())
-          }
+          substituteTypeArguments(classType.typeArguments)
+        )
+        return if (classType is PyClassTypeImpl) classType.withUserDataCopy(clonedClassType) else clonedClassType
+      }
+
+      fun substituteTypeArguments(typeArguments: List<PyType?>): List<PyType?> {
+        return typeArguments.flatMap { typeArg ->
+          flattenUnpackedTuple(clone<PyType>(typeArg))
+        }
+      }
+
+      /**
+       * The items are substituted through [substitute] rather than through this visitor, so that the
+       * parameterized TypedDict holds the substitutions it needs rather than the traversal that produced it, and each
+       * item is substituted on a traversal of its own once something asks for it.
+       */
+      override fun visitPyTypedDictType(typedDictType: PyTypedDictType): PyType {
+        return PyTypedDictType(
+          typedDictType.name,
+          { evalContext ->
+            typedDictType.fields(evalContext).mapValues { (_, field) ->
+              PyTypedDictType.FieldTypeAndTotality(
+                field.value,
+                substitute(field.type, substitutions, evalContext),
+                field.qualifiers,
+              )
+            }
+          },
+          typedDictType.pyClass,
+          typedDictType.isDefinition,
+          typedDictType.declarationElement,
+          typedDictType.isClosed,
+          { evalContext ->
+            val extraItems = typedDictType.extraItems(evalContext)
+            PyTypedDictType.FieldTypeAndTotality(
+              extraItems.value,
+              substitute(extraItems.type, substitutions, evalContext),
+              extraItems.qualifiers,
+            )
+          },
+          typedDictType.declaredTypeParameters,
+          substituteTypeArguments(typedDictType.typeArgumentsOrDeclaredParameters.orEmpty()),
         )
       }
 
@@ -2160,8 +2500,11 @@ object PyTypeChecker {
           clone(callableType.getReturnType(context)),
           callableType.callable,
           callableType.modifier,
-          callableType.implicitOffset,
         )
+      }
+
+      override fun visitPyOverloadType(overloadType: PyOverloadType): PyType? {
+        return overloadType.map { visitPyCallableType(it) as PyCallableType }
       }
 
       override fun visitPyCallableParameterListType(callableParameterListType: PyCallableParameterListType): PyType {
@@ -2216,6 +2559,7 @@ object PyTypeChecker {
         val firstParamTypeSubs = concatenateType.firstTypes.flatMap {
           flattenUnpackedTuple(clone(it))
         }
+        if (concatenateType.paramSpec == null) return PyAnyType.unknown
         val paramSpecSubs = when (val it = clone<PyType?>(concatenateType.paramSpec)) {
           is PyCallableParameterVariadicType -> it
           else if it.isUnknown -> null
@@ -2242,25 +2586,13 @@ object PyTypeChecker {
   }
 
   @JvmStatic
-  fun unifyGenericCall(
-    receiver: PyExpression?,
-    arguments: Map<PyExpression, PyCallableParameter>,
-    context: TypeEvalContext,
-  ): GenericSubstitutions? {
-    // UnifyReceiver retains the information about type parameters of ancestor generic classes,
-    // which might be necessary if a method being called is defined in one them, not in the actual
-    // class of the receiver. In theory, it could be replaced by matching the type of self parameter
-    // with the receiver uniformly with the rest of the arguments.
-    val substitutions = unifyReceiver(receiver, context)
-    for ((key, paramWrapper) in PyCallExpressionHelper.getRegularMappedParameters(arguments).entries) {
-      val expectedType = paramWrapper.getArgumentType(context)
-      val promotedToLiteral = PyLiteralType.promoteToLiteral(key, expectedType, context, substitutions)
-      val actualType = promotedToLiteral.takeUnless { it.isUnknown } ?: context.getType(key)
-      // Matching with the type of "self" is necessary in particular for choosing the most specific overloads, e.g.
-      // LiteralString-specific methods of str, or for instantiating the type parameters of the containing class
-      // when it's not possible to infer them by other means, e.g. as in the following overload of dict[_KT, _VT].__init__:
-      // def __init__(self: dict[str, _VT], **kwargs: _VT) -> None: ...
-      val matchedByTypes = matchParameterArgumentTypes(paramWrapper, expectedType, actualType, substitutions, context)
+  fun unifyGenericCall(arguments: Map<PyCallableArgument, PyCallableParameter>, context: TypeEvalContext): GenericSubstitutions? {
+    val substitutions = GenericSubstitutions()
+    for ((argument, parameter) in PyCallExpressionHelper.getRegularMappedParameters(arguments).entries) {
+      val expectedType = parameter.getArgumentType(context)
+      val promotedToLiteral = argument.expression?.let { PyLiteralType.promoteToLiteral(it, expectedType, context, substitutions) }
+      val actualType = promotedToLiteral?.takeUnless { it.isUnknown } ?: argument.getType(context)
+      val matchedByTypes = match(expectedType, actualType, context, substitutions)
       if (!matchedByTypes) {
         return null
       }
@@ -2284,110 +2616,25 @@ object PyTypeChecker {
     return substitutions
   }
 
-  @JvmStatic
-  fun unifyGenericCallOnArgumentTypes(
-    receiverType: PyType?,
-    arguments: Map<Ref<PyType?>?, PyCallableParameter>,
-    context: TypeEvalContext,
-  ): GenericSubstitutions? {
-    val substitutions = unifyReceiver(receiverType, context)
-    for ((key, paramWrapper) in PyCallExpressionHelper.getRegularMappedParameters(arguments)) {
-      val expectedType = paramWrapper.getArgumentType(context)
-      val actualType = key.derefOrUnknown()
-      val matchedByTypes = matchParameterArgumentTypes(paramWrapper, expectedType, actualType, substitutions, context)
-      if (!matchedByTypes) {
-        return null
-      }
-    }
-    if (!matchContainerByType(PyCallExpressionHelper.getMappedPositionalContainer(arguments),
-                              PyCallExpressionHelper.getArgumentsMappedToPositionalContainer(arguments).map(Ref<*>::deref),
-                              substitutions, context)) {
-      return null
-    }
-    if (!matchContainerByType(PyCallExpressionHelper.getMappedKeywordContainer(arguments),
-                              PyCallExpressionHelper.getArgumentsMappedToKeywordContainer(arguments).map(Ref<*>::deref),
-                              substitutions, context)) {
-      return null
-    }
-    return substitutions
-  }
-
-  private fun processSelfParameter(
-    paramWrapper: PyCallableParameter,
-    expectedType: PyType?,
-    actualType: PyType?,
-    substitutions: GenericSubstitutions,
-    context: TypeEvalContext,
-  ): PyType? {
-    // TODO find out a better way to pass the corresponding function inside
-    val param = paramWrapper.parameter
-    val function: PyFunction = ScopeUtil.getScopeOwner(param) as PyFunction
-    val actualType = prepareSelfBindingTarget(actualType, function, context)
-
-    val containingClass: PyClass = checkNotNull(function.containingClass)
-    var genericClass: PyType? = findGenericDefinitionType(containingClass, context)
-    if (genericClass is PyInstantiableType<*> &&
-        (PyUtil.isNewMethod(function) || function.modifier == PyAstFunction.Modifier.CLASSMETHOD)
-    ) {
-      genericClass = genericClass.toClass()
-    }
-    if (genericClass != null && !match(genericClass, expectedType, context, substitutions)) {
-      return null
-    }
-    return actualType
-  }
-
-  private fun matchParameterArgumentTypes(
-    paramWrapper: PyCallableParameter,
-    expectedType: PyType?,
-    actualType: PyType?,
-    substitutions: GenericSubstitutions,
-    context: TypeEvalContext,
-  ): Boolean {
-    var expectedType = expectedType
-    var actualType = actualType
-    if (paramWrapper.isSelf) {
-      if (expectedType is PySelfType) {
-        val genericType = findGenericDefinitionType(expectedType.scopeClassType.pyClass, context)
-        expectedType = if (genericType != null) {
-          if (expectedType.isDefinition) genericType.toClass() else genericType
-        }
-        else expectedType.scopeClassType
-      }
-      actualType = processSelfParameter(paramWrapper, expectedType, actualType, substitutions, context)
-      if (actualType.isUnknown) return false
-    }
-    return match(expectedType, actualType, context, substitutions)
-  }
-
   private fun matchContainer(
-    container: PyCallableParameter?, arguments: List<PyExpression>,
+    container: PyCallableParameter?, arguments: List<PyCallableArgument>,
     substitutions: GenericSubstitutions, context: TypeEvalContext,
   ): Boolean {
     if (container == null) {
       return true
     }
-    val actualArgumentTypes = arguments.map { context.getType(it) }
-    return matchContainerByType(container, actualArgumentTypes, substitutions, context)
-  }
-
-  private fun matchContainerByType(
-    container: PyCallableParameter?, actualArgumentTypes: List<PyType?>,
-    substitutions: GenericSubstitutions, context: TypeEvalContext,
-  ): Boolean {
-    if (container == null) {
-      return true
-    }
+    val actualArgumentTypes = arguments.map { it.getType(context) }
     val expectedArgumentType = container.getArgumentType(context)
     if (container.isPositionalContainer && expectedArgumentType is PyPositionalVariadicType) {
       return match(
         expectedArgumentType, PyUnpackedTupleTypeImpl.create(actualArgumentTypes),
-        MatchContext(context, substitutions, false, )
+        MatchContext(context, substitutions, false)
       )
     }
-    return match(expectedArgumentType, PyUnionType.union(actualArgumentTypes), context, substitutions)
+    return match(expectedArgumentType, PyUnionType.unionOrUnknown(actualArgumentTypes), context, substitutions)
   }
 
+  @Deprecated(message = "Use PyTypeChecker.unifyReceiver(PyType, TypeEvalContext)")
   @JvmStatic
   fun unifyReceiver(receiver: PyExpression?, context: TypeEvalContext): GenericSubstitutions {
     if (receiver != null) {
@@ -2399,27 +2646,13 @@ object PyTypeChecker {
 
   @JvmStatic
   fun unifyReceiver(receiverType: PyType?, context: TypeEvalContext): GenericSubstitutions {
-    // Collect generic params of object type
-    val substitutions = GenericSubstitutions()
-    if (receiverType != null) {
-      substitutions.qualifierType = receiverType
-      receiverType.toStream()
-        .select(PyClassType::class.java)
-        .map { collectTypeSubstitutions(it, context) }
-        .forEach { newSubstitutions ->
-          for ((key, value) in newSubstitutions.typeVars) {
-            substitutions.putTypeVar(key, value, KeyImpl, true)
-          }
-          for ((key, value) in newSubstitutions.typeVarTuples) {
-            substitutions.putTypeVarTuple(key, value, KeyImpl, true)
-          }
-          for ((key, value) in newSubstitutions.paramSpecs) {
-            substitutions.putParamSpec(key, value, KeyImpl, true)
-          }
-        }
+    if (receiverType is PyClassType) {
+      val substitutions = collectTypeSubstitutions(receiverType, context)
+      substitutions.selfType = receiverType
+      substitutions.setFrozenTypeVars(HashSet(substitutions.typeVars.keys), KeyImpl)
+      return substitutions
     }
-    substitutions.setFrozenTypeVars(HashSet(substitutions.typeVars.keys), KeyImpl)
-    return substitutions
+    return GenericSubstitutions()
   }
 
   private fun matchClasses(superClass: PyClass?, subClass: PyClass?, context: TypeEvalContext): Boolean {
@@ -2458,50 +2691,76 @@ object PyTypeChecker {
   }
 
   @JvmStatic
-  fun isCallable(type: PyType?): Boolean? {
-    return when (type) {
-      null, is PyAnyType -> null
-      is PyUnionType -> isUnionCallable(type)
-      is PyCallableType -> type.isCallable
-      is PyStructuralType if type.isInferredFromUsages -> true
-      is PyTypeVarType -> {
-        if (type.isDefinition) {
-          true
-        }
-        else isCallable(type.effectiveBound)
+  val PyType?.isCallable: Boolean?
+    get() {
+      PyAnyType.validate(this)
+      return when (this) {
+        null, is PyAnyType -> null
+        is PyUnionType -> isCallable
+        is PyUnsafeUnionType -> isCallable
+        is PyIntersectionType -> isCallable
+        is PyOverloadType -> true
+        is PyCallableType -> isCallable
+        is PyStructuralType if isInferredFromUsages -> true
+        is PyTypeVarType -> if (isDefinition) true else effectiveBound.isCallable
+        else -> false
       }
-      else -> false
     }
-  }
+
+  /**
+   * If any are not callable -- it is not callable.
+   * If any are unknown -- it is unknown.
+   * It is true otherwise.
+   */
+  private val PyUnionType.isCallable: Boolean?
+    get() = if (PyUnionType.isStrictSemanticsEnabled())
+      members.allCallable()
+    else
+      members.anyCallable()
 
   /**
    * If at least one is callable -- it is callable.
    * If at least one is unknown -- it is unknown.
    * It is false otherwise.
    */
-  private fun isUnionCallable(type: PyUnionType): Boolean? {
-    for (member in type.members) {
-      val callable = isCallable(member)
-      if (callable == null) {
-        return null
-      }
-      if (callable) {
-        return true
+  private val PyUnsafeUnionType.isCallable: Boolean?
+    get() = members.anyCallable()
+
+  /**
+   * A value typed as an intersection is callable if at least one member is.
+   * This is the same disjunctive rule as an unsafe union.
+   */
+  private val PyIntersectionType.isCallable: Boolean?
+    get() = members.anyCallable()
+
+  private fun Iterable<PyType?>.anyCallable(): Boolean? {
+    var seenNull = false
+    for (member in this) {
+      when (member.isCallable) {
+        true -> return true
+        null -> seenNull = true
+        false -> {}
       }
     }
-    return false
+    return if (seenNull) null else false
+  }
+
+  private fun Iterable<PyType?>.allCallable(): Boolean? {
+    var seenNull = false
+    for (member in this) {
+      when (member.isCallable) {
+        false -> return false
+        null -> seenNull = true
+        true -> {}
+      }
+    }
+    return if (seenNull) null else true
   }
 
   @JvmStatic
   fun definesGetAttr(file: PyFile, context: TypeEvalContext): Boolean {
-    if (file is PyTypedElement) {
-      val type = context.getType(file as PyTypedElement)
-      if (type != null) {
-        return resolveTypeMember(type, PyNames.GETATTR, context) != null
-      }
-    }
-
-    return false
+    val type = context.getType(file) ?: return false
+    return resolveTypeMember(type, PyNames.GETATTR, context) != null
   }
 
   @JvmStatic
@@ -2557,7 +2816,7 @@ object PyTypeChecker {
         val afterCount = nonStarCount - starElementIndex
         val sliceTypes = (starElementIndex..<(count - afterCount)).map { assignedTupleType.getElementType(it) }
         // Widen literal types: the slice becomes a `list`, whose element type should not be a literal
-        val elementType = PyLiteralType.upcastLiteralToClass(PyUnionType.union(sliceTypes))
+        val elementType = PyLiteralType.upcastLiteralToClass(PyUnionType.unionOrUnknown(sliceTypes))
         val listClass = PyBuiltinCache.getInstance(target).getClass("list") ?: return PyAnyType.unknown
         return PyCollectionTypeImpl(listClass, false, listOf(elementType))
       }
@@ -2670,14 +2929,15 @@ object PyTypeChecker {
   @JvmStatic
   @ApiStatus.Internal
   fun convertToType(type: PyType?, superType: PyClassType, context: TypeEvalContext): PyType? {
-    val matchContext = MatchContext(context, GenericSubstitutions(), false, literalInference=true)
+    val matchContext = MatchContext(context, GenericSubstitutions(), false)
     val matched = match(superType, type, matchContext)
-    if (matched.orElse(false)) {
+    if (matched.getOrDefault(false)) {
       // There is a tricky problem with handling type parameter binds to Any. Namely, during matching list[Any] to Iterable[T@Iterable],
       // we don't keep the bind T@Iterable -> Any (see the implementation of `match(PyTypeVarType, PyType, MatchContext)`).
       // As a workaround, until we migrate to type checking with CSP, we consider that
       // all parameter of the super types should be bound, and if they aren't, we fall back them to Any.
-      val substitutions = substituteUnboundTypeVarsWithDefaultOrAny(superType, listOf(superType), matchContext.mySubstitutions, context)
+      val resolvableTypeParams = superType.collectGenerics(context)
+      val substitutions = substituteUnboundTypeVarsWithDefaultOrAny(superType, resolvableTypeParams, matchContext.mySubstitutions, context)
       return substitute(superType, substitutions, context)
     }
     return null
@@ -2713,7 +2973,7 @@ object PyTypeChecker {
     if (asyncIterable is PyClassType && asyncIterable.isParameterized) {
       return getIteratedItemType(asyncIterable, context)
     }
-    return null
+    return PyAnyType.unknown
   }
 
   private class MyMatchHelper(private val myKey: Any, private val myContext: MatchContext) {
@@ -2724,7 +2984,7 @@ object PyTypeChecker {
         else
           Computable { match(expected, actual, myContext) }
       )
-      return result != null && result.orElse(false)!!
+      return result != null && result.getOrDefault(false)
     }
   }
 
@@ -2764,7 +3024,8 @@ object PyTypeChecker {
     val paramSpecs: Map<PyParamSpecType, PyCallableParameterVariadicType?>
       get() = Collections.unmodifiableMap(myParamSpecs)
 
-    var qualifierType: PyType? = null
+    // Substitution for `typing.Self`
+    var selfType: PyInstantiableType<*>? = null
 
     private var frozenTypeVars: Set<PyTypeVarType> = emptySet()
 
@@ -2782,21 +3043,35 @@ object PyTypeChecker {
       typeVars: Map<PyTypeVarType, Ref<PyType?>?>,
       typeVarTuples: Map<PyTypeVarTupleType, PyPositionalVariadicType?>,
       paramSpecs: Map<PyParamSpecType, PyCallableParameterVariadicType?>,
-      qualifierType: PyType?,
+      selfType: PyInstantiableType<*>?,
     ) : this() {
       for ((key, value) in typeVars) {
         putTypeVar(key, value, KeyImpl)
       }
       this.myTypeVarTuples.putAll(typeVarTuples)
       this.myParamSpecs.putAll(paramSpecs)
-      this.qualifierType = qualifierType
+      this.selfType = selfType
+    }
+
+    fun addToCopy(typeParameters: Map<PyTypeParameterType, Ref<PyType?>?>) : GenericSubstitutions {
+      val typeVars = HashMap<PyTypeVarType, Ref<PyType?>?>()
+      val typeVarTuples = HashMap<PyTypeVarTupleType, PyPositionalVariadicType>()
+      val paramSpecs = HashMap<PyParamSpecType, PyCallableParameterVariadicType>()
+      for ((key, value) in typeParameters) {
+        when (key) {
+          is PyTypeVarType -> typeVars[key] = value
+          is PyTypeVarTupleType -> if (value is PyPositionalVariadicType) typeVarTuples[key] = value
+          is PyParamSpecType -> if (value is PyCallableParameterVariadicType) paramSpecs[key] = value
+        }
+      }
+      return addToCopy(typeVars, typeVarTuples, paramSpecs)
     }
 
     fun addToCopy(
-      typeVars: Map<PyTypeVarType, Ref<PyType?>?>?,
-      typeVarTuples: Map<PyTypeVarTupleType, PyPositionalVariadicType>?,
-      paramSpecs: Map<PyParamSpecType, PyCallableParameterVariadicType>?,
-    ): GenericSubstitutions {
+      typeVars: Map<PyTypeVarType, Ref<PyType?>?>? = null,
+      typeVarTuples: Map<PyTypeVarTupleType, PyPositionalVariadicType>? = null,
+      paramSpecs: Map<PyParamSpecType, PyCallableParameterVariadicType>? = null,
+    ) : GenericSubstitutions {
       val newTypeVars = LinkedHashMap(this.typeVars)
       if (typeVars != null) {
         newTypeVars.putAll(typeVars)
@@ -2809,11 +3084,34 @@ object PyTypeChecker {
       if (paramSpecs != null) {
         newParamSpecs.putAll(paramSpecs)
       }
-      return GenericSubstitutions(newTypeVars, newTypeVarTuples, newParamSpecs, qualifierType)
+      return GenericSubstitutions(newTypeVars, newTypeVarTuples, newParamSpecs, selfType)
+    }
+
+    fun simplify(context: TypeEvalContext) : GenericSubstitutions {
+      val simplifiedTypeVars : Map<PyTypeVarType, Ref<PyType?>?> = myTypeVars.mapValues { Ref(substitute(it.value?.get(), this, context)) }
+      return GenericSubstitutions(simplifiedTypeVars, typeVarTuples, paramSpecs, selfType)
     }
 
     @ApiStatus.Internal
     fun getFrozenTypeVars(@Suppress("unused") key: Key): Set<PyTypeVarType> = frozenTypeVars
+
+    /** An exact copy, with the frozen type variables. */
+    @ApiStatus.Internal
+    fun copy(key: Key): GenericSubstitutions = GenericSubstitutions().also { it.replaceWith(this, key) }
+
+    /** Replaces all substitutions and the frozen type variables with the ones of [other]. */
+    @ApiStatus.Internal
+    fun replaceWith(other: GenericSubstitutions, @Suppress("unused") key: Key) {
+      if (other === this) return
+      myTypeVars.clear()
+      myTypeVars.putAll(other.myTypeVars)
+      myTypeVarTuples.clear()
+      myTypeVarTuples.putAll(other.myTypeVarTuples)
+      myParamSpecs.clear()
+      myParamSpecs.putAll(other.myParamSpecs)
+      selfType = other.selfType
+      frozenTypeVars = other.frozenTypeVars
+    }
 
     @ApiStatus.Internal
     fun setFrozenTypeVars(value: Set<PyTypeVarType>, @Suppress("unused") key: Key) {
@@ -2850,7 +3148,7 @@ object PyTypeChecker {
     }
 
     override fun toString(): String =
-      "GenericSubstitutions(typeVars=$typeVars, typeVarTuples$typeVarTuples, paramSpecs=$paramSpecs)"
+      "GenericSubstitutions(typeVars=$typeVars, typeVarTuples$typeVarTuples, paramSpecs=$paramSpecs, selfType=$selfType)"
   }
 
   sealed class Key
@@ -2860,15 +3158,6 @@ object PyTypeChecker {
     val context: TypeEvalContext,
     val mySubstitutions: GenericSubstitutions,
     val reversedSubstitutions: Boolean,
-    /**
-     * When `true`, a type variable inferred from an actual value keeps that value's literal type (e.g. `Literal[1]`);
-     * when `false` (the default), the literal is widened to its class (e.g. `int`) at the bind site.
-     *
-     * It is enabled only by [convertToType] (upcasting/conversion: iteration, `Sequence`/`Mapping` patterns,
-     * with-items), where preserving literals is desirable. Regular generic-call inference uses the default `false`
-     * and relies on widening here.
-     */
-    val literalInference: Boolean = false,
   ) {
     /**
      * `null` during normal (cheap) matching, so it adds no overhead. Non-null only while
@@ -2889,12 +3178,12 @@ object PyTypeChecker {
     var anchor: PsiElement? = null
 
     fun reverseSubstitutions(): MatchContext {
-      return MatchContext(context, mySubstitutions, !reversedSubstitutions, literalInference)
+      return MatchContext(context, mySubstitutions, !reversedSubstitutions)
         .also { it.diagnostics = diagnostics; it.anchor = anchor }
     }
 
     fun resetSubstitutions(): MatchContext {
-      return MatchContext(context, mySubstitutions, false, literalInference)
+      return MatchContext(context, mySubstitutions, false)
         .also { it.diagnostics = diagnostics; it.anchor = anchor }
     }
   }

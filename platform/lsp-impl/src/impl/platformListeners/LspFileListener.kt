@@ -2,7 +2,6 @@ package com.intellij.platform.lsp.impl.platformListeners
 
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.vfs.AsyncFileListener
-import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.newvfs.events.VFileContentChangeEvent
@@ -31,8 +30,6 @@ internal class LspFileListener : AsyncFileListener {
     val deleteCreateCopyChangeEvents: MutableList<VFileEvent> = ArrayList()
 
     for (event in events) {
-      if (event.fileSystem !is LocalFileSystem) continue
-
       if (event is VFileMoveEvent) {
         renamedFilesAndDirs.add(event.file)
       }
@@ -70,7 +67,7 @@ internal class LspFileListener : AsyncFileListener {
             if (event is VFileDeleteEvent) {
               val file: VirtualFile = event.file
               val uri = client.descriptor.getFileUri(file)
-              clientToFileChangeInfos.putValue(client, FileChangeInfo(file.path, uri, file.isDirectory, FileChangeType.Deleted))
+              clientToFileChangeInfos.putValue(client, FileChangeInfo(client.descriptor.getFilePath(file), uri, file.isDirectory, FileChangeType.Deleted))
             }
           }
         }
@@ -78,7 +75,7 @@ internal class LspFileListener : AsyncFileListener {
         for (fileOrDir in renamedFilesAndDirs) {
           if (handleFileEvents) {
             val uri = client.descriptor.getFileUri(fileOrDir)
-            clientToFileChangeInfos.putValue(client, FileChangeInfo(fileOrDir.path, uri, fileOrDir.isDirectory, FileChangeType.Deleted))
+            clientToFileChangeInfos.putValue(client, FileChangeInfo(client.descriptor.getFilePath(fileOrDir), uri, fileOrDir.isDirectory, FileChangeType.Deleted))
           }
 
           val filesToClose = mutableListOf<VirtualFile>()
@@ -101,27 +98,27 @@ internal class LspFileListener : AsyncFileListener {
 
         for (fileOrDir in renamedFilesAndDirs) {
           val uri = client.descriptor.getFileUri(fileOrDir)
-          clientToFileChangeInfos.putValue(client, FileChangeInfo(fileOrDir.path, uri, fileOrDir.isDirectory, FileChangeType.Created))
+          clientToFileChangeInfos.putValue(client, FileChangeInfo(client.descriptor.getFilePath(fileOrDir), uri, fileOrDir.isDirectory, FileChangeType.Created))
         }
 
         for (event in deleteCreateCopyChangeEvents) {
           if (event is VFileContentChangeEvent) {
             val file: VirtualFile = event.file
             val uri = client.descriptor.getFileUri(file)
-            clientToFileChangeInfos.putValue(client, FileChangeInfo(file.path, uri, file.isDirectory, FileChangeType.Changed))
+            clientToFileChangeInfos.putValue(client, FileChangeInfo(client.descriptor.getFilePath(file), uri, file.isDirectory, FileChangeType.Changed))
           }
           if (event is VFileCreateEvent) {
             val file = event.getFile()
             if (file != null) {
               val uri = client.descriptor.getFileUri(file)
-              clientToFileChangeInfos.putValue(client, FileChangeInfo(file.path, uri, file.isDirectory, FileChangeType.Created))
+              clientToFileChangeInfos.putValue(client, FileChangeInfo(client.descriptor.getFilePath(file), uri, file.isDirectory, FileChangeType.Created))
             }
           }
           if (event is VFileCopyEvent) {
             val file = event.findCreatedFile()
             if (file != null) {
               val uri = client.descriptor.getFileUri(file)
-              clientToFileChangeInfos.putValue(client, FileChangeInfo(file.path, uri, file.isDirectory, FileChangeType.Created))
+              clientToFileChangeInfos.putValue(client, FileChangeInfo(client.descriptor.getFilePath(file), uri, file.isDirectory, FileChangeType.Created))
             }
           }
         }

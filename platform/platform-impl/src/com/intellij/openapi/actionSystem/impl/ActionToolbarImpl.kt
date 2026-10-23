@@ -71,6 +71,8 @@ import com.intellij.ui.UIBundle
 import com.intellij.ui.awt.DevicePoint
 import com.intellij.ui.awt.RelativeRectangle
 import com.intellij.ui.paint.LinePainter2D
+import com.intellij.ui.paint.use
+import com.intellij.ui.paint.useCopy
 import com.intellij.ui.scale.JBUIScale.addUserScaleChangeListener
 import com.intellij.ui.scale.JBUIScale.scale
 import com.intellij.ui.switcher.QuickActionProvider
@@ -211,7 +213,7 @@ open class ActionToolbarImpl @JvmOverloads constructor(
 
   override val alphaContext: AlphaAnimationContext = AlphaAnimationContext(this)
 
-  private val myListeners = EventDispatcher.create<ActionToolbarListener>(ActionToolbarListener::class.java)
+  private val myListeners = EventDispatcher.create(ActionToolbarListener::class.java)
 
   private var mySeparatorCreator: Function<in String?, out Component> = Function { MySeparator(it) }
 
@@ -554,13 +556,16 @@ open class ActionToolbarImpl @JvmOverloads constructor(
       }
       presentation.putClientProperty(CustomComponentAction.COMPONENT_KEY, customComponent)
       ClientProperty.put(customComponent, CustomComponentAction.ACTION_KEY, anAction)
-      // A custom component is named the same way an ActionButton is, so one action-side declaration serves
-      // both kinds of control and a surface that swaps between them stays addressable. The action's own
-      // createCustomComponent still wins: it names the component it built, and this only fills in the gap.
-      ActionUtil.getComponentName(anAction, presentation)?.let { componentName ->
-        if (customComponent.name == null) customComponent.name = componentName
-      }
       action.updateCustomComponent(customComponent, presentation)
+    }
+
+    // A custom component is named the same way an ActionButton is, so one action-side declaration serves both
+    // kinds of control and a surface that swaps between them stays addressable. Only ever a fill-in: whatever
+    // the action named the component, in createCustomComponent or in updateCustomComponent, keeps its name.
+    // Outside the create branch as well, so a component cached under COMPONENT_KEY by some earlier owner is
+    // not the one case that comes back unnamed.
+    if (customComponent.name == null) {
+      ActionUtil.getComponentName(anAction, presentation)?.let { componentName -> customComponent.name = componentName }
     }
 
     val clickable = UIUtil.findComponentOfType(customComponent, AbstractButton::class.java)
@@ -883,7 +888,7 @@ open class ActionToolbarImpl @JvmOverloads constructor(
     val size = comp.size
     if (size.width < 1 || size.height < 1) return null
     val image = UIUtil.createImage(comp, size.width, size.height, BufferedImage.TYPE_INT_ARGB)
-    UIUtil.useSafely(image.graphics) { comp.paint(it) }
+    image.createGraphics().use { comp.paint(it) }
     return image
   }
 
@@ -924,11 +929,10 @@ open class ActionToolbarImpl @JvmOverloads constructor(
       }
 
       val service = InternalUICustomization.getInstance()
-      val graphics = g.create()
-      val g2 = (service?.preserveGraphics(graphics) ?: graphics) as Graphics2D
-      g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF)
+      g.useCopy { graphics ->
+        val g2 = (service?.preserveGraphics(graphics) ?: graphics) as Graphics2D
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF)
 
-      try {
         g2.color = getSeparatorColor()
         if (myOrientation == SwingConstants.HORIZONTAL) {
           val y2 = this@ActionToolbarImpl.getHeight() - gap * 2 - offset
@@ -946,9 +950,6 @@ open class ActionToolbarImpl @JvmOverloads constructor(
           LinePainter2D.paint(g2, gap.toDouble(), center.toDouble(), (this@ActionToolbarImpl.getWidth() - gap * 2 - offset).toDouble(),
                               center.toDouble())
         }
-      }
-      finally {
-        g2.dispose()
       }
     }
   }
@@ -1009,7 +1010,7 @@ open class ActionToolbarImpl @JvmOverloads constructor(
     updateActionsImmediately(false)
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   override fun updateActionsAsync(): Future<*> {
     updateActionsImmediately(false)
     val update = myLastUpdate
@@ -1017,7 +1018,7 @@ open class ActionToolbarImpl @JvmOverloads constructor(
   }
 
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   protected fun updateActionsImmediately(includeInvisible: Boolean) {
     val isTestMode = ApplicationManager.getApplication().isUnitTestMode()
     if (parent == null && !isTestMode && !includeInvisible) {
@@ -1030,7 +1031,7 @@ open class ActionToolbarImpl @JvmOverloads constructor(
     updateActionsWithoutLoadingIcon(includeInvisible)
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   protected fun updateActionsWithoutLoadingIcon(includeInvisible: Boolean) {
     // null when called through updateUI from a superclass constructor
     myUpdater.updateActions(now = true, forced = false, includeInvisible = includeInvisible)
@@ -1243,7 +1244,7 @@ open class ActionToolbarImpl @JvmOverloads constructor(
       pairs.add(Replacement(buttonIndex - 1, next))
     }
 
-    if (pairs.size == effectiveNewActions.size) {
+    if (pairs.isNotEmpty() && pairs.size == effectiveNewActions.size) {
       return false // no gain from in-place updates
     }
 

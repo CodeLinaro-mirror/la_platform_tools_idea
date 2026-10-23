@@ -1,6 +1,6 @@
 // "Add non-null asserted (list!!) call" "true"
 // WITH_STDLIB
-// K2_ERROR: Non-nullable value required to call an 'iterator()' method in a for-loop.
+// K2_ERROR: ITERATOR_ON_NULLABLE
 
 class C {
     val list: List<String>? = null
@@ -12,4 +12,3 @@ fun C.test() {
 }
 
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AddExclExclCallFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AddExclExclCallFix

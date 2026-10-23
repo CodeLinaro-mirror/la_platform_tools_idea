@@ -10,6 +10,7 @@ import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.ide.plugins.advertiser.PluginData
 import com.intellij.ide.plugins.marketplace.MarketplaceRequests
 import com.intellij.ide.plugins.pluginRequiresUltimatePluginButItsDisabled
+import com.intellij.ide.TrustedFiles
 import com.intellij.ide.trustedProjects.TrustedProjects
 import com.intellij.openapi.application.ApplicationInfo
 import com.intellij.openapi.application.ApplicationManager
@@ -32,6 +33,7 @@ import com.intellij.openapi.updateSettings.impl.pluginsAdvertisement.PluginAdver
 import com.intellij.openapi.updateSettings.impl.pluginsAdvertisement.PluginAdvertiserService.Companion.getSuggestedCommercialIdeCode
 import com.intellij.openapi.updateSettings.impl.pluginsAdvertisement.PluginAdvertiserService.Companion.isCommunityIde
 import com.intellij.openapi.util.NlsContexts
+import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.EditorNotificationPanel
 import com.intellij.ui.EditorNotificationProvider
@@ -59,8 +61,13 @@ class PluginAdvertiserEditorNotificationProvider : EditorNotificationProvider, D
 
   override fun collectNotificationData(project: Project, file: VirtualFile): Function<in FileEditor, out JComponent?>? {
     if (!TrustedProjects.isProjectTrusted(project)) return null
+    if (!TrustedFiles.isTrusted(file, project)) return null
 
     if (application.isHeadlessEnvironment || tryUltimateIsDisabled()) {
+      return null
+    }
+
+    if (isAdvertisementSuppressed(project, file)) {
       return null
     }
 
@@ -114,7 +121,7 @@ class PluginAdvertiserEditorNotificationProvider : EditorNotificationProvider, D
     val thirdParty: MutableSet<PluginData> = mutableSetOf()
     private val jbProduced: MutableSet<PluginData> = mutableSetOf()
 
-    private val hasSuggestedIde: Boolean
+    val hasSuggestedIde: Boolean
 
     private var pluginsToInstall: Set<PluginData>? = null
 
@@ -131,7 +138,8 @@ class PluginAdvertiserEditorNotificationProvider : EditorNotificationProvider, D
         }
       }
 
-      hasSuggestedIde = suggestedIdes.isNotEmpty()
+      hasSuggestedIde = Registry.`is`("ide.plugin.advertiser.suggest.ide.for.textmate.files")
+                        && suggestedIdes.isNotEmpty()
                         && jbProduced.isEmpty()
                         && isMappedToTextMate(extensionOrFileName)
     }
@@ -295,6 +303,14 @@ class PluginAdvertiserEditorNotificationProvider : EditorNotificationProvider, D
 }
 
 private val SUGGESTION_EP_NAME: ExtensionPointName<PluginSuggestionProvider> = ExtensionPointName("com.intellij.pluginSuggestionProvider")
+
+private val SUPPRESSOR_EP_NAME: ExtensionPointName<PluginAdvertiserSuppressor> = ExtensionPointName("com.intellij.pluginAdvertiserSuppressor")
+
+@VisibleForTesting
+@ApiStatus.Internal
+fun isAdvertisementSuppressed(project: Project, file: VirtualFile): Boolean {
+  return SUPPRESSOR_EP_NAME.extensionList.any { it.isSuppressedFor(project, file) }
+}
 
 private val loggedPluginSuggestions: MutableCollection<PluginId> = Collections.synchronizedSet(HashSet())
 private val loggedIdeSuggestions: MutableCollection<String> = Collections.synchronizedSet(HashSet())

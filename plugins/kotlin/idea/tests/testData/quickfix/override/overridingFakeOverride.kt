@@ -1,6 +1,6 @@
 // "Make XX.foo open" "true"
-// K2_ERROR: 'foo' in 'Y' is final and cannot be overridden.
-// K2_ERROR: Modifier 'final' is not applicable inside 'interface'.
+// K2_ERROR: OVERRIDING_FINAL_MEMBER
+// K2_ERROR: WRONG_MODIFIER_CONTAINING_DECLARATION
 interface X {
     fun foo()
 }
@@ -19,5 +19,4 @@ class B() : Y {
     }
 }
 
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.MakeOverriddenMemberOpenFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.MakeOverriddenMemberOpenFixFactory$MakeOverriddenMemberOpenFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.MakeOverriddenMemberOpenFixFactory$MakeOverriddenMemberOpenFix

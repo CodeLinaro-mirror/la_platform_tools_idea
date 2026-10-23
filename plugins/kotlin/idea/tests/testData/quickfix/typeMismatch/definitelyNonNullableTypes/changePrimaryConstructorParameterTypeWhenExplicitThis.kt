@@ -1,6 +1,6 @@
 // "Change parameter 'x' type of primary constructor of class 'Foo' to 'T & Any'" "true"
 // LANGUAGE_VERSION: 1.8
-// K2_ERROR: Argument type mismatch: actual type is 'T (of fun <T> Foo<T>.bar)', but 'T (of fun <T> Foo<T>.bar) & Any' was expected.
+// K2_ERROR: ARGUMENT_TYPE_MISMATCH
 class Foo<T>(val x: T) {
     fun foo(y: T & Any) {}
 }
@@ -10,4 +10,4 @@ fun <T> Foo<T>.bar(x: T) {
 }
 
 
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.refactoring.changeSignature.quickFix.ChangeParameterTypeFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.refactoring.changeSignature.quickFix.ChangeParameterTypeFix

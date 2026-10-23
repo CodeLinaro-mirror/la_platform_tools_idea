@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.vcs.changes.actions.diff.lst
 
 import com.intellij.codeWithMe.ClientId
@@ -32,6 +32,7 @@ import com.intellij.openapi.editor.ex.EditorEx
 import com.intellij.openapi.editor.ex.MarkupModelEx
 import com.intellij.openapi.editor.impl.DocumentMarkupModel
 import com.intellij.openapi.editor.markup.ActiveGutterRenderer
+import com.intellij.openapi.editor.markup.GutterIconRenderer
 import com.intellij.openapi.editor.markup.HighlighterLayer
 import com.intellij.openapi.editor.markup.HighlighterTargetArea
 import com.intellij.openapi.editor.markup.LineMarkerRenderer
@@ -435,7 +436,7 @@ object LocalTrackerDiffUtil {
   private fun hasIconHighlighters(editor: EditorEx, line: Int, markupModelEx: MarkupModelEx): Boolean {
     val processor = object : FindProcessor<RangeHighlighter>() {
       override fun accept(it: RangeHighlighter): Boolean {
-        return it.getGutterIconRenderer() != null &&
+        return it.getGutterIconRenderer() is CheckboxDiffGutterRenderer &&
                it.editorFilter.avaliableIn(editor)
       }
     }
@@ -608,7 +609,7 @@ object LocalTrackerDiffUtil {
     protected val LocalTrackerChange.isFromActiveChangelist get() = changelistId == activeChangelistId
     protected val activeChangelistId get() = provider.localRequest.changelistId
 
-    @RequiresWriteLock
+    @RequiresWriteLock(generateAssertion = false /* IJPL-115548 */)
     protected abstract fun doPerform(
       e: AnActionEvent,
       tracker: PartialLocalLineStatusTracker,
@@ -837,7 +838,7 @@ object LocalTrackerDiffUtil {
       val y = if (gap > JBUI.scale(8)) gap - JBUI.scale(2) else gap / 2
       val xOffset = DiffUtil.getContentTitleBorderInsets().left // offset to the left to account for the title panel gap
       val x = gutter.iconAreaOffset + 2 - xOffset // "+2" from EditorGutterComponentImpl.processIconsRow
-      checkbox.setBounds(min(width - AllIcons.Diff.GutterCheckBox.iconWidth, x), max(0, y), size.width, size.height)
+      checkbox.setBounds(min(width - AllIcons.Diff.GutterCheckBox.iconWidth, x).coerceAtLeast(0), max(0, y), size.width, size.height)
     }
 
     override fun getPreferredSize(): Dimension {

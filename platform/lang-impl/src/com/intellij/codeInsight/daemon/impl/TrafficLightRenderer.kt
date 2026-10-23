@@ -3,7 +3,6 @@
 
 package com.intellij.codeInsight.daemon.impl
 
-import com.intellij.analysis.problemsView.toolWindow.ProblemsView
 import com.intellij.codeInsight.daemon.DaemonBundle
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer
 import com.intellij.codeInsight.daemon.ProblemHighlightFilter
@@ -19,6 +18,7 @@ import com.intellij.codeInspection.InspectionsBundle
 import com.intellij.diff.util.DiffUserDataKeys
 import com.intellij.icons.AllIcons
 import com.intellij.ide.PowerSaveMode
+import com.intellij.ide.welcomeScreen.WelcomeUtils
 import com.intellij.lang.Language
 import com.intellij.lang.annotation.HighlightSeverity
 import com.intellij.lang.injection.InjectedLanguageManager
@@ -59,6 +59,7 @@ import com.intellij.openapi.editor.markup.UIController
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.options.ConfigurationException
 import com.intellij.openapi.project.DumbService.Companion.isDumb
+import com.intellij.openapi.project.DumbUtil
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.util.registry.Registry
@@ -105,12 +106,12 @@ open class TrafficLightRenderer private constructor(
   @Volatile
   private var highlightingSettingsModificationCount: Long
 
+  @Deprecated("Use constructor with Editor")
   constructor(project: Project, document: Document)
-    : this(project, document, null, computeTrafficLightRendererInfo(document, project))
+    : this(project, document, null, computeTrafficLightRendererInfo(null, document, project))
 
-  @ApiStatus.Internal
   constructor(project: Project, editor: Editor)
-    : this(project, editor.getDocument(), editor, computeTrafficLightRendererInfo(editor.document, project))
+    : this(project, editor.getDocument(), editor, computeTrafficLightRendererInfo(editor, editor.document, project))
 
   init {
     // to be able to find PsiFile without "slow op in EDT" exceptions
@@ -157,13 +158,13 @@ open class TrafficLightRenderer private constructor(
     @JvmField val shouldHighlight: Boolean,
   )
 
-  @RequiresReadLock
-  private fun  getPsiFile(): PsiFile? {
+  @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
+  private fun getPsiFile(): PsiFile? {
     val context = getContext()
     return PsiDocumentManager.getInstance(project).getPsiFile(document, context)
   }
 
-  @RequiresReadLock
+  @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
   private fun getContext(): CodeInsightContext {
     return if (editor != null) {
       EditorContextManager.getEditorContext(editor, project)
@@ -180,13 +181,13 @@ open class TrafficLightRenderer private constructor(
      * `errorCount[index]` equals to a number of highlighters of severity with index `idx` in this markup model.
      * Severity index can be obtained via [SeverityRegistrar.getSeverityIdx].
      */
-    @RequiresReadLock
+    @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
     get() {
+      // the position in the list is the severity index, so do not read the registrar again
       val severities = severityRegistrar.allSeverities
       val cachedErrors = IntArray(severities.size)
       val context = getContext()
-      for (severity in severities) {
-        val severityIndex = severityRegistrar.getSeverityIdx(severity)
+      for ((severityIndex, severity) in severities.withIndex()) {
         cachedErrors[severityIndex] = errorCount.getErrorCount(severity, context)
       }
       return cachedErrors
@@ -195,10 +196,10 @@ open class TrafficLightRenderer private constructor(
   val errorCountsForFus: IntArray
     @ApiStatus.Internal
     get() {
+      // the position in the list is the severity index, so do not read the registrar again
       val severities = severityRegistrar.allSeverities
       val cachedErrors = IntArray(severities.size)
-      for (severity in severities) {
-        val severityIndex = severityRegistrar.getSeverityIdx(severity)
+      for ((severityIndex, severity) in severities.withIndex()) {
         cachedErrors[severityIndex] = errorCount.getErrorCountsForAllContexts(severity)
       }
       return cachedErrors
@@ -278,8 +279,8 @@ open class TrafficLightRenderer private constructor(
       return getDaemonCodeAnalyzerStatus(this.severityRegistrar)
     }
 
-  @RequiresBackgroundThread
-  @RequiresReadLock
+  @RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
+  @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
   protected open fun getDaemonCodeAnalyzerStatus(severityRegistrar: SeverityRegistrar): DaemonCodeAnalyzerStatus {
     // this method is rather expensive and PSI-related, need to execute in BGT and cache the result to show in EDT later
     ThreadingAssertions.assertBackgroundThread()
@@ -340,7 +341,9 @@ open class TrafficLightRenderer private constructor(
     status.passes = daemonCodeAnalyzer.getPassesToShowProgressFor(document)
       .filter { !it.presentableName.isNullOrEmpty() && it.getProgress() >= 0 }
 
-    status.errorAnalyzingFinished = daemonCodeAnalyzer.isAllAnalysisFinished(psiFile)
+    // there is no daemon on non modal welcome screen, but we need to display highlighters for file-based program files RIDER-138333
+    // so we need to flip this to true
+    status.errorAnalyzingFinished = if (!WelcomeUtils.isWelcomeProject(project)) daemonCodeAnalyzer.isAllAnalysisFinished(psiFile) else true
     if (!daemonCodeAnalyzer.isUpdateByTimerEnabled) {
       status.reasonWhySuspended = DaemonBundle.message("process.title.highlighting.is.paused.temporarily")
     }
@@ -392,7 +395,10 @@ open class TrafficLightRenderer private constructor(
     if (status.errorAnalyzingFinished) {
       if (isDumb) {
         title = DaemonBundle.message("shallow.analysis.completed")
-        details = DaemonBundle.message("shallow.analysis.completed.details")
+        details = DumbUtil.dumbModeMessage(
+          DaemonBundle.message("shallow.analysis.completed.details"),
+          DaemonBundle.message("shallow.analysis.completed.in.light.mode.details")
+        )
         state = InspectionsState.SHALLOW_ANALYSIS_COMPLETE
       }
       else if (fileHighlightingSettings.containsValue(FileHighlightingSetting.ESSENTIAL)) {
@@ -599,7 +605,7 @@ open class TrafficLightRenderer private constructor(
       val file = getPsiFile()
       val virtualFile = file?.getVirtualFile()
       val document = file?.getViewProvider()?.getDocument()
-      ProblemsView.toggleCurrentFileProblems(project, virtualFile, document)
+      ProblemsViewBridge.toggleCurrentFileProblemsIfAvailable(project, virtualFile, document)
     }
   }
 
@@ -667,16 +673,18 @@ open class TrafficLightRenderer private constructor(
       shouldHighlight = false,
     )
 
-    private fun computeTrafficLightRendererInfo(document: Document, project: Project): TrafficLightRendererInfo {
+    private fun computeTrafficLightRendererInfo(editor: Editor?, document: Document, project: Project): TrafficLightRendererInfo {
       val psiDocumentManager = PsiDocumentManager.getInstance(project)
       val fileIndex = ProjectFileIndex.getInstance(project)
       return runReadActionBlocking {
-        val file = psiDocumentManager.getPsiFile(document) ?: return@runReadActionBlocking EMPTY_TRAFFIC_LIGHT_INFO
+        val file = editor?.let { EditorContextManager.getPsiFileForEditor(it, project) }
+                   ?: psiDocumentManager.getPsiFile(document)
+                   ?: return@runReadActionBlocking EMPTY_TRAFFIC_LIGHT_INFO
         doComputeTrafficLightRendererInfo(file, project, fileIndex)
       }
     }
 
-    @RequiresReadLock
+    @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
     private fun doComputeTrafficLightRendererInfo(
       psiFile: PsiFile,
       project: Project,

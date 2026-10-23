@@ -203,7 +203,40 @@ public class GitPushOperation {
         repository.update();
       }
     }
+    recordRecentPushTargets(results);
     return prepareCombinedResult(results, updatedRoots, preUpdatePositions, beforePushLabel, afterPushLabel);
+  }
+
+  /**
+   * Remember the push target of each successful result, so that the push dialog can suggest it later.
+   * Skip the target that the dialog computes as the default.
+   */
+  private void recordRecentPushTargets(@NotNull Map<GitRepository, GitPushRepoResult> results) {
+    for (Map.Entry<GitRepository, GitPushRepoResult> entry : results.entrySet()) {
+      GitRepository repository = entry.getKey();
+      if (!isSuccessfulPush(entry.getValue())) continue;
+
+      PushSpec<GitPushSource, GitPushTarget> spec = myPushSpecs.get(repository);
+      if (spec == null) continue;
+
+      GitLocalBranch sourceBranch = spec.getSource().getBranch();
+      GitPushTarget target = spec.getTarget();
+      if (sourceBranch == null || target.isSpecialRef()) continue;
+
+      GitPushTarget defaultTarget = myPushSupport.getDefaultTarget(repository, spec.getSource());
+      if (defaultTarget != null && defaultTarget.getBranch().equals(target.getBranch())) continue;
+
+      GitRemoteBranch targetBranch = target.getBranch();
+      mySettings.addRecentPushTarget(repository.getRoot().getPath(), sourceBranch.getName(),
+                                     targetBranch.getRemote().getName(), targetBranch.getNameForRemoteOperations());
+    }
+  }
+
+  private static boolean isSuccessfulPush(@NotNull GitPushRepoResult result) {
+    return switch (result.getType()) {
+      case SUCCESS, NEW_BRANCH, FORCED, UP_TO_DATE -> true;
+      default -> false;
+    };
   }
 
   private @NotNull Collection<VirtualFile> findRootsWithMergeCommits(@NotNull Collection<? extends GitRepository> rootsToSearch) {
@@ -375,12 +408,12 @@ public class GitPushOperation {
 
   private static boolean isBranch(@NotNull GitPushNativeResult result) {
     String sourceRef = result.getSourceRef();
-    return sourceRef.startsWith(GitBranch.REFS_HEADS_PREFIX) || GitUtil.isHashString(sourceRef, false);
+    return sourceRef.startsWith(GitBranch.REFS_HEADS_PREFIX) || GitUtil.isPossibleHash(sourceRef);
   }
 
   private static boolean isHash(@NotNull GitPushNativeResult result) {
     String sourceRef = result.getSourceRef();
-    return GitUtil.isHashString(sourceRef, false);
+    return GitUtil.isPossibleHash(sourceRef);
   }
 
   private static boolean isHeadRelativeReference(@NotNull GitPushNativeResult result) {

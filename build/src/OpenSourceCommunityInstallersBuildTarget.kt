@@ -1,6 +1,6 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
+
+import org.jetbrains.intellij.build.BuildLifetime
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.intellij.build.BuildOptions
 import org.jetbrains.intellij.build.OsFamily
@@ -38,14 +38,16 @@ object OpenSourceCommunityInstallersBuildTarget {
 
   @JvmStatic
   fun main(args: Array<String>) {
-    runBlocking(Dispatchers.Default) {
+    BuildLifetime().use { lifetime ->
+
       val options = OPTIONS.copy(buildStepsToSkip = OPTIONS.buildStepsToSkip + BUILD_STEPS_DISABLED_FOR_GITHUB_ACTIONS)
-      val context = createCommunityBuildContext(options)
+      val context = createCommunityBuildContext(options, lifetime = lifetime)
       context.compileModules(moduleNames = null, includingTestsInModules = listOf("intellij.platform.jps.build.tests"))
       buildDistributions(context)
       spanBuilder("build standalone JPS").use {
         buildCommunityStandaloneJpsBuilder(targetDir = context.paths.artifactDir.resolve("jps"), context)
       }
+
     }
   }
 }

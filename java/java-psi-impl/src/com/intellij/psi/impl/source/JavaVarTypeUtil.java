@@ -1,6 +1,7 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.psi.impl.source;
 
+import com.intellij.codeInsight.Nullability;
 import com.intellij.openapi.util.RecursionManager;
 import com.intellij.psi.CommonClassNames;
 import com.intellij.psi.JavaPsiFacade;
@@ -121,33 +122,58 @@ public final class JavaVarTypeUtil {
               }
 
               if (((PsiWildcardType)ai).isSuper()) {
-                targetSubstitutor = targetSubstitutor.put(parameter, createDownwardProjection(manager, ((PsiWildcardType)ai).getSuperBound()));
+                targetSubstitutor =
+                  targetSubstitutor.put(parameter, createDownwardProjection(manager, ((PsiWildcardType)ai).getSuperBound(), PsiWildcardType.createUnbounded(manager)));
               }
 
             }
             else {
+              // the projection replaces a capture of a wildcard that was written in the source, and an unbounded wildcard
+              // put in its place has to keep that place: the nullness of its implicit bound depends on the scope it was
+              // written in, see PsiWildcardType#unbounded
+              PsiWildcardType unbounded = ai instanceof PsiCapturedWildcardType
+                                          ? ((PsiCapturedWildcardType)ai).getWildcard().unbounded()
+                                          : PsiWildcardType.createUnbounded(manager);
               PsiType U = RecursionManager.doPreventingRecursion(ai, true, () -> ai.accept(this));
               if (U == null) {
-                targetSubstitutor = targetSubstitutor.put(parameter, PsiWildcardType.createUnbounded(manager));
+                targetSubstitutor = targetSubstitutor.put(parameter, unbounded);
               }
-              else if (!U.equalsToText(CommonClassNames.JAVA_LANG_OBJECT) && tryUpperBound(aClass, parameter, U)) {
+              else if (!U.equalsToText(CommonClassNames.JAVA_LANG_OBJECT) && tryUpperBound(aClass, parameter, U) ||
+                       isWrittenNotNullObjectBound(ai, U)) {
                 targetSubstitutor = targetSubstitutor.put(parameter, PsiWildcardType.createExtends(manager, U));
               }
               else {
-                targetSubstitutor = targetSubstitutor.put(parameter, createDownwardProjection(manager, ai));
+                targetSubstitutor = targetSubstitutor.put(parameter, createDownwardProjection(manager, ai, unbounded));
               }
             }
           }
         }
-        return JavaPsiFacade.getElementFactory(aClass.getProject()).createType(aClass, targetSubstitutor);
+        return JavaPsiFacade.getElementFactory(aClass.getProject()).createType(aClass, targetSubstitutor)
+          .withNullability(classType.getNullability());
       }
       return classType;
     }
 
-    private static PsiWildcardType createDownwardProjection(PsiManager manager, PsiType bound) {
+    private static @NotNull PsiWildcardType createDownwardProjection(PsiManager manager,
+                                                                     PsiType bound,
+                                                                     @NotNull PsiWildcardType unbounded) {
       PsiType downwardProjection = getDownwardProjection(bound);
-      return downwardProjection != PsiTypes.nullType() ? PsiWildcardType.createSuper(manager, downwardProjection)
-                                                       : PsiWildcardType.createUnbounded(manager);
+      return downwardProjection != PsiTypes.nullType() ? PsiWildcardType.createSuper(manager, downwardProjection) : unbounded;
+    }
+
+    /**
+     * An unbounded wildcard drops the not-null nullability of a written {@code Object} bound.
+     * For example, the projection of a capture of {@code ? extends @NonNull Object} must stay {@code ? extends @NonNull Object}.
+     *
+     * @param ai the type argument that mentions a capture
+     * @param U  the upward projection of {@code ai}
+     * @return true if {@code U} is a not-null {@code Object}, and the capture comes from an extends-wildcard in the source
+     */
+    private static boolean isWrittenNotNullObjectBound(PsiType ai, PsiType U) {
+      return ai instanceof PsiCapturedWildcardType &&
+             ((PsiCapturedWildcardType)ai).getWildcard().isExtends() &&
+             U.equalsToText(CommonClassNames.JAVA_LANG_OBJECT) &&
+             !U.getNullability().isUnknownNullability();
     }
 
     private static boolean tryUpperBound(PsiClass aClass, PsiTypeParameter parameter, PsiType U) {

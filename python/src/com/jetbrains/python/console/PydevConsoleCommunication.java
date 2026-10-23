@@ -15,7 +15,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.StandardFileSystems;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
@@ -252,7 +252,7 @@ public abstract class PydevConsoleCommunication extends AbstractConsoleCommunica
   }
 
   private boolean execIPythonEditor(String path) {
-    final VirtualFile file = StringUtil.isEmpty(path) ? null : LocalFileSystem.getInstance().findFileByPath(path);
+    final VirtualFile file = StringUtil.isEmpty(path) ? null : StandardFileSystems.local().findFileByPath(path);
     if (file != null) {
       ApplicationManager.getApplication().invokeLater(() -> FileEditorManager.getInstance(myProject).openFile(file, true));
 
@@ -974,7 +974,7 @@ public abstract class PydevConsoleCommunication extends AbstractConsoleCommunica
 
     @Override
     public void notifyFinished(boolean needsMoreInput, boolean exceptionOccurred) {
-      if (PyConsoleUtil.isCommandQueueEnabled(myProject)) {
+      if (PyConsoleOptions.getInstance(myProject).isCommandQueueEnabled()) {
         // notify the CommandQueue service that the command has been completed without exceptions
         // and it must be removed from the queue
         // or clear queue if exception occurred

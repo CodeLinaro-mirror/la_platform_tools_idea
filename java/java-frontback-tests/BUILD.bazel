@@ -1,8 +1,15 @@
 load("@community//build:tests-options.bzl", "jps_test")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
-### auto-generated section `build intellij.java.frontback.tests` start
+jps_test(
+    name = "frontback-tests_test",
+    timeout = "short",
+    tags = ["community-aggregator"],
+    runtime_deps = [":frontback-tests_test_lib"],
+)
+### skip generation section `test intellij.java.frontback.tests`
 
+### auto-generated section `build intellij.java.frontback.tests` start
 jvm_library(
     name = "frontback-tests",
     srcs = glob(
@@ -14,8 +21,8 @@ jvm_library(
     exports = [
         # do not sort,
         "@lib//:easymock",
-        "@lib//:mockito",
-        "@lib//:kotlin-test",
+        "//libraries/mockito",
+        "//libraries/kotlin/test:libraries-kotlinTest",
         "//platform/testFramework",
         "//platform/testFramework/junit5",
         "//platform/platform-tests:tests",
@@ -43,8 +50,10 @@ jvm_library(
     exports = [
         # do not sort,
         "@lib//:easymock",
-        "@lib//:mockito",
-        "@lib//:kotlin-test",
+        "//libraries/mockito",
+        "//libraries/mockito:mockito_test_lib",
+        "//libraries/kotlin/test:libraries-kotlinTest",
+        "//libraries/kotlin/test:libraries-kotlinTest_test_lib",
         "//platform/testFramework",
         "//platform/testFramework:testFramework_test_lib",
         "//platform/testFramework/junit5",
@@ -61,10 +70,12 @@ jvm_library(
     deps = [
         # do not sort,
         "@lib//:easymock",
-        "@lib//:mockito",
+        "//libraries/mockito",
+        "//libraries/mockito:mockito_test_lib",
         "//libraries/assertj-core",
         "//libraries/assertj-core:assertj-core_test_lib",
-        "@lib//:kotlin-test",
+        "//libraries/kotlin/test:libraries-kotlinTest",
+        "//libraries/kotlin/test:libraries-kotlinTest_test_lib",
         "//platform/analysis-api:analysis",
         "//platform/analysis-api:analysis_test_lib",
         "//platform/code-style-api:codeStyle",
@@ -111,7 +122,8 @@ jvm_library(
         "//platform/lang-api:lang_test_lib",
         "//java/java-psi-api:psi",
         "//java/java-psi-api:psi_test_lib",
-        "@lib//:jet_check",
+        "//libraries/jetcheck",
+        "//libraries/jetcheck:jetcheck_test_lib",
         "//libraries/kotlinx/collections-immutable:libraries-kotlinx-collections-immutable",
         "//libraries/kotlinx/collections-immutable:libraries-kotlinx-collections-immutable_test_lib",
         "//platform/util/concurrency",
@@ -132,11 +144,3 @@ exports_files(
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.java.frontback.tests` end
-
-### auto-generated section `test intellij.java.frontback.tests` start
-
-jps_test(
-    name = "frontback-tests_test",
-    runtime_deps = [":frontback-tests_test_lib"],
-)
-### auto-generated section `test intellij.java.frontback.tests` end

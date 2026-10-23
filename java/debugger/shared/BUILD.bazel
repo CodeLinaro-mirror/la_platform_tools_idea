@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.java.debugger.impl.shared` start
+content_module_jar(module = ":shared")
+### auto-generated section `dev intellij.java.debugger.impl.shared` end
 
 ### auto-generated section `build intellij.java.debugger.impl.shared` start
-
 jvm_library(
     name = "shared",
     srcs = glob(
@@ -20,6 +24,7 @@ jvm_library(
     visibility = ["//visibility:public"],
     deps = [
         # do not sort,
+        "//platform/kernel/rpc",
         "@lib//:kotlin-stdlib",
         "//platform/util/concurrency",
         "//platform/core-api:core",
@@ -38,6 +43,7 @@ jvm_library(
         "//platform/ide-core",
         "//platform/execution",
         "//platform/execution-impl",
+        "//platform/consoleView",
         "//java/java-frontback-impl:frontback-impl",
         "//platform/util/coroutines",
         "//platform/util:util-ui",
@@ -61,6 +67,7 @@ jvm_library(
     runtime_deps = [
         # do not sort,
         ":shared",
+        "//platform/kernel/rpc:rpc_test_lib",
         "//platform/util/concurrency:concurrency_test_lib",
         "//platform/core-api:core_test_lib",
         "//platform/editor-ui-api:editor-ui_test_lib",
@@ -78,6 +85,7 @@ jvm_library(
         "//platform/ide-core:ide-core_test_lib",
         "//platform/execution:execution_test_lib",
         "//platform/execution-impl:execution-impl_test_lib",
+        "//platform/consoleView:consoleView_test_lib",
         "//java/java-frontback-impl:frontback-impl_test_lib",
         "//platform/util/coroutines:coroutines_test_lib",
         "//platform/util:util-ui_test_lib",
@@ -94,6 +102,8 @@ jvm_library(
 exports_files(
     [
         "intellij.java.debugger.impl.shared.iml",
+        "resources/intellij.java.debugger.impl.shared.content.xml",
+        "resources/intellij.java.debugger.impl.shared.xml",
     ],
     visibility = ["//visibility:public"],
 )

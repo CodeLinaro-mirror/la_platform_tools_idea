@@ -1,9 +1,10 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.siyeh.ig.psiutils;
 
 import com.intellij.codeInsight.BlockUtils;
 import com.intellij.codeInsight.intention.impl.SplitConditionUtil;
 import com.intellij.codeInspection.ConditionalBreakInInfiniteLoopInspection;
+import com.intellij.codeInspection.JavaSuppressionUtil;
 import com.intellij.codeInspection.RedundantLambdaCodeBlockInspection;
 import com.intellij.codeInspection.dataFlow.DfaPsiUtil;
 import com.intellij.java.syntax.parser.JavaKeywords;
@@ -153,6 +154,21 @@ public abstract class CodeBlockSurrounder {
      * @return an anchor statement: it's safe to add new statements before the anchor
      */
     public @NotNull PsiStatement getAnchor() {
+      return myAnchor;
+    }
+
+    /**
+     * Same as {@link #getAnchor()}, except that a preceding inspection suppression comment is returned instead of the anchor itself.
+     * Adding new statements before that comment keeps it adjacent to the statement it suppresses, so the suppression
+     * is not accidentally disabled.
+     *
+     * @return an element before which it's safe to add new statements
+     */
+    public @NotNull PsiElement getSuppressionAwareAnchor() {
+      PsiElement prev = PsiTreeUtil.skipWhitespacesBackward(myAnchor);
+      if (prev instanceof PsiComment && JavaSuppressionUtil.getSuppressedInspectionIdsIn(prev) != null) {
+        return prev;
+      }
       return myAnchor;
     }
 
@@ -981,8 +997,7 @@ public abstract class CodeBlockSurrounder {
       String extractedCondition = orChain ? ct.text(lOperands) : BoolUtils.getNegatedExpressionText(lOperands, ct);
       String ifText = "if(" + extractedCondition + ") " + keyword + " " + orChain + ";";
       PsiStatement ifStatement = factory.createStatementFromText(ifText, returnOrYieldStatement);
-      myCreatedIf = (PsiIfStatement)CodeStyleManager.getInstance(project)
-        .reformat(returnOrYieldStatement.getParent().addBefore(ifStatement, returnOrYieldStatement));
+      myCreatedIf = (PsiIfStatement)returnOrYieldStatement.getParent().addBefore(ifStatement, returnOrYieldStatement);
       ct.replaceAndRestoreComments(Objects.requireNonNull(condition), rOperands);
       return returnOrYieldStatement;
     }

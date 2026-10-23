@@ -8,9 +8,11 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.platform.ijent.IjentExecFileProvider
+import com.intellij.platform.ijent.IjentSession
 import com.intellij.platform.ijent.ParentOfIjentScopes
 import com.intellij.platform.ijent.spi.IjentConnectionStrategy
 import com.intellij.platform.ijent.spi.IjentDeployingOverShellProcessStrategy
+import com.intellij.platform.ijent.spi.IjentSessionProvider
 import com.intellij.util.io.computeDetached
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.DelicateCoroutinesApi
@@ -21,11 +23,11 @@ import java.nio.file.Path
 class WslIjentDeployingStrategy(
   scope: ParentOfIjentScopes,
   currentDispatcher: CoroutineDispatcher,
-  override val ijentLabel: String,
+  ijentLabel: String,
   private val distribution: WSLDistribution,
   private val project: Project?,
   private val wslCommandLineOptionsModifier: (WSLCommandLineOptions) -> Unit = {},
-) : IjentDeployingOverShellProcessStrategy.JavaProcessBasedStrategy(scope, currentDispatcher) {
+) : IjentDeployingOverShellProcessStrategy.JavaProcessBasedStrategy(scope, currentDispatcher, ijentLabel) {
   override suspend fun mapPath(path: Path): String? =
     distribution.getWslPath(path)
 
@@ -45,6 +47,10 @@ class WslIjentDeployingStrategy(
     distribution.doPatchCommandLine(commandLine, project, wslCommandLineOptions)
 
     return computeDetached { commandLine.createProcess() }
+  }
+
+  override suspend fun createIjentSession(provider: IjentSessionProvider): IjentSession.Posix {
+    return super.createIjentSession(provider) as IjentSession.Posix
   }
 
   override suspend fun getConnectionStrategy(): IjentConnectionStrategy {

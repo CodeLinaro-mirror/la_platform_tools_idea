@@ -10,6 +10,7 @@ import com.intellij.debugger.engine.evaluation.EvaluationContext;
 import com.intellij.debugger.impl.DebuggerUtilsAsync;
 import com.intellij.debugger.impl.DebuggerUtilsEx;
 import com.intellij.debugger.settings.DebuggerSettingsUtils;
+import com.intellij.debugger.ui.impl.watch.ValueDescriptorImpl;
 import com.intellij.debugger.ui.tree.DebuggerTreeNode;
 import com.intellij.debugger.ui.tree.NodeDescriptor;
 import com.intellij.debugger.ui.tree.ValueDescriptor;
@@ -83,16 +84,17 @@ public class ToStringRenderer extends NodeRendererImpl implements OnDemandRender
     }
 
     Value value = valueDescriptor.getValue();
-    if (value instanceof ObjectReference) {
-      DebuggerUtils.ensureNotInsideObjectConstructor((ObjectReference)value, evaluationContext);
+    if (value instanceof ObjectReference reference) {
+      DebuggerUtils.ensureNotInsideObjectConstructor(reference, evaluationContext);
     }
+    DescriptorLabelListener wrappedListener = ValueDescriptorImpl.startLabelUpdate(valueDescriptor, labelListener);
     BatchEvaluator.getBatchEvaluator(evaluationContext).invoke(new ToStringCommand(evaluationContext, value) {
       @Override
       public void evaluationResult(String message) {
         valueDescriptor.setValueLabel(
           StringUtil.notNullize(message)
         );
-        labelListener.labelChanged();
+        wrappedListener.labelChanged();
       }
 
       @Override
@@ -100,7 +102,7 @@ public class ToStringRenderer extends NodeRendererImpl implements OnDemandRender
         final String msg = value != null ? message + " " + JavaDebuggerBundle
           .message("evaluation.error.cannot.evaluate.tostring", value.type().name()) : message;
         valueDescriptor.setValueLabelFailed(new EvaluateException(msg, null));
-        labelListener.labelChanged();
+        wrappedListener.labelChanged();
       }
     });
     return XDebuggerUIConstants.getCollectingDataMessage();
@@ -141,8 +143,8 @@ public class ToStringRenderer extends NodeRendererImpl implements OnDemandRender
     }
     if (type instanceof ClassType) {
       return DebuggerUtilsAsync.findAnyBaseType(type, t -> {
-        if (t instanceof ReferenceType) {
-          return DebuggerUtilsAsync.methods((ReferenceType)t)
+        if (t instanceof ReferenceType referenceType) {
+          return DebuggerUtilsAsync.methods(referenceType)
             .thenApply(methods -> {
               return ContainerUtil.exists(methods,
                                           m -> !m.isAbstract() &&

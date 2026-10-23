@@ -1,5 +1,5 @@
 // "Convert expression to 'Int'" "true"
-// K2_ERROR: Argument type mismatch: actual type is 'Long', but 'Int' was expected.
+// K2_ERROR: ARGUMENT_TYPE_MISMATCH
 
 fun takeInt(x: Int) {}
 
@@ -7,5 +7,4 @@ fun foo(v: Long) {
     val v2 = v + 1
     takeInt(v2<caret>)
 }
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AddConversionCallFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.NumberConversionFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.NumberConversionFix

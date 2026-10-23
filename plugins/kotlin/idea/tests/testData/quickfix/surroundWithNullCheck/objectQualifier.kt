@@ -1,5 +1,5 @@
 // "Surround with null check" "true"
-// K2_ERROR: Argument type mismatch: actual type is 'Int?', but 'Int' was expected.
+// K2_ERROR: ARGUMENT_TYPE_MISMATCH
 
 object Obj {
     fun foo(x: Int) = x
@@ -9,5 +9,4 @@ fun use(arg: Int?) {
     Obj.foo(<caret>arg)
 }
 
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.SurroundWithNullCheckFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.SurroundWithNullCheckFixFactory$SurroundWithNullCheckFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.SurroundWithNullCheckFixFactory$SurroundWithNullCheckFix

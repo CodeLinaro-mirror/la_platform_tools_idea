@@ -21,6 +21,7 @@ import com.intellij.xdebugger.XDebuggerManager
 import com.intellij.xdebugger.breakpoints.XBreakpoint
 import com.intellij.xdebugger.breakpoints.XLineBreakpoint
 import com.intellij.xdebugger.breakpoints.XLineBreakpointType
+import com.intellij.xdebugger.breakpoints.XWatchpointType
 import com.intellij.xdebugger.breakpoints.ui.XBreakpointCustomPropertiesPanel
 import com.intellij.xdebugger.evaluation.XDebuggerEditorsProvider
 import com.intellij.xml.CommonXmlStrings
@@ -45,12 +46,13 @@ class KotlinFieldBreakpointType :
     XLineBreakpointType<KotlinPropertyBreakpointProperties>(
         "kotlin-field", KotlinDebuggerCoreBundle.message("property.watchpoint.tab.title")
     ),
-    KotlinBreakpointType
+    KotlinBreakpointType,
+    XWatchpointType
 {
-    override fun getGeneralDescription(variant: XLineBreakpointVariant) =
+    override fun getGeneralDescription(variant: XLineBreakpointVariant): String =
         KotlinDebuggerCoreBundle.message("property.watchpoint.description")
 
-    override fun getGeneralDescription(breakpoint: XLineBreakpoint<KotlinPropertyBreakpointProperties>) =
+    override fun getGeneralDescription(breakpoint: XLineBreakpoint<KotlinPropertyBreakpointProperties>): String =
         KotlinDebuggerCoreBundle.message("property.watchpoint.description")
 
     override fun getPropertyXMLDescriptions(breakpoint: XLineBreakpoint<KotlinPropertyBreakpointProperties>): MutableList<String> {
@@ -95,7 +97,7 @@ class KotlinFieldBreakpointType :
         }
     }
 
-    override fun getPriority() = 120
+    override fun getPriority(): Int = 120
 
     override fun createBreakpointProperties(file: VirtualFile, line: Int): KotlinPropertyBreakpointProperties {
         return createProperties()
@@ -168,7 +170,7 @@ class KotlinFieldBreakpointType :
         Messages.showMessageDialog(project, message, JavaDebuggerBundle.message("add.field.breakpoint.dialog.title"), Messages.getErrorIcon())
     }
 
-    override fun isAddBreakpointButtonVisible() = true
+    override fun isAddBreakpointButtonVisible(): Boolean = true
 
     override fun getMutedEnabledIcon(): Icon = AllIcons.Debugger.Db_muted_field_breakpoint
 
@@ -178,7 +180,7 @@ class KotlinFieldBreakpointType :
 
     override fun getMutedDisabledIcon(): Icon = AllIcons.Debugger.Db_muted_disabled_field_breakpoint
 
-    override fun canBeHitInOtherPlaces() = true
+    override fun canBeHitInOtherPlaces(): Boolean = true
 
     override fun getShortText(breakpoint: XLineBreakpoint<KotlinPropertyBreakpointProperties>): String {
         val properties = breakpoint.properties
@@ -207,5 +209,5 @@ class KotlinFieldBreakpointType :
         return KotlinBreakpointFiltersPanel(project)
     }
 
-    override fun isSuspendThreadSupported() = true
+    override fun isSuspendThreadSupported(): Boolean = true
 }

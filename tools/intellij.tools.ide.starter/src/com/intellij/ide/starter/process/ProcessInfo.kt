@@ -6,7 +6,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.async
-import oshi.SystemInfo
+import oshi.ffm.SystemInfo
 import oshi.software.os.OSProcess
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
@@ -18,12 +18,15 @@ class ProcessInfo private constructor(
   val name: String,
   val argumentsProvider: () -> List<String>,
   private val startTime: Instant?,
-  private val user: String?,
+  // A provider, not a value: eager fetch of process' user caused tests to run slower on Linux, as oshi uses `getent` for that.
+  private val userProvider: () -> String?,
   val processHandle: ProcessHandle? = null,
   private val portThatIsUsedByProcess: Int? = null,
 ) {
 
   val arguments: List<String> by lazy { argumentsProvider() }
+
+  private val user: String? by lazy(userProvider)
 
   companion object {
     suspend fun create(pid: Long, portThatIsUsedByProcess: Int? = null): ProcessInfo {
@@ -34,7 +37,7 @@ class ProcessInfo private constructor(
         name = internal.name,
         argumentsProvider = { internal.arguments },
         startTime = internal.startTime,
-        user = internal.user,
+        userProvider = { internal.user },
         processHandle = internal.processHandle,
         portThatIsUsedByProcess = portThatIsUsedByProcess
       )
@@ -43,10 +46,10 @@ class ProcessInfo private constructor(
     fun create(p: OSProcess, portThatIsUsedByProcess: Int? = null): ProcessInfo = ProcessInfo(
       pid = p.processID.toLong(),
       parentPid = p.parentProcessID.toLong(),
-      name = p.name ?: "Not Available",
-      argumentsProvider = { p.arguments ?: emptyList() },
+      name = p.name,
+      argumentsProvider = { p.arguments },
       startTime = p.startTime.let(Instant::ofEpochMilli),
-      user = p.user,
+      userProvider = { p.user },
       processHandle = ProcessHandle.of(p.processID.toLong()).getOrNull(),
       portThatIsUsedByProcess = portThatIsUsedByProcess
     )
@@ -99,7 +102,7 @@ class ProcessInfo private constructor(
               name = osProcess?.name ?: "Not Available",
               argumentsProvider = { osProcess?.arguments ?: emptyList() },
               startTime = osProcess?.startTime?.let(Instant::ofEpochMilli),
-              user = osProcess?.user,
+              userProvider = { osProcess?.user },
               processHandle = ProcessHandle.of(pid).getOrNull(),
               portThatIsUsedByProcess = null,
             )

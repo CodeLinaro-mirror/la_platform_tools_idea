@@ -3,10 +3,16 @@ package com.jetbrains.python.inspections
 
 import com.intellij.idea.TestFor
 import com.intellij.openapi.util.registry.Registry
+import com.jetbrains.python.allure.Layers
+import com.jetbrains.python.allure.Subsystems
+
 import com.jetbrains.python.PyPsiBundle
 import com.jetbrains.python.PythonFileType
 import com.jetbrains.python.fixtures.PyInspectionTestCase
+import org.junit.ComparisonFailure
 
+@Subsystems.Inspections
+@Layers.Functional
 class PyInvalidCastInspectionTest : PyInspectionTestCase() {
   override fun getInspectionClass() = PyInvalidCastInspection::class.java
 
@@ -91,14 +97,17 @@ class PyInvalidCastInspectionTest : PyInspectionTestCase() {
         from typing import cast, Sequence
 
         lint = [1, 2, 3]
-        # < warning descr="Cast of type 'list[int]' to type 'list[object]' may be a mistake because they are not in the same inheritance hierarchy. If this was intentional, cast the expression to 'object' first.">cast(list[object], lint)</warning>
-        cast(list[object], lint)
+        <warning descr="Cast of type 'list[int]' to type 'list[object]' may be a mistake because they are not in the same inheritance hierarchy. If this was intentional, cast the expression to 'object' first.">cast(list[object], lint)</warning>
 
         cast(Sequence[object], lint)  # ok
       """.trimIndent()
     )
     myFixture.enableInspections(inspection)
-    myFixture.checkHighlighting(isWarning, isInfo, isWeakWarning)
+    fixme("PY-89564", ComparisonFailure::class.java,
+          "Cast of type 'list[int]' to type 'list[object]' may be a mistake because they are not in the same inheritance hierarchy. If this was intentional, cast the expression to 'object' first."
+    ) {
+      myFixture.checkHighlighting(isWarning, isInfo, isWeakWarning)
+    }
   }
 
   /**
@@ -171,7 +180,7 @@ class PyInvalidCastInspectionTest : PyInspectionTestCase() {
     )
   }
 
-  fun `test overlapping unions`() {
+  fun `test subtype-related unions`() {
     doTestByText("""
       from typing import cast, Literal
       

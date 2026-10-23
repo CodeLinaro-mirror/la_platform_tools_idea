@@ -1,9 +1,30 @@
 load("@community//build:tests-options.bzl", "jps_test")
+load("@community//fleet/build:fleet.bzl", "fleet_wasmjs_module")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 load("//build:compiler-options.bzl", "create_kotlinc_options")
 
-### auto-generated section `build fleet.lsp.protocol.test` start
+fleet_wasmjs_module(
+    name = "wasmjs_module",
+    kotlinc_opts = ":custom_test",
+    module_name = "fleet.lsp.protocol.test",
+    test_deps = [
+        "@community//fleet/ktor/client/core:wasmjs_module_lib",
+        "@community//fleet/lsp.protocol:wasmjs_module_lib",
+        "@community//fleet/test-runtime:wasmjs_module_lib",
+        "@kmp_deps//:org_jetbrains_intellij_deps_kotlinx_kotlinx_coroutines_core",
+        "@kmp_deps//:org_jetbrains_intellij_deps_kotlinx_kotlinx_coroutines_test",
+        "@kmp_deps//:org_jetbrains_kotlinx_kotlinx_io_core",
+        "@kmp_deps//:org_jetbrains_kotlinx_kotlinx_serialization_core",
+        "@kmp_deps//:org_jetbrains_kotlinx_kotlinx_serialization_json",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@kmp_deps//:org_jetbrains_intellij_deps_kotlinx_kotlinx_coroutines_core",
+        "@kmp_deps//:org_jetbrains_kotlin_kotlin_stdlib",
+    ],
+)
 
+### auto-generated section `build fleet.lsp.protocol.test` start
 create_kotlinc_options(
     name = "custom_test",
     opt_in = [
@@ -27,7 +48,7 @@ jvm_library(
     runtime_deps = [
         # do not sort,
         "@lib//:kotlin-stdlib",
-        "@lib//:kotlinx-coroutines-core",
+        "//libraries/kotlinx/coroutines/core",
     ],
 )
 
@@ -53,17 +74,25 @@ jvm_library(
     deps = [
         # do not sort,
         "@lib//:kotlin-stdlib",
-        "@lib//:kotlinx-coroutines-core",
-        "@lib//:kotlinx-coroutines-test",
-        "@lib//:kotlinx-io-core",
-        "@lib//:kotlinx-serialization-core",
-        "@lib//:kotlinx-serialization-json",
+        "//libraries/kotlinx/coroutines/core",
+        "//libraries/kotlinx/coroutines/core:core_test_lib",
+        "//libraries/kotlinx/coroutines/test",
+        "//libraries/kotlinx/coroutines/test:test_test_lib",
+        "//libraries/io",
+        "//libraries/io:io_test_lib",
+        "//libraries/kotlinx/serialization/core",
+        "//libraries/kotlinx/serialization/core:core_test_lib",
+        "//libraries/kotlinx/serialization/json",
+        "//libraries/kotlinx/serialization/json:json_test_lib",
         "//fleet/ktor/client/core",
         "//fleet/ktor/client/core:core_test_lib",
         "//fleet/lsp.protocol",
         "//fleet/lsp.protocol:lsp.protocol_test_lib",
         "//fleet/test-runtime",
         "//fleet/test-runtime:test-runtime_test_lib",
+        "//fleet/util/logging/slf4j",
+        "//fleet/util/logging/slf4j:slf4j_test_lib",
+        "@lib//:slf4j-jdk14",
     ],
 )
 ### auto-generated section `build fleet.lsp.protocol.test` end
@@ -78,7 +107,6 @@ exports_files(
 ### auto-generated section `iml fleet.lsp.protocol.test` end
 
 ### auto-generated section `test fleet.lsp.protocol.test` start
-
 jps_test(
     name = "test_test",
     runtime_deps = [":test_test_lib"],

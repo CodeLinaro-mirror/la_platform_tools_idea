@@ -8,10 +8,11 @@ import com.intellij.database.extractors.ImageInfo;
 import com.intellij.database.run.ui.EditMaximizedView;
 import com.intellij.database.run.ui.EditorCellViewer;
 import com.intellij.database.run.ui.ValueTabInfoProvider;
-import com.intellij.database.util.DataGridUIUtil;
+import com.intellij.database.util.GridActionUiState;
 import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnActionEvent;
+import com.intellij.openapi.actionSystem.PlatformCoreDataKeys;
 import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.util.ObjectUtils;
@@ -39,9 +40,10 @@ public class ShowEditMaximizedAction extends DumbAwareAction {
       e.getPresentation().setEnabledAndVisible(false);
       return;
     }
-    boolean inCell = DataGridUIUtil.inCell(grid, e);
+    var state = GridActionUiState.getForGrid(grid, e.getDataContext());
+    boolean inCell = state != null && state.isCellComponent(e.getData(PlatformCoreDataKeys.CONTEXT_COMPONENT));
     if (inCell) {
-      Object value = DataGridUIUtil.getLeadSelectionCellValue(grid, e, false);
+      Object value = state.getLeadSelectionCellValue(false);
       e.getPresentation().setText(value instanceof ImageInfo
                                   ? DataGridBundle.message("action.Console.TableResult.EditValueMaximized.view.image")
                                   : DataGridBundle.message("action.Console.TableResult.EditValueMaximized.maximize"));
@@ -49,9 +51,8 @@ public class ShowEditMaximizedAction extends DumbAwareAction {
     else {
       e.getPresentation().setText(DataGridBundle.message("action.Console.TableResult.EditValueMaximized.text"));
     }
-    var editMaximized = findEditMaximized(e.getDataContext());
-    boolean visible = editMaximized != null && editMaximized.getCurrentTabInfoProvider() instanceof ValueTabInfoProvider;
-    e.getPresentation().setEnabledAndVisible(inCell || !visible);
+    boolean valueTabSelected = state != null && state.isValueTabSelected();
+    e.getPresentation().setEnabledAndVisible(inCell || !valueTabSelected);
   }
 
   @Override

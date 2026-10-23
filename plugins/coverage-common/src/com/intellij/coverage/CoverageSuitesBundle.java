@@ -46,6 +46,7 @@ public class CoverageSuitesBundle {
 
   private SoftReference<ProjectData> myData = new SoftReference<>(null);
   private boolean myShouldActivateToolWindow = true;
+  private @Nullable CoverageAnnotator myAnnotator;
 
   public CoverageSuitesBundle(CoverageSuite suite) {
     this(new CoverageSuite[]{suite});
@@ -108,7 +109,7 @@ public class CoverageSuitesBundle {
 
     ProjectData data;
     if (dataList.size() == 1) {
-      data = dataList.get(0);
+      data = dataList.getFirst();
     }
     else {
       data = new ProjectData();
@@ -152,7 +153,12 @@ public class CoverageSuitesBundle {
   }
 
   public CoverageAnnotator getAnnotator(@NotNull Project project) {
-    return myEngine.getCoverageAnnotator(project);
+    return myAnnotator == null ? myEngine.getCoverageAnnotator(project) : myAnnotator;
+  }
+
+  @ApiStatus.Internal
+  public void setAnnotator(@NotNull CoverageAnnotator annotator) {
+    myAnnotator = annotator;
   }
 
   public CoverageSuite @NotNull [] getSuites() {
@@ -165,6 +171,13 @@ public class CoverageSuitesBundle {
 
   public void setCoverageData(ProjectData projectData) {
     myData = new SoftReference<>(projectData);
+  }
+
+  void invalidateCoverageData() {
+    setCoverageData(null);
+    for (CoverageSuite suite : mySuites) {
+      suite.setCoverageData(null);
+    }
   }
 
   void restoreCoverageData() {

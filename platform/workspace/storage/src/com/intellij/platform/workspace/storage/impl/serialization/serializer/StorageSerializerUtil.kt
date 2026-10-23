@@ -172,13 +172,12 @@ internal class StorageSerializerUtil(
 
   internal val virtualFileUrlImplementationClass: Class<out VirtualFileUrl>
     get() = (virtualFileManager as VirtualFileUrlManagerImpl).virtualFileUrlImplementationClass
-  
+
   internal fun getVirtualFileUrlSerializer(): Serializer<VirtualFileUrl> = object : Serializer<VirtualFileUrl>(false, true) {
     override fun write(kryo: Kryo, output: Output, obj: VirtualFileUrl) {
       // TODO Write IDs only
 
-      obj as VirtualFileUrlImpl
-      val urlToWrite = urlRelativizer?.toRelativeUrl(obj.url) ?: obj.getUrlSegments()
+      val urlToWrite = urlRelativizer?.toRelativeUrl(obj.url) ?: (obj as VirtualFileUrlImpl).getUrlSegments()
       kryo.writeObject(output, urlToWrite)
     }
 
@@ -194,7 +193,7 @@ internal class StorageSerializerUtil(
       else {
         val serializedUrl = kryo.readObject(input, String::class.java) as String
         val convertedUrl = urlRelativizer.toAbsoluteUrl(serializedUrl)
-        return virtualFileManager.getOrCreateFromUrl(convertedUrl)
+        return virtualFileManager.storeAndGet(convertedUrl)
       }
     }
   }

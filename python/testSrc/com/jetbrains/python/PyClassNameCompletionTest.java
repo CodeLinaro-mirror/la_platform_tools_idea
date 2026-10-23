@@ -1,9 +1,13 @@
 // Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python;
 
+import com.jetbrains.python.allure.Layers;
+import com.jetbrains.python.allure.Subsystems;
+
 import com.intellij.codeInsight.completion.CompletionType;
 import com.intellij.codeInsight.lookup.Lookup;
 import com.intellij.codeInsight.lookup.LookupElement;
+import com.intellij.idea.TestFor;
 import com.intellij.psi.PsiDirectory;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFileSystemItem;
@@ -24,6 +28,8 @@ import java.util.List;
 import java.util.Objects;
 
 
+@Subsystems.CodeCompletion
+@Layers.Functional
 public class PyClassNameCompletionTest extends PyTestCase {
 
   public void testSimple() {
@@ -176,6 +182,11 @@ public class PyClassNameCompletionTest extends PyTestCase {
     assertNotNull(notExportedVar);
     TestLookupElementPresentation varPresentation = TestLookupElementPresentation.renderReal(notExportedVar);
     assertEquals("pkg.mod", varPresentation.getTypeText());
+  }
+
+  @TestFor(issues = "PY-91528")
+  public void testPublicSiblingReexportOfPrivateModule() {
+    doTest();
   }
 
   // PY-46381

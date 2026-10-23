@@ -1,8 +1,16 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.types
 
+import com.jetbrains.python.allure.Subsystems
+import com.jetbrains.python.allure.Layers
+import com.jetbrains.python.allure.Components
 import com.intellij.idea.TestFor
+import com.jetbrains.python.PyCustomType
+import com.jetbrains.python.codeInsight.controlflow.PyTypeAssertionEvaluator
+import com.jetbrains.python.codeInsight.typing.PyTypedDictTypeProvider
 import com.jetbrains.python.fixtures.PyCodeInsightTestCase
+import com.jetbrains.python.inspections.PyTypeCheckerInspection
+import com.jetbrains.python.inspections.PyUnreachableCodeInspection
 
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
@@ -12,10 +20,24 @@ import org.junit.jupiter.api.Test
  * `assert`, identity/equality narrowing, `TypeGuard`, `TypeIs`, conditional/else narrowing, narrowing in
  * conditional expressions and comprehensions, and structural-type `isinstance` checks.
  */
+@Subsystems.Typing
+@Components.TypeInference
+@Layers.Functional
 class PyNarrowingTypeTest : PyCodeInsightTestCase() {
 
   @Nested
   inner class IsinstanceNarrowing {
+    @Test
+    @TestFor(classes = [PyCustomType::class])
+    fun `call of a value narrowed to Callable`() = test("""
+      from typing import Callable
+
+      def f(x: object):
+          if isinstance(x, Callable):
+              expr = x()
+      #       └ TYPE Unknown
+      """.trimIndent())
+
     @Test
     fun `isinstance narrows in if`() = test("""
       def f(c):
@@ -27,7 +49,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if isinstance(x, str):
               expr = x
       #       └ TYPE str
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-2140"])
@@ -41,7 +63,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if not isinstance(x, (str, int)):
               expr = x
       #       └ TYPE list
-      """)
+      """.trimIndent())
 
     @Test
     fun `isinstance with non-type literals in tuple`() = test("""
@@ -49,7 +71,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
       if isinstance(x, (1, "")):
           expr = x
       #   └ TYPE Literal[""]
-      """)
+      """.trimIndent())
 
     @Test
     fun `isinstance or of two checks`() = test("""
@@ -57,7 +79,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if isinstance(a, int) or isinstance(a, str):
               expr = a
       #       └ TYPE int | str
-      """)
+      """.trimIndent())
 
     @Test
     fun `isinstance or of four checks`() = test("""
@@ -73,7 +95,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
       #       └ TYPE str | int | A | B
           else:
               pass
-      """)
+      """.trimIndent())
 
     @Test
     fun `isinstance and of two tuple checks`() = test("""
@@ -84,7 +106,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if isinstance(a, (str, A)) and isinstance(a, (A, int)):
               expr = a
       #       └ TYPE A
-      """)
+      """.trimIndent())
 
     @Test
     fun `isinstance and of three tuple checks`() = test("""
@@ -98,7 +120,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if isinstance(a, (str, A)) and isinstance(a, (A, int)) and isinstance(a, (B, A)):
               expr = a
       #       └ TYPE A
-      """)
+      """.trimIndent())
 
     @Test
     fun `isinstance logical expressions`() = test("""
@@ -112,7 +134,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if isinstance(a, (str, A, int)) and not isinstance(a, (A, int)) or isinstance(a, B):
               expr = a
       #       └ TYPE str | B
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-4383"])
@@ -125,7 +147,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
               self.assertIsInstance(x, int)
               expr = x
       #       └ TYPE Literal[1]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-20679"])
@@ -135,7 +157,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           expr = a
       #   └ TYPE Never
       raise TypeError('Invalid type')
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-20679"])
@@ -145,7 +167,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           expr = a
       #   └ TYPE Never
       raise TypeError('Invalid type')
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-20679"])
@@ -155,7 +177,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           expr = a
       #   └ TYPE Never
       raise TypeError('Invalid type')
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-20679"])
@@ -165,7 +187,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           expr = a
       #   └ TYPE Never
       raise TypeError('Invalid type')
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-20679"])
@@ -175,7 +197,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           expr = a
       #   └ TYPE Never
       raise TypeError('Invalid type')
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-20679"])
@@ -185,7 +207,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           expr = a
       #   └ TYPE Never
       raise TypeError('Invalid type')
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-20679"])
@@ -195,7 +217,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           raise TypeError('Invalid type')
       expr = a
       # └ TYPE Never
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-20679"])
@@ -205,7 +227,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           raise TypeError('Invalid type')
       expr = a
       # └ TYPE Never
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-20679"])
@@ -215,7 +237,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           raise TypeError('Invalid type')
       expr = a
       #└ TYPE Never
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-20679"])
@@ -225,7 +247,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           raise TypeError('Invalid type')
       expr = a
       #└ TYPE Never
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-20679"])
@@ -235,7 +257,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           raise TypeError('Invalid type')
       expr = a
       #└ TYPE Never
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-20679"])
@@ -245,7 +267,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           raise TypeError('Invalid type')
       expr = a
       #└ TYPE Never
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-5084"])
@@ -257,7 +279,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           else:
               expr = x
       #       └ TYPE Literal["foo"]
-      """)
+      """.trimIndent())
 
     @Test
     fun `isinstance expression resolved to tuple`() = test("""
@@ -267,14 +289,14 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if isinstance(x, string_types):
               expr = x
       #       └ TYPE str
-      """)
+      """.trimIndent())
 
     @Test
     fun `isinstance in conditional expression`() = test("""
       def f(x):
           expr = x if isinstance(x, str) else 10
       #   └ TYPE str | Literal[10]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-11541"])
@@ -283,7 +305,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if isinstance(x, basestring): # ERROR Unresolved reference 'basestring'
               expr = x
       #       └ TYPE Unknown
-      """)
+      """.trimIndent())
 
     @Test
     fun `structural type and isinstance checks`() = test("""
@@ -294,7 +316,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
 
       expr = f
       #└ TYPE (x: {foo}) -> None
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-20818"])
@@ -309,7 +331,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           assert(isinstance(b, A))
           expr = b
       #   └ TYPE B
-      """)
+      """.trimIndent())
 
     @Test
     fun `issubclass narrows`() = test("""
@@ -318,7 +340,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if issubclass(cls, A):
               expr = cls
       #       └ TYPE type[A]
-      """)
+      """.trimIndent())
 
     @Test
     fun `issubclass with tuple of type objects`() = test("""
@@ -328,7 +350,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if issubclass(cls, (A, B)):
               expr = cls
       #       └ TYPE type[A | B]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-26493"])
@@ -338,7 +360,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           cfg.split()
           expr = cfg
       #   └ TYPE str
-      """)
+      """.trimIndent())
 
     @Test
     fun `after isinstance and attribute usage`() = test("""
@@ -348,7 +370,132 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           print(y.bar)
           expr = y
       #   └ TYPE {bar} | ({bar} & int)
-      """)
+      """.trimIndent())
+
+    @Test
+    fun `type assertions`() = test("""
+      def test():
+          def f_1():
+              '''
+              :rtype: int or str or None
+              '''
+          def f_2():
+              '''
+              :rtype: int or None
+              '''
+          def f_3():
+              '''
+              :rtype: unknown
+              '''
+          def f_4():
+              '''
+              :rtype: object
+              '''
+          def f_5():
+              '''
+              :rtype: int or object
+              '''
+          def f_6():
+              '''
+              :rtype: int or unknown or float
+              '''
+          def f_7():
+              '''
+              :rtype: int or unknown
+              '''
+          def print_int(x):
+              '''
+              :type x: int
+              '''
+              print(x)
+          def print_int_or_str(x):
+              '''
+              :type x: int or str
+              '''
+          x_1 = f_1()
+          print_int(x_1)
+      #             ^^^ WARNING Expected type 'int', got 'int | str | None' instead
+          print_int_or_str(x_1)
+      #                    ^^^ WARNING Expected type 'int | str', got 'int | str | None' instead
+          if isinstance(x_1, int):
+              print_int(x_1)
+          if isinstance(x_1, str):
+              print_int_or_str(x_1)
+          x_7 = f_7()
+          print_int(x_7)
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-9118"])
+    fun `negative is instance`() = test("""
+      def method_a():
+          '''
+          :rtype: dict or int
+          '''
+          pass
+
+      def method_b(d):
+          '''
+          :type d: dict
+          '''
+          pass
+
+      def f():
+          var = method_a()
+          if isinstance(var, int):
+              return var
+          method_b(var)  # pass
+      """.trimIndent())
+
+    @Test
+    @TestFor(classes = [PyTypeAssertionEvaluator::class])
+    fun `user function named isinstance does not narrow`() = test("""
+      def isinstance(obj: object, cls: type) -> bool:
+          return True
+
+      def func(val: int | str) -> None:
+          if isinstance(val, int):
+              res = val
+      #        └ TYPE int FIXME int | str
+      """.trimIndent())
+
+    @Test
+    @TestFor(classes = [PyTypedDictTypeProvider::class])
+    fun `in operator narrows a union of final TypedDict types`() = test("""
+      from typing import TypedDict, final
+
+      @final
+      class TdA(TypedDict):
+          a: int
+
+      @final
+      class TdB(TypedDict):
+          b: str
+
+      def func(val: TdA | TdB) -> None:
+          if "a" in val:
+              res = val
+      #        └ TYPE TdA | TdB FIXME TdA
+      """.trimIndent())
+
+    @Test
+    @TestFor(classes = [PyTypedDictTypeProvider::class])
+    fun `literal key comparison narrows a discriminated union`() = test("""
+      from typing import Literal, TypedDict
+
+      class TdA(TypedDict):
+          kind: Literal["a"]
+          a: int
+
+      class TdB(TypedDict):
+          kind: Literal["b"]
+          b: str
+
+      def func(val: TdA | TdB) -> None:
+          if val["kind"] == "a":
+              res = val
+      #        └ TYPE TdA | TdB FIXME TdA
+      """.trimIndent())
   }
 
   @Nested
@@ -360,7 +507,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if x is not None:
               expr = x
       #       └ TYPE Literal[1]
-      """)
+      """.trimIndent())
 
     @Test
     fun `None is not x narrows`() = test("""
@@ -369,7 +516,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if None is not x:
               expr = x
       #       └ TYPE Literal[1]
-      """)
+      """.trimIndent())
 
     @Test
     fun `not x is None narrows`() = test("""
@@ -378,7 +525,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if not x is None:
               expr = x
       #       └ TYPE Literal[1]
-      """)
+      """.trimIndent())
 
     @Test
     fun `not None is x narrows`() = test("""
@@ -387,7 +534,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if not None is x:
               expr = x
       #       └ TYPE Literal[1]
-      """)
+      """.trimIndent())
 
     @Test
     fun `is None narrows to None`() = test("""
@@ -396,7 +543,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if x is None:
               expr = x
       #       └ TYPE None
-      """)
+      """.trimIndent())
 
     @Test
     fun `None is x narrows to None`() = test("""
@@ -405,7 +552,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if None is x:
               expr = x
       #       └ TYPE None
-      """)
+      """.trimIndent())
 
     @Test
     fun `Any is None narrows to None`() = test("""
@@ -413,7 +560,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
         if c is None:
           expr = c
       #   └ TYPE None
-      """)
+      """.trimIndent())
 
     @Test
     fun `else after is not None narrows to None`() = test("""
@@ -424,7 +571,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           else:
               expr = x
       #       └ TYPE None
-      """)
+      """.trimIndent())
 
     @Test
     fun `else after None is not x narrows to None`() = test("""
@@ -435,7 +582,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           else:
               expr = x
       #       └ TYPE None
-      """)
+      """.trimIndent())
 
     @Test
     fun `else after not x is None narrows to None`() = test("""
@@ -446,7 +593,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           else:
               expr = x
       #       └ TYPE None
-      """)
+      """.trimIndent())
 
     @Test
     fun `else after not None is x narrows to None`() = test("""
@@ -457,7 +604,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           else:
               expr = x
       #       └ TYPE None
-      """)
+      """.trimIndent())
 
     @Test
     fun `else after is None narrows away None`() = test("""
@@ -468,7 +615,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           else:
               expr = x
       #       └ TYPE Literal[1]
-      """)
+      """.trimIndent())
 
     @Test
     fun `else after None is x narrows away None`() = test("""
@@ -479,7 +626,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           else:
               expr = x
       #       └ TYPE Literal[1]
-      """)
+      """.trimIndent())
 
     @Test
     fun `else after Any is None stays Any`() = test("""
@@ -489,7 +636,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
         else:
           expr = c
       #   └ TYPE Unknown
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-21897"])
@@ -500,7 +647,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
         else:
           expr = a
       #   └ TYPE Unknown
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-21626"])
@@ -511,7 +658,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
                   pass
           expr = x
       #   └ TYPE Unknown | None
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-21626"])
@@ -521,8 +668,8 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if x is not None:
               pass
       expr = x
-      #└ TYPE Literal["foo"]
-      """)
+      # └ TYPE Literal["foo"]
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-21175"])
@@ -531,8 +678,8 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
       if xs is None:
           xs = [1, 2, 3]
       expr = xs
-      #└ TYPE list[int]
-      """)
+      # └ TYPE list[int]
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-29748"])
@@ -541,13 +688,12 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
       if a is a:
          expr = a
       #   └ TYPE Literal[1]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-32113"])
-    fun `assertion on variable from outer scope`() = test(
-      TestOptions(assertRecursionPrevention = false),
-      """
+    @TestCaseOptions(assertRecursionPrevention = false)
+    fun `assertion on variable from outer scope`() = test("""
       class B: pass
 
       class D(B): pass
@@ -559,14 +705,12 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           assert isinstance(g_b, D)
           expr = g_b
       #   └ TYPE D
-      """,
-    )
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-32113"])
-    fun `assertion on function from outer scope`() = test(
-      TestOptions(assertRecursionPrevention = false),
-      """
+    @TestCaseOptions(assertRecursionPrevention = false)
+    fun `assertion on function from outer scope`() = test("""
       class B: pass
 
       def g_b():
@@ -576,8 +720,45 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           assert isinstance(g_b, B)
           expr = g_b
       #   └ TYPE () -> None & B
-      """,
-    )
+      """.trimIndent())
+
+    @Test
+    fun `not none`() = test("""
+      def test():
+          def f(x):
+              '''
+              :type x: int or str or list
+              '''
+          def f1():
+              '''
+              :rtype: int or None
+              '''
+          def f2():
+              '''
+              :rtype: int or str or None
+              '''
+          x1 = f1()
+          x2 = f2()
+          x3 = 1
+          f(x1)
+      #     ^^ WARNING Expected type 'int | str | list', got 'int | None' instead
+          f(x2)
+      #     ^^ WARNING Expected type 'int | str | list', got 'int | str | None' instead
+          f(x3)
+          if x1:
+              f(x1)
+          if x2:
+              f(x2)
+          if x3:
+              f(x3)
+          if x1 is not None:
+              f(x1)
+          elif x2 is not None:
+              f(x2)
+          elif x3 is not None:
+              f(x3)
+      """.trimIndent())
+
   }
 
   @Nested
@@ -595,7 +776,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
 
               expr = self.t
       #       └ TYPE int | None
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-83351"])
@@ -605,7 +786,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
               expr = x
       #       └ TYPE int
               x = None
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-83351"])
@@ -615,7 +796,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
               expr = x
       #       └ TYPE int
               x = None
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-83597"])
@@ -623,39 +804,21 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
       def foo(x: int | None):
           x and (expr := x)
       #          └ TYPE int
-      """)
-
-    @Test
-    fun `is not None narrows (py3)`() = test("""
-      def test_1(self, c):
-          x = 1 if c else None
-          if x is not None:
-              expr = x
-      #       └ TYPE Literal[1]
-      """)
-
-    @Test
-    fun `is None narrows to None (py3)`() = test("""
-      def test_1(self, c):
-          x = 1 if c else None
-          if x is None:
-              expr = x
-      #       └ TYPE None
-      """)
+      """.trimIndent())
 
     @Test
     fun `issubclass inside list comprehension`() = test("""
       class A: pass
       expr = [e for e in [] if issubclass(e, A)]
       #└ TYPE list[type[A]]
-      """)
+      """.trimIndent())
 
     @Test
     fun `isinstance inside list comprehension`() = test("""
       class A: pass
       expr = [e for e in [] if isinstance(e, A)]
       #└ TYPE list[A]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-83370"])
@@ -668,7 +831,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
               return
           expr = a
       #   └ TYPE A | int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-83370"])
@@ -681,7 +844,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
               return
           expr = a
       #   └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-83370"])
@@ -697,7 +860,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
               return
           expr = a
       #   └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-83370"])
@@ -713,7 +876,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
               return
           expr = a
       #   └ TYPE A | B | int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-83370"])
@@ -729,7 +892,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
               return
           expr = a
       #   └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-83370"])
@@ -745,7 +908,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
               return
           expr = a
       #   └ TYPE A | B | int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-83370"])
@@ -758,7 +921,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
               return
           expr = a
       #   └ TYPE type[int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-83370"])
@@ -771,7 +934,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
               return
           expr = a
       #   └ TYPE type[A | int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-83370"])
@@ -787,7 +950,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
               return
           expr = a
       #   └ TYPE type[int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-83370"])
@@ -803,7 +966,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
               return
           expr = a
       #   └ TYPE type[A | B | int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-83370"])
@@ -819,7 +982,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
               return
           expr = a
       #   └ TYPE type[int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-83370"])
@@ -835,7 +998,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
               return
           expr = a
       #   └ TYPE type[A | B | int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-83370"])
@@ -850,7 +1013,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if not isinstance(a, (((A,), (B,)),)):
               expr = a
       #       └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-83370"])
@@ -868,7 +1031,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if not isinstance(a, (A | B, C)):
               expr = a
       #       └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-83370"])
@@ -880,7 +1043,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if not isinstance(a, (1, 2)):
               expr = a
       #       └ TYPE A | int
-      """)
+      """.trimIndent())
 
     @Test
     fun `NoReturn branch narrows isinstance`() = test("""
@@ -899,7 +1062,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
               f.stop()
           expr = x
       #   └ TYPE Bar
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-84524"])
@@ -908,7 +1071,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
       if callable(a):
           expr = a
       #   └ TYPE (...) -> object
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-83339"])
@@ -917,14 +1080,14 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           assert param
           expr = param
       #   └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     fun `comprehension if clause narrows`() = test("""
       messages = ["a", None, "b"]
       ((expr := msg) for msg in messages if msg)
       #   └ TYPE str
-      """)
+      """.trimIndent())
   }
 
   @Nested
@@ -934,7 +1097,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
       if not isinstance((x := 42), float):
           expr = x
       #   └ TYPE Literal[42]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-83206"])
@@ -943,7 +1106,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
       if isinstance(a, int):
           expr = a
       #   └ TYPE Never
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-83206"])
@@ -953,7 +1116,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
               if isinstance(y, int):
                   expr = y
       #           └ TYPE Never
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-83206"])
@@ -972,7 +1135,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if isinstance(x, B):
               expr = x
       #       └ TYPE Never
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-83206"])
@@ -993,7 +1156,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if isinstance(x, Child2):
               expr = x
       #       └ TYPE Child1 & Child2
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-83206"])
@@ -1008,7 +1171,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if isinstance(x, B):
               expr = x
       #       └ TYPE Never
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-83206"])
@@ -1023,7 +1186,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if isinstance(x, B):
               expr = x
       #       └ TYPE A & B
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-83206"])
@@ -1042,7 +1205,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if isinstance(a, B):
               expr = a
       #       └ TYPE Never
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-83206"])
@@ -1063,7 +1226,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if isinstance(x, str):
               expr = x
       #       └ TYPE (B & str) | (C & str)
-      """)
+      """.trimIndent())
   }
 
   @Nested
@@ -1077,7 +1240,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           x = p.lower()
       expr = f
       #└ TYPE (p: Unknown) -> None
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-86653"])
@@ -1089,7 +1252,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           p.attr
       expr = patmat
       #└ TYPE (p: {attr}) -> None
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-86653"])
@@ -1099,7 +1262,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           p.attr
       expr = conditional
       #└ TYPE (p: {attr}) -> None
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues=["PY-87917"])
@@ -1108,16 +1271,17 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
          assert x.__class__ is int
          expr = x
       #   └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues=["PY-87917"])
-    fun `type narrowing by type call is`() = test(TestOptions(assertRecursionPrevention = false), """
+    @TestCaseOptions(assertRecursionPrevention = false)
+    fun `type narrowing by type call is`() = test("""
       def g(x):
           assert type(x) is int
           expr = x
       #    └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues=["PY-87917"])
@@ -1126,16 +1290,17 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if x.__class__ is int:
               expr = x
       #        └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues=["PY-87917"])
-    fun `type narrowing by class equality`() = test(TestOptions(assertRecursionPrevention = false), """
+    @TestCaseOptions(assertRecursionPrevention = false)
+    fun `type narrowing by class equality`() = test("""
       def g(x: int | str):
           if type(x) == int:
               expr = x
       #        └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues=["PY-87917"])
@@ -1144,7 +1309,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if int is x.__class__:
               expr = x
       #        └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues=["PY-87917"])
@@ -1155,7 +1320,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           else:
               expr = x
       #        └ TYPE int | str
-      """)
+      """.trimIndent())
   }
 
   @Nested
@@ -1169,7 +1334,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
       if isinstance(a, str | dict | B):
           expr = a
       #   └ TYPE B
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-44974"])
@@ -1180,7 +1345,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
       if issubclass(a, str | dict | B):
           expr = a
       #   └ TYPE type[B]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-79861"])
@@ -1190,7 +1355,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
       if issubclass(a := A, str | dict | B):
           expr = a
       #   └ TYPE type[B]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-79861"])
@@ -1198,7 +1363,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
       if callable(a := 42):
           expr = a
       #   └ TYPE Literal[42]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-44974"])
@@ -1209,7 +1374,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
       if isinstance(a, B | None):
           expr = a
       #   └ TYPE B
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-79861"])
@@ -1219,7 +1384,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
       if isinstance((a := A()), B):
           expr = a
       #   └ TYPE B
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-44974"])
@@ -1229,7 +1394,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
       if isinstance(a, (str, (list | dict), int | None)):
           expr = a
       #   └ TYPE Literal[42]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-44974"])
@@ -1239,7 +1404,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
       if isinstance(a, Union[dict, Union[str, Union[int, list]]]):
           expr = a
       #   └ TYPE Literal[42]
-      """)
+      """.trimIndent())
   }
 
   @Nested
@@ -1258,7 +1423,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if is_str_list(val):
               expr = val
       #       └ TYPE list[str]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-75961"])
@@ -1273,7 +1438,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if is_str_list(val):
               expr = val
       #       └ TYPE list[object]
-      """)
+      """.trimIndent())
 
     @Test
     fun `TypeGuard result is assigned`() = test("""
@@ -1289,7 +1454,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if x and b:
               expr = val
       #       └ TYPE list[str]
-      """)
+      """.trimIndent())
 
     @Test
     fun `TypeGuard result is assigned but val is reassigned`() = test("""
@@ -1306,7 +1471,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if x and b:
               expr = val
       #       └ TYPE Literal[1]
-      """)
+      """.trimIndent())
 
     @Test
     fun `TypeGuard result is assigned but val is reassigned sometimes`() = test("""
@@ -1324,7 +1489,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if b:
               expr = val
       #       └ TYPE list[str] | Literal[1]
-      """)
+      """.trimIndent())
 
     @Test
     fun `TypeGuard presentation`() = test("""
@@ -1339,23 +1504,21 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
       def func1(val: List[object]):
           expr = is_str_list(val)
       #       └ TYPE (val: list[object]) -> None FIXME TypeGuard[list[str]]
-      """)
+      """.trimIndent())
 
     @Test
     fun `TypeIs presentation`() = test("""
       from typing import List
       from typing_extensions import TypeIs
 
-
       def is_str_list(val: List[object]) -> TypeIs[List[str]]: 
-      # WARNING FIXME Return type of TypeIs 'list[str]' is not consistent with the type of the first parameter 'list[object]' # PY-89564
+      #   ^^^^^^^^^^^ WARNING Return type of TypeIs 'list[str]' is not consistent with the type of the first parameter 'list[object]'
           return all(isinstance(x, str) for x in val)
-
 
       def func1(val: List[object]):
           expr = is_str_list(val)
       #       └ TYPE (val: list[object]) -> None FIXME TypeIs[list[str]]
-      """)
+      """.trimIndent())
 
     @Test
     fun `TypeGuard is erased on return`() = test("""
@@ -1363,7 +1526,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
       from typing_extensions import TypeIs
 
       def is_str_list(val: List[object]) -> TypeIs[List[str]]: 
-      # WARNING FIXME Return type of TypeIs 'list[str]' is not consistent with the type of the first parameter 'list[object]' # PY-89564
+      #   ^^^^^^^^^^^ WARNING Return type of TypeIs 'list[str]' is not consistent with the type of the first parameter 'list[object]'
           return all(isinstance(x, str) for x in val)
 
       def func1(val: List[object]):
@@ -1371,7 +1534,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
 
       expr = func1([])
       #└ TYPE bool
-      """)
+      """.trimIndent())
 
     @Test
     fun `type alias with TypeIs`() = test("""
@@ -1381,14 +1544,14 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
       MyTypeIs = TypeIs[List[str]]
 
       def is_str_list(val: List[object]) -> MyTypeIs: 
-      # WARNING FIXME Return type of TypeIs 'list[str]' is not consistent with the type of the first parameter 'list[object]' # PY-89564
+      #   ^^^^^^^^^^^ WARNING Return type of TypeIs 'list[str]' is not consistent with the type of the first parameter 'list[object]'
           return all(isinstance(x, str) for x in val)
 
       def func1(val: List[object]):
           if is_str_list(val):
               expr = val
-      #       └ TYPE list[str] FIXME list[object] & list[str] # PY-89564
-      """)
+      #       └ TYPE list[object] & list[str]
+      """.trimIndent())
 
     @Test
     fun `type alias with generic TypeIs`() = test("""
@@ -1398,14 +1561,14 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
       type MyTypeIs[T] = TypeIs[T]
 
       def is_str_list(val: List[object]) -> MyTypeIs[List[str]]: 
-      # WARNING FIXME Return type of TypeIs 'list[str]' is not consistent with the type of the first parameter 'list[object]' # PY-89564
+      #   ^^^^^^^^^^^ WARNING Return type of TypeIs 'list[str]' is not consistent with the type of the first parameter 'list[object]'
           return all(isinstance(x, str) for x in val)
 
       def func1(val: List[object]):
           if is_str_list(val):
               expr = val
-      #       └ TYPE list[str] FIXME list[object] & list[str] # PY-89564
-      """)
+      #       └ TYPE list[object] & list[str]
+      """.trimIndent())
 
     @Test
     fun `TypeIs with generics`() = test("""
@@ -1422,7 +1585,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if is_two_element_tuple(names):
               expr = names
       #       └ TYPE tuple[str, str]
-      """)
+      """.trimIndent())
 
     @Test
     fun `TypeGuard in string literal`() = test("""
@@ -1438,7 +1601,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           if is_str_list(val):
               expr = val
       #       └ TYPE list[str]
-      """)
+      """.trimIndent())
 
     @Test
     fun `TypeGuard type is not changed in else branch`() = test("""
@@ -1456,7 +1619,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           else:
               expr = val
       #       └ TYPE list[object]
-      """)
+      """.trimIndent())
 
     @Test
     fun `TypeGuard negation narrows in else`() = test("""
@@ -1474,7 +1637,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           else:
               expr = val
       #       └ TYPE list[str]
-      """)
+      """.trimIndent())
 
     @Test
     fun `TypeGuard not changed in negated if branch`() = test("""
@@ -1492,7 +1655,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
       #       └ TYPE list[object]
           else:
               pass
-      """)
+      """.trimIndent())
 
     @Test
     fun `TypeGuard double check`() = test("""
@@ -1514,7 +1677,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
       #       └ TYPE Person
           else:
               print("Not a person!")
-      """)
+      """.trimIndent())
 
     @Test
     fun `TypeIs in callable parameter narrows else branch`() = test("""
@@ -1528,7 +1691,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           else:
               expr = x
       #       └ TYPE str
-      """)
+      """.trimIndent())
 
     @Test
     fun `TypeGuard double check negation`() = test("""
@@ -1551,7 +1714,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           else:
               expr = val
       #       └ TYPE Person
-      """)
+      """.trimIndent())
 
     @Test
     fun `failed TypeGuard check does not affect original type`() = test("""
@@ -1564,12 +1727,12 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
 
       def func1(val: List[int] | List[str]):
           if not is_str_list(val):
-      # WARNING FIXME Expected type 'list[object]', got 'list[int] | list[str]' instead # PY-89564
+      #                      ^^^ WARNING Expected type 'list[object]', got 'list[int] | list[str]' instead
               expr = val
       #       └ TYPE list[int] | list[str]
           else:
               pass
-      """)
+      """.trimIndent())
 
     @Test
     fun `failed TypeIs check does affect original type`() = test("""
@@ -1577,17 +1740,17 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
       from typing_extensions import TypeIs
 
       def is_str_list(val: List[object]) -> TypeIs[List[str]]: 
-      # WARNING FIXME Return type of TypeIs 'list[str]' is not consistent with the type of the first parameter 'list[object]' # PY-89564
+      #   ^^^^^^^^^^^ WARNING Return type of TypeIs 'list[str]' is not consistent with the type of the first parameter 'list[object]'
           return all(isinstance(x, str) for x in val)
 
       def func1(val: List[int] | List[str]):
           if not is_str_list(val):
-      # WARNING FIXME Expected type 'list[object]', got 'list[int] | list[str]' instead # PY-89564
+      #                      ^^^ WARNING Expected type 'list[object]', got 'list[int] | list[str]' instead
               expr = val
       #       └ TYPE list[int]
           else:
               pass
-      """)
+      """.trimIndent())
 
     @Test
     fun `TypeIs narrows in if branch`() = test("""
@@ -1605,7 +1768,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
       #       └ TYPE str
           else:
               pass
-      """)
+      """.trimIndent())
 
     @Test
     fun `TypeIs narrows in else branch`() = test("""
@@ -1623,7 +1786,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
           else:
               expr = val
       #       └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     fun `TypeIs narrows union of lists`() = test("""
@@ -1640,7 +1803,7 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
       #       └ TYPE list[str] | list[int]
           else:
               pass
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-62476"])
@@ -1648,12 +1811,149 @@ class PyNarrowingTypeTest : PyCodeInsightTestCase() {
       from typing import TypeGuard
       def foo(param: str | int) -> TypeGuard[str]:
           return param # WARNING Expected type 'TypeGuard[str]', got 'str | int' instead
-      """)
+      """.trimIndent())
 
     @Test
     fun `comprehension if clause narrows produces no warning`() = test("""
       messages = ["a", None, "b"]
       "".join(msg for msg in messages if msg)
-      """)
+      """.trimIndent())
+  }
+
+  @Nested
+  @TestInspections(enableInspections = [PyUnreachableCodeInspection::class])
+  inner class TruthinessReachability {
+    @Test
+    @TestFor(issues = ["PY-79184"])
+    fun `always falsy bool dunder makes then branch unreachable`() = test("""
+      from typing import Literal
+      class A:
+          def __bool__(self) -> Literal[False]: ...
+      if A():
+          print(1)
+      #   ^^^^^^^^ WARNING This code is unreachable
+      else:
+          print(2)
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-79184"])
+    fun `always truthy bool dunder makes else branch unreachable`() = test("""
+      from typing import Literal
+      class A:
+          def __bool__(self) -> Literal[True]: ...
+      if A():
+          print(1)
+      else:
+          print(2)
+      #   ^^^^^^^^ WARNING This code is unreachable
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-79184"])
+    fun `always falsy len dunder makes then branch unreachable`() = test("""
+      from typing import Literal
+      class A:
+          def __len__(self) -> Literal[0]: ...
+      if A():
+          print(1)
+      #   ^^^^^^^^ WARNING This code is unreachable
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-79184"])
+    fun `runtime bool dunder takes precedence over falsy len dunder`() = test("""
+      from typing import Literal
+      class A:
+          def __bool__(self) -> bool: ...
+          def __len__(self) -> Literal[0]: ...
+      if A():
+          print(1)
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-79184"])
+    fun `runtime bool dunder keeps branch reachable`() = test("""
+      class A:
+          def __bool__(self) -> bool: ...
+      if A():
+          print(1)
+      else:
+          print(2)
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-79184"])
+    fun `always falsy bool dunder makes while body unreachable`() = test("""
+      from typing import Literal
+      class A:
+          def __bool__(self) -> Literal[False]: ...
+      while A():
+          print(1)
+      #   ^^^^^^^^ WARNING This code is unreachable
+      """.trimIndent())
+
+    // The class object is always truthy regardless of the instance `__bool__`, so neither branch is unreachable.
+    @Test
+    @TestFor(issues = ["PY-79184"])
+    fun `always falsy bool dunder on class object keeps branches reachable`() = test("""
+      from typing import Literal
+      class A:
+          def __bool__(self) -> Literal[False]: ...
+      if A:
+          print(1)
+      else:
+          print(2)
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-54916"])
+    fun `false literal value makes if unreachable`() = test("""
+      from typing import Literal
+
+      a: Literal[False] = False
+      if a:
+          print(1)
+      #   ^^^^^^^^ WARNING This code is unreachable
+      """.trimIndent())
+  }
+
+  @Nested
+  inner class OverridableNoReturnReachability {
+    /** A subclass can override the method, so the call can return. mypy agrees. */
+    @Test
+    @TestFor(classes = [PyUnreachableCodeInspection::class])
+    @TestInspections(enableInspections = [PyUnreachableCodeInspection::class])
+    fun `code after a call of an overridable method that raises is reachable`() = test("""
+      class Base:
+          def handle(self):
+              raise RuntimeError("override me")
+
+      class Child(Base):
+          def handle(self):
+              return 1
+
+      def run(obj: Base) -> None:
+          obj.handle()
+          print("after handle")
+      #   ^^^^^^^^^^^^^^^^^^^^^ WARNING This code is unreachable FIXME
+      """.trimIndent())
+
+    /** A subclass can override the method, so the line runs and its error is reported. mypy agrees. */
+    @Test
+    @TestFor(classes = [PyTypeCheckerInspection::class])
+    fun `type error after a call of an overridable method that raises is reported`() = test("""
+      class Base:
+          def handle(self):
+              raise RuntimeError("override me")
+
+      class Child(Base):
+          def handle(self):
+              return 1
+
+      def run(obj: Base) -> None:
+          obj.handle()
+          val: int = "s" # WARNING FIXME Expected type 'int', got 'Literal["s"]' instead
+      """.trimIndent())
   }
 }

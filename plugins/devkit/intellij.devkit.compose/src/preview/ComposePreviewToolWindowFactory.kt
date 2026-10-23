@@ -6,6 +6,7 @@ package com.intellij.devkit.compose.preview
 import androidx.compose.runtime.currentComposer
 import androidx.compose.runtime.currentCompositeKeyHashCode
 import com.intellij.devkit.compose.isComposeToolingEnabled
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.application.UI
@@ -15,14 +16,16 @@ import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.getUserData
 import com.intellij.openapi.ui.putUserData
+import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
+import com.intellij.platform.compose.swing.composeSwingPanel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.withContext
 import org.jetbrains.jewel.bridge.compose
-import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import javax.swing.JComponent
 
 internal const val TOOLWINDOW_ID = "ComposeUIPreview"
@@ -35,7 +38,6 @@ internal class ComposePreviewToolWindowFactory : ToolWindowFactory, DumbAware {
     return isComposeToolingEnabled()
   }
 
-  @OptIn(ExperimentalJewelApi::class)
   override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
     val wrapperPanel = ComposePreviewBusyPanel(project)
 
@@ -58,30 +60,41 @@ internal class ComposePreviewToolWindowFactory : ToolWindowFactory, DumbAware {
         current as? JComponent
       }
 
+      var displayDefaultContent = false
       val provider = try {
         compileCode(virtualFile, project)
+      }
+      catch (e: CancellationException) {
+        displayDefaultContent = true
+        throw e
       }
       catch (e: Throwable) {
         LOG.warn("Unable to compile code for preview of $virtualFile", e)
         return@startTracking
       }
       finally {
-        withContext(Dispatchers.UI) {
-          wrapperPanel.setPaintBusy(false)
-          if (oldContent != null) {
-            wrapperPanel.setContent(oldContent)
+        if (displayDefaultContent) {
+          wrapperPanel.replaceContent {
+            wrapperPanel.setPaintBusy(false)
+            wrapperPanel.displayDefaultContent()
+          }
+        }
+        else {
+          withContext(Dispatchers.UI) {
+            wrapperPanel.setPaintBusy(false)
+            if (oldContent != null) wrapperPanel.setContent(oldContent)
           }
         }
       }
 
       if (provider == null) {
-        withContext(Dispatchers.UI) {
+        wrapperPanel.replaceContent {
           wrapperPanel.displayUnsupportedFile()
         }
         return@startTracking
       }
 
-      withContext(Dispatchers.UI) {
+      wrapperPanel.replaceContent {
         LOG.debug("Apply new UI preview for $virtualFile")
 
         // free up the previous content JVM classes, register new
@@ -94,20 +107,52 @@ internal class ComposePreviewToolWindowFactory : ToolWindowFactory, DumbAware {
         wrapperPanel.putUserData(PROVIDER_KEY, provider)
         wrapperPanel.setPaintBusy(false)
 
+        val content = Disposer.newDisposable(toolWindowContent, "Compose UI preview content")
+        wrapperPanel.putUserData(CONTENT_KEY, content)
+
         try {
-          wrapperPanel.setContent(compose(focusOnClickInside = true) {
-            provider.build(currentComposer, currentCompositeKeyHashCode)
+          wrapperPanel.setContent(when (provider.kind) {
+            PreviewKind.SWING -> composeSwingPanel(content) {
+              provider.build(currentComposer, currentCompositeKeyHashCode)
+            }
+            PreviewKind.MULTIPLATFORM -> compose(focusOnClickInside = true) {
+              provider.build(currentComposer, currentCompositeKeyHashCode)
+            }
           })
         }
         catch (e: ComposeLocalContextException) {
           wrapperPanel.displayMissingLocals(e)
         }
-        catch (e: Exception) {
+        catch (e: CancellationException) {
+          wrapperPanel.displayDefaultContent()
+          throw e
+        }
+        catch (e: Throwable) {
           LOG.error("Unable to apply content for UI preview of $virtualFile", e)
+          wrapperPanel.displayError(e, virtualFile)
         }
       }
     }
   }
 }
 
+/**
+ * Shows other content in the panel. Every content change goes through here, except the restore of the content on show.
+ */
+private suspend fun ComposePreviewBusyPanel.replaceContent(newContent: () -> Unit) {
+  withContext(Dispatchers.UI) {
+    // End the previous composition before its classes go. A Swing preview holds a live composition on this panel.
+    // The teardown of that composition runs previewed code, which the closed class loader can no longer supply.
+    getUserData(CONTENT_KEY)?.let {
+      putUserData(CONTENT_KEY, null)
+      Disposer.dispose(it)
+    }
+
+    newContent()
+  }
+}
+
 private val PROVIDER_KEY = Key.create<ContentProvider>("ComposePreviewToolWindowFactory.ContentProvider")
+
+/** Owns the composition the panel currently shows, so it can be torn down before the next one replaces it. */
+private val CONTENT_KEY = Key.create<Disposable>("ComposePreviewToolWindowFactory.Content")

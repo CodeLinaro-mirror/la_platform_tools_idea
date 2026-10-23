@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.platform.ide.rpc` start
+content_module_jar(module = ":rpc")
+### auto-generated section `dev intellij.platform.ide.rpc` end
 
 ### auto-generated section `build intellij.platform.ide.rpc` start
-
 jvm_library(
     name = "rpc",
     srcs = glob(
@@ -13,6 +17,10 @@ jvm_library(
         allow_empty = True,
     ),
     module_name = "intellij.platform.ide.rpc",
+    resource_strip_prefix = "resources",
+    resources = glob(
+        ["resources/**/*"],
+    ),
     visibility = ["//visibility:public"],
     exports = ["//fleet/openmap"],
     deps = [
@@ -29,6 +37,10 @@ jvm_library(
         "//platform/usageView",
         "//fleet/rpc",
         "//fleet/openmap",
+        "//platform/ide-core",
+        "//platform/kernel/rpc.lite",
+        "//platform/platform-api:ide",
+        "//platform/runtime/product",
     ],
 )
 
@@ -60,6 +72,10 @@ jvm_library(
         "//platform/usageView:usageView_test_lib",
         "//fleet/rpc:rpc_test_lib",
         "//fleet/openmap:openmap_test_lib",
+        "//platform/ide-core:ide-core_test_lib",
+        "//platform/kernel/rpc.lite:rpc.lite_test_lib",
+        "//platform/platform-api:ide_test_lib",
+        "//platform/runtime/product:product_test_lib",
     ],
 )
 ### auto-generated section `build intellij.platform.ide.rpc` end
@@ -68,6 +84,7 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.ide.rpc.iml",
+        "resources/intellij.platform.ide.rpc.xml",
     ],
     visibility = ["//visibility:public"],
 )

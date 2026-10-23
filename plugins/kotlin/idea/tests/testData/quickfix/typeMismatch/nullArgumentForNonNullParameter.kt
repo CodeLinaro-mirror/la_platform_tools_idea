@@ -1,5 +1,5 @@
 // "Change parameter 's' type of primary constructor of class 'Foo' to 'String?'" "true"
-// K2_ERROR: Null cannot be a value of a non-null type 'String'.
+// K2_ERROR: NULL_FOR_NONNULL_TYPE
 class Foo(s: String) {
 
 }
@@ -7,5 +7,4 @@ class Foo(s: String) {
 fun test() {
     Foo(<caret>null)
 }
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ChangeParameterTypeFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.refactoring.changeSignature.quickFix.ChangeParameterTypeFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.refactoring.changeSignature.quickFix.ChangeParameterTypeFix

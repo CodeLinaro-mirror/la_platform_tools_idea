@@ -4,9 +4,12 @@ package com.intellij.debugger.ui.impl.watch;
 import com.intellij.compiler.CompilerConfiguration;
 import com.intellij.compiler.server.BuildManager;
 import com.intellij.debugger.engine.SuspendContextImpl;
+import com.intellij.debugger.engine.evaluation.AdditionalContextProvider;
 import com.intellij.debugger.engine.evaluation.EvaluateException;
 import com.intellij.debugger.engine.evaluation.IncorrectCodeFragmentException;
 import com.intellij.execution.configurations.JavaParameters;
+import com.intellij.execution.configurations.RunProfile;
+import com.intellij.execution.configurations.RunProfileWithCompileBeforeLaunchOption;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.compiler.ClassObject;
 import com.intellij.openapi.compiler.CompilationException;
@@ -19,13 +22,19 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.projectRoots.JavaSdkVersion;
 import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.roots.ModuleRootManager;
+import com.intellij.openapi.roots.OrderEntry;
+import com.intellij.openapi.roots.ProjectFileIndex;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.registry.Registry;
+import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.pom.java.LanguageLevel;
 import com.intellij.psi.PsiCodeFragment;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
+import com.intellij.psi.PsiLocalVariable;
+import com.intellij.psi.PsiReferenceExpression;
+import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.refactoring.extractMethod.PrepareFailedException;
 import com.intellij.refactoring.extractMethodObject.ExtractLightMethodObjectHandler;
 import com.intellij.refactoring.extractMethodObject.LightMethodObjectExtractedData;
@@ -45,24 +54,62 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 
 // todo: consider batching compilations in order not to start a separate process for every class that needs to be compiled
 public class CompilingEvaluatorImpl extends CompilingEvaluator {
   private Collection<ClassObject> myCompiledClasses;
-  private final @Nullable Module myModule;
+  private final @NotNull List<Module> myModules;
   private final @Nullable LanguageLevel myLanguageLevel;
 
   public CompilingEvaluatorImpl(@NotNull Project project,
                                 @NotNull PsiElement context,
                                 @NotNull LightMethodObjectExtractedData data) {
     super(project, context, data);
-    Module module = ModuleUtilCore.findModuleForPsiElement(context);
-    myModule = module;
+    XDebugSession currentSession = XDebuggerManager.getInstance(project).getCurrentSession();
+    RunProfile runProfile = currentSession == null ? null : currentSession.getRunProfile();
+    myModules = findContextModules(project, context, runProfile);
+    Module module = myModules.isEmpty() ? null : myModules.getFirst();
     myLanguageLevel = module == null ? null : LanguageLevelUtil.getEffectiveLanguageLevel(module);
+  }
+
+  @ApiStatus.Internal
+  public static @NotNull List<Module> findContextModules(@NotNull Project project,
+                                                         @NotNull PsiElement context,
+                                                         @Nullable RunProfile runProfile) {
+    Module contextModule = ModuleUtilCore.findModuleForPsiElement(context);
+    if (contextModule != null) {
+      return Collections.singletonList(contextModule);
+    }
+
+    Set<Module> modules = new LinkedHashSet<>();
+    if (runProfile instanceof RunProfileWithCompileBeforeLaunchOption compileBeforeLaunchProfile) {
+      for (Module module : compileBeforeLaunchProfile.getModules()) {
+        if (!module.isDisposed() && project.equals(module.getProject())) {
+          modules.add(module);
+        }
+      }
+    }
+    if (!modules.isEmpty()) {
+      return new ArrayList<>(modules);
+    }
+
+    PsiFile contextFile = context.getContainingFile();
+    VirtualFile virtualFile = contextFile == null ? null : contextFile.getVirtualFile();
+    if (virtualFile != null) {
+      for (OrderEntry orderEntry : ProjectFileIndex.getInstance(project).getOrderEntriesForFile(virtualFile)) {
+        Module ownerModule = orderEntry.getOwnerModule();
+        if (!ownerModule.isDisposed()) {
+          modules.add(ownerModule);
+        }
+      }
+    }
+    return new ArrayList<>(modules);
   }
 
   @Override
@@ -126,10 +173,12 @@ public class CompilingEvaluatorImpl extends CompilingEvaluator {
     Set<File> platformClasspath = new LinkedHashSet<>();
     Set<File> classpath = new LinkedHashSet<>();
     AnnotationProcessingConfiguration profile = null;
-    if (myModule != null) {
-      assert myProject.equals(myModule.getProject()) : myModule + " is from another project";
-      profile = CompilerConfiguration.getInstance(myProject).getAnnotationProcessingConfiguration(myModule);
-      ModuleRootManager rootManager = ModuleRootManager.getInstance(myModule);
+    for (Module module : myModules) {
+      assert myProject.equals(module.getProject()) : module + " is from another project";
+      if (profile == null) {
+        profile = CompilerConfiguration.getInstance(myProject).getAnnotationProcessingConfiguration(module);
+      }
+      ModuleRootManager rootManager = ModuleRootManager.getInstance(module);
       for (String path : rootManager.orderEntries().compileOnly().recursively().exportedOnly().withoutSdk().getPathsList().getPathList()) {
         classpath.add(new File(path));
       }
@@ -184,13 +233,15 @@ public class CompilingEvaluatorImpl extends CompilingEvaluator {
           XDebugSession currentSession = XDebuggerManager.getInstance(project).getCurrentSession();
           JavaSdkVersion javaVersion = getJavaVersion(currentSession);
           PsiElement physicalContext = findPhysicalContext(psiContext);
+          PsiCodeFragment fragment = fragmentFactory.apply(psiContext);
           LightMethodObjectExtractedData data = ExtractLightMethodObjectHandler.extractLightMethodObject(
             project,
             physicalContext != null ? physicalContext : psiContext,
-            fragmentFactory.apply(psiContext),
+            fragment,
             generatedClassName != null ? generatedClassName : getGeneratedClassName(),
             javaVersion,
-            generatedClassName);
+            generatedClassName,
+            findAdditionalContextVariables(fragment));
           if (data != null) {
             return new CompilingEvaluatorImpl(project, psiContext, data);
           }
@@ -209,6 +260,18 @@ public class CompilingEvaluatorImpl extends CompilingEvaluator {
       element = element.getContext();
     }
     return element;
+  }
+
+  private static @NotNull List<PsiLocalVariable> findAdditionalContextVariables(@NotNull PsiCodeFragment fragment) {
+    Map<String, PsiLocalVariable> result = new LinkedHashMap<>();
+    for (PsiReferenceExpression expression : PsiTreeUtil.findChildrenOfType(fragment, PsiReferenceExpression.class)) {
+      PsiElement target = expression.resolve();
+      if (target instanceof PsiLocalVariable variable &&
+          variable.getUserData(AdditionalContextProvider.getADDITIONAL_CONTEXT_ELEMENT_KEY()) != null) {
+        result.putIfAbsent(variable.getName(), variable);
+      }
+    }
+    return new ArrayList<>(result.values());
   }
 
   public static @Nullable JavaSdkVersion getJavaVersion(@Nullable XDebugSession session) {

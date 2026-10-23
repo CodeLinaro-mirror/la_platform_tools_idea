@@ -7,16 +7,20 @@ import com.intellij.ide.dnd.DnDNativeTarget
 import com.intellij.ide.dnd.DnDSupport
 import com.intellij.ide.dnd.FileCopyPasteUtil
 import com.intellij.ide.projectView.impl.ProjectViewPane
+import com.intellij.openapi.actionSystem.DataKey
+import com.intellij.openapi.actionSystem.DataSink
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.wm.impl.welcomeScreen.recentProjects.ProjectCollectors
 import com.intellij.openapi.wm.impl.welcomeScreen.recentProjects.RecentProjectFilteringTree
 import com.intellij.openapi.wm.impl.welcomeScreen.recentProjects.RecentProjectPanelComponentFactory
+import com.intellij.platform.diagnostic.telemetry.helpers.use
+import com.intellij.platform.ide.diagnostic.startUpPerformanceReporter.FUSProjectHotStartUpMeasurer
 import com.intellij.platform.ide.nonModalWelcomeScreen.DefaultFileDragAndDropHandler
 import com.intellij.platform.ide.nonModalWelcomeScreen.NonModalWelcomeScreenBundle
 import com.intellij.platform.ide.nonModalWelcomeScreen.isNonModalWelcomeScreenEnabled
 import com.intellij.platform.ide.nonModalWelcomeScreen.isWelcomeExperienceProjectSync
 import com.intellij.platform.ide.nonModalWelcomeScreen.rightTab.WelcomeRightTabContentProvider
+import com.intellij.platform.ide.nonModalWelcomeScreen.welcomeScreenStartupSpanTracer
 import com.intellij.ui.ExperimentalUI
 import com.intellij.ui.IconManager
 import com.intellij.ui.PlatformIcons
@@ -29,6 +33,9 @@ import com.intellij.ui.dsl.builder.panel
 import com.intellij.ui.dsl.gridLayout.UnscaledGaps
 import com.intellij.ui.dsl.gridLayout.UnscaledGapsY
 import com.intellij.util.ui.JBUI
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import org.jetbrains.annotations.ApiStatus
 import java.awt.BorderLayout
 import javax.swing.BoxLayout
@@ -38,7 +45,7 @@ import javax.swing.ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
 import javax.swing.ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED
 
 @ApiStatus.Internal
-class WelcomeScreenLeftPanel(private val project: Project) : ProjectViewPane(project) {
+class WelcomeScreenLeftPanel(private val project: Project, private val scope: CoroutineScope) : ProjectViewPane(project) {
   private var searchField: SearchTextField? = null
 
   override fun getTitle(): String = NonModalWelcomeScreenBundle.message("welcome.screen.project.view.title")
@@ -50,7 +57,7 @@ class WelcomeScreenLeftPanel(private val project: Project) : ProjectViewPane(pro
   override fun isInitiallyVisible(): Boolean = project.isWelcomeExperienceProjectSync() && isNonModalWelcomeScreenEnabled
 
   override fun isDefaultPane(project: Project): Boolean {
-    return !Registry.`is`("ide.welcome.screen.change.project.view.depending.on.opened.file", false) && project.isWelcomeExperienceProjectSync()
+    return project.isWelcomeExperienceProjectSync()
   }
 
   override fun getWeight(): Int = -10 // TODO: Increase weight?
@@ -85,7 +92,12 @@ class WelcomeScreenLeftPanel(private val project: Project) : ProjectViewPane(pro
   }
 
   override fun createComponent(): JComponent {
+    return welcomeScreenStartupSpanTracer.spanBuilder("welcome left panel creating").use {
+      doCreateComponent()
+    }
+  }
 
+  private fun doCreateComponent(): JComponent {
     val mainPanel = JBPanel<JBPanel<*>>(BorderLayout()).apply {
       border = JBUI.Borders.empty()
     }
@@ -97,7 +109,8 @@ class WelcomeScreenLeftPanel(private val project: Project) : ProjectViewPane(pro
       layout = BoxLayout(this, BoxLayout.Y_AXIS)
       border = JBUI.Borders.empty()
     }
-    topPanel.add(WelcomeScreenLeftPanelActions(project).createButtonsComponent())
+    val actionsComponent = WelcomeScreenLeftPanelActions(project).createButtonsComponent(scope, createShownReporter())
+    topPanel.add(actionsComponent)
     topPanel.add(separator { customize(UnscaledGapsY(top = 17)) })
     topPanel.add(searchPanel(projectFilteringTree))
     topPanel.add(separator())
@@ -107,6 +120,20 @@ class WelcomeScreenLeftPanel(private val project: Project) : ProjectViewPane(pro
                   BorderLayout.CENTER)
 
     return mainPanel
+  }
+
+  /**
+   * Returns the callback for the first paint of the left toolbar with its actions.
+   * The callback reports the non-modal welcome screen as shown in the captured start-up context.
+   * Without a start-up context, the callback does nothing.
+   */
+  private fun createShownReporter(): () -> Unit {
+    val startUpContextElementToPass = FUSProjectHotStartUpMeasurer.getStartUpContextElementToPass() ?: return {}
+    return {
+      scope.launch(Dispatchers.IO + startUpContextElementToPass) {
+        FUSProjectHotStartUpMeasurer.reportNonModalWelcomeScreenShown()
+      }
+    }
   }
 
   override fun getComponentToFocus(): JComponent? {
@@ -129,11 +156,13 @@ class WelcomeScreenLeftPanel(private val project: Project) : ProjectViewPane(pro
   }
 
   private fun createRecentProjectTree(): RecentProjectFilteringTree =
-    RecentProjectPanelComponentFactory.createComponent(
-      this,
-      collectors = listOf(ProjectCollectors.cloneableProjectsCollector, ProjectCollectors.createRecentProjectsWithoutCurrentCollector(project)),
-      treeBackground = null
-    ).apply {
+    welcomeScreenStartupSpanTracer.spanBuilder("welcome recent projects collecting").use {
+      RecentProjectPanelComponentFactory.createComponent(
+        this,
+        collectors = listOf(ProjectCollectors.cloneableProjectsCollector, ProjectCollectors.createRecentProjectsWithoutCurrentCollector(project)),
+        treeBackground = null
+      )
+    }.apply {
       tree.emptyText.text = NonModalWelcomeScreenBundle.message("welcome.screen.no.recent.projects")
       selectLastOpenedProjectOrTheFirstInTree()
     }
@@ -149,7 +178,15 @@ class WelcomeScreenLeftPanel(private val project: Project) : ProjectViewPane(pro
     separator().customize()
   }
 
+  override fun uiDataSnapshot(sink: DataSink) {
+    super.uiDataSnapshot(sink)
+    sink[WELCOME_SCREEN_IS_SHOWN] = true
+  }
+
   companion object {
     const val ID: String = "NonModalWelcomeScreenProjectPane"
   }
 }
+
+@ApiStatus.Internal
+val WELCOME_SCREEN_IS_SHOWN: DataKey<Boolean> = DataKey.create("NonModalWelcomeScreenProjectPane.isShown")

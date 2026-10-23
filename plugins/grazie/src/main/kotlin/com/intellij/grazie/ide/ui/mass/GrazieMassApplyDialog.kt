@@ -11,6 +11,7 @@ import com.intellij.grazie.GrazieBundle
 import com.intellij.grazie.icons.GrazieIcons
 import com.intellij.grazie.ide.inspection.grammar.quickfix.GrazieReplaceTypoQuickFix.toRangeReplacements
 import com.intellij.grazie.ide.ui.PaddedListCellRenderer
+import com.intellij.grazie.style.TextLevelFix
 import com.intellij.grazie.text.CheckerRunner
 import com.intellij.grazie.text.TextProblem
 import com.intellij.icons.AllIcons
@@ -55,6 +56,7 @@ import com.intellij.ui.dsl.builder.RightGap
 import com.intellij.ui.dsl.builder.Row
 import com.intellij.ui.dsl.builder.panel
 import com.intellij.util.IconUtil
+import com.intellij.util.text.StringOperation
 import com.intellij.util.text.TextRangeUtil
 import com.intellij.util.ui.JBUI
 import java.awt.Font
@@ -71,16 +73,18 @@ import kotlin.math.min
 
 private val appliedChange = Key<Int>("grazie.mass.apply.change.index")
 
+data class ProblemWithSuggestions(val original: TextProblem, val suggestions: List<TextProblem.Suggestion>)
+
 class GrazieMassApplyDialog : DialogWrapper {
   private val text: String
-  private val problems: List<TextProblem>
+  private val problems: List<ProblemWithSuggestions>
   private val project: Project
   private val editor: EditorEx
   private val undoManager: DocumentUndoManager
   private val highlightings = HighlightedProblems()
   private val massOptionComboBox by lazy { CollectionComboBoxModel(MassOptions.entries) }
 
-  constructor(file: PsiFile, problems: List<TextProblem>) : super(file.project) {
+  constructor(file: PsiFile, problems: List<ProblemWithSuggestions>) : super(file.project) {
     check(problems.isNotEmpty()) { "In order to apply mass fixes, there must be at least one problem to fix" }
     this.text = file.text
     this.project = file.project
@@ -259,18 +263,28 @@ class GrazieMassApplyDialog : DialogWrapper {
   }
 
   private fun getHighlightings(): List<Highlighting> =
-    problems.map { problem ->
-      val highlightRanges = problem.highlightRanges
-        .map { problem.text.textRangeToFile(it) }
-        .map { addRangeHighlighter(editor, it, BOLD_TEXT_ATTRIBUTES) }
-      val changes = problem.suggestions.map { suggestion ->
-        val replacements = suggestion.changes
-          .flatMap { toRangeReplacements(it.range, it.replacement, problem) }
-          .map { (range, replacement) -> range to replacement }
-        DocumentChange(suggestion.presentableText, replacements, editor, project)
-      }
-      Highlighting(problem, highlightRanges, changes + IgnoreChange(problem, changes.firstOrNull()))
+    problems.asSequence()
+      .map { prepareProblem(it) }
+      .filter { it.changes.isNotEmpty() }
+      .map { prepared ->
+        Highlighting(
+          prepared.problem, prepared.ranges,
+          prepared.changes + IgnoreChange(prepared.problem, prepared.changes.firstOrNull())
+        )
+      }.toList()
+
+  private fun prepareProblem(problem: ProblemWithSuggestions): PreparedProblem {
+    val ranges = problem.original.highlightRanges
+      .map { problem.original.text.textRangeToFile(it) }
+      .map { addRangeHighlighter(editor, it, BOLD_TEXT_ATTRIBUTES) }
+    val changes = problem.suggestions.map { suggestion ->
+      val replacements = suggestion.changes
+        .flatMap { toRangeReplacements(it.range, it.replacement, problem.original) }
+        .map { (range, replacement) -> range to replacement }
+      DocumentChange(suggestion.presentableText, replacements, editor, project)
     }
+    return PreparedProblem(problem.original, ranges, changes)
+  }
 
   private fun Row.labeledIcon(icon: Icon, problemsExtractor: (HighlightedProblems) -> Int) {
     val problemCount = problemsExtractor(highlightings)
@@ -312,8 +326,8 @@ private fun addRangeHighlighter(editor: Editor, range: TextRange, textAttribute:
   )
 }
 
-private fun getTextRanges(problems: List<TextProblem>): List<TextRange> {
-  val ranges = problems.flatMap { it.text.rangesInFile }
+private fun getTextRanges(problems: List<ProblemWithSuggestions>): List<TextRange> {
+  val ranges = problems.flatMap { it.original.text.rangesInFile }
     .sortedBy { it.startOffset }.distinct()
   return TextRangeUtil.mergeRanges(ranges)
 }
@@ -584,4 +598,24 @@ private enum class MassOptions(@param:NlsSafe val text: String) {
   MULTIPLE(GrazieBundle.message("grazie.mass.apply.dialog.multiple"));
 
   override fun toString(): String = text
+}
+
+private data class PreparedProblem(
+  val problem: TextProblem,
+  val ranges: List<RangeHighlighter>,
+  val changes: List<DocumentChange>,
+)
+
+private data class TextLevelChange(
+  val fix: TextLevelFix,
+  val change: StringOperation,
+)
+
+private class NormalSuggestionRangeFilter(private val ranges: List<TextRange>) {
+  private var index = 0
+
+  fun intersects(range: TextRange): Boolean {
+    while (index < ranges.size && ranges[index].endOffset <= range.startOffset) index++
+    return index < ranges.size && ranges[index].intersects(range)
+  }
 }

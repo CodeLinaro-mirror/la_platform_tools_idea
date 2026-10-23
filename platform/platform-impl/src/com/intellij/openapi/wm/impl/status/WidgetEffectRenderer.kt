@@ -7,21 +7,20 @@ import com.intellij.openapi.util.Key
 import com.intellij.openapi.wm.StatusBar
 import com.intellij.openapi.wm.impl.status.IdeStatusBarImpl.WidgetEffect
 import com.intellij.ui.ClientProperty
+import com.intellij.ui.DrawUtil
 import com.intellij.ui.ExperimentalUI
 import com.intellij.ui.awt.RelativePoint
 import com.intellij.ui.awt.RelativeRectangle
+import com.intellij.ui.paint.useCopy
 import com.intellij.ui.scale.JBUIScale
 import com.intellij.util.ui.JBInsets
 import com.intellij.util.ui.JBUI
-import com.intellij.util.ui.MacUIUtil
 import com.intellij.util.ui.UIUtil
 import java.awt.Color
 import java.awt.Graphics
-import java.awt.Graphics2D
 import java.awt.Insets
 import java.awt.KeyboardFocusManager
 import java.awt.Rectangle
-import java.awt.RenderingHints
 import java.awt.geom.RoundRectangle2D
 import javax.swing.JComponent
 import kotlin.math.max
@@ -163,10 +162,8 @@ internal class WidgetEffectRenderer(private val statusBar: IdeStatusBarImpl) {
       val hoverBounds = getHoverBounds(component, highlightBounds, statusBar)
       g.color = bg
       if (ExperimentalUI.isNewUI()) {
-        val g2 = g.create() as Graphics2D
-        try {
-          g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-          g2.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, if (MacUIUtil.USE_QUARTZ) RenderingHints.VALUE_STROKE_PURE else RenderingHints.VALUE_STROKE_NORMALIZE)
+        g.useCopy { g2 ->
+          DrawUtil.setupRenderingHints(g2)
           val arc = JBUIScale.scale(4).toFloat()
           val shape: RoundRectangle2D = RoundRectangle2D.Float(
             hoverBounds.x.toFloat(),
@@ -177,9 +174,6 @@ internal class WidgetEffectRenderer(private val statusBar: IdeStatusBarImpl) {
             arc,
           )
           g2.fill(shape)
-        }
-        finally {
-          g2.dispose()
         }
       }
       else {

@@ -102,7 +102,7 @@ public final class PluginIdDependenciesIndex extends PluginXmlIndexBase<String, 
 
   @Override
   public int getVersion() {
-    return BASE_INDEX_VERSION + 6;
+    return BASE_INDEX_VERSION + 8;
   }
 
   public static Set<String> getPluginAndDependsIds(Project project, Set<VirtualFile> files) {
@@ -140,6 +140,11 @@ public final class PluginIdDependenciesIndex extends PluginXmlIndexBase<String, 
     Collection<VirtualFile> allFiles = new ArrayList<>(dependsFiles);
     allFiles.addAll(contentFiles);
     return allFiles;
+  }
+
+  public static Collection<VirtualFile> findFilesWithConfigFileDepends(Project project, VirtualFile configFile) {
+    return FileBasedIndex.getInstance().getContainingFiles(NAME, getDependsIndexingKey(configFile.getName()),
+                                                           GlobalSearchScope.projectScope(project));
   }
 
   public static Collection<VirtualFile> findDescriptorsWithReferenceInDependenciesTag(GlobalSearchScope scope, String moduleNameOrPluginId) {

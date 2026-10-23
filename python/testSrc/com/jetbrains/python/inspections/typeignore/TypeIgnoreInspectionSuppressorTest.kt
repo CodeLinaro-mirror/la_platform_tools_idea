@@ -1,7 +1,11 @@
-// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python.inspections.typeignore
 
+import com.jetbrains.python.allure.Layers
+import com.jetbrains.python.allure.Subsystems
+
 import com.intellij.grazie.spellcheck.GrazieSpellCheckingInspection
+import com.intellij.idea.TestFor
 import com.intellij.psi.PsiFile
 import com.jetbrains.python.PythonFileType
 import com.jetbrains.python.fixtures.PyTestCase
@@ -13,7 +17,10 @@ import com.jetbrains.python.inspections.PyTypeCheckerInspection
 import com.jetbrains.python.inspections.PyTypeHintsInspection
 import com.jetbrains.python.inspections.PyTypedDictInspection
 import com.jetbrains.python.inspections.unresolvedReference.PyUnresolvedReferencesInspection
+import com.jetbrains.python.inspections.unusedLocal.PyUnusedLocalVariableInspection
 
+@Subsystems.Inspections
+@Layers.Functional
 class TypeIgnoreInspectionSuppressorTest : PyTestCase() {
 
   fun testCaseInsensitiveness() {
@@ -221,6 +228,133 @@ class TypeIgnoreInspectionSuppressorTest : PyTestCase() {
       # type:  ignore
       x: int = <warning>""</warning>
     """.trimIndent())
+  }
+
+  @TestFor(issues = ["PY-90290"])
+  fun testSpecificCodeSuppressesOnlyNamedInspection() {
+    doTestByText("""
+      def foo(x: str):
+          print(2 + 'foo', x.<warning descr="Unresolved attribute reference 'bar' for class 'str'">bar</warning>)  # type: ignore[PyTypeChecker]
+    """)
+  }
+
+  @TestFor(issues = ["PY-90290"])
+  fun testPyCharmNamespaceCodeEquivalentToBareCode() {
+    doTestByText("""
+      def foo(x: str):
+          print(2 + 'foo', x.<warning descr="Unresolved attribute reference 'bar' for class 'str'">bar</warning>)  # type: ignore[pycharm:PyTypeChecker]
+    """)
+  }
+
+  @TestFor(issues = ["PY-90290"])
+  fun testMultipleSpecificCodesSuppressEach() {
+    doTestByText("""
+      def foo(x: str):
+          print(2 + 'foo', x.bar)  # type: ignore[PyTypeChecker, PyUnresolvedReferences]
+    """)
+  }
+
+  @TestFor(issues = ["PY-90290"])
+  fun testBareIgnoreSuppressesNonTypeInspection() {
+    myFixture.enableInspections(PyUnusedLocalVariableInspection::class.java)
+    doTestByText("""
+      def foo():
+          x = 1  # type: ignore
+          <weak_warning descr="Local variable 'y' value is not used">y</weak_warning> = 1
+    """)
+  }
+
+  @TestFor(issues = ["PY-90290"])
+  fun testForeignCodeSuppressesEveryInspection() {
+    doTestByText("""
+      print(2 + 'foo')  # type: ignore[attr-defined]
+    """)
+  }
+
+  @TestFor(issues = ["PY-90290"])
+  fun testFileLevelSpecificCodeAppliesPreciselyFileWide() {
+    doTestByText("""
+      # type: ignore[PyUnresolvedReferences]
+      def foo(x: str):
+          print(x.bar)
+          print(2 + <warning descr="Expected type 'int', got 'Literal[\"foo\"]' instead">'foo'</warning>)
+    """)
+  }
+
+  // PY-90787: short codes inside brackets.
+
+  @TestFor(issues = ["PY-90787"])
+  fun testGranularShortCodeSuppressesOnlyThatCategory() {
+    doTestByText("""
+      def foo(x: str):
+          print(2 + 'foo', x.<warning descr="Unresolved attribute reference 'bar' for class 'str'">bar</warning>)  # type: ignore[unsupported-operator]
+    """)
+  }
+
+  @TestFor(issues = ["PY-90787"])
+  fun testKebabAliasShortCodeSuppressesWholeInspection() {
+    doTestByText("""
+      def foo(x: str):
+          print(2 + <warning descr="Expected type 'int', got 'Literal[\"foo\"]' instead">'foo'</warning>, x.bar)  # type: ignore[unresolved-references]
+    """)
+  }
+
+  @TestFor(issues = ["PY-90787"])
+  fun testDifferentGranularShortCodeDoesNotSuppress() {
+    doTestByText("""
+      print(2 + <warning descr="Expected type 'int', got 'Literal[\"foo\"]' instead">'foo'</warning>)  # type: ignore[bad-return]
+    """)
+  }
+
+  @TestFor(issues = ["PY-90787"])
+  fun testPyCharmNamespacedGranularShortCode() {
+    doTestByText("""
+      print(2 + 'foo')  # type: ignore[pycharm:unsupported-operator]
+    """)
+  }
+
+  @TestFor(issues = ["PY-92114"])
+  fun testUnknownNamespacedCodeSuppressesNothing() {
+    doTestByText("""
+      print(2 + <warning descr="Expected type 'int', got 'Literal[\"foo\"]' instead">'foo'</warning>)  # type: ignore[pycharm:amongus]
+    """)
+  }
+
+  /** A `Py` id that no loaded inspection owns targets only that id. It is not a blanket suppression. */
+  @TestFor(issues = ["PY-92114"])
+  fun testNamespacedPyIdOfNoLoadedInspectionSuppressesNothingElse() {
+    doTestByText("""
+      print(2 + <warning descr="Expected type 'int', got 'Literal[\"foo\"]' instead">'foo'</warning>)  # type: ignore[pycharm:PyNotLoadedInspection]
+    """)
+  }
+
+  // PY-90627: the `# pycharm: ignore[...]` directive.
+
+  @TestFor(issues = ["PY-90627", "PY-90787"])
+  fun testPyCharmIgnoreDirectiveGranularCode() {
+    doTestByText("""
+      print(2 + 'foo')  # pycharm: ignore[unsupported-operator]
+      print(2 + <warning descr="Expected type 'int', got 'Literal[\"foo\"]' instead">'foo'</warning>)
+    """)
+  }
+
+  @TestFor(issues = ["PY-90627"])
+  fun testPyCharmIgnoreDirectiveWholeInspection() {
+    doTestByText("""
+      def foo(x: str):
+          print(x.bar)  # pycharm: ignore[PyUnresolvedReferences]
+          print(x.<warning descr="Unresolved attribute reference 'bar' for class 'str'">bar</warning>)
+    """)
+  }
+
+  @TestFor(issues = ["PY-90627"])
+  fun testPyCharmIgnoreDirectiveAtFileLevel() {
+    doTestByText("""
+      # pycharm: ignore[PyUnresolvedReferences]
+      def foo(x: str):
+          print(x.bar)
+          print(2 + <warning descr="Expected type 'int', got 'Literal[\"foo\"]' instead">'foo'</warning>)
+    """)
   }
 
   private fun doTestByText(notTrimmedText: String) {

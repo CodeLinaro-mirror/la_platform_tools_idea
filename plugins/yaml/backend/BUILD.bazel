@@ -1,8 +1,20 @@
 load("@community//build:tests-options.bzl", "jps_test")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+jps_test(
+    name = "backend-tests_test",
+    timeout = "long",
+    tags = ["community-aggregator"],
+    runtime_deps = [":backend-tests_test_lib"],
+)
+### skip generation section `test intellij.yaml.backend.tests`
+
+### auto-generated section `dev intellij.yaml.backend` start
+content_module_jar(module = ":backend")
+### auto-generated section `dev intellij.yaml.backend` end
 
 ### auto-generated section `build intellij.yaml.backend` start
-
 jvm_library(
     name = "backend",
     srcs = glob(
@@ -70,8 +82,6 @@ jvm_library(
         ":backend",
         "//platform/analysis-api:analysis_test_lib",
         "//platform/code-style-api:codeStyle_test_lib",
-        "//platform/util/concurrency",
-        "//platform/util/concurrency:concurrency_test_lib",
         "//platform/core-api:core_test_lib",
         "//platform/editor-ui-api:editor-ui_test_lib",
         "//platform/platform-api:ide_test_lib",
@@ -82,15 +92,9 @@ jvm_library(
         "//platform/core-impl:core-impl_test_lib",
         "//platform/projectModel-api:projectModel_test_lib",
         "//platform/structure-view-impl:structureView_test_lib",
-        "//platform/testFramework",
-        "//platform/testFramework:testFramework_test_lib",
         "//spellchecker:spellchecker_test_lib",
-        "//plugins/grazie/src:core",
-        "//plugins/grazie/src:core_test_lib",
         "//platform/platform-impl:ide-impl_test_lib",
         "//json/backend:backend_test_lib",
-        "//json/backend/tests",
-        "//json/backend/tests:tests_test_lib",
         "//platform/indexing-impl:indexing-impl_test_lib",
         "//platform/editor-ui-ex:editor-ex_test_lib",
         "//libraries/stream:stream_test_lib",
@@ -101,19 +105,12 @@ jvm_library(
         "//platform/refactoring:refactoring_test_lib",
         "//platform/core-ui:core-ui_test_lib",
         "//platform/code-style-impl:codeStyle-impl_test_lib",
-        "//plugins/IntelliLang:langInjection",
-        "//plugins/IntelliLang:langInjection_test_lib",
         "//platform/statistics:statistics_test_lib",
-        "//RegExpSupport:regexp",
-        "//RegExpSupport:regexp_test_lib",
-        "//tools/intellij.tools.ide.metrics.benchmark:ide-metrics-benchmark",
-        "//tools/intellij.tools.ide.metrics.benchmark:ide-metrics-benchmark_test_lib",
         "//plugins/yaml:yaml_test_lib",
         "//platform/searchEverywhere/shared:searchEverywhere_test_lib",
         "//platform/searchEverywhere/backend:backend_test_lib",
-        "//plugins/IntelliLang/backend",
-        "//plugins/IntelliLang/backend:backend_test_lib",
-        "@lib//:jet_check",
+        "//libraries/jetcheck",
+        "//libraries/jetcheck:jetcheck_test_lib",
         "//libraries/kotlinx/collections-immutable:libraries-kotlinx-collections-immutable_test_lib",
         "//jps/model-api:model_test_lib",
         "//platform/util:util-ui_test_lib",
@@ -125,13 +122,15 @@ jvm_library(
 exports_files(
     [
         "intellij.yaml.backend.iml",
+        "resources/colorSchemes/YAMLDarcula.xml",
+        "resources/colorSchemes/YAMLDefault.xml",
+        "resources/intellij.yaml.backend.xml",
     ],
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.yaml.backend` end
 
 ### auto-generated section `build intellij.yaml.backend.tests` start
-
 jvm_library(
     name = "backend-tests",
     srcs = glob(
@@ -140,7 +139,11 @@ jvm_library(
     ),
     module_name = "intellij.yaml.backend.tests",
     visibility = ["//visibility:public"],
-    runtime_deps = ["//platform/backend"],
+    runtime_deps = [
+        # do not sort,
+        "//platform/backend",
+        "//xml/plugin",
+    ],
 )
 
 jvm_library(
@@ -170,6 +173,7 @@ jvm_library(
         "//platform/platform-impl:ide-impl_test_lib",
         "//platform/ide-core-impl:ide-core-impl_test_lib",
         "//platform/ide-core:ide-core_test_lib",
+        "//xml/plugin:plugin_test_lib",
     ],
     deps = [
         # do not sort,
@@ -240,17 +244,54 @@ jvm_library(
         "//platform/searchEverywhere/backend:backend_test_lib",
         "//plugins/IntelliLang/backend",
         "//plugins/IntelliLang/backend:backend_test_lib",
-        "@lib//:jet_check",
+        "//libraries/jetcheck",
+        "//libraries/jetcheck:jetcheck_test_lib",
         "//libraries/kotlinx/collections-immutable:libraries-kotlinx-collections-immutable",
         "//libraries/kotlinx/collections-immutable:libraries-kotlinx-collections-immutable_test_lib",
         "//jps/model-api:model",
         "//jps/model-api:model_test_lib",
         "//platform/util:util-ui",
         "//platform/util:util-ui_test_lib",
+        "//aether-dependency-resolver/plugin",
+        "//aether-dependency-resolver/plugin:plugin_test_lib",
+        "//java/langInjection",
+        "//java/langInjection:langInjection_test_lib",
+        "//java/java-backend:backend",
+        "//java/java-backend:backend_test_lib",
+        "//java/plugin",
+        "//java/plugin:plugin_test_lib",
+        "//json",
+        "//json:json_test_lib",
+        "//platform/structuralsearch:structuralSearch",
+        "//platform/structuralsearch:structuralSearch_test_lib",
+        "//platform/structuralsearch/plugin",
+        "//platform/structuralsearch/plugin:plugin_test_lib",
+        "//platform/structure-view-impl/plugin",
+        "//platform/structure-view-impl/plugin:plugin_test_lib",
+        "//platform/todo/plugin",
+        "//platform/todo/plugin:plugin_test_lib",
+        "//platform/vcs/plugin",
+        "//platform/vcs/plugin:plugin_test_lib",
+        "//plugins/grazie",
+        "//plugins/grazie:grazie_test_lib",
+        "//plugins/properties:properties-backend",
+        "//plugins/properties:properties-backend_test_lib",
+        "//plugins/properties/properties-common:properties",
+        "//plugins/properties/properties-common:properties_test_lib",
+        "//plugins/properties/properties-psi-api:psi",
+        "//plugins/properties/properties-psi-api:psi_test_lib",
+        "//plugins/properties/properties-psi-impl:backend-psi",
+        "//plugins/properties/properties-psi-impl:backend-psi_test_lib",
+        "//plugins/sh/plugin:plugin-main",
+        "//plugins/sh/plugin:plugin-main_test_lib",
         "//json/networknt.wrapper",
         "//json/networknt.wrapper:networknt.wrapper_test_lib",
         "//libraries/junit4",
         "//libraries/junit4:junit4_test_lib",
+        "//plugins/yaml/syntax",
+        "//plugins/yaml/syntax:syntax_test_lib",
+        "//platform/syntax/syntax-psi:psi",
+        "//platform/syntax/syntax-psi:psi_test_lib",
     ],
 )
 ### auto-generated section `build intellij.yaml.backend.tests` end
@@ -263,11 +304,3 @@ exports_files(
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.yaml.backend.tests` end
-
-### auto-generated section `test intellij.yaml.backend.tests` start
-
-jps_test(
-    name = "backend-tests_test",
-    runtime_deps = [":backend-tests_test_lib"],
-)
-### auto-generated section `test intellij.yaml.backend.tests` end

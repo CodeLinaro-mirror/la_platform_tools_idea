@@ -1,7 +1,18 @@
+load("@community//platform/build-scripts/bazel-rules:ij_plugin.bzl", "ij_plugin")
+load("@jps_dynamic_deps_community//:targets.bzl", "dev_dist_plugin")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
-### auto-generated section `build intellij.color.scheme.all_hallows_eve` start
+### auto-generated section `dev intellij.color.scheme.all_hallows_eve` start
+dev_dist_plugin(
+    descriptor = "resources/META-INF/plugin.xml",
+    jars = {
+        "lib/color-scheme-all_hallows_eve.jar": ["intellij.color.scheme.all_hallows_eve"],
+    },
+    main_module = "intellij.color.scheme.all_hallows_eve",
+)
+### auto-generated section `dev intellij.color.scheme.all_hallows_eve` end
 
+### auto-generated section `build intellij.color.scheme.all_hallows_eve` start
 jvm_library(
     name = "color-scheme-all_hallows_eve",
     srcs = glob(
@@ -14,6 +25,7 @@ jvm_library(
         ["resources/**/*"],
     ),
     visibility = ["//visibility:public"],
+    runtime_deps = ["//platform/projectModel-impl"],
 )
 
 jvm_library(
@@ -25,7 +37,17 @@ jvm_library(
     ),
     module_name = "intellij.color.scheme.all_hallows_eve",
     visibility = ["//visibility:public"],
-    runtime_deps = [":color-scheme-all_hallows_eve"],
+    runtime_deps = [
+        # do not sort,
+        ":color-scheme-all_hallows_eve",
+        "//platform/projectModel-impl:projectModel-impl_test_lib",
+    ],
+)
+
+ij_plugin(
+    name = "color-scheme-all_hallows_eve_plugin",
+    descriptor_module = ":color-scheme-all_hallows_eve",
+    visibility = ["//visibility:public"],
 )
 ### auto-generated section `build intellij.color.scheme.all_hallows_eve` end
 
@@ -33,6 +55,8 @@ jvm_library(
 exports_files(
     [
         "intellij.color.scheme.all_hallows_eve.iml",
+        "resources/META-INF/plugin.xml",
+        "resources/colorSchemes/all_hallows_eve.xml",
     ],
     visibility = ["//visibility:public"],
 )

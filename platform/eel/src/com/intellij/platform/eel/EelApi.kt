@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.platform.eel
 
 import com.intellij.platform.eel.fs.EelFileSystemApi
@@ -20,7 +20,7 @@ interface LocalEelApi : EelApi
  * a Docker container, or a Dev Container.
  *
  * Unlike [EelDescriptor], which only *describes* how to reach an environment, an [EelApi] represents a *running, connected* one.
- * Obtain it from a descriptor with `descriptor.toEelApi()` (suspending) or `descriptor.toEelApiBlocking()`; the descriptor itself comes
+ * Get it from a descriptor with `descriptor.toEelApi()` (suspending) or `descriptor.toEelApiBlocking()`; the descriptor itself comes
  * from `project.getEelDescriptor()` or `path.getEelDescriptor()`. Establishing the connection may start, deploy, or connect to an
  * IntelliJ Agent and can fail with [EelUnavailableException].
  *
@@ -28,6 +28,7 @@ interface LocalEelApi : EelApi
  * - [fs] — a view of the environment's file system (also reachable through NIO `Path` operations on routed paths);
  * - [exec] — process execution inside the environment (use it instead of `ProcessBuilder`);
  * - [tunnels] — TCP and Unix-socket tunnels into and out of the environment;
+ * - [http] — HTTP downloads that run inside the environment;
  * - [platform] and [userInfo] — OS, architecture, and user info; use [platform] instead of host-side `SystemInfo`.
  *
  * Most operations are `suspend` functions and must be called from a coroutine.
@@ -37,7 +38,7 @@ interface LocalEelApi : EelApi
 @ApiStatus.Experimental
 interface EelApi {
   /**
-   * The [EelDescriptor] this instance was obtained from, i.e. the route to this environment.
+   * The [EelDescriptor] this instance was obtained from, i.e., the route to this environment.
    */
   @get:ApiStatus.Experimental
   val descriptor: EelDescriptor
@@ -63,6 +64,10 @@ interface EelApi {
   /** Extraction of archives within the environment. See [EelArchiveApi]. */
   @get:ApiStatus.Internal
   val archive: EelArchiveApi
+
+  /** HTTP downloads that run inside the environment. See [EelHttpApi]. */
+  @get:ApiStatus.Internal
+  val http: EelHttpApi
 
   /**
    * Basic information about the user that operations in this environment run as.

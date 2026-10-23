@@ -11,6 +11,7 @@ import org.jetbrains.kotlin.name.JvmStandardClassIds
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.name.StandardClassIds.BASE_COLLECTIONS_PACKAGE
 import org.jetbrains.kotlin.name.StandardClassIds.BASE_ENUMS_PACKAGE
+import org.jetbrains.kotlin.name.StandardClassIds.BASE_KOTLIN_PACKAGE
 import org.jetbrains.kotlin.name.StandardClassIds.BASE_SEQUENCES_PACKAGE
 
 @ApiStatus.Internal
@@ -37,6 +38,9 @@ object StandardKotlinNames {
         @JvmField val flatten: FqName = BASE_COLLECTIONS_PACKAGE + "flatten"
         @JvmField val map: FqName = BASE_COLLECTIONS_PACKAGE + "map"
         @JvmField val mapIndexed: FqName = BASE_COLLECTIONS_PACKAGE + "mapIndexed"
+        @JvmField val mapNotNull: FqName = BASE_COLLECTIONS_PACKAGE + "mapNotNull"
+        @JvmField val onEach: FqName = BASE_COLLECTIONS_PACKAGE + "onEach"
+        @JvmField val onEachIndexed: FqName = BASE_COLLECTIONS_PACKAGE + "onEachIndexed"
         @JvmField val emptyList: FqName = BASE_COLLECTIONS_PACKAGE + "emptyList"
         @JvmField val emptyMap: FqName = BASE_COLLECTIONS_PACKAGE + "emptyMap"
         @JvmField val emptySet: FqName = BASE_COLLECTIONS_PACKAGE + "emptySet"
@@ -46,6 +50,19 @@ object StandardKotlinNames {
 
         @JvmField val plusAssign: CallableId = CallableId(BASE_COLLECTIONS_PACKAGE, Name.identifier("plusAssign"))
         @JvmField val minusAssign: CallableId = CallableId(BASE_COLLECTIONS_PACKAGE, Name.identifier("minusAssign"))
+
+        @JvmField val mutableFactories: List<CallableId> = listOf(
+            "mutableListOf",
+            "arrayListOf",
+            "mutableSetOf",
+            "hashSetOf",
+            "linkedSetOf",
+            "sortedSetOf",
+            "mutableMapOf",
+            "hashMapOf",
+            "linkedMapOf",
+            "sortedMapOf",
+        ).map { CallableId(BASE_COLLECTIONS_PACKAGE, Name.identifier(it)) }
 
         @JvmField val transformations: List<FqName> =
             collectionTransformationFunctionNames.map { BASE_COLLECTIONS_PACKAGE + it }
@@ -143,6 +160,30 @@ object StandardKotlinNames {
         @JvmField val putAll: CallableId = CallableId(mutableMapClassId, Name.identifier("putAll"))
     }
 
+    object Result {
+        @JvmField val resultClassId: ClassId = ClassId(BASE_KOTLIN_PACKAGE, Name.identifier("Result"))
+
+        @JvmField val runCatching: CallableId = CallableId(BASE_KOTLIN_PACKAGE, Name.identifier("runCatching"))
+
+        // Members of `Result` itself.
+        @JvmField val isSuccess: CallableId = CallableId(resultClassId, Name.identifier("isSuccess"))
+        @JvmField val isFailure: CallableId = CallableId(resultClassId, Name.identifier("isFailure"))
+        @JvmField val getOrNull: CallableId = CallableId(resultClassId, Name.identifier("getOrNull"))
+        @JvmField val exceptionOrNull: CallableId = CallableId(resultClassId, Name.identifier("exceptionOrNull"))
+
+        // Top-level extensions on `Result` declared in the `kotlin` package, not members.
+        @JvmField val fold: CallableId = CallableId(BASE_KOTLIN_PACKAGE, Name.identifier("fold"))
+        @JvmField val getOrDefault: CallableId = CallableId(BASE_KOTLIN_PACKAGE, Name.identifier("getOrDefault"))
+        @JvmField val getOrElse: CallableId = CallableId(BASE_KOTLIN_PACKAGE, Name.identifier("getOrElse"))
+        @JvmField val getOrThrow: CallableId = CallableId(BASE_KOTLIN_PACKAGE, Name.identifier("getOrThrow"))
+        @JvmField val map: CallableId = CallableId(BASE_KOTLIN_PACKAGE, Name.identifier("map"))
+        @JvmField val mapCatching: CallableId = CallableId(BASE_KOTLIN_PACKAGE, Name.identifier("mapCatching"))
+        @JvmField val onFailure: CallableId = CallableId(BASE_KOTLIN_PACKAGE, Name.identifier("onFailure"))
+        @JvmField val onSuccess: CallableId = CallableId(BASE_KOTLIN_PACKAGE, Name.identifier("onSuccess"))
+        @JvmField val recover: CallableId = CallableId(BASE_KOTLIN_PACKAGE, Name.identifier("recover"))
+        @JvmField val recoverCatching: CallableId = CallableId(BASE_KOTLIN_PACKAGE, Name.identifier("recoverCatching"))
+    }
+
     @JvmField val Pair: ClassId = ClassId.topLevel(FqName("kotlin.Pair"))
     @JvmField val Triple: ClassId = ClassId.topLevel(FqName("kotlin.Triple"))
 
@@ -155,6 +196,8 @@ object StandardKotlinNames {
     @JvmField val takeUnless: FqName = BUILT_INS_PACKAGE_FQ_NAME + "takeUnless"
 
     @JvmField val context: FqName = BUILT_INS_PACKAGE_FQ_NAME + "context"
+    @JvmField val WITH_CALLABLE_ID: CallableId = CallableId(BASE_KOTLIN_PACKAGE, Name.identifier("with"))
+    @JvmField val contextCallableId : CallableId = CallableId(BASE_KOTLIN_PACKAGE, Name.identifier("context"))
 
     private val collectionTransformationFunctionNames = listOf(
         "chunked",

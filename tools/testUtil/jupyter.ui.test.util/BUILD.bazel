@@ -1,7 +1,6 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
 ### auto-generated section `build intellij.jupyter.ui.test.util` start
-
 jvm_library(
     name = "jupyter.ui.test.util",
     srcs = glob(
@@ -16,8 +15,8 @@ jvm_library(
     visibility = ["//visibility:public"],
     deps = [
         # do not sort,
-        "@lib//:kotlin-test-assertions-core-jvm",
-        "//libraries/junit5",
+        "//libraries/kotlin/test-assertions-core-jvm:libraries-kotlinTestAssertionsCoreJvm",
+        "//libraries/junit6",
         "//platform/remote-driver/client",
         "//platform/remote-driver/test-sdk:driver-sdk",
         "//platform/remote-driver/model",
@@ -37,7 +36,8 @@ jvm_library(
     runtime_deps = [
         # do not sort,
         ":jupyter.ui.test.util",
-        "//libraries/junit5:junit5_test_lib",
+        "//libraries/kotlin/test-assertions-core-jvm:libraries-kotlinTestAssertionsCoreJvm_test_lib",
+        "//libraries/junit6:junit6_test_lib",
         "//platform/remote-driver/client:client_test_lib",
         "//platform/remote-driver/test-sdk:driver-sdk_test_lib",
         "//platform/remote-driver/model:model_test_lib",

@@ -3,29 +3,26 @@
 
 package org.jetbrains.intellij.build.productLayout.pipeline
 
+import com.intellij.platform.buildScripts.concurrency.SharedCache
+import com.intellij.platform.buildScripts.concurrency.SharedTaskOwner
 import com.intellij.platform.pluginGraph.ContentModuleName
 import com.intellij.platform.pluginGraph.EDGE_ALLOWS_MISSING
 import com.intellij.platform.pluginGraph.EDGE_BUNDLES
+import com.intellij.platform.pluginGraph.EDGE_PRODUCT_IMPLEMENTATION_TARGET
 import com.intellij.platform.pluginGraph.PluginGraph
 import com.intellij.platform.pluginGraph.PluginId
 import com.intellij.platform.pluginGraph.TargetName
 import com.intellij.platform.pluginGraph.baseModuleName
 import com.intellij.platform.pluginGraph.contentName
 import com.intellij.platform.pluginGraph.isSlashNotation
-import com.intellij.platform.pluginGraph.isTestDescriptor
 import com.intellij.platform.pluginSystem.parser.impl.elements.ModuleLoadingRuleValue
 import com.intellij.platform.pluginSystem.parser.impl.parseContentAndXIncludes
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.withContext
+import io.opentelemetry.api.trace.Span
 import org.jetbrains.intellij.build.ModuleOutputProvider
 import org.jetbrains.intellij.build.PLUGIN_XML_RELATIVE_PATH
-import org.jetbrains.intellij.build.findFileInModuleDependenciesRecursive
-import org.jetbrains.intellij.build.findFileInModuleLibraryDependencies
-import org.jetbrains.intellij.build.findFileInModuleSources
+import org.jetbrains.intellij.build.buildSpan
+import org.jetbrains.intellij.build.mapConcurrent
+import org.jetbrains.intellij.build.resolveDescriptor
 import org.jetbrains.intellij.build.productLayout.ContentModule
 import org.jetbrains.intellij.build.productLayout.DeprecatedXmlInclude
 import org.jetbrains.intellij.build.productLayout.ProductModulesContentSpec
@@ -51,15 +48,18 @@ import org.jetbrains.intellij.build.productLayout.model.error.DuplicateDslTestPl
 import org.jetbrains.intellij.build.productLayout.stats.SuppressionUsage
 import org.jetbrains.intellij.build.productLayout.traversal.collectPluginContentModules
 import org.jetbrains.intellij.build.productLayout.traversal.collectProductModuleNames
-import org.jetbrains.intellij.build.productLayout.util.AsyncCache
 import org.jetbrains.intellij.build.productLayout.util.DeferredFileUpdater
 import org.jetbrains.intellij.build.productLayout.util.GeneratedArtifactWritePolicy
+import org.jetbrains.intellij.build.productLayout.util.resolveXIncludeBytes
 import org.jetbrains.jps.model.java.JavaResourceRootType
 import org.jetbrains.jps.model.java.JavaSourceRootType
 import org.jetbrains.jps.model.module.JpsModule
 import org.jetbrains.jps.util.JpsPathUtil
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
+import org.jetbrains.intellij.build.productLayout.ModuleSet
+import org.jetbrains.intellij.build.productLayout.MODULE_SET_PREFIX
 
 private val CORE_PLUGIN_ID = PluginId("com.intellij")
 private val CORE_PLUGIN_NODE_NAME = TargetName("__core__:com.intellij")
@@ -76,9 +76,9 @@ private val OS_MODULE_ALIASES = listOf(
  * Stage 2: Model Building
  *
  * Creates all caches and computes shared values needed by generators:
- * - Descriptor cache for async module descriptor analysis
+ * - Descriptor cache for module descriptor analysis
  * - Plugin content cache (pre-warmed with bundled plugins)
- * - Shared Deferred values for parallel access
+ * - Shared values that the generators read
  *
  * **Input:** [DiscoveryResult] + [ModuleSetGenerationConfig]
  * **Output:** [GenerationModel]
@@ -90,32 +90,45 @@ internal object ModelBuildingStage {
   /**
    * Executes the model building stage.
    *
+   * Each step runs in a span, because the whole stage reports as one bucket to the caller. Two rules hold for a span
+   * here.
+   *
+   * A span carries the name of the called function. A step also carries a `Phase N` label in a comment, and the labels
+   * do not follow the execution order. The order of the labels is 1, 2, 3, 4, 4b, 6, 7, 5, 6, 7 and 8. A span named
+   * after a label would mislabel itself. A step that runs twice gets a `#2` suffix, so a reader can compare the two
+   * runs.
+   *
    * @param discovery Results from discovery stage
    * @param config Generation configuration
-   * @param scope Coroutine scope for async operations
    * @param errorSink Sink for errors discovered during model building (e.g., xi:include resolution)
    * @return Fully initialized generation model
    */
-  suspend fun execute(
+  fun execute(
     discovery: DiscoveryResult,
     config: ModuleSetGenerationConfig,
-    scope: CoroutineScope,
+    owner: SharedTaskOwner,
     updateSuppressions: Boolean,
     commitChanges: Boolean,
     errorSink: ErrorSink,
   ): GenerationModel {
     val projectRoot = config.projectRoot
     val outputProvider = config.outputProvider
-    val productPluginXmlOverrides = buildProductPluginXmlOverrides(
-      products = discovery.products,
-      outputProvider = outputProvider,
-      projectRoot = projectRoot,
-      skipXIncludePaths = config.skipXIncludePaths,
-      xIncludePrefixFilter = config.xIncludePrefixFilter,
-    )
+    val productPluginXmlOverrides = buildSpan("buildProductPluginXmlOverrides") {
+      buildProductPluginXmlOverrides(
+        products = discovery.products,
+        moduleSetsByLabel = discovery.moduleSetsByLabel,
+        moduleSetSources = discovery.moduleSetSources,
+        outputProvider = outputProvider,
+        projectRoot = projectRoot,
+        skipXIncludePaths = config.skipXIncludePaths,
+        xIncludePrefixFilter = config.xIncludePrefixFilter,
+      )
+    }
 
     // Load suppression config from path (single source of truth)
-    val suppressionConfig = SuppressionConfig.load(config.suppressionConfigPath)
+    val suppressionConfig = buildSpan("SuppressionConfig.load") {
+      SuppressionConfig.load(config.suppressionConfigPath)
+    }
 
     // Create file updater for deferred writes
     val fileUpdater = DeferredFileUpdater(projectRoot)
@@ -127,7 +140,7 @@ internal object ModelBuildingStage {
     val generatedArtifactWritePolicy = GeneratedArtifactWritePolicy(generationMode, fileUpdater)
 
     // Create xi:include cache (shared across plugin content extraction)
-    val xIncludeCache = AsyncCache<String, ByteArray?>()
+    val xIncludeCache = SharedCache<String, ByteArray?>(owner)
 
     // Create plugin content cache
     // ErrorSink is used to emit xi:include errors during plugin content extraction
@@ -141,12 +154,17 @@ internal object ModelBuildingStage {
     )
     // Build lookup for DSL-defined test plugins keyed by PluginId (semantically correct)
     // Note: PluginId is the XML plugin identifier, distinct from ModuleName (JPS module)
-    val dslTestPluginsByProduct = discovery.products
-      .mapNotNull { product ->
-        val testPlugins = product.spec?.testPlugins?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
-        product.name to testPlugins
+    // Includes both real products and test-only product specs (e.g. lambda-test fixtures).
+    val dslTestPluginsByProduct = buildMap<String, List<TestPluginSpec>> {
+      for (product in discovery.products) {
+        val plugins = product.spec?.testPlugins?.takeIf { it.isNotEmpty() } ?: continue
+        put(product.name, plugins)
       }
-      .toMap()
+      for ((name, spec) in discovery.testProductSpecs) {
+        val plugins = spec.testPlugins.takeIf { it.isNotEmpty() } ?: continue
+        put(name, plugins)
+      }
+    }
     val dslTestPluginIdOwners = LinkedHashMap<PluginId, MutableList<String>>()
     for ((productName, testPlugins) in dslTestPluginsByProduct) {
       for (spec in testPlugins) {
@@ -170,7 +188,7 @@ internal object ModelBuildingStage {
       .toSet()
 
     // Create descriptor cache
-    val descriptorCache = ModuleDescriptorCache(outputProvider = outputProvider)
+    val descriptorCache = ModuleDescriptorCache(outputProvider = outputProvider, owner = owner, skipXIncludePaths = config.skipXIncludePaths)
 
     // Build unified graph model for plugin/module/product relationships
     // Graph is the single source of truth - built DURING extraction
@@ -178,78 +196,113 @@ internal object ModelBuildingStage {
     val pluginInfos = LinkedHashMap<TargetName, PluginContentInfo>()
 
     val extraPluginDescriptors = if (config.includeTestPluginDescriptorsFromSources) {
-      discoverPluginDescriptorsFromSources(outputProvider)
+      val dslOwnedPluginXmlPaths = dslTestPluginsByProduct.values.asSequence()
+        .flatten()
+        .mapTo(HashSet()) { config.projectRoot.resolve(it.pluginXmlPath).normalize() }
+      // `config.includeTestPluginDescriptorsFromSources` guards the step, so no span means the flag was off.
+      buildSpan("discoverPluginDescriptorsFromSources") {
+        discoverPluginDescriptorsFromSources(
+          outputProvider = outputProvider,
+          testFrameworkContentModules = config.testFrameworkContentModules,
+          dslOwnedPluginXmlPaths = dslOwnedPluginXmlPaths,
+          contentPluginPopulation = config.contentPluginPopulation,
+        )
+      }
     }
     else {
       DiscoveredPluginDescriptors(emptySet(), emptySet())
     }
     val testPluginModuleNames = config.testPluginsByProduct.values.flatten().toHashSet()
     testPluginModuleNames.addAll(extraPluginDescriptors.testPluginModules)
-    seedPluginsForExtraction(
-      discovery = discovery,
-      config = config,
-      builder = builder,
-      dslTestPluginIds = dslTestPluginIds,
-      dslTestPluginAdditionalBundles = dslTestPluginAdditionalBundles,
-      testPluginModuleNames = testPluginModuleNames,
-      extraPluginModules = extraPluginDescriptors.pluginModules,
-    )
-    val pluginsToExtract = collectSeededPluginTargets(builder.build())
-    extractPlugins(
-      pluginTargets = pluginsToExtract,
-      pluginContentCache = pluginContentCache,
-      builder = builder,
-      pluginInfos = pluginInfos,
-      testPluginModuleNames = testPluginModuleNames,
-      testFrameworkContentModules = config.testFrameworkContentModules,
-    )
+    val declaredPluginModules = buildSpan("seedPluginsForExtraction") {
+      seedPluginsForExtraction(
+        discovery = discovery,
+        config = config,
+        builder = builder,
+        dslTestPluginIds = dslTestPluginIds,
+        dslTestPluginAdditionalBundles = dslTestPluginAdditionalBundles,
+        testPluginModuleNames = testPluginModuleNames,
+        extraPluginModules = extraPluginDescriptors.pluginModules,
+      )
+    }
+    // The graph view is built three times here, and frozen once. Each build gets its own span, because the cost of a
+    // rebuild is not known.
+    val seededGraphView = buildSpan("builder.build") { builder.build() }
+    val pluginsToExtract = buildSpan("collectSeededPluginTargets") {
+      collectSeededPluginTargets(seededGraphView)
+    }
+    buildSpan("extractPlugins") {
+      extractPlugins(
+        pluginTargets = pluginsToExtract,
+        pluginContentCache = pluginContentCache,
+        builder = builder,
+        pluginInfos = pluginInfos,
+        declaredPluginModules = declaredPluginModules,
+        testPluginModuleNames = testPluginModuleNames,
+        testFrameworkContentModules = config.testFrameworkContentModules,
+      )
+    }
 
-    val includeAliasCache = AsyncCache<String, Set<PluginId>>()
-    val moduleDescriptorAliasCache = AsyncCache<ContentModuleName, Set<PluginId>>()
-    linkProductsAndBundledPlugins(discovery, builder)
-    linkTestPluginsByProduct(config, builder)
-    addModuleSets(discovery, builder)
-    val baseGraphView = builder.build()
-    linkProductAliases(
-      discovery = discovery,
-      config = config,
-      builder = builder,
-      graphView = baseGraphView,
-      outputProvider = outputProvider,
-      descriptorCache = descriptorCache,
-      includeAliasCache = includeAliasCache,
-      moduleDescriptorAliasCache = moduleDescriptorAliasCache,
-      pluginInfos = pluginInfos,
-    )
-    seedDslTestPluginTargets(builder, dslTestPluginsByProduct)
-    addJpsDependencies(builder, outputProvider, config.projectLibraryToModuleMap)
-    registerReferencedPlugins(builder, pluginContentCache, pluginInfos)
-    builder.markDescriptorModules(descriptorCache)
-    val graphWithJpsDeps = builder.build()
+    val includeAliasCache = SharedCache<String, Set<PluginId>>(owner)
+    val moduleDescriptorAliasCache = SharedCache<ContentModuleName, Set<PluginId>>(owner)
+    buildSpan("linkProductsAndBundledPlugins") { linkProductsAndBundledPlugins(discovery, builder) }
+    buildSpan("linkTestPluginsByProduct") { linkTestPluginsByProduct(config, builder) }
+    buildSpan("addModuleSets") { addModuleSets(discovery, builder) }
+    val baseGraphView = buildSpan("builder.build #2") { builder.build() }
+    buildSpan("linkProductAliases") {
+      linkProductAliases(
+        discovery = discovery,
+        config = config,
+        builder = builder,
+        graphView = baseGraphView,
+        outputProvider = outputProvider,
+        descriptorCache = descriptorCache,
+        includeAliasCache = includeAliasCache,
+        moduleDescriptorAliasCache = moduleDescriptorAliasCache,
+        pluginInfos = pluginInfos,
+      )
+    }
+    buildSpan("seedDslTestPluginTargets") { seedDslTestPluginTargets(builder, dslTestPluginsByProduct) }
+    buildSpan("addJpsDependencies") {
+      addJpsDependencies(builder, outputProvider)
+    }
+    buildSpan("registerReferencedPlugins") {
+      registerReferencedPlugins(builder, pluginContentCache, pluginInfos)
+    }
+    buildSpan("builder.markDescriptorModules") { builder.markDescriptorModules(descriptorCache) }
+    val graphWithJpsDeps = buildSpan("builder.build #3") { builder.build() }
 
-    val dslTestPluginExpansion = expandDslTestPlugins(
-      discovery = discovery,
-      config = config,
-      builder = builder,
-      graphView = graphWithJpsDeps,
-      pluginContentCache = pluginContentCache,
-      dslTestPluginsByProduct = dslTestPluginsByProduct,
-      descriptorCache = descriptorCache,
-      suppressionConfig = suppressionConfig,
-      updateSuppressions = updateSuppressions,
-      projectRoot = projectRoot,
-      errorSink = errorSink,
-    )
-    addJpsDependencies(builder, outputProvider, config.projectLibraryToModuleMap)
-    registerReferencedPlugins(builder, pluginContentCache, pluginInfos)
-    builder.markDescriptorModules(descriptorCache)
-    addPluginDependencyEdges(builder, pluginInfos)
+    val dslTestPluginExpansion = buildSpan("expandDslTestPlugins") {
+      expandDslTestPlugins(
+        discovery = discovery,
+        config = config,
+        builder = builder,
+        graphView = graphWithJpsDeps,
+        pluginContentCache = pluginContentCache,
+        dslTestPluginsByProduct = dslTestPluginsByProduct,
+        descriptorCache = descriptorCache,
+        suppressionConfig = suppressionConfig,
+        updateSuppressions = updateSuppressions,
+        projectRoot = projectRoot,
+        errorSink = errorSink,
+      )
+    }
+    buildSpan("addJpsDependencies #2") {
+      addJpsDependencies(builder, outputProvider)
+    }
+    buildSpan("registerReferencedPlugins #2") {
+      registerReferencedPlugins(builder, pluginContentCache, pluginInfos)
+    }
+    buildSpan("builder.markDescriptorModules #2") { builder.markDescriptorModules(descriptorCache) }
+    buildSpan("addPluginDependencyEdges") { addPluginDependencyEdges(builder, pluginInfos) }
 
-    val pluginGraph = builder.buildFrozen()
+    val pluginGraph = buildSpan("builder.buildFrozen") { builder.buildFrozen() }
 
-    // Build per-product allowedMissingDependencies map
-    val productAllowedMissing = discovery.products
-      .mapNotNull { d -> d.spec?.allowedMissingDependencies?.let { d.name to it } }
+    // Build per-product allowedMissingDependencies map — includes both real products and test product specs
+    val productAllowedMissing = (
+      discovery.products.mapNotNull { d -> d.spec?.allowedMissingDependencies?.let { d.name to it } } +
+      discovery.testProductSpecs.mapNotNull { (name, spec) -> spec.allowedMissingDependencies.takeIf { it.isNotEmpty() }?.let { name to it } }
+                                )
       .toMap()
 
     return GenerationModel(
@@ -261,7 +314,6 @@ internal object ModelBuildingStage {
       pluginContentCache = pluginContentCache,
       fileUpdater = fileUpdater,
       generatedArtifactWritePolicy = generatedArtifactWritePolicy,
-      scope = scope,
       pluginGraph = pluginGraph,
       dslTestPluginsByProduct = dslTestPluginExpansion.pluginsByProduct,
       dslTestPluginDependencyChains = dslTestPluginExpansion.dependencyChains,
@@ -279,11 +331,12 @@ internal object ModelBuildingStage {
     val dependencyChains: Map<PluginId, Map<ContentModuleName, List<ContentModuleName>>>,
   )
 
-  private suspend fun extractPlugins(
+  private fun extractPlugins(
     pluginTargets: List<TargetName>,
     pluginContentCache: PluginContentCache,
     builder: PluginGraphBuilder,
     pluginInfos: MutableMap<TargetName, PluginContentInfo>,
+    declaredPluginModules: Set<TargetName>,
     testPluginModuleNames: Set<TargetName>,
     testFrameworkContentModules: Set<ContentModuleName>,
   ) {
@@ -303,14 +356,17 @@ internal object ModelBuildingStage {
     // NOTE: Plugins without META-INF/plugin.xml are silently skipped here.
     //       Phase 2 will emit MissingPluginInGraphError if a product tries to bundle them.
     // ───────────────────────────────────────────────────────────────────────────────
-    val extractedPlugins = coroutineScope {
-      pluginTargets.map { plugin ->
-        async {
-          val info = pluginContentCache.extract(plugin = plugin, isTest = plugin in testPluginModuleNames)
-          info?.let { plugin to it }
-        }
-      }.awaitAll().filterNotNull()
-    }
+    // `mapConcurrent` bounds the fan-out. One coroutine per plugin target oversubscribes the dispatcher,
+    // and every extraction can sweep the output archive of each module of the project.
+    val extractedPlugins = pluginTargets.mapConcurrent { plugin ->
+      val info = if (plugin in declaredPluginModules) {
+        pluginContentCache.extract(plugin = plugin, isTest = plugin in testPluginModuleNames)
+      }
+      else {
+        pluginContentCache.getOrExtract(plugin)
+      }
+      info?.let { plugin to it }
+    }.filterNotNull()
     for ((pluginModule, info) in extractedPlugins) {
       builder.addPluginWithContent(pluginModule = pluginModule, content = info, testFrameworkContentModules = testFrameworkContentModules)
       pluginInfos[pluginModule] = info
@@ -323,13 +379,24 @@ internal object ModelBuildingStage {
    * This allows extraction/validation to use canonical generated descriptors for discovered
    * product plugins even when on-disk product plugin.xml files are stale.
    */
-  internal suspend fun buildProductPluginXmlOverrides(
+  internal fun buildProductPluginXmlOverrides(
     products: List<DiscoveredProduct>,
+    moduleSetsByLabel: Map<String, List<ModuleSet>> = emptyMap(),
+    moduleSetSources: Map<String, Pair<Any, Path>> = emptyMap(),
     outputProvider: ModuleOutputProvider,
     projectRoot: Path,
     skipXIncludePaths: Set<String>,
     xIncludePrefixFilter: (String) -> String?,
   ): Map<TargetName, PluginXmlOverride> {
+    // Only the descriptors the products name are wanted, so only a module that could hold one is worth a stat.
+    // `findFileInModuleSources` resolves the relative path under a source root, so a module answers for a path only
+    // when one of its production roots is a parent of that path. Asking every module cost a stat per root of all
+    // 7089 of them, to learn about at most 28 paths.
+    val wantedPluginXmlPaths = products.mapNotNullTo(HashSet()) { product ->
+      product.pluginXmlPath?.let { projectRoot.resolve(it).normalize() }
+    }
+
+    var scannedModuleCount = 0
     val moduleByPluginXmlPath = LinkedHashMap<Path, TargetName>()
     val productionSourceRootsByModule = LinkedHashMap<TargetName, List<Path>>()
     for (module in outputProvider.getAllModules()) {
@@ -345,15 +412,52 @@ internal object ModelBuildingStage {
         productionSourceRootsByModule[moduleName] = productionSourceRoots
       }
 
-      val pluginXmlPath = findFileInModuleSources(module = module, relativePath = PLUGIN_XML_RELATIVE_PATH, onlyProductionSources = true)
+      if (productionSourceRoots.none { root -> wantedPluginXmlPaths.any { it.startsWith(root) } }) {
+        continue
+      }
+
+      scannedModuleCount++
+      val pluginXmlPath = outputProvider.findFileInModuleSources(module = module, relativePath = PLUGIN_XML_RELATIVE_PATH, onlyProductionSources = true)
       if (pluginXmlPath != null) {
         moduleByPluginXmlPath[pluginXmlPath.normalize()] = moduleName
       }
     }
 
+    var examinedProductCount = 0
+    var checkedProductCount = 0
+    var renderedProductCount = 0
+    val probeStats = XIncludeProbeStats()
+
+    // The model states the module that owns an include, so the search does not have to look for it. Without the
+    // owner the search reaches a generated module-set descriptor only through the last resort, which opens an output
+    // jar for every module in the project. An include that the model does not name keeps that search.
+    val declaredIncludeOwners = HashMap<String, JpsModule>()
+    for (product in products) {
+      for (include in product.spec?.deprecatedXmlIncludes.orEmpty()) {
+        val owner = outputProvider.findModule(include.contentModuleName.value) ?: continue
+        declaredIncludeOwners.putIfAbsent(include.resourcePath.removePrefix("/"), owner)
+      }
+    }
+    // A module set writes its descriptor either into the module it names, or into the resource root that its label's
+    // output directory belongs to. `productionSourceRootsByModule` above already holds every root, so the second case
+    // needs no new I/O.
+    for ((label, moduleSets) in moduleSetsByLabel) {
+      val defaultOutputDir = moduleSetSources.get(label)?.second ?: continue
+      val labelOwner = productionSourceRootsByModule.entries
+        .firstOrNull { (_, roots) -> roots.any { defaultOutputDir.startsWith(it) } }
+        ?.let { outputProvider.findModule(it.key.value) }
+      for (moduleSet in moduleSets) {
+        val owner = moduleSet.outputModule?.let { outputProvider.findModule(it.value) } ?: labelOwner ?: continue
+        declaredIncludeOwners.putIfAbsent("META-INF/$MODULE_SET_PREFIX${moduleSet.name}.xml", owner)
+      }
+    }
+    // One resolution per path for the whole run. Twenty-nine paths answered 121 requests before this cache.
+    val resolvedIncludes = HashMap<String, ByteArray?>()
+
     val result = LinkedHashMap<TargetName, PluginXmlOverride>()
     val ownerByModule = LinkedHashMap<TargetName, String>()
     for (product in products) {
+      examinedProductCount++
       val spec = product.spec ?: continue
       val relativePluginXmlPath = product.pluginXmlPath ?: continue
       val pluginXmlPath = projectRoot.resolve(relativePluginXmlPath).normalize()
@@ -377,30 +481,26 @@ internal object ModelBuildingStage {
         error("Product '${product.name}' plugin.xml '$relativePluginXmlPath' does not exist at '$pluginXmlPath'")
       }
 
-      val pluginXmlData = withContext(Dispatchers.IO) { Files.readAllBytes(pluginXmlPath) }
-      val unresolvedXInclude = findFirstUnresolvedXIncludePath(
+      checkedProductCount++
+      val xIncludePrefix = xIncludePrefixFilter(pluginModule.value)
+      val pluginXmlData = Files.readAllBytes(pluginXmlPath)
+      val problems = findDescriptorProblems(
         pluginXmlData = pluginXmlData,
         module = module,
         outputProvider = outputProvider,
-        prefix = xIncludePrefixFilter(pluginModule.value),
+        prefix = xIncludePrefix,
         skipXIncludePaths = skipXIncludePaths,
+        declaredIncludeOwners = declaredIncludeOwners,
+        resolvedIncludes = resolvedIncludes,
+        stats = probeStats,
       )
-      val missingBackingContentModule = if (unresolvedXInclude == null) {
-        findFirstMissingBackingContentModuleInDescriptor(
-          pluginXmlData = pluginXmlData,
-          module = module,
-          outputProvider = outputProvider,
-          prefix = xIncludePrefixFilter(pluginModule.value),
-          skipXIncludePaths = skipXIncludePaths,
-        )
-      }
-      else {
-        null
-      }
+      val unresolvedXInclude = problems.unresolvedXInclude
+      val missingBackingContentModule = problems.missingBackingContentModule
       if (unresolvedXInclude == null && missingBackingContentModule == null) {
         continue
       }
 
+      renderedProductCount++
       val generatedPluginXml = buildProductContentXml(
         spec = spec,
         outputProvider = outputProvider,
@@ -410,13 +510,16 @@ internal object ModelBuildingStage {
           appendDefaultProductPluginMetadata(sb = sb, spec = spec)
         },
       ).xml
-      val unresolvedXIncludeInGenerated = findFirstUnresolvedXIncludePath(
+      val unresolvedXIncludeInGenerated = findDescriptorProblems(
         pluginXmlData = generatedPluginXml.toByteArray(),
         module = module,
         outputProvider = outputProvider,
-        prefix = xIncludePrefixFilter(pluginModule.value),
+        prefix = xIncludePrefix,
         skipXIncludePaths = skipXIncludePaths,
-      )
+        declaredIncludeOwners = declaredIncludeOwners,
+        resolvedIncludes = resolvedIncludes,
+        stats = probeStats,
+      ).unresolvedXInclude
       if (unresolvedXIncludeInGenerated != null) {
         debug("productPluginOverride") {
           "skipping generated override for ${pluginModule.value}: unresolved xi:include '$unresolvedXIncludeInGenerated' remains in generated descriptor"
@@ -448,6 +551,15 @@ internal object ModelBuildingStage {
       }
     }
 
+    val span = Span.current()
+    span.setAttribute("scannedModuleCount", scannedModuleCount.toLong())
+    span.setAttribute("examinedProductCount", examinedProductCount.toLong())
+    span.setAttribute("checkedProductCount", checkedProductCount.toLong())
+    span.setAttribute("renderedProductCount", renderedProductCount.toLong())
+    span.setAttribute("parseCount", probeStats.parseCalls.toLong())
+    span.setAttribute("includeRequestCount", probeStats.resolveRequests.toLong())
+    span.setAttribute("includeResolutionCount", probeStats.resolveMisses.toLong())
+    span.setAttribute("overrideCount", result.size.toLong())
     return result
   }
 
@@ -480,65 +592,63 @@ internal object ModelBuildingStage {
     error("Cannot map product '$productName' plugin.xml '$relativePluginXmlPath' to a module with production sources")
   }
 
-  private suspend fun findFirstUnresolvedXIncludePath(
-    pluginXmlData: ByteArray,
-    module: JpsModule,
-    outputProvider: ModuleOutputProvider,
-    prefix: String?,
-    skipXIncludePaths: Set<String>,
-  ): String? {
-    val processedPaths = HashSet<String>()
-    var pending: List<Pair<String, ByteArray>> = listOf(PLUGIN_XML_RELATIVE_PATH to pluginXmlData)
-
-    while (pending.isNotEmpty()) {
-      val next = ArrayList<Pair<String, ByteArray>>()
-      for ((_, data) in pending) {
-        val parseResult = parseContentAndXIncludes(input = data, locationSource = null)
-        for (xIncludePath in parseResult.xIncludePaths) {
-          if (xIncludePath in skipXIncludePaths) continue
-          if (!processedPaths.add(xIncludePath)) continue
-
-          val includeData = resolveXIncludeBytes(
-            path = xIncludePath,
-            module = module,
-            outputProvider = outputProvider,
-            prefix = prefix,
-          )
-          if (includeData == null) {
-            return xIncludePath
-          }
-          next.add(xIncludePath to includeData)
-        }
-      }
-      pending = next
-    }
-
-    return null
+  /** Counts what one run of the descriptor pre-check does, for the attributes of its span. */
+  internal class XIncludeProbeStats {
+    @JvmField
+    var resolveRequests: Int = 0
+    @JvmField
+    var resolveMisses: Int = 0
+    @JvmField
+    var parseCalls: Int = 0
   }
 
-  private suspend fun findFirstMissingBackingContentModuleInDescriptor(
+  /** What a product's on-disk descriptor gets wrong, or nothing at all when it is healthy. */
+  private class DescriptorProblems(
+    @JvmField val unresolvedXInclude: String?,
+    @JvmField val missingBackingContentModule: String?,
+  )
+
+  /**
+   * Walks the `xi:include` closure of [pluginXmlData] once, and reports both faults that an override repairs.
+   *
+   * One walk answers both questions. The two faults come from the same parse of the same file, and resolving an
+   * include is what the walk spends its time on. Two walks resolved every include twice.
+   *
+   * An unresolved include wins over a missing content module. A file that does not resolve hides what it declares,
+   * so the include is the fault to report and the walk stops there.
+   */
+  private fun findDescriptorProblems(
     pluginXmlData: ByteArray,
     module: JpsModule,
     outputProvider: ModuleOutputProvider,
     prefix: String?,
     skipXIncludePaths: Set<String>,
-  ): String? {
+    declaredIncludeOwners: Map<String, JpsModule>,
+    resolvedIncludes: MutableMap<String, ByteArray?>,
+    stats: XIncludeProbeStats? = null,
+  ): DescriptorProblems {
     val processedPaths = HashSet<String>()
     var pending: List<Pair<String, ByteArray>> = listOf(PLUGIN_XML_RELATIVE_PATH to pluginXmlData)
+    var missingBackingContentModule: String? = null
 
     while (pending.isNotEmpty()) {
       val next = ArrayList<Pair<String, ByteArray>>()
       for ((_, data) in pending) {
+        if (stats != null) stats.parseCalls++
         val parseResult = parseContentAndXIncludes(input = data, locationSource = null)
-        for (contentModule in parseResult.contentModules) {
-          val moduleName = ContentModuleName(contentModule.name)
-          if (moduleName.isSlashNotation()) {
-            continue
-          }
 
-          val expectedTarget = moduleName.baseModuleName().value
-          if (outputProvider.findModule(expectedTarget) == null) {
-            return moduleName.value
+        if (missingBackingContentModule == null) {
+          for (contentModule in parseResult.contentModules) {
+            val moduleName = ContentModuleName(contentModule.name)
+            if (moduleName.isSlashNotation()) {
+              continue
+            }
+
+            val expectedTarget = moduleName.baseModuleName().value
+            if (outputProvider.findModule(expectedTarget) == null) {
+              missingBackingContentModule = moduleName.value
+              break
+            }
           }
         }
 
@@ -546,14 +656,22 @@ internal object ModelBuildingStage {
           if (xIncludePath in skipXIncludePaths) continue
           if (!processedPaths.add(xIncludePath)) continue
 
-          val includeData = resolveXIncludeBytes(
-            path = xIncludePath,
-            module = module,
-            outputProvider = outputProvider,
-            prefix = prefix,
-          )
+          if (stats != null) stats.resolveRequests++
+          val includeData = if (resolvedIncludes.containsKey(xIncludePath)) {
+            resolvedIncludes.get(xIncludePath)
+          }
+          else {
+            if (stats != null) stats.resolveMisses++
+            resolveXIncludeBytes(
+              path = xIncludePath,
+              module = module,
+              outputProvider = outputProvider,
+              prefix = prefix,
+              declaredOwner = declaredIncludeOwners.get(xIncludePath.removePrefix("/")),
+            ).also { resolvedIncludes.put(xIncludePath, it) }
+          }
           if (includeData == null) {
-            continue
+            return DescriptorProblems(unresolvedXInclude = xIncludePath, missingBackingContentModule = null)
           }
           next.add(xIncludePath to includeData)
         }
@@ -561,7 +679,7 @@ internal object ModelBuildingStage {
       pending = next
     }
 
-    return null
+    return DescriptorProblems(unresolvedXInclude = null, missingBackingContentModule = missingBackingContentModule)
   }
 
   private fun linkProductsAndBundledPlugins(
@@ -579,6 +697,7 @@ internal object ModelBuildingStage {
     //   - EDGE_INCLUDES_MODULE_SET links products to module sets
     //   - EDGE_CONTAINS_CONTENT links products to additional content modules
     //   - EDGE_ALLOWS_MISSING marks allowed missing dependencies
+    //   - EDGE_PRODUCT_IMPLEMENTATION_TARGET links products to their core-classloader implementation modules
     //
     // DEPENDS ON: Phase 1 (plugins must exist before bundling)
     //
@@ -593,6 +712,19 @@ internal object ModelBuildingStage {
 
       for (pluginModule in product.bundledModuleSetPluginModules) {
         builder.linkProductBundlesPlugin(productName = product.name, pluginName = pluginModule, isTest = false)
+      }
+
+      // Product implementation modules: packed into the product main jar, so the core classloader loads them.
+      // They carry no descriptor, so no content edge can name them, and nothing in the content closure depends on
+      // them - they are roots. `addTarget` upserts the vertex here, before Phase 6 (`addJpsDependencies`) snapshots
+      // the target index, so their .iml dependencies still get EDGE_TARGET_DEPENDS_ON edges.
+      // Declared above the `spec` check on purpose: the loading rule does not come from the content spec.
+      for (implementationModule in product.coreClassloaderModules) {
+        builder.addEdge(
+          source = productId,
+          target = builder.addTarget(implementationModule),
+          edgeType = EDGE_PRODUCT_IMPLEMENTATION_TARGET,
+        )
       }
 
       val spec = product.spec ?: continue
@@ -661,15 +793,15 @@ internal object ModelBuildingStage {
     }
   }
 
-  private suspend fun linkProductAliases(
+  private fun linkProductAliases(
     discovery: DiscoveryResult,
     config: ModuleSetGenerationConfig,
     builder: PluginGraphBuilder,
     graphView: PluginGraph,
     outputProvider: ModuleOutputProvider,
     descriptorCache: ModuleDescriptorCache,
-    includeAliasCache: AsyncCache<String, Set<PluginId>>,
-    moduleDescriptorAliasCache: AsyncCache<ContentModuleName, Set<PluginId>>,
+    includeAliasCache: SharedCache<String, Set<PluginId>>,
+    moduleDescriptorAliasCache: SharedCache<ContentModuleName, Set<PluginId>>,
     pluginInfos: Map<TargetName, PluginContentInfo>,
   ) {
     // ═══════════════════════════════════════════════════════════════════════════════
@@ -691,48 +823,46 @@ internal object ModelBuildingStage {
       val aliases: Set<PluginId>,
     )
 
-    val aliasResults = coroutineScope {
-      discovery.products.map { product ->
-        async {
-          val spec = product.spec ?: return@async null
+    val aliasResults = discovery.products.mapConcurrent { product ->
+      run {
+        val spec = product.spec ?: return@mapConcurrent null
 
-          val aliasIds = LinkedHashSet<PluginId>()
-          aliasIds.addAll(OS_MODULE_ALIASES)
-          val moduleSetAliases = buildContentBlocksAndChainMapping(spec, collectModuleSetAliases = true).aliasToSource
-          aliasIds.addAll(collectAndValidateAliases(spec, moduleSetAliases))
-          aliasIds.addAll(
-            collectAliasesFromDeprecatedIncludes(
-              spec,
-              outputProvider,
-              includeAliasCache,
-              config.xIncludePrefixFilter,
-              config.skipXIncludePaths,
-            )
+        val aliasIds = LinkedHashSet<PluginId>()
+        aliasIds.addAll(OS_MODULE_ALIASES)
+        val moduleSetAliases = buildContentBlocksAndChainMapping(spec, collectModuleSetAliases = true).aliasToSource
+        aliasIds.addAll(collectAndValidateAliases(spec, moduleSetAliases))
+        aliasIds.addAll(
+          collectAliasesFromDeprecatedIncludes(
+            spec,
+            outputProvider,
+            includeAliasCache,
+            config.xIncludePrefixFilter,
+            config.skipXIncludePaths,
           )
+        )
 
-          val productModuleNames = collectProductModuleNames(graphView, product.name)
-            .toCollection(LinkedHashSet())
-          aliasIds.addAll(collectAliasesFromModuleDescriptors(productModuleNames, descriptorCache, moduleDescriptorAliasCache))
+        val productModuleNames = collectProductModuleNames(graphView, product.name)
+          .toCollection(LinkedHashSet())
+        aliasIds.addAll(collectAliasesFromModuleDescriptors(productModuleNames, descriptorCache, moduleDescriptorAliasCache))
 
-          for (pluginModule in spec.bundledPlugins) {
-            val info = pluginInfos[pluginModule]
-            if (info != null) {
-              if (info.pluginAliases.isNotEmpty()) {
-                aliasIds.addAll(info.pluginAliases)
-              }
-              if (info.contentModules.isNotEmpty()) {
-                val pluginModuleNames = info.contentModules.mapTo(LinkedHashSet()) { it.moduleId.contentName() }
-                aliasIds.addAll(collectAliasesFromModuleDescriptors(pluginModuleNames, descriptorCache, moduleDescriptorAliasCache))
-              }
+        for (pluginModule in spec.bundledPlugins) {
+          val info = pluginInfos[pluginModule]
+          if (info != null) {
+            if (info.pluginAliases.isNotEmpty()) {
+              aliasIds.addAll(info.pluginAliases)
+            }
+            if (info.contentModules.isNotEmpty()) {
+              val pluginModuleNames = info.contentModules.mapTo(LinkedHashSet()) { it.moduleId.contentName() }
+              aliasIds.addAll(collectAliasesFromModuleDescriptors(pluginModuleNames, descriptorCache, moduleDescriptorAliasCache))
             }
           }
-          if (aliasIds.isNotEmpty()) {
-            debug("aliasGraph") { "product=${product.name} aliases=${aliasIds.joinToString { it.value }}" }
-          }
-          ProductAliasResult(product.name, aliasIds)
         }
-      }.awaitAll().filterNotNull()
-    }
+        if (aliasIds.isNotEmpty()) {
+          debug("aliasGraph") { "product=${product.name} aliases=${aliasIds.joinToString { it.value }}" }
+        }
+        ProductAliasResult(product.name, aliasIds)
+      }
+    }.filterNotNull()
 
     for (result in aliasResults) {
       for (alias in result.aliases) {
@@ -741,7 +871,7 @@ internal object ModelBuildingStage {
     }
   }
 
-  private suspend fun expandDslTestPlugins(
+  private fun expandDslTestPlugins(
     discovery: DiscoveryResult,
     config: ModuleSetGenerationConfig,
     builder: PluginGraphBuilder,
@@ -827,6 +957,62 @@ internal object ModelBuildingStage {
       }
     }
 
+    // Also expand test plugins from testProductSpecs (e.g. lambda-test fixtures).
+    // For test product specs, keep wrapper specs small but disable content auto-add by marking all
+    // graph modules as "resolvable". The dependency planner still generates <dependencies>.
+    // Content auto-add would otherwise pull in the transitive closure of every declared module,
+    // including non-bundled test-infrastructure modules (like intellij.tools.ide.starter) that own
+    // native libraries (pty4j) conflicting with what the core IDE already extracted at runtime.
+    val allGraphContentModules: Set<ContentModuleName> by lazy {
+      val result = LinkedHashSet<ContentModuleName>()
+      graphView.query { contentModules { result.add(it.contentName()) } }
+      result
+    }
+
+    for ((specName, _) in discovery.testProductSpecs) {
+      val dslSpecs = dslTestPluginsByProduct[specName].orEmpty()
+      if (dslSpecs.isEmpty()) continue
+
+      // Register as a product node so validators can apply per-product allowed-missing rules.
+      builder.addProduct(specName)
+
+      val expandedSpecs = ArrayList<TestPluginSpec>(dslSpecs.size)
+      for (dslSpec in dslSpecs) {
+        val pluginModule = TargetName(dslSpec.pluginId.value)
+        val declaredModules = collectDeclaredContentModules(dslSpec.spec)
+        val resolvableModules = LinkedHashSet<ContentModuleName>(allGraphContentModules)
+        resolvableModules.addAll(declaredModules)
+
+        val dependencyChains = LinkedHashMap<ContentModuleName, List<ContentModuleName>>()
+        val content = computePluginContentFromDslSpec(
+          testPluginSpec = dslSpec,
+          projectRoot = projectRoot,
+          resolvableModules = resolvableModules,
+          productName = specName,
+          pluginGraph = graphView,
+          errorSink = errorSink,
+          suppressionConfig = suppressionConfig,
+          updateSuppressions = updateSuppressions,
+          suppressionUsageSink = dslTestPluginSuppressionUsages,
+          descriptorCache = descriptorCache,
+          autoAddedModulesLoadingMode = config.dslTestPluginAutoAddLoadingMode,
+          dependencyChainsSink = dependencyChains,
+        )
+        pluginContentCache.addDslTestPlugin(pluginModule, content)
+        builder.addPluginWithContent(pluginModule, content, config.testFrameworkContentModules)
+        // Link to the test product so the validator's per-product allowed-missing check applies.
+        builder.linkProductBundlesPlugin(specName, pluginModule, isTest = true)
+        expandedSpecs.add(expandTestPluginSpec(dslSpec, content, declaredModules, config.dslTestPluginAutoAddLoadingMode))
+        if (dependencyChains.isNotEmpty()) {
+          dslTestPluginDependencyChains.put(dslSpec.pluginId, dependencyChains)
+        }
+      }
+
+      if (expandedSpecs.isNotEmpty()) {
+        expandedDslTestPluginsByProduct[specName] = expandedSpecs
+      }
+    }
+
     return DslTestPluginExpansionResult(
       pluginsByProduct = expandedDslTestPluginsByProduct,
       suppressionUsages = dslTestPluginSuppressionUsages,
@@ -834,11 +1020,7 @@ internal object ModelBuildingStage {
     )
   }
 
-  private fun addJpsDependencies(
-    builder: PluginGraphBuilder,
-    outputProvider: ModuleOutputProvider,
-    projectLibraryToModuleMap: Map<String, String>,
-  ) {
+  private fun addJpsDependencies(builder: PluginGraphBuilder, outputProvider: ModuleOutputProvider) {
     // ═══════════════════════════════════════════════════════════════════════════════
     // Phase 6: JPS Dependencies
     // ═══════════════════════════════════════════════════════════════════════════════
@@ -854,7 +1036,7 @@ internal object ModelBuildingStage {
     //
     // @see classifyTarget for how these edges are used in dependency classification
     // ───────────────────────────────────────────────────────────────────────────────
-    builder.addJpsDependencies(outputProvider, projectLibraryToModuleMap)
+    builder.addJpsDependencies(outputProvider)
   }
 
   private fun seedDslTestPluginTargets(
@@ -868,18 +1050,12 @@ internal object ModelBuildingStage {
       val declaredModules = collectDeclaredContentModules(spec.spec)
       for (moduleName in declaredModules) {
         if (moduleName.isSlashNotation()) continue
-        val targetName = if (moduleName.isTestDescriptor()) {
-          moduleName.baseModuleName().value
-        }
-        else {
-          moduleName.value
-        }
-        builder.addTarget(TargetName(targetName))
+        builder.addTarget(TargetName(moduleName.value))
       }
     }
   }
 
-  private suspend fun registerReferencedPlugins(
+  private fun registerReferencedPlugins(
     builder: PluginGraphBuilder,
     pluginContentCache: PluginContentCache,
     pluginInfos: MutableMap<TargetName, PluginContentInfo>,
@@ -937,12 +1113,16 @@ internal object ModelBuildingStage {
     dslTestPluginAdditionalBundles: Set<TargetName>,
     testPluginModuleNames: Set<TargetName>,
     extraPluginModules: Set<TargetName>,
-  ) {
+  ): Set<TargetName> {
+    val declaredPluginModules = LinkedHashSet<TargetName>()
     // Compare by string value since TargetName (JPS module) and PluginId are different semantic types.
     val dslTestPluginIdStrings = dslTestPluginIds.mapTo(HashSet()) { it.value }
-    fun addPlugin(target: TargetName, pluginId: PluginId? = null, isModuleSetWrapper: Boolean = false) {
+    fun addPlugin(target: TargetName, declared: Boolean = true) {
       if (target.value in dslTestPluginIdStrings) return
-      builder.addPlugin(name = target, isTest = false, pluginId = pluginId, isModuleSetWrapper = isModuleSetWrapper)
+      builder.addPlugin(name = target, isTest = false)
+      if (declared) {
+        declaredPluginModules.add(target)
+      }
     }
 
     for (product in discovery.products) {
@@ -950,12 +1130,14 @@ internal object ModelBuildingStage {
       product.spec?.bundledPlugins?.forEach(::addPlugin)
     }
     for (nonBundled in config.nonBundledPlugins.values) {
-      nonBundled.forEach(::addPlugin)
+      nonBundled.forEach { addPlugin(it, declared = false) }
     }
-    config.knownPlugins.forEach(::addPlugin)
+    config.knownPlugins.forEach { addPlugin(it, declared = false) }
+    config.ignoredCompatiblePlugins.forEach { addPlugin(it, declared = false) }
     testPluginModuleNames.forEach(::addPlugin)
     dslTestPluginAdditionalBundles.forEach(::addPlugin)
-    extraPluginModules.forEach(::addPlugin)
+    extraPluginModules.forEach { addPlugin(it, declared = false) }
+    return declaredPluginModules
   }
 
   private fun collectSeededPluginTargets(graph: PluginGraph): List<TargetName> {
@@ -971,7 +1153,18 @@ internal object ModelBuildingStage {
     val pluginModules: Set<TargetName>,
   )
 
-  internal fun discoverPluginDescriptorsFromSources(outputProvider: ModuleOutputProvider): DiscoveredPluginDescriptors {
+  /**
+   * The plugin main modules to seed into the graph, read off the module sources.
+   *
+   * @param contentPluginPopulation the plugin main modules the dev distribution states content for; see
+   * [org.jetbrains.intellij.build.productLayout.discovery.ModuleSetGenerationConfig.contentPluginPopulation].
+   */
+  internal fun discoverPluginDescriptorsFromSources(
+    outputProvider: ModuleOutputProvider,
+    testFrameworkContentModules: Set<ContentModuleName> = emptySet(),
+    dslOwnedPluginXmlPaths: Set<Path> = emptySet(),
+    contentPluginPopulation: Set<String> = emptySet(),
+  ): DiscoveredPluginDescriptors {
     val modules = outputProvider.getAllModules()
     if (modules.isEmpty()) {
       return DiscoveredPluginDescriptors(emptySet(), emptySet())
@@ -980,17 +1173,28 @@ internal object ModelBuildingStage {
     val testPluginModules = LinkedHashSet<TargetName>()
     val pluginModules = LinkedHashSet<TargetName>()
     for (module in modules) {
-      val prodPluginXml = findFileInModuleSources(module, PLUGIN_XML_RELATIVE_PATH, onlyProductionSources = true)
+      val prodPluginXml = outputProvider.findFileInModuleSources(module, PLUGIN_XML_RELATIVE_PATH, onlyProductionSources = true)
       val testPluginXml = if (prodPluginXml == null) {
-        findFileInModuleSources(module, PLUGIN_XML_RELATIVE_PATH, onlyProductionSources = false)
+        outputProvider.findFileInModuleSources(module, PLUGIN_XML_RELATIVE_PATH, onlyProductionSources = false)
       }
       else {
         null
       }
+      if (prodPluginXml != null && prodPluginXml in dslOwnedPluginXmlPaths) {
+        // A DSL `testPlugin {}` already owns this descriptor under its own plugin id; seeding the JPS module as well
+        // would put the same plugin.xml in the graph twice, under two different plugin nodes.
+        continue
+      }
       if (testPluginXml != null) {
         testPluginModules.add(TargetName(module.name))
       }
-      if (hasPluginContentYaml(module)) {
+      else if (prodPluginXml != null && declaresTestFrameworkContent(prodPluginXml, testFrameworkContentModules)) {
+        // Test plugins that keep plugin.xml in production resources (the rdct and ReSharper ones, for instance) are
+        // invisible to every list the generator is configured with, so without this they get neither auto-add nor
+        // validation and a content module conversion breaks them silently (IJPL-252475).
+        testPluginModules.add(TargetName(module.name))
+      }
+      if (module.name in contentPluginPopulation) {
         pluginModules.add(TargetName(module.name))
       }
     }
@@ -998,14 +1202,22 @@ internal object ModelBuildingStage {
     return DiscoveredPluginDescriptors(testPluginModules, pluginModules)
   }
 
-  private fun hasPluginContentYaml(module: JpsModule): Boolean {
-    for (url in module.contentRootsList.urls) {
-      val rootPath = JpsPathUtil.urlToNioPath(url)
-      if (Files.exists(rootPath.resolve("plugin-content.yaml"))) {
-        return true
-      }
+  /**
+   * Cheap text probe: a descriptor declaring one of the test-framework marker modules as content is a test plugin,
+   * the same criterion [org.jetbrains.intellij.build.productLayout.validator.rule.isTestPlugin] applies once the plugin
+   * is in the graph. Parsing every plugin.xml in the project just to seed extraction would be far more expensive.
+   */
+  private fun declaresTestFrameworkContent(pluginXml: Path, testFrameworkContentModules: Set<ContentModuleName>): Boolean {
+    if (testFrameworkContentModules.isEmpty()) {
+      return false
     }
-    return false
+    val content = try {
+      Files.readString(pluginXml)
+    }
+    catch (_: IOException) {
+      return false
+    }
+    return testFrameworkContentModules.any { content.contains("\"${it.value}\"") }
   }
 
   private fun collectDeclaredContentModules(spec: ProductModulesContentSpec): Set<ContentModuleName> {
@@ -1041,15 +1253,17 @@ internal object ModelBuildingStage {
       compositionGraph = spec.spec.compositionGraph,
       metadata = spec.spec.metadata,
       testPlugins = spec.spec.testPlugins,
+      moduleActivations = spec.spec.moduleActivations,
+      exclusivePluginIds = spec.spec.exclusivePluginIds,
     )
 
     return spec.copy(spec = updatedSpec)
   }
 
-  private suspend fun collectAliasesFromDeprecatedIncludes(
+  private fun collectAliasesFromDeprecatedIncludes(
     spec: ProductModulesContentSpec,
     outputProvider: ModuleOutputProvider,
-    includeAliasCache: AsyncCache<String, Set<PluginId>>,
+    includeAliasCache: SharedCache<String, Set<PluginId>>,
     prefixFilter: (String) -> String?,
     skipXIncludePaths: Set<String>,
   ): Set<PluginId> {
@@ -1075,10 +1289,10 @@ internal object ModelBuildingStage {
     return result
   }
 
-  private suspend fun collectAliasesFromModuleDescriptors(
+  private fun collectAliasesFromModuleDescriptors(
     moduleNames: Set<ContentModuleName>,
     descriptorCache: ModuleDescriptorCache,
-    aliasCache: AsyncCache<ContentModuleName, Set<PluginId>>,
+    aliasCache: SharedCache<ContentModuleName, Set<PluginId>>,
   ): Set<PluginId> {
     if (moduleNames.isEmpty()) {
       return emptySet()
@@ -1097,7 +1311,7 @@ internal object ModelBuildingStage {
     return aliases
   }
 
-  private suspend fun collectAliasesFromDeprecatedInclude(
+  private fun collectAliasesFromDeprecatedInclude(
     include: DeprecatedXmlInclude,
     outputProvider: ModuleOutputProvider,
     prefix: String?,
@@ -1108,7 +1322,14 @@ internal object ModelBuildingStage {
                  ?: error("Module '$moduleName' not found (referenced in deprecated include for '${include.resourcePath}')")
 
 
-    val initialData = resolveDeprecatedIncludeBytes(include, module, outputProvider)
+    // The model names the owner of a `deprecatedInclude`, so the search stays inside that module and its libraries.
+    val initialData = resolveDescriptor(
+      module = module,
+      path = include.resourcePath,
+      outputProvider = outputProvider,
+      walk = null,
+      searchAnyModuleOutput = false,
+    )
     if (initialData == null) {
       if (include.optional) {
         debug("aliasGraph") { "deprecated include '${include.resourcePath}' not found in module '$moduleName' (optional)" }
@@ -1127,19 +1348,7 @@ internal object ModelBuildingStage {
     )
   }
 
-  private suspend fun resolveDeprecatedIncludeBytes(
-    include: DeprecatedXmlInclude,
-    module: JpsModule,
-    outputProvider: ModuleOutputProvider,
-  ): ByteArray? {
-    val resourcePath = include.resourcePath
-    findFileInModuleSources(module, resourcePath)?.let { return Files.readAllBytes(it) }
-    findFileInModuleLibraryDependencies(module, resourcePath, outputProvider)?.let { return it }
-    outputProvider.readFileContentFromModuleOutput(module, resourcePath)?.let { return it }
-    return null
-  }
-
-  private suspend fun collectPluginAliasesFromXml(
+  private fun collectPluginAliasesFromXml(
     initialPath: String,
     initialData: ByteArray,
     outputProvider: ModuleOutputProvider,
@@ -1178,31 +1387,5 @@ internal object ModelBuildingStage {
     }
 
     return allAliases
-  }
-
-  private suspend fun resolveXIncludeBytes(
-    path: String,
-    module: JpsModule,
-    outputProvider: ModuleOutputProvider,
-    prefix: String?,
-  ): ByteArray? {
-    findFileInModuleSources(module, path)?.let { return Files.readAllBytes(it) }
-    findFileInModuleLibraryDependencies(module, path, outputProvider)?.let { return it }
-    outputProvider.readFileContentFromModuleOutput(module, path)?.let { return it }
-
-    val processedModules = HashSet<String>()
-    processedModules.add(module.name)
-
-    findFileInModuleDependenciesRecursive(
-      module = module,
-      relativePath = path,
-      provider = outputProvider,
-      processedModules = processedModules,
-      moduleNamePrefix = prefix,
-    )?.let { return it }
-
-    outputProvider.findFileInAnyModuleOutput(path, prefix, processedModules)?.let { return it }
-
-    return null
   }
 }

@@ -3,6 +3,7 @@ package org.jetbrains.intellij.build
 
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.intellij.build.classPath.PluginBuildDescriptor
+import org.jetbrains.intellij.build.classPath.PluginBuildResult
 import org.jetbrains.intellij.build.impl.ModuleItem
 import org.jetbrains.intellij.build.impl.PlatformLayout
 import org.jetbrains.intellij.build.impl.PluginLayout
@@ -29,7 +30,7 @@ interface ScrambleTool {
    * (for resolving cross-plugin references during trim/obfuscate). Typically the `lib/modules`
    * subdir of every bundled plugin laid out before this run.
    */
-  suspend fun scramble(
+  fun scramble(
     platformLayout: PlatformLayout,
     platformContent: List<DistributionFileEntry>,
     coScrambleEntries: List<CoScrambleEntry>,
@@ -52,20 +53,20 @@ interface ScrambleTool {
     @JvmField val pluginDir: Path,
   )
 
-  suspend fun scramblePlugin(request: PluginScrambleRequest, context: BuildContext)
+  fun scramblePlugin(request: PluginScrambleRequest, context: BuildContext)
 
   /**
    * Returns list of module names which cannot be included in the product without scrambling.
    */
   val namesOfModulesRequiredToBeScrambled: List<String>
 
-  suspend fun validatePlatformLayout(modules: Collection<ModuleItem>, context: BuildContext)
+  fun validatePlatformLayout(modules: Collection<ModuleItem>, context: BuildContext)
 }
 
 @ApiStatus.Internal
 class PluginScrambleRequest(
   @JvmField val currentDescriptor: PluginBuildDescriptor,
-  @JvmField val laidOutDescriptors: Collection<PluginBuildDescriptor>,
+  @JvmField val laidOutPlugins: Collection<PluginBuildResult>,
   @JvmField val platformLayout: PlatformLayout,
   @JvmField val platformContent: List<DistributionFileEntry>,
 )

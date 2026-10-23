@@ -31,7 +31,7 @@ internal object TestPluginXmlGenerator : PipelineNode {
   override val requires: Set<DataSlot<*>> get() = setOf(Slots.TEST_PLUGIN_DEPENDENCY_PLAN)
   override val produces: Set<DataSlot<*>> get() = setOf(Slots.TEST_PLUGINS)
 
-  override suspend fun execute(ctx: ComputeContext) {
+  override fun execute(ctx: ComputeContext) {
     val model = ctx.model
     val planOutput = ctx.get(Slots.TEST_PLUGIN_DEPENDENCY_PLAN)
     if (planOutput.plans.isEmpty()) {
@@ -44,6 +44,7 @@ internal object TestPluginXmlGenerator : PipelineNode {
       generateTestPluginXml(
         spec = plan.spec,
         productPropertiesClass = plan.productClass,
+        productName = plan.productName,
         projectRoot = model.projectRoot,
         moduleDependencies = plan.moduleDependencies,
         pluginDependencies = plan.pluginDependencies,

@@ -1,7 +1,14 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.libraries.rd.text` start
+content_module_jar(
+    libraries = ["@lib//:libraries-rd-text-rd-text"],
+    module = ":text",
+)
+### auto-generated section `dev intellij.libraries.rd.text` end
 
 ### auto-generated section `build intellij.libraries.rd.text` start
-
 jvm_library(
     name = "text",
     srcs = glob(
@@ -37,6 +44,7 @@ jvm_library(
 exports_files(
     [
         "intellij.libraries.rd.text.iml",
+        "resources/intellij.libraries.rd.text.xml",
     ],
     visibility = ["//visibility:public"],
 )

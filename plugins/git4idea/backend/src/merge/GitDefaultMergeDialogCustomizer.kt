@@ -2,10 +2,12 @@
 package git4idea.merge
 
 import com.intellij.diff.DiffEditorTitleCustomizer
+import com.intellij.diff.util.DiffUtil
 import com.intellij.dvcs.repo.Repository
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.diagnostic.getOrHandleException
 import com.intellij.openapi.diagnostic.logger
-import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.NlsContexts
 import com.intellij.openapi.util.NlsSafe
@@ -42,6 +44,7 @@ import git4idea.GitUtil.getHead
 import git4idea.GitUtil.getRepositories
 import git4idea.GitUtil.getRepositoriesForFiles
 import git4idea.changes.GitChangeUtils
+import git4idea.commit.GitMergeCommitMessageReader
 import git4idea.history.GitCommitRequirements
 import git4idea.history.GitHistoryUtils
 import git4idea.history.GitLogUtil
@@ -56,6 +59,9 @@ import org.jetbrains.annotations.Nls
 import javax.swing.JPanel
 
 private val LOG = logger<GitDefaultMergeDialogCustomizer>()
+
+// git quotes each ref in the MERGE_MSG first line, for example: Merge branch 'main' into feature
+private val MERGE_MSG_REF_NAME_PATTERN = Regex("'([^']+)'")
 
 internal open class GitDefaultMergeDialogCustomizer(
   private val project: Project
@@ -281,19 +287,43 @@ private fun resolveMergeBranchOrCherryPick(repository: GitRepository): String? {
 
 private fun resolveMergeBranch(repository: GitRepository): RefInfo? {
   val mergeHead = tryResolveRef(repository, MERGE_HEAD) ?: return null
-  return resolveBranchName(repository, mergeHead)
+  return resolveBranchName(repository, mergeHead, preferredName = { readMergedRefName(repository) })
 }
 
 private fun resolveRebaseOntoBranch(repository: GitRepository): RefInfo? {
   val ontoHash = GitRebaseUtils.getOntoHash(repository.project, repository.root) ?: return null
   val repo = GitRepositoryManager.getInstance(repository.project).getRepositoryForRoot(repository.root) ?: return null
+  // No preferred names here. A rebase writes the replayed commit message to MERGE_MSG, not the onto branch.
+  // MERGE_MSG would mislabel the onto branch.
   return resolveBranchName(repo, ontoHash)
 }
 
-private fun resolveBranchName(repository: GitRepository, hash: Hash): RefInfo {
+/**
+ * Resolves [hash] to the name of a branch that points at it.
+ *
+ * A single branch is unambiguous. When several branches share the commit, the lookup by hash cannot choose, so
+ * [preferredName] breaks the tie with the branch that git recorded for the operation.
+ */
+private fun resolveBranchName(repository: GitRepository, hash: Hash, preferredName: () -> String? = { null }): RefInfo {
   var branches: Collection<GitBranch> = repository.branches.findLocalBranchesByHash(hash)
   if (branches.isEmpty()) branches = repository.branches.findRemoteBranchesByHash(hash)
-  return RefInfo(hash, branches.singleOrNull()?.name)
+  val name = branches.singleOrNull()?.name
+             ?: preferredName()?.let { preferred -> branches.firstOrNull { it.name == preferred }?.name }
+  return RefInfo(hash, name)
+}
+
+/**
+ * Reads the branch name that git recorded in MERGE_MSG for the merge in progress.
+ *
+ * git writes the ref you asked to merge, for example `Merge branch 'main' into feature`. The commit hash cannot
+ * identify that branch when several branches share the commit, so the caller uses this name to break the tie.
+ * The caller resolves MERGE_HEAD to one commit. A normal merge records one branch. An octopus merge records its
+ * branches in head order, so the first name matches that commit.
+ */
+private fun readMergedRefName(repository: GitRepository): String? {
+  val message = GitMergeCommitMessageReader.getInstance(repository.project).read(repository) ?: return null
+  val firstLine = message.lineSequence().firstOrNull() ?: return null
+  return MERGE_MSG_REF_NAME_PATTERN.find(firstLine)?.groupValues?.get(1)
 }
 
 private fun tryResolveRef(repository: GitRepository, @NlsSafe ref: String): Hash? {
@@ -328,21 +358,21 @@ internal fun getTitleWithCommitDetailsCustomizer(
 ) = DiffEditorTitleCustomizer {
   getTitleWithShowDetailsAction(title) {
     val panel = LoadingCommittedChangeListPanel(repository.project)
-    panel.loadChangesInBackground {
-      val changeList = GitChangeUtils.getRevisionChanges(
-        repository.project,
-        repository.root,
-        commit,
-        true,
-        false,
-        false
-      )
-      LoadingCommittedChangeListPanel.ChangelistData(changeList, file)
-    }
 
     val dlg = ChangeListViewerDialog(repository.project, panel)
     dlg.title = StringUtil.stripHtml(title, false)
     dlg.isModal = true
+
+    ApplicationManager.getApplication().invokeLater(
+      {
+        panel.loadChangesInBackground {
+          val changeList = GitChangeUtils.getRevisionChanges(repository.project, repository.root, commit, true, false, false)
+          LoadingCommittedChangeListPanel.ChangelistData(changeList, file)
+        }
+      },
+      ModalityState.stateForComponent(dlg.rootPane),
+    )
+
     dlg.show()
   }
 }
@@ -354,36 +384,25 @@ internal fun getTitleWithCommitsRangeDetailsCustomizer(
   range: Pair<@NlsSafe String, @NlsSafe String>
 ) = DiffEditorTitleCustomizer {
   getTitleWithShowDetailsAction(title) {
-    val details = mutableListOf<VcsCommitMetadata>()
-    val filteredCommits = HashSet<VcsCommitMetadata>()
-    ProgressManager.getInstance().runProcessWithProgressSynchronously(
-      {
-        readFullDetails(
-          repository.project,
-          repository.root,
-          { commit ->
-            val commitMetadata = VcsCommitMetadataImpl(
-              commit.id, commit.parents, commit.commitTime, commit.root, commit.subject,
-              commit.author, commit.fullMessage, commit.committer, commit.authorTime)
-            if (commit.affectedPaths.contains(file)) {
-              filteredCommits.add(commitMetadata)
-            }
-            details.add(commitMetadata)
-          },
-          "${range.first}..${range.second}")
-      },
-      GitBundle.message("merge.dialog.customizer.collecting.details.progress"),
-      true,
-      repository.project)
-    val dlg = MergeConflictMultipleCommitInfoDialog(repository.project, repository.root, details, filteredCommits)
+    val dlg = MergeConflictMultipleCommitInfoDialog(repository.project, repository.root, file, range)
     dlg.title = StringUtil.stripHtml(title, false)
+
+    // Load the commits under the modal dialog's own modality (captured from its root pane), scheduled before
+    // show() so it runs inside the dialog's modal event loop. Loading before the dialog is shown would publish
+    // the result to the EDT under the outer modality, leaving it stuck behind the modal dialog until it closes
+    // (the same trap that hangs the "Loading..." spinner in getTitleWithCommitDetailsCustomizer, IJPL-252584).
+    ApplicationManager.getApplication().invokeLater(
+      { dlg.loadCommits() },
+      ModalityState.stateForComponent(dlg.rootPane),
+    )
+
     dlg.show()
   }
 }
 
 internal fun getTitleWithShowDetailsAction(@Nls title: String, action: () -> Unit): JPanel =
   BorderLayoutPanel()
-    .addToCenter(JBLabel(title).setCopyable(true))
+    .addToCenter(JBLabel(title).setCopyable(true).apply { foreground = DiffUtil.getDiffContentForeground() })
     .addToRight(ActionLink(GitBundle.message("merge.dialog.customizer.show.details.link.label")) { action() })
     .andTransparent()
 
@@ -392,11 +411,37 @@ private fun Boolean.toInt() = if (this) 1 else 0
 private class MergeConflictMultipleCommitInfoDialog(
   private val project: Project,
   private val root: VirtualFile,
-  commits: List<VcsCommitMetadata>,
-  private val filteredCommits: Set<VcsCommitMetadata>
-) : MultipleCommitInfoDialog(project, commits) {
+  private val file: FilePath,
+  private val range: Pair<@NlsSafe String, @NlsSafe String>,
+) : MultipleCommitInfoDialog(project, emptyList()) {
+  private var filteredCommits: Set<VcsCommitMetadata> = emptySet()
+
   init {
     filterCommitsByConflictingFile()
+  }
+
+  fun loadCommits() {
+    loadCommitsInBackground {
+      val details = mutableListOf<VcsCommitMetadata>()
+      val filtered = HashSet<VcsCommitMetadata>()
+      readFullDetails(
+        project,
+        root,
+        { commit ->
+          val commitMetadata = VcsCommitMetadataImpl(
+            commit.id, commit.parents, commit.commitTime, commit.root, commit.subject,
+            commit.author, commit.fullMessage, commit.committer, commit.authorTime)
+          if (commit.affectedPaths.contains(file)) {
+            filtered.add(commitMetadata)
+          }
+          details.add(commitMetadata)
+        },
+        "${range.first}..${range.second}")
+      // Set the filtered subset before returning; the list's active filter (see filterCommitsByConflictingFile)
+      // reads this field when the base re-applies it after populating the list.
+      filteredCommits = filtered
+      details
+    }
   }
 
   @Throws(VcsException::class)

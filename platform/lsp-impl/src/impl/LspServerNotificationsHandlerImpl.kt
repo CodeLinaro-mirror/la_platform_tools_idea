@@ -23,6 +23,9 @@ import com.intellij.platform.lsp.api.LspBundle
 import com.intellij.platform.lsp.api.LspServerNotificationsHandler
 import com.intellij.platform.lsp.api.LspServerState
 import com.intellij.platform.lsp.impl.features.LspFeaturesRefreshing
+import com.intellij.platform.lsp.impl.features.executeCommandExpectingWorkspaceEdit
+import com.intellij.platform.lsp.impl.serviceView.LspClientConsole
+import com.intellij.platform.lsp.impl.serviceView.LspServiceViewSupport
 import com.intellij.platform.lsp.impl.util.LspWorkspaceEditApplier
 import com.intellij.platform.lsp.util.getOffsetInDocument
 import com.intellij.platform.util.progress.reportRawProgress
@@ -44,12 +47,14 @@ import org.eclipse.lsp4j.RegistrationParams
 import org.eclipse.lsp4j.ShowDocumentParams
 import org.eclipse.lsp4j.ShowDocumentResult
 import org.eclipse.lsp4j.ShowMessageRequestParams
+import org.eclipse.lsp4j.TextDocumentContentRefreshParams
 import org.eclipse.lsp4j.UnregistrationParams
 import org.eclipse.lsp4j.WorkDoneProgressBegin
 import org.eclipse.lsp4j.WorkDoneProgressCancelParams
 import org.eclipse.lsp4j.WorkDoneProgressCreateParams
 import org.eclipse.lsp4j.WorkDoneProgressEnd
 import org.eclipse.lsp4j.WorkDoneProgressReport
+import org.eclipse.lsp4j.WorkspaceEdit
 import org.eclipse.lsp4j.WorkspaceFolder
 import java.util.Collections
 import java.util.concurrent.CompletableFuture
@@ -70,7 +75,21 @@ internal class LspServerNotificationsHandlerImpl(private val lspClient: LspClien
   private val progressJobs = ConcurrentHashMap<String, Job>()
   private val ansiDecoder = AnsiEscapeDecoder()
 
+  /**
+   * When set (by [executeCommandExpectingWorkspaceEdit]), incoming `workspace/applyEdit` requests are handled by
+   * this handler instead of being applied in the usual way. Written and read on different threads, hence `@Volatile`.
+   */
+  @Volatile
+  internal var nextApplyEditHandler: ((WorkspaceEdit) -> Unit)? = null
+
   override fun applyEdit(params: ApplyWorkspaceEditParams): CompletableFuture<ApplyWorkspaceEditResponse> {
+    nextApplyEditHandler?.let { handler ->
+      nextApplyEditHandler = null
+      handler(params.edit)
+      // a bit of cheating here: at this moment the edit is not yet applied; there are no known issues because of that
+      return completedFuture(ApplyWorkspaceEditResponse(true))
+    }
+
     val future = CompletableFuture<ApplyWorkspaceEditResponse>()
 
     LspClientManagerImpl.getInstanceImpl(project).cs.launch {
@@ -125,6 +144,13 @@ internal class LspServerNotificationsHandlerImpl(private val lspClient: LspClien
       it == LspDynamicCapabilities.documentHighlight.first
     }
 
+    // A registration that replaces an earlier one — servers re-register after re-reading their configuration — means
+    // the diagnostics pulled through the previous one are stale. Restarting the daemon alone doesn't re-request them:
+    // the cache is only considered stale when the PSI changed, which it didn't.
+    val needsDiagnosticsRefresh = registeredCapabilities.any {
+      it == LspDynamicCapabilities.diagnostic.first
+    }
+
     val needsCodeLensesRefresh = registeredCapabilities.any {
       it == LspDynamicCapabilities.codeLens.first
     }
@@ -133,12 +159,16 @@ internal class LspServerNotificationsHandlerImpl(private val lspClient: LspClien
       lspClient.refreshInlayHints()
     }
 
+    if (needsDiagnosticsRefresh) {
+      lspClient.refreshDiagnostics()
+    }
+
     if (needsCodeLensesRefresh) {
       LspFeaturesRefreshing.refreshCodeLenses(project)
     }
 
     if (needsFoldingUpdate) {
-      for (fileEditor in FileEditorManager.getInstance(project).getAllEditors()) {
+      for (fileEditor in FileEditorManager.getInstance(project).allEditors) {
         if (fileEditor is TextEditor) {
           // Also calls `DaemonCodeAnalyzer.restart` internally
           CodeFoldingManager.getInstance(project).scheduleAsyncFoldingUpdate(fileEditor.editor)
@@ -237,6 +267,10 @@ internal class LspServerNotificationsHandlerImpl(private val lspClient: LspClien
       is WorkDoneProgressBegin -> {
         progressJobs[tokenId]?.cancel()
 
+        // A Begin after the server stopped must not start an indicator: End will never arrive,
+        // and cancelAllProgress() has already run, so nothing would ever stop the indicator
+        if (lspClient.state == LspServerState.ShutdownNormally || lspClient.state == LspServerState.ShutdownUnexpectedly) return
+
         val job = LspClientManagerImpl.getInstanceImpl(project).cs.launch {
 
           progressTasks[tokenId] = ProgressTask(
@@ -271,6 +305,13 @@ internal class LspServerNotificationsHandlerImpl(private val lspClient: LspClien
         }
 
         progressJobs[tokenId] = job
+
+        // The server may have stopped between the check above and this registration;
+        // cancelAllProgress() could have run in between and missed this job
+        if (lspClient.state == LspServerState.ShutdownNormally || lspClient.state == LspServerState.ShutdownUnexpectedly) {
+          progressTasks.remove(tokenId)
+          progressJobs.remove(tokenId)?.cancel()
+        }
       }
       is WorkDoneProgressReport -> {
         progressTasks.computeIfPresent(tokenId) { _, currentState ->
@@ -318,13 +359,27 @@ internal class LspServerNotificationsHandlerImpl(private val lspClient: LspClien
   }
 
   override fun refreshInlineValues(): CompletableFuture<Void> = completedFuture(null)
-  override fun refreshDiagnostics(): CompletableFuture<Void> = completedFuture(null)
+
+  override fun refreshDiagnostics(): CompletableFuture<Void> {
+    if (!project.isDisposed) {
+      lspClient.refreshDiagnostics()
+    }
+    return completedFuture(null)
+  }
+
+  override fun refreshTextDocumentContent(params: TextDocumentContentRefreshParams): CompletableFuture<Void> {
+    if (!project.isDisposed) {
+      lspClient.dynamicFiles.refreshContent(params.uri)
+    }
+    return completedFuture(null)
+  }
 
 
   override fun showMessageRequest(params: ShowMessageRequestParams): CompletableFuture<MessageActionItem> {
     if (project.isDisposed) return completedFuture(null)
 
     lspClient.logInfo("window/showMessageRequest: ${params.message}: ${params.actions?.joinToString { it.title }}")
+    serviceViewConsole()?.printShowMessage(params.type, "${params.message}: ${params.actions?.joinToString { it.title }}")
     return doNotify(params.message, getNotificationType(params), SHOW_MESSAGE_NOTIFICATION_GROUP, params.actions)
   }
 
@@ -332,6 +387,7 @@ internal class LspServerNotificationsHandlerImpl(private val lspClient: LspClien
     if (project.isDisposed) return
 
     lspClient.logInfo("window/showMessage: ${params.message}")
+    serviceViewConsole()?.printShowMessage(params.type, params.message)
     doNotify(params.message, getNotificationType(params), SHOW_MESSAGE_NOTIFICATION_GROUP)
   }
 
@@ -339,13 +395,7 @@ internal class LspServerNotificationsHandlerImpl(private val lspClient: LspClien
     if (project.isDisposed) return
 
     lspClient.logInfo("window/logMessage ${params.type}: ${params.message}")
-    if (params.type == MessageType.Error || params.type == MessageType.Warning) {
-      doNotify(params.message, getNotificationType(params), LOG_ERRORS_WARNINGS_NOTIFICATION_GROUP)
-    }
-    else {
-      // Do not spam user with all the logs from the server. LOG_INFO_TRACE_NOTIFICATION_GROUP is silent by default.
-      doNotify(params.message, NotificationType.INFORMATION, LOG_INFO_TRACE_NOTIFICATION_GROUP)
-    }
+    serviceViewConsole()?.printLogMessage(params.type, params.message)
   }
 
   override fun logTrace(params: LogTraceParams) {
@@ -353,13 +403,15 @@ internal class LspServerNotificationsHandlerImpl(private val lspClient: LspClien
 
     // no need to LOG.info() it additionally; LOG.debug() done in Lsp4jServerConnector.createMessageJsonHandler is enough.
     val message = if (params.verbose != null) "${params.message}\n${params.verbose}" else params.message
-    doNotify(message, NotificationType.INFORMATION, LOG_INFO_TRACE_NOTIFICATION_GROUP)
+    serviceViewConsole()?.printTrace(message)
   }
+
+  private fun serviceViewConsole(): LspClientConsole? = LspServiceViewSupport.getInstance(project).getOrCreateConsole(lspClient)
 
   private fun getNotificationType(params: MessageParams): NotificationType = when (params.type) {
     MessageType.Error -> NotificationType.ERROR
     MessageType.Warning -> NotificationType.WARNING
-    MessageType.Info, MessageType.Log -> NotificationType.INFORMATION
+    MessageType.Info, MessageType.Log, MessageType.Debug -> NotificationType.INFORMATION
   }
 
   private fun doNotify(
@@ -403,17 +455,5 @@ internal class LspServerNotificationsHandlerImpl(private val lspClient: LspClien
      * The value of this string must be equal to the `notificationGroup` id in the `intellij.platform.lsp.xml` file.
      */
     const val SHOW_MESSAGE_NOTIFICATION_GROUP = "LSP window/showMessage"
-
-    /**
-     * Default behavior: no balloon, only write to the Notifications tool window.
-     * The value of this string must be equal to the `notificationGroup` id in the `intellij.platform.lsp.xml` file.
-     */
-    private const val LOG_ERRORS_WARNINGS_NOTIFICATION_GROUP = "LSP window/logMessage: errors, warnings"
-
-    /**
-     * Default behavior: no notification. For development purposes, plugin developers may enable printing to the Notifications tool window.
-     * The value of this string must be equal to the `notificationGroup` id in the `intellij.platform.lsp.xml` file.
-     */
-    private const val LOG_INFO_TRACE_NOTIFICATION_GROUP = "LSP window/logMessage: info, log; $/logTrace"
   }
 }

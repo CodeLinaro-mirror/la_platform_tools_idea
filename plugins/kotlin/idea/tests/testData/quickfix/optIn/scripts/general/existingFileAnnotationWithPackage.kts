@@ -7,11 +7,9 @@
 // ACTION: Opt in for 'B' on statement
 // ACTION: Propagate 'B' opt-in requirement to 'h'
 // RUNTIME_WITH_SCRIPT_RUNTIME
-// K2_ERROR: Annotation argument must be a compile-time constant.
-// K2_ERROR: This declaration needs opt-in. Its usage must be marked with '@p.B' or '@OptIn(p.B::class)'
-// K2_ERROR: Unresolved reference 'ExistingFileAnnotationWithPackage'.
-// K2_AFTER_ERROR: Annotation argument must be a compile-time constant.
-// K2_AFTER_ERROR: Unresolved reference 'ExistingFileAnnotationWithPackage'.
+// K2_ERROR: OPT_IN_USAGE_ERROR
+// K2_ERROR: UNRESOLVED_REFERENCE
+// K2_AFTER_ERROR: UNRESOLVED_REFERENCE
 @file:OptIn(ExistingFileAnnotationWithPackage.A::class)
 
 package p
@@ -33,4 +31,3 @@ fun h() {
 }
 
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.UseOptInFileAnnotationFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.UseOptInFileAnnotationFix

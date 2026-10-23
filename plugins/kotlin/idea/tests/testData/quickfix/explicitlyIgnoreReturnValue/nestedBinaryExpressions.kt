@@ -1,5 +1,5 @@
 // "Explicitly ignore return value" "true"
-// LANGUAGE_VERSION: 2.2
+// LANGUAGE_VERSION: 2.3
 // COMPILER_ARGUMENTS: -Xreturn-value-checker=full
 fun someFunction() {
     someFunctionValue() ?: (someFunctionValue() ?: <caret>someFunctionValue() ?: error("failure"))
@@ -7,4 +7,4 @@ fun someFunction() {
 fun someFunctionValue(): Int? = 1
 
 
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.NoReturnValueFactory$UnderscoreValueFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.NoReturnValueFactory$UnderscoreValueFix

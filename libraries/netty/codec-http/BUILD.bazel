@@ -1,7 +1,14 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.libraries.netty.codec.http` start
+content_module_jar(
+    libraries = ["@lib//:libraries-netty-codec-http-netty-codec-http"],
+    module = ":libraries-netty-codec-http",
+)
+### auto-generated section `dev intellij.libraries.netty.codec.http` end
 
 ### auto-generated section `build intellij.libraries.netty.codec.http` start
-
 jvm_library(
     name = "libraries-netty-codec-http",
     srcs = glob(
@@ -19,6 +26,7 @@ jvm_library(
         # do not sort,
         "@lib//:libraries-netty-codec-http-netty-codec-http",
         "//libraries/netty/buffer",
+        "//libraries/netty/codec-compression:libraries-netty-codec-compression",
     ],
 )
 
@@ -37,6 +45,7 @@ jvm_library(
         # do not sort,
         ":libraries-netty-codec-http",
         "//libraries/netty/buffer:buffer_test_lib",
+        "//libraries/netty/codec-compression:libraries-netty-codec-compression_test_lib",
     ],
 )
 ### auto-generated section `build intellij.libraries.netty.codec.http` end
@@ -45,6 +54,7 @@ jvm_library(
 exports_files(
     [
         "intellij.libraries.netty.codec.http.iml",
+        "resources/intellij.libraries.netty.codec.http.xml",
     ],
     visibility = ["//visibility:public"],
 )

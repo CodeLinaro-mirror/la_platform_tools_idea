@@ -55,15 +55,20 @@ import com.intellij.openapi.roots.libraries.Library;
 import com.intellij.openapi.roots.libraries.PersistentLibraryKind;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.Ref;
+import com.intellij.openapi.util.ThrowableComputable;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.JarFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.encoding.EncodingProjectManager;
+import com.intellij.platform.eel.EelDescriptor;
+import com.intellij.python.sdk.backend.PythonInterpreter;
+import com.intellij.python.sdk.backend.PythonInterpreterKt;
 import com.intellij.remote.ProcessControlWithMappings;
 import com.intellij.remote.RemoteSdkProperties;
 import com.intellij.remote.TargetAwarePathMappingProvider;
+import com.intellij.util.ExceptionUtil;
 import com.intellij.util.PathMappingSettings;
 import com.intellij.util.PlatformUtils;
 import com.intellij.util.concurrency.annotations.RequiresBackgroundThread;
@@ -71,9 +76,10 @@ import com.intellij.util.concurrency.annotations.RequiresEdt;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.execution.ParametersListUtil;
 import com.jetbrains.python.PyBundle;
+import com.jetbrains.python.PyInternalExecApi;
 import com.jetbrains.python.console.PyDebugConsoleBuilder;
-import com.jetbrains.python.debugger.PyDebugRunner;
 import com.jetbrains.python.debugger.PyDebuggerOptionsProvider;
+import com.jetbrains.python.debugger.PyEelSdkKt;
 import com.jetbrains.python.debugger.PyTargetPathMapper;
 import com.jetbrains.python.facet.LibraryContributingFacet;
 import com.jetbrains.python.facet.PythonPathContributingFacet;
@@ -88,11 +94,9 @@ import com.jetbrains.python.run.target.HelpersAwareTargetEnvironmentRequest;
 import com.jetbrains.python.run.target.PySdkTargetPaths;
 import com.jetbrains.python.run.target.PythonCommandLineTargetEnvironmentProvider;
 import com.jetbrains.python.sdk.PySdkExtKt;
-import com.jetbrains.python.sdk.PySdkUtil;
 import com.jetbrains.python.sdk.PythonEnvUtil;
 import com.jetbrains.python.sdk.PythonSdkAdditionalData;
-import com.jetbrains.python.sdk.PyRichSdk;
-import com.jetbrains.python.sdk.PyRichSdkKt;
+import com.jetbrains.python.sdk.SdkExtKt;
 import com.jetbrains.python.sdk.flavors.PythonSdkFlavor;
 import com.jetbrains.python.sdk.flavors.conda.CondaPythonExecKt;
 import com.jetbrains.python.sdk.legacy.PythonSdkUtil;
@@ -118,6 +122,7 @@ import java.util.Set;
 import java.util.function.Function;
 
 import static com.intellij.execution.util.EnvFilesUtilKt.configureEnvsFromFiles;
+import static com.jetbrains.python.PyEnvConstKt.PYTHONIOENCODING;
 import static com.jetbrains.python.run.PythonScriptCommandLineState.getExpandedWorkingDir;
 import static com.jetbrains.python.run.features.PyRunToolExtKt.useRunTool;
 import static com.jetbrains.python.run.features.PyRunToolProviderKt.getEnableRunTool;
@@ -198,11 +203,12 @@ public abstract class PythonCommandLineState extends CommandLineState {
     return myConfig;
   }
 
+  /**
+   * Builds the result for a launch whose debuggee somebody else spawns — a debug adapter, or a debuggee that is
+   * already running. The console and a placeholder process handler are all this state contributes.
+   */
   @Override
   public @NotNull ExecutionResult execute(@NotNull Executor executor, @NotNull ProgramRunner<?> runner) throws ExecutionException {
-    if (runner instanceof PyDebugRunner || runner instanceof PythonRunner) {
-      return execute(executor, new CommandLinePatcher[0]);
-    }
     return executeWithoutStartProcess(executor);
   }
 
@@ -246,26 +252,42 @@ public abstract class PythonCommandLineState extends CommandLineState {
     return new DefaultExecutionResult(console, processHandler, createActions(console, processHandler));
   }
 
+  /**
+   * Builds the console on the EDT and hands it back to the calling background thread.
+   */
   @ApiStatus.Internal
   public @NotNull ConsoleView createAndAttachConsoleInEDT(@NotNull Project project, ProcessHandler processHandler, Executor executor)
     throws ExecutionException {
-    final Ref<Object> consoleRef = Ref.create();
-    ApplicationManager.getApplication().invokeAndWait(
-      () -> {
-        try {
-          consoleRef.set(createAndAttachConsole(project, processHandler, executor));
-        }
-        catch (ExecutionException | RuntimeException e) {
-          consoleRef.set(e);
-        }
-      });
+    return computeOnEdt(() -> createAndAttachConsole(project, processHandler, executor));
+  }
 
-    if (consoleRef.get() instanceof ExecutionException) {
-      throw (ExecutionException)consoleRef.get();
+  /**
+   * Runs {@code computable} on the EDT and gives the caller its value, or the failure it ended with.
+   */
+  // Package-private: the hop belongs to this class, and its test sits in the same package under testSrc.
+  static <T> @NotNull T computeOnEdt(@NotNull ThrowableComputable<@NotNull T, ExecutionException> computable)
+    throws ExecutionException {
+    Ref<T> value = Ref.create();
+    Ref<Throwable> failure = Ref.create();
+    ApplicationManager.getApplication().invokeAndWait(() -> {
+      try {
+        value.set(computable.compute());
+      }
+      catch (Throwable e) {
+        failure.set(e);
+      }
+    });
+
+    Throwable error = failure.get();
+    if (error != null) {
+      ExceptionUtil.rethrowUnchecked(error);
+      throw (ExecutionException)error;
     }
-    else if (consoleRef.get() instanceof RuntimeException) throw (RuntimeException)consoleRef.get();
-
-    return (ConsoleView)consoleRef.get();
+    T result = value.get();
+    if (result == null) {
+      throw new ExecutionException(PyBundle.message("runcfg.error.message.console.was.not.created"));
+    }
+    return result;
   }
 
   /**
@@ -396,8 +418,11 @@ public abstract class PythonCommandLineState extends CommandLineState {
     if (sdk != null && getEnableRunTool()) {
       PyRunToolProvider runToolProvider = PyRunToolProvider.forSdk(sdk);
       if (runToolProvider != null && useRunTool(myConfig, sdk)) {
-        runToolParameters = PythonCommandLineStateExKt.getRunToolParametersForJvm(runToolProvider, sdk);
-        PyRunToolUsageCollector.logRun(myConfig.getProject(), PyRunToolIds.idOf(runToolProvider));
+        // Resolved here rather than in the tool: only the configuration knows whether it runs a bare script.
+        PyBareScriptConfiguration bareScript = myConfig.asBareScriptConfiguration();
+        Path scriptModeTarget = bareScript == null ? null : bareScript.getInlineScriptTarget();
+        runToolParameters = PythonCommandLineStateExKt.getRunToolParametersForJvm(runToolProvider, sdk, scriptModeTarget);
+        PyRunToolUsageCollector.logRun(myConfig.getProject(), PyRunToolIds.idOf(runToolProvider), scriptModeTarget != null);
       }
     }
 
@@ -550,6 +575,11 @@ public abstract class PythonCommandLineState extends CommandLineState {
       // TODO This special treatment of local target must be replaced with a generalized approach
       //  (f.e. with an ability of a target environment to match arbitrary local path to a target one)
       if (isDebug()) {
+        Sdk sdk = myConfig.getSdk();
+        EelDescriptor eel = sdk != null ? PyEelSdkKt.remoteEelOrNull(sdk) : null;
+        if (eel != null) {
+          return new PyEelDebugProcessHandler(process, commandLineString, commandLine.getCharset(), eel);
+        }
         return new PyDebugProcessHandler(process, commandLineString, commandLine.getCharset());
       }
       return new PythonProcessHandler(process, commandLineString, commandLine.getCharset());
@@ -805,11 +835,13 @@ public abstract class PythonCommandLineState extends CommandLineState {
     Sdk sdk = runParams.getSdk();
     if (sdk == null) return;
 
-    PyRichSdk pyRichSdk = PyRichSdkKt.pyRichSdk(sdk, false);
-    boolean shouldActivate = (Registry.is("python.activate.virtualenv.on.run") && pyRichSdk.isActivatable());
+    PythonInterpreter pythonInterpreter = PythonInterpreterKt.pythonInterpreter(sdk, false);
+    boolean shouldActivate = (Registry.is("python.activate.virtualenv.on.run") && pythonInterpreter.isActivatable());
     if (!shouldActivate) return;
 
-    Map<String, String> activated = PySdkUtil.activateVirtualEnv(sdk);
+    // A failed activation read is already logged by ActivatableEnvironmentService; fall back to no extra vars here.
+    Map<String, String> activated = SdkExtKt.activationEnvironmentBlocking(sdk).getSuccessOrNull();
+    if (activated == null) activated = Map.of();
     env.putAll(activated);
 
     // User-specified env vars override activated ones, with special PATH merging
@@ -859,7 +891,7 @@ public abstract class PythonCommandLineState extends CommandLineState {
    * @see PythonEnvUtil#setupEncodingEnvs(Map, Charset)
    */
   private static void setupEncodingEnvs(@NotNull PythonExecution pythonExecution, @NotNull Charset charset) {
-    pythonExecution.addEnvironmentVariable(PythonEnvUtil.PYTHONIOENCODING, charset.name());
+    pythonExecution.addEnvironmentVariable(PYTHONIOENCODING, charset.name());
   }
 
   /**
@@ -907,6 +939,7 @@ public abstract class PythonCommandLineState extends CommandLineState {
     }
   }
 
+  @PyInternalExecApi
   @ApiStatus.Internal
   public static void buildPythonPath(@NotNull Project project,
                                      @Nullable Module module,
@@ -955,13 +988,21 @@ public abstract class PythonCommandLineState extends CommandLineState {
   }
 
   public static @NotNull List<String> getAddedPaths(@NotNull Sdk pythonSdk) {
-    List<String> pathList = new ArrayList<>();
     final SdkAdditionalData sdkAdditionalData = pythonSdk.getSdkAdditionalData();
     if (sdkAdditionalData instanceof PythonSdkAdditionalData) {
-      final Set<VirtualFile> addedPaths = ((PythonSdkAdditionalData)sdkAdditionalData).getAddedPathFiles();
-      for (VirtualFile file : addedPaths) {
-        addToPythonPath(file, pathList);
-      }
+      return getAddedPaths(((PythonSdkAdditionalData)sdkAdditionalData).getAddedPathFiles());
+    }
+    return new ArrayList<>();
+  }
+
+  /**
+   * The paths of {@code addedPaths} to put on the {@code PYTHONPATH}.
+   */
+  @ApiStatus.Internal
+  public static @NotNull List<String> getAddedPaths(@NotNull Collection<VirtualFile> addedPaths) {
+    List<String> pathList = new ArrayList<>();
+    for (VirtualFile file : addedPaths) {
+      addToPythonPath(file, pathList);
     }
     return pathList;
   }

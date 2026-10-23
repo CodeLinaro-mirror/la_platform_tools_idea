@@ -15,8 +15,6 @@ import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.readAction
 import com.intellij.openapi.application.writeIntentReadAction
 import com.intellij.openapi.command.WriteCommandAction
-import com.intellij.openapi.components.service
-import com.intellij.openapi.diagnostic.fatalErrorWithWarnDetails
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.project.DumbService
@@ -47,6 +45,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jetbrains.io.JsonReaderEx
 import org.jetbrains.io.JsonUtil
+import org.jetbrains.kotlin.idea.base.psi.addModifierKeyword
+import org.jetbrains.kotlin.idea.base.psi.setPackageFqName
 import org.jetbrains.kotlin.psi.KtClassOrObject
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.KtPsiFactory
@@ -60,7 +60,7 @@ import java.util.jar.Manifest
 private val LOG = logger<CodeWriter>()
 
 object CodeWriter {
-  @RequiresBackgroundThread
+  @RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
   suspend fun generate(
     project: Project, module: Module, sourceFolder: VirtualFile,
     processAbstractTypes: Boolean, explicitApiEnabled: Boolean,
@@ -114,7 +114,7 @@ object CodeWriter {
         reportRawProgress { reporter ->
           reporter.text(DevKitWorkspaceModelBundle.message("progress.text.collecting.classes.metadata"))
           val (objModules, metaProblems) = readAction {
-            service<WorkspaceMetaModelProvider>().loadObjModules(ktClasses, module, processAbstractTypes, isTestSourceFolder)
+            WorkspaceMetaModelProvider().loadObjModules(ktClasses, module, processAbstractTypes, isTestSourceFolder)
           }
           if (metaProblems.isNotEmpty()) {
             WorkspaceCodegenProblemsProvider.getInstance(project).reportMetaProblem(metaProblems)
@@ -194,7 +194,7 @@ object CodeWriter {
     }
   }
 
-  @RequiresBackgroundThread
+  @RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
   private suspend fun PsiFile.awaitCodeStyleCalculation() {
     val latch = CompletableDeferred<Unit>()
     CodeStyle.getSettings(this) // trigger settings computation
@@ -418,7 +418,7 @@ object CodeWriter {
       val topLevelCode = code.topLevelCode ?: ""
       val filename = "${code.target.name}$GENERATED_MODIFICATIONS_SUFFIX"
       val generatedModificationsFile = psiFactory.createFile(filename, generatedApiImports.findAndRemoveFqns(topLevelCode))
-      generatedModificationsFile.packageFqName = apiPackageFqName
+      generatedModificationsFile.setPackageFqName(apiPackageFqName)
 
       val declarations = generatedModificationsFile.declarations
       for (declaration in declarations) {
@@ -430,7 +430,7 @@ object CodeWriter {
 
       val visibility = apiClass.visibilityModifierType().takeIf { !apiClass.isPublic }
       if (visibility != null) {
-        generatedModificationsFile.declarations.forEach { it.addModifier(visibility) }
+        generatedModificationsFile.declarations.forEach { it.addModifierKeyword(visibility) }
       }
 
       val apiClassFileAnnotationsNoJvmName = apiClass.containingKtFile.annotationEntries.filter { it.shortName?.asString() != "JvmName" }

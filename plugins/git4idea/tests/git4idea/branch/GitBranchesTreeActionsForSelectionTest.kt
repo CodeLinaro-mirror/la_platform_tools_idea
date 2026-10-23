@@ -2,13 +2,23 @@
 package git4idea.branch
 
 import com.intellij.dvcs.repo.Repository
+import com.intellij.ide.DataManager
+import com.intellij.ide.impl.HeadlessDataManager
 import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CustomizedDataContext
 import com.intellij.openapi.actionSystem.DataContext
+import com.intellij.openapi.actionSystem.DataKey
+import com.intellij.openapi.actionSystem.DataMap
+import com.intellij.openapi.actionSystem.DataProvider
+import com.intellij.openapi.actionSystem.DataSink
+import com.intellij.openapi.actionSystem.DataSnapshotProvider
+import com.intellij.openapi.actionSystem.UiDataProvider
 import com.intellij.openapi.actionSystem.PlatformDataKeys
 import com.intellij.openapi.actionSystem.Separator
+import com.intellij.openapi.util.registry.Registry
+import com.intellij.openapi.vcs.actions.VcsContextFactory
 import com.intellij.testFramework.LightVirtualFile
 import com.intellij.testFramework.TestActionEvent
 import com.intellij.ui.tree.TreeVisitor
@@ -20,6 +30,7 @@ import com.intellij.vcs.log.impl.HashImpl
 import git4idea.GitLocalBranch
 import git4idea.GitStandardRemoteBranch
 import git4idea.GitTag
+import git4idea.GitWorkingTree
 import git4idea.actions.branch.GitCheckoutAsNewBranch
 import git4idea.actions.branch.GitCheckoutWithRebaseAction
 import git4idea.actions.branch.GitCompareWithBranchAction
@@ -40,20 +51,25 @@ import git4idea.branch.GitBranchesTreeTestContext.Companion.NOT_ORIGIN
 import git4idea.branch.GitBranchesTreeTestContext.Companion.ORIGIN
 import git4idea.branch.GitBranchesTreeTestContext.Companion.branchInfo
 import git4idea.branch.GitBranchesTreeTestContext.Companion.tagInfo
+import git4idea.i18n.GitBundle
 import git4idea.repo.GitBranchTrackInfo
 import git4idea.repo.GitRepositoryTagsHolder
 import git4idea.repo.GitRepositoryTagsHolderImpl
 import git4idea.test.MockGitRepository
 import git4idea.test.MockGitRepositoryModel
+import git4idea.ui.branch.GitBranchPopupActions.getSelectedBranchFullPresentation
 import git4idea.ui.branch.dashboard.BRANCHES_UI_CONTROLLER
 import git4idea.ui.branch.dashboard.BranchNodeDescriptor
 import git4idea.ui.branch.dashboard.BranchesDashboardActions
 import git4idea.ui.branch.dashboard.BranchesDashboardActions.BranchActionsBuilder
 import git4idea.ui.branch.dashboard.BranchesDashboardTreeController
+import git4idea.ui.branch.dashboard.BranchesTreeSearchField
 import git4idea.ui.branch.dashboard.BranchesTreeSelection
 import git4idea.ui.branch.dashboard.BranchesTreeSelection.Companion.getSelectedRepositories
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.mockito.Mockito
+import java.awt.BorderLayout
+import javax.swing.JPanel
 import javax.swing.tree.TreePath
 import kotlin.reflect.KClass
 
@@ -88,6 +104,42 @@ class GitBranchesTreeActionsForSelectionTest : GitBranchesTreeTest() {
       isEnabledAndVisible<GitRenameBranchAction>(),
       isEnabledAndVisible<GitDeleteRefAction>(),
     ))
+  }
+
+  fun `test update action enabled for branch checked out in another worktree`() = branchesTreeTest {
+    Registry.get("git.enable.working.trees.feature").setValue(true, testRootDisposable)
+    singleRepoTreeState()
+    select(BranchesTreeNodeMatchers.branchMatcher(local = true, shortName = "another"))
+
+    repo1.workingTrees = repo1.workingTrees + GitWorkingTree(
+      VcsContextFactory.getInstance().createFilePath("/other/worktree/for/another", true),
+      GitLocalBranch("another"),
+      isMain = false,
+      isCurrent = false,
+    )
+
+    val event = simpleEvent()
+    GitUpdateSelectedBranchAction().update(event)
+
+    assertTrue("Update action should be enabled for a branch checked out in another worktree", event.presentation.isEnabled)
+    assertTrue("Update action should stay visible", event.presentation.isVisible)
+  }
+
+  fun `test update action disabled without tracking info`() = branchesTreeTest {
+    singleRepoTreeState()
+    select(BranchesTreeNodeMatchers.branchMatcher(local = true, shortName = "another"))
+
+    repo1.branchTrackInfos = repo1.branchTrackInfos.filter { it.localBranch.name != "another" }
+
+    val event = simpleEvent()
+    GitUpdateSelectedBranchAction().update(event)
+
+    assertFalse("Update action should be disabled without tracking info", event.presentation.isEnabled)
+    assertTrue("Update action should stay visible with an explanatory tooltip", event.presentation.isVisible)
+    assertEquals(
+      GitBundle.message("branches.tracking.branch.doesn.t.configured.for.s", getSelectedBranchFullPresentation("another")),
+      event.presentation.description
+    )
   }
 
   fun `test select current branch actions`() = branchesTreeTest {
@@ -213,6 +265,45 @@ class GitBranchesTreeActionsForSelectionTest : GitBranchesTreeTest() {
       isEnabledAndVisible<BranchesDashboardActions.EditRemoteAction>(),
       isEnabledAndVisible<BranchesDashboardActions.RemoveRemoteAction>(),
     ))
+  }
+
+  fun `test search field hides the tree data`() = branchesTreeTest {
+    HeadlessDataManager.fallbackToProductionDataManager(testRootDisposable)
+    singleRepoTreeState()
+
+    val treeData = UiDataProvider { sink ->
+      sink[BRANCHES_UI_CONTROLLER] = branchesUiController
+      BranchesDashboardTreeController.snapshotSelectionActionsKeys(sink, tree.selectionPaths)
+    }
+    val searchField = BranchesTreeSearchField(project, tree)
+    UiDataProvider.wrapComponent(JPanel(BorderLayout()).apply {
+      add(searchField, BorderLayout.NORTH)
+      add(tree, BorderLayout.CENTER)
+    }) { sink ->
+      sink[PlatformDataKeys.PROJECT] = project
+      treeData.uiDataSnapshot(sink)
+    }
+
+    for (matcher in listOf(BranchesTreeNodeMatchers.typeMatcher<BranchNodeDescriptor.Head>(),
+                           BranchesTreeNodeMatchers.branchMatcher(local = true, shortName = "another"))) {
+      select(matcher)
+      val treeContext = DataManager.getInstance().getDataContext(tree)
+      val searchFieldContext = DataManager.getInstance().getDataContext(searchField.textEditor)
+
+      for (key in RecordingDataSink().also { treeData.uiDataSnapshot(it) }.providedKeys) {
+        assertNotNull("${key.name} must be available in the tree", treeContext.getData(key))
+        assertNull("${key.name} must be hidden in the search field", searchFieldContext.getData(key))
+      }
+    }
+
+    assertTrue(isEnabledAndVisible(GitDeleteRefAction(), DataManager.getInstance().getDataContext(tree)))
+    assertFalse(isEnabledAndVisible(GitDeleteRefAction(), DataManager.getInstance().getDataContext(searchField.textEditor)))
+  }
+
+  private fun isEnabledAndVisible(action: AnAction, context: DataContext): Boolean {
+    val event = TestActionEvent.createTestEvent(context)
+    action.update(event)
+    return event.presentation.isEnabledAndVisible
   }
 
   fun `test nothing to show`() = branchesTreeTest {
@@ -364,6 +455,28 @@ private object BranchesTreeNodeMatchers {
       return if (matcher(node)) TreeVisitor.Action.INTERRUPT else TreeVisitor.Action.CONTINUE
     }
   }
+}
+
+private class RecordingDataSink : DataSink {
+  val providedKeys = mutableSetOf<DataKey<*>>()
+
+  override fun <T : Any> set(key: DataKey<T>, data: T?) {
+    providedKeys += key
+  }
+
+  override fun <T : Any> setNull(key: DataKey<T>) {}
+
+  override fun <T : Any> lazyValue(key: DataKey<T>, data: (DataMap) -> T?) {
+    providedKeys += key
+  }
+
+  override fun <T : Any> lazyNull(key: DataKey<T>) {}
+
+  override fun uiDataSnapshot(provider: UiDataProvider) = provider.uiDataSnapshot(this)
+
+  override fun dataSnapshot(provider: DataSnapshotProvider) = provider.dataSnapshot(this)
+
+  override fun uiDataSnapshot(provider: DataProvider) = throw UnsupportedOperationException()
 }
 
 private class ActionState(val isEnabled: Boolean, val action: KClass<out AnAction>) {

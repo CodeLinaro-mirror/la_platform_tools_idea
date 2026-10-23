@@ -2,7 +2,7 @@
 package com.intellij.openapi.vfs.newvfs.persistent;
 
 import com.intellij.openapi.util.io.FileUtil;
-import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.StandardFileSystems;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileWithId;
 import com.intellij.psi.impl.cache.impl.id.IdIndex;
@@ -69,13 +69,13 @@ public class IndexStampAccessBenchmark {
 
     @NotNull
     private static VirtualFile refreshAndFind(final @NotNull File file) {
-      return Objects.requireNonNull(LocalFileSystem.getInstance().refreshAndFindFileByIoFile(file), file.getPath());
+      return Objects.requireNonNull(StandardFileSystems.local().refreshAndFindFileByPath(file.getAbsolutePath()), file.getPath());
     }
   }
 
   @Benchmark
   public TimestampsImmutable readIndexStamps_ViaRawByteBuffer(final ApplicationContext application,
-                                                     final Context context) {
+                                                              final Context context) {
     return FSRecords.readAttributeRawWithLock(
       context.fileId,
       IndexingStampStorageOverRegularAttributes.PERSISTENCE,
@@ -85,8 +85,9 @@ public class IndexStampAccessBenchmark {
 
   @Benchmark
   public TimestampsImmutable readIndexStamps_ViaInputStream(final ApplicationContext application,
-                                                   final Context context) throws IOException {
-    try (final DataInputStream stream = FSRecords.readAttributeWithLock(context.fileId, IndexingStampStorageOverRegularAttributes.PERSISTENCE)) {
+                                                            final Context context) throws IOException {
+    try (DataInputStream stream = FSRecords.readAttributeWithLock(context.fileId,
+                                                                        IndexingStampStorageOverRegularAttributes.PERSISTENCE)) {
       return TimestampsImmutable.readTimestamps(stream);
     }
   }
@@ -103,10 +104,6 @@ public class IndexStampAccessBenchmark {
                "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
                "--add-opens=java.desktop/sun.font=ALL-UNNAMED",
                "--add-opens=java.desktop/java.awt.event=ALL-UNNAMED",
-
-               //to enable 'new' API:
-               "-Dvfs.lock-free-impl.enable=true",
-               "-Dvfs.lock-free-impl.fraction-direct-memory-to-utilize=0.5",
                "-Dvfs.use-streamlined-attributes-storage=true"
       )
       //.mode(Mode.SingleShotTime)

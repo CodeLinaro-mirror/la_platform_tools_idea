@@ -1,8 +1,27 @@
 load("@community//build:tests-options.bzl", "jps_test")
+load("@community//platform/build-scripts/bazel-rules:ij_plugin.bzl", "ij_plugin")
+load("@jps_dynamic_deps_community//:targets.bzl", "dev_dist_plugin")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
-### auto-generated section `build intellij.jsonpath` start
+jps_test(
+    name = "jsonpath-tests_test",
+    timeout = "moderate",
+    tags = ["community-aggregator"],
+    runtime_deps = [":jsonpath-tests_test_lib"],
+)
+### skip generation section `test intellij.jsonpath.tests`
 
+### auto-generated section `dev intellij.jsonpath` start
+dev_dist_plugin(
+    descriptor = "resources/META-INF/plugin.xml",
+    jars = {
+        "lib/jsonpath.jar": ["intellij.jsonpath"],
+    },
+    main_module = "intellij.jsonpath",
+)
+### auto-generated section `dev intellij.jsonpath` end
+
+### auto-generated section `build intellij.jsonpath` start
 jvm_library(
     name = "jsonpath",
     srcs = glob(
@@ -67,21 +86,19 @@ jvm_library(
         "//platform/platform-api:ide_test_lib",
         "//platform/ide-core:ide-core_test_lib",
         "//platform/util:util-ui_test_lib",
-        "//libraries/assertj-core",
-        "//libraries/assertj-core:assertj-core_test_lib",
         "//platform/lang-impl:lang-impl_test_lib",
         "//spellchecker:spellchecker_test_lib",
         "//platform/core-ui:core-ui_test_lib",
         "//libraries/fastutil:fastutil_test_lib",
         "//libraries/guava:guava_test_lib",
-        "//platform/testFramework",
-        "//platform/testFramework:testFramework_test_lib",
-        "//plugins/IntelliLang:langInjection",
-        "//plugins/IntelliLang:langInjection_test_lib",
-        "//platform/testFramework/extensions:testExtensions",
-        "//platform/testFramework/extensions:testExtensions_test_lib",
         "//libraries/kotlinx/collections-immutable:libraries-kotlinx-collections-immutable_test_lib",
     ],
+)
+
+ij_plugin(
+    name = "jsonpath_plugin",
+    descriptor_module = ":jsonpath",
+    visibility = ["//visibility:public"],
 )
 ### auto-generated section `build intellij.jsonpath` end
 
@@ -89,13 +106,13 @@ jvm_library(
 exports_files(
     [
         "intellij.jsonpath.iml",
+        "resources/META-INF/plugin.xml",
     ],
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.jsonpath` end
 
 ### auto-generated section `build intellij.jsonpath.tests` start
-
 jvm_library(
     name = "jsonpath-tests",
     srcs = glob(
@@ -104,6 +121,7 @@ jvm_library(
     ),
     module_name = "intellij.jsonpath.tests",
     visibility = ["//visibility:public"],
+    runtime_deps = ["//xml/plugin"],
 )
 
 jvm_library(
@@ -126,6 +144,7 @@ jvm_library(
         # do not sort,
         ":jsonpath-tests",
         "//platform/platform-impl:ide-impl_test_lib",
+        "//xml/plugin:plugin_test_lib",
     ],
     deps = [
         # do not sort,
@@ -183,11 +202,3 @@ exports_files(
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.jsonpath.tests` end
-
-### auto-generated section `test intellij.jsonpath.tests` start
-
-jps_test(
-    name = "jsonpath-tests_test",
-    runtime_deps = [":jsonpath-tests_test_lib"],
-)
-### auto-generated section `test intellij.jsonpath.tests` end

@@ -1,8 +1,12 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 load("//build:compiler-options.bzl", "create_kotlinc_options")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.platform.diagnostic.telemetry.exporters` start
+content_module_jar(module = ":telemetry.exporters")
+### auto-generated section `dev intellij.platform.diagnostic.telemetry.exporters` end
 
 ### auto-generated section `build intellij.platform.diagnostic.telemetry.exporters` start
-
 create_kotlinc_options(
     name = "custom_telemetry.exporters",
     opt_in = ["kotlinx.serialization.ExperimentalSerializationApi"],
@@ -28,7 +32,7 @@ jvm_library(
     deps = [
         # do not sort,
         "@lib//:kotlin-stdlib",
-        "@lib//:jetbrains-annotations",
+        "//libraries/jetbrains/annotations",
         "//platform/diagnostic/telemetry",
         "//libraries/opentelemetry",
         "//libraries/opentelemetry-semconv",
@@ -58,6 +62,7 @@ jvm_library(
     runtime_deps = [
         # do not sort,
         ":telemetry.exporters",
+        "//libraries/jetbrains/annotations:annotations_test_lib",
         "//platform/diagnostic/telemetry:telemetry_test_lib",
         "//libraries/opentelemetry:opentelemetry_test_lib",
         "//libraries/opentelemetry-semconv:opentelemetry-semconv_test_lib",
@@ -79,6 +84,7 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.diagnostic.telemetry.exporters.iml",
+        "resources/intellij.platform.diagnostic.telemetry.exporters.xml",
     ],
     visibility = ["//visibility:public"],
 )

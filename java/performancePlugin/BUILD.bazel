@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.java.performancePlugin` start
+content_module_jar(module = ":performancePlugin")
+### auto-generated section `dev intellij.java.performancePlugin` end
 
 ### auto-generated section `build intellij.java.performancePlugin` start
-
 jvm_library(
     name = "performancePlugin",
     srcs = glob(
@@ -44,6 +48,8 @@ jvm_library(
         "//platform/refactoring",
         "//java/openapi:java",
         "//java/java-frontback-psi-api:frontback-psi",
+        "//platform/execution",
+        "//platform/execution-impl",
     ],
 )
 
@@ -83,6 +89,8 @@ jvm_library(
         "//platform/refactoring:refactoring_test_lib",
         "//java/openapi:java_test_lib",
         "//java/java-frontback-psi-api:frontback-psi_test_lib",
+        "//platform/execution:execution_test_lib",
+        "//platform/execution-impl:execution-impl_test_lib",
     ],
 )
 ### auto-generated section `build intellij.java.performancePlugin` end
@@ -91,6 +99,7 @@ jvm_library(
 exports_files(
     [
         "intellij.java.performancePlugin.iml",
+        "resources/intellij.java.performancePlugin.xml",
     ],
     visibility = ["//visibility:public"],
 )

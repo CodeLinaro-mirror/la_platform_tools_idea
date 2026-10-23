@@ -1,7 +1,14 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.libraries.rd.swing` start
+content_module_jar(
+    libraries = ["@lib//:libraries-rd-swing-rd-swing"],
+    module = ":swing",
+)
+### auto-generated section `dev intellij.libraries.rd.swing` end
 
 ### auto-generated section `build intellij.libraries.rd.swing` start
-
 jvm_library(
     name = "swing",
     srcs = glob(
@@ -37,6 +44,7 @@ jvm_library(
 exports_files(
     [
         "intellij.libraries.rd.swing.iml",
+        "resources/intellij.libraries.rd.swing.xml",
     ],
     visibility = ["//visibility:public"],
 )

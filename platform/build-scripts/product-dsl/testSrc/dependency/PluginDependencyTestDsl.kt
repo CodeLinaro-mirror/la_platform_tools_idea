@@ -1,18 +1,19 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 @file:Suppress("ReplacePutWithAssignment", "ReplaceGetOrSet")
-@file:OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
 
 package org.jetbrains.intellij.build.productLayout.dependency
 
+import com.intellij.platform.buildScripts.concurrency.SharedCache
+import com.intellij.platform.buildScripts.concurrency.SharedTaskOwner
+import com.intellij.platform.buildScripts.licenses.LibraryLicense
 import com.intellij.platform.pluginGraph.ContentModuleName
 import com.intellij.platform.pluginGraph.PluginGraph
 import com.intellij.platform.pluginGraph.PluginId
 import com.intellij.platform.pluginGraph.PluginModuleId
 import com.intellij.platform.pluginGraph.TargetName
 import com.intellij.platform.pluginGraph.contentName
-import kotlinx.coroutines.GlobalScope
 import org.jetbrains.intellij.build.ModuleOutputProvider
-import org.jetbrains.intellij.build.productLayout.LIB_MODULE_PREFIX
+import org.jetbrains.intellij.build.ModuleSourceFileIndex
 import org.jetbrains.intellij.build.productLayout.config.SuppressionConfig
 import org.jetbrains.intellij.build.productLayout.deps.ContentModuleDependencyPlanOutput
 import org.jetbrains.intellij.build.productLayout.deps.PluginDependencyPlanOutput
@@ -38,19 +39,19 @@ import org.jetbrains.intellij.build.productLayout.pipeline.Slots
 import org.jetbrains.intellij.build.productLayout.pipeline.SuppressionConfigOutput
 import org.jetbrains.intellij.build.productLayout.pipeline.TestPluginDependencyPlanOutput
 import org.jetbrains.intellij.build.productLayout.pipeline.TestPluginsOutput
-import org.jetbrains.intellij.build.productLayout.util.AsyncCache
 import org.jetbrains.intellij.build.productLayout.util.DeferredFileUpdater
 import org.jetbrains.intellij.build.productLayout.util.GeneratedArtifactWritePolicy
 import org.jetbrains.jps.model.JpsElementFactory
 import org.jetbrains.jps.model.JpsProject
 import org.jetbrains.jps.model.java.JavaResourceRootType
+import org.jetbrains.jps.model.java.JavaSourceRootType
 import org.jetbrains.jps.model.java.JpsJavaDependencyScope
 import org.jetbrains.jps.model.java.JpsJavaExtensionService
 import org.jetbrains.jps.model.java.JpsJavaLibraryType
 import org.jetbrains.jps.model.java.JpsJavaModuleType
-import org.jetbrains.jps.model.module.JpsLibraryDependency
+import org.jetbrains.jps.model.library.JpsMavenRepositoryLibraryDescriptor
+import org.jetbrains.jps.model.library.JpsRepositoryLibraryType
 import org.jetbrains.jps.model.module.JpsModule
-import org.jetbrains.jps.model.module.JpsModuleReference
 import org.jetbrains.jps.model.serialization.JpsModelSerializationDataService
 import org.jetbrains.jps.model.serialization.impl.JpsModuleSerializationDataExtensionImpl
 import org.jetbrains.jps.util.JpsPathUtil
@@ -85,11 +86,20 @@ internal fun jpsProject(baseDir: Path, block: JpsProjectBuilder.() -> Unit): Jps
 
 @JpsTestDsl
 class JpsProjectBuilder(private val baseDir: Path) {
-  private val libraries = mutableListOf<String>()
+  private val libraries = mutableListOf<JpsLibrarySpec>()
   private val modules = mutableListOf<JpsModuleSpec>()
 
   fun library(name: String) {
-    libraries.add(name)
+    libraries.add(JpsLibrarySpec(name = name, mavenDescriptor = null))
+  }
+
+  /**
+   * Adds a project library that carries a Maven descriptor.
+   *
+   * Use it when a rule reads the coordinates of a library. The plain [library] has no descriptor.
+   */
+  fun mavenLibrary(name: String, groupId: String, artifactId: String, version: String) {
+    libraries.add(JpsLibrarySpec(name = name, mavenDescriptor = JpsMavenRepositoryLibraryDescriptor(groupId, artifactId, version)))
   }
 
   fun module(name: String, block: JpsModuleBuilder.() -> Unit = {}) {
@@ -103,8 +113,19 @@ class JpsProjectBuilder(private val baseDir: Path) {
     val project = model.project
 
     // Create libraries
-    val libraryMap = libraries.associateWith { name ->
-      project.libraryCollection.addLibrary(name, JpsJavaLibraryType.INSTANCE)
+    val libraryMap = libraries.associate { spec ->
+      val descriptor = spec.mavenDescriptor
+      val library = if (descriptor == null) {
+        project.libraryCollection.addLibrary(spec.name, JpsJavaLibraryType.INSTANCE)
+      }
+      else {
+        project.libraryCollection.addLibrary(
+          spec.name,
+          JpsRepositoryLibraryType.INSTANCE,
+          JpsElementFactory.getInstance().createSimpleElement(descriptor),
+        )
+      }
+      spec.name to library
     }
 
     // Create modules
@@ -207,6 +228,11 @@ internal data class JpsModuleSpec(
   @JvmField val moduleDeps: List<ModuleDep>,
 )
 
+internal data class JpsLibrarySpec(
+  @JvmField val name: String,
+  @JvmField val mavenDescriptor: JpsMavenRepositoryLibraryDescriptor?,
+)
+
 internal data class LibraryDep(
   @JvmField val name: String,
   @JvmField val scope: JpsJavaDependencyScope,
@@ -280,7 +306,8 @@ class PluginTestSetupBuilder(private val tempDir: Path) {
     // Create content modules first
     for (spec in contentModules) {
       val moduleDir = tempDir.resolve(spec.name.replace('.', '/'))
-      val resourcesDir = moduleDir.resolve("resources")
+      val inTestResources = spec.descriptorInTestResources
+      val resourcesDir = moduleDir.resolve(if (inTestResources) "testResources" else "resources")
       Files.createDirectories(resourcesDir)
 
       val jpsModule = project.addModule(spec.name, JpsJavaModuleType.INSTANCE)
@@ -288,10 +315,17 @@ class PluginTestSetupBuilder(private val tempDir: Path) {
         JpsModuleSerializationDataExtensionImpl.ROLE,
         JpsModuleSerializationDataExtensionImpl(moduleDir),
       )
-      jpsModule.addSourceRoot(JpsPathUtil.pathToUrl(resourcesDir.toString()), JavaResourceRootType.RESOURCE)
+      jpsModule.addSourceRoot(
+        JpsPathUtil.pathToUrl(resourcesDir.toString()),
+        if (inTestResources) JavaResourceRootType.TEST_RESOURCE else JavaResourceRootType.RESOURCE,
+      )
 
       // Write descriptor XML
       Files.writeString(resourcesDir.resolve("${spec.name}.xml"), spec.descriptor)
+
+      spec.resourceFiles.forEach { (fileName, fileContent) ->
+        Files.writeString(resourcesDir.resolve(fileName), fileContent)
+      }
 
       // Track JPS dependencies for this content module (just module names for plugin-level tracking)
       contentModuleJpsDeps.put(spec.name, spec.jpsDependencies.map { it.moduleName })
@@ -369,14 +403,16 @@ class PluginTestSetupBuilder(private val tempDir: Path) {
           loadingMode = spec.contentLoadings.get(moduleName),
         )
       }
-      pluginContentInfos.put(spec.name, PluginContentInfo(
-        pluginXmlPath = pluginXmlPath,
-        pluginXmlContent = pluginXmlContent,
-        pluginId = spec.pluginId?.let { PluginId(it) },
-        contentModules = contentModuleInfos,
-        moduleDependencies = spec.moduleDependencies.mapTo(HashSet()) { ContentModuleName(it) },
-        source = if (spec.isTestPlugin) PluginSource.TEST else PluginSource.BUNDLED,
-      ))
+      pluginContentInfos.put(
+        spec.name, PluginContentInfo(
+          pluginXmlPath = pluginXmlPath,
+          pluginXmlContent = pluginXmlContent,
+          pluginId = spec.pluginId?.let { PluginId(it) },
+          contentModules = contentModuleInfos,
+          moduleDependencies = spec.moduleDependencies.mapTo(HashSet()) { ContentModuleName(it) },
+          source = if (spec.isTestPlugin) PluginSource.TEST else PluginSource.BUNDLED,
+        )
+      )
 
     }
 
@@ -410,6 +446,7 @@ class TestPluginBuilder(private val name: String) {
 
   /** If true, plugin dependencies are auto-derived from JPS deps. */
   var isTestPlugin: Boolean = false
+
   private val contentModules = LinkedHashSet<String>()
   private val contentLoadings = LinkedHashMap<String, com.intellij.platform.pluginSystem.parser.impl.elements.ModuleLoadingRuleValue?>()
   private val moduleDependencies = LinkedHashSet<String>()
@@ -444,13 +481,26 @@ class TestPluginBuilder(private val name: String) {
 @JpsTestDsl
 class TestContentModuleBuilder(private val name: String) {
   var descriptor: String = """<idea-plugin package="com.test"/>"""
+
+  /**
+   * Put the descriptor into a `testResources` root of type [JavaResourceRootType.TEST_RESOURCE] instead of the production
+   * `resources` root, as real test-only modules do (e.g. `CIDR/clion-profiling/tests`).
+   */
+  var descriptorInTestResources: Boolean = false
+
   private val jpsDependencies = mutableListOf<TestJpsDependency>()
+  private val resourceFiles = LinkedHashMap<String, String>()
 
   fun jpsDependency(moduleName: String, scope: JpsJavaDependencyScope = JpsJavaDependencyScope.COMPILE) {
     jpsDependencies.add(TestJpsDependency(moduleName, scope))
   }
 
-  internal fun build() = TestContentModuleSpec(name, descriptor, jpsDependencies.toList())
+  /** Writes an additional file next to the descriptor in the resource root (e.g. an xi:included actions XML). */
+  fun resourceFile(fileName: String, content: String) {
+    resourceFiles.put(fileName, content)
+  }
+
+  internal fun build() = TestContentModuleSpec(name, descriptor, jpsDependencies.toList(), descriptorInTestResources, resourceFiles.toMap())
 }
 
 internal data class TestJpsDependency(
@@ -475,7 +525,10 @@ class TestProductBuilder(private val name: String) {
     bundledPlugins.add(pluginName)
   }
 
-  fun content(moduleName: String, loading: com.intellij.platform.pluginSystem.parser.impl.elements.ModuleLoadingRuleValue = com.intellij.platform.pluginSystem.parser.impl.elements.ModuleLoadingRuleValue.REQUIRED) {
+  fun content(
+    moduleName: String,
+    loading: com.intellij.platform.pluginSystem.parser.impl.elements.ModuleLoadingRuleValue = com.intellij.platform.pluginSystem.parser.impl.elements.ModuleLoadingRuleValue.REQUIRED,
+  ) {
     contentModules.put(moduleName, loading)
   }
 
@@ -506,7 +559,10 @@ internal data class TestContentModuleSpec(
   @JvmField val name: String,
   @JvmField val descriptor: String,
   @JvmField val jpsDependencies: List<TestJpsDependency>,
+  @JvmField val descriptorInTestResources: Boolean = false,
+  @JvmField val resourceFiles: Map<String, String> = emptyMap(),
 )
+
 internal data class TestProductSpec(
   @JvmField val name: String,
   @JvmField val moduleSets: List<TestModuleSetSpec>,
@@ -541,7 +597,7 @@ internal class PluginTestSetupContext(
 internal class StubPluginContentCache(
   private val knownPlugins: Map<String, PluginContentInfo>,
 ) : PluginContentProvider {
-  override suspend fun getOrExtract(pluginModule: TargetName): PluginContentInfo? {
+  override fun getOrExtract(pluginModule: TargetName): PluginContentInfo? {
     return knownPlugins.get(pluginModule.value)
   }
 
@@ -691,14 +747,34 @@ private fun isTestPluginByName(pluginName: String): Boolean {
          pluginName.contains(".test.framework")
 }
 
-internal fun createTestModuleOutputProvider(project: JpsProject): ModuleOutputProvider {
-  return object : ModuleOutputProvider {
-    private val projectLibraryToModuleMapCache by lazy { buildTestProjectLibraryToModuleMap(project) }
+/** The planner resolves a content module with `findRequiredModule`, so a stub provider that resolves nothing cannot drive it. */
+internal fun jpsModuleOutputProvider(
+  tempDir: Path,
+  productionModules: List<String> = emptyList(),
+  testModules: List<String> = emptyList(),
+): ModuleOutputProvider {
+  val project = JpsElementFactory.getInstance().createModel().project
+  for ((names, rootType) in listOf(productionModules to JavaSourceRootType.SOURCE, testModules to JavaSourceRootType.TEST_SOURCE)) {
+    for (name in names) {
+      val module = project.addModule(name, JpsJavaModuleType.INSTANCE)
+      val root = Files.createDirectories(tempDir.resolve("jps-modules/${name.replace('.', '/')}/${if (rootType.isForTests) "testSrc" else "src"}"))
+      module.addSourceRoot(JpsPathUtil.pathToUrl(root.toString()), rootType)
+    }
+  }
+  return createTestModuleOutputProvider(project)
+}
 
+internal fun createTestModuleOutputProvider(project: JpsProject): ModuleOutputProvider {
+  val sourceFiles = ModuleSourceFileIndex(project.modules)
+  return object : ModuleOutputProvider {
     override fun findModule(name: String): JpsModule? = project.modules.find { it.name == name }
 
     override fun findRequiredModule(name: String): JpsModule {
       return findModule(name) ?: error("Module not found: $name")
+    }
+
+    override fun findFileInModuleSources(module: JpsModule, relativePath: String, onlyProductionSources: Boolean): Path? {
+      return sourceFiles.find(module = module, relativePath = relativePath, onlyProductionSources = onlyProductionSources)
     }
 
     override val useTestCompilationOutput: Boolean
@@ -712,11 +788,9 @@ internal fun createTestModuleOutputProvider(project: JpsProject): ModuleOutputPr
       throw UnsupportedOperationException("Not needed for this test")
     }
 
-    override fun getProjectLibraryToModuleMap(): Map<String, String> = projectLibraryToModuleMapCache
-
     override fun getAllModules(): List<JpsModule> = project.modules
 
-    override suspend fun readFileContentFromModuleOutput(module: JpsModule, relativePath: String, forTests: Boolean): ByteArray {
+    override fun readFileContentFromModuleOutput(module: JpsModule, relativePath: String, forTests: Boolean): ByteArray {
       throw UnsupportedOperationException("Not needed for this test")
     }
 
@@ -727,38 +801,6 @@ internal fun createTestModuleOutputProvider(project: JpsProject): ModuleOutputPr
       return baseDir.resolve("${module.name}.iml")
     }
   }
-}
-
-private fun buildTestProjectLibraryToModuleMap(project: JpsProject): Map<String, String> {
-  val javaExtensionService = JpsJavaExtensionService.getInstance()
-  val result = HashMap<String, String>()
-
-  for (module in project.modules) {
-    val moduleName = module.name
-    if (!moduleName.startsWith(LIB_MODULE_PREFIX)) {
-      continue
-    }
-
-    for (dep in module.dependenciesList.dependencies) {
-      if (dep !is JpsLibraryDependency) {
-        continue
-      }
-
-      val libRef = dep.libraryReference
-      if (libRef.parentReference is JpsModuleReference) {
-        continue
-      }
-
-      if (javaExtensionService.getDependencyExtension(dep)?.isExported != true) {
-        continue
-      }
-
-      val libName = dep.library?.name ?: libRef.libraryName
-      result.put(libName, moduleName)
-    }
-  }
-
-  return result
 }
 
 // ========== Validation Rule Test Utilities ==========
@@ -782,14 +824,19 @@ internal fun testGenerationModel(
   pluginAllowedMissingDependencies: Map<ContentModuleName, Set<ContentModuleName>> = emptyMap(),
   testLibraryAllowedInModule: Map<ContentModuleName, Set<String>> = emptyMap(),
   productAllowedMissing: Map<String, Set<ContentModuleName>> = emptyMap(),
+  dslTestPluginsByProduct: Map<String, List<org.jetbrains.intellij.build.productLayout.TestPluginSpec>> = emptyMap(),
+  libraryLicenses: List<LibraryLicense> = emptyList(),
+  communityLibraryLicenses: List<LibraryLicense> = emptyList(),
+  moduleSetsByLabel: Map<String, List<org.jetbrains.intellij.build.productLayout.ModuleSet>> = emptyMap(),
+  owner: SharedTaskOwner,
 ): GenerationModel {
   val effectiveOutputProvider = outputProvider ?: stubModuleOutputProvider()
   val effectiveFileUpdater = fileUpdater ?: DeferredFileUpdater(Path.of("."))
-  val effectivePluginContentCache = pluginContentCache ?: stubPluginContentCache()
+  val effectivePluginContentCache = pluginContentCache ?: stubPluginContentCache(owner)
   val generationMode = if (updateSuppressions) GenerationMode.UPDATE_SUPPRESSIONS else GenerationMode.NORMAL
   return GenerationModel(
     discovery = DiscoveryResult(
-      moduleSetsByLabel = emptyMap(),
+      moduleSetsByLabel = moduleSetsByLabel,
       products = emptyList(),
       testProductSpecs = emptyList(),
       moduleSetSources = emptyMap(),
@@ -799,20 +846,20 @@ internal fun testGenerationModel(
       discoveredProducts = emptyList(),
       projectRoot = Path.of("."),
       outputProvider = effectiveOutputProvider,
-      projectLibraryToModuleMap = effectiveOutputProvider.getProjectLibraryToModuleMap(),
+      libraryLicenses = libraryLicenses,
+      communityLibraryLicenses = communityLibraryLicenses,
       pluginAllowedMissingDependencies = pluginAllowedMissingDependencies,
       testLibraryAllowedInModule = testLibraryAllowedInModule,
       suppressionConfigPath = suppressionConfigPath,
     ),
     projectRoot = Path.of("."),
     outputProvider = effectiveOutputProvider,
-    descriptorCache = ModuleDescriptorCache(effectiveOutputProvider),
+    descriptorCache = ModuleDescriptorCache(effectiveOutputProvider, owner),
     pluginContentCache = effectivePluginContentCache,
     fileUpdater = effectiveFileUpdater,
     generatedArtifactWritePolicy = GeneratedArtifactWritePolicy(generationMode, effectiveFileUpdater),
-    scope = GlobalScope,
     pluginGraph = pluginGraph,
-    dslTestPluginsByProduct = emptyMap(),
+    dslTestPluginsByProduct = dslTestPluginsByProduct,
     dslTestPluginDependencyChains = emptyMap(),
     dslTestPluginSuppressionUsages = emptyList(),
     productAllowedMissing = productAllowedMissing,
@@ -834,7 +881,7 @@ internal fun testGenerationModel(
  * Automatically initializes required slots with empty data for validation-only nodes.
  * Use slotOverrides to publish specific slot outputs instead of empty defaults.
  */
-internal suspend fun runValidationRule(
+internal fun runValidationRule(
   rule: PipelineNode,
   model: GenerationModel,
   slotOverrides: Map<DataSlot<*>, Any> = emptyMap(),
@@ -948,6 +995,7 @@ private fun stubModuleOutputProvider(): ModuleOutputProvider {
 
     override fun findModule(name: String): JpsModule? = null
     override fun findRequiredModule(name: String): JpsModule = error("Module not found: $name")
+    override fun findFileInModuleSources(module: JpsModule, relativePath: String, onlyProductionSources: Boolean): Path? = null
     override fun getModuleOutputRoots(module: JpsModule, forTests: Boolean): List<Path> {
       throw UnsupportedOperationException("Stub")
     }
@@ -956,9 +1004,7 @@ private fun stubModuleOutputProvider(): ModuleOutputProvider {
       throw UnsupportedOperationException("Stub")
     }
 
-    override fun getProjectLibraryToModuleMap(): Map<String, String> = emptyMap()
-
-    override suspend fun readFileContentFromModuleOutput(module: JpsModule, relativePath: String, forTests: Boolean): ByteArray {
+    override fun readFileContentFromModuleOutput(module: JpsModule, relativePath: String, forTests: Boolean): ByteArray {
       throw UnsupportedOperationException("Stub")
     }
 
@@ -968,10 +1014,10 @@ private fun stubModuleOutputProvider(): ModuleOutputProvider {
   }
 }
 
-private fun stubPluginContentCache(): PluginContentCache {
+private fun stubPluginContentCache(owner: SharedTaskOwner): PluginContentCache {
   return PluginContentCache(
     outputProvider = stubModuleOutputProvider(),
-    xIncludeCache = AsyncCache(),
+    xIncludeCache = SharedCache(owner),
     skipXIncludePaths = emptySet(),
     xIncludePrefixFilter = { null },
     errorSink = ErrorSink(),

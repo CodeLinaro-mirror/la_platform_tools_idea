@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.java.codeserver.core` start
+content_module_jar(module = ":core")
+### auto-generated section `dev intellij.java.codeserver.core` end
 
 ### auto-generated section `build intellij.java.codeserver.core` start
-
 jvm_library(
     name = "core",
     srcs = glob(
@@ -21,7 +25,7 @@ jvm_library(
     runtime_deps = ["//platform/backend"],
     deps = [
         # do not sort,
-        "@lib//:jetbrains-annotations",
+        "//libraries/jetbrains/annotations",
         "//libraries/stream",
         "//platform/core-api:core",
         "//platform/core-impl",
@@ -54,6 +58,7 @@ jvm_library(
     runtime_deps = [
         # do not sort,
         ":core",
+        "//libraries/jetbrains/annotations:annotations_test_lib",
         "//libraries/stream:stream_test_lib",
         "//platform/core-api:core_test_lib",
         "//platform/core-impl:core-impl_test_lib",
@@ -80,6 +85,8 @@ jvm_library(
 exports_files(
     [
         "intellij.java.codeserver.core.iml",
+        "resources/META-INF/JavaCodeServerCore.xml",
+        "resources/intellij.java.codeserver.core.xml",
     ],
     visibility = ["//visibility:public"],
 )

@@ -1,17 +1,20 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.fileChooser.universal
 
+import com.intellij.ide.dnd.DnDDragStartBean
+import com.intellij.ide.dnd.DnDSupport
+import com.intellij.ide.dnd.FileCopyPasteUtil
+import com.intellij.ide.dnd.FileFlavorProvider
+import com.intellij.ide.dnd.PathFlavorProvider
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.DataKey
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
-import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.fileChooser.FileChooserDescriptor
 import com.intellij.openapi.fileChooser.FileSystemTree
 import com.intellij.openapi.fileChooser.universal.NioFileChooserUtil.toNioPathSafe
-import com.intellij.openapi.progress.runBlockingCancellable
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.MessageType
 import com.intellij.openapi.ui.popup.Balloon
@@ -19,8 +22,8 @@ import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.IconLoader.getTransparentIcon
 import com.intellij.openapi.util.text.StringUtil
-import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.ui.ColoredTreeCellRenderer
 import com.intellij.ui.DoubleClickListener
 import com.intellij.ui.PopupHandler
@@ -29,6 +32,7 @@ import com.intellij.ui.TreeUIHelper
 import com.intellij.ui.awt.RelativePoint
 import com.intellij.ui.tree.AsyncTreeModel
 import com.intellij.ui.treeStructure.Tree
+import com.intellij.util.concurrency.annotations.RequiresEdt
 import com.intellij.util.containers.ContainerUtil
 import com.intellij.util.ui.tree.TreeUtil
 import kotlinx.coroutines.CoroutineScope
@@ -37,8 +41,14 @@ import kotlinx.coroutines.launch
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.Nls
 import java.awt.Color
+import java.awt.dnd.DnDConstants
+import java.awt.dnd.DropTarget
+import java.awt.dnd.DropTargetAdapter
+import java.awt.dnd.DropTargetDragEvent
+import java.awt.dnd.DropTargetDropEvent
 import java.awt.event.KeyEvent
 import java.awt.event.MouseEvent
+import java.io.File
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -69,11 +79,21 @@ class NioFileSystemTree(
 ) : Disposable {
 
   private val okActions: MutableList<Runnable> = ArrayList(2)
-  private val fileTreeModel: NioFileTreeModel = NioFileTreeModel(descriptor)
+  private val fileTreeModel: NioFileTreeModel = NioFileTreeModel(descriptor, contributor = contributor)
   private val asyncTreeModel: AsyncTreeModel = AsyncTreeModel(fileTreeModel, this)
   private val listeners: MutableList<Listener> = ContainerUtil.createLockFreeCopyOnWriteList()
   private val subscriptionJobs: ConcurrentHashMap<Path, Job> = ConcurrentHashMap()
   private val fileWatcherAdapter = contributor.getFileWatcherAdapter()
+
+  /**
+   * Handles an OS file drop on the tree component.
+   *
+   * The first argument is the tree node under the drop point, or null when the drop is on an empty
+   * area. A caller uses it as the destination directory. When this handler is null, the drop
+   * navigates inside this tree: it selects and expands the first dropped path. A caller can set a
+   * handler to route the drop, for example to copy the files to a non-local file system.
+   */
+  var onFilesDropped: ((dropTarget: Path?, paths: List<Path>) -> Unit)? = null
 
   init {
     myTree.model = asyncTreeModel
@@ -95,6 +115,103 @@ class NioFileSystemTree(
       override fun treeCollapsed(event: TreeExpansionEvent) {
       }
     })
+
+    installDropTarget()
+    installDragSource()
+  }
+
+  private fun installDropTarget() {
+    DropTarget(myTree, DnDConstants.ACTION_COPY, object : DropTargetAdapter() {
+      override fun dragEnter(e: DropTargetDragEvent) {
+        if (FileCopyPasteUtil.isFileListFlavorAvailable(e.currentDataFlavors)) {
+          e.acceptDrag(DnDConstants.ACTION_COPY)
+        }
+        else {
+          e.rejectDrag()
+        }
+      }
+
+      override fun dragOver(e: DropTargetDragEvent) {
+        dragEnter(e)
+      }
+
+      override fun dropActionChanged(e: DropTargetDragEvent) {
+        dragEnter(e)
+      }
+
+      override fun drop(e: DropTargetDropEvent) {
+        e.acceptDrop(DnDConstants.ACTION_COPY)
+        val paths = FileCopyPasteUtil.getFiles(e.transferable)
+        if (paths.isNullOrEmpty()) {
+          e.dropComplete(false)
+          return
+        }
+        val dropTarget = getDropTargetPath(e.location)
+        handleFilesDropped(dropTarget, paths)
+        e.dropComplete(true)
+      }
+    })
+  }
+
+  /**
+   * Makes the tree a drag source, so a selection can be dragged out to the local file system,
+   * to the Project View, or to the editor.
+   */
+  private fun installDragSource() {
+    DnDSupport.createBuilder(myTree)
+      .disableAsTarget()
+      .setBeanProvider { createDragStartBean() }
+      .setDisposableParent(this)
+      .install()
+  }
+
+  private fun createDragStartBean(): DnDDragStartBean? {
+    val paths = getSelectedFiles().filterNotNull()
+    if (paths.isEmpty()) return null
+    return DnDDragStartBean(DraggedFiles(paths, toLocalFiles(paths)))
+  }
+
+  /** Returns the paths as local [File]s, or an empty list when one of them has no local form. */
+  private fun toLocalFiles(paths: List<Path>): List<File> {
+    val files = ArrayList<File>(paths.size)
+    for (path in paths) {
+      val file = runCatching { path.toFile() }.getOrNull() ?: return emptyList()
+      files.add(file)
+    }
+    return files
+  }
+
+  /**
+   * The dragged selection.
+   *
+   * [asFileList] reports the local form, which a target outside the IDE needs. It is empty when the
+   * selection holds a path with no local form, for example a path in a Docker container.
+   * [asPathList] always reports the whole selection, so a target inside the IDE can copy a file
+   * from another environment.
+   */
+  private class DraggedFiles(
+    private val paths: List<Path>,
+    private val files: List<File>,
+  ) : FileFlavorProvider, PathFlavorProvider {
+    override fun asFileList(): List<File> = files
+
+    override fun asPathList(): List<Path> = paths
+  }
+
+  /** Returns the tree node path under the drop point, or null when there is none. */
+  private fun getDropTargetPath(location: java.awt.Point): Path? {
+    val treePath = myTree.getClosestPathForLocation(location.x, location.y) ?: return null
+    return getNioPath(treePath)
+  }
+
+  private fun handleFilesDropped(dropTarget: Path?, paths: List<Path>) {
+    val handler = onFilesDropped
+    if (handler != null) {
+      handler(dropTarget, paths)
+      return
+    }
+    val target = paths.first()
+    select(target) { expand(target, null) }
   }
 
   private fun registerTreeActions() {
@@ -161,6 +278,7 @@ class NioFileSystemTree(
     fileTreeModel.setContributorRoots(roots)
   }
 
+  @RequiresEdt
   fun setRootError(path: Path, message: String? = null) {
     fileTreeModel.setRootError(path)
     if (!message.isNullOrBlank()) {
@@ -168,6 +286,7 @@ class NioFileSystemTree(
     }
   }
 
+  @RequiresEdt
   private fun showErrorBalloon(path: Path, @Nls message: String) {
     if (!myTree.isShowing) return
     var anchorRow = 0
@@ -422,7 +541,7 @@ class NioFileSystemTree(
     fun getVirtualFile(path: TreePath): VirtualFile? {
       val component = path.lastPathComponent
       if (component is NioFileNode && component.path != null) {
-        return LocalFileSystem.getInstance().findFileByNioFile(component.path)
+        return VirtualFileManager.getInstance().findFileByNioPath(component.path)
       }
       return null
     }
@@ -464,7 +583,7 @@ class NioFileSystemTree(
       this.setIcon(if (!hidden || icon == null) icon else getTransparentIcon(icon))
       val attributes = SimpleTextAttributes(style, color)
       if (name != null) this.append(name, attributes)
-      if (comment != null) this.append(comment, attributes)
+      if (comment != null) this.append(" $comment", SimpleTextAttributes(style, GRAYED))
     }
 
   }

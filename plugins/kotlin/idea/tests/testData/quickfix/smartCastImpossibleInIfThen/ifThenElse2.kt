@@ -1,5 +1,5 @@
 // "Replace 'if' expression with elvis expression" "true"
-// K2_ERROR: Smart cast to 'String' is impossible, because 'x' is a mutable property that could be mutated concurrently.
+// K2_ERROR: SMARTCAST_IMPOSSIBLE
 class Test {
     var x: String? = ""
 
@@ -11,5 +11,4 @@ class Test {
         }
     }
 }
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.SmartCastImpossibleInIfThenFactory$createQuickFix$1
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.codeInsight.IfThenToElviFix$asModCommandAction$1
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.codeInsight.IfThenToElviFix$asModCommandAction$1

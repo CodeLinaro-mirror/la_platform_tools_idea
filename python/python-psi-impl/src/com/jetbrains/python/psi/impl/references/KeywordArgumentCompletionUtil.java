@@ -23,7 +23,7 @@ import com.jetbrains.python.psi.PyStringLiteralExpression;
 import com.jetbrains.python.psi.PySubscriptionExpression;
 import com.jetbrains.python.psi.PyTypedElement;
 import com.jetbrains.python.psi.PyUtil;
-import com.jetbrains.python.psi.impl.ParamHelper;
+import com.jetbrains.python.psi.impl.PyCallExpressionHelper;
 import com.jetbrains.python.psi.impl.PyKeywordArgumentProvider;
 import com.jetbrains.python.psi.resolve.PyResolveContext;
 import com.jetbrains.python.psi.resolve.QualifiedResolveResult;
@@ -31,6 +31,7 @@ import com.jetbrains.python.psi.search.PySuperMethodsSearch;
 import com.jetbrains.python.psi.types.PyCallableParameter;
 import com.jetbrains.python.psi.types.PyCallableType;
 import com.jetbrains.python.psi.types.PyClassType;
+import com.jetbrains.python.psi.types.PyOverloadType;
 import com.jetbrains.python.psi.types.PyType;
 import com.jetbrains.python.psi.types.PyTypeUtil;
 import com.jetbrains.python.psi.types.TypeEvalContext;
@@ -44,6 +45,7 @@ import java.util.Objects;
 import java.util.Set;
 
 import static com.jetbrains.python.psi.PyUtil.as;
+import static com.jetbrains.python.psi.types.PyTypeUtilKt.isUnknown;
 
 public final class KeywordArgumentCompletionUtil {
   public static void collectFunctionArgNames(PyElement element,
@@ -54,8 +56,8 @@ public final class KeywordArgumentCompletionUtil {
     if (callExpr != null) {
       PyExpression callee = callExpr.getCallee();
       if (callee instanceof PyReferenceExpression && element.getParent() == callExpr.getArgumentList()) {
-        PyType calleeType = context.getType(callee);
-        if (calleeType == null) {
+        PyType calleeType = PyCallExpressionHelper.getCalleeType(callee, PyResolveContext.defaultContext(context));
+        if (isUnknown(calleeType)) {
           final PyTypedElement implicit = as(getElementByChain((PyReferenceExpression)callee, context), PyTypedElement.class);
           if (implicit != null) {
             calleeType = context.getType(implicit);
@@ -66,6 +68,7 @@ public final class KeywordArgumentCompletionUtil {
           .map(PyKeywordArgument::getKeyword)
           .toSet();
         final List<LookupElement> extra = PyTypeUtil.toStream(calleeType)
+          .flatMap(type -> type instanceof PyOverloadType overloadType ? overloadType.getItems().stream() : StreamEx.of(type))
           .select(PyCallableType.class)
           .flatMap(type -> collectParameterNamesFromType(type, callExpr, context).stream())
           .filter(it -> !namedArgsAlready.contains(it))

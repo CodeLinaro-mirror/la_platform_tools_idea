@@ -1,5 +1,6 @@
 // "Change parameter 'code' type of primary constructor of class 'TestDelegate' to '() -> Logger'" "true"
 // WITH_STDLIB
+// K2_ERROR: RETURN_TYPE_MISMATCH
 import kotlin.reflect.KProperty
 
 object Test {
@@ -17,6 +18,5 @@ class TestDelegate(val code: () -> LoggerConfig) {
 
 data class LoggerConfig(val name: String)
 data class Logger(val loggerConfig: LoggerConfig)
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ChangeCallableReturnTypeFix$ForEnclosing
 // IGNORE_K2
 // For K2, see KTIJ-33125

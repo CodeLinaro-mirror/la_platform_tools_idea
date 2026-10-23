@@ -1,7 +1,14 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.libraries.netty.buffer` start
+content_module_jar(
+    libraries = ["@lib//:libraries-netty-buffer-netty-buffer"],
+    module = ":buffer",
+)
+### auto-generated section `dev intellij.libraries.netty.buffer` end
 
 ### auto-generated section `build intellij.libraries.netty.buffer` start
-
 jvm_library(
     name = "buffer",
     srcs = glob(
@@ -37,6 +44,7 @@ jvm_library(
 exports_files(
     [
         "intellij.libraries.netty.buffer.iml",
+        "resources/intellij.libraries.netty.buffer.xml",
     ],
     visibility = ["//visibility:public"],
 )

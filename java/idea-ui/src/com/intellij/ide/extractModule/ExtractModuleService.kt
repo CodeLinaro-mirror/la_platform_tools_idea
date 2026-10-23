@@ -4,8 +4,8 @@ package com.intellij.ide.extractModule
 import com.intellij.CommonBundle
 import com.intellij.ide.JavaUiBundle
 import com.intellij.ide.SaveAndSyncHandler
-import com.intellij.openapi.application.readAction
 import com.intellij.openapi.application.edtWriteAction
+import com.intellij.openapi.application.readAction
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.ControlFlowException
 import com.intellij.openapi.diagnostic.debug
@@ -84,7 +84,7 @@ internal suspend fun compilerOutputPathForTests(module: Module): List<Path> = re
 }
 
 interface TargetModuleCreator {
-  @RequiresWriteLock
+  @RequiresWriteLock(generateAssertion = false /* IJPL-115548 */)
   fun createExtractedModule(originalModule: Module, directory: VirtualFile): ExtractedModuleData
 
   class ExtractedModuleData(val module: Module, val directoryToMoveClassesTo: VirtualFile?)
@@ -95,8 +95,8 @@ class ExtractModuleService(
   private val project: Project,
   private val coroutineScope: CoroutineScope,
 ) {
-  @RequiresEdt
-  fun analyzeDependenciesAndCreateModuleInBackground(
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
+  fun buildProjectAndExtractModule(
     directory: VirtualFile,
     module: Module,
     targetModuleCreator: TargetModuleCreator,
@@ -107,10 +107,18 @@ class ExtractModuleService(
       }
 
       coroutineScope.launch {
-        withBackgroundProgress(project, JavaUiBundle.message("progress.title.extract.module.from.package", directory.name)) {
-          analyzeDependenciesAndCreateModule(directory, module, targetModuleCreator)
-        }
+        analyzeDependenciesAndExtractModule(directory, module, targetModuleCreator)
       }
+    }
+  }
+
+  suspend fun analyzeDependenciesAndExtractModule(
+    directory: VirtualFile,
+    module: Module,
+    targetModuleCreator: TargetModuleCreator,
+  ) {
+    withBackgroundProgress(project, JavaUiBundle.message("progress.title.extract.module.from.package", directory.name)) {
+      analyzeDependenciesAndCreateModule(directory, module, targetModuleCreator)
     }
   }
 
@@ -278,14 +286,14 @@ class ExtractModuleService(
     return (packageDependency != null) to (stillDependsOnModule != null)
   }
 
-  @RequiresReadLock
+  @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
   private fun collectDependentModules(module: Module): Set<Module> {
     val dependentModules = LinkedHashSet<Module>()
     ModuleUtil.collectModulesDependsOn(module, dependentModules)
     return dependentModules
   }
 
-  @RequiresWriteLock
+  @RequiresWriteLock(generateAssertion = false /* IJPL-115548 */)
   private fun extractModule(
     directory: VirtualFile,
     module: Module,

@@ -2,6 +2,7 @@ package com.jetbrains.python.hatch.sdk
 
 import com.intellij.python.hatch.impl.sdk.HatchSdkFlavor
 import com.intellij.python.hatch.impl.sdk.HatchSdkFlavorData
+import com.jetbrains.python.PyInternalExecApi
 import com.jetbrains.python.sdk.PythonSdkAdditionalData
 import com.jetbrains.python.sdk.flavors.PyFlavorAndData
 import org.jdom.Element
@@ -10,6 +11,7 @@ import java.nio.file.Path
 import kotlin.io.path.pathString
 
 @ApiStatus.Internal
+@PyInternalExecApi
 class HatchSdkAdditionalData : PythonSdkAdditionalData {
   constructor(hatchWorkingDirectory: Path, hatchEnvironmentName: String?) : this(
     HatchSdkFlavorData(hatchEnvironmentName),

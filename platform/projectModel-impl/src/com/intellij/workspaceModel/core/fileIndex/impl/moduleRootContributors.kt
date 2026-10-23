@@ -25,7 +25,7 @@ import com.intellij.workspaceModel.ide.impl.legacyBridge.module.findModule
 import com.intellij.workspaceModel.ide.legacyBridge.SourceRootTypeRegistry
 import org.jetbrains.annotations.ApiStatus
 
-class ContentRootFileIndexContributor : WorkspaceFileIndexContributor<ContentRootEntity>, PlatformInternalWorkspaceFileIndexContributor {
+class ContentRootFileIndexContributor : WorkspaceFileIndexContributor<ContentRootEntity> {
   override val entityClass: Class<ContentRootEntity>
     get() = ContentRootEntity::class.java
 
@@ -38,7 +38,7 @@ class ContentRootFileIndexContributor : WorkspaceFileIndexContributor<ContentRoo
   }
 }
 
-class SourceRootFileIndexContributor : WorkspaceFileIndexContributor<SourceRootEntity>, PlatformInternalWorkspaceFileIndexContributor {
+class SourceRootFileIndexContributor : WorkspaceFileIndexContributor<SourceRootEntity> {
   override val entityClass: Class<SourceRootEntity>
     get() = SourceRootEntity::class.java
 
@@ -60,6 +60,7 @@ class SourceRootFileIndexContributor : WorkspaceFileIndexContributor<SourceRootE
         customContentRoot = contentRoot,
         rootTypeId = entity.rootTypeId,
         packagePrefix = packagePrefix,
+        packageMatchesDirectory = javaProperties?.packageMatchesDirectory ?: true,
         forGeneratedSources = forGeneratedSources,
         languageLevelId = languageLevel,
       )
@@ -111,16 +112,20 @@ interface ModuleOrLibrarySourceRootData: WorkspaceFileSetData
 @ApiStatus.Internal
 interface JvmPackageRootDataInternal: WorkspaceFileSetData {
   val packagePrefix: String
+  val packageMatchesDirectory: Boolean
+    get() = true
 }
 
-internal data class ModuleContentRootData(override val module: Module, override val customContentRoot: VirtualFile?): ModuleContentOrSourceRootData
+internal data class ModuleContentRootData(override val module: Module, override val customContentRoot: VirtualFile?) :
+  ModuleContentOrSourceRootData, SkipAddingToWatchedRootsData
 
 internal data class ModuleSourceRootData(
   override val module: Module,
   override val customContentRoot: VirtualFile?,
   val rootTypeId: SourceRootTypeId,
   override val packagePrefix: String,
+  override val packageMatchesDirectory: Boolean,
   val forGeneratedSources: Boolean,
   // This property is required for correct equals when computing the diff in the WorkspaceFileIndex
   val languageLevelId: String?,
-) : ModuleContentOrSourceRootData, ModuleOrLibrarySourceRootData, JvmPackageRootDataInternal
+) : ModuleContentOrSourceRootData, ModuleOrLibrarySourceRootData, JvmPackageRootDataInternal, SkipAddingToWatchedRootsData

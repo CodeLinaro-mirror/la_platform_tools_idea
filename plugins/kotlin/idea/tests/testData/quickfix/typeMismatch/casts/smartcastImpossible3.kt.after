@@ -1,5 +1,5 @@
 // "Cast expression 'x' to 'Foo<*>'" "true"
-// K2_ERROR: Smart cast to 'Foo<*>' is impossible, because 'x' is a property that has an open or custom getter.
+// K2_ERROR: SMARTCAST_IMPOSSIBLE
 
 interface Foo<T: Number> {
     fun bar()
@@ -14,5 +14,4 @@ fun MyClass.bar() {
         (x as Foo<*>).bar()
     }
 }
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.CastExpressionFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.CastExpressionFixFactories$CastExpressionModCommandAction
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.CastExpressionFixFactories$CastExpressionModCommandAction

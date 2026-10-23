@@ -210,8 +210,8 @@ public class VFSInitializationTest {
         Path cachesDir = temporaryDirectory.createDir();
         PersistentFSRecordsStorageFactory.setStorageImplementation(storageKind);
 
-        FSRecordsImpl fsRecords = FSRecordsImpl.connect(cachesDir);
-        try {
+
+        try (FSRecordsImpl fsRecords = FSRecordsImpl.connect(cachesDir)) {
           //add something to VFS so it is not empty
           int testFileId = fsRecords.createRecord();
           fsRecords.setName(testFileId, "test");
@@ -222,9 +222,6 @@ public class VFSInitializationTest {
             stream.writeInt(42);
           }
           vfsVersion = fsRecords.getVersion();
-        }
-        finally {
-          StorageTestingUtils.bestEffortToCloseAndUnmap(fsRecords);
         }
 
         Path[] vfsFilesToTryDeleting = Files.list(cachesDir)
@@ -279,21 +276,16 @@ public class VFSInitializationTest {
         Path cachesDir = temporaryDirectory.createDir();
         PersistentFSRecordsStorageFactory.setStorageImplementation(kindBefore);
         long firstVfsCreationTimestamp;
-        FSRecordsImpl vfs = FSRecordsImpl.connect(cachesDir);
-        try {
+        try(FSRecordsImpl vfs = FSRecordsImpl.connect(cachesDir)) {
           firstVfsCreationTimestamp = vfs.getCreationTimestamp();
-        }
-        finally {
-          StorageTestingUtils.bestEffortToCloseAndUnmap(vfs);
         }
         Thread.sleep(500);//ensure system clock is moving
 
         //reopen:
         PersistentFSRecordsStorageFactory.setStorageImplementation(kindAfter);
-        FSRecordsImpl reopenedVfs = FSRecordsImpl.connect(cachesDir);
-        try {
-          long reopenedVfsCreationTimestamp = reopenedVfs.getCreationTimestamp();
 
+        try (FSRecordsImpl reopenedVfs = FSRecordsImpl.connect(cachesDir)) {
+          long reopenedVfsCreationTimestamp = reopenedVfs.getCreationTimestamp();
 
           if (kindBefore == kindAfter) {
             assertEquals(
@@ -309,9 +301,6 @@ public class VFSInitializationTest {
               reopenedVfsCreationTimestamp
             );
           }
-        }
-        finally {
-          StorageTestingUtils.bestEffortToCloseAndUnmap(reopenedVfs);
         }
       }
     }
@@ -361,14 +350,9 @@ public class VFSInitializationTest {
         }
       }
       catch (VFSInitException requestToRebuild) {
-        //FIXME RC: with FilePageCacheLockFree this exception's .errorCategory becomes UNRECOGNIZED, not
-        //  NOT_CLOSED_PROPERLY, as expected, because FilePageCacheLockFree fails on attempt to open
-        //  another storage from same file (legacy FilePageCache allowed that) -- and it happens earlier
-        //  than connectionStatus check.
-        //  This is a testing problem, not a code problem: with current API there is no way to emulate
-        //  'incorrect shutdown'. Previously I just open second PersistentFSConnection without closing
-        //  first one, but now as FilePageCacheLockFree is more vigilant, this path is blocked.
-        //  I'll think about better approach later, for now just remove the check
+        //FIXME RC: this is a testing problem, not a code problem: with current API there is no way to emulate
+        //  'incorrect shutdown' without opening a second PersistentFSConnection before closing the first one.
+        //  This path can fail earlier than connectionStatus check, so the category check is disabled for now.
         //OK, this is what we expect:
         //assertEquals(
         //  "rebuildCause must be NOT_CLOSED_PROPERLY",
@@ -438,7 +422,6 @@ public class VFSInitializationTest {
 
   private static void disconnect(PersistentFSConnection connection) throws Exception {
     connection.close();
-    StorageTestingUtils.bestEffortToCloseAndUnmap(connection);
   }
 
   @After
@@ -447,7 +430,6 @@ public class VFSInitializationTest {
 
     for (PersistentFSConnection connection : connectionsOpened) {
       connection.close();
-      StorageTestingUtils.bestEffortToCloseAndUnmap(connection);
     }
     for (PersistentFSConnection connection : connectionsOpened) {
       StorageTestingUtils.bestEffortToCloseAndClean(connection);

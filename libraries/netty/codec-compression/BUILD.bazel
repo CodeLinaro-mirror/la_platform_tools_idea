@@ -1,7 +1,14 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.libraries.netty.codec.compression` start
+content_module_jar(
+    libraries = ["@lib//:libraries-netty-codec-compression-netty-codec-compression"],
+    module = ":libraries-netty-codec-compression",
+)
+### auto-generated section `dev intellij.libraries.netty.codec.compression` end
 
 ### auto-generated section `build intellij.libraries.netty.codec.compression` start
-
 jvm_library(
     name = "libraries-netty-codec-compression",
     srcs = glob(
@@ -45,6 +52,7 @@ jvm_library(
 exports_files(
     [
         "intellij.libraries.netty.codec.compression.iml",
+        "resources/intellij.libraries.netty.codec.compression.xml",
     ],
     visibility = ["//visibility:public"],
 )

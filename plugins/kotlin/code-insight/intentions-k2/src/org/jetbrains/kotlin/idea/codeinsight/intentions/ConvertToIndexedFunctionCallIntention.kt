@@ -6,12 +6,14 @@ import com.intellij.modcommand.ModPsiUpdater
 import com.intellij.modcommand.Presentation
 import com.intellij.psi.codeStyle.CodeStyleManager
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.resolution.successfulFunctionCallOrNull
-import org.jetbrains.kotlin.analysis.api.resolution.symbol
+import org.jetbrains.kotlin.analysis.api.resolution.resolveSuccessfulSymbol
 import org.jetbrains.kotlin.builtins.StandardNames
 import org.jetbrains.kotlin.idea.base.codeInsight.KotlinNameSuggester
 import org.jetbrains.kotlin.idea.base.codeInsight.KotlinNameSuggestionProvider
 import org.jetbrains.kotlin.idea.base.codeInsight.KotlinNameValidatorProvider
+import org.jetbrains.kotlin.idea.base.psi.appendParameter
+import org.jetbrains.kotlin.idea.base.psi.getOrCreateFunctionLiteralParameterList
+import org.jetbrains.kotlin.idea.base.psi.insertParameterBefore
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.codeinsight.api.applicable.intentions.KotlinApplicableModCommandAction
 import org.jetbrains.kotlin.idea.refactoring.appendCallOrQualifiedExpression
@@ -24,7 +26,6 @@ import org.jetbrains.kotlin.psi.KtReturnExpression
 import org.jetbrains.kotlin.psi.buildExpression
 import org.jetbrains.kotlin.psi.createExpressionByPattern
 import org.jetbrains.kotlin.psi.psiUtil.collectDescendantsOfType
-import org.jetbrains.kotlin.psi.psiUtil.getOrCreateParameterList
 import org.jetbrains.kotlin.psi.psiUtil.getQualifiedExpressionForSelector
 import org.jetbrains.kotlin.psi.unpackFunctionLiteral
 
@@ -55,13 +56,12 @@ internal class ConvertToIndexedFunctionCallIntention :
             .firstOrNull()
     }
 
-    override fun KaSession.prepareContext(element: KtCallExpression): Context? {
+    context(session: KaSession)
+    override fun prepareContext(element: KtCallExpression): Context? {
         val callee = element.calleeExpression ?: return null
         val (functionFqName, newFunctionName) = functions[callee.text] ?: return null
 
-        val resolvedFqName = element.resolveToCall()
-            ?.successfulFunctionCallOrNull()
-            ?.symbol
+        val resolvedFqName = element.resolveSuccessfulSymbol()
             ?.callableId
             ?.asSingleFqName() ?: return null
         if (resolvedFqName != functionFqName) return null
@@ -116,7 +116,7 @@ internal class ConvertToIndexedFunctionCallIntention :
     }
 
     private fun addIndexParameter(functionLiteral: KtFunctionLiteral, psiFactory: KtPsiFactory) {
-        val parameterList = functionLiteral.getOrCreateParameterList()
+        val parameterList = functionLiteral.getOrCreateFunctionLiteralParameterList()
         val parameters = parameterList.parameters
 
         val nameValidator = KotlinNameValidatorProvider.getInstance().createNameValidator(
@@ -128,11 +128,11 @@ internal class ConvertToIndexedFunctionCallIntention :
         val indexParameter = psiFactory.createParameter(indexParameterName)
 
         if (parameters.isEmpty()) {
-            parameterList.addParameter(indexParameter)
+            parameterList.appendParameter(indexParameter)
             val implicitParam = psiFactory.createParameter(StandardNames.IMPLICIT_LAMBDA_PARAMETER_NAME.identifier)
-            parameterList.addParameter(implicitParam)
+            parameterList.appendParameter(implicitParam)
         } else {
-            parameterList.addParameterBefore(indexParameter, parameters.first())
+            parameterList.insertParameterBefore(indexParameter, parameters.first())
         }
     }
 

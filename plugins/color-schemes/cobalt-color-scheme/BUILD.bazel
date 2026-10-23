@@ -1,7 +1,18 @@
+load("@community//platform/build-scripts/bazel-rules:ij_plugin.bzl", "ij_plugin")
+load("@jps_dynamic_deps_community//:targets.bzl", "dev_dist_plugin")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
-### auto-generated section `build intellij.color.scheme.cobalt` start
+### auto-generated section `dev intellij.color.scheme.cobalt` start
+dev_dist_plugin(
+    descriptor = "resources/META-INF/plugin.xml",
+    jars = {
+        "lib/color-scheme-cobalt.jar": ["intellij.color.scheme.cobalt"],
+    },
+    main_module = "intellij.color.scheme.cobalt",
+)
+### auto-generated section `dev intellij.color.scheme.cobalt` end
 
+### auto-generated section `build intellij.color.scheme.cobalt` start
 jvm_library(
     name = "color-scheme-cobalt",
     srcs = glob(
@@ -14,6 +25,7 @@ jvm_library(
         ["resources/**/*"],
     ),
     visibility = ["//visibility:public"],
+    runtime_deps = ["//platform/projectModel-impl"],
 )
 
 jvm_library(
@@ -25,7 +37,17 @@ jvm_library(
     ),
     module_name = "intellij.color.scheme.cobalt",
     visibility = ["//visibility:public"],
-    runtime_deps = [":color-scheme-cobalt"],
+    runtime_deps = [
+        # do not sort,
+        ":color-scheme-cobalt",
+        "//platform/projectModel-impl:projectModel-impl_test_lib",
+    ],
+)
+
+ij_plugin(
+    name = "color-scheme-cobalt_plugin",
+    descriptor_module = ":color-scheme-cobalt",
+    visibility = ["//visibility:public"],
 )
 ### auto-generated section `build intellij.color.scheme.cobalt` end
 
@@ -33,6 +55,8 @@ jvm_library(
 exports_files(
     [
         "intellij.color.scheme.cobalt.iml",
+        "resources/META-INF/plugin.xml",
+        "resources/colorSchemes/cobalt.xml",
     ],
     visibility = ["//visibility:public"],
 )

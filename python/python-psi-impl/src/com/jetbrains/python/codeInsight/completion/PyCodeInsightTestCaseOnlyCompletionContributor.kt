@@ -11,6 +11,7 @@ import com.intellij.patterns.PlatformPatterns
 import com.intellij.psi.PsiComment
 import com.intellij.psi.PsiElement
 import com.intellij.psi.util.PsiTreeUtil
+import com.intellij.psi.util.PsiUtilCore
 import com.intellij.util.ProcessingContext
 import com.jetbrains.python.PythonFileType
 import com.jetbrains.python.codeInsight.completion.PyTestAssertionParserSymbols.FIXME_KEYWORD
@@ -28,13 +29,31 @@ import com.jetbrains.python.codeInsight.completion.PyTestAssertionParserUtils.sk
 
 enum class PyTestAssertionType {
   TYPE,
+  EXPECTED_TYPE,
   IS_BUILTIN,
   EXPECTED_VARIANCE,
   INFERRED_VARIANCE,
   ISSUES,
+
+  /** Puts the caret at the marked position, see `PyCodeInsightTestCase.configureWithCaret`. It asserts nothing. */
+  CARET,
   ;
 
   companion object {
+    /**
+     * Modifier of a `<SEVERITY>` assertion, switching the check to the highlight's tooltip.
+     *
+     * Example: ` WARNING TOOLTIP incompatible with protocol \n Attribute 'a' is missing`
+     *
+     * The expectation of a TOOLTIP has a contains-semantic, i.e., the text only needs to be contained in the actual tooltip.
+     * In case a tooltip is a multiline string, use `\n` as a line separator. Also, the contains-semantic applies to every
+     * expected line given in a multiline string.
+     *
+     * In case the expectation of a TOOLTIP contains closing html tags (`</`, or `/>`) it will be compared against the actual
+     * tooltip. Otherwise, the actual tooltip will be cleared of all HTML tags.
+     */
+    const val TOOLTIP_KEYWORD: String = "TOOLTIP"
+
     fun fromValue(value: String): PyTestAssertionType? {
       return entries.find { it.name.equals(value, ignoreCase = true) }
     }
@@ -275,7 +294,7 @@ class PyCodeInsightTestCaseOnlyCompletionContributor : CompletionContributor() {
         return false
       }
 
-      return PsiTreeUtil.getParentOfType(file.findElementAt(offsetBeforeCaret), PsiComment::class.java, false) != null
+      return PsiTreeUtil.getParentOfType(PsiUtilCore.getElementAtOffset(file, offsetBeforeCaret), PsiComment::class.java, false) != null
     }
 
     private fun addAssertionTypeElements(result: CompletionResultSet) {

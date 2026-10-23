@@ -1,7 +1,118 @@
+load("@jps_dynamic_deps_community//:targets.bzl", "dev_dist_plugin")
 load("@rules_jvm//:jvm.bzl", "jvm_library", "jvm_provided_library")
+load("//platform/build-scripts/bazel-rules:dev_plugin_remainder.bzl", "dev_dist_complex_plugin")
+
+### auto-generated section `dev intellij.terminal` start
+filegroup(
+    name = "dev_dist_resources",
+    srcs = glob(
+        ["resources/shell-integrations/**"],
+    ),
+    visibility = ["//visibility:public"],
+)
+
+dev_dist_plugin(
+    content_modules = [
+        # do not sort,
+        "intellij.terminal.backend",
+        "intellij.terminal.emulator",
+        "intellij.terminal.frontend",
+        "intellij.terminal.cloud",
+        "intellij.terminal.sh",
+        "intellij.libraries.completion.ranking.sh",
+        "intellij.terminal.libraries.completionDbWithExtensions",
+        "intellij.terminal.completion",
+    ],
+    main_module = "intellij.terminal",
+)
+
+dev_dist_complex_plugin(
+    artifact_inputs = {
+        "//libraries/completion-ranking-sh:completion-ranking-sh.jar": "intellij.libraries.completion.ranking.sh",
+        "//plugins/terminal/libraries:libraries-completionDbWithExtensions.jar": "intellij.terminal.libraries.completionDbWithExtensions",
+        "//plugins/terminal:terminal.jar": "intellij.terminal",
+        "//plugins/terminal/completion:completion.jar": "intellij.terminal.completion",
+    },
+    descriptor = "//build/dev-dist-descriptors/intellij.terminal:intellij.terminal_dev_descriptor",
+    execution_version = 2,
+    independent_artifacts = [
+        "//plugins/terminal/backend:backend_content_module_jar",
+        "//plugins/terminal/emulator:emulator_content_module_jar",
+        "//plugins/terminal/frontend:frontend_content_module_jar",
+        "//plugins/terminal/cloud:cloud_content_module_jar",
+        "//plugins/terminal/sh:sh_content_module_jar",
+    ],
+    libraries = {
+        "@lib//:libraries-completion-ranking-sh-completion-ranking-sh": "@lib//:libraries-completion-ranking-sh-completion-ranking-sh",
+        "@lib//:terminal-libraries-completion_db_with_extensions-terminal-completion-db-with-extensions": "@lib//:terminal-libraries-completion_db_with_extensions-terminal-completion-db-with-extensions",
+        "@lib//:terminal-completion-terminal-completion-spec": "@lib//:terminal-completion-terminal-completion-spec",
+    },
+    main_module = "intellij.terminal",
+    platform_values = {
+        "darwin_aarch64": {
+            "destination": "libghostty-vt/macos-aarch64",
+            "pattern": "macos-aarch64/libghostty-vt.dylib",
+        },
+        "darwin_x64": {
+            "destination": "libghostty-vt/macos-x86_64",
+            "pattern": "macos-x86_64/libghostty-vt.dylib",
+        },
+        "linux_aarch64": {
+            "destination": "libghostty-vt/linux-aarch64",
+            "pattern": "linux-aarch64/libghostty-vt.so",
+        },
+        "linux_x64": {
+            "destination": "libghostty-vt/linux-x86_64",
+            "pattern": "linux-x86_64/libghostty-vt.so",
+        },
+        "windows_aarch64": {
+            "destination": "libghostty-vt/windows-aarch64",
+            "pattern": "windows-aarch64/ghostty-vt.dll",
+        },
+        "windows_x64": {
+            "destination": "libghostty-vt/windows-x86_64",
+            "pattern": "windows-x86_64/ghostty-vt.dll",
+        },
+    },
+    platforms = [
+        "windows_x64",
+        "windows_aarch64",
+        "darwin_x64",
+        "darwin_aarch64",
+        "linux_x64",
+        "linux_aarch64",
+    ],
+    resource_inputs = {
+        "@dev_launch_libghostty//:files": "layout-source:platform-resource-generator:0:0",
+    },
+    source_tree_prefixes = {
+        "module-resource:0:source": "plugins/terminal/resources/shell-integrations",
+    },
+    source_tree_targets = {
+        "module-resource:0:source": "//plugins/terminal:dev_dist_resources",
+    },
+)
+### auto-generated section `dev intellij.terminal` end
+
+# Bundled by Fleet into the terminal rc archive it publishes, see `//fleet/build/internal/rules:fleet_terminal_rc.bzl`.
+exports_files(
+    [
+        "resources/shell-integrations/bash/bash-fig.bash",
+        "resources/shell-integrations/bash/bash-integration.bash",
+        "resources/shell-integrations/bash/bash-preexec.bash",
+        "resources/shell-integrations/fish/fish-integration.fish",
+        "resources/shell-integrations/powershell/powershell-integration.ps1",
+        "resources/shell-integrations/zsh/zdotdir/.zlogin",
+        "resources/shell-integrations/zsh/zdotdir/.zprofile",
+        "resources/shell-integrations/zsh/zdotdir/.zshenv",
+        "resources/shell-integrations/zsh/zdotdir/.zshrc",
+        "resources/shell-integrations/zsh/zdotdir/source-original.zsh",
+        "resources/shell-integrations/zsh/zsh-integration.zsh",
+    ],
+    visibility = ["//visibility:public"],
+)
 
 ### auto-generated section `build intellij.terminal` start
-
 jvm_provided_library(
     name = "libraries_opentelemetry_provided",
     lib = "//libraries/opentelemetry",
@@ -31,10 +142,12 @@ jvm_library(
     resource_strip_prefix = "resources",
     resources = glob(
         ["resources/**/*"],
+        exclude = ["resources/**/icon-robots.txt"],
     ),
     visibility = ["//visibility:public"],
     deps = [
         # do not sort,
+        "//platform/kernel/rpc.lite",
         "//platform/analysis-api:analysis",
         "//platform/code-style-api:codeStyle",
         "//platform/util/concurrency",
@@ -49,7 +162,6 @@ jvm_library(
         "//platform/ide-core",
         "//libraries/guava",
         "//libraries/pty4j",
-        "@lib//:jna",
         "//platform/projectModel-api:projectModel",
         "//platform/remote-core",
         "//libraries/jediterm-core",
@@ -68,10 +180,10 @@ jvm_library(
         "//libraries/kotlinx/serialization/json",
         "//libraries/caffeine",
         "//platform/refactoring",
-        "@lib//:terminal-terminal-completion-db-with-extensions",
+        "//plugins/terminal/libraries:libraries-completionDbWithExtensions",
         "//platform/util/coroutines",
         "//platform/util/text-matching",
-        "@lib//:terminal-completion-ranking-sh",
+        "//libraries/completion-ranking-sh",
         "//platform/feedback",
         "//libraries/kotlinx/datetime",
         "//platform/diagnostic/telemetry",
@@ -81,15 +193,18 @@ jvm_library(
         "//platform/project/shared:project",
         "//platform/eel",
         "//platform/eel-provider",
+        "//platform/util/annotations",
         "//platform/util/jdom",
         "//platform/execution",
+        "//platform/consoleView",
+        "//platform/consoleView/impl",
         "//platform/observable",
         "//platform/progress/shared:ide-progress",
         "//platform/remote-topics/shared:rpc-topics",
-        "//libraries/fastutil",
         "//platform/util:util-ui",
         "//fleet/rhizomedb",
         "//platform/ijent",
+        "//platform/util/diff",
         ":libraries_opentelemetry_provided",
         ":libraries_opentelemetry-semconv_provided",
         ":libraries_opentelemetry-extension-kotlin_provided",
@@ -108,6 +223,7 @@ jvm_library(
     runtime_deps = [
         # do not sort,
         ":terminal",
+        "//platform/kernel/rpc.lite:rpc.lite_test_lib",
         "//platform/analysis-api:analysis_test_lib",
         "//platform/code-style-api:codeStyle_test_lib",
         "//platform/util/concurrency:concurrency_test_lib",
@@ -140,8 +256,10 @@ jvm_library(
         "//libraries/kotlinx/serialization/json:json_test_lib",
         "//libraries/caffeine:caffeine_test_lib",
         "//platform/refactoring:refactoring_test_lib",
+        "//plugins/terminal/libraries:libraries-completionDbWithExtensions_test_lib",
         "//platform/util/coroutines:coroutines_test_lib",
         "//platform/util/text-matching:text-matching_test_lib",
+        "//libraries/completion-ranking-sh:completion-ranking-sh_test_lib",
         "//platform/feedback:feedback_test_lib",
         "//libraries/kotlinx/datetime:datetime_test_lib",
         "//platform/diagnostic/telemetry:telemetry_test_lib",
@@ -157,15 +275,18 @@ jvm_library(
         "//platform/project/shared:project_test_lib",
         "//platform/eel:eel_test_lib",
         "//platform/eel-provider:eel-provider_test_lib",
+        "//platform/util/annotations:annotations_test_lib",
         "//platform/util/jdom:jdom_test_lib",
         "//platform/execution:execution_test_lib",
+        "//platform/consoleView:consoleView_test_lib",
+        "//platform/consoleView/impl:impl_test_lib",
         "//platform/observable:observable_test_lib",
         "//platform/progress/shared:ide-progress_test_lib",
         "//platform/remote-topics/shared:rpc-topics_test_lib",
-        "//libraries/fastutil:fastutil_test_lib",
         "//platform/util:util-ui_test_lib",
         "//fleet/rhizomedb:rhizomedb_test_lib",
         "//platform/ijent:ijent_test_lib",
+        "//platform/util/diff:diff_test_lib",
     ],
 )
 ### auto-generated section `build intellij.terminal` end
@@ -174,6 +295,8 @@ jvm_library(
 exports_files(
     [
         "intellij.terminal.iml",
+        "resources/META-INF/plugin.xml",
+        "resources/META-INF/terminal.xml",
     ],
     visibility = ["//visibility:public"],
 )

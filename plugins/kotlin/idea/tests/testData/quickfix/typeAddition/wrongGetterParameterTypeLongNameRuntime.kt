@@ -1,5 +1,5 @@
 // "Change getter type to HashSet<Int>" "true"
-// K2_ERROR: Getter return type must be equal to the type of the property, i.e. 'HashSet<Int>'.
+// K2_ERROR: WRONG_GETTER_RETURN_TYPE
 
 class A() {
     val i: java.util.HashSet<Int>
@@ -7,4 +7,3 @@ class A() {
 }
 
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ChangeAccessorTypeFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ChangeAccessorTypeFix

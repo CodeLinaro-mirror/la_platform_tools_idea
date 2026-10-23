@@ -11,11 +11,11 @@ import com.intellij.openapi.extensions.InternalIgnoreDependencyViolation
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.io.FileUtil
-import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.vfs.StandardFileSystems
 import com.intellij.psi.search.GlobalSearchScope
 
 @InternalIgnoreDependencyViolation
-private class KotlinConsoleFilterProvider : ConsoleFilterProviderEx {
+internal class KotlinConsoleFilterProvider : ConsoleFilterProviderEx {
     override fun getDefaultFilters(project: Project): Array<Filter> {
         return getDefaultFilters(project, GlobalSearchScope.allScope(project))
     }
@@ -49,7 +49,7 @@ class KotlinConsoleFilter(val project: Project, val scope: GlobalSearchScope) : 
 
 class LocalFileHyperlinkInfo(val path: String, val line: Int, val column: Int) : HyperlinkInfo {
     override fun navigate(project: Project) {
-        val f = LocalFileSystem.getInstance().findFileByPath(FileUtil.toSystemIndependentName(path))
+        val f = StandardFileSystems.local().findFileByPath(FileUtil.toSystemIndependentName(path))
         if (f != null) {
             OpenFileDescriptor(project, f, line, column).navigate(true)
         }

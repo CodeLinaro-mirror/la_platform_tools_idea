@@ -8,15 +8,19 @@ import com.intellij.platform.testFramework.junit5.eel.params.api.EelHolder
 import com.intellij.platform.testFramework.junit5.eel.params.api.EelSource
 import com.intellij.platform.testFramework.junit5.eel.params.api.TestApplicationWithEel
 import com.intellij.platform.testFramework.junit5.eel.params.api.WslTest
+import com.intellij.python.community.execService.Args
 import com.intellij.python.community.execService.ExecService
 import com.intellij.python.community.execService.asBinToExec
+import com.intellij.python.community.execService.python.PyHelper
 import com.intellij.python.community.execService.python.executeHelper
-import com.intellij.python.community.execService.python.validatePythonAndGetInfo
 import com.intellij.python.community.helpersLocator.PythonHelpersLocator
 import com.intellij.python.junit5Tests.framework.env.PyEnvTestCase
 import com.intellij.python.junit5Tests.framework.env.PythonBinaryPath
+import com.intellij.python.sdk.backend.detectPythonEnvironment
+import com.intellij.python.sdk.backend.getPythonInfo
 import com.jetbrains.python.PythonBinary
 import com.jetbrains.python.getOrThrow
+import com.jetbrains.python.mapResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -54,10 +58,10 @@ class HelpersShowCaseTest() {
         """.trimIndent())
       }
 
-      val output = ExecService().executeHelper(python.asBinToExec(), helper.name, listOf("--version")).orThrow().trim()
+      val output = ExecService().executeHelper(python.asBinToExec(), PyHelper(helper.name), Args("--version")).orThrow().trim()
       Assertions.assertEquals(hello, output, "wrong helper output")
 
-      val langLevel = ExecService().validatePythonAndGetInfo(python).getOrThrow().languageLevel
+      val langLevel = python.detectPythonEnvironment().mapResult { it.getPythonInfo() }.getOrThrow().languageLevel
       Assertions.assertTrue(langLevel.isPy3K, "Wrong lang level:$langLevel")
     }
     finally {

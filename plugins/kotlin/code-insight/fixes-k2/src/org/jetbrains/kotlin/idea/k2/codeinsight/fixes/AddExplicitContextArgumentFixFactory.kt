@@ -8,10 +8,11 @@ import com.intellij.modcommand.ModPsiUpdater
 import com.intellij.modcommand.Presentation
 import com.intellij.modcommand.PsiBasedModCommandAction
 import com.intellij.modcommand.PsiUpdateModCommandAction
-import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.fir.diagnostics.KaFirDiagnostic
+import org.jetbrains.kotlin.analysis.api.renderer.render
 import org.jetbrains.kotlin.analysis.api.renderer.types.impl.KaTypeRendererForSource
 import org.jetbrains.kotlin.analysis.api.resolution.KaFunctionCall
+import org.jetbrains.kotlin.analysis.api.resolution.collectCallCandidates
 import org.jetbrains.kotlin.analysis.api.resolution.symbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaNamedFunctionSymbol
 import org.jetbrains.kotlin.config.LanguageFeature
@@ -20,8 +21,8 @@ import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.codeinsight.api.applicators.fixes.KotlinQuickFixFactory
 import org.jetbrains.kotlin.idea.codeinsights.impl.base.intentions.SpecifyRemainingArgumentsByNameUtil
 import org.jetbrains.kotlin.idea.codeinsights.impl.base.intentions.SpecifyRemainingArgumentsByNameUtil.RemainingArgumentsData
-import org.jetbrains.kotlin.idea.codeinsights.impl.base.intentions.SpecifyRemainingArgumentsByNameUtil.getRemainingArgumentsData
 import org.jetbrains.kotlin.idea.codeinsights.impl.base.intentions.SpecifyRemainingArgumentsByNameUtil.contextSuggestedNames
+import org.jetbrains.kotlin.idea.codeinsights.impl.base.intentions.SpecifyRemainingArgumentsByNameUtil.getRemainingArgumentsData
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.KtCallExpression
 import org.jetbrains.kotlin.psi.psiUtil.getStrictParentOfType
@@ -35,7 +36,6 @@ internal object AddExplicitContextArgumentFixFactory {
         val nameSuggestions: Map<Name, Name>
     )
 
-    @OptIn(KaExperimentalApi::class)
     val overloadResolutionAmbiguity = KotlinQuickFixFactory.ModCommandBased { diagnostic: KaFirDiagnostic.OverloadResolutionAmbiguity ->
         val psi = diagnostic.psi
         val callExpression = (psi as? KtCallExpression)
@@ -48,7 +48,7 @@ internal object AddExplicitContextArgumentFixFactory {
             return@ModCommandBased emptyList()
         }
 
-        val resolvedCallCandidates = callExpression.resolveToCallCandidates()
+        val resolvedCallCandidates = callExpression.collectCallCandidates()
         if (resolvedCallCandidates.size < 2) return@ModCommandBased emptyList()
         val existingArgumentsCount = callExpression.valueArguments.size
 

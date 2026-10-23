@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.platform.eel.impl.local
 
 import com.intellij.openapi.diagnostic.Logger
@@ -9,6 +9,7 @@ import com.intellij.platform.eel.EelApi
 import com.intellij.platform.eel.EelArchiveApi
 import com.intellij.platform.eel.EelDescriptor
 import com.intellij.platform.eel.EelExecPosixApi
+import com.intellij.platform.eel.EelHttpApi
 import com.intellij.platform.eel.EelPlatform
 import com.intellij.platform.eel.EelResult
 import com.intellij.platform.eel.EelTunnelsPosixApi
@@ -19,6 +20,7 @@ import com.intellij.platform.eel.fs.EelFileSystemApi
 import com.intellij.platform.eel.fs.EelFileSystemApi.CreateTemporaryEntryError
 import com.intellij.platform.eel.fs.LocalEelFileSystemPosixApi
 import com.intellij.platform.eel.fs.LocalEelFileSystemWindowsApi
+import com.intellij.platform.eel.impl.base.CurlEelHttpApi
 import com.intellij.platform.eel.impl.base.fs.EelFsResultImpl.Ok
 import com.intellij.platform.eel.impl.base.fs.EelUserPosixInfoImpl
 import com.intellij.platform.eel.impl.base.fs.EelUserWindowsInfoImpl
@@ -29,9 +31,10 @@ import com.intellij.platform.eel.provider.LocalEelDescriptor
 import com.intellij.platform.eel.provider.LocalPosixEelApi
 import com.intellij.platform.eel.provider.LocalWindowsEelApi
 import com.intellij.platform.eel.provider.asEelPath
-import com.intellij.platform.eel.provider.asNioPathOrNull
+import com.intellij.platform.eel.provider.asNioPath
 import com.intellij.platform.eel.provider.utils.toEelArch
 import com.intellij.util.system.CpuArch
+import com.intellij.util.system.LowLevelLocalMachineAccess
 import com.intellij.util.text.nullize
 import com.sun.security.auth.module.UnixSystem
 import org.jetbrains.annotations.VisibleForTesting
@@ -46,11 +49,13 @@ internal class LocalWindowsEelApiImpl(nioFs: FileSystem = FileSystems.getDefault
     check(SystemInfo.isWindows)
   }
 
+  @OptIn(LowLevelLocalMachineAccess::class)
   override val platform: EelPlatform.Windows = EelPlatform.Windows(CpuArch.CURRENT.toEelArch())
 
   override val tunnels: EelTunnelsWindowsApi get() = EelLocalWindowsTunnelsApiImpl
   override val descriptor: EelDescriptor get() = LocalEelDescriptor
   override val exec: EelLocalExecWindowsApi = EelLocalExecWindowsApi()
+  override val http: EelHttpApi = CurlEelHttpApi(exec)
   override val userInfo: EelUserWindowsInfo = EelUserWindowsInfoImpl(getLocalUserHome())
   override val archive: EelArchiveApi = LocalEelArchiveApiImpl
 
@@ -74,6 +79,7 @@ class LocalPosixEelApiImpl(private val nioFs: FileSystem = FileSystems.getDefaul
     check(SystemInfo.isUnix)
   }
 
+  @OptIn(LowLevelLocalMachineAccess::class)
   override val platform: EelPlatform.Posix = when {
     SystemInfo.isMac -> EelPlatform.Darwin(CpuArch.CURRENT.toEelArch())
     SystemInfo.isFreeBSD -> EelPlatform.FreeBSD(CpuArch.CURRENT.toEelArch())
@@ -91,6 +97,8 @@ class LocalPosixEelApiImpl(private val nioFs: FileSystem = FileSystems.getDefaul
   }
 
   override val exec: EelExecPosixApi = EelLocalExecPosixApi(platform, userInfo)
+
+  override val http: EelHttpApi = CurlEelHttpApi(exec)
 
   override val fs: LocalEelFileSystemPosixApi = object : PosixNioBasedEelFileSystemApi(nioFs, userInfo) {
     override val descriptor: EelDescriptor get() = LocalEelDescriptor
@@ -129,7 +137,7 @@ private fun doCreateTemporaryEntry(
   localCreator: (File, String, String?, Boolean) -> File,
 ): EelResult<EelPath, CreateTemporaryEntryError> {
   val dir =
-    options.parentDirectory?.asNioPathOrNull()?.toFile()
+    options.parentDirectory?.asNioPath()?.toFile()
     ?: run {
       val path = Path.of(FileUtilRt.getTempDirectory())
       path.toFile()

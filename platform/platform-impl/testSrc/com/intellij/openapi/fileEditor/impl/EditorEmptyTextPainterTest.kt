@@ -20,7 +20,16 @@ import com.intellij.openapi.fileEditor.FileEditorManagerKeys
 import com.intellij.openapi.keymap.Keymap
 import com.intellij.openapi.keymap.KeymapManager
 import com.intellij.openapi.keymap.KeymapUtil
-import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.project.impl.finishEmptyEditorStartupBeforeProjectView
+import com.intellij.openapi.project.impl.isReadmeLookupOnStartupEnabled
+import com.intellij.openapi.project.impl.presentProjectViewOnStartup
+import com.intellij.openapi.project.impl.shouldRestoreStartupEditorFocus
+import com.intellij.openapi.vfs.VirtualFileManager
+import com.intellij.openapi.wm.ex.ProjectFrameCapabilitiesProvider
+import com.intellij.openapi.wm.ex.ProjectFrameCapabilitiesService
+import com.intellij.openapi.wm.ex.ProjectFrameCapability
+import com.intellij.openapi.wm.ex.ProjectFrameUiPolicy
 import com.intellij.testFramework.ExtensionTestUtil
 import com.intellij.testFramework.LightVirtualFile
 import com.intellij.testFramework.LoggedErrorProcessor
@@ -39,6 +48,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.assertj.core.api.Assertions.assertThat
 import org.jdom.Element
@@ -75,7 +85,7 @@ internal class EditorEmptyTextPainterTest {
   )
   private val projectFixture = projectFixture(
     openProjectTask = OpenProjectTask {
-      beforeInit = { it.putUserData(FileEditorManagerKeys.ALLOW_IN_LIGHT_PROJECT, true) }
+      beforeInitTasks += { it.putUserData(FileEditorManagerKeys.ALLOW_IN_LIGHT_PROJECT, true) }
     },
     openAfterCreation = true,
   )
@@ -707,6 +717,57 @@ internal class EditorEmptyTextPainterTest {
   }
 
   @Test
+  fun doNotReopenFilesKeepsRichEmptyStateDisabledUntilExplicitEnable(@TestDisposable disposable: Disposable) {
+    val splitters = manager.mainSplitters
+    registerComponentProvider(disposable)
+    manager.closeAllFiles()
+    val project = projectFixture.get()
+    FileEditorManagerKeys.DO_NOT_REOPEN_FILES.set(project, true)
+    try {
+      splitters.setEmptyStateComponentCreationDelayForTests(Duration.ZERO)
+      splitters.finishStartupEditorRestore()
+      dispatchEventsFor(100.milliseconds)
+
+      // editors arrive from elsewhere here, so the absence of a local restore settles nothing
+      assertThat(splitters.isEmptyStateComponentCreationPending()).isFalse()
+      assertThat(findEmptyStateComponent(splitters)).isNull()
+
+      splitters.enableRichEmptyStateComponents()
+      waitForEmptyStateComponent(splitters, "The explicit enable did not mount the empty state")
+    }
+    finally {
+      FileEditorManagerKeys.DO_NOT_REOPEN_FILES.set(project, null)
+    }
+  }
+
+  @Test
+  fun doNotReopenFilesMountsWithoutTheCreationDelayOnceTheStartupHoldIsReleased(@TestDisposable disposable: Disposable) {
+    val splitters = manager.mainSplitters
+    registerComponentProvider(disposable)
+    manager.closeAllFiles()
+    val project = projectFixture.get()
+    FileEditorManagerKeys.DO_NOT_REOPEN_FILES.set(project, true)
+    try {
+      splitters.setEmptyStateComponentCreationDelayForTests(NEVER_ELAPSING_CREATION_DELAY)
+      splitters.beginStartupEmptyStatePresentationHold()
+      splitters.finishStartupEditorRestore()
+      dispatchEventsFor(100.milliseconds)
+
+      // nothing is even prepared yet: rich components stay disabled until something says editors are not arriving from elsewhere
+      assertThat(splitters.isEmptyStateComponentCreationPending()).isFalse()
+
+      // the release is what says it, and it enables rich components before opening the gate, so the creation it makes possible starts
+      // under a closed gate and mounts at once instead of waiting out a delay that only exists to hide a flash
+      splitters.endStartupEmptyStatePresentationHold()
+
+      waitForEmptyStateComponent(splitters, "A project that does not reopen files waited out the creation delay")
+    }
+    finally {
+      FileEditorManagerKeys.DO_NOT_REOPEN_FILES.set(project, null)
+    }
+  }
+
+  @Test
   @Suppress("RAW_SCOPE_CREATION")
   fun restoringStateWithoutFileEntriesPreparesTheEmptyStateAtOnce(@TestDisposable disposable: Disposable) {
     val splitters = manager.mainSplitters
@@ -728,6 +789,27 @@ internal class EditorEmptyTextPainterTest {
 
       splitters.endStartupEmptyStatePresentationHold()
       waitForEmptyStateComponent(splitters, "Restoring a file-less state waited out the creation delay")
+    }
+    finally {
+      scope.cancel()
+      PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+    }
+  }
+
+  @Test
+  @Suppress("RAW_SCOPE_CREATION")
+  fun restoringSplitStateRemovesTheHalfThatRestoresNoTab() {
+    val splitters = manager.mainSplitters
+    manager.closeAllFiles()
+
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    try {
+      // the restore itself removes the empty half, so a caller sees one window and one tab once it returns
+      val restoreJob = scope.launch { splitters.createEditors(EditorSplitterState(splitStateElementWithEmptySecondHalf())) }
+      PlatformTestUtil.waitWhileBusy { !restoreJob.isCompleted }
+
+      assertThat(splitters.windows().count()).isEqualTo(1)
+      assertThat(splitters.getAllComposites()).hasSize(1)
     }
     finally {
       scope.cancel()
@@ -830,21 +912,104 @@ internal class EditorEmptyTextPainterTest {
     val splitters = manager.mainSplitters
     registerFocusClaimingComponentProvider(disposable)
     manager.closeAllFiles()
-    val focusRequests = recordFocusRequests(splitters)
+    val focusRequests = CopyOnWriteArrayList<JComponent>()
+    var reportFocusTransferred: (() -> Unit)? = null
+    splitters.setEmptyStateComponentFocusRequesterForTests { component, transferred ->
+      focusRequests.add(component)
+      reportFocusTransferred = transferred
+    }
     splitters.setEmptyStateComponentCreationDelayForTests(NEVER_ELAPSING_CREATION_DELAY)
     splitters.beginStartupEmptyStatePresentationHold()
 
     // the request is made where project open makes it: before anything is built, and honoured only once the empty state is presented
-    splitters.requestEmptyStateFocusWhenPresented()
+    val focusSettled = splitters.requestEmptyStateFocusWhenPresentedAsync()
     splitters.finishStartupEditorRestore()
     dispatchEventsFor(100.milliseconds)
 
     assertThat(focusRequests).isEmpty()
+    assertThat(focusSettled.isCompleted).isFalse()
 
     releaseStartupHoldFromProjectOpensHop(splitters)
     waitForEmptyStateComponent(splitters, "The claimed empty state was not presented")
 
     assertThat(focusRequests).containsExactly(findFocusTargetComponent(splitters))
+    assertThat(focusSettled.isCompleted).isFalse()
+
+    checkNotNull(reportFocusTransferred).invoke()
+    assertThat(focusSettled.isCompleted).isTrue()
+  }
+
+  @Test
+  fun startupEmptyStateIsPresentedBeforeProjectViewIsOpened() {
+    runBlocking {
+      val startupEvents = mutableListOf<String>()
+
+      finishEmptyEditorStartupBeforeProjectView(
+        finishOpeningStartupEditors = { startupEvents.add("startup editors finished") },
+        presentEmptyEditor = { startupEvents.add("empty editor presented") },
+        openProjectView = { startupEvents.add("Project view opened") },
+      )
+
+      assertThat(startupEvents).containsExactly(
+        "startup editors finished",
+        "empty editor presented",
+        "Project view opened",
+      )
+    }
+  }
+
+  @Test
+  fun startupReadmeLookupIsSkippedForWelcomeExperienceProject(@TestDisposable disposable: Disposable) {
+    maskProjectFrameCapabilities(setOf(ProjectFrameCapability.WELCOME_EXPERIENCE), disposable)
+
+    assertThat(runBlocking { isReadmeLookupOnStartupEnabled(manager.project) }).isFalse()
+  }
+
+  @Test
+  fun startupReadmeLookupRunsForRegularProject(@TestDisposable disposable: Disposable) {
+    maskProjectFrameCapabilities(setOf(ProjectFrameCapability.SUPPRESS_INDEXING_ACTIVITIES), disposable)
+
+    assertThat(runBlocking { isReadmeLookupOnStartupEnabled(manager.project) }).isTrue()
+  }
+
+  @Test
+  fun startupProjectViewIsShownWithoutActivationWhenTheEditorKeepsFocus() {
+    val events = mutableListOf<String>()
+
+    presentProjectViewOnStartup(
+      focusProjectView = false,
+      showProjectView = { events.add("shown") },
+      activateProjectView = { events.add("activated") },
+    )
+
+    assertThat(events).containsExactly("shown")
+  }
+
+  @Test
+  fun startupProjectViewIsActivatedWhenItTakesFocus() {
+    val events = mutableListOf<String>()
+
+    presentProjectViewOnStartup(
+      focusProjectView = true,
+      showProjectView = { events.add("shown") },
+      activateProjectView = { events.add("activated") },
+    )
+
+    assertThat(events).containsExactly("activated")
+  }
+
+  @Test
+  fun startupEditorFocusIsRestoredOnlyWhenProjectViewTookIt() {
+    val startupFocusOwner = object : JPanel() {
+      override fun isShowing(): Boolean = true
+    }
+    val projectView = JPanel()
+    val projectViewFocusOwner = JPanel().also { projectView.add(it) }
+
+    assertThat(shouldRestoreStartupEditorFocus(startupFocusOwner, projectViewFocusOwner, projectView)).isTrue()
+    assertThat(shouldRestoreStartupEditorFocus(startupFocusOwner, null, projectView)).isTrue()
+    assertThat(shouldRestoreStartupEditorFocus(startupFocusOwner, JPanel(), projectView)).isFalse()
+    assertThat(shouldRestoreStartupEditorFocus(JPanel(), projectViewFocusOwner, projectView)).isFalse()
   }
 
   @Test
@@ -1011,6 +1176,14 @@ internal class EditorEmptyTextPainterTest {
     assertThat(splitters.isEmptyStateFocusRequestPending()).isFalse()
   }
 
+  private fun maskProjectFrameCapabilities(capabilities: Set<ProjectFrameCapability>, disposable: Disposable) {
+    ExtensionTestUtil.maskExtensions(ProjectFrameCapabilitiesService.EP_NAME, listOf(object : ProjectFrameCapabilitiesProvider {
+      override fun getCapabilities(project: Project): Set<ProjectFrameCapability> = capabilities
+
+      override fun getUiPolicy(project: Project, capabilities: Set<ProjectFrameCapability>): ProjectFrameUiPolicy? = null
+    }), disposable)
+  }
+
   private fun registerDefaultEmptyTextProvider(disposable: Disposable) {
     ExtensionTestUtil.maskExtensions(EditorEmptyTextProvider.EP_NAME, listOf(DefaultEditorEmptyTextProvider()), disposable)
   }
@@ -1134,7 +1307,10 @@ internal class EditorEmptyTextPainterTest {
   /** Records what the empty state asks to focus, which is all a headless test can observe of a focus request. */
   private fun recordFocusRequests(splitters: EditorsSplitters): List<JComponent> {
     val requests = CopyOnWriteArrayList<JComponent>()
-    splitters.setEmptyStateComponentFocusRequesterForTests { requests.add(it) }
+    splitters.setEmptyStateComponentFocusRequesterForTests { component, transferred ->
+      requests.add(component)
+      transferred()
+    }
     return requests
   }
 
@@ -1240,14 +1416,23 @@ internal class EditorEmptyTextPainterTest {
     return Element("state").addContent(Element("leaf"))
   }
 
-  private fun splitterStateElementWithFile(): Element {
-    val file = Files.createTempFile(tempPath, "empty-state", ".txt")
-    val virtualFile = checkNotNull(LocalFileSystem.getInstance().refreshAndFindFileByNioFile(file))
+  private fun splitterStateElementWithFile(): Element = Element("state").addContent(leafElementWithFile())
+
+  /** A split whose first half holds one file and whose second half holds no file. */
+  private fun splitStateElementWithEmptySecondHalf(): Element {
     return Element("state").addContent(
-      Element("leaf").addContent(
-        Element("file").addContent(
-          Element(HistoryEntry.TAG).setAttribute(HistoryEntry.FILE_ATTRIBUTE, virtualFile.url),
-        ),
+      Element("splitter")
+        .addContent(Element("split-first").addContent(leafElementWithFile()))
+        .addContent(Element("split-second").addContent(Element("leaf"))),
+    )
+  }
+
+  private fun leafElementWithFile(): Element {
+    val file = Files.createTempFile(tempPath, "empty-state", ".txt")
+    val virtualFile = checkNotNull(VirtualFileManager.getInstance().refreshAndFindFileByNioPath(file))
+    return Element("leaf").addContent(
+      Element("file").addContent(
+        Element(HistoryEntry.TAG).setAttribute(HistoryEntry.FILE_ATTRIBUTE, virtualFile.url),
       ),
     )
   }

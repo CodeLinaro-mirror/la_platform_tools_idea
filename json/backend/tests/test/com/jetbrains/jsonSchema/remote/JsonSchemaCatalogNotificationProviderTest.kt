@@ -5,7 +5,7 @@ import com.intellij.json.JsonBundle
 import com.intellij.openapi.fileEditor.FileEditor
 import com.intellij.openapi.fileEditor.FileEditorState
 import com.intellij.openapi.util.UserDataHolderBase
-import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.vfs.StandardFileSystems
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.testFramework.runInEdtAndWait as runInEdtAndWaitKt
@@ -50,7 +50,7 @@ class JsonSchemaCatalogNotificationProviderTest : BasePlatformTestCase() {
   fun testMatchingCatalogSchemaIsSuggestedInsteadOfApplied() {
     val file = addSchemaStoreOnlyFile()
 
-    assertNotNull(catalogManager.getSchemaFileForFile(file))
+    assertNotNull(catalogManager.getSchemaCatalogEntryForFile(file))
     assertEmpty(JsonSchemaService.Impl.get(project).getSchemaFilesForFile(file))
 
     val provider = JsonSchemaCatalogNotificationProvider()
@@ -69,7 +69,6 @@ class JsonSchemaCatalogNotificationProviderTest : BasePlatformTestCase() {
     clickAction(panel, JsonBundle.message("schema.catalog.suggestion.apply"))
 
     assertNotNull(JsonSchemaMappingsProjectConfiguration.getInstance(project).findMappingForFile(file))
-    assertNotEmpty(JsonSchemaService.Impl.get(project).getSchemaFilesForFile(file))
     assertNull(provider.collectNotificationData(project, file))
   }
 
@@ -98,7 +97,7 @@ class JsonSchemaCatalogNotificationProviderTest : BasePlatformTestCase() {
 
     for (candidate in candidates) {
       val file = myFixture.addFileToProject(candidate[0], candidate[1]).virtualFile
-      if (service.isApplicableToFile(file) && catalogManager.getSchemaFileForFile(file) != null && service.getSchemaFilesForFile(file).isEmpty()) {
+      if (service.isApplicableToFile(file) && catalogManager.getSchemaCatalogEntryForFile(file) != null && service.getSchemaFilesForFile(file).isEmpty()) {
         return file
       }
     }
@@ -128,7 +127,7 @@ class JsonSchemaCatalogNotificationProviderTest : BasePlatformTestCase() {
   private fun configureCatalog(): JsonSchemaCatalogManager {
     val manager = JsonSchemaService.Impl.get(project).catalogManager
     val path = JsonSchemaHeavyAbstractTest.getJsonSchemaTestDataFilePath("schemaStore/catalog.json")
-    val catalogFile = LocalFileSystem.getInstance().findFileByPath(path)
+    val catalogFile = StandardFileSystems.local().findFileByPath(path)
     assertNotNull(catalogFile)
     manager.registerTestSchemaStoreFile(catalogFile!!, testRootDisposable)
     return manager

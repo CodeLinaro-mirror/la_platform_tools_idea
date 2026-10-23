@@ -76,12 +76,16 @@
     <orderEntry type="module" module-name="intellij.vcs.git.featuresTrainer" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.platform.images" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.groovy" scope="RUNTIME" />
+    <orderEntry type="module" module-name="intellij.groovy.langInjection" scope="RUNTIME" />
+    <orderEntry type="module" module-name="intellij.groovy.spock" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.junit" scope="RUNTIME" />
+    <orderEntry type="module" module-name="intellij.junit.properties" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.maven" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.moduleSet.plugin.main" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.regexp" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.vcs.svn" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.testng" scope="RUNTIME" />
+    <orderEntry type="module" module-name="intellij.testng.langInjection" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.java.langInjection" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.xml.langInjection" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.xpath" scope="RUNTIME" />
@@ -140,8 +144,6 @@
     <orderEntry type="module" module-name="intellij.keymap.eclipse" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.keymap.visualStudio" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.keymap.netbeans" scope="RUNTIME" />
-    <orderEntry type="module" module-name="intellij.evaluationPlugin" scope="RUNTIME" />
-    <orderEntry type="module" module-name="intellij.evaluationPlugin.languages.java" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.platform.warmup" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.remoteControl" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.platform.polySymbols" scope="RUNTIME" />
@@ -155,7 +157,7 @@
     <orderEntry type="module" module-name="intellij.execution.process.elevation" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.vcs.gitlab.yaml" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.yaml" scope="RUNTIME" />
-    <orderEntry type="module" module-name="intellij.platform.compose" scope="RUNTIME" />
+    <orderEntry type="module" module-name="intellij.platform.compose.plugin" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.json" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.java.terminal.tests" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.java.terminal.shared" scope="RUNTIME" />
@@ -172,7 +174,7 @@
     <orderEntry type="module" module-name="intellij.searchEverywhereMl.typos" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.grazie" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.compose.ide.plugin" scope="RUNTIME" />
-    <orderEntry type="module" module-name="intellij.compose.ide.plugin.k2" scope="RUNTIME" />
+    <orderEntry type="module" module-name="intellij.compose.ide.plugin.codeInsight" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.compose.ide.plugin.shared" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.compose.ide.plugin.resources" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.compose.ide.plugin.gradleTooling.rt" scope="RUNTIME" />
@@ -181,7 +183,7 @@
     <orderEntry type="module" module-name="intellij.maven.server.m3.impl" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.maven.server.m36.impl" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.maven.server.m40" scope="RUNTIME" />
-    <orderEntry type="module" module-name="intellij.mcpserver" scope="RUNTIME" />
+    <orderEntry type="module" module-name="intellij.mcpserver.plugin" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.python.processOutput.common" scope="TEST" />
     <orderEntry type="module" module-name="intellij.python.community.plugin" scope="RUNTIME" />
   </component>

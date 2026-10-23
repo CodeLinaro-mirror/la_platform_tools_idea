@@ -1,11 +1,7 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.daemon.impl.quickfix;
 
 import com.intellij.codeInsight.daemon.QuickFixBundle;
-import com.intellij.codeInsight.hint.QuestionAction;
-import com.intellij.codeInsight.intention.impl.AddSingleMemberStaticImportAction;
-import com.intellij.codeInsight.intention.preview.IntentionPreviewInfo;
-import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiElement;
@@ -16,16 +12,15 @@ import com.intellij.psi.PsiMethodCallExpression;
 import com.intellij.psi.PsiReferenceExpression;
 import com.intellij.psi.PsiSubstitutor;
 import com.intellij.psi.PsiType;
-import com.intellij.psi.infos.MethodCandidateInfo;
 import com.intellij.psi.search.PsiShortNamesCache;
 import com.intellij.psi.util.PsiFormatUtil;
 import com.intellij.psi.util.PsiFormatUtilBase;
 import com.intellij.psi.util.PsiUtil;
+import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collections;
-import java.util.List;
 
 public class StaticImportMethodFix extends StaticImportMemberFix<PsiMethod, PsiMethodCallExpression> {
   public StaticImportMethodFix(@NotNull PsiFile psiFile, @NotNull PsiMethodCallExpression methodCallExpression) {
@@ -50,11 +45,6 @@ public class StaticImportMethodFix extends StaticImportMemberFix<PsiMethod, PsiM
   }
 
   @Override
-  public @NotNull IntentionPreviewInfo generatePreview(@NotNull Project project, @NotNull Editor editor, @NotNull PsiFile psiFile) {
-    return generatePreview(psiFile, (_, method) -> AddSingleMemberStaticImportAction.bindAllClassRefs(psiFile, method, method.getName(), method.getContainingClass()));
-  }
-
-  @Override
   StaticMembersProcessor.@NotNull MembersToImport<PsiMethod> getMembersToImport(int maxResults) {
     Project project = myReferencePointer.getProject();
     PsiShortNamesCache cache = PsiShortNamesCache.getInstance(project);
@@ -68,13 +58,21 @@ public class StaticImportMethodFix extends StaticImportMemberFix<PsiMethod, PsiM
   }
 
   @Override
+  boolean hasCompatibleSignature(@NotNull PsiMethod method) {
+    ProgressManager.checkCanceled();
+    PsiMethodCallExpression call = myReferencePointer.getElement();
+    if (call == null) return false;
+    return MethodCallSignature.canMatchCall(method, call.getArgumentList());
+  }
+
+  @Override
   boolean toAddStaticImports() {
     return true;
   }
 
   @Override
-  protected @NotNull QuestionAction createQuestionAction(@NotNull List<? extends PsiMethod> methodsToImport, @NotNull Project project, Editor editor) {
-    return new StaticImportMemberQuestionAction<>(project, editor, methodsToImport, myReferencePointer);
+  protected @Nls @NotNull String getSelectorTitle() {
+    return QuickFixBundle.message("method.to.import.chooser.title");
   }
 
   @Override
@@ -85,8 +83,14 @@ public class StaticImportMethodFix extends StaticImportMemberFix<PsiMethod, PsiM
 
   @Override
   protected @Nullable PsiElement resolveRef() {
-    PsiMethodCallExpression methodCallExpression = (PsiMethodCallExpression)getElement();
+    PsiMethodCallExpression methodCallExpression = getElement();
     return methodCallExpression != null ? methodCallExpression.resolveMethod() : null;
+  }
+
+  @Override
+  protected @Nullable String getReferenceName() {
+    PsiMethodCallExpression element = myReferencePointer.getElement();
+    return element != null ? element.getMethodExpression().getReferenceName() : null;
   }
 
   private static final class MyStaticMethodProcessor extends StaticMembersProcessor<PsiMethod> {
@@ -98,9 +102,7 @@ public class StaticImportMethodFix extends StaticImportMemberFix<PsiMethod, PsiM
     protected ApplicableType isApplicable(@NotNull PsiMethod method, @NotNull PsiElement place) {
       ProgressManager.checkCanceled();
       PsiExpressionList argumentList = ((PsiMethodCallExpression)place).getArgumentList();
-      MethodCandidateInfo candidateInfo =
-        new MethodCandidateInfo(method, PsiSubstitutor.EMPTY, false, false, argumentList, null, argumentList.getExpressionTypes(), null);
-      PsiSubstitutor substitutorForMethod = candidateInfo.getSubstitutor();
+      PsiSubstitutor substitutorForMethod = MethodCallSignature.inferSubstitutor(method, argumentList);
       if (PsiUtil.isApplicable(method, substitutorForMethod, argumentList)) {
         PsiType returnType = substitutorForMethod.substitute(method.getReturnType());
         if (returnType == null) return ApplicableType.APPLICABLE;

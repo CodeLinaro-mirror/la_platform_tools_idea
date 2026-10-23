@@ -44,7 +44,7 @@ public class PluginConfigReferenceTest extends JavaCodeInsightFixtureTestCase {
     moduleBuilder.addLibrary("platform-util-base", PathUtil.getJarPathForClass(IncorrectOperationException.class));
     moduleBuilder.addLibrary("platform-util", PathUtil.getJarPathForClass(Iconable.class));
     moduleBuilder.addLibrary("platform-analysis", PathUtil.getJarPathForClass(LocalInspectionEP.class));
-    moduleBuilder.addLibrary("platform-resources", PathManager.getResourceRoot(LocalInspectionEP.class, "/defaultFileTypes.xml"));
+    moduleBuilder.addLibrary("platform-resources", PathManager.getResourceRoot(LocalInspectionEP.class, "/intellij.platform.resources.xml"));
     moduleBuilder.addLibrary("platform-ide-core", PathUtil.getJarPathForClass(Configurable.class));
     moduleBuilder.addLibrary("platform-ide-core-impl", PathUtil.getJarPathForClass(NotificationGroupEP.class));
     moduleBuilder.addLibrary("platform-editor", PathUtil.getJarPathForClass(AdvancedSettings.class));
@@ -63,16 +63,16 @@ public class PluginConfigReferenceTest extends JavaCodeInsightFixtureTestCase {
                                                                   "registryKeyId.xml");
     assertContainsElements(variants,
                            "my.plugin.key",
-                           "vcs.showConsole");
+                           "ide.popup.auto.delay");
 
     final LookupElementPresentation plugin = getLookupElementPresentation("my.plugin.key");
     assertEquals(" My description", plugin.getTailText());
     assertEquals("myDefaultValue", plugin.getTypeText());
     assertEquals(AllIcons.Nodes.PluginRestart, plugin.getIcon());
 
-    final LookupElementPresentation properties = getLookupElementPresentation("vcs.showConsole");
-    assertEquals(" Show the 'Console' tab in the VCS toolwindow that logs all write-commands performed by IDE.", properties.getTailText());
-    assertEquals("true", properties.getTypeText());
+    final LookupElementPresentation properties = getLookupElementPresentation("ide.popup.auto.delay");
+    assertEquals(" The delay in milliseconds before a sub-popup is automatically shown.", properties.getTailText());
+    assertEquals("500", properties.getTypeText());
     assertEquals(AllIcons.Nodes.Plugin, properties.getIcon());
   }
 

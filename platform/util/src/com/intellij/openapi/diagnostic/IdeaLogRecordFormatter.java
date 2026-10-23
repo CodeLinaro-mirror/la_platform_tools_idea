@@ -94,7 +94,9 @@ public class IdeaLogRecordFormatter extends Formatter {
       result.append('#');
       pos++;
     }
-    if (!(category.startsWith("com.intellij", pos) || category.startsWith("com.jetbrains", pos) || category.startsWith("org.jetbrains", pos))) {
+    if (!(category.startsWith("com.intellij", pos) ||
+          category.startsWith("com.jetbrains", pos) ||
+          category.startsWith("org.jetbrains", pos))) {
       return category;
     }
     while ((nextDot = category.indexOf('.', pos)) >= 0) {
@@ -112,8 +114,10 @@ public class IdeaLogRecordFormatter extends Formatter {
   }
 
   private static void appendThrowable(Throwable thrown, StringBuilder sb) {
+    // An `UnhandledException` is a wrapper. Report the real cause. See IJPL-254578.
+    Throwable realCause = UnhandledException.unwrapIfUnhandled(thrown).getRealCause();
     StringWriter stringWriter = new StringWriter();
-    thrown.printStackTrace(new PrintWriter(stringWriter));
+    realCause.printStackTrace(new PrintWriter(stringWriter));
     String[] lines = StringUtil.splitByLines(stringWriter.toString());
     int maxStackSize = 1024, maxExtraSize = 256;
     if (lines.length > maxStackSize + maxExtraSize) {

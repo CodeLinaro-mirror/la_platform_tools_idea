@@ -1,7 +1,14 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.libraries.miglayout.swing` start
+content_module_jar(
+    libraries = ["@lib//:libraries-miglayout-swing-miglayout-swing"],
+    module = ":miglayout-swing",
+)
+### auto-generated section `dev intellij.libraries.miglayout.swing` end
 
 ### auto-generated section `build intellij.libraries.miglayout.swing` start
-
 jvm_library(
     name = "miglayout-swing",
     srcs = glob(
@@ -37,6 +44,7 @@ jvm_library(
 exports_files(
     [
         "intellij.libraries.miglayout.swing.iml",
+        "resources/intellij.libraries.miglayout.swing.xml",
     ],
     visibility = ["//visibility:public"],
 )

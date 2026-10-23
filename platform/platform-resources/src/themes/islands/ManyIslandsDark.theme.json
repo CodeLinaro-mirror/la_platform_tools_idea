@@ -217,7 +217,7 @@
     "tool-window-border-inline": "layer-0-border-inline",
     "main-window-bg": "layer-1-bg",
     "main-window-bg-alt": "gray-40",
-    "main-window-border": "layer-2-border",
+    "main-window-border": "layer-1-border",
 
     "control-bg": "dialog-bg",
     "control-bg-disabled": "dialog-bg",
@@ -289,9 +289,19 @@
     "inlay-bg": "transparent-white-30",
     "inlay-border": "transparent-white-50",
 
-    "toggle-off-bg": "gray-10",
-    "toggle-button-bg": "gray-70",
-    "toggle-border": "gray-70",
+    "toggle-on-bg": "accent-brand-bg",
+    "toggle-off-bg": "transparent-white-50",
+    "toggle-off-border": "transparent",
+    "toggle-on-border": "accent-brand-bg",
+    "toggle-on-disabled-bg": "transparent",
+    "toggle-off-disabled-bg": "transparent",
+    "toggle-on-disabled-border": "control-border-disabled",
+    "toggle-off-disabled-border": "control-border-disabled",
+    "toggle-focus-border": "control-brand-border",
+    "toggle-on-notch": "white",
+    "toggle-off-notch": "gray-130",
+    "toggle-on-disabled-notch": "icon-disabled",
+    "toggle-off-disabled-notch": "icon-disabled",
 
     "editor-floating-toolbar-bg": "layer-2-bg",
     "popup-completion-match-text": "blue-90",
@@ -300,6 +310,7 @@
     "tree-indent-guide-border": "gray-40",
 
     "icon-default-stroke": "gray-120",
+    "icon-disabled": "gray-70",
     "icon-over-accent": "white",
     "icon-green-stroke": "green-90",
 
@@ -469,6 +480,10 @@
       "successBorderColor": "feedback-success-border",
       "infoBackground": "feedback-brand-bg",
       "infoBorderColor": "feedback-brand-border",
+      "infoMutedBackground": "blue-30",
+      "infoMutedBorderColor": "blue-40",
+      "neutralMutedBackground": "gray-30",
+      "neutralMutedBorderColor": "gray-40",
       "aiBackground": "feedback-ai-bg",
       "aiBorderColor": "feedback-ai-border",
       "arc": 12,
@@ -861,6 +876,14 @@
       "border": "com.intellij.ide.ui.laf.darcula.ui.DarculaTextBorderNew"
     },
 
+    "PillButton": {
+      "blueForeground": "blue-100",
+      "blueBorderColor": "blue-90",
+      "blueHoverForeground": "blue-100",
+      "blueHoverBackground": "blue-40",
+      "blueHoverBorderColor": "blue-90"
+    },
+
     "Plugins": {
       "SectionHeader.background": "dialog-bg-inline",
       "hoverBackground": "selection-bg-hovered",
@@ -1130,15 +1153,6 @@
       "warningForeground": "text-default"
     },
 
-    "ToggleButton": {
-      "onBackground": "control-success-bg",
-      "onForeground": "text-over-accent",
-      "offBackground": "toggle-off-bg",
-      "offForeground": "text-secondary",
-      "buttonColor": "toggle-button-bg",
-      "borderColor": "toggle-border"
-    },
-
     "ToolWindow": {
       "background": "tool-window-bg",
       "borderColor": "transparent",
@@ -1169,7 +1183,8 @@
         }
       },
       "DragAndDrop": {
-        "areaBackground": "#366ACF4D"
+        "areaBackground": "#366ACF4D",
+        "hintBackground": "#366ACF1A"
       }
     },
 

@@ -6,6 +6,9 @@ import com.intellij.codeInsight.intention.preview.IntentionPreviewInfo
 import com.intellij.codeInspection.LocalQuickFix
 import com.intellij.codeInspection.ProblemDescriptor
 import com.intellij.codeInspection.ProblemsHolder
+import com.intellij.codeInspection.options.OptPane
+import com.intellij.codeInspection.options.OptPane.checkbox
+import com.intellij.codeInspection.options.OptPane.pane
 import com.intellij.lang.injection.InjectedLanguageManager
 import com.intellij.openapi.application.runWriteAction
 import com.intellij.openapi.components.serviceOrNull
@@ -19,6 +22,7 @@ import com.intellij.refactoring.move.moveClassesOrPackages.AutocreatingSingleSou
 import com.intellij.refactoring.move.moveFilesOrDirectories.MoveFilesOrDirectoriesUtil
 import com.intellij.refactoring.util.CommonMoveClassesOrPackagesUtil
 import com.intellij.refactoring.util.RefactoringMessageUtil
+import org.jetbrains.kotlin.idea.base.psi.setPackageFqName
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.base.util.hasIdentifiersOnly
 import org.jetbrains.kotlin.idea.base.util.module
@@ -37,13 +41,24 @@ import org.jetbrains.kotlin.psi.KtVisitor
 import org.jetbrains.kotlin.psi.KtVisitorVoid
 
 class PackageDirectoryMismatchInspection : AbstractKotlinInspection() {
+    @JvmField
+    var reportImplicitPackagePrefix: Boolean = false
+
+    override fun getOptionsPane(): OptPane = pane(
+        checkbox("reportImplicitPackagePrefix", KotlinBundle.message("inspection.package.directory.mismatch.report.implicit.package.prefix.mismatch"))
+    )
+
     override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean): KtVisitor<*, *> = object : KtVisitorVoid() {
         override fun visitPackageDirective(directive: KtPackageDirective) {
             val project = holder.project
             val file = directive.containingKtFile
+            val packageMatches = if (reportImplicitPackagePrefix)
+                file.packageFqName == file.getFqNameByDirectory()
+            else
+                file.packageMatchesDirectoryOrImplicit()
             if (file.textLength == 0
                 || InjectedLanguageManager.getInstance(project).isInjectedFragment(file)
-                || file.packageMatchesDirectoryOrImplicit()) return
+                || packageMatches) return
 
             val fixes = mutableListOf<LocalQuickFix>()
             val qualifiedName = directive.qualifiedName
@@ -63,7 +78,7 @@ class PackageDirectoryMismatchInspection : AbstractKotlinInspection() {
                     fixes += ChangePackageFix("'${fqNameByDirectory.asString()}'", fqNameByDirectory)
             }
             val fqNameWithImplicitPrefix = file.parent?.getFqNameWithImplicitPrefix()
-            if (fqNameWithImplicitPrefix != null && fqNameWithImplicitPrefix != fqNameByDirectory) {
+            if (fqNameWithImplicitPrefix != null && fqNameWithImplicitPrefix != fqNameByDirectory && fqNameWithImplicitPrefix != file.packageFqName) {
                 fixes += ChangePackageFix("'${fqNameWithImplicitPrefix.asString()}'", fqNameWithImplicitPrefix)
             }
 
@@ -137,7 +152,7 @@ class PackageDirectoryMismatchInspection : AbstractKotlinInspection() {
         override fun generatePreview(project: Project, previewDescriptor: ProblemDescriptor): IntentionPreviewInfo {
             val file = previewDescriptor.psiElement as? KtFile ?: return IntentionPreviewInfo.EMPTY
             val packageDirective = file.packageDirective ?: return IntentionPreviewInfo.EMPTY
-            packageDirective.fqName = packageFqName
+            packageDirective.setPackageFqName(packageFqName)
             return IntentionPreviewInfo.DIFF
         }
     }

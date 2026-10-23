@@ -1,0 +1,6 @@
+<idea-plugin>
+  <actions>
+    <action id="NextTemplateParameter" class="com.intellij.codeInsight.completion.NextPrevParameterAction$Next"/>
+    <action id="PrevTemplateParameter" class="com.intellij.codeInsight.completion.NextPrevParameterAction$Prev"/>
+  </actions>
+</idea-plugin>

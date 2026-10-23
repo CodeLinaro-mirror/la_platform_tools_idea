@@ -11,6 +11,10 @@ fun Driver.getPlugin(id: String): PluginDescriptor? {
   return utility<PluginManagerCore>().getPlugin(utility(PluginId::class).getId(id))
 }
 
+fun Driver.getInstalledPlugins(): Array<PluginDescriptor> {
+  return utility<PluginManagerCore>().getPlugins()
+}
+
 fun Driver.getEnabledPlugins(): Array<PluginDescriptor> {
   return utility<PluginManagerCore>().getLoadedPlugins()
 }
@@ -43,6 +47,7 @@ interface PluginId {
 @Remote("com.intellij.ide.plugins.PluginManagerCore")
 interface PluginManagerCore {
   fun getPlugin(pluginId: PluginId): PluginDescriptor?
+  fun getPlugins(): Array<PluginDescriptor>
   fun getLoadedPlugins(): Array<PluginDescriptor>
   fun arePluginsInitialized(): Boolean
   fun isLoaded(pluginId: PluginId): Boolean
@@ -65,6 +70,20 @@ interface PluginDescriptor {
 @Remote("com.intellij.ide.plugins.DynamicPlugins")
 interface DynamicPlugins {
   fun loadPlugins(plugins: List<PluginDescriptor>, project: Project?): Boolean
+}
+
+fun Driver.getPluginHomepageUrl(pluginId: String): String? =
+  service(MarketplaceCustomizationService::class)
+    .getPluginHomepageUrl(utility(PluginId::class).getId(pluginId))
+
+@Remote("com.intellij.ide.plugins.marketplace.utils.MarketplaceCustomizationService")
+interface MarketplaceCustomizationService {
+  fun getPluginHomepageUrl(pluginId: PluginId): String?
+}
+
+@Remote("com.intellij.ide.plugins.CountIcon")
+interface CountIcon {
+  fun getText(): String
 }
 
 /**

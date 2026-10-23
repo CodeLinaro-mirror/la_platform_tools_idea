@@ -119,10 +119,17 @@ a:com.intellij.openapi.actionSystem.AnAction
 - com.intellij.openapi.actionSystem.ActionUpdateThreadAware
 - com.intellij.openapi.project.PossiblyDumbAware
 - *:<init>(java.util.function.Supplier,java.util.function.Supplier):V
+- *:<init>(java.util.function.Supplier,java.util.function.Supplier,com.intellij.platform.icons.IconDescriptor,javax.swing.Icon):V
 - *:<init>(java.util.function.Supplier,java.util.function.Supplier,java.util.function.Supplier):V
 f:com.intellij.openapi.actionSystem.Presentation
 - java.lang.Cloneable
+- *sf:NO_ICON_DESCRIPTOR:com.intellij.platform.icons.IconDescriptor
+- *sf:PROP_ICON_DESCRIPTOR:java.lang.String
+- *:getIconDescriptor():com.intellij.platform.icons.IconDescriptor
+- *:getIconDescriptorSupplier():java.util.function.Supplier
 - *:isRWLockRequired():Z
+- *:setIconDescriptor(com.intellij.platform.icons.IconDescriptor):V
+- *:setIconDescriptorSupplier(java.util.function.Supplier):V
 - *:setRWLockRequired(Z):V
 *:com.intellij.openapi.editor.CustomFoldRegion
 - com.intellij.openapi.editor.FoldRegion
@@ -177,17 +184,14 @@ com.intellij.openapi.editor.EditorSettings
 - *a:setSmoothCaretMovement(Z):V
 *e:com.intellij.openapi.editor.EditorSettings$CaretEasing
 - java.lang.Enum
-- sf:EASE:com.intellij.openapi.editor.EditorSettings$CaretEasing
-- sf:NINJA:com.intellij.openapi.editor.EditorSettings$CaretEasing
+- sf:GLIDING:com.intellij.openapi.editor.EditorSettings$CaretEasing
+- sf:SNAPPY:com.intellij.openapi.editor.EditorSettings$CaretEasing
 - s:valueOf(java.lang.String):com.intellij.openapi.editor.EditorSettings$CaretEasing
 - s:values():com.intellij.openapi.editor.EditorSettings$CaretEasing[]
 *:com.intellij.openapi.editor.EditorThreading
 - *sf:Companion:com.intellij.openapi.editor.EditorThreading$Companion
 - *s:assertInteractionAllowed():V
 - *s:compute(com.intellij.openapi.util.ThrowableComputable):java.lang.Object
-- a:doAssertInteractionAllowed():V
-- a:doCompute(com.intellij.openapi.util.ThrowableComputable):java.lang.Object
-- a:doRun(java.lang.Runnable):V
 - *s:run(java.lang.Runnable):V
 *f:com.intellij.openapi.editor.EditorThreading$Companion
 - f:assertInteractionAllowed():V
@@ -204,6 +208,8 @@ com.intellij.openapi.editor.EditorSettings
 - runBatchMutation(kotlin.jvm.functions.Function1):java.lang.Object
 com.intellij.openapi.editor.FoldingModel
 - *:addCustomLinesFolding(I,I,com.intellij.openapi.editor.CustomFoldRegionRenderer):com.intellij.openapi.editor.CustomFoldRegion
+com.intellij.openapi.editor.LineWrapPositionStrategy
+- *:isSoftWrappingAllowed(com.intellij.openapi.editor.Editor,I):Z
 *:com.intellij.openapi.editor.ScrollPositionCalculator
 - calcOffsetsToScroll(com.intellij.openapi.editor.Editor,java.awt.Point,com.intellij.openapi.editor.ScrollType,java.awt.Rectangle,javax.swing.JScrollPane):java.awt.Point
 - a:getHorizontalOffset(com.intellij.openapi.editor.Editor,java.awt.Point,com.intellij.openapi.editor.ScrollType,java.awt.Rectangle,javax.swing.JScrollPane):I

@@ -1,24 +1,16 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.intellij.build.impl
 
-import java.util.TreeMap
-
 enum class LibraryPackMode {
-  // merged into some uber-JAR
-  MERGED,
   // all JARs of the library are merged into a JAR named after the library
   STANDALONE_MERGED,
   // all JARs of the library are included in the dist separately
   STANDALONE_SEPARATE,
-  // all JARs of the library are included in the dist separately with transformed file names (version suffix is removed)
-  STANDALONE_SEPARATE_WITHOUT_VERSION_NAME,
 }
 
 /**
- * @param owner content module ([ModuleItem]) which brings the project library to distribution
- * (commonly when "intellij.libraries.*" content module brings the project library).
- * Or `null` if content modules that hold the project library are not used.
- * So, this library is brought as an `iml` dependency or through custom layout.
+ * @param owner the platform product module ([ModuleItem]) whose jar carries the project library, in most cases a library
+ * module (`intellij.libraries.*`) that exports it. `null` when a layout call packs the library.
  */
 class ProjectLibraryData(
   @JvmField val libraryName: String,
@@ -32,10 +24,6 @@ class ProjectLibraryData(
       "Empty outPath is not allowed, please pass null. libraryName=$libraryName"
     }
   }
-
-  // plugin to a list of modules that uses the library
-  @JvmField
-  val dependentModules: MutableMap<String, MutableList<String>> = TreeMap()
 
   override fun equals(other: Any?): Boolean {
     return this === other ||

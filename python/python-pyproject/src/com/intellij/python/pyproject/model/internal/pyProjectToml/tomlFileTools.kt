@@ -1,7 +1,6 @@
 package com.intellij.python.pyproject.model.internal.pyProjectToml
 
 import com.intellij.openapi.diagnostic.fileLogger
-import com.intellij.python.pyproject.PY_PROJECT_TOML
 import com.intellij.python.pyproject.PyProjectToml
 import com.intellij.python.pyproject.model.spi.ProjectDependencies
 import com.intellij.python.pyproject.model.spi.ProjectName
@@ -10,120 +9,55 @@ import com.intellij.python.pyproject.model.spi.TomlDependencySpecification
 import com.intellij.python.pyproject.safeGet
 import com.intellij.python.pyproject.safeGetArr
 import com.intellij.util.concurrency.annotations.RequiresBackgroundThread
-import com.jetbrains.python.Result
 import com.jetbrains.python.venvReader.Directory
-import com.jetbrains.python.venvReader.VirtualEnvReader
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import org.apache.tuweni.toml.TomlTable
-import java.io.IOException
 import java.net.URI
 import java.net.URISyntaxException
-import java.nio.file.FileVisitResult
 import java.nio.file.InvalidPathException
 import java.nio.file.Path
-import kotlin.io.path.name
-import kotlin.io.path.readText
 import kotlin.io.path.toPath
-import kotlin.io.path.visitFileTree
 
-// Tools to walk FS and parse pyproject.toml
+// Tools to find and parse pyproject.toml
 /**
- * Walks down the [root]. Like [walkFileSystemNoTomlContent] but with TOML files content
+ * Finds every `pyproject.toml` under [roots] and reads its content.
+ *
+ * [findPyProjectTomlFilesInIndex] does the search. It reads the VFS filename index and needs no filesystem walk.
+ * The search reads no directory of its own, so it reports no I/O error and this method needs no result wrapper.
  */
-internal suspend fun walkFileSystemWithTomlContent(
+internal suspend fun findPyProjectTomlWithContent(
   roots: Set<Directory>,
   excludedPaths: Set<Path> = emptySet(),
-): Result<FSWalkInfoWithToml, IOException> {
-  val rawTomlFiles = walkFileSystemNoTomlContent(roots, excludedPaths).getOr { return it }.rawTomlFiles
+): FSWalkInfoWithToml {
+  val rawTomlFiles = findPyProjectTomlFilesInIndex(roots, excludedPaths)
 
-  // TODO: with a big number of files, use `chunk` to parse them concurrently
-  val tomlFiles = rawTomlFiles.map { file ->
-    val toml = readFile(file) ?: return@map null
-    file to toml
-  }.filterNotNull().toMap()
-  return Result.success(FSWalkInfoWithToml(tomlFiles = tomlFiles))
-}
-
-/**
- * Walks down [roots], returns all [PY_PROJECT_TOML]  (started with dot).
- * [IOException] is returned if one of the [roots] is inaccessible
- */
-suspend fun walkFileSystemNoTomlContent(
-  roots: Set<Directory>,
-  excludedPaths: Set<Path> = emptySet(),
-): Result<FsWalkInfoNoToml, IOException> {
-  val rawTomlFiles = ArrayList<Path>(10)
-  // TODO: Measure performance, parallelize if needed
-  for (root in roots) {
-    try {
-      withContext(Dispatchers.IO) {
-        walkFileSystemNoTomlContent(root, rawTomlFiles, excludedPaths)
-      }
-    }
-    catch (e: IOException) {
-      return Result.failure(e)
-    }
+  // `awaitAll` keeps the order of `rawTomlFiles`, so the resulting map stays deterministic.
+  val tomlFiles = coroutineScope {
+    rawTomlFiles
+      .map { file -> async(Dispatchers.Default) { readFile(file)?.let { toml -> file to toml } } }
+      .awaitAll()
+      .filterNotNull()
+      .toMap()
   }
-  return Result.success(FsWalkInfoNoToml(rawTomlFiles = rawTomlFiles))
-}
-
-@Throws(IOException::class)
-@RequiresBackgroundThread
-private fun walkFileSystemNoTomlContent(
-  root: Directory,
-  rawTomlFiles: MutableList<Path>,
-  excludedPaths: Set<Path>,
-) {
-  root.visitFileTree {
-    onVisitFile { file, _ ->
-      if (file.name == PY_PROJECT_TOML) {
-        rawTomlFiles.add(file)
-      }
-      return@onVisitFile FileVisitResult.CONTINUE
-    }
-    onPreVisitDirectory { directory, _ ->
-      val dirName = directory.name
-
-      // default name is popular enough to make a shortcut
-      if (dirName == VirtualEnvReader.DEFAULT_VIRTUALENV_DIRNAME
-          || VirtualEnvReader().findPythonInPythonRoot(directory) != null) {
-        // Venv: exclude and skip
-        FileVisitResult.SKIP_SUBTREE
-      }
-      else if (dirName.startsWith(".")) {
-        // Dot: just skip
-        FileVisitResult.SKIP_SUBTREE
-      }
-      else if (directory in excludedPaths) {
-        // Excluded folder: skip (pyproject.toml inside excluded folders should not become modules)
-        FileVisitResult.SKIP_SUBTREE
-      }
-      else {
-        FileVisitResult.CONTINUE
-      }
-    }
-  }
+  return FSWalkInfoWithToml(tomlFiles = tomlFiles)
 }
 
 private val logger = fileLogger()
 
+/**
+ * The caller selects the dispatcher for the parse, because [PyProjectToml.parse] runs on it.
+ * [PyProjectToml.parseOrNull] reads the file on [Dispatchers.IO] itself.
+ */
 private suspend fun readFile(file: Path): PyProjectToml? {
-  val content = try {
-    withContext(Dispatchers.IO) { file.readText() }
+  val toml = PyProjectToml.parseOrNull(file) ?: return null
+  if (toml.issues.isNotEmpty()) {
+    logger.warn("Errors on $file: ${toml.issues.joinToString(", ")}")
   }
-  catch (e: IOException) {
-    logger.warn("Can't read $file", e)
-    return null
-  }
-  return withContext(Dispatchers.Default) {
-    val toml = PyProjectToml.parse(content) ?: return@withContext null
-    val errors = toml.issues.joinToString(", ")
-    if (errors.isNotBlank()) {
-      logger.warn("Errors on $file: $errors")
-    }
-    toml
-  }
+  return toml
 }
 
 internal suspend fun getDependenciesFromToml(
@@ -147,16 +81,15 @@ private fun processDependenciesWithRootIndex(dependencies: Sequence<Directory>, 
     }
   }.toSet()
 
-@RequiresBackgroundThread
+@RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
 private fun collectAllDependencies(
   entry: PyProjectTomlProject, tomlDependencySpecifications: List<TomlDependencySpecification>,
 ): Sequence<Directory> = sequence {
-  yieldAll(getDependenciesFromProject(entry.root, entry.pyProjectToml))
-  yieldAll(getDependenciesFromPep735Groups(entry.root, entry.pyProjectToml))
+  yieldAll(getDeclaredPathDependencies(entry.root, entry.pyProjectToml))
   yieldAll(getToolSpecificDependencies(entry.root, entry.pyProjectToml.toml, tomlDependencySpecifications))
 }
 
-@RequiresBackgroundThread
+@RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
 private fun getToolSpecificDependencies(
   root: Path, tomlTable: TomlTable, tomlDependencySpecifications: List<TomlDependencySpecification>,
 ): Sequence<Directory> {
@@ -165,51 +98,62 @@ private fun getToolSpecificDependencies(
       // PY-91089: use safeGet instead of TomlTable.getTable, which throws TomlInvalidTypeException
       // (not returns null) when the key holds a non-table value such as an array (the `[[tool.uv.sources]]`
       // double-bracket typo). An unhandled throw here aborts the whole model sync and hides every member.
-      is TomlDependencySpecification.PathDependency -> tomlTable.safeGet<TomlTable>(specification.tomlKey, unquotedDottedKey = true).successOrNull?.let {
+      is TomlDependencySpecification.PathDependency -> tomlTable.safeGet<TomlTable>(specification.tomlKey,
+                                                                                    unquotedDottedKey = true).successOrNull?.let {
         getToolSpecificDependenciesFromTomlTable(root, it)
       } ?: emptySet()
       is TomlDependencySpecification.Pep621Dependency -> getPep621Dependencies(root, tomlTable, specification.tomlKey).toSet()
       is TomlDependencySpecification.GroupPathDependency -> {
-        val groups = tomlTable.safeGet<TomlTable>(specification.tomlKeyToGroup, unquotedDottedKey = true).successOrNull ?: return@flatMap emptySet()
+        val groups =
+          tomlTable.safeGet<TomlTable>(specification.tomlKeyToGroup, unquotedDottedKey = true).successOrNull ?: return@flatMap emptySet()
         groups.keySet().flatMap { group ->
-          groups.safeGet<TomlTable>("${group}.${specification.tomlKeyFromGroupToPath}", unquotedDottedKey = true).successOrNull?.let {
-            getToolSpecificDependenciesFromTomlTable(root, it)
-          } ?: emptySet()
+          // A group name is a single literal key that may itself contain a dot, so look it up quoted
+          // and only then descend into the nested key.
+          groups.safeGet<TomlTable>(group, unquotedDottedKey = false).successOrNull
+            ?.safeGet<TomlTable>(specification.tomlKeyFromGroupToPath, unquotedDottedKey = false)?.successOrNull?.let {
+              getToolSpecificDependenciesFromTomlTable(root, it)
+            } ?: emptySet()
         }
       }
       is TomlDependencySpecification.GroupPep621Dependency -> {
-        val groups = tomlTable.safeGet<TomlTable>(specification.tomlKeyToGroup, unquotedDottedKey = true).successOrNull ?: return@flatMap emptySet()
+        val groups =
+          tomlTable.safeGet<TomlTable>(specification.tomlKeyToGroup, unquotedDottedKey = true).successOrNull ?: return@flatMap emptySet()
         groups.keySet().flatMap { group ->
-          getPep621Dependencies(root, groups, "${group}.${specification.tomlKeyFromGroupToDependencies}")
+          val groupTable = groups.safeGet<TomlTable>(group, unquotedDottedKey = false).successOrNull
+          if (groupTable == null) emptySet()
+          else getPep621Dependencies(root, groupTable, specification.tomlKeyFromGroupToDependencies)
         }
       }
     }
   }
 }
 
-@RequiresBackgroundThread
+@RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
 private fun getPep621Dependencies(root: Path, tomlTable: TomlTable, tomlKeyToDependencies: String): Set<Path> {
   val deps = tomlTable.safeGetArr<String>(tomlKeyToDependencies, unquotedDottedKey = true).successOrNull ?: return emptySet()
   return deps.asSequence().mapNotNull { parsePep621Dependency(root, it) }.toSet()
 }
 
-@RequiresBackgroundThread
+@RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
 private fun getToolSpecificDependenciesFromTomlTable(root: Path, tomlTable: TomlTable): Set<Directory> {
-  return tomlTable.keySet().asSequence().mapNotNull {
+  return tomlTable.keySet().asSequence().mapNotNull { depName ->
     // PY-91089: safeGet instead of getString, which throws when `<dep>.path` holds a non-string value.
-    tomlTable.safeGet<String>("${it}.path", unquotedDottedKey = true).successOrNull?.let { depPathString -> parseDepFromPathString(root, depPathString) }
+    // PY-90207: the dependency name is one literal key and may contain a dot (`zope.interface`,
+    // `ruamel.yaml`), so it must be looked up quoted; `path` is then read from the nested table.
+    tomlTable.safeGet<TomlTable>(depName, unquotedDottedKey = false).successOrNull
+      ?.safeGet<String>("path", unquotedDottedKey = false)?.successOrNull?.let { depPathString ->
+        parseDepFromPathString(root, depPathString)
+      }
   }.toSet()
 }
 
-@RequiresBackgroundThread
-private fun getDependenciesFromPep735Groups(root: Path, tomlTable: PyProjectToml): Sequence<Directory> =
-  tomlTable.project.dependencies.allDepsFromGroups.asSequence().mapNotNull { parsePep621Dependency(root, it) }
-
-@RequiresBackgroundThread
-private fun getDependenciesFromProject(root: Path, projectToml: PyProjectToml): Sequence<Directory> {
-  val depsFromFile = projectToml.project.dependencies.project
-  return depsFromFile.asSequence().mapNotNull { parsePep621Dependency(root, it) }
-}
+/**
+ * Path dependencies (`lib @ file:///...`) among every dependency this file declares: `project.dependencies`,
+ * the `project.optional-dependencies` extras, and the PEP 735 `dependency-groups`.
+ */
+@RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
+private fun getDeclaredPathDependencies(root: Path, projectToml: PyProjectToml): Sequence<Directory> =
+  projectToml.allDeclaredDeps.asSequence().mapNotNull { parsePep621Dependency(root, it) }
 
 private fun parsePep621Dependency(root: Path, depSpec: String): Path? {
   val match = PEP_621_PATH_DEPENDENCY.matchEntire(depSpec) ?: return null
@@ -223,6 +167,7 @@ private fun parsePep621Dependency(root: Path, depSpec: String): Path? {
 
 // e.g. "lib @ file:///home/user/projects/main/lib"
 private val PEP_621_PATH_DEPENDENCY = """([\w-]+) @ (.*)""".toRegex()
+
 // e.g. "{root:parent:uri}/lib"
 private val HATCH_ROOT_URI = """\{root((?::parent)*):uri}(/.*)?""".toRegex()
 
@@ -242,24 +187,22 @@ private fun Path.nthParent(count: Int): Path? {
   return current
 }
 
-private fun parseDepUri(depUri: String): Path? =
-  try {
-    URI(depUri).toPath()
-  }
-  catch (e: InvalidPathException) {
-    logger.info("Dep $depUri points to wrong path", e)
-    null
-  }
-  catch (e: URISyntaxException) {
-    logger.info("Dep $depUri can't be parsed", e)
-    null
-  }
+private fun parseDepUri(depUri: String): Path? = try {
+  URI(depUri).toPath()
+}
+catch (e: InvalidPathException) {
+  logger.info("Dep $depUri points to wrong path", e)
+  null
+}
+catch (e: URISyntaxException) {
+  logger.info("Dep $depUri can't be parsed", e)
+  null
+}
 
-private fun parseDepFromPathString(root: Path, depPathString: String): Path? =
-  try {
-    root.resolve(depPathString).normalize()
-  }
-  catch (e: InvalidPathException) {
-    logger.info("Dep $depPathString points to wrong path", e)
-    null
-  }
+private fun parseDepFromPathString(root: Path, depPathString: String): Path? = try {
+  root.resolve(depPathString).normalize()
+}
+catch (e: InvalidPathException) {
+  logger.info("Dep $depPathString points to wrong path", e)
+  null
+}

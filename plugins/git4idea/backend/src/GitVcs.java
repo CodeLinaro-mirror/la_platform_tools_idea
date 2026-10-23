@@ -67,13 +67,13 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
 
 import java.util.Collections;
-import java.util.Date;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
+import static com.intellij.ide.impl.ProjectUtil.isRealProject;
 import static com.intellij.util.concurrency.AppJavaExecutorUtil.executeOnPooledIoThread;
 
 /**
@@ -126,7 +126,7 @@ public final class GitVcs extends AbstractVcs {
 
   @Override
   public @Nullable CheckinEnvironment getCheckinEnvironment() {
-    if (myProject.isDefault()) return null;
+    if (!isRealProject(myProject)) return null;
     return myProject.getService(GitCheckinEnvironment.class);
   }
 
@@ -178,12 +178,6 @@ public final class GitVcs extends AbstractVcs {
   @Override
   public @Nullable VcsRevisionNumber parseRevisionNumber(@Nullable String revision, @Nullable FilePath path) throws VcsException {
     if (revision == null || revision.isEmpty()) return null;
-    if (revision.length() > 40) {    // date & revision-id encoded string
-      String dateString = revision.substring(0, revision.indexOf("["));
-      String rev = revision.substring(revision.indexOf("[") + 1, 40);
-      Date d = new Date(Date.parse(dateString));
-      return new GitRevisionNumber(rev, d);
-    }
     if (path != null) {
       try {
         VirtualFile root = GitUtil.getRootForFile(myProject, path);

@@ -1,18 +1,20 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.vcs;
 
-import com.intellij.ide.impl.OpenProjectTask;
 import com.intellij.ide.impl.ProjectUtil;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Pair;
-import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.StandardFileSystems;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.platform.PlatformProjectOpenProcessor;
 import com.intellij.projectImport.ProjectSetProcessor;
+import kotlin.Unit;
 import org.jetbrains.annotations.NotNull;
 
 import java.nio.file.Paths;
 import java.util.List;
+
+import static com.intellij.ide.impl.OpenProjectTaskKt.OpenProjectTask;
 
 final class OpenProjectSetProcessor extends ProjectSetProcessor {
   @Override
@@ -26,7 +28,7 @@ final class OpenProjectSetProcessor extends ProjectSetProcessor {
     for (Pair<String, String> entry : entries) {
       if ("project".equals(entry.getFirst())) {
         String path = root == null ? entry.getSecond() : (root + "/" + entry.getSecond());
-        context.project = ProjectUtil.openProject(Paths.get(path), OpenProjectTask.build().withProjectToClose(null));
+        context.project = ProjectUtil.openProject(Paths.get(path), OpenProjectTask(_ -> Unit.INSTANCE));
         if (context.project != null) {
           runNext.run();
         }
@@ -35,7 +37,7 @@ final class OpenProjectSetProcessor extends ProjectSetProcessor {
     }
 
     // no "project" entry
-    VirtualFile dir = LocalFileSystem.getInstance().refreshAndFindFileByPath(root);
+    VirtualFile dir = StandardFileSystems.local().refreshAndFindFileByPath(root);
     if (dir != null) {
       Project project = PlatformProjectOpenProcessor.openProjectLegacyJavaApi(dir, null, false);
       if (project != null) {

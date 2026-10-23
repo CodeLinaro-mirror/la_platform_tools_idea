@@ -1,8 +1,15 @@
 load("@community//build:tests-options.bzl", "jps_test")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
-### auto-generated section `build intellij.platform.workspace.jps.tests` start
+jps_test(
+    name = "tests_test",
+    timeout = "moderate",
+    tags = ["community-aggregator"],
+    runtime_deps = [":tests_test_lib"],
+)
+### skip generation section `test intellij.platform.workspace.jps.tests`
 
+### auto-generated section `build intellij.platform.workspace.jps.tests` start
 jvm_library(
     name = "tests",
     srcs = glob(
@@ -19,6 +26,7 @@ jvm_library(
         "//platform/lang-impl:lang-tests",
         "//platform/core-ui",
         "//libraries/kotlinx/collections-immutable:libraries-kotlinx-collections-immutable",
+        "//xml/plugin",
     ],
 )
 
@@ -48,6 +56,7 @@ jvm_library(
         # do not sort,
         ":tests",
         "//platform/ide-core:ide-core_test_lib",
+        "//xml/plugin:plugin_test_lib",
     ],
     deps = [
         # do not sort,
@@ -91,7 +100,8 @@ jvm_library(
         "//libraries/kotlinx/coroutines/core:core_test_lib",
         "//platform/testFramework/junit5",
         "//platform/testFramework/junit5:junit5_test_lib",
-        "@lib//:kotlin-test",
+        "//libraries/kotlin/test:libraries-kotlinTest",
+        "//libraries/kotlin/test:libraries-kotlinTest_test_lib",
         "//platform/backend/workspace",
         "//platform/backend/workspace:workspace_test_lib",
         "//tools/intellij.tools.ide.metrics.benchmark:ide-metrics-benchmark",
@@ -110,16 +120,17 @@ jvm_library(
         "//platform/eel-provider:eel-provider_test_lib",
         "//platform/testFramework/junit5/eel",
         "//platform/testFramework/junit5/eel:eel_test_lib",
-        "@lib//:jet_check",
+        "//libraries/jetcheck",
+        "//libraries/jetcheck:jetcheck_test_lib",
         "//platform/testFramework/junit5/projectStructure",
         "//platform/testFramework/junit5/projectStructure:projectStructure_test_lib",
         "//platform/ide-core",
         "//libraries/junit4",
         "//libraries/junit4:junit4_test_lib",
-        "//libraries/junit5",
-        "//libraries/junit5:junit5_test_lib",
-        "//libraries/junit5-params",
-        "//libraries/junit5-params:junit5-params_test_lib",
+        "//libraries/junit6",
+        "//libraries/junit6:junit6_test_lib",
+        "//libraries/junit6-params",
+        "//libraries/junit6-params:junit6-params_test_lib",
     ],
 )
 ### auto-generated section `build intellij.platform.workspace.jps.tests` end
@@ -132,11 +143,3 @@ exports_files(
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.platform.workspace.jps.tests` end
-
-### auto-generated section `test intellij.platform.workspace.jps.tests` start
-
-jps_test(
-    name = "tests_test",
-    runtime_deps = [":tests_test_lib"],
-)
-### auto-generated section `test intellij.platform.workspace.jps.tests` end

@@ -2,13 +2,19 @@
 package com.jetbrains.python.types
 
 import com.intellij.idea.TestFor
+import com.jetbrains.python.allure.Components
+import com.jetbrains.python.allure.Layers
+import com.jetbrains.python.allure.Subsystems
 import com.jetbrains.python.fixtures.PyCodeInsightTestCase
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 
 /**
- * Type and type-checker tests for variadic generics ([TypeVarTuple][https://peps.python.org/pep-0646/]).
+ * Type and type-checker tests for variadic generics ([TypeVarTuple](https://peps.python.org/pep-0646/)).
  */
+@Subsystems.Typing
+@Components.TypeInference
+@Layers.Functional
 class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
 
   @Nested
@@ -24,7 +30,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       #         ^^^^^ WARNING Unbound type variable
       expr = t
       # └ TYPE tuple[*Shape]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -40,7 +46,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = foo(bar)
       #└ TYPE tuple[int, str]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -57,7 +63,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = foo(bar)
       #└ TYPE tuple[str, str, float | int, int, bool]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -75,7 +81,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       tpl = (42, 1.1, True, ['42'])
       expr = A(tpl)
       # └ TYPE A[float | int, bool, list[str]]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -94,7 +100,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       a = A(tpl)
       expr = a.field
       #└ TYPE tuple[int, float | int, bool, list[str]]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -116,7 +122,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       a = A(tpl)
       expr = a.foo()
       #└ TYPE tuple[int, bool, float | int, str]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -140,7 +146,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       b = A(1, '', True)
       expr = a + b
       #└ TYPE A[int, str, bool, int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -161,7 +167,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       x: int | str
       expr = A(x, (x,), [1])
       #└ TYPE A[int | str, int | str, list[int]]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -184,7 +190,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       arr: Array[int, bool] = Array(shape)
       expr = arr.add_axis_prefix('')
       #└ TYPE Array[str, int, bool]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -207,7 +213,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       arr: Array[list[int], bool] = Array(shape)
       expr = arr.add_axis_suffix('42')
       #└ TYPE Array[list[int], bool, str]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -233,7 +239,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       arr: Array[int, str] = Array(shape)
       expr = arr.add_axis_prefix_suffix([42], {42: '42'}, '42', True)
       #└ TYPE Array[str, dict[int, str], int, str, list[int], bool]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -256,7 +262,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       arr = Array(ts)
       expr = add_suf_pref(arr)
       #└ TYPE Array[int, list[int], bool, str]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -279,7 +285,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       arr = Array(ts)
       expr = del_suf_pref(arr)
       # └ TYPE Array[list[int], bool]
-      """)
+      """.trimIndent())
   }
 
   @Nested
@@ -298,7 +304,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = args_to_tuple(1, 'a')
       #└ TYPE tuple[int, str]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -313,7 +319,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = foo((0, '1'), (1, '0'))
       #└ TYPE tuple[int, str]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -328,7 +334,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = foo(1, '', [], {}, True, '')
       #└ TYPE tuple[str, list[Unknown], dict[Unknown, Unknown], bool, int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -344,8 +350,8 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       
       
       expr = args_to_tuple(1, 'a', 'a', [1], True, 3.3)
-      #└ TYPE tuple[str, list[int], bool, int]
-      """)
+      #└ TYPE tuple[Literal["a"], list[int], bool, Literal[1]]
+      """.trimIndent())
   }
 
   @Nested
@@ -363,7 +369,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       t: MyType[str, bool]
       expr = t
       #└ TYPE tuple[int, str, bool]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -378,7 +384,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       t: MyType[str, bool, float]
       expr = t
       #└ TYPE tuple[int, str, bool, float | int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -394,7 +400,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       t: MyType1[list[str], dict[str, int]]
       expr = t
       #└ TYPE tuple[int, str, list[str], dict[str, int]]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -411,7 +417,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       t: MyType1[list[str], dict[str, int]]
       expr = t
       #└ TYPE tuple[int, str, bool, list[str], dict[str, int]]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -427,7 +433,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       t: MyType1[list[str], dict[str, int]]
       expr = t
       #└ TYPE tuple[int, str, bool, list[str], dict[str, int]]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -438,7 +444,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       t: MyType[*tuple[str, bool, float]]
       expr = t
       #└ TYPE tuple[int, str, bool, float | int]
-      """)
+      """.trimIndent())
   }
 
   @Nested
@@ -466,7 +472,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
 
       expr = expect_variadic_array(y)
       #└ TYPE Array[*tuple[Any, ...], int, str]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -493,7 +499,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
 
       expr = expect_variadic_array(y)
       #└ TYPE Array[*tuple[Any, ...], int, float | int, str]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -520,7 +526,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
 
       expr = expect_variadic_array(y)
       #└ TYPE Array[*tuple[float | int, ...], int, float | int, str]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -547,7 +553,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
 
       expr = expect_variadic_array(y)
       #└ TYPE Array[*tuple[int, ...], int, int, str]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -573,7 +579,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
 
       expr = expect_variadic_array(y)
       #└ TYPE Array[float | int, *tuple[float | int, ...]]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -599,7 +605,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
 
       expr = expect_variadic_array(y)
       #└ TYPE Array[*tuple[float | int, ...], float | int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -628,7 +634,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
 
       expr = expect_variadic_array(y)
       #└ TYPE Array[float | int, *tuple[float | int, ...], float | int, float | int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -657,7 +663,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
 
       expr = expect_variadic_array(y)
       #└ TYPE Array[*Shape]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -686,7 +692,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
 
       expr = expect_variadic_array(y)
       #└ TYPE Array[float | int, *Shape, list[str]]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -716,7 +722,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       expr = expect_variadic_arrays(a, a)
       #│                               └ WARNING Expected type 'Array[int, float | int, bool, list[str], str]', got 'Array[int, float | int, *Shape, list[str], str]' instead
       #└ TYPE Unknown
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -746,7 +752,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       expr = expect_variadic_arrays(a, a)
       #│                               └ WARNING Expected type 'Array[int, float | int, float | int, *Shape, list[str], list[str], str]' (matched generic type 'Array[int, float | int, *Shape1, list[str], str]'), got 'Array[int, float | int, *Shape, list[str], str]' instead
       #└ TYPE Unknown
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -776,7 +782,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       expr = expect_variadic_arrays(a, a)
       #│                               └ WARNING Expected type 'Array[int, float | int, *Shape, bool, list[str], str]', got 'Array[int, float | int, *Shape, list[str], str]' instead
       #└ TYPE Unknown
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -806,7 +812,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       expr = expect_variadic_array(y)
       #│                           └ WARNING Expected type 'Array[int, float | int, *Shape1, str]', got 'Array[int, *Shape, list[str], str]' instead
       #└ TYPE Unknown
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -836,7 +842,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       expr = expect_variadic_array(y)
       #│                           └ WARNING Expected type 'Array[int, *Shape1, int, str]', got 'Array[int, float | int, *Shape, str]' instead
       #└ TYPE Unknown
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -866,7 +872,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       expr = expect_variadic_array(y)
       #│                           └ WARNING Expected type 'Array[int, *Shape1, str]', got 'Array[*Shape]' instead
       #└ TYPE Unknown
-      """)
+      """.trimIndent())
   }
 
   @Nested
@@ -875,11 +881,6 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
     @Test
     @TestFor(issues = ["PY-53105"])
     fun `weak union type of generic variadic method call receiver`() = test(
-      // The original `PyTypingTest` did not assert weak warnings. The new framework surfaces a
-      // `Member 'int' of ... does not have attribute 'get'` weak warning whose multi-word
-      // "WEAK WARNING" severity name cannot be expressed as a comment-span assertion; disable weak
-      // warnings to stay faithful to the original expectation.
-      defaultTestOptions.copy(enableWeakWarnings = false),
       """
       from typing import Any, Generic, TypeVarTuple, Tuple
 
@@ -894,8 +895,9 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
 
       receiver: Any | int | StrBox = ...
       expr = receiver.get()
-      #└ TYPE tuple[str, int, float | int]
-      """)
+      #│              ^^^ WEAK-WARNING Member 'int' of 'Any | int | StrBox' does not have attribute 'get'
+      #└ TYPE tuple[str, int, float | int] | Unknown
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -914,7 +916,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       c = User1((1, '2', 3.3))
       expr = c.get()
       #└ TYPE tuple[int, str, float | int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -935,7 +937,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = dec(('foo', 42))(func)
       #└ TYPE (str, int) -> tuple[int, str, float | int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -958,7 +960,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = f(g)
       #└ TYPE tuple[int, str, float | int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -977,7 +979,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
           for x in iter_entries(("some path", 1, 1.1)):
               expr = x
       #       └ TYPE Entry[str, int, float | int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -1000,7 +1002,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       #                       ^^^ WARNING Expected type 'ListBox[int, str]', got 'EllipsisType' instead
       expr = xs.get()
       #└ TYPE tuple[tuple[int, str]]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-71002"])
@@ -1011,7 +1013,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       class Foo(Generic[T, *DefaultTs]): ...
       expr = Foo()
       #└ TYPE Foo[list[Unknown], list[Unknown], int]
-      """)
+      """.trimIndent())
   }
 
   @Nested
@@ -1028,7 +1030,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = foo(bar)
       #└ TYPE tuple[int, str]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-61883"])
@@ -1041,7 +1043,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = foo(bar)
       #└ TYPE tuple[str, str, float | int, int, bool]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-61883"])
@@ -1055,7 +1057,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       tpl = (42, 1.1, True, ['42'])
       expr = A(tpl)
       #└ TYPE A[float | int, bool, list[str]]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-61883"])
@@ -1070,7 +1072,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       a = A(tpl)
       expr = a.field
       #└ TYPE tuple[int, float | int, bool, list[str]]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-61883"])
@@ -1086,7 +1088,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       x: int | str
       expr = A(x, (x,), [1])
       #└ TYPE A[int | str, int | str, list[int]]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-61883"])
@@ -1103,8 +1105,8 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       shape = (42, True)
       arr: Array[int, bool] = Array(shape)
       expr = arr.add_axis_prefix('')
-      #└ TYPE Array[str, int, bool]
-      """)
+      #└ TYPE Array[Literal[""], int, bool]
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-61883"])
@@ -1114,8 +1116,8 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       def args_to_tuple[T1, T2, *Ts](t1: T1, t2: T2, *args: *Tuple[T2, *Ts, float]) -> Tuple[T2, *Ts, T1]: ...
       
       expr = args_to_tuple(1, 'a', 'a', [1], True, 3.3)
-      #└ TYPE tuple[str, list[int], bool, int]
-      """)
+      #└ TYPE tuple[Literal["a"], list[int], bool, Literal[1]]
+      """.trimIndent())
   }
 
   @Nested
@@ -1135,7 +1137,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       
       
       foo(10, (1, '1', [1]))
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-63820"])
@@ -1150,7 +1152,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       
       
       foo()
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -1168,8 +1170,8 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       foo(1, baz, args=(0, 'foo', 1.0, False))
       
       foo(1, bar, args=('foo', 0)) # WARNING Expected type 'tuple[int, str]' (matched generic type 'tuple[*Ts]'), got 'tuple[Literal['foo'], Literal[0]]' instead
-      foo(1, baz, args=('foo', 0, 1.0, False)) # WARNING Expected type 'tuple[int, str, float | int, bool]' (matched generic type 'tuple[*Ts]'), got 'tuple[Literal['foo'], Literal[0], float, Literal[False]]' instead
-      """)
+      foo(1, baz, args=('foo', 0, 1.0, False)) # WARNING Expected type 'tuple[int, str, float | int, bool]' (matched generic type 'tuple[*Ts]'), got 'tuple[Literal['foo'], Literal[0], float | int, Literal[False]]' instead
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -1197,7 +1199,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       
       foo(err1) # WARNING Expected type '(int, str, bool, list[int]) -> tuple[list[int], str, bool]' (matched generic type '(int, *Ts, T) -> tuple[T, *Ts]'), got '(a: int, b: str, c: bool, d: list[int]) -> tuple[list[int], str, str]' instead
       foo(err2) # WARNING Expected type '(int, str) -> tuple[str]' (matched generic type '(int, *Ts, T) -> tuple[T, *Ts]'), got '(a: int, b: str) -> tuple[str, str]' instead
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -1223,7 +1225,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       
       foo(x, y) # WARNING Expected type 'Array[int]' (matched generic type 'Array[*Ts]'), got 'Array[str]' instead
       foo(x, z) # WARNING Expected type 'Array[int]' (matched generic type 'Array[*Ts]'), got 'Array[int, str]' instead
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -1256,7 +1258,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       
       k: Array[int, int]
       foo(k) # WARNING Expected type 'Array[int, *tuple[Any, ...], str]', got 'Array[int, int]' instead
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -1283,7 +1285,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       #       │   │   ^^ WARNING Expected type '*tuple[str, str, str, int]' (matched generic type '*tuple[*Ts, int]'), got '*tuple[Literal[""], Literal[""], Literal[""], float]' instead
       #       │   ^^ WARNING Expected type '*tuple[str, str, str, int]' (matched generic type '*tuple[*Ts, int]'), got '*tuple[Literal[""], Literal[""], Literal[""], float]' instead
       #       ^^ WARNING Expected type '*tuple[str, str, str, int]' (matched generic type '*tuple[*Ts, int]'), got '*tuple[Literal[""], Literal[""], Literal[""], float]' instead
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -1325,7 +1327,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       #             │   │   ^^ WARNING Expected type '*tuple[str, list[Unknown], dict[Unknown, Unknown], int]' (matched generic type '*tuple[str, *Ts, int]'), got '*tuple[Literal[""], list[Unknown], dict[Unknown, Unknown]]' instead
       #             │   ^^ WARNING Expected type '*tuple[str, list[Unknown], dict[Unknown, Unknown], int]' (matched generic type '*tuple[str, *Ts, int]'), got '*tuple[Literal[""], list[Unknown], dict[Unknown, Unknown]]' instead
       #             ^^ WARNING Expected type '*tuple[str, list[Unknown], dict[Unknown, Unknown], int]' (matched generic type '*tuple[str, *Ts, int]'), got '*tuple[Literal[""], list[Unknown], dict[Unknown, Unknown]]' instead
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105", "PY-76865"])
@@ -1339,7 +1341,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       foo((0,), (1,))
       foo((0,), (1, 2)) # WARNING Expected type 'tuple[int]' (matched generic type 'tuple[*Ts]'), got 'tuple[Literal[1], Literal[2]]' instead
       foo((0,), ('1',)) # WARNING Expected type 'tuple[int]' (matched generic type 'tuple[*Ts]'), got 'tuple[Literal['1']]' instead
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -1382,49 +1384,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       #             │   │   ^^ WARNING Expected type '*tuple[str, list[Unknown], dict[Unknown, Unknown], int]' (matched generic type '*tuple[str, *Ts, int]'), got '*tuple[Literal[""], list[Unknown], dict[Unknown, Unknown]]' instead
       #             │   ^^ WARNING Expected type '*tuple[str, list[Unknown], dict[Unknown, Unknown], int]' (matched generic type '*tuple[str, *Ts, int]'), got '*tuple[Literal[""], list[Unknown], dict[Unknown, Unknown]]' instead
       #             ^^ WARNING Expected type '*tuple[str, list[Unknown], dict[Unknown, Unknown], int]' (matched generic type '*tuple[str, *Ts, int]'), got '*tuple[Literal[""], list[Unknown], dict[Unknown, Unknown]]' instead
-      """)
-
-    @Test
-    @TestFor(issues = ["PY-53105"])
-    fun `variadic generic star args prefix suffix`() = test("""
-      from typing import Tuple, TypeVarTuple, Any
-
-      Ts = TypeVarTuple('Ts')
-
-
-      def foo(a: Tuple[*Ts], *args: *Tuple[str, *Ts, int], b: str) -> None: ...
-
-
-      foo(('', 1), '', '', 1, 1, b='')
-      foo((1,1), '', 1, 1, 1, b='')
-      foo(('',), '', '', 1, b='')
-      foo((), '', 1, b='')
-      foo(([], {}), '', [], {}, 1, b='')
-
-      foo(('', 1), b='') # WARNING Parameter 'args' unfilled, expected '*tuple[str, str, int, int]'
-      foo(('', 1), '', '', '', 1, b='')
-      #            │   │   │   └ WARNING Expected type '*tuple[str, str, int, int]' (matched generic type '*tuple[str, *Ts, int]'), got '*tuple[Literal[""], Literal[""], Literal[""], Literal[1]]' instead
-      #            │   │   ^^ WARNING Expected type '*tuple[str, str, int, int]' (matched generic type '*tuple[str, *Ts, int]'), got '*tuple[Literal[""], Literal[""], Literal[""], Literal[1]]' instead
-      #            │   ^^ WARNING Expected type '*tuple[str, str, int, int]' (matched generic type '*tuple[str, *Ts, int]'), got '*tuple[Literal[""], Literal[""], Literal[""], Literal[1]]' instead
-      #            ^^ WARNING Expected type '*tuple[str, str, int, int]' (matched generic type '*tuple[str, *Ts, int]'), got '*tuple[Literal[""], Literal[""], Literal[""], Literal[1]]' instead
-      foo((1,1), '', 1, 1, b='')
-      #          │   │  └ WARNING Expected type '*tuple[str, int, int, int]' (matched generic type '*tuple[str, *Ts, int]'), got '*tuple[Literal[""], Literal[1], Literal[1]]' instead
-      #          │   └ WARNING Expected type '*tuple[str, int, int, int]' (matched generic type '*tuple[str, *Ts, int]'), got '*tuple[Literal[""], Literal[1], Literal[1]]' instead
-      #          ^^ WARNING Expected type '*tuple[str, int, int, int]' (matched generic type '*tuple[str, *Ts, int]'), got '*tuple[Literal[""], Literal[1], Literal[1]]' instead
-      foo(('',), '', 1, 1, b='')
-      #          │   │  └ WARNING Expected type '*tuple[str, str, int]' (matched generic type '*tuple[str, *Ts, int]'), got '*tuple[Literal[""], Literal[1], Literal[1]]' instead
-      #          │   └ WARNING Expected type '*tuple[str, str, int]' (matched generic type '*tuple[str, *Ts, int]'), got '*tuple[Literal[""], Literal[1], Literal[1]]' instead
-      #          ^^ WARNING Expected type '*tuple[str, str, int]' (matched generic type '*tuple[str, *Ts, int]'), got '*tuple[Literal[""], Literal[1], Literal[1]]' instead
-      x: Any
-      foo((), '', 42, x, b='')
-      #       │   │   └ WARNING Expected type '*tuple[str, int]' (matched generic type '*tuple[str, *Ts, int]'), got '*tuple[Literal[""], Literal[42], Any]' instead
-      #       │   ^^ WARNING Expected type '*tuple[str, int]' (matched generic type '*tuple[str, *Ts, int]'), got '*tuple[Literal[""], Literal[42], Any]' instead
-      #       ^^ WARNING Expected type '*tuple[str, int]' (matched generic type '*tuple[str, *Ts, int]'), got '*tuple[Literal[""], Literal[42], Any]' instead
-      foo(([], {}), '', [], {}, b='')
-      #             │   │   ^^ WARNING Expected type '*tuple[str, list[Unknown], dict[Unknown, Unknown], int]' (matched generic type '*tuple[str, *Ts, int]'), got '*tuple[Literal[""], list[Unknown], dict[Unknown, Unknown]]' instead
-      #             │   ^^ WARNING Expected type '*tuple[str, list[Unknown], dict[Unknown, Unknown], int]' (matched generic type '*tuple[str, *Ts, int]'), got '*tuple[Literal[""], list[Unknown], dict[Unknown, Unknown]]' instead
-      #             ^^ WARNING Expected type '*tuple[str, list[Unknown], dict[Unknown, Unknown], int]' (matched generic type '*tuple[str, *Ts, int]'), got '*tuple[Literal[""], list[Unknown], dict[Unknown, Unknown]]' instead
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -1441,7 +1401,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
 
       foo('') # WARNING Expected type 'int', got 'Literal[""]' instead
       foo(1, '') # WARNING Expected type 'int', got 'Literal[""]' instead
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -1463,7 +1423,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
           print(x)
       
       expect_variadic_array(y)
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -1485,7 +1445,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
           print(x)
       
       expect_variadic_array(y)
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -1513,7 +1473,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       
       y: Float32Array[Height] = Array()
       takes_float_array_of_specific_shape(y) # WARNING Expected type 'Array[float | int, Height, Width]', got 'Array[float | int, Height]' instead
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -1541,7 +1501,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       
       y: Float32Array[Height, Width] = Array()
       takes_float_array_of_specific_shape(y) # WARNING Expected type 'Array[float | int, Height]', got 'Array[float | int, Height, Width]' instead
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -1553,7 +1513,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
       IntTuple = tuple[int, *Ts]
       
       c: IntTuple[()] = (1, "") # WARNING Expected type 'tuple[int]', got 'tuple[Literal[1], Literal[""]]' instead
-      """)
+      """.trimIndent())
 
     @Test
     fun `version dependent TypeVarTuple initialization`() = test("""
@@ -1565,7 +1525,7 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
           from typing_extensions import TypeVarTuple
       
       PosArgsT = TypeVarTuple("PosArgsT")
-      """)
+      """.trimIndent())
 
     @Test
     fun `TypeVarTuple widening`() = test("""
@@ -1580,6 +1540,6 @@ class PyVariadicGenericTypeTest : PyCodeInsightTestCase() {
           # should this widen to `Sequence[int]` or should it show an error?
           foo((ones,), (twos,))
       #                ^^^^^^^ WARNING Expected type 'tuple[Sequence[Literal[1]]]' (matched generic type 'tuple[*Ts]'), got 'tuple[Sequence[Literal[2]]]' instead
-      """)
+      """.trimIndent())
   }
 }

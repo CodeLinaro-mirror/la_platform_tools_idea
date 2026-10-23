@@ -51,12 +51,11 @@ import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.wm.IdeFocusManager;
-import com.intellij.platform.debugger.impl.shared.proxy.XBreakpointAttachment;
+import com.intellij.platform.debugger.impl.shared.proxy.XBreakpointAttachmentNotifier;
 import com.intellij.platform.debugger.impl.shared.proxy.XBreakpointManagerProxy;
 import com.intellij.platform.debugger.impl.shared.proxy.XBreakpointProxy;
 import com.intellij.platform.debugger.impl.shared.proxy.XDebugManagerProxy;
 import com.intellij.platform.debugger.impl.shared.proxy.XDebugSessionProxy;
-import com.intellij.platform.debugger.impl.shared.proxy.XLineBreakpointProxy;
 import com.intellij.platform.debugger.impl.ui.XDebuggerEntityConverter;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiManager;
@@ -74,6 +73,7 @@ import com.intellij.xdebugger.SplitDebuggerMode;
 import com.intellij.xdebugger.XDebugSession;
 import com.intellij.xdebugger.XDebuggerBundle;
 import com.intellij.xdebugger.XDebuggerManager;
+import com.intellij.xdebugger.XDebuggerUtil;
 import com.intellij.xdebugger.XExpression;
 import com.intellij.xdebugger.XSourcePosition;
 import com.intellij.xdebugger.breakpoints.XBreakpoint;
@@ -82,6 +82,7 @@ import com.intellij.xdebugger.frame.XFullValueEvaluator;
 import com.intellij.xdebugger.frame.XValue;
 import com.intellij.xdebugger.frame.XValueModifier;
 import com.intellij.xdebugger.impl.XSourcePositionImpl;
+import com.intellij.xdebugger.impl.actions.EditBreakpointActionHandler.PreferredFocusOwner;
 import com.intellij.xdebugger.impl.breakpoints.ui.BreakpointsDialogFactory;
 import com.intellij.xdebugger.impl.breakpoints.ui.XLightBreakpointPropertiesPanel;
 import com.intellij.xdebugger.impl.frame.XWatchesView;
@@ -89,7 +90,6 @@ import com.intellij.xdebugger.impl.ui.tree.XDebuggerTree;
 import com.intellij.xdebugger.impl.ui.tree.XDebuggerTreeState;
 import com.intellij.xdebugger.impl.ui.tree.nodes.XValueNodeImpl;
 import com.intellij.xdebugger.impl.ui.visualizedtext.VisualizedTextPopupUtil;
-import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
@@ -112,6 +112,8 @@ import java.awt.event.HierarchyBoundsAdapter;
 import java.awt.event.HierarchyBoundsListener;
 import java.awt.event.HierarchyEvent;
 import java.awt.event.MouseEvent;
+import java.util.Arrays;
+import java.util.Objects;
 
 import static com.intellij.openapi.wm.IdeFocusManager.getGlobalInstance;
 
@@ -284,6 +286,7 @@ public final class DebuggerUIUtil {
       assert document != null;
       editor = editorFactory.createEditor(document, project, virtualFile, isViewer);
     }
+    XDebuggerUtil.getInstance().disableValueLookup(editor);
     editor.getSettings().setLineNumbersShown(false);
     editor.getSettings().setUseSoftWraps(!skipFormatting); // they might be very expensive in case of a huge text
 
@@ -351,7 +354,7 @@ public final class DebuggerUIUtil {
                                                   final JComponent component,
                                                   final boolean showAllOptions,
                                                   final @NotNull XBreakpointProxy breakpoint) {
-    showXBreakpointEditorBalloon(project, point, component, showAllOptions, showAllOptions, breakpoint);
+    showXBreakpointEditorBalloon(project, point, component, showAllOptions, showAllOptions, breakpoint, PreferredFocusOwner.DEFAULT);
   }
 
   @ApiStatus.Obsolete
@@ -374,10 +377,21 @@ public final class DebuggerUIUtil {
                                                   final boolean showActionOptions,
                                                   final boolean showAllOptions,
                                                   final @NotNull XBreakpointProxy breakpoint) {
+    showXBreakpointEditorBalloon(project, point, component, showActionOptions, showAllOptions, breakpoint, PreferredFocusOwner.DEFAULT);
+  }
+
+  @ApiStatus.Internal
+  public static void showXBreakpointEditorBalloon(final Project project,
+                                                  final @Nullable Point point,
+                                                  final JComponent component,
+                                                  final boolean showActionOptions,
+                                                  final boolean showAllOptions,
+                                                  final @NotNull XBreakpointProxy breakpoint,
+                                                  final @NotNull PreferredFocusOwner preferredFocusOwner) {
     XBreakpointManagerProxy managerProxy = XDebugManagerProxy.getInstance().getBreakpointManagerProxy(project);
     final XLightBreakpointPropertiesPanel propertiesPanel =
       new XLightBreakpointPropertiesPanel(project, managerProxy, breakpoint,
-                                          showActionOptions, showAllOptions, true);
+                                          showActionOptions, showAllOptions, true, preferredFocusOwner);
 
     final Ref<Balloon> balloonRef = Ref.create(null);
     final Ref<Boolean> isLoading = Ref.create(Boolean.FALSE);
@@ -391,7 +405,7 @@ public final class DebuggerUIUtil {
         balloonRef.get().hide();
       }
       propertiesPanel.dispose();
-      showXBreakpointEditorBalloon(project, point, component, true, false, breakpoint);
+      showXBreakpointEditorBalloon(project, point, component, true, false, breakpoint, preferredFocusOwner);
       moreOptionsRequested.set(true);
     });
 
@@ -441,10 +455,8 @@ public final class DebuggerUIUtil {
 
   @ApiStatus.Internal
   public static void notifyBreakpointAttachments(@NotNull XBreakpointProxy breakpoint) {
-    if (breakpoint instanceof XLineBreakpointProxy breakpointProxy) {
-      for (XBreakpointAttachment attachment : breakpointProxy.getAttachments()) {
-        attachment.breakpointChanged();
-      }
+    if (breakpoint instanceof XBreakpointAttachmentNotifier notifier) {
+      notifier.notifyBreakpointAttachments();
     }
   }
 
@@ -605,7 +617,10 @@ public final class DebuggerUIUtil {
   }
 
   public static @NotNull @NlsContexts.PopupAdvertisement String getSelectionShortcutsAdText(String... actionNames) {
-    String text = StreamEx.of(actionNames).map(DebuggerUIUtil::getActionShortcutText).nonNull().collect(NlsMessages.joiningOr());
+    String text = Arrays.stream(actionNames)
+      .map(DebuggerUIUtil::getActionShortcutText)
+      .filter(Objects::nonNull)
+      .collect(NlsMessages.joiningOr());
     return StringUtil.isEmpty(text) ? "" : XDebuggerBundle.message("ad.extra.selection.shortcut", text);
   }
 
@@ -618,7 +633,7 @@ public final class DebuggerUIUtil {
   }
 
   public static boolean isObsolete(Object object) {
-    return object instanceof Obsolescent && ((Obsolescent)object).isObsolete();
+    return object instanceof Obsolescent obsolescent && obsolescent.isObsolete();
   }
 
   public static void setTreeNodeValue(XValueNodeImpl valueNode, XExpression text, Consumer<? super String> errorConsumer) {

@@ -15,6 +15,7 @@ import org.junit.platform.engine.reporting.OutputDirectoryProvider;
 import org.junit.platform.engine.reporting.ReportEntry;
 import org.junit.platform.engine.support.descriptor.AbstractTestDescriptor;
 import org.junit.platform.engine.support.descriptor.EngineDescriptor;
+import org.junit.platform.engine.support.discovery.DiscoveryIssueReporter;
 import org.junit.platform.launcher.TestIdentifier;
 import org.junit.platform.launcher.TestPlan;
 
@@ -43,13 +44,8 @@ public class JUnit5TestRunnerBuilder {
     }
 
     @Override
-    public <T> Optional<T> get(String key, Function<String, T> transformer) {
+    public <T> Optional<T> get(String key, Function<? super String, ? extends T> transformer) {
       return ConfigurationParameters.super.get(key, transformer);
-    }
-
-    @Override
-    public int size() {
-      return 0;
     }
 
     @Override
@@ -79,6 +75,7 @@ public class JUnit5TestRunnerBuilder {
   private String myRootName;
   private boolean mySendTree = false;
   private String myPresentableName;
+  private boolean myEngineLifecycleStarted = false;
 
   private TestDescriptor nestedClassDescriptor;
 
@@ -94,13 +91,13 @@ public class JUnit5TestRunnerBuilder {
     }, false, StandardCharsets.UTF_8));
   }
 
-  public TestDescriptorContext withTestMethod(Class<?> testClass, String methodName) throws NoSuchMethodException {
-    UniqueId classId = myEngineId.append("class", "testClass");
+  public TestDescriptorContext withTestMethod(Class<?> testClass, String methodName, String classSegment, String methodSegment) throws NoSuchMethodException {
+    UniqueId classId = myEngineId.append("class", classSegment);
     ClassTestDescriptor classTestDescriptor = new ClassTestDescriptor(classId, testClass, myJupiterConfiguration);
     myEngineDescriptor.addChild(classTestDescriptor);
 
     Method method = testClass.getDeclaredMethod(methodName);
-    UniqueId methodId = classId.append("method", "testMethod");
+    UniqueId methodId = classId.append("method", methodSegment);
     TestDescriptor testDescriptor = new TestMethodTestDescriptor(methodId, testClass, method, () -> List.of(), myJupiterConfiguration);
     classTestDescriptor.addChild(testDescriptor);
 
@@ -187,7 +184,7 @@ public class JUnit5TestRunnerBuilder {
   }
 
   public static DefaultJupiterConfiguration createJupiterConfiguration() {
-    return new DefaultJupiterConfiguration(EMPTY_PARAMETER, EMPTY_OUTPUT_DIRECTORY_PROVIDER);
+    return new DefaultJupiterConfiguration(EMPTY_PARAMETER, EMPTY_OUTPUT_DIRECTORY_PROVIDER, DiscoveryIssueReporter.consuming(issue -> {}));
   }
 
   /**
@@ -267,6 +264,24 @@ public class JUnit5TestRunnerBuilder {
         myTestStarted = true;
       }
       return this;
+    }
+
+    public TestDescriptorContext startSuiteOnly() {
+      if (!myEngineLifecycleStarted) {
+        myExecutionListener.executionStarted(TestIdentifier.from(myEngineDescriptor));
+        myEngineLifecycleStarted = true;
+      }
+      if (myParentDescriptor != myEngineDescriptor && !myParentStarted) {
+        myExecutionListener.executionStarted(TestIdentifier.from(myParentDescriptor));
+        myParentStarted = true;
+      }
+      return this;
+    }
+
+    public void finishSuiteOnly() {
+      if (myParentStarted) {
+        myExecutionListener.executionFinished(TestIdentifier.from(myParentDescriptor), TestExecutionResult.successful());
+      }
     }
 
     public JUnit5TestRunnerBuilder finishWithFailure(Throwable throwable) {

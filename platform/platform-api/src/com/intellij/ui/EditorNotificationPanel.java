@@ -10,6 +10,7 @@ import com.intellij.codeInsight.intention.preview.IntentionPreviewInfo;
 import com.intellij.codeInspection.util.IntentionName;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.DataManager;
+import com.intellij.ide.HelpTooltipKt;
 import com.intellij.ide.IdeBundle;
 import com.intellij.openapi.actionSystem.ActionManager;
 import com.intellij.openapi.actionSystem.ActionPlaces;
@@ -34,6 +35,7 @@ import com.intellij.openapi.util.Iconable;
 import com.intellij.openapi.util.NlsContexts.Label;
 import com.intellij.openapi.util.NlsContexts.LinkLabel;
 import com.intellij.openapi.util.Weighted;
+import com.intellij.openapi.util.text.HtmlChunk;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.PsiFile;
 import com.intellij.ui.border.NamedBorder;
@@ -47,6 +49,7 @@ import com.intellij.util.IncorrectOperationException;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.PlatformUtils;
 import com.intellij.util.SlowOperations;
+import com.intellij.util.concurrency.ThreadingAssertions;
 import com.intellij.util.ui.JBInsets;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
@@ -72,11 +75,14 @@ import java.awt.Dimension;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Insets;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -107,6 +113,7 @@ public class EditorNotificationPanel extends JPanel implements IntentionActionPr
   private JPanel myLastPanel;
   private InplaceButton myCloseButton;
   private Runnable myCloseAction;
+  private String myTruncationTooltip;
 
   private static Icon CLOSE_ICON;
 
@@ -171,6 +178,8 @@ public class EditorNotificationPanel extends JPanel implements IntentionActionPr
                                  @Nullable ColorKey backgroundColorKey) {
     super(new BorderLayout());
 
+    ThreadingAssertions.softAssertAwtOperationsThread();
+
     mySchemeSupplier = editor != null ? () -> editor.getColorsScheme() : GLOBAL_SCHEME_SUPPLIER;
     myBackgroundColor = backgroundColor;
     myBackgroundColorKey = backgroundColorKey != null ? backgroundColorKey : EditorColors.NOTIFICATION_BACKGROUND;
@@ -196,6 +205,12 @@ public class EditorNotificationPanel extends JPanel implements IntentionActionPr
 
     myTextLabel.setForeground(mySchemeSupplier.get().getDefaultForeground());
     myTextLabel.setCopyable(true);
+    myTextLabel.addComponentListener(new ComponentAdapter() {
+      @Override
+      public void componentResized(ComponentEvent e) {
+        updateTextLabelTooltip();
+      }
+    });
     putClientProperty(DslComponentProperty.VISUAL_PADDINGS, UnscaledGaps.EMPTY);
   }
 
@@ -224,26 +239,28 @@ public class EditorNotificationPanel extends JPanel implements IntentionActionPr
       return;
     }
 
-    var icon = status.getIcon();
     myTextLabel.setIconTextGap(JBUI.scale(8));
-    myTextLabel.setIcon(new Icon() {
-      @Override
-      public void paintIcon(Component component, Graphics graphics, int x, int y) {
-        if (!StringUtil.isEmpty(myTextLabel.getText())) {
-          icon.paintIcon(component, graphics, x, y);
+    var icon = status.getIcon();
+    if (icon != null) {
+      myTextLabel.setIcon(new Icon() {
+        @Override
+        public void paintIcon(Component component, Graphics graphics, int x, int y) {
+          if (!StringUtil.isEmpty(myTextLabel.getText())) {
+            icon.paintIcon(component, graphics, x, y);
+          }
         }
-      }
 
-      @Override
-      public int getIconWidth() {
-        return icon.getIconWidth();
-      }
+        @Override
+        public int getIconWidth() {
+          return icon.getIconWidth();
+        }
 
-      @Override
-      public int getIconHeight() {
-        return icon.getIconHeight();
-      }
-    });
+        @Override
+        public int getIconHeight() {
+          return icon.getIconHeight();
+        }
+      });
+    }
     myTextLabel.setForeground(JBUI.CurrentTheme.Banner.FOREGROUND);
     myTextLabel.setBorder(JBUI.Borders.emptyRight(20));
 
@@ -365,6 +382,7 @@ public class EditorNotificationPanel extends JPanel implements IntentionActionPr
 
   public void setText(@NotNull @Label String text) {
     myTextLabel.setText(text);
+    updateTextLabelTooltip();
   }
   
   public @Nullable HyperlinkLabel findLabelByName(@NotNull @Label String text) {
@@ -379,8 +397,21 @@ public class EditorNotificationPanel extends JPanel implements IntentionActionPr
   }
 
   public EditorNotificationPanel text(@NotNull @Label String text) {
-    myTextLabel.setText(text);
+    setText(text);
     return this;
+  }
+
+  private void updateTextLabelTooltip() {
+    String text = myTextLabel.getText();
+    boolean truncated = text != null && !text.isEmpty()
+                        && !myTextLabel.isAllowAutoWrapping()
+                        && myTextLabel.getWidth() > 0
+                        && myTextLabel.getPreferredSize().width > myTextLabel.getWidth();
+    HtmlChunk tooltip = truncated ? HtmlChunk.raw(text) : null;
+    if (Objects.equals(myTextLabel.getToolTipText(), myTruncationTooltip)) {
+      HelpTooltipKt.setToolTipText(myTextLabel, tooltip);
+      myTruncationTooltip = myTextLabel.getToolTipText();
+    }
   }
 
   public @NotNull @Label String getText() {
@@ -481,7 +512,7 @@ public class EditorNotificationPanel extends JPanel implements IntentionActionPr
   }
 
   public void clear() {
-    myTextLabel.setText("");
+    this.setText("");
     myLinksPanel.removeAll();
   }
 
@@ -786,22 +817,29 @@ public class EditorNotificationPanel extends JPanel implements IntentionActionPr
 
   public enum Status {
     Info(JBUI.CurrentTheme.Banner.INFO_BACKGROUND, JBUI.CurrentTheme.Banner.INFO_BORDER_COLOR, () -> AllIcons.General.BalloonInformation),
+
+    /**
+     * A softer alternative to {@link Status#Info} for informational content
+     * that needs less visual emphasis.
+     */
+    InfoMuted(JBUI.CurrentTheme.Banner.INFO_MUTED_BACKGROUND, JBUI.CurrentTheme.Banner.INFO_MUTED_BORDER_COLOR, () -> AllIcons.General.BalloonInformation),
     Success(JBUI.CurrentTheme.Banner.SUCCESS_BACKGROUND, JBUI.CurrentTheme.Banner.SUCCESS_BORDER_COLOR, () -> AllIcons.Status.Success),
     Warning(JBUI.CurrentTheme.Banner.WARNING_BACKGROUND, JBUI.CurrentTheme.Banner.WARNING_BORDER_COLOR, () -> AllIcons.General.BalloonWarning),
     Error(JBUI.CurrentTheme.Banner.ERROR_BACKGROUND, JBUI.CurrentTheme.Banner.ERROR_BORDER_COLOR, () -> AllIcons.General.BalloonError),
-    Promo(JBUI.CurrentTheme.Banner.INFO_BACKGROUND, JBUI.CurrentTheme.Banner.INFO_BORDER_COLOR, EditorNotificationPanel::getPromoIcon);
+    Promo(JBUI.CurrentTheme.Banner.INFO_BACKGROUND, JBUI.CurrentTheme.Banner.INFO_BORDER_COLOR, EditorNotificationPanel::getPromoIcon),
+    NeutralMuted(JBUI.CurrentTheme.Banner.NEUTRAL_MUTED_BACKGROUND, JBUI.CurrentTheme.Banner.NEUTRAL_MUTED_BORDER_COLOR, () -> null);
 
-    final Color background;
-    final Color border;
-    private final Supplier<Icon> icon;
+    final @NotNull Color background;
+    final @NotNull Color border;
+    private final @NotNull Supplier<@Nullable Icon> icon;
 
-    Status(@NotNull Color background, @NotNull Color border, @NotNull Supplier<Icon> icon) {
+    Status(@NotNull Color background, @NotNull Color border, @NotNull Supplier<@Nullable Icon> icon) {
       this.background = background;
       this.border = border;
       this.icon = icon;
     }
 
-    public Icon getIcon() {
+    public @Nullable Icon getIcon() {
       return icon.get();
     }
   }

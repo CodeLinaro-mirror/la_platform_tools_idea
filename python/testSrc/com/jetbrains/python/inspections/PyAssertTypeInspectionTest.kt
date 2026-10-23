@@ -1,8 +1,14 @@
 // Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.inspections
 
+import com.intellij.idea.TestFor
+import com.jetbrains.python.allure.Layers
+import com.jetbrains.python.allure.Subsystems
+
 import com.jetbrains.python.fixtures.PyInspectionTestCase
 
+@Subsystems.Inspections
+@Layers.Functional
 class PyAssertTypeInspectionTest : PyInspectionTestCase() {
   fun `test basic`() {
     doTestByText(
@@ -13,8 +19,8 @@ class PyAssertTypeInspectionTest : PyInspectionTestCase() {
           assert_type(name, str)  # OK, inferred type of `name` is `str`
           assert_type(<warning descr="Expected type 'int', got 'str' instead">name</warning>, int)
 
-          assert_type(<warning descr="Expected type 'Any', got 'str' instead">name</warning>, "")
-          assert_type(<warning descr="Expected type 'Any', got 'str' instead">name</warning>, unresolved)
+          assert_type(<warning descr="Expected type 'Unknown', got 'str' instead">name</warning>, "")
+          assert_type(<warning descr="Expected type 'Unknown', got 'str' instead">name</warning>, unresolved)
       """.trimIndent()
     )
   }
@@ -56,5 +62,47 @@ class PyAssertTypeInspectionTest : PyInspectionTestCase() {
     """.trimIndent())
   }
 
+  /**
+   * `Any` and `Unknown` are one gradual type, so `assert_type` must accept either spelling in a nested
+   * position too. An omitted type argument gives `Unknown`, the way `ty` and `basedpyright` show it.
+   */
+  @TestFor(issues = ["PY-91107"])
+  fun `test Unknown matches Any in a nested position`() {
+    doTestByText("""
+      from typing import Any, Generic, TypeVar, assert_type
+
+      T = TypeVar("T")
+
+      class Node(Generic[T]):
+          label: T
+          def __init__(self, label: T | None = None) -> None: ...
+
+      def func(p: list, q: dict, r: tuple) -> None:
+          assert_type(p, list[Any])
+          assert_type(q, dict[Any, Any])
+          assert_type(r, tuple[Any, ...])
+          assert_type(Node(), Node[Any])
+          assert_type(Node().label, Any)
+
+      def still_reports_a_real_mismatch(p: list[int]) -> None:
+          assert_type(<warning descr="Expected type 'list[str]', got 'list[int]' instead">p</warning>, list[str])
+    """.trimIndent())
+  }
+
   override fun getInspectionClass(): Class<out PyInspection> = PyAssertTypeInspection::class.java
+
+  @TestFor(issues = ["PY-92701"])
+  fun `test failed assert_type offers no replacement and reveal_type offers no intention to write it`() {
+    doTestByText("""
+      from typing import assert_type, reveal_type
+
+      def f(x: int | None) -> None:
+          assert_type(<warning descr="Expected type 'int', got 'int | None' instead">x</warning>, int)
+          reveal_<caret>type(x)
+      """.trimIndent())
+    // FIXME: the fixes also have 'Replace with assert_type(x, int | None)'
+    assertEquals(listOf("Inspection 'Violated 'typing.assert_type'' options"), myFixture.getAllQuickFixes().map { it.text })
+    // FIXME: an intention writes 'assert_type(x, int | None)'
+    assertEquals(emptyList<String>(), myFixture.availableIntentions.map { it.text }.filter { "assert_type(" in it })
+  }
 }

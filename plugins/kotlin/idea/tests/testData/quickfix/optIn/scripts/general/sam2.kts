@@ -8,7 +8,7 @@
 // ACTION: Opt in for 'MyOptIn' on 'bar'
 // ACTION: Opt in for 'MyOptIn' on statement
 // ACTION: Propagate 'MyOptIn' opt-in requirement to 'bar'
-// K2_ERROR: This declaration needs opt-in. Its usage must be marked with '@MyOptIn' or '@OptIn(MyOptIn::class)'
+// K2_ERROR: OPT_IN_USAGE_ERROR
 
 @RequiresOptIn
 annotation class MyOptIn
@@ -26,4 +26,3 @@ val bar = SamI {
 }
 
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.OptInFixes$UseOptInAnnotationFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.OptInFixes$UseOptInAnnotationFix

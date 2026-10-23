@@ -17,6 +17,7 @@ import org.junit.rules.TestRule;
 
 import java.lang.ref.Reference;
 import java.lang.ref.SoftReference;
+import java.util.AbstractMap;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
@@ -231,7 +232,7 @@ public class ContainerUtilCollectionsTest extends Assert {
   @Test(timeout = TIMEOUT)
   public void testConcurrentSoftMapWithStrategyAndListenerTossed() {
     AtomicReference<Map<Object, Object>> map = new AtomicReference<>();
-    map.set(CollectionFactory.createConcurrentSoftMap(HashingStrategy.identity(), (thisMap,hash, value) ->
+    map.set(CollectionFactory.createConcurrentSoftMap(HashingStrategy.identity(), (thisMap,_, _) ->
       assertSame(map.get(), thisMap)
     ));
     checkKeyTossedEventually(map.get());
@@ -351,9 +352,20 @@ public class ContainerUtilCollectionsTest extends Assert {
     Map<String, String> map = CollectionFactory.createSoftMap(IGNORE_CASE_WITH_CRAZY_HASH_STRATEGY);
 
     map.put("ab", "ab");
+    map.put("cb", "cb");
+    map.put("db", null);
     assertEquals("ab", map.get("AB"));
+    assertEquals("cb", map.get("CB"));
+    assertTrue(map.containsKey("DB"));
     String removed = map.remove("aB");
     assertEquals("ab", removed);
+    assertEquals("cb", map.get("CB"));
+    assertTrue(map.containsKey("DB"));
+    assertTrue(map.entrySet().remove(new AbstractMap.SimpleEntry<>("cB", "cb")));
+    assertFalse(map.containsKey("CB"));
+    assertTrue(map.containsKey("DB"));
+    assertNull(map.remove("dB"));
+    assertFalse(map.containsKey("DB"));
     assertTrue(map.isEmpty());
   }
 
@@ -741,7 +753,7 @@ public class ContainerUtilCollectionsTest extends Assert {
     assertTrue(set.isEmpty());
   }
 
-  private void checkSizeMethodIsConstantEvenThoughItMightReturnSlightlyBiggerValue(Set<Object> set) {
+  private static void checkSizeMethodIsConstantEvenThoughItMightReturnSlightlyBiggerValue(Set<Object> set) {
     set.clear();
     //noinspection ConstantValue
     assertEquals(0, set.size());
@@ -767,6 +779,7 @@ public class ContainerUtilCollectionsTest extends Assert {
     assertTrue(set.isEmpty());
 
     assertTrue(set.add(this));  // to run processQueues();
+    //noinspection ConstantValue
     assertFalse(set.isEmpty());
     assertTrue(set.remove(this));
 
@@ -934,6 +947,11 @@ public class ContainerUtilCollectionsTest extends Assert {
   }
 
   @Test
+  public void testKeyEvictionListenerWorksInConcurrentWeakIdentityMap() {
+    assertKeyEvictionListenerWorks(HashingStrategy.identity(), CollectionFactory::createConcurrentWeakIdentityMap);
+  }
+
+  @Test
   public void testKeyEvictionListenerWorksInConcurrentSoftMap() {
     // canonical strategy in createConcurrentSoftMap slightly differs from Object.hashCode()
     assertKeyEvictionListenerWorks((HashingStrategy<Object>)CollectionFactory.createConcurrentSoftMap(), evictionListener -> CollectionFactory.createConcurrentSoftMap(evictionListener));
@@ -979,7 +997,6 @@ public class ContainerUtilCollectionsTest extends Assert {
   public void testValueEvictionListenerWorks() {
     AtomicReference<Object> evicted = new AtomicReference<>();
     AtomicReference<Map<Object, Object>> map = new AtomicReference<>();
-    AtomicReference<Object> value = new AtomicReference<>(new Object());
     Object key = new Object();
     int keyHashCode = System.identityHashCode(key);
     map.set(CollectionFactory.createConcurrentSoftValueMap((thisMap,hash, keyForEvictedValue) -> {

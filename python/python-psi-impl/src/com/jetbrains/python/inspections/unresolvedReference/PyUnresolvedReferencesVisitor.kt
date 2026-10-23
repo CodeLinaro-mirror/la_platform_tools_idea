@@ -18,9 +18,6 @@ import com.intellij.util.containers.addIfNotNull
 import com.jetbrains.python.PyCustomType
 import com.jetbrains.python.PyNames
 import com.jetbrains.python.PyNames.END_WILDCARD
-import com.jetbrains.python.PyNames.inplaceToLeftOperatorName
-import com.jetbrains.python.PyNames.inplaceToRightOperatorName
-import com.jetbrains.python.PyNames.leftToRightOperatorName
 import com.jetbrains.python.PyPsiBundle
 import com.jetbrains.python.codeInsight.PyDunderMatchArgsReference
 import com.jetbrains.python.codeInsight.PySubstitutionChunkReference
@@ -39,7 +36,6 @@ import com.jetbrains.python.psi.PsiReferenceEx
 import com.jetbrains.python.psi.PyAugAssignmentStatement
 import com.jetbrains.python.psi.PyBinaryExpression
 import com.jetbrains.python.psi.PyCallExpression
-import com.jetbrains.python.psi.PyCallSiteExpression
 import com.jetbrains.python.psi.PyCallable
 import com.jetbrains.python.psi.PyClass
 import com.jetbrains.python.psi.PyElement
@@ -53,6 +49,7 @@ import com.jetbrains.python.psi.PyImportStatementBase
 import com.jetbrains.python.psi.PyKeywordPattern
 import com.jetbrains.python.psi.PyKnownDecoratorUtil
 import com.jetbrains.python.psi.PyPrefixExpression
+import com.jetbrains.python.psi.PyQualifiedElement
 import com.jetbrains.python.psi.PyQualifiedExpression
 import com.jetbrains.python.psi.PyReferenceExpression
 import com.jetbrains.python.psi.PyReferenceOwner
@@ -80,28 +77,29 @@ import com.jetbrains.python.psi.types.PyType
 import com.jetbrains.python.psi.types.PyTypeChecker.definesGetAttr
 import com.jetbrains.python.psi.types.PyTypeChecker.isUnknown
 import com.jetbrains.python.psi.types.PyTypeChecker.overridesGetAttr
-import com.jetbrains.python.psi.types.PyTypeUtil.asUnionSequence
 import com.jetbrains.python.psi.types.PyTypeUtil.toStream
 import com.jetbrains.python.psi.types.PyTypeVarType
 import com.jetbrains.python.psi.types.PyUnionType
 import com.jetbrains.python.psi.types.TypeEvalContext
+import com.jetbrains.python.psi.types.isAnyOrUnknown
+import com.jetbrains.python.psi.types.isUnknown
 import one.util.streamex.StreamEx
-import org.jetbrains.annotations.VisibleForTesting
 import java.util.Collections
 
-abstract class PyUnresolvedReferencesVisitor @JvmOverloads protected constructor(
+class PyUnresolvedReferencesVisitor(
   holder: ProblemsHolder?,
   ignoredIdentifiers: List<String>,
   context: TypeEvalContext,
   @Suppress("UNUSED_PARAMETER") languageLevel: LanguageLevel,  // kept for binary compat with Java subclasses
   private val myStrictClassAttributes: Boolean,
-  private val myStrictInstanceAttributes: Boolean = false,
+  private val myStrictInstanceAttributes: Boolean,
+  private val quickFixes: PyUnresolvedReferenceQuickFixes,
 ) : PyInspectionVisitor(holder, context) {
   private val myIgnoredIdentifiers: ImmutableSet<String> = ImmutableSet.copyOf(ignoredIdentifiers)
 
   @Volatile
   private var myIsEnabled: Boolean? = null
-  protected val myUnresolvedRefs: MutableList<PyPackageInstallAllProblemInfo> = Collections.synchronizedList(ArrayList())
+  private val myUnresolvedRefs: MutableList<PyPackageInstallAllProblemInfo> = Collections.synchronizedList(ArrayList())
 
   override fun visitPyTargetExpression(node: PyTargetExpression) {
     // Augmented assignments (e.g., `x += 1`) do have a target expression,
@@ -216,153 +214,59 @@ abstract class PyUnresolvedReferencesVisitor @JvmOverloads protected constructor
              !isReExportInPackageInit(node, target)) {
       registerProblem(node, PyPsiBundle.message("INSP.unresolved.refs.import.resolves.to.its.containing.file"))
     }
+    // If an attribute was resolved on some members of a union, we still need to report those where it doesn't exist
     else if (PyUnionType.isStrictSemanticsEnabled() && node is PyQualifiedExpression) {
-      val referencedName = node.referencedName
-      val qualifier: PyExpression? = if (node is PyCallSiteExpression && target is PyCallable) {
-        node.getReceiver(target)
-      }
-      else {
-        node.qualifier
-      }
-      if (referencedName != null && qualifier != null) {
-        val qualifierType = myTypeEvalContext.getType(qualifier)
-        if (qualifierType is PyUnionType) {
-          val missingMember = qualifierType.findStrictUnionMissingAttribute(reference, referencedName, node, qualifier)
-          if (missingMember != null) {
-            val unionTypeRender = PythonDocumentationProvider.getTypeName(qualifierType, myTypeEvalContext)
-            val unionMemberRender = PythonDocumentationProvider.getTypeName(missingMember.memberType, myTypeEvalContext)
-            registerProblem(
-              node,
-              PyPsiBundle.problemMessage(
-                "INSP.unresolved.refs.unresolved.attribute.in.union.type", unionMemberRender, unionTypeRender,
-                missingMember.attributeName
-              ),
-              ProblemHighlightType.WEAK_WARNING,
-              null,
-              rangeInElement = reference.rangeInElement,
-            )
-          }
-        }
+      val referencedName = node.referencedName ?: return
+      // operators on binary/augmented expressions are handled by PyTypeCheckerInspection.
+      if (node !is PyAugAssignmentStatement && node !is PyBinaryExpression) {
+        checkStrictUnionQualifierAttributeReference(node, reference, referencedName, target)
       }
     }
   }
 
-  /** The union member type that is missing the attribute, and the attribute name to report.  */
-  private data class StrictUnionMissingMember(val memberType: PyType, val attributeName: String)
+  private data class StrictUnionMissingMember(
+    val unionMemberType: PyType,
+    val attributeName: String,
+  )
 
-  private fun PyUnionType.findStrictUnionMissingAttribute(
+  private fun checkStrictUnionQualifierAttributeReference(
+    node: PyQualifiedExpression,
     reference: PsiReference,
     referencedName: String,
-    qualifiedExpression: PyQualifiedExpression,
-    qualifier: PyExpression,
-  ): StrictUnionMissingMember? =
-    when (qualifiedExpression) {
-      is PyAugAssignmentStatement ->
-        findStrictUnionMemberMissingAugAssignOperator(
-          this,
-          reference,
-          qualifiedExpression,
-          referencedName,
-          qualifier,
-        )
-
-      is PyBinaryExpression ->
-        findStrictUnionMemberMissingBinaryOperator(
-          this,
-          reference,
-          qualifiedExpression,
-          referencedName,
-          qualifier,
-        )
-
-      else ->
-        findStrictUnionMemberMissingAttribute(this, reference, referencedName)
-          ?.let { StrictUnionMissingMember(it, referencedName) }
-    }
-
-  private fun findStrictUnionMemberMissingBinaryOperator(
-    unionType: PyUnionType,
-    reference: PsiReference,
-    binaryExpression: PyBinaryExpression,
-    operatorName: String,
-    qualifier: PyExpression,
-  ): StrictUnionMissingMember? {
-    if (!PyUnionType.isStrictSemanticsEnabled()) return null
-
-    val location = reference.element as? PyExpression
-    val rhs = binaryExpression.rightExpression
-    val lhs = binaryExpression.leftExpression
-
-    if (operatorName in PyNames.STANDALONE_RIGHT_OPERATORS) {
-      val missing = unionType.findUnionMemberWithoutAttribute(reference, operatorName, location) ?: return null
-      return StrictUnionMissingMember(missing, operatorName)
-    }
-
-    val unionIsOnRhs = qualifier === rhs
-
-    val unionSideOperator =
-      if (unionIsOnRhs) leftToRightOperatorName(operatorName) ?: return null
-      else operatorName
-
-    val missing = unionType.findUnionMemberWithoutAttribute(reference, unionSideOperator, location) ?: return null
-
-    val fallbackSide = if (unionIsOnRhs) lhs else rhs
-    val fallbackOperator = if (unionIsOnRhs) operatorName else leftToRightOperatorName(operatorName)
-
-    if (fallbackSide != null && fallbackOperator != null) {
-      val fallbackType = myTypeEvalContext.getType(fallbackSide)
-      if (fallbackType != null && fallbackType.typeHasAttribute(fallbackOperator, fallbackSide)) return null
-    }
-
-    return StrictUnionMissingMember(missing, unionSideOperator)
+    target: PsiElement?,
+  ) {
+    val qualifier = if (reference is PyOperatorReference && target is PyCallable) reference.getReceiver(target) else node.qualifier
+    val qualifierType = qualifier?.let { myTypeEvalContext.getType(it) }
+    if (qualifierType !is PyUnionType) return
+    val missing = findStrictUnionMemberMissingAttribute(qualifierType, reference, referencedName) ?: return
+    reportStrictUnionMissingMembers(node, reference, qualifierType,
+                                    listOf(StrictUnionMissingMember(missing, referencedName)))
   }
 
-  private fun findStrictUnionMemberMissingAugAssignOperator(
-    unionType: PyUnionType,
+  private fun reportStrictUnionMissingMembers(
+    node: PyQualifiedExpression,
     reference: PsiReference,
-    augAssignment: PyAugAssignmentStatement,
-    inplaceOperator: String,
-    qualifier: PyExpression,
-  ): StrictUnionMissingMember? {
-    if (!PyUnionType.isStrictSemanticsEnabled()) return null
+    containingUnion: PyUnionType,
+    missingMembers: List<StrictUnionMissingMember>,
+  ) {
+    val unionRender = PythonDocumentationProvider.getTypeName(containingUnion, myTypeEvalContext)
 
-    val location = reference.element as? PyExpression
-    val unionIsOnRhs = qualifier === augAssignment.value
+    for ((unionMemberType, attributeName) in missingMembers.distinct()) {
+      val memberRender = PythonDocumentationProvider.getTypeName(unionMemberType, myTypeEvalContext)
+      val message = PyPsiBundle.problemMessage(
+        "INSP.unresolved.refs.unresolved.attribute.in.union.type",
+        memberRender,
+        unionRender,
+        attributeName,
+      )
 
-    if (unionIsOnRhs) {
-      val reflectedOperator = inplaceToRightOperatorName(inplaceOperator) ?: return null
-
-      val missing = unionType.findUnionMemberWithoutAttribute(reference, reflectedOperator, location) ?: return null
-
-      val lhs = augAssignment.target
-      val lhsType = myTypeEvalContext.getType(lhs)
-      if (lhsType != null) {
-        if (lhsType.typeHasAttribute(inplaceOperator, lhs)) return null
-
-        val normalOperator = inplaceToLeftOperatorName(inplaceOperator)
-        if (normalOperator != null && lhsType.typeHasAttribute(normalOperator, lhs)) return null
-      }
-
-      return StrictUnionMissingMember(missing, reflectedOperator)
-    }
-    else {
-      val normalOperator = inplaceToLeftOperatorName(inplaceOperator)
-
-      val missing = unionType.members.firstOrNull { memberType ->
-        memberType != null &&
-        !ignoreUnresolvedMemberForType(memberType, reference, inplaceOperator) &&
-        !memberType.typeHasAttribute(inplaceOperator, location) &&
-        (normalOperator == null || !memberType.typeHasAttribute(normalOperator, location))
-      } ?: return null
-
-      val reflectedOperator = inplaceToRightOperatorName(inplaceOperator)
-      val rhs = augAssignment.value
-      if (reflectedOperator != null && rhs != null) {
-        val rhsType = myTypeEvalContext.getType(rhs)
-        if (rhsType != null && rhsType.typeHasAttribute(reflectedOperator, rhs)) return null
-      }
-
-      return StrictUnionMissingMember(missing, inplaceOperator)
+      registerProblem(
+        node,
+        message,
+        ProblemHighlightType.WEAK_WARNING,
+        null,
+        rangeInElement = reference.rangeInElement,
+      )
     }
   }
 
@@ -371,17 +275,47 @@ abstract class PyUnresolvedReferencesVisitor @JvmOverloads protected constructor
     if (PyNames.DUNDER_AWAIT != prefixExpression.operator.specialMethodName) return false
     val callExpression = getReferenceQualifierOrImportSource(reference) as? PyCallExpression ?: return false
     val callees = callExpression.multiResolveCalleeFunction(PyResolveContext.defaultContext(myTypeEvalContext))
-    if (callees.isEmpty()) return false
-    for (callee in callees) {
-      if (callee is PyFunction && callee.isAsync) return false
-    }
-    return true // no signature is declared async -> warning
+    return callees.isNotEmpty() && callees.none { it is PyFunction && it.isAsync } // no signature is declared async -> warning
   }
 
   private fun registerUnresolvedReferenceProblem(node: PyElement, reference: PsiReference, severity: HighlightSeverity) {
     val spec = buildProblemSpec(node, reference, severity) ?: return
-    val fixes = collectFixes(spec)
-    emitProblem(spec, fixes)
+    val fixes: MutableList<LocalQuickFix> = ArrayList()
+    val reference = spec.reference
+    val element = spec.element
+    if (reference is PsiReferenceEx) {
+      fixes.addAll(reference.getQuickFixes(myTypeEvalContext))
+    }
+    if (element is PyReferenceExpression && !element.isQualified) {
+      fixes.addIfNotNull(getTrueFalseQuickFix(spec.refText))
+      fixes.addAll(getAddSelfFixes(myTypeEvalContext, spec.node, element))
+      fixes.addIfNotNull(getCreateFunctionQuickFix(element))
+      fixes.addIfNotNull(getAddParameterQuickFix(spec.refName, element))
+      fixes.add(PyRenameUnresolvedRefQuickFix())
+    }
+    if (spec.qualifierType != null) {
+      fixes.addAll(getCreateMemberFromUsageFixes(myTypeEvalContext, spec.qualifierType, reference, spec.refText))
+    }
+    if (spec.fallbackToUnqualifiedFix) {
+      fixes.addAll(quickFixes.getAutoImportFixes(spec.node, reference, element))
+      fixes.addIfNotNull(getCreateClassFix(myTypeEvalContext, spec.refText, element))
+    }
+    val hlType = computeHighlightType(spec.severity)
+    fixes.addAll(quickFixes.getImportStatementQuickFixes(spec.element))
+    fixes.addAll(quickFixes.getAddIgnoredIdentifierQuickFixes(spec.qualifiedNames))
+    val installPackageQuickFixes = quickFixes.getInstallPackageQuickFixes(spec.node, spec.reference, spec.refName)
+    val installAll = installPackageQuickFixes.isNotEmpty()
+    if (installAll) {
+      fixes.addAll(installPackageQuickFixes)
+      myUnresolvedRefs.add(PyPackageInstallAllProblemInfo(spec.node, spec.message, hlType, spec.refName, fixes))
+    }
+    fixes.addIfNotNull(quickFixes.getAddSourceRootQuickFix(spec.node))
+    // PySubstitutionChunkReference: install-all only, no direct registerProblem.
+    if (spec.reference is PySubstitutionChunkReference) return
+    quickFixes.getPluginQuickFixes(fixes, spec.reference)
+    if (!installAll) {
+      registerProblem(spec.node, spec.message, hlType, *fixes.toTypedArray<LocalQuickFix>(), rangeInElement = spec.rangeInElement)
+    }
   }
 
   private fun buildProblemSpec(initialNode: PyElement, reference: PsiReference, initialSeverity: HighlightSeverity): ProblemSpec? {
@@ -392,7 +326,7 @@ abstract class PyUnresolvedReferencesVisitor @JvmOverloads protected constructor
     val text = element.text
     val refText = if (rangeInElement.startOffset >= 0 && rangeInElement.endOffset > 0) rangeInElement.substring(text) else text
     // Operator refs (e.g. `not x`) have null `referencedName`; do not fall back to refText, the empty-check below must fire.
-    val refName: String? = if (element is PyQualifiedExpression) element.referencedName else refText
+    val refName: String? = if (element is PyQualifiedElement) element.referencedName else refText
     if (refName.isNullOrEmpty()) return null
 
     val qualifiedNames = getCanonicalNames(reference, myTypeEvalContext)
@@ -445,7 +379,7 @@ abstract class PyUnresolvedReferencesVisitor @JvmOverloads protected constructor
       val qualifier = getReferenceQualifierOrImportSource(reference)
       if (qualifier != null) {
         val type = replaceSelfWithItsScopeClass(myTypeEvalContext.getType(qualifier))
-        if (type != null) {
+        if (!type.isUnknown) {
           if (ignoreUnresolvedMemberForType(type, reference, refName) || isDeclaredInSlots(type, refName)) return null
           qualifierType = type
           if (type is PyClassLikeType) {
@@ -516,57 +450,7 @@ abstract class PyUnresolvedReferencesVisitor @JvmOverloads protected constructor
     return myIgnoredIdentifiers.contains(refName)
   }
 
-  private fun collectFixes(spec: ProblemSpec): MutableList<LocalQuickFix> {
-    val fixes: MutableList<LocalQuickFix> = ArrayList()
-    val reference = spec.reference
-    val element = spec.element
-
-    if (reference is PsiReferenceEx) {
-      fixes.addAll(reference.getQuickFixes(myTypeEvalContext))
-    }
-    if (element is PyReferenceExpression && !element.isQualified) {
-      fixes.addIfNotNull(getTrueFalseQuickFix(spec.refText))
-      fixes.addAll(getAddSelfFixes(myTypeEvalContext, spec.node, element))
-      fixes.addIfNotNull(getCreateFunctionQuickFix(element))
-      fixes.addIfNotNull(getAddParameterQuickFix(spec.refName, element))
-      fixes.add(PyRenameUnresolvedRefQuickFix())
-    }
-    if (spec.qualifierType != null) {
-      fixes.addAll(getCreateMemberFromUsageFixes(myTypeEvalContext, spec.qualifierType, reference, spec.refText))
-    }
-    if (spec.fallbackToUnqualifiedFix) {
-      fixes.addAll(getAutoImportFixes(spec.node, reference, element))
-      fixes.addIfNotNull(getCreateClassFix(myTypeEvalContext, spec.refText, element))
-    }
-    return fixes
-  }
-
-  private fun emitProblem(spec: ProblemSpec, fixes: MutableList<LocalQuickFix>) {
-    val hlType = computeHighlightType(spec.severity)
-
-    ContainerUtil.addAll(fixes, getImportStatementQuickFixes(spec.element))
-    ContainerUtil.addAll(fixes, getAddIgnoredIdentifierQuickFixes(spec.qualifiedNames))
-
-    val installPackageQuickFixes = getInstallPackageQuickFixes(spec.node, spec.reference, spec.refName)
-    val installAll = installPackageQuickFixes.isNotEmpty()
-    if (installAll) {
-      ContainerUtil.addAll(fixes, installPackageQuickFixes)
-      myUnresolvedRefs.add(PyPackageInstallAllProblemInfo(spec.node, spec.message, hlType, spec.refName, fixes))
-    }
-
-    ContainerUtil.addIfNotNull(fixes, getAddSourceRootQuickFix(spec.node))
-
-    // PySubstitutionChunkReference: install-all only, no direct registerProblem.
-    if (spec.reference is PySubstitutionChunkReference) return
-
-    getPluginQuickFixes(fixes, spec.reference)
-    if (!installAll) {
-      registerProblem(spec.node, spec.message, hlType, *fixes.toTypedArray(), rangeInElement = spec.rangeInElement)
-    }
-  }
-
   private fun computeHighlightType(severity: HighlightSeverity): ProblemHighlightType {
-    if (myTypeEvalContext.usesExternalTypeEngine) return ProblemHighlightType.INFORMATION
     return when (severity) {
       HighlightSeverity.WARNING -> ProblemHighlightType.GENERIC_ERROR_OR_WARNING
       HighlightSeverity.WEAK_WARNING -> ProblemHighlightType.WEAK_WARNING
@@ -605,13 +489,12 @@ abstract class PyUnresolvedReferencesVisitor @JvmOverloads protected constructor
       type.module.languageLevel.isAtLeast(LanguageLevel.PYTHON37) ->
         definesGetAttr(type.module, myTypeEvalContext)
 
-      type != null -> isIgnoredByExtension(type, name)
-      else -> false
+      else -> isIgnoredByExtension(type, name)
     }
   }
 
   private fun isUnboundedTypeVar(type: PyTypeVarType): Boolean =
-    type.bound == null && type.defaultType == null && type.constraints.isEmpty()
+    type.bound.isAnyOrUnknown && type.defaultType == null && type.constraints.isEmpty()
 
   /**
    * Under strict-union semantics a union is ignored only when every member resolves the attribute
@@ -620,6 +503,7 @@ abstract class PyUnresolvedReferencesVisitor @JvmOverloads protected constructor
    */
   private fun isUnionMemberIgnored(type: PyUnionType, reference: PsiReference, name: String): Boolean {
     if (PyUnionType.isStrictSemanticsEnabled()) {
+      // There is no union member for which the unresolved attribute shouldn't be ignored (e.g. `Any` in `int | Any`)
       return findStrictUnionMemberMissingAttribute(type, reference, name) == null
     }
     return type.members.any { ignoreUnresolvedMemberForType(it, reference, name) }
@@ -648,7 +532,7 @@ abstract class PyUnresolvedReferencesVisitor @JvmOverloads protected constructor
   }
 
   private fun isIgnoredByExtension(type: PyType, name: String): Boolean =
-    PyInspectionExtension.EP_NAME.extensionList.any { it.ignoreUnresolvedMember(type, name, myTypeEvalContext) }
+    PyInspectionExtension.EP_NAME.findFirstSafe { it.ignoreUnresolvedMember(type, name, myTypeEvalContext) } != null
 
   private fun findStrictUnionMemberMissingAttribute(type: PyType, ref: PsiReference, name: String): PyType? {
     if (type !is PyUnionType || !PyUnionType.isStrictSemanticsEnabled()) {
@@ -667,32 +551,9 @@ abstract class PyUnresolvedReferencesVisitor @JvmOverloads protected constructor
     val location = ref.element as? PyExpression
     return type.members.firstOrNull { t ->
       t != null && !ignoreUnresolvedMemberForType(t, ref, name) &&
-      ContainerUtil.isEmpty(t.resolveMember(name, location, AccessDirection.READ, resolveContext))
+      t.resolveMember(name, location, AccessDirection.READ, resolveContext).isNullOrEmpty()
     }
   }
-
-  private fun PyUnionType.findUnionMemberWithoutAttribute(
-    reference: PsiReference,
-    attributeName: String,
-    location: PyExpression?,
-  ): PyType? =
-    members
-      .firstOrNull { memberType ->
-        memberType != null &&
-        !ignoreUnresolvedMemberForType(memberType, reference, attributeName) &&
-        !memberType.typeHasAttribute(attributeName, location)
-      }
-
-  private fun PyType.typeHasAttribute(
-    attributeName: String,
-    location: PyExpression?,
-  ): Boolean =
-    asUnionSequence()
-      .filterNotNull()
-      .none { type ->
-        val resolved = type.resolveMember(attributeName, location, AccessDirection.READ, resolveContext)
-        resolved.isNullOrEmpty()
-      }
 
   private fun isDecoratedAsDynamic(cls: PyClass): Boolean {
     if (hasDynamicAttrsDocstring(cls)) return true
@@ -708,7 +569,7 @@ abstract class PyUnresolvedReferencesVisitor @JvmOverloads protected constructor
         reference is PyOperatorReference &&
         PyTypingTypeProvider.GENERATOR == cls.qualifiedName
     ) {
-      val receiver = reference.receiver
+      val receiver = reference.getReceiver(null)
 
       if (receiver is PyCallExpression) {
         return PyKnownDecoratorUtil.isResolvedToGeneratorBasedCoroutine(receiver, resolveContext, myTypeEvalContext)
@@ -728,55 +589,19 @@ abstract class PyUnresolvedReferencesVisitor @JvmOverloads protected constructor
   }
 
   fun addInstallAllImports() {
-    val refNames = ContainerUtil.map2Set(
-      myUnresolvedRefs,
-      com.intellij.util.Function { it: PyPackageInstallAllProblemInfo? -> it!!.refName })
-    val installAllPackageQuickFixes = getInstallAllPackagesQuickFix()
-    for (unresolved in myUnresolvedRefs) {
-      val quickFixes: MutableList<LocalQuickFix> = unresolved.fixes.toMutableList()
-      if (refNames.size > 1) {
-        ContainerUtil.addIfNotNull(quickFixes, installAllPackageQuickFixes)
+    val refNamesCount = myUnresolvedRefs.distinctBy { it.refName }.size
+    val installAllPackageQuickFixes = quickFixes.getInstallAllPackagesQuickFix(myUnresolvedRefs)
+    for ((psiElement, message, highlightType, _, fixes) in myUnresolvedRefs) {
+      val quickFixes = fixes.toMutableList()
+      if (refNamesCount > 1) {
+        quickFixes.addIfNotNull(installAllPackageQuickFixes)
       }
-      registerProblem(
-        unresolved.psiElement, unresolved.message, unresolved.highlightType,
-        *quickFixes.toTypedArray()
-      )
+      registerProblem(psiElement, message, highlightType, *quickFixes.toTypedArray())
     }
   }
 
-  private fun ignoreUnresolved(node: PyElement, reference: PsiReference): Boolean {
-    var ignoreUnresolved = false
-    for (extension in PyInspectionExtension.EP_NAME.extensionList) {
-      if (extension.ignoreUnresolvedReference(node, reference, myTypeEvalContext)) {
-        ignoreUnresolved = true
-        break
-      }
-    }
-    return ignoreUnresolved
-  }
-
-  protected open fun getInstallPackageQuickFixes(
-    node: PyElement,
-    reference: PsiReference,
-    refName: String,
-  ): List<LocalQuickFix> = emptyList()
-
-  protected open fun getInstallAllPackagesQuickFix(): LocalQuickFix? = null
-
-  protected open fun getAddSourceRootQuickFix(node: PyElement): LocalQuickFix? {
-    return null
-  }
-
-  protected open fun getAddIgnoredIdentifierQuickFixes(qualifiedNames: List<QualifiedName>): List<LocalQuickFix> = emptyList()
-
-  protected open fun getImportStatementQuickFixes(element: PsiElement): List<LocalQuickFix> = emptyList()
-
-  protected open fun getAutoImportFixes(node: PyElement, reference: PsiReference, element: PsiElement): List<LocalQuickFix> = emptyList()
-
-  @VisibleForTesting
-  open fun getPluginQuickFixes(fixes: MutableList<LocalQuickFix>, reference: PsiReference) {
-    // Nothing.
-  }
+  private fun ignoreUnresolved(node: PyElement, reference: PsiReference): Boolean =
+    PyInspectionExtension.EP_NAME.findFirstSafe { it.ignoreUnresolvedReference(node, reference, myTypeEvalContext) } != null
 
   private data class ProblemSpec(
     val node: PyElement,
@@ -798,8 +623,7 @@ abstract class PyUnresolvedReferencesVisitor @JvmOverloads protected constructor
     }
 
     private fun overriddenUnresolvedReferenceInspection(file: PsiFile): Boolean? {
-      return PyInspectionExtension.EP_NAME.extensionList
-        .firstNotNullOfOrNull { it.overrideUnresolvedReferenceInspection(file) }
+      return PyInspectionExtension.EP_NAME.computeSafeIfAny { it.overrideUnresolvedReferenceInspection(file) }
     }
 
     private fun getImportErrorGuard(node: PyElement?): PyExceptPart? {
@@ -827,7 +651,7 @@ abstract class PyUnresolvedReferencesVisitor @JvmOverloads protected constructor
 
     private fun getReferenceQualifierOrImportSource(reference: PsiReference): PyExpression? {
       val element = reference.element
-      if (element is PyQualifiedExpression) {
+      if (element is PyQualifiedElement) {
         element.qualifier?.let { return it }
       }
       if (reference is PyFromImportNameReference) {
@@ -843,16 +667,11 @@ abstract class PyUnresolvedReferencesVisitor @JvmOverloads protected constructor
     ): Boolean {
       val types: List<PyClassType> = listOf(type) + type.getAncestorTypes(typeEvalContext).filterIsInstance<PyClassType>()
 
-      for (typeToCheck in types) {
-        for (provider in PyClassMembersProvider.EP_NAME.extensionList) {
-          val resolveResult = provider.getMembers(typeToCheck, reference.element, typeEvalContext)
-          for (member in resolveResult) {
-            if (member.name == name) return true
-          }
-        }
+      return types.any { typeToCheck ->
+        PyClassMembersProvider.EP_NAME.findFirstSafe { provider ->
+          provider.getMembers(typeToCheck, reference.element, typeEvalContext).any { it.name == name }
+        } != null
       }
-
-      return false
     }
   }
 }

@@ -3,6 +3,7 @@ package org.intellij.plugins.markdown.editor
 
 import com.intellij.codeInsight.editorActions.CopyPastePreProcessor
 import com.intellij.testFramework.fixtures.LightPlatformCodeInsightFixture4TestCase
+import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class MarkdownLinkPastePreProcessorTest : LightPlatformCodeInsightFixture4TestCase() {

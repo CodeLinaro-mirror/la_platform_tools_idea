@@ -16,6 +16,7 @@ import com.intellij.openapi.util.UserDataHolder;
 import com.intellij.openapi.util.UserDataHolderBase;
 import com.intellij.openapi.util.io.FileUtilRt;
 import com.intellij.openapi.vfs.encoding.EncodingRegistry;
+import com.intellij.openapi.vfs.newvfs.events.VFileEvent;
 import com.intellij.openapi.vfs.newvfs.events.VFilePropertyChangeEvent;
 import com.intellij.testFramework.LightVirtualFile;
 import com.intellij.util.ArrayFactory;
@@ -133,6 +134,10 @@ public abstract class VirtualFile extends UserDataHolderBase implements Modifica
   /// For [LocalFileSystem] it is an absolute file path with file separator characters (`File#separatorChar`)
   /// replaced with the forward slash (`'/'`).
   /// If you need to show the path in UI, use [#getPresentableUrl()] instead.
+  ///
+  /// **Performance note:** the operation is not cheap: e.g., the main implementation doesn't retain the path string
+  /// (to reduce memory usage) and rebuilds it from segments on each request.
+  /// Avoid its use in bulk operations – e.g., use methods from [VFileEvent#getPath()] instead.
   ///
   /// @see #getName the performance note
   /// @see #toNioPath()
@@ -316,6 +321,8 @@ public abstract class VirtualFile extends UserDataHolderBase implements Modifica
   /// (i.e. file type is not registered via [FileTypeRegistry]).
   ///
   /// Performance notice: this method can be slow. See [FileTypeRegistry] Javadoc for the details.
+  ///
+  /// Prefer [FileTypeRegistry#isFileOfType(VirtualFile, FileType)] when possible, as it is cheaper when the file type is not yet known.
   ///
   /// @see FileTypeRegistry
   public @NotNull FileType getFileType() {
@@ -666,17 +673,16 @@ public abstract class VirtualFile extends UserDataHolderBase implements Modifica
     return isValid();
   }
 
-  /// BEWARE: method name may be quite misleading: the definition of 'local' relies on "being subclass of [LocalFileSystem]"
-  /// This definition leads to quite counterintuitive behavior: the 'file://...' filesystem is 'local' -- which is intuitive.
-  /// But 'temp://...' i.e., in-memory filesystem is also considered 'local' -- which is not very intuitive.
-  /// Moreover, archive ('jar://...', 'zip://...', etc.) filesystems are considered NOT local, even if the actual archive
-  /// is a local file -- also quite counterintuitive.
-  /// It is too late to change this behavior -- method is very widely used.
+  /// BEWARE: the method name may be misleading. The answer comes from [VirtualFileSystem#isLocal()] of the owning file system.
+  /// The 'file://...' file system is 'local', which is intuitive.
+  /// The 'temp://...' in-memory file system is also 'local', which is not intuitive.
+  /// Archive ('jar://...', 'zip://...', etc.) file systems are NOT local, even when the archive is a local file.
+  /// It is too late to change this behavior, because the method is very widely used.
   /// So the only choice is: constant vigilance while using it.
   ///
-  /// @return true if filesystem inherits [LocalFileSystem] (**including temporary!**)
+  /// @return true if the owning file system reports [VirtualFileSystem#isLocal()] (**including temporary!**)
   public boolean isInLocalFileSystem() {
-    return false;
+    return getFileSystem().isLocal();
   }
 
   private static final Key<String> DETECTED_LINE_SEPARATOR_KEY = Key.create("DETECTED_LINE_SEPARATOR_KEY");

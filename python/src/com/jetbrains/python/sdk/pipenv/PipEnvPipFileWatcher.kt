@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.sdk.pipenv
 
 import com.intellij.notification.NotificationGroupManager
@@ -18,18 +18,20 @@ import com.intellij.openapi.module.ModuleUtil
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.NlsContexts
+import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.platform.ide.progress.withBackgroundProgress
+import com.intellij.python.pyproject.model.evolution.getInterpreter
+import com.intellij.python.sdk.backend.associatedModuleDir
+import com.intellij.python.sdk.backend.sitePackagesDirectory
 import com.jetbrains.python.PyBundle
+import com.jetbrains.python.errorProcessing.ErrorSink
 import com.jetbrains.python.errorProcessing.emit
 import com.jetbrains.python.onFailure
 import com.jetbrains.python.packaging.utils.PyPackageCoroutine
-import com.jetbrains.python.sdk.associatedModuleDir
-import com.jetbrains.python.sdk.findAmongRoots
-import com.jetbrains.python.sdk.pythonSdk
-import com.jetbrains.python.sdk.skeleton.PySkeletonUtil
+import com.jetbrains.python.project.PyProject.Companion.asPyProject
+import com.jetbrains.python.project.resolveFile
 import com.jetbrains.python.statistics.PipfileWatcherIdsHolder.Companion.RUN_PIPENV_LOCK_SUGGESTION
-import com.jetbrains.python.errorProcessing.ErrorSink
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -75,7 +77,7 @@ internal class PipEnvPipFileWatcher : EditorFactoryListener {
   private suspend fun notifyPipFileChanged(module: Module) {
     if (module.getUserData(notificationActive) == true) return
     val title = when {
-      findAmongRoots(module, PIP_FILE_LOCK) == null -> PyBundle.message("python.sdk.pipenv.pip.file.lock.not.found")
+      module.asPyProject()?.resolveFile(PIP_FILE_LOCK) == null -> PyBundle.message("python.sdk.pipenv.pip.file.lock.not.found")
       else -> PyBundle.message("python.sdk.pipenv.pip.file.lock.out.of.date")
     }
     val content = PyBundle.message("python.sdk.pipenv.pip.file.notification.content")
@@ -111,14 +113,16 @@ internal class PipEnvPipFileWatcher : EditorFactoryListener {
   private fun runPipEnvInBackground(module: Module, args: List<String>, @NlsContexts.ProgressTitle description: String) {
     PyPackageCoroutine.launch(module.project) {
       withBackgroundProgress(module.project, description) {
-        val sdk = module.pythonSdk ?: return@withBackgroundProgress
-        runPipEnvWithSdk(sdk, *args.toTypedArray()).onFailure {
+        val interpreter = module.asPyProject()?.getInterpreter() ?: return@withBackgroundProgress
+        runPipEnvWithInterpreter(interpreter, *args.toTypedArray()).onFailure {
           ErrorSink().emit(it, module.project)
         }
 
         withContext(Dispatchers.IO) {
-          PySkeletonUtil.getSitePackagesDirectory(sdk)?.refresh(true, true)
-          sdk.associatedModuleDir?.refresh(true, false)
+          interpreter.sitePackagesDirectory()?.refresh(true, true)
+          // `Pipfile.lock` may not be there yet, and a plain refresh never looks for a name VFS has not seen — see
+          // the note on `PythonPackageManagerAction`'s own refresh, which this mirrors (PY-92487).
+          interpreter.associatedModuleDir?.let { VfsUtil.markDirtyAndRefresh(true, false, true, it) }
         }
       }
     }
@@ -129,8 +133,9 @@ internal class PipEnvPipFileWatcher : EditorFactoryListener {
     if (file.name != PIP_FILE) return false
     val project = editor.project ?: return false
     val module = file.getModule(project) ?: return false
-    if (findAmongRoots(module, PIP_FILE) != file) return false
-    return module.pythonSdk?.isPipEnv == true
+    val pyProject = module.asPyProject() ?: return false
+    if (pyProject.resolveFile(PIP_FILE) != file.fileSystem.getNioPath(file)) return false
+    return pyProject.getInterpreter()?.isPipEnv == true
   }
 
   private val Document.virtualFile: VirtualFile?

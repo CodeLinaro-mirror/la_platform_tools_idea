@@ -2,8 +2,11 @@
 package org.jetbrains.plugins.groovy.config;
 
 import com.intellij.framework.library.DownloadableLibraryType;
+import com.intellij.ide.DataManager;
+import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.fileChooser.FileChooser;
 import com.intellij.openapi.fileChooser.FileChooserDescriptor;
+import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.libraries.LibraryKind;
 import com.intellij.openapi.roots.libraries.LibraryPresentationProvider;
 import com.intellij.openapi.roots.libraries.LibraryType;
@@ -13,7 +16,7 @@ import com.intellij.openapi.roots.ui.configuration.libraryEditor.LibraryEditor;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.io.FileUtil;
-import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.StandardFileSystems;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
@@ -85,9 +88,13 @@ public class GroovyLibraryDescription extends CustomLibraryDescription {
   @Override
   public NewLibraryConfiguration createNewLibrary(@NotNull JComponent parentComponent, VirtualFile contextDirectory) {
     VirtualFile initial = findPathToGroovyHome();
+    if (initial == null) {
+      initial = contextDirectory;
+    }
 
-    final FileChooserDescriptor descriptor = createFileChooserDescriptor();
-    final VirtualFile dir = FileChooser.chooseFile(descriptor, parentComponent, null, initial);
+    final Project project = CommonDataKeys.PROJECT.getData(DataManager.getInstance().getDataContext(parentComponent));
+    final FileChooserDescriptor descriptor = createFileChooserDescriptor().withEnvironmentRestricted(true);
+    final VirtualFile dir = FileChooser.chooseFile(descriptor, parentComponent, project, initial);
     if (dir == null) {
       return null;
     }
@@ -149,7 +156,7 @@ public class GroovyLibraryDescription extends CustomLibraryDescription {
 
   private static @Nullable VirtualFile findFile(String path) {
     if (path != null && !path.isEmpty()) {
-      return LocalFileSystem.getInstance().findFileByPath(FileUtil.toSystemIndependentName(path));
+      return StandardFileSystems.local().findFileByPath(FileUtil.toSystemIndependentName(path));
     }
     return null;
   }

@@ -33,22 +33,27 @@ import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.psi.util.PsiUtil
 import com.intellij.psi.util.findParentOfType
 import com.intellij.psi.util.parentOfType
-import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.analyze
-import org.jetbrains.kotlin.analysis.api.components.expressionType
+import org.jetbrains.kotlin.analysis.api.javaInterop.asPsiClass
 import org.jetbrains.kotlin.analysis.api.components.resolveToSymbol
-import org.jetbrains.kotlin.analysis.api.components.typeCreator
+import org.jetbrains.kotlin.analysis.api.expressions.expressionType
+import org.jetbrains.kotlin.analysis.api.javaInterop.asKaType
 import org.jetbrains.kotlin.analysis.api.permissions.KaAllowAnalysisFromWriteAction
 import org.jetbrains.kotlin.analysis.api.permissions.KaAllowAnalysisOnEdt
 import org.jetbrains.kotlin.analysis.api.permissions.allowAnalysisFromWriteAction
 import org.jetbrains.kotlin.analysis.api.permissions.allowAnalysisOnEdt
+import org.jetbrains.kotlin.analysis.api.renderer.render
 import org.jetbrains.kotlin.analysis.api.renderer.types.impl.KaTypeRendererForSource
+import org.jetbrains.kotlin.analysis.api.session.analyze
 import org.jetbrains.kotlin.analysis.api.symbols.KaCallableSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.findClass
+import org.jetbrains.kotlin.analysis.api.symbols.classSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.markers.KaAnnotatedSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.symbol
 import org.jetbrains.kotlin.analysis.api.types.KaErrorType
 import org.jetbrains.kotlin.analysis.api.types.symbol
+import org.jetbrains.kotlin.analysis.api.types.typeCreation.typeCreator
 import org.jetbrains.kotlin.asJava.toLightClass
 import org.jetbrains.kotlin.descriptors.annotations.AnnotationUseSiteTarget
 import org.jetbrains.kotlin.descriptors.annotations.KotlinTarget
@@ -57,7 +62,9 @@ import org.jetbrains.kotlin.idea.base.analysis.api.utils.hasApplicableAllowedTar
 import org.jetbrains.kotlin.idea.base.analysis.api.utils.isApplicableTargetSet
 import org.jetbrains.kotlin.idea.base.analysis.api.utils.shortenReferences
 import org.jetbrains.kotlin.idea.base.codeInsight.ShortenReferencesFacility
+import org.jetbrains.kotlin.idea.base.psi.addAnnotation
 import org.jetbrains.kotlin.idea.base.psi.classIdIfNonLocal
+import org.jetbrains.kotlin.idea.base.psi.getOrCreateClassBody
 import org.jetbrains.kotlin.idea.base.psi.getOrCreateCompanionObject
 import org.jetbrains.kotlin.idea.base.psi.presentableClassId
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
@@ -92,7 +99,6 @@ import org.jetbrains.kotlin.psi.KtPsiFactory
 import org.jetbrains.kotlin.psi.KtQualifiedExpression
 import org.jetbrains.kotlin.psi.KtSuperTypeList
 import org.jetbrains.kotlin.psi.KtVariableDeclaration
-import org.jetbrains.kotlin.psi.getOrCreateBody
 import org.jetbrains.kotlin.psi.psiUtil.getAssignmentByLHS
 import org.jetbrains.kotlin.psi.psiUtil.getParentOfTypeAndBranch
 import org.jetbrains.kotlin.psi.psiUtil.getQualifiedElement
@@ -119,7 +125,7 @@ object K2CreatePropertyFromUsageBuilder {
 
     internal fun buildRequestsAndActions(ref: KtNameReferenceExpression): List<IntentionAction> {
         val propertyRequests = analyze(ref) { buildRequests(ref) }
-        val extensions = EP_NAME.extensions
+        val extensions = EP_NAME.extensionList
         return propertyRequests.flatMap { (targetClass, request) ->
             extensions.flatMap { ext ->
                 ext.createAddFieldActions(targetClass, request)
@@ -159,7 +165,7 @@ object K2CreatePropertyFromUsageBuilder {
         val receiverType = receiverExpression?.expressionType
         if (receiverType is KaErrorType) return emptyList()
 
-        val lightClass = (defaultContainerPsi as? KtClassOrObject)?.toLightClass() ?: defaultContainerPsi as? PsiClass
+        val lightClass = (defaultContainerPsi as? KtClassOrObject)?.classSymbol?.asPsiClass() ?: defaultContainerPsi as? PsiClass
         val isAbstract = lightClass?.hasModifier(JvmModifier.ABSTRACT)
         val containingKtFile = ref.containingKtFile
         val wrapperForKtFile = JvmClassWrapperForKtClass(containingKtFile)
@@ -178,7 +184,6 @@ object K2CreatePropertyFromUsageBuilder {
                 val classId =
                     (defaultContainerPsi as? KtClassOrObject)?.takeUnless { it is KtEnumEntry }?.presentableClassId ?: (defaultContainerPsi as? PsiClass)?.classIdIfNonLocal
                 if (classId != null) {
-                    @OptIn(KaExperimentalApi::class)
                     val targetClassType = typeCreator.classType(if (static) ClassId.fromString(classId.asFqNameString() + ".Companion") else classId)
                     requests.add(wrapperForKtFile to CreatePropertyFromKotlinUsageRequest(ref, jvmModifiers, targetClassType, isExtension = true))
                 }
@@ -308,7 +313,7 @@ object K2CreatePropertyFromUsageBuilder {
 
         private var declarationText: String = computeDeclarationText()
 
-        @OptIn(KaExperimentalApi::class, KaAllowAnalysisOnEdt::class)
+        @OptIn(KaAllowAnalysisOnEdt::class)
         private fun computeDeclarationText(): String {
             val container = pointer.element ?: return ""
             val psiFactory = KtPsiFactory(container.project)
@@ -385,7 +390,7 @@ object K2CreatePropertyFromUsageBuilder {
                 val psiFactory = KtPsiFactory(pointer.project)
                 val actualAnchor = when (adjustedContainer) {
                     is KtClassOrObject -> {
-                        val bodyBlock = adjustedContainer.getOrCreateBody()
+                        val bodyBlock = adjustedContainer.getOrCreateClassBody()
                         bodyBlock.declarations.firstOrNull()
                     }
                     is KtParameterList -> {
@@ -471,7 +476,7 @@ object K2CreatePropertyFromUsageBuilder {
 
         val psiFactory = KtPsiFactory(target.project)
         val annotationText = '@' + annotationUseSiteTargetPrefix + renderAnnotation(target, request, psiFactory)
-        return target.addAnnotationEntry(psiFactory.createAnnotationEntry(annotationText))
+        return target.addAnnotation(psiFactory.createAnnotationEntry(annotationText))
     }
 
     @OptIn(KaAllowAnalysisOnEdt::class, KaAllowAnalysisFromWriteAction::class)

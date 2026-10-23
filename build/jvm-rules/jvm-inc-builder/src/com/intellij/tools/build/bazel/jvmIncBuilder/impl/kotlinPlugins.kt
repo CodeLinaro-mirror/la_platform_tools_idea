@@ -4,12 +4,18 @@ package com.intellij.tools.build.bazel.jvmIncBuilder.impl
 import androidx.compose.compiler.plugins.kotlin.ComposeCommandLineProcessor
 import androidx.compose.compiler.plugins.kotlin.ComposePluginRegistrar
 import org.jetbrains.kotlin.backend.common.output.OutputFileCollection
+import org.jetbrains.kotlin.cli.CliDiagnostics
+import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSeverity
 import org.jetbrains.kotlin.cli.jvm.plugins.PluginCliParser.RegisteredPluginInfo
+import org.jetbrains.kotlin.cli.plugins.PluginOrderConstraint
+import org.jetbrains.kotlin.cli.plugins.extractPluginOrderConstraint
+import org.jetbrains.kotlin.cli.report
 import org.jetbrains.kotlin.compiler.plugin.*
 import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.jvm.abi.JvmAbiCommandLineProcessor
 import org.jetbrains.kotlin.jvm.abi.JvmAbiComponentRegistrar
 import org.jetbrains.kotlin.util.ServiceLoaderLite
+import org.jetbrains.kotlin.utils.topologicalSort
 import org.jetbrains.kotlinx.serialization.compiler.extensions.SerializationComponentRegistrar
 import org.jetbrains.kotlinx.serialization.compiler.extensions.SerializationPluginOptions
 import java.lang.invoke.MethodHandle
@@ -28,9 +34,11 @@ fun configurePlugins(
   abiConsumer: ((OutputFileCollection) -> Unit)?,
   consumer: (RegisteredPluginInfo) -> Unit,
 ) {
+  val pluginIdToPluginOptions = internalPluginIdToPluginOptions.withDefaultComposePluginOptions()
+
   for ((id, classpathConfig) in pluginIdToPluginClasspath) {
     if (classpathConfig.classpath.isNotEmpty()) {
-      consumer(loadRegisteredPluginsInfo(classpathConfig, internalPluginIdToPluginOptions))
+      consumer(loadRegisteredPluginsInfo(classpathConfig, pluginIdToPluginOptions))
       continue
     }
 
@@ -38,25 +46,23 @@ fun configurePlugins(
       "org.jetbrains.kotlin.kotlin-serialization-compiler-plugin" -> {
         val processor = SerializationPluginOptions()
         consumer(RegisteredPluginInfo(
-          componentRegistrar = null,
           compilerPluginRegistrar = SerializationComponentRegistrar(),
           commandLineProcessor = processor,
-          pluginOptions = internalPluginIdToPluginOptions[processor.pluginId] ?: emptyList(),
+          pluginOptions = pluginIdToPluginOptions[processor.pluginId] ?: emptyList(),
         ))
       }
 
       "org.jetbrains.kotlin.kotlin-compose-compiler-plugin" -> {
         val processor = ComposeCommandLineProcessor()
         consumer(RegisteredPluginInfo(
-          componentRegistrar = null,
           compilerPluginRegistrar = ComposePluginRegistrar(),
           commandLineProcessor = processor,
-          pluginOptions = internalPluginIdToPluginOptions[processor.pluginId] ?: emptyList(),
+          pluginOptions = pluginIdToPluginOptions[processor.pluginId] ?: emptyList(),
         ))
       }
 
       else -> {
-        consumer(CompilerPluginProvider.provide(id, internalPluginIdToPluginOptions))
+        consumer(CompilerPluginProvider.provide(id, pluginIdToPluginOptions))
       }
     }
   }
@@ -65,7 +71,6 @@ fun configurePlugins(
     val jvmAbiCommandLineProcessor = JvmAbiCommandLineProcessor()
     val pluginId = jvmAbiCommandLineProcessor.pluginId
     consumer(RegisteredPluginInfo(
-      componentRegistrar = null,
       compilerPluginRegistrar = JvmAbiComponentRegistrar(abiConsumer),
       commandLineProcessor = jvmAbiCommandLineProcessor,
       pluginOptions = listOf(
@@ -82,6 +87,77 @@ fun configurePlugins(
     ))
   }
 
+}
+
+/** Adds the defaults used by the Compose Gradle plugin when the caller does not set them. */
+private fun Map<String, List<CliOptionValue>>.withDefaultComposePluginOptions(): Map<String, List<CliOptionValue>> {
+  val pluginId = ComposeCommandLineProcessor.PLUGIN_ID
+  val options = this[pluginId] ?: emptyList()
+  val defaultOptions = listOf(
+    // Records source locations for composable calls.
+    ComposeCommandLineProcessor.SOURCE_INFORMATION_ENABLED_OPTION to "true",
+  )
+    .filter { (option, _) -> options.none { it.optionName == option.optionName } }
+    .map { (option, value) -> CliOptionValue(pluginId, option.optionName, value) }
+  return this + (pluginId to (defaultOptions + options))
+}
+
+/**
+ * Reorders the [CompilerPluginRegistrar.COMPILER_PLUGIN_REGISTRARS] list of the given [configuration] according to
+ * the `-Xcompiler-plugin-order` constraints: `"pluginId1>pluginId2"` means the plugin with
+ * [CompilerPluginRegistrar.pluginId] `pluginId1` is executed before the one with `pluginId2`.
+ */
+@OptIn(ExperimentalCompilerApi::class)
+fun sortCompilerPluginRegistrarsByOrderConstraints(configuration: CompilerConfiguration, rawConstraints: Array<String>) {
+  if (rawConstraints.isEmpty()) {
+    return
+  }
+
+  val orderConstraints = ArrayList<PluginOrderConstraint>(rawConstraints.size)
+  for (rawConstraint in rawConstraints) {
+    val constraint = extractPluginOrderConstraint(rawConstraint)
+    if (constraint == null) {
+      configuration.report(CliDiagnostics.COMPILER_ARGUMENTS_ERROR, "Could not parse plugin order constraint: $rawConstraint")
+      return
+    }
+    orderConstraints.add(constraint)
+  }
+
+  val registrars: List<CompilerPluginRegistrar> = configuration.getList(CompilerPluginRegistrar.COMPILER_PLUGIN_REGISTRARS)
+
+  try {
+    val registrarsById: Map<String, CompilerPluginRegistrar> = registrars
+      .filter {
+        try {
+          it.pluginId.isNotEmpty()
+        }
+        catch (_: LinkageError) {
+          throw PluginProcessingException("Plugin ${it::class.qualifiedName} is incompatible with the current version of the compiler.")
+        }
+      }
+      .associateBy { it.pluginId }
+
+    val dependenciesById: Map<String, List<CompilerPluginRegistrar>> = orderConstraints
+      .filter { it.before in registrarsById && it.after in registrarsById } // constraints naming unknown plugins are ignored, as in PluginCliParser
+      .groupBy(keySelector = { it.after }, valueTransform = { registrarsById.getValue(it.before) })
+
+    if (dependenciesById.isEmpty()) {
+      return
+    }
+
+    val sorted: List<CompilerPluginRegistrar> = topologicalSort(
+      registrars,
+      reportCycle = {
+        throw PluginProcessingException("Compiler plugin '${it.pluginId}' is part of an constraint cycle: ${orderConstraints.joinToString(", ")}")
+      },
+      dependencies = { dependenciesById[pluginId].orEmpty() }
+    )
+
+    configuration.put(CompilerPluginRegistrar.COMPILER_PLUGIN_REGISTRARS, sorted.asReversed().toMutableList())
+  }
+  catch (e: PluginProcessingException) {
+    configuration.report(CliDiagnostics.COMPILER_ARGUMENTS_ERROR, e.message!!)
+  }
 }
 
 @OptIn(ExperimentalCompilerApi::class)
@@ -110,7 +186,6 @@ private fun loadRegisteredPluginsInfo(config: PluginClasspathConfig, internalPlu
 
   val processor = commandLineProcessor.firstOrNull()
   return RegisteredPluginInfo(
-    componentRegistrar = null,
     compilerPluginRegistrar = compilerPluginRegistrars.firstOrNull(),
     commandLineProcessor = processor,
     pluginOptions = if (processor == null) emptyList() else internalPluginIdToPluginOptions[processor.pluginId] ?: emptyList(),
@@ -145,10 +220,9 @@ private class CompilerPluginProvider {
 private fun createPluginInfo(data: Pair<MethodHandle, MethodHandle?>, internalPluginIdToPluginOptions: Map<String, List<CliOptionValue>>): RegisteredPluginInfo {
   val processor = data.second?.invoke() as CommandLineProcessor?
   return RegisteredPluginInfo(
-    componentRegistrar = null,
     compilerPluginRegistrar = data.first.invoke() as CompilerPluginRegistrar,
     commandLineProcessor = processor,
-    pluginOptions = if (processor== null) emptyList() else internalPluginIdToPluginOptions[processor.pluginId] ?: emptyList(),
+    pluginOptions = if (processor == null) emptyList() else internalPluginIdToPluginOptions[processor.pluginId] ?: emptyList(),
   )
 }
 

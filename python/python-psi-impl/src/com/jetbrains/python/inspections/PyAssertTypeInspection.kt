@@ -9,12 +9,17 @@ import com.jetbrains.python.codeInsight.typing.PyTypingTypeProvider
 import com.jetbrains.python.documentation.PythonDocumentationProvider
 import com.jetbrains.python.psi.PyCallExpression
 import com.jetbrains.python.psi.PyFunction
+import com.jetbrains.python.psi.types.PyAnyType
 import com.jetbrains.python.psi.types.PyCallableParameter
 import com.jetbrains.python.psi.types.PyCallableType
 import com.jetbrains.python.psi.types.PyClassLikeType
+import com.jetbrains.python.psi.types.PyCloningTypeVisitor
 import com.jetbrains.python.psi.types.PyNumericTowerUtil
 import com.jetbrains.python.psi.types.PyType
+import com.jetbrains.python.psi.types.PyTypeUtil.asUnionSequence
+import com.jetbrains.python.psi.types.PyTypeUtil.derefOrUnknown
 import com.jetbrains.python.psi.types.TypeEvalContext
+import com.jetbrains.python.psi.types.isAnyOrUnknown
 
 class PyAssertTypeInspection : PyInspection() {
   override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean, session: LocalInspectionToolSession): PsiElementVisitor {
@@ -29,12 +34,15 @@ class PyAssertTypeInspection : PyInspection() {
           val arguments = callExpression.getArguments()
           if (arguments.size == 2) {
             val actualType = myTypeEvalContext.getType(arguments[0]).let { PyNumericTowerUtil.enrich(it) }
-            val expectedType = Ref.deref(PyTypingTypeProvider.getType(arguments[1], myTypeEvalContext))
+            val expectedType = PyTypingTypeProvider.getType(arguments[1], myTypeEvalContext).derefOrUnknown()
             if (!isSame(actualType, expectedType, myTypeEvalContext)) {
               val expectedName = PythonDocumentationProvider.getVerboseTypeName(expectedType, myTypeEvalContext)
               val actualName = PythonDocumentationProvider.getTypeName(actualType, myTypeEvalContext)
-              registerProblem(arguments[0],
-                              PyPsiBundle.problemMessage("INSP.assert.type.expected.type.got.type.instead", expectedName, actualName))
+              val message = PyPsiBundle.problemMessage("INSP.assert.type.expected.type.got.type.instead", expectedName, actualName)
+              // assert_type is an exact-match check, so the diff compares the types invariantly; it's shown alone (no
+              // assignability breakdown, which wouldn't apply to an equality check).
+              val diff = PyTypeDiff.diffTooltip(expectedType, actualType, myTypeEvalContext, exact = true)
+              registerProblem(arguments[0], if (diff != null) message.copy(tooltip = diff) else message)
             }
           }
         }
@@ -44,6 +52,9 @@ class PyAssertTypeInspection : PyInspection() {
 }
 
 private fun isSame(type1: PyType?, type2: PyType?, context: TypeEvalContext): Boolean {
+  val type1AllAny = type1.asUnionSequence().all { it.isAnyOrUnknown }
+  val type2AllAny = type2.asUnionSequence().all { it.isAnyOrUnknown }
+  if (type1AllAny || type2AllAny) return type1AllAny && type2AllAny
   if (type1 is PyCallableType && (type1 !is PyClassLikeType) &&
       type2 is PyCallableType && (type2 !is PyClassLikeType)) {
     val returnType1 = type1.getReturnType(context)
@@ -100,8 +111,21 @@ private fun isSame(type1: PyType?, type2: PyType?, context: TypeEvalContext): Bo
     }
     return keywordOnlyParameters2.isEmpty()
   }
-  return type1 == type2
+  if (type1 == type2) return true
+  return normalizeGradualType(type1, context) == normalizeGradualType(type2, context)
 }
+
+/**
+ * Replaces every nested `Unknown` with `Any`.
+ *
+ * `Any` and `Unknown` are one gradual type. `Unknown` is how PyCharm shows the gradual type that no
+ * annotation spells out, the way `ty` and `basedpyright` show it. `assert_type` compares types, so it
+ * must see the two spellings as the same type. [isSame] already does that for a top-level type.
+ */
+private fun normalizeGradualType(type: PyType?, context: TypeEvalContext): PyType? =
+  PyCloningTypeVisitor.clone(type, object : PyCloningTypeVisitor(context) {
+    override fun visitUnknownType(): PyType? = PyAnyType.any
+  })
 
 private fun getCallableParameters(callableType: PyCallableType, context: TypeEvalContext): CallableParameters? {
   val parameters = callableType.getParameters(context) ?: return null

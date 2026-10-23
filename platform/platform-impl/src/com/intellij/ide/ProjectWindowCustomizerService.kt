@@ -8,6 +8,7 @@ import com.intellij.ide.ui.LafManagerListener
 import com.intellij.ide.ui.UISettings
 import com.intellij.ide.ui.UISettingsListener
 import com.intellij.ide.util.PropertiesComponent
+import com.intellij.ide.welcomeScreen.WelcomeUtils
 import com.intellij.internal.statistic.beans.MetricEvent
 import com.intellij.internal.statistic.eventLog.EventLogGroup
 import com.intellij.internal.statistic.eventLog.events.EventFields
@@ -48,9 +49,9 @@ import com.intellij.ui.paint.PaintUtil.alignTxToInt
 import com.intellij.ui.scale.ScaleContext
 import com.intellij.util.IconUtil
 import com.intellij.util.PlatformUtils
-import com.intellij.util.concurrency.annotations.RequiresEdt
 import com.intellij.util.concurrency.SynchronizedClearableLazy
 import com.intellij.util.concurrency.ThreadingAssertions
+import com.intellij.util.concurrency.annotations.RequiresEdt
 import com.intellij.util.messages.Topic
 import com.intellij.util.ui.AvatarIcon
 import com.intellij.util.ui.JBUI
@@ -101,6 +102,10 @@ private class ProjectWindowCustomizerIconCache(private val project: Project, cor
   }
 
   private fun getIconRaw(): Icon {
+    val icon = WelcomeUtils.getWelcomeProjectIcon(project)
+    if (icon != null) {
+      return icon
+    }
     val path = ProjectWindowCustomizerService.projectPath(project)?.invariantSeparatorsPathString ?: ""
     val size = JBUI.CurrentTheme.Toolbar.recentProjectAvatarIconSize()
     return RecentProjectsManagerBase.getInstanceEx().getProjectIcon(path = path, isProjectValid = true, unscaledIconSize = size, name = project.name)
@@ -127,7 +132,7 @@ private data class ProjectColors(val gradient: Color,
 object RecentProjectColorPalette {
   const val COLOR_COUNT: Int = 9
 
-  private const val CUSTOM_COLOR_BALANCE = 0.18
+  private const val SOFT_BACKGROUND_BALANCE = 0.25
 
   @Suppress("UnregisteredNamedColor")
   private val mainToolbarGradientStartColors: Array<Color>
@@ -147,12 +152,21 @@ object RecentProjectColorPalette {
     return mainToolbarGradientStartColors.getOrNull(index)
   }
 
+  /**
+   * Returns the soft background of the project avatar color at [index], or `null` for an index out of range.
+   * It mixes the avatar color into the panel background, in the same way as a custom project color.
+   */
   fun softBackground(index: Int): Color? {
-    return mainToolbarGradientStart(index)
+    return ProjectIconPalette.gradients.getOrNull(index)?.first?.let(::softBackground)
   }
 
-  fun softBackground(customColor: Color): Color {
-    return ColorUtil.mix(JBColor.PanelBackground, customColor, CUSTOM_COLOR_BALANCE)
+  /**
+   * Returns [projectColor] mixed into the panel background.
+   * The result keeps the brightness of the panel, and not of the main toolbar.
+   * Thus a light theme with a dark header gives a light background.
+   */
+  fun softBackground(projectColor: Color): Color {
+    return ColorUtil.mix(JBColor.PanelBackground, projectColor, SOFT_BACKGROUND_BALANCE)
   }
 
   fun softBackground(colorInfo: RecentProjectColorInfo): Color? {
@@ -168,7 +182,7 @@ object RecentProjectColorPalette {
 
 @Internal
 interface ProjectColorChangeListener {
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun projectColorChanged(projectPath: @SystemIndependent String)
 }
 
@@ -407,7 +421,6 @@ class ProjectWindowCustomizerService internal constructor(private val coroutineS
     }
   }
 
-  @Internal
   internal fun setupWorkspaceStorage(project: Project) {
     clearToolbarColorsAndInMemoryCache(project)
 
@@ -460,7 +473,6 @@ class ProjectWindowCustomizerService internal constructor(private val coroutineS
 
   private fun storageFor(project: Project) = if (project.isDisposed) null else WorkspaceProjectColorStorage(project)
 
-  @Internal
   internal fun getStorageFor(project: Project): ProjectColorStorage = storageFor(project)!!
 
   internal fun update(newValue: Boolean) {
@@ -658,7 +670,6 @@ internal class ProjectWindowCustomizerListener : ProjectActivity, UISettingsList
   }
 }
 
-@Internal
 internal interface ProjectColorStorage {
   var customColor: String?
   var associatedIndex: Int?

@@ -1,9 +1,22 @@
 load("@community//build:tests-options.bzl", "jps_test")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 load("//build:compiler-options.bzl", "create_kotlinc_options")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+jps_test(
+    name = "ideLafBridge-tests_test",
+    timeout = "moderate",
+    tags = ["community-aggregator"],
+    runtime_deps = [":ideLafBridge-tests_test_lib"],
+)
+
+### skip generation section `test intellij.platform.jewel.ideLafBridge.tests`
+
+### auto-generated section `dev intellij.platform.jewel.ideLafBridge` start
+content_module_jar(module = ":ide-laf-bridge")
+### auto-generated section `dev intellij.platform.jewel.ideLafBridge` end
 
 ### auto-generated section `build intellij.platform.jewel.ideLafBridge` start
-
 create_kotlinc_options(
     name = "custom_ide-laf-bridge",
     opt_in = [
@@ -44,7 +57,7 @@ jvm_library(
         # do not sort,
         "@lib//:kotlin-stdlib",
         "//libraries/kotlinx/coroutines/core",
-        "@lib//:jetbrains-annotations",
+        "//libraries/jetbrains/annotations",
         "//platform/core-api:core",
         "//platform/editor-ui-api:editor-ui",
         "//platform/jewel/foundation",
@@ -55,7 +68,6 @@ jvm_library(
         "//platform/platform-api:ide",
         "//platform/platform-impl:ide-impl",
         "//platform/ide-core",
-        "@lib//:jna",
         "//libraries/skiko",
         "//platform/core-ui",
         "//platform/util:util-ui",
@@ -87,6 +99,7 @@ jvm_library(
         # do not sort,
         ":ide-laf-bridge",
         "//libraries/kotlinx/coroutines/core:core_test_lib",
+        "//libraries/jetbrains/annotations:annotations_test_lib",
         "//platform/core-api:core_test_lib",
         "//platform/editor-ui-api:editor-ui_test_lib",
         "//platform/jewel/foundation:foundation_test_lib",
@@ -102,18 +115,6 @@ jvm_library(
         "//platform/util:util-ui_test_lib",
         "//libraries/compose-foundation-desktop:compose-foundation-desktop_test_lib",
         "//platform/editor-ui-ex:editor-ex_test_lib",
-        "//libraries/compose-foundation-desktop-junit",
-        "//libraries/compose-foundation-desktop-junit:compose-foundation-desktop-junit_test_lib",
-        "//platform/testFramework",
-        "//platform/testFramework:testFramework_test_lib",
-        "//java/testFramework",
-        "//java/testFramework:testFramework_test_lib",
-        "//plugins/textmate",
-        "//plugins/textmate:textmate_test_lib",
-        "//plugins/textmate/plugin",
-        "//plugins/textmate/plugin:plugin_test_lib",
-        "//libraries/mockk/jvm",
-        "//libraries/mockk/jvm:jvm_test_lib",
     ],
 )
 ### auto-generated section `build intellij.platform.jewel.ideLafBridge` end
@@ -122,13 +123,13 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.jewel.ideLafBridge.iml",
+        "src/main/resources/intellij.platform.jewel.ideLafBridge.xml",
     ],
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.platform.jewel.ideLafBridge` end
 
 ### auto-generated section `build intellij.platform.jewel.ideLafBridge.tests` start
-
 create_kotlinc_options(
     name = "custom_ideLafBridge-tests",
     opt_in = [
@@ -155,6 +156,7 @@ jvm_library(
         "//platform/jewel/ui",
         "//libraries/compose-foundation-desktop",
     ],
+    runtime_deps = ["//xml/plugin"],
 )
 
 jvm_library(
@@ -190,13 +192,15 @@ jvm_library(
         # do not sort,
         ":ideLafBridge-tests",
         "//platform/platform-impl:ide-impl_test_lib",
+        "//xml/plugin:plugin_test_lib",
     ],
     deps = [
         # do not sort,
         "@lib//:kotlin-stdlib",
         "//libraries/kotlinx/coroutines/core",
         "//libraries/kotlinx/coroutines/core:core_test_lib",
-        "@lib//:jetbrains-annotations",
+        "//libraries/jetbrains/annotations",
+        "//libraries/jetbrains/annotations:annotations_test_lib",
         "//platform/core-api:core",
         "//platform/core-api:core_test_lib",
         "//platform/editor-ui-api:editor-ui",
@@ -214,7 +218,8 @@ jvm_library(
         "//platform/platform-api:ide",
         "//platform/platform-api:ide_test_lib",
         "//platform/platform-impl:ide-impl",
-        "@lib//:jna",
+        "//libraries/jna",
+        "//libraries/jna:jna_test_lib",
         "//libraries/skiko",
         "//libraries/skiko:skiko_test_lib",
         "//platform/core-ui",
@@ -249,11 +254,3 @@ exports_files(
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.platform.jewel.ideLafBridge.tests` end
-
-### auto-generated section `test intellij.platform.jewel.ideLafBridge.tests` start
-
-jps_test(
-    name = "ideLafBridge-tests_test",
-    runtime_deps = [":ideLafBridge-tests_test_lib"],
-)
-### auto-generated section `test intellij.platform.jewel.ideLafBridge.tests` end

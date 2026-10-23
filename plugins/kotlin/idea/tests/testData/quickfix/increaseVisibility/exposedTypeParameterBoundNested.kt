@@ -8,11 +8,10 @@
 // ACTION: Make 'PrivateInnerClass' 'open'
 // ACTION: Make 'PrivateInnerClass' public
 // ACTION: Remove final upper bound
-// K2_ERROR: 'private-in-file' generic exposes its 'private-in-class' parameter bound type 'PrivateInnerClass'.
+// K2_ERROR: EXPOSED_TYPE_PARAMETER_BOUND
 
 private class PrivateInFileClass<T : <caret>PrivateInFileClass.PrivateInnerClass> {
     private class PrivateInnerClass
 }
 
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ChangeVisibilityFix$ChangeToPublicFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeVisibilityFixFactories$ChangeToPublicModCommandAction
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeVisibilityFixFactories$ChangeToPublicModCommandAction

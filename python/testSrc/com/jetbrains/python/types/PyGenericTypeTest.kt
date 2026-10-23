@@ -2,26 +2,29 @@
 package com.jetbrains.python.types
 
 import com.intellij.idea.TestFor
+import com.jetbrains.python.allure.Components
+import com.jetbrains.python.allure.Layers
+import com.jetbrains.python.allure.Subsystems
 import com.jetbrains.python.fixtures.PyCodeInsightTestCase
 import com.jetbrains.python.psi.LanguageLevel
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 
 /**
- * Type inference tests for generics and type parameters: [typing.Generic][https://docs.python.org/3/library/typing.html#typing.Generic],
- * [TypeVar][https://docs.python.org/3/library/typing.html#typing.TypeVar] (bounds/constraints/defaults),
+ * Type inference tests for generics and type parameters: [typing.Generic](https://docs.python.org/3/library/typing.html#typing.Generic),
+ * [TypeVar](https://docs.python.org/3/library/typing.html#typing.TypeVar) (bounds/constraints/defaults),
  * PEP 695 syntax (`class C[T]`, `def f[T]`, `type X[T] = ...`), `TypeVarTuple`, generic class/function/method
  * inference and type-parameter substitution/unification.
  */
+@Subsystems.Typing
+@Components.TypeInference
+@Layers.Functional
 class PyGenericTypeTest : PyCodeInsightTestCase() {
-
-  override val defaultTestOptions = TestOptions(assertRecursionPrevention = false)
 
   @Nested
   inner class DocstringBasedGenerics {
     @Test
-    fun `generic concrete from docstring`() = test(
-      """
+    fun `generic concrete from docstring`() = test("""
       def f(x):
           '''
           :type x: T
@@ -31,11 +34,10 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = f(1)
       # └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
-    fun `generic concrete mismatch from docstring`() = test(
-      """
+    fun `generic concrete mismatch from docstring`() = test("""
       def f(x, y):
           '''
           :type x: T
@@ -46,12 +48,10 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       expr = f(1)
       #│        └ WARNING Parameter 'y' unfilled
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
-    fun `upper bound generic from docstring`() = test(
-      TestOptions(enablePyAnyType = false),
-      """
+    fun `upper bound generic from docstring`() = test("""
       def foo(x):
           '''
           :type x: T <= int or str
@@ -60,11 +60,10 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       def bar(x):
           expr = foo(x)
       #   └ TYPE int | str
-      """)
+      """.trimIndent())
 
     @Test
-    fun `function type as unification argument`() = test(
-      """
+    fun `function type as unification argument`() = test("""
       def map2(f, xs):
           '''
           :type f: (T) -> V | None
@@ -75,11 +74,10 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
 
       expr = map2(lambda x: 10, ['1', '2', '3'])
       #└ TYPE list[int] | str FIXME Union[List[int], str, unicode]
-      """)
+      """.trimIndent())
 
     @Test
-    fun `function type as unification argument with subscription`() = test(
-      """
+    fun `function type as unification argument with subscription`() = test("""
       def map2(f, xs):
           '''
           :type f: (T) -> V | None
@@ -90,11 +88,10 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = map2(lambda x: 10, ['1', '2', '3'])[0]
       # └ TYPE int | str FIXME Union[int, str, unicode]
-      """)
+      """.trimIndent())
 
     @Test
-    fun `function type as unification result`() = test(
-      """
+    fun `function type as unification result`() = test("""
       def f(x):
           '''
           :type x: T
@@ -105,11 +102,10 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       g = f(10)
       expr = g()
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
-    fun `heterogeneous tuple substitution from docstring`() = test(
-      """
+    fun `heterogeneous tuple substitution from docstring`() = test("""
       def foo(i):
           '''
           :type i: T
@@ -118,11 +114,10 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
           pass
       expr = foo(5)
       #└ TYPE tuple[int, int]
-      """)
+      """.trimIndent())
 
     @Test
-    fun `unknown tuple substitution from docstring`() = test(
-      """
+    fun `unknown tuple substitution from docstring`() = test("""
       def foo(i):
           '''
           :type i: T
@@ -131,11 +126,10 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
           pass
       expr = foo(5)
       #└ TYPE tuple
-      """)
+      """.trimIndent())
 
     @Test
-    fun `constructor unification from docstring`() = test(
-      """
+    fun `constructor unification from docstring`() = test("""
       class C(object):
           def __init__(self, x):
               '''
@@ -146,11 +140,10 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = C(10)
       #└ TYPE C[int]
-      """)
+      """.trimIndent())
 
     @Test
-    fun `generic class method unification from docstring`() = test(
-      """
+    fun `generic class method unification from docstring`() = test("""
       class C(object):
           def __init__(self, x):
               '''
@@ -166,11 +159,10 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = C(10).foo()
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
-    fun `generic functions use same type parameter from docstring`() = test(
-      """
+    fun `generic functions use same type parameter from docstring`() = test("""
       def id(x):
           '''
           :type x: T
@@ -185,11 +177,10 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
           return id(x)
       expr = f3(42)
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
-    fun `generic field from docstring`() = test(
-      """
+    fun `generic field from docstring`() = test("""
       class D(object):
           def __init__(self, foo):
               '''
@@ -209,11 +200,11 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       y = g()
       expr = y.foo
       #└ TYPE str
-      """)
+      """.trimIndent())
 
     @Test
-    fun `type var substitution in positional args from docstring`() = test(
-      """
+    @TestFor(issues = ["PY-19723"])
+    fun `type var substitution in positional args from docstring`() = test("""
       def foo(*args):
           '''
           :type args: T
@@ -222,12 +213,11 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
           pass
       expr = foo(1)
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-19723"])
-    fun `type var substitution in heterogeneous positional args from docstring`() = test(
-      """
+    fun `type var substitution in heterogeneous positional args from docstring`() = test("""
       def foo(*args):
           '''
           :type args: T
@@ -236,12 +226,11 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
           pass
       expr = foo(1, "2")
       # └ TYPE int | str
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-19723"])
-    fun `type var substitution in keyword args from docstring`() = test(
-      """
+    fun `type var substitution in keyword args from docstring`() = test("""
       def foo(**kwargs):
           '''
           :type kwargs: T
@@ -250,12 +239,11 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
           pass
       expr = foo(a=1)
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-19723"])
-    fun `type var substitution in heterogeneous keyword args from docstring`() = test(
-      """
+    fun `type var substitution in heterogeneous keyword args from docstring`() = test("""
       def foo(**kwargs):
           '''
           :type kwargs: T
@@ -264,11 +252,10 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
           pass
       expr = foo(a=1, b="2")
       #└ TYPE int | str
-      """)
+      """.trimIndent())
 
     @Test
-    fun `non-trivial generic argument type in docstring`() = test(
-      """
+    fun `non-trivial generic argument type in docstring`() = test("""
       def f1(xs):
           '''
           :type xs: collections.Iterable of T
@@ -277,11 +264,10 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = f1([1, 2, 3])
       #└ TYPE UnsafeUnion[SupportsNext[Any], Iterator[Unknown]] FIXME Iterator[int]
-      """)
+      """.trimIndent())
 
     @Test
-    fun `generic class type var from docstrings`() = test(
-      """
+    fun `generic class type var from docstrings`() = test("""
       class User1(object):
           def __init__(self, x):
               '''
@@ -299,20 +285,85 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       c = User1(10)
       expr = c.get()
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
-    fun `homogeneous tuple substitution`() = test(
-      TestOptions(languageLevel = LanguageLevel.PYTHON35, assertRecursionPrevention = false),
-      """
+    @TestCaseOptions(languageLevel = LanguageLevel.PYTHON35, assertRecursionPrevention = false)
+    fun `homogeneous tuple substitution`() = test("""
       from typing import TypeVar, Tuple
       T = TypeVar('T')
       def foo(i: T) -> Tuple[T, ...]:
           pass
       expr = foo(5)
-      #└ TYPE Tuple[int, ...]
-      """,
-    )
+      #└ TYPE Tuple[Literal[5], ...]
+      """.trimIndent())
+
+    @Test
+    fun `generic user classes`() = test("""
+      class User1(object):
+          def __init__(self, x):
+              '''
+              :type x: T
+              :rtype: User1 of T
+              '''
+              self.x = x
+
+          def get(self):
+              '''
+              :rtype: T
+              '''
+              return self.x
+
+          def put(self, value):
+              '''
+              :type value: T
+              '''
+              self.x = value
+
+      c = User1(10)
+      print(c.get() + 'foo')
+      #               ^^^^^ WARNING Expected type 'int', got 'Literal["foo"]' instead
+      c.put(14)
+      c.put('foo')
+      #     ^^^^^ WARNING Expected type 'int', got 'Literal["foo"]' instead
+      """.trimIndent())
+
+    @Test
+    fun `dict generics`() = test("""
+      def test_dict_generics(d):
+          '''
+          :type d: dict from int to unicode
+          '''
+          xs = d.items()
+          d2 = dict(xs)
+          for k, v in d2.items():
+              print k + v
+      #            │    └ WARNING Expected type 'int', got 'str' instead
+      #            └ ERROR End of statement expected
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-7244"])
+    fun `generic arguments`() = test("""
+      class B(object):
+          def __init__(self, x):
+              '''
+              :type x: T
+              :rtype: B of T
+              '''
+              self._x = x
+
+          def foo(self):
+              '''
+              :rtype: T
+              '''
+              return self._x
+
+      class C(B):
+          def bar(self):
+              expr = self.foo()
+              return 'foo' + expr #pass
+      """.trimIndent())
   }
 
   @Nested
@@ -323,14 +374,14 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       expr = TypeVar('T')
       #│             ^^^ WARNING The argument to 'TypeVar()' must be a string equal to the variable name to which it is assigned
       #└ TYPE TypeVar
-      """)
+      """.trimIndent())
 
     @Test
     fun `type parameter type is typing TypeVar`() = test("""
       def foo[T]():
          expr = T
       #  └ TYPE TypeVar
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-61883"])
@@ -338,17 +389,70 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       def foo[*Ts]():
          expr = Ts
       #  └ TYPE TypeVarTuple
-      """)
+      """.trimIndent())
 
     @Test
     fun `type parameter rebind to local`() = test("""
       def outer[T]() -> None:
           def inner() -> None:
               expr = T
-      #       └ TYPE int
+      #       └ TYPE Literal[-1]
       
           T = -1
-      """)
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-23161"])
+    fun `generic with type var bounds`() = test("""
+      from typing import TypeVar, Generic
+
+      class B:
+          pass
+
+      T = TypeVar('T', bound=B)
+
+      class C(Generic[T]):
+          def __init__(self, foo: T):
+              self.foo = foo
+
+          def bar(self) -> T:
+              return self.foo # PY-23161 "Expected type 'T', got 'B' instead" warning here
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-32375"])
+    fun `matching return against bounded type var`() = test("""
+      from typing import TypeVar
+      F = TypeVar('F', bound=int)
+      def deco(func: F) -> F:
+              return ""
+      #              ^^ WARNING Expected type 'F ≤: int', got 'Literal[""]' instead
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-35235"])
+    fun `literal against type var bounded with typing literal`() = test("""
+      from typing_extensions import Literal
+      from typing import TypeVar
+      T = TypeVar('T', Literal["a"], Literal["b"], Literal["c"])
+
+      def repeat(x: T, n: int):
+          return [x] * n
+
+      repeat("c", 2)
+      """.trimIndent())
+
+    @Test
+    @TestCaseOptions(assertRecursionPrevention = false)
+    fun `literal against type var without bound`() = test("""
+      from typing import Dict, Literal
+
+      def foo(data: Dict[Literal['a', 5], bool]):
+          a = data['a']
+          five = data[5]
+          b = data['b']
+      #            ^^^ WARNING Expected type 'Literal['a', 5]', got 'Literal['b']' instead
+      """.trimIndent())
   }
 
   @Nested
@@ -363,7 +467,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       def f(expr: T):
       #      └ TYPE A
           pass
-      """)
+      """.trimIndent())
 
     @Test
     fun `bounded TypeVar used as parameter annotation`() = test("""
@@ -374,7 +478,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       def f(expr: T):
       #      └ TYPE T
           pass
-      """)
+      """.trimIndent())
 
     @Test
     fun `parameterized class instance`() = test("""
@@ -388,7 +492,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = C(10)
       # └ TYPE C[int]
-      """)
+      """.trimIndent())
 
     @Test
     fun `parameterized class with constructor returning None`() = test("""
@@ -402,7 +506,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = C(10)
       #└ TYPE C[int]
-      """)
+      """.trimIndent())
 
     @Test
     fun `parameterized class method`() = test("""
@@ -418,7 +522,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = C(10).foo()
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     fun `parameterized class inheritance`() = test("""
@@ -435,7 +539,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = C(10).foo()
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     fun `AnyStr unification`() = test("""
@@ -446,10 +550,10 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = foo(b'bar')
       #└ TYPE bytes
-      """)
+      """.trimIndent())
 
     @Test
-    fun `AnyStr for unknown`() = test(TestOptions(enablePyAnyType = false), """
+    fun `AnyStr for unknown`() = test("""
       from typing import AnyStr
       
       def foo(x: AnyStr) -> AnyStr:
@@ -457,8 +561,8 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       
       def bar(x):
           expr = foo(x)
-      #   └ TYPE str | bytes
-      """)
+      #   └ TYPE AnyStr
+      """.trimIndent())
 
     @Test
     fun `generic field with covariant TypeVar`() = test("""
@@ -476,7 +580,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       x = f()
       expr = x.foo
       #└ TYPE str
-      """)
+      """.trimIndent())
 
     @Test
     fun `generic field accessed on explicit Any and bare generic`() = test("""
@@ -488,7 +592,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       def f(a1: A[Any], a2: A):
           expr = a1.v, a2.v
       #   └ TYPE tuple[Any, Unknown]
-      """)
+      """.trimIndent())
 
     @Test
     fun `generic inherited specific and generic parameters`() = test("""
@@ -505,7 +609,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = C(3.14)
       # └ TYPE C[float | int]
-      """)
+      """.trimIndent())
 
     @Test
     fun `generic renamed parameter`() = test("""
@@ -515,7 +619,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       V = TypeVar('V')
       
       class B(Generic[V]):
-          def get() -> V:
+          def get(self) -> V:
               pass
       
       class C(B[T]):
@@ -524,7 +628,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = C(0).get()
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-27627"])
@@ -538,7 +642,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       expr = Node[int]()
       # │              └ WARNING Parameter 'children' unfilled
       # └ TYPE Node[int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-27627"])
@@ -564,7 +668,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       node = Clazz[str, int, float]()
       expr = node.third
       #└ TYPE float | int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-27627"])
@@ -576,9 +680,9 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
           def __init__(self, children : List[T]):
               self.children = children
       expr = Node[str]([1,2,3])
-      #│               ^^^^^^^ WARNING Expected type 'list[str]' (matched generic type 'list[T]'), got 'list[Literal[1, 2, 3]]' instead
+      #│               ^^^^^^^ WARNING Expected type 'list[str]', got 'list[Literal[1, 2, 3]]' instead
       #└ TYPE Node[str]
-      """)
+      """.trimIndent())
 
     @Test
     fun `generic user function with many params and nested call`() = test("""
@@ -596,7 +700,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = f(True, 1, 'foo')
       #└ TYPE tuple[bool, int, str]
-      """)
+      """.trimIndent())
   }
 
   @Nested
@@ -612,7 +716,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       def f(x: Type[MyClass]): 
           expr = x
       #   └ TYPE type[MyClass]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-20057"])
@@ -624,7 +728,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       def f(x: Type[T]):
           expr = x
       #   └ TYPE type[T]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-20057"])
@@ -638,10 +742,11 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = f(int)
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-20057"])
+    @TestCaseOptions(assertRecursionPrevention = false)
     fun `function returns type of instance`() = test("""
       from typing import Type, TypeVar
       
@@ -651,8 +756,8 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
           return type(x)
          
       expr = f(42)
-      #└ TYPE type[int]
-      """)
+      #└ TYPE type[Literal[42]]
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-23053"])
@@ -670,7 +775,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = Holder(str).get()
       #└ TYPE type[str]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-24260"])
@@ -686,7 +791,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       def f(x: Type[T]):
           expr = MyClass(x)
       #   └ TYPE MyClass[T]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-22919"])
@@ -703,7 +808,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = foo(MyClass)
       #└ TYPE type[MyClass]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-60614"])
@@ -713,7 +818,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       TypeAlias = type[T]
       expr: TypeAlias[int]
       #└ TYPE type[int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-60614"])
@@ -724,7 +829,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       def f(x: TypeAlias[T]) -> T: ...
       expr = f(int)
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-60614"])
@@ -732,7 +837,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       type TypeAlias[T] = type[T]
       expr: TypeAlias[int]
       #└ TYPE type[int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-90345"])
@@ -744,7 +849,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       def f(x: Alias[T]) -> T: ...
       expr = f(int)
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-90345"])
@@ -756,7 +861,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       def f(x: Alias[T]) -> T: ...
       expr = f(int)
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-90345"])
@@ -769,7 +874,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       def f(x: Alias[T]) -> T: ...
       expr = f(int)
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-90345"])
@@ -780,7 +885,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       Alias = Role[T] | type[T]
       expr: Alias[int]
       #└ TYPE Role[int] | type[int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-90345"])
@@ -789,7 +894,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       type Alias[T] = Role[T] | type[T]
       expr: Alias[int]
       #└ TYPE Role[int] | type[int]
-      """)
+      """.trimIndent())
   }
 
   @Nested
@@ -808,7 +913,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       box = Box(42)
       expr = box.get()
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     fun `single TypeVar specified on inheritance`() = test("""
@@ -828,7 +933,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       box = StrBox()
       expr = extract(box)
       #└ TYPE str
-      """)
+      """.trimIndent())
 
     @Test
     fun `partial TypeVar specialization on inheritance inherited`() = test("""
@@ -848,7 +953,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = first(StrFirstPair(42))
       #└ TYPE str
-      """)
+      """.trimIndent())
 
     @Test
     fun `partial TypeVar specialization on inheritance instantiated`() = test("""
@@ -867,8 +972,8 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
           pass
       
       expr = second(StrFirstPair(42))
-      #└ TYPE int
-      """)
+      #└ TYPE Literal[42]
+      """.trimIndent())
 
     @Test
     fun `TypeVars not specialized on inheritance distinct TypeVars`() = test("""
@@ -892,8 +997,8 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
           pass
       
       expr = to_tuple(PairExt(42, 'foo'))
-      #└ TYPE tuple[int, str]
-      """)
+      #└ TYPE tuple[Literal[42], Literal['foo']]
+      """.trimIndent())
 
     @Test
     fun `TypeVars not specialized on inheritance reused TypeVars`() = test("""
@@ -913,8 +1018,8 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
           pass
       
       expr = to_tuple(PairExt(42, 'foo'))
-      #└ TYPE tuple[int, str]
-      """)
+      #└ TYPE tuple[Literal[42], Literal['foo']]
+      """.trimIndent())
 
     @Test
     fun `TypeVar specialized on inheritance extra TypeVar added`() = test("""
@@ -937,7 +1042,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       box = StrBoxWithExtra(42)
       expr = func(box)
       #└ TYPE str
-      """)
+      """.trimIndent())
 
     @Test
     fun `generic class specializes inherited parameter and adds new one`() = test("""
@@ -955,7 +1060,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = StrBoxWithExtra(42)
       #└ TYPE StrBoxWithExtra[int]
-      """)
+      """.trimIndent())
 
     @Test
     fun `swapping type parameters in constructor`() = test("""
@@ -974,7 +1079,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       #                              ^^^^^ WARNING 'EllipsisType' object is not callable
       expr = Pair(int_then_str)
       #└ TYPE Pair[str, int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-50542"])
@@ -994,7 +1099,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       def func(xs: list[T1]):
           expr = Sub(xs)
       #   └ TYPE Sub[T1]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-50542"])
@@ -1012,20 +1117,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = g(42, 'foo')
       #└ TYPE str
-      """)
-
-    @Test
-    fun `generic kwargs`() = test("""
-      from typing import Any, Dict, TypeVar
-      
-      T = TypeVar('T')
-      
-      def generic_kwargs(**kwargs: T) -> Dict[str, T]:
-          pass
-      
-      expr = generic_kwargs(a=1, b='foo')
-      #└ TYPE dict[str, int | str]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-27783"])
@@ -1044,7 +1136,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
           def foo(self) -> None:
               expr = self.value_set
       #       └ TYPE dict[T, int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-27783"])
@@ -1064,13 +1156,12 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
           def foo(self) -> None:
               expr = self.value_set
       #       └ TYPE dict[T, int]
-      """)
+      """.trimIndent())
 
     @Test
-    @TestFor(issues = ["PY-36008"])
-    fun `unresolved generic replacement`() = test(
-      TestOptions(languageLevel = LanguageLevel.PYTHON36, assertRecursionPrevention = false),
-      """
+    @TestFor(issues = ["PY-36008", "PY-26061"])
+    @TestCaseOptions(languageLevel = LanguageLevel.PYTHON36, assertRecursionPrevention = false)
+    fun `unresolved generic replacement`() = test("""
       from typing import TypeVar, Generic
       
       T = TypeVar('T')
@@ -1085,8 +1176,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = C().f()
       #└ TYPE Unknown
-      """,
-    )
+      """.trimIndent())
 
     @Test
     fun `class with own init inherits class with generic call`() = test("""
@@ -1099,12 +1189,12 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
               pass
       
       class Derived(Base):
-          def __init__():
+          def __init__(self):
               pass
       
       expr = Derived()
       #└ TYPE Derived
-      """)
+      """.trimIndent())
 
     @Test
     fun `handle generic return type`() = test("""
@@ -1115,7 +1205,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = create_list_of_type("foo", 3)
       #└ TYPE list[str]
-      """)
+      """.trimIndent())
 
     @Test
     fun `handle generic with aliases return type`() = test("""
@@ -1133,9 +1223,10 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = dict.get("foo")
       #└ TYPE int | None
-      """)
+      """.trimIndent())
 
     @Test
+    @TestCaseOptions(assertRecursionPrevention = false)
     fun `TypeVar constraints with legacy syntax`() = test("""
       from typing import TypeVar
       
@@ -1150,9 +1241,10 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       s2 = concat(MyStr('apple'), 'pie')
       expr = (s1, s2)
       #└ TYPE tuple[str, str]
-      """)
+      """.trimIndent())
 
     @Test
+    @TestCaseOptions(assertRecursionPrevention = false)
     fun `TypeVar constraints with PEP695 syntax`() = test("""
       def concat[AnyStr: (str, bytes)](x: AnyStr, y: AnyStr) -> AnyStr:
           return x + y
@@ -1163,7 +1255,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       s2 = concat(MyStr('apple'), 'pie')
       expr = (s1, s2)
       #└ TYPE tuple[str, str]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-89265"])
@@ -1174,7 +1266,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       def f(a: A[None]):
           expr = a.x
       #   └ TYPE None
-      """)
+      """.trimIndent())
 
     @Test
     fun `generic function rendered signature`() = test("""
@@ -1183,7 +1275,59 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
 
       expr = f
       #└ TYPE [T: int = str, *Ts = *tuple[int], **P = [str]](t: T) -> T
-      """)
+      """.trimIndent())
+
+    @Test
+    fun `bounded generic`() = test("""
+      def test():
+          def f(x):
+              '''
+              :type x: T <= int | str
+              :rtype: T
+              '''
+              pass
+
+          x = f(10)
+          y = f('foo')
+          z = f([])
+      #         ^^ WARNING Expected type 'T ≤: int | str', got 'list[Unknown]' instead
+          return x + y
+      #              └ WARNING Expected type 'int', got 'str' instead
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-33548"])
+    fun `type vars chain before non type var substitution`() = test("""
+      from typing import TypeVar, Mapping
+
+      MyKT = TypeVar("MyKT")
+      MyVT = TypeVar("MyVT")
+
+      class MyMapping(Mapping[MyKT, MyVT]): # WEAK-WARNING Class MyMapping must implement all abstract methods
+          pass
+
+      d: MyMapping[str, str] = undefined1 # ERROR Unresolved reference 'undefined1'
+      d.get(undefined2) # ERROR Unresolved reference 'undefined2'
+      d.get("str")
+      d.get(1)
+      #     └ WARNING No overload of 'get' matches the arguments. Argument types: (Literal[1]). Expected one of: (key: str), (key: str, default: str), (key: str, default: _T)
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-33500"])
+    fun `implicit generic dunder call on typed element`() = test("""
+      from typing import TypeVar, Generic
+
+      _T = TypeVar('_T')
+
+      class Callback(Generic[_T]):
+          def __call__(self, arg: _T):
+              pass
+
+      def foo(cb: Callback[int]):
+          cb("42")
+      #      ^^^^ WARNING Expected type 'int', got 'Literal["42"]' instead
+      """.trimIndent())
   }
 
   @Nested
@@ -1197,21 +1341,21 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       def f(*args: *Ts):
           expr = args
       #   └ TYPE tuple[*Ts]
-      """)
+      """.trimIndent())
 
     @Test
     fun `type of args parameter annotated with bound unpacked tuple`() = test("""
       def f(*args: *tuple[int, str]):
           expr = args
       #   └ TYPE tuple[int, str]
-      """)
+      """.trimIndent())
 
     @Test
     fun `type of args parameter annotated with unbound unpacked tuple`() = test("""
       def f(*args: *tuple[int, ...]):
           expr = args
       #   └ TYPE tuple[int, ...]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -1229,7 +1373,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       box = Box((42, 'a', 3.3))
       expr = box.get()
       #└ TYPE tuple[int, str, float | int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -1250,7 +1394,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       box = StrBox()
       expr = extract(box)
       #└ TYPE tuple[str, int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -1274,7 +1418,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       box = StrBoxWithExtra((42, 'a', 3.3))
       expr = func(box)
       #└ TYPE tuple[str, int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53105"])
@@ -1293,7 +1437,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = StrBoxWithExtra((42, 'a', 3.3))
       #└ TYPE StrBoxWithExtra[int, str, float | int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-70528"])
@@ -1307,8 +1451,30 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = f(42, "foo")
       #└ TYPE tuple[int, str]
-      """)
+      """.trimIndent())
   }
+
+  @Test
+  @TestFor(issues = ["PY-85336"])
+  fun `apply expected generic type to right hand side`() = test("""
+      class A[T]: ...
+      class B[T](A[T]): ...
+      
+      a: A[int] = B()
+      #             └ TYPE B[Unknown] FIXME B[int]
+      """.trimIndent())
+
+  @Test
+  @TestFor(issues = ["PY-88690"])
+  fun `no false positive assigning partially specialized generic subclass`() = test("""
+      class A[X, Y]:
+          def __init__(self, x: X, y: Y): ...
+
+      class B[T](A[int, T]): ...
+
+      a: B[int] = B(1, 2)
+      #                 └ TYPE B[int]
+      """.trimIndent())
 
   @Nested
   inner class Pep695Syntax {
@@ -1322,7 +1488,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       stack = MyStack[str]()
       expr = stack.pop()
       #└ TYPE str
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-61883"])
@@ -1331,8 +1497,8 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
         return x
       
       expr = foo(1)
-      #└ TYPE int
-      """)
+      #└ TYPE Literal[1]
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-61883"])
@@ -1343,7 +1509,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = C(10)
       #└ TYPE C[int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-61883"])
@@ -1362,7 +1528,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       arg: Sub[int]
       expr = f(arg)
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-61883"])
@@ -1377,7 +1543,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       expr = Node[int]()
       #│               └ WARNING Parameter 'children' unfilled
       #└ TYPE Node[int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-61883"])
@@ -1391,8 +1557,8 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
               pass
       
       expr = C(10).foo()
-      #└ TYPE int
-      """)
+      #└ TYPE Literal[10]
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-61883"])
@@ -1407,7 +1573,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       x = f()
       expr = x.foo
       #└ TYPE str
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-61883"])
@@ -1426,7 +1592,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       node = Clazz[str, int, float]()
       expr = node.third
       #└ TYPE float | int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-61883"])
@@ -1439,7 +1605,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = f(True, 1, 'foo')
       #└ TYPE tuple[bool, int, str]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-61883"])
@@ -1462,7 +1628,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = Sub().m()
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-61883"])
@@ -1476,7 +1642,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       
       expr = StrBoxWithExtra(42)
       #└ TYPE StrBoxWithExtra[int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-61883"])
@@ -1486,7 +1652,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
           pass
       expr = foo()
       #└ TYPE str
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-61883"])
@@ -1494,7 +1660,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       type Pair[T] = tuple[T, T]
       expr: Pair[int]
       #└ TYPE tuple[int, int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-61883"])
@@ -1503,31 +1669,45 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       type Alias2[T2] = Alias1[int, T2]
       expr: Alias2[str]
       #└ TYPE dict[int, str]
-      """)
+      """.trimIndent())
 
     @Test
-    fun `unconstrained TypeVar default Any`() = test(
-      TestOptions(enablePyAnyType = true),
-      """
+    fun `unconstrained TypeVar default Any`() = test("""
       from typing import Any
 
       def f[T=Any]() -> T: ...
 
       expr = f()
       #└ TYPE Any
-      """,
-    )
+      """.trimIndent())
 
     @Test
-    fun `unconstrained TypeVar`() = test(
-      TestOptions(enablePyAnyType = true),
-      """
+    fun `unconstrained TypeVar`() = test("""
       def f[T]() -> T: ...
 
       expr = f()
-      #└ TYPE Unknown
-      """,
-    )
+      #└ TYPE T
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-61883"])
+    fun `type parameter bound with pep 695 syntax`() = test("""
+      def foo[T: str](p: T):
+          return p
+
+      expr = foo(42)
+      #          ^^ WARNING Expected type 'T ≤: str', got 'Literal[42]' instead
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-61883"])
+    fun `type parameter constraints with pep 695 syntax`() = test("""
+      def foo[T: (str, bool)](p: T):
+          return p
+
+      expr = foo(42)
+      #          ^^ WARNING Expected type 'T ≤: str | bool', got 'Literal[42]' instead
+      """.trimIndent())
   }
 
   @Nested
@@ -1542,7 +1722,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       class slice(Generic[StartT, StopT, StepT]): ...
       expr = slice
       #└ TYPE type[slice[int, int, int | None]]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-71002"])
@@ -1550,7 +1730,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       class slice[StartT = int, StopT = StartT, StepT = int | None]: ...
       expr = slice
       #└ TYPE type[slice[int, int, int | None]]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-71002"])
@@ -1562,7 +1742,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       class slice(Generic[StartT, StopT, StepT]): ...
       expr = slice()
       #└ TYPE slice[int, int, int | None]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-71002"])
@@ -1570,7 +1750,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       class slice[StartT = int, StopT = StartT, StepT = int | None]: ...
       expr = slice()
       #└ TYPE slice[int, int, int | None]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-71002"])
@@ -1582,7 +1762,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       class slice(Generic[StartT, StopT, StepT]): ...
       expr = slice[str]()
       #└ TYPE slice[str, str, int | None]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-71002"])
@@ -1594,7 +1774,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       class slice(Generic[StartT, StopT, StepT]): ...
       expr = slice[str, bool, complex]()
       #└ TYPE slice[str, bool, complex | float | int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-71002"])
@@ -1609,7 +1789,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
 
       expr = Bar[int]
       #└ TYPE type[Bar[int, list[int]]]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-71002"])
@@ -1619,7 +1799,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
           def __init__(self, x: Z1, y: ListDefaultT): ...
       expr = Bar
       #└ TYPE type[Bar[Unknown, list[Unknown]]]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-71002"])
@@ -1631,7 +1811,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
           def __init__(self, x: Z1, y: ListDefaultT): ...
       expr = Bar[int, list[str]](0, [])
       #└ TYPE Bar[int, list[str]]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-71002"])
@@ -1645,7 +1825,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       class Bar(SubclassMe[int, DefaultStrT]): ...
       expr = Bar
       #└ TYPE type[Bar[str]]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-71002"])
@@ -1659,7 +1839,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       class Bar(SubclassMe[int, DefaultStrT]): ...
       expr = Bar[bool]()
       #└ TYPE Bar[bool]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-71002"])
@@ -1673,7 +1853,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       class Foo(SubclassMe[float]): ...
       expr = Foo().x
       #└ TYPE str
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-71002"])
@@ -1684,7 +1864,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
           def foo(self) -> DefaultIntT: ...
       expr = Test().foo()
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-71002"])
@@ -1700,7 +1880,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
               self.value2 = c
       expr = Box()
       #└ TYPE Box[int, str, bool]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-71002"])
@@ -1708,7 +1888,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       def foo[T = int](x: T = None) -> T: ...
       expr = foo()
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-71002"])
@@ -1718,7 +1898,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       class Foo(Generic[*DefaultTs]): ...
       expr = Foo
       #└ TYPE type[Foo[str, int]]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-71002"])
@@ -1728,7 +1908,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       class Foo(Generic[*DefaultTs]): ...
       expr = Foo()
       #└ TYPE Foo[str, int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-71002"])
@@ -1737,7 +1917,7 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       class Foo[*DefaultTs = Unpack[tuple[str, int]]]: ...
       expr = Foo()
       #└ TYPE Foo[str, int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-71002"])
@@ -1747,19 +1927,8 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
       class Foo(Generic[*DefaultTs]): ...
       expr = Foo[bool, float]()
       #└ TYPE Foo[bool, float | int]
-      """)
+      """.trimIndent())
   }
-
-  @Test
-  @TestFor(issues = ["PY-32375"])
-  fun `returning str against bounded TypeVar return`() = test("""
-    from typing import TypeVar
-
-    F = TypeVar('F', bound=int)
-
-    def deco(func: F) -> F:
-        return "" # WARNING Expected type 'F ≤: int', got 'Literal[""]' instead
-    """)
 
   @Test
   @TestFor(issues = ["PY-32313"])
@@ -1782,38 +1951,8 @@ class PyGenericTypeTest : PyCodeInsightTestCase() {
 
     f(A, 1)
     f(B, 2)
-    f(C, 3) # WARNING Expected type 'type[T ≤: A | B]', got 'type[C]' instead
-    """)
-
-  @Test
-  @TestFor(issues = ["PY-33500"])
-  fun `implicit generic dunder call on typed element`() = test("""
-    from typing import TypeVar, Generic
-
-    _T = TypeVar('_T')
-
-    class Callback(Generic[_T]):
-        def __call__(self, arg: _T):
-            pass
-
-    def foo(cb: Callback[int]):
-        cb("42") # WARNING Expected type 'int' (matched generic type '_T'), got 'Literal["42"]' instead
-    """)
-
-  @Test
-  fun `generic callable parameter mapped by another argument`() = test("""
-    from typing import Callable, TypeVar
-
-    T = TypeVar('T')
-
-    def func(x: T, c: Callable[[T], None]) -> None:
-        pass
-
-    def accepts_anything(x: str) -> None:
-        pass
-
-    # FIXME PY-37876: an error is expected here but is not produced; documents current behavior.
-    func(42, accepts_anything)
-    """)
+    f(C, 3)
+    # └ WARNING Expected type 'type[T ≤: A | B]', got 'type[C]' instead
+    """.trimIndent())
 
 }

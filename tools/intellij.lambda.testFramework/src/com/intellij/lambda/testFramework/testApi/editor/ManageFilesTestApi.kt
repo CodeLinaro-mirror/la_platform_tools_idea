@@ -4,8 +4,8 @@ import com.intellij.lambda.testFramework.frameworkLogger
 import com.intellij.lambda.testFramework.testApi.executeAction
 import com.intellij.lambda.testFramework.testApi.getProject
 import com.intellij.openapi.actionSystem.IdeActions
-import com.intellij.openapi.application.readAction
 import com.intellij.openapi.application.edtWriteAction
+import com.intellij.openapi.application.readAction
 import com.intellij.openapi.application.writeIntentReadAction
 import com.intellij.openapi.editor.impl.EditorImpl
 import com.intellij.openapi.fileEditor.FileEditor
@@ -14,9 +14,9 @@ import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx
 import com.intellij.openapi.fileEditor.impl.FileEditorOpenOptions
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.io.findOrCreateFile
-import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.remoteDev.tests.LambdaBackendContext
 import com.intellij.remoteDev.tests.LambdaFrontendContext
 import com.intellij.remoteDev.tests.LambdaIdeContext
@@ -100,7 +100,7 @@ suspend fun waitNoOpenedFile(
   project: Project = getProject(),
   timeout: Duration = 20.seconds,
 ) {
-  waitSuspendingNotNull("No editors are opened", timeout) {
+  waitSuspending("No editors are opened", timeout) {
     project.allOpenFileEditors.isEmpty()
   }
 }
@@ -330,7 +330,7 @@ suspend fun createFile(relativePathString: String, fileContent: String? = null) 
     fileToCreate.findOrCreateFile()
   }
   waitSuspending("Wait until VFS is refreshed and file is resolved", timeout = 15.seconds) {
-    LocalFileSystem.getInstance().refreshAndFindFileByNioFile(Path(createdFile.pathString)) != null
+    VirtualFileManager.getInstance().refreshAndFindFileByNioPath(Path(createdFile.pathString)) != null
   }
   frameworkLogger.info("Successfully created file for relative path: $relativePathString, full path: ${createdFile.pathString}")
   if (fileContent != null) {

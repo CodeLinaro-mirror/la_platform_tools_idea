@@ -1,5 +1,5 @@
 // "Remove argument" "true"
-// K2_ERROR: Too many arguments for 'fun foo(s: String): Unit'.
+// K2_ERROR: TOO_MANY_ARGUMENTS
 class Bar(s: String, i: Int) {
     fun foo(s: String) {
    }
@@ -10,4 +10,3 @@ fun main() {
     b.foo("a") {}<caret>
 }
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.RemoveArgumentFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.RemoveArgumentFix

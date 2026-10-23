@@ -25,16 +25,20 @@ import com.intellij.codeInsight.completion.serialization.PrefixMatcherDescriptor
 import com.intellij.codeInsight.lookup.LookupElement
 import com.intellij.codeInsight.lookup.LookupElementBuilder
 import com.intellij.codeInsight.lookup.LookupElementWeigher
+import com.intellij.codeInsight.multiverse.EditorContextManager
 import com.intellij.codeInsight.template.impl.TemplateManagerImpl
 import com.intellij.codeInsight.template.postfix.completion.PostfixTemplateLookupElement
+import com.intellij.diagnostic.rethrowControlFlowException
+import com.intellij.icons.AllIcons.Actions.AiIntentionBulb
 import com.intellij.icons.AllIcons.Actions.IntentionBulbGrey
 import com.intellij.icons.AllIcons.Actions.Lightning
+import com.intellij.ide.TrustedFiles
+import com.intellij.ide.trustedProjects.TrustedProjects
 import com.intellij.idea.AppMode
 import com.intellij.injected.editor.DocumentWindow
 import com.intellij.injected.editor.EditorWindow
 import com.intellij.lang.injection.InjectedLanguageManager
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.diagnostic.ControlFlowException
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.EditorSettings
@@ -64,9 +68,11 @@ import com.intellij.psi.impl.source.tree.injected.InjectedLanguageUtil.FORCE_INJ
 import com.intellij.psi.impl.source.tree.injected.InjectedLanguageUtil.FORCE_INJECTED_EDITOR_KEY
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.testFramework.LightVirtualFile
+import com.intellij.testFramework.LightVirtualFileBase
 import com.intellij.util.ProcessingContext
 import com.intellij.util.Processor
 import kotlinx.serialization.Serializable
+import org.jetbrains.annotations.NonNls
 import org.jetbrains.annotations.Unmodifiable
 
 private const val STANDARD_MEAN_PRIORITY = 100.0
@@ -76,6 +82,12 @@ private const val DEFAULT_PRIORITY = -150.0
 private val CHAR_TO_FILTER = setOf('\'', '"', '_', '-')
 
 private val CHAR_TO_FILTER_WITH_SPACE = setOf('\'', '"', '_', '-', ' ')
+
+/**
+ * Tag automatically attached to AI-backed commands, so that typing `ai` finds all of them at once.
+ * A case variant declared by a command itself is replaced with this exact spelling.
+ */
+private const val AI_COMMAND_TAG: @NonNls String = "AI"
 
 /**
  * Internal provider for handling command completion in IntelliJ-based editors.
@@ -98,6 +110,10 @@ internal class CommandCompletionProvider(val contributor: CommandCompletionContr
   ) {
     if (!AppMode.isRemoteDevHost() && AppMode.isHeadless() &&
         !(ApplicationManager.getApplication().isUnitTestMode() && Registry.`is`("ide.completion.command.force.enabled", false))) return
+    val project = parameters.editor.project ?: return
+    if (!TrustedProjects.isProjectTrusted(project)) return
+    val virtualFile = parameters.originalFile.originalFile.virtualFile
+    if (virtualFile != null && virtualFile !is LightVirtualFileBase && !TrustedFiles.isTrusted(virtualFile, project)) return
     if (!ApplicationCommandCompletionService.getInstance().commandCompletionEnabled()) return
     if (parameters.completionType != CompletionType.BASIC) return
     if (parameters.position is PsiComment && parameters.invocationCount == 0) return
@@ -134,13 +150,13 @@ internal class CommandCompletionProvider(val contributor: CommandCompletionContr
     var isReadOnly = false
     var isInjected = false
     var offset = parameters.editor.caretModel.offset
-    val targetEditor = editor.getUserData(ORIGINAL_EDITOR)
+    val targetEditor = NonWriteAccessCommandCompletionSupport.originalEditor(editor)
     var originalFile = parameters.originalFile
     if (targetEditor != null) {
       isReadOnly = true
       editor = targetEditor.first
       offset = targetEditor.second
-      originalFile = PsiDocumentManager.getInstance(project).getPsiFile(editor.getDocument()) ?: return
+      originalFile = EditorContextManager.getPsiFileForEditor(editor, project) ?: return
     }
     if (offset == 0 && !isReadOnly) return // we need some context to work with
     if (originalFile.virtualFile is LightVirtualFile) {
@@ -311,6 +327,19 @@ internal class CommandCompletionProvider(val contributor: CommandCompletionContr
     val synonyms = command.synonyms.toMutableList()
     synonyms.remove(lookupString)
     synonyms.addFirst(lookupString)
+    // the icon is the only marker of an AI-backed command so far, there is no declarative API for it yet
+    if (command.icon === AiIntentionBulb) {
+      val aiTagIndex = synonyms.indexOfFirst { it.equals(AI_COMMAND_TAG, ignoreCase = true) }
+      if (aiTagIndex == -1) {
+        synonyms.add(AI_COMMAND_TAG)
+      }
+      else {
+        // a command may declare its own case variant ('Ai'); replace it with the standard tag,
+        // so that all AI commands are found by exactly the same one
+        synonyms[aiTagIndex] = AI_COMMAND_TAG
+        synonyms.removeAll { it != AI_COMMAND_TAG && it.equals(AI_COMMAND_TAG, ignoreCase = true) }
+      }
+    }
     if (customPrefixMatcher != null) {
       val element: LookupElement = createElement(
         lookupString = lookupString,
@@ -345,14 +374,16 @@ internal class CommandCompletionProvider(val contributor: CommandCompletionContr
     return elements
   }
 
-  private fun createElement(lookupString: String,
-                            lookupStrings: List<String>,
-                            tailText: String,
-                            command: CompletionCommand,
-                            commandCompletionFactory: CommandCompletionFactory,
-                            prefix: String,
-                            currentSynonyms: List<String>,
-                            otherSynonyms: List<String>): CommandCompletionLookupElement {
+  private fun createElement(
+    lookupString: String,
+    lookupStrings: List<String>,
+    tailText: String,
+    command: CompletionCommand,
+    commandCompletionFactory: CommandCompletionFactory,
+    prefix: String,
+    currentSynonyms: List<String>,
+    otherSynonyms: List<String>,
+  ): CommandCompletionLookupElement {
     return CommandCompletionLookupElement(lookupElement =
                                             LookupElementBuilder.create(lookupString)
                                               .withLookupStrings(lookupStrings)
@@ -447,12 +478,9 @@ internal class CommandCompletionProvider(val contributor: CommandCompletionContr
         ProgressManager.checkCanceled()
       }
       catch (e: Exception) {
-        if (e is ControlFlowException) {
-          throw e
-        }
+        rethrowControlFlowException(e)
         if (e !is CommandCompletionUnsupportedOperationException) {
           //it was rethrown before
-          @Suppress("IncorrectCancellationExceptionHandling")
           LOG.error(e)
         }
       }
@@ -671,7 +699,7 @@ internal fun findActualIndex(suffix: String, text: CharSequence, offset: Int): I
 }
 
 internal fun findCommandCompletionType(
-  factory: CommandCompletionFactory,
+  factory: CommandCompletionSuffixProvider,
   isNonWritten: Boolean,
   offset: Int,
   editor: Editor,
@@ -716,7 +744,7 @@ internal fun findCommandCompletionType(
 internal class LimitedToleranceMatcher(
   prefix: String,
   private val currentTags: List<String>,
-  private val otherTags: List<String>
+  private val otherTags: List<String>,
 ) : CamelHumpMatcher(prefix, false, true) {
 
   override fun prefixMatches(element: LookupElement): Boolean {
@@ -724,6 +752,8 @@ internal class LimitedToleranceMatcher(
     val allLookupStrings = this.currentTags.ifEmpty { element.allLookupStrings }
     if (!matched(allLookupStrings)) return false
     if (this.otherTags.isEmpty()) return true
+    val fullyCovered = this.otherTags.firstOrNull { it.equals(prefix, ignoreCase = true) }
+    if (fullyCovered != null) return allLookupStrings.contains(fullyCovered)
     val indexOfFirst = this.otherTags.indexOfFirst { allLookupStrings.contains(it) }
     if (indexOfFirst <= 0) return true
     if (matched(this.otherTags.subList(0, indexOfFirst))) return false

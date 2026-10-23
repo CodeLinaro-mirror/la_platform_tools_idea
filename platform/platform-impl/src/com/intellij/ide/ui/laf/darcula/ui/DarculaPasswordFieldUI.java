@@ -2,9 +2,10 @@
 package com.intellij.ide.ui.laf.darcula.ui;
 
 import com.intellij.openapi.util.SystemInfo;
+import com.intellij.ui.DrawUtil;
+import com.intellij.ui.paint.PaintUtil;
 import com.intellij.util.ui.JBInsets;
 import com.intellij.util.ui.JBUI;
-import com.intellij.util.ui.MacUIUtil;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
@@ -17,10 +18,8 @@ import javax.swing.text.JTextComponent;
 import java.awt.Container;
 import java.awt.Dimension;
 import java.awt.Graphics;
-import java.awt.Graphics2D;
 import java.awt.Insets;
 import java.awt.Rectangle;
-import java.awt.RenderingHints;
 import java.awt.event.FocusEvent;
 import java.awt.event.FocusListener;
 import java.awt.geom.Rectangle2D;
@@ -105,14 +104,10 @@ public class DarculaPasswordFieldUI extends BasicPasswordFieldUI {
         g.fillRect(0, 0, component.getWidth(), component.getHeight());
       }
 
-      Graphics2D g2 = (Graphics2D)g.create();
       Rectangle r = new Rectangle(component.getSize());
       JBInsets.removeFrom(r, JBUI.insets(1));
-
-      try {
-        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g2.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL,
-                            MacUIUtil.USE_QUARTZ ? RenderingHints.VALUE_STROKE_PURE : RenderingHints.VALUE_STROKE_NORMALIZE);
+      PaintUtil.useCopy(g, g2 -> {
+        DrawUtil.setupRenderingHints(g2);
         g2.translate(r.x, r.y);
 
         float bw = BW.getFloat();
@@ -122,10 +117,7 @@ public class DarculaPasswordFieldUI extends BasicPasswordFieldUI {
         }
 
         g2.fill(new Rectangle2D.Float(bw, bw, r.width - bw * 2, r.height - bw * 2));
-      }
-      finally {
-        g2.dispose();
-      }
+      });
     }
   }
 

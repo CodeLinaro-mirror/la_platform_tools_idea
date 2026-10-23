@@ -1,5 +1,5 @@
 // "Remove 'is'" "true"
-// K2_ERROR: 'is' over enum entry is prohibited. Use comparison instead.
+// K2_ERROR: IS_ENUM_ENTRY
 enum class Foo { A }
 
 fun test(foo: Foo): Int = when (foo) {
@@ -8,4 +8,3 @@ fun test(foo: Foo): Int = when (foo) {
 }
 
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.RemoveIsFromIsEnumEntryFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.RemoveIsFromIsEnumEntryFix

@@ -6,9 +6,14 @@ import com.intellij.ide.impl.ProjectUtil
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.impl.OnlyIndexableFilesAreLoadedIntoVfsOnDirectoryCreationTest.Companion.collectFilesLoadedIntoVfsBeforeListenersRuns
+import com.intellij.openapi.vfs.AfterEventShouldBeFiredBeforeOtherListeners
+import com.intellij.openapi.vfs.AsyncFileListener
+import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.openapi.vfs.newvfs.NewVirtualFile
+import com.intellij.openapi.vfs.newvfs.RefreshQueue
 import com.intellij.platform.backend.workspace.workspaceModel
 import com.intellij.platform.workspace.jps.entities.ContentRootEntity
 import com.intellij.platform.workspace.jps.entities.ExcludeUrlEntity
@@ -16,7 +21,9 @@ import com.intellij.platform.workspace.jps.entities.InheritedSdkDependency
 import com.intellij.platform.workspace.jps.entities.ModuleEntity
 import com.intellij.platform.workspace.jps.entities.ModuleSourceDependency
 import com.intellij.platform.workspace.storage.url.VirtualFileUrlManager
+import com.intellij.testFramework.IndexingTestUtil
 import com.intellij.testFramework.TestObservation
+import com.intellij.testFramework.common.timeoutRunBlocking
 import com.intellij.testFramework.VfsTestUtil
 import com.intellij.testFramework.junit5.RegistryKey
 import com.intellij.testFramework.junit5.TestApplication
@@ -24,19 +31,18 @@ import com.intellij.testFramework.junit5.TestDisposable
 import com.intellij.testFramework.rules.TempDirectoryExtension
 import com.intellij.testFramework.useProjectAsync
 import com.intellij.workspaceModel.ide.NonPersistentEntitySource
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.extension.RegisterExtension
 import java.nio.file.Path
+import kotlin.io.path.Path
 import kotlin.io.path.createDirectories
-import kotlin.io.path.invariantSeparatorsPathString
-import kotlin.io.path.name
 import kotlin.io.path.pathString
 import kotlin.io.path.relativeTo
 import kotlin.io.path.writeText
-import kotlin.time.Duration.Companion.seconds
 
 @RegistryKey("vfs.refresh.iterate.included.files.under.exclude", "true")
 @TestApplication
@@ -62,9 +68,8 @@ class VfsRefreshLoadingFilesToVfsTest {
       generatedRoot.createDirectories()
       generateFiles(generatedRoot, packagePrefix = "com/example")
 
-      delay(1.seconds)
       val filesLoadedIntoVfs = collectFilesLoadedIntoVfsBeforeListenersRuns(rootVirtualFile, disposable)
-      assertSubtreeLoadedIntoVfs(filesLoadedIntoVfs, rootVirtualFile, relativeRoot = "outer/build/generated", packagePrefix = "com/example")
+      assertSubtreeLoadedIntoVfs(filesLoadedIntoVfs, rootVirtualFile, relativeRoot = Path("outer/build/generated"), packagePrefix = "com/example")
     }
   }
 
@@ -77,27 +82,31 @@ class VfsRefreshLoadingFilesToVfsTest {
       val excludedDir = rootDir.rootPath.resolve("other/build")
       val generatedRoot = excludedDir.resolve("inner/generated")
 
-      addModuleWithContentRootUnderExcludedPattern(project, root, excludedDir.name, generatedRoot)
+      addModuleWithContentRootUnderExplicitExclude(project, root, excludedDir, generatedRoot)
 
       generatedRoot.createDirectories()
       generateFiles(generatedRoot, packagePrefix = "com/example")
 
-      delay(1.seconds)
-
-      val vfuManager = project.workspaceModel.getVirtualFileUrlManager()
-      val excludedDirVfu = vfuManager.findByUrl(excludedDir.toIdeUrl())
-      assertThat(excludedDirVfu).isNull()
 
       val filesLoadedIntoVfs = collectFilesLoadedIntoVfsBeforeListenersRuns(rootVirtualFile, disposable)
       assertSubtreeLoadedIntoVfs(filesLoadedIntoVfs,
                                  rootVirtualFile,
-                                 relativeRoot = generatedRoot.relativeTo(root).pathString,
+                                 relativeRoot = generatedRoot.relativeTo(root),
                                  packagePrefix = "com/example")
     }
   }
 
   @Test
-  fun `new dir under content root is loaded into vfs after refresh`(): Unit = runBlocking {
+  @RegistryKey(CHILDREN_PRELOADING_REGISTRY_KEY, "true")
+  fun `new dir under content root is preloaded by transient scanner`() =
+    testNewDirUnderContentRootIsLoadedIntoVfsAfterRefresh()
+
+  @Test
+  @RegistryKey(CHILDREN_PRELOADING_REGISTRY_KEY, "false")
+  fun `new dir under content root is preloaded by NIO scanner`() =
+    testNewDirUnderContentRootIsLoadedIntoVfsAfterRefresh()
+
+  private fun testNewDirUnderContentRootIsLoadedIntoVfsAfterRefresh(): Unit = runBlocking {
     stageFlatContentLayout()
 
     withOpenedProject { project, rootVirtualFile ->
@@ -107,9 +116,48 @@ class VfsRefreshLoadingFilesToVfsTest {
       newPackageRoot.createDirectories()
       generateFiles(newPackageRoot, packagePrefix = "")
 
-      delay(1.seconds)
+      assertThat(VfsUtil.findFile(newPackageRoot, false)).isNull()
+
       val filesLoadedIntoVfs = collectFilesLoadedIntoVfsBeforeListenersRuns(rootVirtualFile, disposable)
-      assertSubtreeLoadedIntoVfs(filesLoadedIntoVfs, rootVirtualFile, relativeRoot = "single/newpkg", packagePrefix = "")
+      assertSubtreeLoadedIntoVfs(filesLoadedIntoVfs, rootVirtualFile, relativeRoot = Path("single/newpkg"), packagePrefix = "")
+    }
+  }
+
+  @Test
+  @Timeout(30)
+  fun `refresh session preloads children of a new directory`(): Unit = timeoutRunBlocking {
+    stageFlatContentLayout()
+
+    withOpenedProject { project, _ ->
+      val contentRoot = rootDir.rootPath.resolve("single")
+      addModuleWithContentRoot(project, contentRoot)
+
+      val parent = findVirtualFile(contentRoot)
+      parent.children
+      val newDirectory = contentRoot.resolve("newpkg")
+      newDirectory.createDirectories()
+      newDirectory.resolve("NewFile.java").writeText("class NewFile {}\n")
+      assertThat(parent.findChild("newpkg")).isNull()
+
+      val listenerResult = CompletableDeferred<Result<Unit>>()
+      VirtualFileManager.getInstance().addAsyncFileListener({
+        object : AsyncFileListener.ChangeApplier, AfterEventShouldBeFiredBeforeOtherListeners {
+          override fun afterVfsChange() {
+            listenerResult.complete(runCatching {
+              val newDirectoryVirtualFile = checkNotNull(parent.findChild("newpkg"))
+              assertThat(newDirectoryVirtualFile).isInstanceOf(NewVirtualFile::class.java)
+              assertThat((newDirectoryVirtualFile as NewVirtualFile).allChildrenLoaded()).isTrue()
+              assertThat(newDirectoryVirtualFile.findChildIfCached("NewFile.java")).isNotNull()
+              Unit
+            })
+          }
+        }
+      }, disposable)
+
+      RefreshQueue.getInstance().createSession(false, false, null).apply {
+        addNewChildren(parent, listOf("newpkg"))
+      }.launch()
+      listenerResult.await().getOrThrow()
     }
   }
 
@@ -133,12 +181,12 @@ class VfsRefreshLoadingFilesToVfsTest {
   private fun assertSubtreeLoadedIntoVfs(
     filesLoadedIntoVfs: List<VirtualFile>,
     rootVirtualFile: VirtualFile,
-    relativeRoot: String,
+    relativeRoot: Path,
     packagePrefix: String,
   ) {
     val projectRoot = rootVirtualFile.toNioPath()
     val filesInVfs = filesLoadedIntoVfs.associateBy { file ->
-      projectRoot.relativize(file.toNioPath()).invariantSeparatorsPathString
+      projectRoot.relativize(file.toNioPath())
     }
     val subtree = expectedSubtree(relativeRoot, packagePrefix)
 
@@ -154,24 +202,24 @@ class VfsRefreshLoadingFilesToVfsTest {
     }
   }
 
-  private fun expectedSubtree(relativeRoot: String, packagePrefix: String): ExpectedSubtree {
+  private fun expectedSubtree(relativeRoot: Path, packagePrefix: String): ExpectedSubtree {
     val directories = linkedSetOf(relativeRoot)
     val paths = linkedSetOf(relativeRoot)
     var packageRoot = relativeRoot
     if (packagePrefix.isNotEmpty()) {
       for (segment in packagePrefix.split('/')) {
-        packageRoot = "$packageRoot/$segment"
+        packageRoot = packageRoot.resolve(segment)
         directories.add(packageRoot)
         paths.add(packageRoot)
       }
     }
 
     repeat(SUBDIR_COUNT) { pkg ->
-      val packageDir = "$packageRoot/pkg$pkg"
+      val packageDir = packageRoot.resolve("pkg$pkg")
       directories.add(packageDir)
       paths.add(packageDir)
       repeat(FILES_PER_SUBDIR) { idx ->
-        paths.add("$packageDir/Generated${pkg}_$idx.java")
+        paths.add(packageDir.resolve("Generated${pkg}_$idx.java"))
       }
     }
     return ExpectedSubtree(directories, paths)
@@ -198,6 +246,7 @@ class VfsRefreshLoadingFilesToVfsTest {
         contentRoots = listOf(ContentRootEntity(contentRoot.toVirtualFileUrl(urlManager), emptyList(), NonPersistentEntitySource))
       })
     }
+    IndexingTestUtil.waitUntilIndexesAreReady(project)
   }
 
   private suspend fun addModuleWithContentRootUnderExplicitExclude(
@@ -217,23 +266,7 @@ class VfsRefreshLoadingFilesToVfsTest {
         )
       })
     }
-  }
-
-  private suspend fun addModuleWithContentRootUnderExcludedPattern(
-    project: Project,
-    contentRoot: Path,
-    excludedPattern: String,
-    nestedContentRoot: Path,
-  ) {
-    val urlManager = project.workspaceModel.getVirtualFileUrlManager()
-    project.workspaceModel.update("add content root under excluded pattern") { storage ->
-      storage.addEntity(ModuleEntity("module", moduleDependencies(), NonPersistentEntitySource) {
-        contentRoots = listOf(
-          ContentRootEntity(contentRoot.toVirtualFileUrl(urlManager), listOf(excludedPattern), NonPersistentEntitySource),
-          ContentRootEntity(nestedContentRoot.toVirtualFileUrl(urlManager), emptyList(), NonPersistentEntitySource),
-        )
-      })
-    }
+    IndexingTestUtil.waitUntilIndexesAreReady(project)
   }
 
   private fun stageNestedExcludedLayout() {
@@ -249,11 +282,12 @@ class VfsRefreshLoadingFilesToVfsTest {
   }
 
   private data class ExpectedSubtree(
-    val directories: Set<String>,
-    val paths: Set<String>,
+    val directories: Set<Path>,
+    val paths: Set<Path>,
   )
 
   companion object {
+    private const val CHILDREN_PRELOADING_REGISTRY_KEY = "vfs.refresh.use.transient.files.for.children.preloading"
     private const val SUBDIR_COUNT = 10
     private const val FILES_PER_SUBDIR = 20
   }
@@ -263,4 +297,4 @@ private fun moduleDependencies() = listOf(InheritedSdkDependency, ModuleSourceDe
 
 private fun Path.toIdeUrl(): String = VfsUtilCore.pathToUrl(pathString)
 
-private fun Path.toVirtualFileUrl(urlManager: VirtualFileUrlManager) = urlManager.getOrCreateFromUrl(toIdeUrl())
+private fun Path.toVirtualFileUrl(urlManager: VirtualFileUrlManager) = urlManager.storeAndGet(toIdeUrl())

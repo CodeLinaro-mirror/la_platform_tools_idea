@@ -14,7 +14,6 @@ import com.intellij.util.TimeoutUtil;
 import com.intellij.util.execution.ParametersListUtil;
 import com.jediterm.core.util.TermSize;
 import com.jediterm.terminal.TtyConnector;
-import com.pty4j.PtyProcess;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -33,6 +32,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
@@ -41,7 +41,7 @@ import static org.jetbrains.plugins.terminal.TerminalStartupKt.startLocalProcess
 import static org.jetbrains.plugins.terminal.TerminalStartupKt.startProcess;
 import static org.jetbrains.plugins.terminal.util.TerminalUtilKt.toExistentNioDirectory;
 
-public class LocalTerminalDirectRunner extends AbstractTerminalRunner<PtyProcess> {
+public class LocalTerminalDirectRunner extends AbstractTerminalRunner<Process> {
   private static final Logger LOG = Logger.getInstance(LocalTerminalDirectRunner.class);
   @ApiStatus.Internal
   public static final String LOGIN_CLI_OPTION = "--login";
@@ -63,7 +63,7 @@ public class LocalTerminalDirectRunner extends AbstractTerminalRunner<PtyProcess
   public @NotNull ShellStartupOptions configureStartupOptions(@NotNull ShellStartupOptions baseOptions) {
     ShellStartupOptions updatedOptions = LocalOptionsConfigurer.configureStartupOptions(baseOptions, myProject);
 
-    if (IdeProductMode.isFrontend() && updatedOptions.getEelDescriptorNotNull() == LocalEelDescriptor.INSTANCE) {
+    if (IdeProductMode.isFrontend() && !IdeProductMode.isLight() && updatedOptions.getEelDescriptorNotNull() == LocalEelDescriptor.INSTANCE) {
       TerminalProjectOptionsProvider optionsProvider = TerminalProjectOptionsProvider.getInstance(myProject);
       throw new IllegalStateException(("""
                                          It is prohibited to start a local process in RemDev mode. Something went wrong.
@@ -102,7 +102,7 @@ public class LocalTerminalDirectRunner extends AbstractTerminalRunner<PtyProcess
   @SuppressWarnings("removal")
   @Deprecated(forRemoval = true)
   @Override
-  public @NotNull PtyProcess createProcess(@NotNull ShellStartupOptions options) throws ExecutionException {
+  public @NotNull Process createProcess(@NotNull ShellStartupOptions options) throws ExecutionException {
     return doCreateProcess(options).getPtyProcess();
   }
 
@@ -144,6 +144,11 @@ public class LocalTerminalDirectRunner extends AbstractTerminalRunner<PtyProcess
       LOG.info("Started " + processHolder.getPtyProcess().getClass().getName() + " in " + TimeoutUtil.getDurationMillis(startNano)
                + " ms from " + stringifyProcessInfo(command, workingDir, initialTermSize, envs, !LOG.isDebugEnabled()));
       return processHolder;
+    }
+    catch (CancellationException e) {
+      // The terminal startup was canceled, e.g., the terminal tab, or the project was closed during startup.
+      // Propagate the cancellation as-is instead of wrapping it into an ExecutionException.
+      throw e;
     }
     catch (Exception e) {
       throw new ExecutionException("Failed to start " + stringifyProcessInfo(command, workingDir, initialTermSize, envs, false), e);
@@ -192,7 +197,7 @@ public class LocalTerminalDirectRunner extends AbstractTerminalRunner<PtyProcess
   @SuppressWarnings("removal")
   @Deprecated(forRemoval = true)
   @Override
-  public @NotNull TtyConnector createTtyConnector(@NotNull PtyProcess process) {
+  public @NotNull TtyConnector createTtyConnector(@NotNull Process process) {
     return new PtyProcessTtyConnector(process, myDefaultCharset);
   }
 

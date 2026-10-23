@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.options.newEditor;
 
 import com.intellij.icons.AllIcons;
@@ -44,6 +44,7 @@ import com.intellij.ui.TreeUIHelper;
 import com.intellij.ui.UIBundle;
 import com.intellij.ui.components.Badge;
 import com.intellij.ui.components.GradientViewport;
+import com.intellij.ui.paint.PaintUtil;
 import com.intellij.ui.render.RenderingUtil;
 import com.intellij.ui.scale.JBUIScale;
 import com.intellij.ui.tree.AsyncTreeModel;
@@ -93,8 +94,6 @@ import javax.swing.ScrollPaneConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.TransferHandler;
 import javax.swing.UIManager;
-import javax.swing.event.TreeExpansionEvent;
-import javax.swing.event.TreeExpansionListener;
 import javax.swing.plaf.TreeUI;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.TreeCellRenderer;
@@ -105,7 +104,6 @@ import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Graphics;
-import java.awt.Graphics2D;
 import java.awt.Insets;
 import java.awt.Point;
 import java.awt.Rectangle;
@@ -123,12 +121,9 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -152,9 +147,7 @@ public class SettingsTreeView extends JComponent implements Accessible, Disposab
 
   private final MyRoot myRoot;
   private final FilteringTreeModel myModel;
-  private final Set<String> mySeenNewBadgesThisOpen = new HashSet<>();
-  private final Map<String, Integer> myNewBadgeShownAtOpenCache = new HashMap<>();
-  private volatile boolean myIsDisposed;
+  private final SettingsNewBadgeState myNewBadgeState = new SettingsNewBadgeState();
 
   private Configurable myQueuedConfigurable;
   private MyControl myControl;
@@ -273,19 +266,6 @@ public class SettingsTreeView extends JComponent implements Accessible, Disposab
     myTree.setModel(new AsyncTreeModel(myModel, this));
 
     myTree.getAccessibleContext().setAccessibleName(UIBundle.message("settings.tree.settings.categories.accessible.name"));
-
-    myScroller.getViewport().addChangeListener(e -> requestNewBadgeRecording());
-    myTree.addTreeExpansionListener(new TreeExpansionListener() {
-      @Override
-      public void treeExpanded(TreeExpansionEvent event) {
-        requestNewBadgeRecording();
-      }
-
-      @Override
-      public void treeCollapsed(TreeExpansionEvent event) {
-        requestNewBadgeRecording();
-      }
-    });
   }
 
   @Override
@@ -438,7 +418,9 @@ public class SettingsTreeView extends JComponent implements Accessible, Disposab
   private static @Nullable Project findConfigurableProject(@NotNull MyNode node) {
     Configurable configurable = node.myConfigurable;
     Project project = node.getProject();
-    Configurable.VariableProjectAppLevel wrapped = ConfigurableWrapper.cast(Configurable.VariableProjectAppLevel.class, configurable);
+    // Do not instantiate a not-yet-created configurable here, as its construction may block the EDT
+    // (for example, on a persistent state read over IJent/WSL).
+    Configurable.VariableProjectAppLevel wrapped = ConfigurableWrapper.castIfCreated(Configurable.VariableProjectAppLevel.class, configurable);
     if (wrapped != null) return wrapped.isProjectLevel() ? project : null;
     if (configurable instanceof ConfigurableWrapper) return project;
     if (configurable instanceof SortedConfigurableGroup) return project;
@@ -551,6 +533,13 @@ public class SettingsTreeView extends JComponent implements Accessible, Disposab
   }
 
   private @NotNull Promise<?> fireSelected(Configurable configurable) {
+    if (configurable != null && myNewBadgeState.markOpened(configurable)) {
+      MyNode node = findNode(configurable);
+      if (node != null) {
+        node.invalidateNewOptionsCache();
+      }
+      myTree.repaint();
+    }
     return myFilter.context.fireSelected(configurable, this);
   }
 
@@ -559,8 +548,6 @@ public class SettingsTreeView extends JComponent implements Accessible, Disposab
     myQueuedConfigurable = null;
     // help GC and avoid leak on dynamic plugin reload (if some configurable hold language or something plugin-specific)
     myConfigurableToNodeMap.clear();
-    myIsDisposed = true;
-    SettingsNewBadgeRecorder.getInstance().release(this);
   }
 
   @Override
@@ -686,9 +673,32 @@ public class SettingsTreeView extends JComponent implements Accessible, Disposab
 
     private boolean hasNewOptions() {
       if (myHasNewOptions == null) {
-        myHasNewOptions = SettingsTreeView.hasNewOptions(myConfigurable);
+        boolean result = myNewBadgeState.hasNewOptions(myConfigurable);
+        if (!result) {
+          // Roll the badge up over the tree nodes, which exist already, and never over the configurables,
+          // because that expands a dynamic composite and builds every child of it on the EDT.
+          SimpleNode[] children = getCached();
+          if (children != null) {
+            for (SimpleNode child : children) {
+              if (child instanceof MyNode node && node.hasNewOptions()) {
+                result = true;
+                break;
+              }
+            }
+          }
+        }
+        myHasNewOptions = result;
       }
       return myHasNewOptions;
+    }
+
+    private void invalidateNewOptionsCache() {
+      MyNode node = this;
+      while (node != null) {
+        node.myHasNewOptions = null;
+        SimpleNode parent = node.getParent();
+        node = parent instanceof MyNode ? (MyNode)parent : null;
+      }
     }
   }
 
@@ -787,16 +797,14 @@ public class SettingsTreeView extends JComponent implements Accessible, Disposab
         myAccessibleBadgeText = IdeBundle.message("badge.text.beta");
       }
 
-      Configurable.Promo promo = asPromo(configurable);
-      if (promo != null) {
-        setRightIcon(promo.getPromoIcon());
+      Icon promoIcon = getPromoIcon(configurable);
+      if (promoIcon != null) {
+        setRightIcon(promoIcon);
       }
 
       if (node != null && node.hasNewOptions() && (leaf || !expanded)) {
-        if (shouldShowNewBadge(configurable)) {
-          setRightIcon(NEW_BADGE_DOT);
-          myAccessibleBadgeText = IdeBundle.message("badge.text.new");
-        }
+        setRightIcon(NEW_BADGE_DOT);
+        myAccessibleBadgeText = IdeBundle.message("badge.text.new");
       }
 
       if (node != null && UISettings.getInstance().getShowInplaceCommentsInternal()) {
@@ -880,9 +888,7 @@ public class SettingsTreeView extends JComponent implements Accessible, Disposab
         myRenderInfo.second.layoutBeforePaint(myRenderInfo.first, bounds, text, right, baseline);
 
         Rectangle paintBounds = myRenderInfo.first.getBounds();
-        Graphics2D g2 = (Graphics2D)g.create(paintBounds.x, paintBounds.y, paintBounds.width, paintBounds.height);
-        myRenderInfo.first.paint(g2);
-        g2.dispose();
+        PaintUtil.use(g.create(paintBounds.x, paintBounds.y, paintBounds.width, paintBounds.height), myRenderInfo.first::paint);
 
         myRenderInfo = null;
       }
@@ -922,15 +928,33 @@ public class SettingsTreeView extends JComponent implements Accessible, Disposab
     }
   }
 
-  private static boolean isBeta(Configurable c) {
-    return c instanceof Configurable.Beta ||
-           ConfigurableWrapper.cast(Configurable.Beta.class, c) != null;
+  /**
+   * The declaration is the only source of the badge, so the answer costs no class load and no construction.
+   * A configurable component that carries {@code Configurable.Beta} and declares no attribute shows no badge.
+   * A child that a parent page builds itself has no wrapper, so it answers through {@link BetaConfigurable}.
+   */
+  private static boolean isBeta(@Nullable Configurable c) {
+    if (c instanceof ConfigurableWrapper wrapper) {
+      return wrapper.getExtensionPoint().beta;
+    }
+    return c instanceof BetaConfigurable beta && beta.isBeta();
   }
 
-  private static @Nullable Configurable.Promo asPromo(Configurable c) {
-    if (c instanceof Configurable.Promo) return (Configurable.Promo)c;
-
-    return ConfigurableWrapper.cast(Configurable.Promo.class, c);
+  /**
+   * Returns the promo badge of the configurable, or {@code null} when it advertises nothing.
+   * The declaration is the only source of the badge, so the icon cannot change when the page is built later.
+   * A configurable component that carries {@code Configurable.Promo} and declares no attribute shows no badge.
+   */
+  private static @Nullable Icon getPromoIcon(@Nullable Configurable c) {
+    if (!(c instanceof ConfigurableWrapper wrapper)) {
+      return null;
+    }
+    ConfigurableEP<?> ep = wrapper.getExtensionPoint();
+    Icon declared = ep.lazyPromoIcon.getValue();
+    if (declared != null) {
+      return declared;
+    }
+    return ep.promo ? AllIcons.Ultimate.Lock : null;
   }
 
   private static final class LargeBlueDotIcon implements Icon {
@@ -939,8 +963,7 @@ public class SettingsTreeView extends JComponent implements Accessible, Disposab
 
     @Override
     public void paintIcon(Component c, Graphics g, int x, int y) {
-      Graphics2D g2 = (Graphics2D)g.create();
-      try {
+      PaintUtil.useCopy(g, g2 -> {
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
         float diameter = JBUIScale.scale((float)DOT_DIAMETER);
@@ -949,10 +972,7 @@ public class SettingsTreeView extends JComponent implements Accessible, Disposab
 
         g2.setColor(JBUI.CurrentTheme.IconBadge.INFORMATION);
         g2.fill(new Ellipse2D.Float(dotX, dotY, diameter, diameter));
-      }
-      finally {
-        g2.dispose();
-      }
+      });
     }
 
     @Override
@@ -964,25 +984,6 @@ public class SettingsTreeView extends JComponent implements Accessible, Disposab
     public int getIconHeight() {
       return JBUIScale.scale(ICON_HEIGHT);
     }
-  }
-
-  private static boolean hasNewOptions(@NotNull Configurable configurable) {
-    if (isNewOptions(configurable)) {
-      return true;
-    }
-    if (configurable instanceof Configurable.Composite composite) {
-      for (Configurable child : composite.getConfigurables()) {
-        if (hasNewOptions(child)) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  private static boolean isNewOptions(Configurable configurable) {
-    return configurable instanceof Configurable.NewOptions ||
-           ConfigurableWrapper.cast(Configurable.NewOptions.class, configurable) != null;
   }
 
   @SuppressWarnings("unused")
@@ -1160,25 +1161,11 @@ public class SettingsTreeView extends JComponent implements Accessible, Disposab
    * which atomically refilters the tree structure and adjusts the selection, avoiding race conditions
    * when the filter state has just been cleared synchronously.
    * <p>
-   * The configurable may come from an external {@link ConfigurableGroup} (e.g. when opening settings
-   * from an action like "Configure Gutter Icons"). In that case it is a different instance from the
-   * one stored in this tree's {@link IdentityHashMap}. We first try {@link #findNode(Configurable)};
-   * if that fails we fall back to matching by {@link ConfigurableVisitor#getId(Configurable)}.
+   * The configurable must belong to this tree, because the node is found by instance identity.
+   * A caller resolves its target in {@link SettingsNonModalDialog#getGroups()} of the open window.
    */
   void refilterAndSelect(@Nullable Configurable configurable) {
-    MyNode node = findNode(configurable);
-    if (node == null && configurable != null) {
-      // The configurable instance may differ from the one in our map (e.g. created from a new
-      // ConfigurableGroup). Fall back to matching by configurable ID.
-      String id = ConfigurableVisitor.getId(configurable);
-      for (Map.Entry<Configurable, MyNode> entry : myConfigurableToNodeMap.entrySet()) {
-        if (id.equals(ConfigurableVisitor.getId(entry.getKey()))) {
-          node = entry.getValue();
-          break;
-        }
-      }
-    }
-    myModel.updateTree(myTree, !myFilter.isEmptyFilter(), node);
+    myModel.updateTree(myTree, !myFilter.isEmptyFilter(), findNode(configurable));
   }
 
   void reloadWithSelection(@Nullable Configurable toSelect) {
@@ -1216,30 +1203,4 @@ public class SettingsTreeView extends JComponent implements Accessible, Disposab
     }
   }
 
-  private boolean shouldShowNewBadge(@Nullable Configurable configurable) {
-    if (configurable == null) return false;
-    String id = ConfigurableVisitor.getId(configurable);
-    int shownAtOpen = myNewBadgeShownAtOpenCache.computeIfAbsent(
-      id, _ -> SettingsNewBadgeRecorder.getInstance().shownCount(configurable));
-    return shownAtOpen < SettingsNewBadgeRecorder.MAX_SHOWS;
-  }
-
-  @Nullable Configurable configurableWithNewBadgeAt(@NotNull Object treeComponent) {
-    if (myIsDisposed) return null;
-    MyNode node = extractNode(treeComponent);
-    if (node == null || !node.hasNewOptions()) return null;
-    return node.myConfigurable;
-  }
-
-  void captureNewBadgeSnapshot(@NotNull String id, int shown) {
-    myNewBadgeShownAtOpenCache.putIfAbsent(id, shown);
-  }
-
-  boolean markNewBadgeRecordedThisOpen(@NotNull String id) {
-    return mySeenNewBadgesThisOpen.add(id);
-  }
-
-  private void requestNewBadgeRecording() {
-    SettingsNewBadgeRecorder.getInstance().request(this);
-  }
 }

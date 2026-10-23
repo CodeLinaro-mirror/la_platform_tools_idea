@@ -8,15 +8,13 @@ import com.intellij.psi.search.LocalSearchScope
 import com.intellij.psi.search.searches.ReferencesSearch
 import com.intellij.usageView.UsageInfo
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.components.expressionType
-import org.jetbrains.kotlin.analysis.api.components.resolveToCall
 import org.jetbrains.kotlin.analysis.api.components.resolveToSymbol
-import org.jetbrains.kotlin.analysis.api.resolution.KaCallableMemberCall
+import org.jetbrains.kotlin.analysis.api.expressions.expressionType
 import org.jetbrains.kotlin.analysis.api.resolution.KaExplicitReceiverValue
 import org.jetbrains.kotlin.analysis.api.resolution.KaImplicitReceiverValue
 import org.jetbrains.kotlin.analysis.api.resolution.KaReceiverValue
-import org.jetbrains.kotlin.analysis.api.resolution.successfulCallOrNull
-import org.jetbrains.kotlin.analysis.api.resolution.successfulFunctionCallOrNull
+import org.jetbrains.kotlin.analysis.api.resolution.resolveSuccessfulCall
+import org.jetbrains.kotlin.analysis.api.resolution.simple
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.symbol
 import org.jetbrains.kotlin.analysis.api.types.KaFunctionType
@@ -24,6 +22,10 @@ import org.jetbrains.kotlin.idea.base.analysis.api.utils.allowAnalysisFromWriteA
 import org.jetbrains.kotlin.idea.base.codeInsight.KotlinNameSuggestionProvider
 import org.jetbrains.kotlin.idea.base.codeInsight.KotlinNameValidatorProvider
 import org.jetbrains.kotlin.idea.base.psi.copied
+import org.jetbrains.kotlin.idea.base.psi.getOrCreateFunctionLiteralParameterList
+import org.jetbrains.kotlin.idea.base.psi.insertParameterBefore
+import org.jetbrains.kotlin.idea.base.psi.insertValueArgumentBefore
+import org.jetbrains.kotlin.idea.base.psi.setFunctionTypeReceiverTypeReference
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.codeinsight.api.classic.intentions.SelfTargetingRangeIntention
 import org.jetbrains.kotlin.idea.k2.refactoring.changeSignature.KotlinChangeInfo
@@ -34,6 +36,7 @@ import org.jetbrains.kotlin.idea.k2.refactoring.changeSignature.KotlinTypeInfo
 import org.jetbrains.kotlin.idea.k2.refactoring.changeSignature.usages.KotlinBaseChangeSignatureUsage
 import org.jetbrains.kotlin.idea.k2.refactoring.introduce.extractionEngine.KotlinNameSuggester
 import org.jetbrains.kotlin.idea.references.mainReference
+import org.jetbrains.kotlin.idea.util.resolveSuccessfulExpressionCall
 import org.jetbrains.kotlin.psi.KtBlockExpression
 import org.jetbrains.kotlin.psi.KtCallElement
 import org.jetbrains.kotlin.psi.KtCallExpression
@@ -62,10 +65,8 @@ import org.jetbrains.kotlin.psi.KtTypeReference
 import org.jetbrains.kotlin.psi.KtValueArgumentList
 import org.jetbrains.kotlin.psi.psiUtil.containingClassOrObject
 import org.jetbrains.kotlin.psi.psiUtil.forEachDescendantOfType
-import org.jetbrains.kotlin.psi.psiUtil.getOrCreateParameterList
 import org.jetbrains.kotlin.psi.psiUtil.getParentOfTypeAndBranch
 import org.jetbrains.kotlin.psi.psiUtil.getQualifiedExpressionForSelector
-import org.jetbrains.kotlin.psi.typeRefHelpers.setReceiverTypeReference
 
 class ConvertFunctionTypeReceiverToParameterIntention : SelfTargetingRangeIntention<KtTypeReference>(
     KtTypeReference::class.java, KotlinBundle.messagePointer("convert.function.type.receiver.to.parameter")
@@ -82,8 +83,8 @@ class ConvertFunctionTypeReceiverToParameterIntention : SelfTargetingRangeIntent
             val parameterList = parameterList ?: return null
             val psiFactory = KtPsiFactory(project)
             val newParam = psiFactory.createFunctionTypeParameter(receiver)
-            parameterList.addParameterBefore(newParam, parameterList.parameters.firstOrNull())
-            setReceiverTypeReference(null)
+            parameterList.insertParameterBefore(newParam, parameterList.parameters.firstOrNull())
+            setFunctionTypeReceiverTypeReference(null)
         }
 
         setTextGetter(KotlinBundle.messagePointer("convert.0.to.1", functionType.text, elementAfter.text))
@@ -234,9 +235,9 @@ internal class ReceiverToParameterConverter(
 
     context(_: KaSession)
     private fun getArgumentExpressionToProcess(callElement: KtCallElement): KtExpression? {
-        val argumentMapping = callElement.resolveToCall()?.successfulFunctionCallOrNull()?.argumentMapping ?: return null
+        val valueArgumentMapping = callElement.resolveSuccessfulCall()?.valueArgumentMapping ?: return null
         val parameter = (data.changeInfo.method as KtFunction).valueParameters[data.functionParameterIndex ?: return null]
-        val entry = argumentMapping.entries.find { (_, value) -> value.name.asString() == parameter.name } ?: return null
+        val entry = valueArgumentMapping.entries.find { (_, value) -> value.name.asString() == parameter.name } ?: return null
         return KtPsiUtil.deparenthesize(entry.key)
     }
 
@@ -268,8 +269,7 @@ internal class ReceiverToParameterConverter(
             override fun visitSimpleNameExpression(expression: KtSimpleNameExpression) {
                 super.visitSimpleNameExpression(expression)
                 if (expression is KtOperationReferenceExpression) return
-                val resolvedCall =
-                    expression.resolveToCall()?.successfulCallOrNull<KaCallableMemberCall<*, *>>()?.partiallyAppliedSymbol ?: return
+                val resolvedCall = expression.resolveSuccessfulExpressionCall()?.simple ?: return
                 val dispatchReceiverTarget = resolvedCall.dispatchReceiver?.getReceiverTargetSymbol()
                 val extensionReceiverTarget = resolvedCall.extensionReceiver?.getReceiverTargetSymbol()
                 if (dispatchReceiverTarget == lambdaSymbol.receiverParameter || extensionReceiverTarget == lambdaSymbol.receiverParameter) {
@@ -279,7 +279,7 @@ internal class ReceiverToParameterConverter(
                             usages.add(ConvertWithReplacement(parent, "$newParameterName.${parent.text}"))
                         }
                     } else if ((parent as? KtQualifiedExpression)?.receiverExpression !is KtThisExpression) {
-                        val referencedName = expression.getReferencedName()
+                        val referencedName = expression.getReferencedNameElement().text
                         usages.add(ConvertWithReplacement(expression, "$newParameterName.$referencedName"))
                     }
                 }
@@ -315,7 +315,7 @@ internal class ReceiverToParameterConverter(
                 KtPsiFactory(project).createCallArguments("()"), callExpression.calleeExpression
             ) as KtValueArgumentList
 
-            argumentList.addArgumentBefore(KtPsiFactory(project).createArgument(receiverExpression), argumentList.arguments.firstOrNull())
+            argumentList.insertValueArgumentBefore(KtPsiFactory(project).createArgument(receiverExpression), argumentList.arguments.firstOrNull())
             return qualified.replace(callExpression) as KtElement
         }
     }
@@ -327,14 +327,14 @@ internal class ReceiverToParameterConverter(
             val lambda = element as? KtLambdaExpression ?: return null
             val psiFactory = KtPsiFactory(lambda.project)
 
-            val parameterList = lambda.functionLiteral.getOrCreateParameterList()
+            val parameterList = lambda.functionLiteral.getOrCreateFunctionLiteralParameterList()
             if (currentParametersSize > 0 && parameterList.parameters.isEmpty()) {
                 // include explicitly `it`
                 val implicitParam = psiFactory.createLambdaParameterList("it").parameters.first()
-                parameterList.addParameterBefore(implicitParam, null)
+                parameterList.insertParameterBefore(implicitParam, null)
             }
             val newParam = psiFactory.createLambdaParameterList(newParamName).parameters.first()
-            return parameterList.addParameterBefore(newParam, parameterList.parameters.firstOrNull())
+            return parameterList.insertParameterBefore(newParam, parameterList.parameters.firstOrNull())
         }
 
     }
@@ -367,7 +367,7 @@ fun KaReceiverValue?.getReceiverTargetSymbol(): KaSymbol? {
                 is KtReferenceExpression -> expression
                 else -> null
             }
-            return (target as? KtDeclaration)?.symbol
+            (target as? KtDeclaration)?.symbol
         }
 
         is KaImplicitReceiverValue -> this.symbol

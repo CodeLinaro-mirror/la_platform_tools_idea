@@ -7,7 +7,6 @@ import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.fileTypes.ex.FileTypeManagerEx;
 import com.intellij.openapi.fileTypes.impl.FileTypeManagerImpl;
 import com.intellij.openapi.progress.Cancellation;
-import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.EmptyRunnable;
 import com.intellij.openapi.util.Pair;
@@ -28,6 +27,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -35,10 +35,6 @@ import java.util.function.BiPredicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-/**
- * {@link #getFileStatus(VirtualFile)} is the only public method: provides a description of file indexing status.
- * @see UnindexedFileStatus
- */
 final class UnindexedFilesFinder {
   private static final Logger LOG = Logger.getInstance(UnindexedFilesFinder.class);
 
@@ -186,7 +182,6 @@ final class UnindexedFilesFinder {
   }
 
   private @Nullable UnindexedFileStatusBuilder evaluateFileStatus(@NotNull VirtualFile file) {
-    ProgressManager.checkCanceled(); // give a chance to suspend indexing
     if (!file.isValid() || !(file instanceof VirtualFileWithId)) {
       return null;
     }
@@ -194,7 +189,7 @@ final class UnindexedFilesFinder {
     FileIndexingStamp indexingStamp = indexingRequest.getFileIndexingStamp(file);
     FileIndexingResult.ApplicationMode applicationMode = FileBasedIndexImpl.getContentIndependentIndexesApplicationMode();
 
-    if (IndexingFlag.isFileIndexed(file, indexingStamp)) {
+    if (IndexingFlag.isFileIndexed(file, indexingStamp) && !shouldForceReindexing(file, indexingStamp)) {
       return new UnindexedFileStatusBuilder(applicationMode);
     }
 
@@ -211,7 +206,7 @@ final class UnindexedFilesFinder {
       IndexedFileImpl indexedFile = new IndexedFileImpl(file, fileType, myProject);
       int inputId = FileBasedIndex.getFileId(file);
 
-      if (IndexingFlag.isFileIndexed(file, indexingStamp)) {
+      if (IndexingFlag.isFileIndexed(file, indexingStamp) && !shouldForceReindexing(indexedFile, indexingStamp)) {
         boolean wasInvalidated = false;
         List<ID<?, ?>> ids = IndexingStamp.getNontrivialFileIndexedStates(inputId);
         for (FileBasedIndexInfrastructureExtension.FileIndexingStatusProcessor processor : myStateProcessors) {
@@ -263,7 +258,7 @@ final class UnindexedFilesFinder {
           shouldCheckContentIndexes = false;
         }
         boolean fileTypeIndexAlreadyUpToData = fileTypeIndexState != null && fileTypeIndexState.isUpToDate();
-        Set<ID<?, ?>> appliedIndexes = myFileBasedIndex.getAppliedIndexes(inputId);
+        Set<ID<?, ?>> appliedIndexes = new HashSet<>(myFileBasedIndex.getAppliedIndexes(inputId));
         List<ID<?, ?>> requiredIndexes = myFileBasedIndex.getRequiredIndexes(indexedFile);
 
         // TODO - this non-cancelable section is just a precaution, it should be removed once we are sure
@@ -455,7 +450,7 @@ final class UnindexedFilesFinder {
                                    int inputId,
                                    UnindexedFileStatusBuilder fileStatusBuilder,
                                    @NotNull FileIndexingStamp indexingStamp) {
-    if (myForceReindexingTrigger != null && myForceReindexingTrigger.test(indexedFile, indexingStamp)) {
+    if (shouldForceReindexing(indexedFile, indexingStamp)) {
       myFileBasedIndex.dropNontrivialIndexedStates(inputId);
       fileStatusBuilder.shouldIndex = true;
     }
@@ -464,6 +459,19 @@ final class UnindexedFilesFinder {
     if (!fileStatusBuilder.shouldIndex && fileStatusBuilder.mayMarkFileIndexed) {
       IndexingFlag.setFileIndexed(file, indexingStamp);
     }
+  }
+
+  /** Returns whether the trigger requires reindexing, avoiding an {@link IndexedFile} allocation when no trigger is configured. */
+  private boolean shouldForceReindexing(@NotNull VirtualFile vFile, @NotNull FileIndexingStamp indexingStamp) {
+    if (myForceReindexingTrigger == null) {
+      return false;
+    }
+    return shouldForceReindexing(new IndexedFileImpl(vFile, myProject), indexingStamp);
+  }
+
+  /** Returns whether the trigger requires reindexing regardless of the file's current indexing status. */
+  private boolean shouldForceReindexing(@NotNull IndexedFile indexedFile, @NotNull FileIndexingStamp indexingStamp) {
+    return myForceReindexingTrigger != null && myForceReindexingTrigger.test(indexedFile, indexingStamp);
   }
 
   private boolean tryIndexWithoutContentViaInfrastructureExtension(IndexedFile fileContent, int inputId, ID<?, ?> indexId) {

@@ -2,7 +2,6 @@ load("@community//build:tests-options.bzl", "jps_test")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
 ### auto-generated section `build kotlin.testsFromCompiler` start
-
 jvm_library(
     name = "tests-from-compiler",
     srcs = glob(
@@ -26,6 +25,10 @@ jvm_library(
         allow_empty = True,
     ),
     module_name = "kotlin.testsFromCompiler",
+    resource_strip_prefix = "testResources",
+    resources = glob(
+        ["testResources/**/*"],
+    ),
     visibility = ["//visibility:public"],
     runtime_deps = [
         # do not sort,
@@ -54,7 +57,8 @@ jvm_library(
         "//java/testFramework:testFramework_test_lib",
         "//plugins/kotlin/base/plugin",
         "//plugins/kotlin/base/plugin:plugin_test_lib",
-        "@lib//:kotlinc-kotlin-compiler-common",
+        "//libraries/kotlinc/kotlin-compiler-common:libraries-kotlinc-kotlin-compiler-common",
+        "//libraries/kotlinc/kotlin-compiler-common:libraries-kotlinc-kotlin-compiler-common_test_lib",
         "//plugins/devkit/jps-plugin:jps",
         "//plugins/devkit/jps-plugin:jps_test_lib",
         "//images:images-tests",
@@ -83,7 +87,6 @@ exports_files(
 ### auto-generated section `iml kotlin.testsFromCompiler` end
 
 ### auto-generated section `test kotlin.testsFromCompiler` start
-
 jps_test(
     name = "tests-from-compiler_test",
     runtime_deps = [":tests-from-compiler_test_lib"],

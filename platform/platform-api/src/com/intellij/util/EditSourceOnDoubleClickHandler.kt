@@ -1,29 +1,20 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.util
 
-import com.intellij.codeWithMe.ClientId
 import com.intellij.ide.DataManager
-import com.intellij.ide.ui.IdeUiService
-import com.intellij.ide.util.treeView.NodeDescriptor
+import com.intellij.ide.util.treeView.ExpandOnDoubleClickSupport
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.DataContext
-import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.ModalityState
-import com.intellij.openapi.application.writeIntentReadAction
-import com.intellij.openapi.components.ComponentManagerEx
-import com.intellij.openapi.components.serviceAsync
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.platform.ide.navigation.NavigationOptions
-import com.intellij.platform.ide.navigation.NavigationService
+import com.intellij.platform.ide.navigation.requestNavigate
 import com.intellij.ui.ClientProperty
 import com.intellij.ui.DoubleClickListener
 import com.intellij.ui.treeStructure.treetable.TreeTable
 import com.intellij.util.ui.tree.ExpandOnDoubleClick
 import com.intellij.util.ui.tree.TreeUtil
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.jetbrains.annotations.ApiStatus.Internal
 import java.awt.Component
 import java.awt.event.MouseEvent
@@ -54,7 +45,7 @@ object EditSourceOnDoubleClickHandler {
 
         val dataContext = DataManager.getInstance().getDataContext(treeTable)
         CommonDataKeys.PROJECT.getData(dataContext) ?: return false
-        OpenSourceUtil.openSourcesFrom(dataContext, true)
+        navigateOnDoubleClick(dataContext, whenPerformed = null)
         return true
       }
     }.installOn(treeTable)
@@ -72,7 +63,7 @@ object EditSourceOnDoubleClickHandler {
 
         val dataContext = DataManager.getInstance().getDataContext(table)
         CommonDataKeys.PROJECT.getData(dataContext) ?: return false
-        OpenSourceUtil.openSourcesFrom(dataContext, true)
+        navigateOnDoubleClick(dataContext, whenPerformed = null)
         return true
       }
     }.installOn(table)
@@ -90,11 +81,24 @@ object EditSourceOnDoubleClickHandler {
         }
 
         val dataContext = DataManager.getInstance().getDataContext(list)
-        OpenSourceUtil.openSourcesFrom(dataContext, true)
-        whenPerformed?.run()
+        navigateOnDoubleClick(dataContext, whenPerformed)
         return true
       }
     }.installOn(list)
+  }
+
+  private fun navigateOnDoubleClick(dataContext: DataContext, whenPerformed: Runnable?) {
+    if (Registry.`is`("ide.navigation.requests")) {
+      val project = dataContext.getData(CommonDataKeys.PROJECT) ?: return
+      val options = NavigationOptions.requestFocus().preserveCaret(true)
+      requestNavigate(project, dataContext, options, whenPerformed = whenPerformed)
+    }
+    else {
+      SlowOperations.knownIssue("IDEA-304701, EA-659716").use {
+        OpenSourceUtil.openSourcesFrom(dataContext, true)
+      }
+      whenPerformed?.run()
+    }
   }
 
   @JvmStatic
@@ -151,7 +155,7 @@ object EditSourceOnDoubleClickHandler {
     }
 
     // for backward compatibility
-    val descriptor = TreeUtil.getLastUserObject(NodeDescriptor::class.java, path)
+    val descriptor = TreeUtil.getLastUserObject(ExpandOnDoubleClickSupport::class.java, path)
     return descriptor == null || descriptor.expandOnDoubleClick()
   }
 
@@ -193,29 +197,7 @@ object EditSourceOnDoubleClickHandler {
     }
 
     protected open fun processDoubleClick(e: MouseEvent, dataContext: DataContext, treePath: TreePath) {
-      if (Registry.`is`("ide.navigation.requests")) {
-        val project = dataContext.getData(CommonDataKeys.PROJECT) ?: return
-        val asyncContext = IdeUiService.getInstance().createAsyncDataContext(dataContext)
-        // childScope not available in platform-api, we cannot use something like SearchEverywhereContributorCoroutineScopeHolder
-        @Suppress("UsagesOfObsoleteApi")
-        (project as ComponentManagerEx).getCoroutineScope().launch(ClientId.coroutineContext()) {
-          val options = NavigationOptions.defaultOptions().requestFocus(true).preserveCaret(true)
-          project.serviceAsync<NavigationService>().navigate(asyncContext, options)
-          whenPerformed?.let { task ->
-            withContext(Dispatchers.EDT) {
-              writeIntentReadAction {
-                task.run()
-              }
-            }
-          }
-        }
-      }
-      else {
-        SlowOperations.knownIssue("IDEA-304701, EA-659716").use {
-          OpenSourceUtil.openSourcesFrom(dataContext, true)
-        }
-        whenPerformed?.run()
-      }
+      navigateOnDoubleClick(dataContext, whenPerformed)
     }
   }
 }

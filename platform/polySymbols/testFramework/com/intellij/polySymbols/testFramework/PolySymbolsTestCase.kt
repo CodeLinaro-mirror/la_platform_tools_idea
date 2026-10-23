@@ -25,7 +25,7 @@ import com.intellij.openapi.ui.TestDialog
 import com.intellij.openapi.ui.TestDialogManager
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.EmptyRunnable
-import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.vfs.StandardFileSystems
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.VirtualFileFilter
@@ -216,7 +216,7 @@ abstract class PolySymbolsTestCase(mode: HybridTestMode = HybridTestMode.BasePla
         FileDocumentManager.getInstance().saveAllDocuments()
         if (dir) {
           val pathAfter = "$testDataPath/$dirName/after"
-          val rootAfter = LocalFileSystem.getInstance().findFileByPath(pathAfter)
+          val rootAfter = StandardFileSystems.local().findFileByPath(pathAfter)
                           ?: throw FileNotFoundException(pathAfter)
           val results = myFixture.tempDirFixture.findOrCreateDir(".")
 
@@ -589,9 +589,29 @@ abstract class PolySymbolsTestCase(mode: HybridTestMode = HybridTestMode.BasePla
         checkHighlightingEx(checkWarnings, checkInformation, checkWeakWarnings, checkSymbolNames, checkInjections)
       }
       else {
-        this.checkHighlighting(checkWarnings, checkInformation, checkWeakWarnings)
+        runHighlightingCheck(checkWarnings, checkInformation, checkWeakWarnings)
       }
     }
+  }
+
+  /**
+   * Runs the highlighting check of [doHighlightingTest].
+   * Override this to wait for asynchronous highlighting sources, for example the LSP diagnostics.
+   */
+  protected open fun CodeInsightTestFixture.runHighlightingCheck(
+    checkWarnings: Boolean,
+    checkInformation: Boolean,
+    checkWeakWarnings: Boolean,
+  ) {
+    checkHighlighting(checkWarnings, checkInformation, checkWeakWarnings)
+  }
+
+  /**
+   * Collects the highlighting and compares it with [data].
+   * Override this to wait for asynchronous highlighting sources, for example the LSP diagnostics.
+   */
+  protected open fun CodeInsightTestFixture.collectAndCheckExpectedHighlighting(data: ExpectedHighlightingData) {
+    (this as CodeInsightTestFixtureImpl).collectAndCheckHighlighting(data)
   }
 
   protected fun CodeInsightTestFixture.checkHighlightingEx(
@@ -613,7 +633,7 @@ abstract class PolySymbolsTestCase(mode: HybridTestMode = HybridTestMode.BasePla
       SyntaxTraverser.psiTraverser(myFixture.getFile())
         .forEach { if (it is PsiLanguageInjectionHost) injectedLanguageManager.getInjectedPsiFiles(it) }
     }
-    (this as CodeInsightTestFixtureImpl).collectAndCheckHighlighting(data)
+    collectAndCheckExpectedHighlighting(data)
   }
 
   protected fun doParameterInfoTest(
@@ -846,19 +866,7 @@ abstract class PolySymbolsTestCase(mode: HybridTestMode = HybridTestMode.BasePla
       configureCodeStyleSettings = configureCodeStyleSettings,
     ) {
       signature?.let { moveToOffsetBySignature(it) }
-      if (canRenamePolySymbolAtCaret()) {
-        renamePolySymbol(newName)
-      }
-      else {
-        var targetElement = TargetElementUtil.findTargetElement(
-          editor, TargetElementUtil.ELEMENT_NAME_ACCEPTED or TargetElementUtil.REFERENCED_ELEMENT_ACCEPTED)
-        if (targetElement == null)
-          throw AssertionError("No Symbol or PSI Element to rename at caret position.")
-        targetElement = RenamePsiElementProcessor.forElement(targetElement)
-          .substituteElementToRename(targetElement, editor)
-        val renameProcessor = RenameProcessor(project, targetElement!!, newName, searchCommentsAndText, searchCommentsAndText)
-        renameProcessor.run()
-      }
+      renameSymbolAtCaret(newName, searchCommentsAndText)
     }
   }
 

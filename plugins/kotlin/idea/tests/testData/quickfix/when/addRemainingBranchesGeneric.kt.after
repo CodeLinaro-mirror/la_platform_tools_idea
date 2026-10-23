@@ -1,7 +1,7 @@
 // "Add remaining branches" "true"
 // ERROR: Unresolved reference: TODO
 // ERROR: Unresolved reference: TODO
-// K2_ERROR: 'when' expression must be exhaustive. Add the 'is Generic<*, *>' branch or an 'else' branch.
+// K2_ERROR: NO_ELSE_IN_WHEN
 
 sealed class Base<U, V, W> {
     fun foo(it: Base<U, V, W>) {
@@ -15,5 +15,4 @@ sealed class Base<U, V, W> {
 class Derived<U, V>: Base<U, V, Int>()
 class Generic<V, T>: Base<Int, V, String>()
 
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AddWhenRemainingBranchesFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.AddWhenRemainingBranchFixFactories$AddRemainingWhenBranchesQuickFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.AddWhenRemainingBranchFixFactories$AddRemainingWhenBranchesQuickFix

@@ -16,8 +16,10 @@ import com.intellij.openapi.util.Computable
 import com.intellij.openapi.util.NlsContexts
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.platform.util.progress.internalCreateRawHandleFromContextStepIfExistsAndFresh
+import com.intellij.platform.util.progress.rawReporterIfExists
 import com.intellij.platform.util.progress.reportRawProgress
 import com.intellij.util.IntelliJCoroutinesFacade
+import com.intellij.util.SystemProperties
 import com.intellij.util.concurrency.BlockingJob
 import com.intellij.util.concurrency.ThreadScopeCheckpoint
 import com.intellij.util.concurrency.annotations.RequiresBackgroundThread
@@ -151,15 +153,15 @@ fun <T> runBlockingCancellable(compensateParallelism: Boolean, action: suspend C
 
 private fun <T> runBlockingCancellable(allowOrphan: Boolean, compensateParallelism: Boolean, action: suspend CoroutineScope.() -> T): T {
   assertRunBlockingBackgroundThreadAndNoWriteAction()
-  return prepareThreadContext { ctx ->
-    if (!allowOrphan && ctx[Job] == null) {
-      LOG.error(IllegalStateException("There is no ProgressIndicator or Job in this thread, the current job is not cancellable."))
-    }
-    wrapInReadActionIfCurrentlyWriteAction {
+  return wrapInReadActionIfCurrentlyWriteAction {
+    prepareThreadContext { ctx ->
+      if (!allowOrphan && ctx[Job] == null) {
+        LOG.error(IllegalStateException("There is no ProgressIndicator or Job in this thread, the current job is not cancellable."))
+      }
+
       val (lockContext, cleanup) = getLockContext(ctx)
       try {
         if (compensateParallelism) {
-          @OptIn(InternalCoroutinesApi::class)
           IntelliJCoroutinesFacade.runBlockingWithParallelismCompensation(ctx + lockContext, action)
         }
         else {
@@ -195,7 +197,7 @@ private inline fun <T> wrapInReadActionIfCurrentlyWriteAction(crossinline action
 private fun getLockContext(currentThreadContext: CoroutineContext): Pair<CoroutineContext, AccessToken> {
   val parallelize = with(ApplicationManager.getApplication()) {
     installThreadContext(currentThreadContext) {
-      isReadAccessAllowed
+      if (isReadAccessAllowed) LockParallelizationSharingPolicy.SHARING_CHECK_TOPMOST_RA else LockParallelizationSharingPolicy.NO_SHARING
     }
   }
   return getLockPermitContext(currentThreadContext, parallelize)
@@ -487,10 +489,12 @@ suspend fun <T> coroutineToIndicator(action: () -> T): T {
  *
  * ### Progress reporting
  *
- * If there is a fresh [currentProgressStep] in the coroutine context, this function [switches it to raw][reportRawProgress].
- * If the step is not fresh, then no reporting from this function is visible to the caller.
- * Please consult [currentProgressStep] for more info about fresh steps.
+ * If there is a fresh `currentProgressStep` in the coroutine context, this function [switches it to raw][reportRawProgress].
+ * If the step already has an active raw reporter, this function reuses it without taking ownership or closing it.
+ * The owner must coordinate indicator updates with its own reporting.
+ * Otherwise, reporting from this function is not visible to the caller.
  *
+ * @see reportRawProgress
  * @see runBlockingCancellable
  * @see ProgressManager.runProcess
  */
@@ -521,8 +525,10 @@ suspend fun <T> coroutineToIndicator(action: (ProgressIndicator) -> T): T {
  * ### Progress reporting
  *
  * If there is a fresh [currentProgressStep] in the coroutine context, this function [switches it to raw][reportRawProgress].
- * If the step is not fresh, then no reporting from this function is visible to the caller.
- * Please consult [currentProgressStep] for more info about fresh steps.
+ * If the step already has an active raw reporter, this function reuses it without taking ownership or closing it.
+ * An outer [reportRawProgress] keeps that reporter active across read action restarts.
+ * The owner must coordinate indicator updates with its own reporting.
+ * Otherwise, reporting from this function is not visible to the caller.
  */
 @Internal
 @RequiresBlockingContext
@@ -553,7 +559,13 @@ private fun <T> contextToIndicator(ctx: CoroutineContext, action: () -> T): T {
     }
   }
   else {
-    val indicator = JobDependentIndicator(contextModality, job)
+    val reporter = ctx.rawReporterIfExists()
+    val indicator = if (reporter != null) {
+      RawProgressReporterIndicator(reporter, contextModality)
+    }
+    else {
+      JobDependentIndicator(contextModality, job)
+    }
     jobToIndicator(job, indicator, action)
   }
 }
@@ -602,13 +614,16 @@ fun <T> jobToIndicator(job: Job, indicator: ProgressIndicator, action: () -> T):
 
 @Internal
 fun assertRunBlockingBackgroundThreadAndNoWriteAction() {
-  if (!EDT.isCurrentThreadEdt()) {
-    return
-  }
-
   val app = ApplicationManager.getApplication()
-  if (!app.isDispatchThread || (app.isUnitTestMode && !Registry.`is`("ide.run.blocking.cancellable.assert.in.tests", false))) {
-    return // OK
+
+  val ok = (
+    (!EDT.isCurrentThreadEdt() && !app.isDispatchThread)
+    || (app.isUnitTestMode && !Registry.`is`("ide.run.blocking.cancellable.assert.in.tests", false))
+    // Shared indexes builder runs in a headless mode, and calls `ExternalSystemProjectAware.getSettingsFiles` under WA leading to PY-90652
+    || (app.isHeadlessEnvironment && !SystemProperties.getBooleanProperty("intellij.progress.task.ignoreHeadless", false)))
+
+  if (ok) {
+    return
   }
 
   if (app.isWriteAccessAllowed && !app.isTopmostReadAccessAllowed) {
@@ -626,20 +641,27 @@ fun assertRunBlockingBackgroundThreadAndNoWriteAction() {
 }
 
 @Internal
-fun getLockPermitContext(forSharing: Boolean = false): Pair<CoroutineContext, AccessToken> {
+fun getLockPermitContext(forSharing: LockParallelizationSharingPolicy = LockParallelizationSharingPolicy.NO_SHARING): Pair<CoroutineContext, AccessToken> {
   return getLockPermitContext(currentThreadContext(), forSharing)
 }
 
 @Internal
-fun getLockPermitContext(baseContext: CoroutineContext, forSharing: Boolean): Pair<CoroutineContext, AccessToken> {
+enum class LockParallelizationSharingPolicy {
+  NO_SHARING, // just to get an element from context
+  SHARING_CHECK_TOPMOST_RA, // for runBlockingCancellable
+  SHARING_NO_CHECK_TOPMOST_RA // for runWithModalProgressBlocking
+}
+
+@Internal
+fun getLockPermitContext(baseContext: CoroutineContext, policy: LockParallelizationSharingPolicy): Pair<CoroutineContext, AccessToken> {
   val application = ApplicationManager.getApplication()
   return if (application != null) {
     val (context, cleanup) = installThreadContext(baseContext, true) {
       val threadingSupport = application.threadingSupport
       when {
         threadingSupport == null -> EmptyCoroutineContext to AccessToken.EMPTY_ACCESS_TOKEN
-        forSharing -> {
-          val (context, cleanup) = threadingSupport.parallelizeLock()
+        policy != LockParallelizationSharingPolicy.NO_SHARING -> {
+          val (context, cleanup) = threadingSupport.parallelizeLock(policy == LockParallelizationSharingPolicy.SHARING_CHECK_TOPMOST_RA)
           context to object : AccessToken() {
             override fun finish() {
               cleanup()
@@ -694,7 +716,7 @@ private fun rememberElements(job: BlockingJob, context: CoroutineContext) {
 /**
  * Assigns a title to a Write action. Intended to be invoked with write lock
  */
-@RequiresWriteLock
+@RequiresWriteLock(generateAssertion = false /* IJPL-115548 */)
 @ApiStatus.Experimental
 fun withWriteActionTitle(title: @NlsContexts.ModalProgressTitle String, action: () -> Unit) {
   service<LockingProgressSupport>().withWriteActionProgress(title, action)

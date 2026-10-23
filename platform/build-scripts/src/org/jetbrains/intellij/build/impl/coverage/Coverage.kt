@@ -34,9 +34,9 @@ interface Coverage {
 
   fun enable(jvmOptions: MutableList<String>, systemProperties: MutableMap<String, String>)
 
-  suspend fun generateReport()
+  fun generateReport()
 
-  suspend fun aggregateAndReport(dataToMerge: List<Path>)
+  fun aggregateAndReport(dataToMerge: List<Path>)
 }
 
 @OptIn(ExperimentalPathApi::class)
@@ -196,14 +196,14 @@ internal class CoverageImpl(
     systemProperties[ErrorReporter.LOG_LEVEL_SYSTEM_PROPERTY] = "info"
   }
 
-  override suspend fun generateReport() {
+  override fun generateReport() {
     block("Generating a coverage report") {
       generateReport(outputRoots = outputRoots, sourceRoots = sourceRoots)
       publishReport()
     }
   }
 
-  override suspend fun aggregateAndReport(dataToMerge: List<Path>) {
+  override fun aggregateAndReport(dataToMerge: List<Path>) {
     require(dataToMerge.any()) {
       "No coverage data files to merge"
     }

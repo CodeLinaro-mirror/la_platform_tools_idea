@@ -8,7 +8,7 @@ import com.intellij.modcommand.ModPsiUpdater
 import com.intellij.modcommand.Presentation
 import com.intellij.modcommand.PsiBasedModCommandAction
 import com.intellij.modcommand.PsiUpdateModCommandAction
-import org.jetbrains.kotlin.analysis.api.analyze
+import org.jetbrains.kotlin.analysis.api.session.analyze
 import org.jetbrains.kotlin.idea.base.psi.imports.addImport
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.quickfix.AutoImportVariant
@@ -24,8 +24,6 @@ import org.jetbrains.kotlin.psi.KtElement
  *
  * Currently, it's not supposed to be used in IntelliJ IDEA,
  * and should only be used in the Kotlin LSP Server setup.
- *
- * Note: Avoid instantiating directly, see [KotlinAddImportActionFactory] for that.
  */
 internal class AddImportModCommandAction(
     element: KtElement,

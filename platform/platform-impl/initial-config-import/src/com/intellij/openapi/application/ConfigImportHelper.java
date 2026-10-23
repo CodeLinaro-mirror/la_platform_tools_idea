@@ -11,12 +11,13 @@ import com.intellij.ide.ImportOldConfigsUsagesCollector;
 import com.intellij.ide.SpecialConfigFiles;
 import com.intellij.ide.highlighter.ArchiveFileType;
 import com.intellij.ide.plugins.BrokenPluginFileKt;
+import com.intellij.ide.plugins.DescriptorExclusionReason;
 import com.intellij.ide.plugins.DisabledPluginsState;
 import com.intellij.ide.plugins.ExpiredPluginsState;
 import com.intellij.ide.plugins.IdeaPluginDescriptor;
 import com.intellij.ide.plugins.PluginDescriptorLoader;
 import com.intellij.ide.plugins.PluginInitContextFactory;
-import com.intellij.ide.plugins.PluginInitContextSelectPluginsToLoadKt;
+import com.intellij.ide.plugins.PluginInitContextSelectCandidateSubsetKt;
 import com.intellij.ide.plugins.PluginInstaller;
 import com.intellij.ide.plugins.PluginMainDescriptor;
 import com.intellij.ide.plugins.PluginManagerCore;
@@ -53,7 +54,6 @@ import com.intellij.openapi.util.registry.EarlyAccessRegistryManager;
 import com.intellij.openapi.util.text.NaturalComparator;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.util.text.Strings;
-import com.intellij.openapi.vfs.CharsetToolkit;
 import com.intellij.platform.ide.bootstrap.SplashManagerKt;
 import com.intellij.platform.ide.bootstrap.StartupErrorReporter;
 import com.intellij.ui.AppUIUtil;
@@ -66,7 +66,6 @@ import com.intellij.util.io.Decompressor;
 import com.intellij.util.system.OS;
 import com.intellij.util.text.VersionComparatorUtil;
 import com.intellij.util.ui.IoErrorText;
-import kotlin.Unit;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -169,7 +168,7 @@ public final class ConfigImportHelper {
         var newPluginsDir = newConfigDir.getFileSystem().getPath(PathManager.getPluginsDir().toString());
         var importOptions = createConfigImportOptions(importSettings, migrationOption, log);
         try {
-          migratePlugins(oldPluginsDir, oldConfigDir, newPluginsDir, newConfigDir, importOptions, Predicates.alwaysFalse());
+          migratePlugins(oldPluginsDir, oldConfigDir, newPluginsDir, newConfigDir, importOptions, Set.of());
         }
         catch (IOException e) {
           log.warn(e);
@@ -209,14 +208,15 @@ public final class ConfigImportHelper {
                 vmOptionFileChanged = false;
               }
               var disabledPluginsFileName = P3SupportKt.processPerProjectSupport().getDisabledPluginsFileName();
-              if (Files.isRegularFile(newConfigDir.resolve(disabledPluginsFileName))) {
-                currentlyDisabledPlugins = Files.readAllLines(newConfigDir.resolve(disabledPluginsFileName));
+              var disabledPluginsFile = newConfigDir.resolve(disabledPluginsFileName);
+              if (Files.isRegularFile(disabledPluginsFile)) {
+                currentlyDisabledPlugins = Files.readAllLines(disabledPluginsFile);
               }
-              else if (
-                !DisabledPluginsState.DISABLED_PLUGINS_FILENAME.equals(disabledPluginsFileName) &&
-                Files.isRegularFile(newConfigDir.resolve(DisabledPluginsState.DISABLED_PLUGINS_FILENAME))
-              ) {
-                currentlyDisabledPlugins = Files.readAllLines(newConfigDir.resolve(DisabledPluginsState.DISABLED_PLUGINS_FILENAME));
+              else if (!DisabledPluginsState.DISABLED_PLUGINS_FILENAME.equals(disabledPluginsFileName)) {
+                disabledPluginsFile = newConfigDir.resolve(DisabledPluginsState.DISABLED_PLUGINS_FILENAME);
+                if (Files.isRegularFile(disabledPluginsFile)) {
+                  currentlyDisabledPlugins = Files.readAllLines(disabledPluginsFile);
+                }
               }
             }
             tempBackup = backupAndDeleteCurrentConfig(newConfigDir, log, importSettings);
@@ -228,7 +228,7 @@ public final class ConfigImportHelper {
           }
         }
         catch (IOException e) {
-          log.error("Couldn't backup current config or delete current config directory", e);
+          log.error("Couldn't back up the current config or delete the current config directory", e);
         }
       }
       else if (inheritedDirectory != null) {
@@ -265,17 +265,10 @@ public final class ConfigImportHelper {
 
         if (currentlyDisabledPlugins != null) {
           try {
-            var newDisablePluginsFile = newConfigDir.resolve(P3SupportKt.processPerProjectSupport().getDisabledPluginsFileName());
-            var newDisabledPlugins = new LinkedHashSet<String>();
-            if (Files.isRegularFile(newDisablePluginsFile)) {
-              newDisabledPlugins.addAll(Files.readAllLines(newDisablePluginsFile, CharsetToolkit.getPlatformCharset()));
-            }
-            newDisabledPlugins.addAll(currentlyDisabledPlugins);
-            Files.write(newDisablePluginsFile, newDisabledPlugins, CharsetToolkit.getPlatformCharset());
-            log.info("Disabled plugins file updated with " + newDisabledPlugins.size() + " plugins");
+            amendDisabledPluginsFile(newConfigDir, currentlyDisabledPlugins, log);
           }
           catch (IOException e) {
-            log.warn("Couldn't write disabled plugins file", e);
+            log.warn("Couldn't write the disabled plugins file", e);
           }
         }
       }
@@ -312,7 +305,7 @@ public final class ConfigImportHelper {
           new ConfigBackup(newConfigDir).moveToBackup(tempBackup);
         }
         catch (IOException e) {
-          log.warn(String.format("Couldn't move the backup of current config from temp dir [%s] to backup dir", tempBackup), e);
+          log.warn(String.format("Couldn't move the backup of current config from temp dir [%s] to back up dir", tempBackup), e);
         }
       }
     }
@@ -325,7 +318,7 @@ public final class ConfigImportHelper {
             InitialConfigImportState.writeOptionsForRestart(newConfigDir);
           }
           catch (IOException e) {
-            log.error("cannot write config migration marker file to " + newConfigDir, e);
+            log.error("cannot write the config migration marker file to " + newConfigDir, e);
           }
           restart(args);
         }
@@ -413,6 +406,18 @@ public final class ConfigImportHelper {
     return Files.isRegularFile(configDir.resolve(VMOptions.getFileName()));
   }
 
+  private static void amendDisabledPluginsFile(Path newConfigDir, List<String> moreDisabledPlugins, Logger log) throws IOException {
+    var disabledPluginsFile = newConfigDir.resolve(P3SupportKt.processPerProjectSupport().getDisabledPluginsFileName());
+    var disabledPlugins = new LinkedHashSet<String>();
+    if (Files.isRegularFile(disabledPluginsFile)) {
+      disabledPlugins.addAll(Files.readAllLines(disabledPluginsFile));
+    }
+    if (disabledPlugins.addAll(moreDisabledPlugins)) {
+      Files.write(disabledPluginsFile, disabledPlugins);
+      log.info("Disabled plugins file updated with " + disabledPlugins.size() + " plugins");
+    }
+  }
+
   private static void restart(List<String> args) {
     if (Restarter.isSupported()) {
       try {
@@ -470,7 +475,7 @@ public final class ConfigImportHelper {
   }
 
   private static void deleteCurrentConfigDir(Path currentConfig, Logger log) throws IOException {
-    log.debug("Removing current config directory");
+    log.debug("Removing the current config directory");
 
     var removedViaCustomizer = false;
     try {
@@ -482,11 +487,11 @@ public final class ConfigImportHelper {
       }
     }
     catch (Exception e) {
-      log.warn("Couldn't remove current config dir using the customizer", e);
+      log.warn("Couldn't remove the current config dir using the customizer", e);
     }
 
     if (!removedViaCustomizer) {
-      log.debug("RestoreDefaultConfigCustomizer not found, removing config directory manually...");
+      log.debug("RestoreDefaultConfigCustomizer not found, removing the config directory manually...");
       NioFiles.deleteRecursively(currentConfig);
     }
   }
@@ -837,7 +842,7 @@ public final class ConfigImportHelper {
     var log = options.log;
 
     if (oldConfigDir.equals(newConfigDir)) {
-      log.info("New config directory is the same as the old one, no import needed.");
+      log.info("The new config directory is the same as the old one, no import needed.");
       return;
     }
 
@@ -858,7 +863,7 @@ public final class ConfigImportHelper {
   }
 
   private static Path computeOldPluginsDir(Path oldConfigDir, @Nullable Path oldIdeHome) {
-    var oldPluginsDir = oldConfigDir.resolve(PLUGINS);
+    @Nullable var oldPluginsDir = oldConfigDir.resolve(PLUGINS);
     if (!Files.isDirectory(oldPluginsDir)) {
       oldPluginsDir = null;
       if (oldIdeHome != null) {
@@ -913,23 +918,28 @@ public final class ConfigImportHelper {
         return FileVisitResult.CONTINUE;
       }
     });
+
     var disabledPluginsFileName = P3SupportKt.processPerProjectSupport().getDisabledPluginsFileName();
-    if (!disabledPluginsFileName.equals(DisabledPluginsState.DISABLED_PLUGINS_FILENAME) &&
-        Files.exists(oldConfigDir.resolve(DisabledPluginsState.DISABLED_PLUGINS_FILENAME)) && !Files.exists(newConfigDir.resolve(disabledPluginsFileName))) {
-      Files.copy(oldConfigDir.resolve(DisabledPluginsState.DISABLED_PLUGINS_FILENAME), newConfigDir.resolve(disabledPluginsFileName));
+    if (!disabledPluginsFileName.equals(DisabledPluginsState.DISABLED_PLUGINS_FILENAME)) {
+      var oldDisabledPluginsFile = oldConfigDir.resolve(DisabledPluginsState.DISABLED_PLUGINS_FILENAME);
+      if (Files.isRegularFile(oldDisabledPluginsFile)) {
+        var newDisabledPluginsFile = newConfigDir.resolve(disabledPluginsFileName);
+        if (!Files.isRegularFile(newDisabledPluginsFile)) {
+          Files.copy(oldDisabledPluginsFile, newDisabledPluginsFile);
+        }
+      }
     }
 
-    var actionCommands = loadStartupActionScript(oldConfigDir, oldIdeHome, oldPluginsDir);
+    var actionScript = findStartupActionScript(oldConfigDir, oldIdeHome, oldPluginsDir);
+    var actionCommands = actionScript != null ? StartupActionScriptManager.loadActionScript(actionScript) : null;
 
     // copying plugins, unless the target directory is not empty (the plugin manager will sort out incompatible ones)
     if (!isEmptyDirectory(newPluginsDir)) {
       log.info("non-empty plugins directory: " + newPluginsDir);
     }
     else {
-      var hasPendingUpdate = Files.isDirectory(oldPluginsDir) ?
-        collectPendingPluginUpdates(actionCommands, oldPluginsDir.getFileSystem(), options.log) :
-        (Predicate<IdeaPluginDescriptor>)(_ -> false);
-      migratePlugins(oldPluginsDir, oldConfigDir, newPluginsDir, newConfigDir, options, hasPendingUpdate);
+      var pendingUpdates = getPendingPluginUpdates(actionCommands, oldPluginsDir.getFileSystem(), options.log);
+      migratePlugins(oldPluginsDir, oldConfigDir, newPluginsDir, newConfigDir, options, pendingUpdates);
     }
 
     migrateLocalization(oldConfigDir, oldPluginsDir);
@@ -938,20 +948,27 @@ public final class ConfigImportHelper {
       setKeymapIfNeeded(oldConfigDir, newConfigDir, log);
     }
 
-    // applying prepared updates to copied plugins
-    StartupActionScriptManager.executeActionScriptCommands(actionCommands, oldPluginsDir, newPluginsDir);
+    if (actionCommands != null) {
+      try {
+        // applying prepared updates to copied plugins
+        StartupActionScriptManager.executeActionScriptCommands(actionCommands, oldPluginsDir, newPluginsDir);
+      }
+      finally {
+        Files.deleteIfExists(actionScript);
+      }
+    }
 
     updateVMOptions(newConfigDir, oldConfigDir, log);
   }
 
-  @SuppressWarnings({"KotlinInternalInJava", "UnnecessaryFullyQualifiedName"})
+  @SuppressWarnings("UnnecessaryFullyQualifiedName")
   public static void migrateLocalization(@NotNull Path oldConfigDir, @NotNull Path oldPluginsDir) {
     com.intellij.openapi.application.migrations.Localization242.INSTANCE.enableL10nIfPluginInstalled(parseVersionFromConfig(oldConfigDir), oldPluginsDir);
   }
 
-  private static List<ActionCommand> loadStartupActionScript(Path oldConfigDir, @Nullable Path oldIdeHome, Path oldPluginsDir) throws IOException {
+  private static @Nullable Path findStartupActionScript(Path oldConfigDir, @Nullable Path oldIdeHome, Path oldPluginsDir) {
     if (Files.isDirectory(oldPluginsDir)) {
-      var oldSystemDir = oldConfigDir.getParent().resolve(SYSTEM);
+      @Nullable var oldSystemDir = oldConfigDir.getParent().resolve(SYSTEM);
       if (!Files.isDirectory(oldSystemDir)) {
         oldSystemDir = null;
         if (oldIdeHome != null) {
@@ -963,10 +980,10 @@ public final class ConfigImportHelper {
       }
       var script = oldSystemDir.resolve(PLUGINS + '/' + StartupActionScriptManager.ACTION_SCRIPT_FILE);  // PathManager#getPluginTempPath
       if (Files.isRegularFile(script)) {
-        return StartupActionScriptManager.loadActionScript(script);
+        return script;
       }
     }
-    return List.of();
+    return null;
   }
 
   public static void migratePlugins(
@@ -975,16 +992,17 @@ public final class ConfigImportHelper {
     @NotNull Path newPluginsDir,
     @NotNull Path newConfigDir,
     @NotNull ConfigImportOptions options,
-    @NotNull Predicate<IdeaPluginDescriptor> hasPendingUpdate
+    @NotNull Set<PluginId> pendingUpdates
   ) throws IOException {
     var log = options.log;
 
     var pluginsToMigrate = new ArrayList<IdeaPluginDescriptor>();
     var pluginsToDownload = new ArrayList<IdeaPluginDescriptor>();
+    var pluginsToDisable = new ArrayList<PluginId>();
 
     var brokenPluginVersions = fetchBrokenPluginsFromMarketplace(options, newConfigDir);
     if (!collectPluginsToMigrate(oldPluginsDir, options, brokenPluginVersions, pluginsToMigrate, pluginsToDownload)) {
-      log.info("Error loading list of plugins from old dir, migrating entire plugin directory");
+      log.info("Error loading list of plugins from the old dir, migrating the entire plugin directory");
       NioFiles.copyRecursively(oldPluginsDir, newPluginsDir);
       return;
     }
@@ -1008,20 +1026,30 @@ public final class ConfigImportHelper {
     }
 
     if (!isUnitTestMode) {
-      migrateGlobalPlugins(newConfigDir, oldConfigDir, pluginsToMigrate, pluginsToDownload, options.log);
+      migrateGlobalPlugins(newConfigDir, oldConfigDir, pluginsToMigrate, pluginsToDownload, pluginsToDisable, options.log);
     }
 
-    pluginsToMigrate.removeIf(hasPendingUpdate);
+    var filter = pendingUpdates.isEmpty() ? Predicates.<IdeaPluginDescriptor>alwaysFalse() : (Predicate<IdeaPluginDescriptor>)descriptor -> {
+      var skip = pendingUpdates.contains(descriptor.getPluginId());
+      if (skip) log.info("Plugin '" + descriptor.getPluginId() + "' skipped due to a pending update");
+      return skip;
+    };
+
+    pluginsToMigrate.removeIf(filter);
     if (!pluginsToMigrate.isEmpty()) {
       migratePlugins(newPluginsDir, pluginsToMigrate, log);
     }
 
-    pluginsToDownload.removeIf(hasPendingUpdate);
+    pluginsToDownload.removeIf(filter);
     if (!pluginsToDownload.isEmpty()) {
       downloadUpdatesForPlugins(newPluginsDir, options, pluginsToDownload, brokenPluginVersions);
 
       // migrating plugins for which we weren't able to download updates
       migratePlugins(newPluginsDir, pluginsToDownload, log);
+    }
+
+    if (!pluginsToDisable.isEmpty()) {
+      amendDisabledPluginsFile(newConfigDir, ContainerUtil.map(pluginsToDisable, PluginId::getIdString), log);
     }
   }
 
@@ -1060,23 +1088,33 @@ public final class ConfigImportHelper {
         options.compatibleBuildNumber, Collections.emptySet(), Collections.emptySet(), brokenPluginVersions
       );
       var nonLoadablePlugins = new HashMap<PluginId, PluginMainDescriptor>();
-      var loadablePlugins = PluginInitContextSelectPluginsToLoadKt.selectPluginsToLoad(
+      var excludedPlugins = new HashMap<PluginMainDescriptor, DescriptorExclusionReason>();
+      var selectedCandidates = PluginInitContextSelectCandidateSubsetKt.selectCandidateSubset(
         initContext,
         oldIdePlugins,
-        (plugin, reason) -> {
-          if (reason instanceof PluginVersionIsSuperseded) {
-            return Unit.INSTANCE;
-          }
+        excludedPlugins
+      ).getPlugins();
+      for (var entry : excludedPlugins.entrySet()) {
+        if (!(entry.getValue() instanceof PluginVersionIsSuperseded)) {
+          var plugin = entry.getKey();
           var previousNonLoadable = nonLoadablePlugins.get(plugin.getPluginId());
           if (previousNonLoadable == null || VersionComparatorUtil.compare(plugin.getVersion(), previousNonLoadable.getVersion()) > 0) {
             nonLoadablePlugins.put(plugin.getPluginId(), plugin);
           }
-          return Unit.INSTANCE;
         }
-      ).getPlugins();
-      // TODO 'plugin is broken' is already applied by 'selectPluginsToLoad'
+      }
+      // additionally filter the selected candidates by compatibility
+      var candidatePlugins = new ArrayList<PluginMainDescriptor>(selectedCandidates.size());
+      for (var plugin : selectedCandidates) {
+        if (PluginManagerCore.INSTANCE.isCompatible(plugin, options.compatibleBuildNumber)) {
+          candidatePlugins.add(plugin);
+        }
+        else {
+          nonLoadablePlugins.put(plugin.getPluginId(), plugin);
+        }
+      }
       if (Boolean.getBoolean(UPDATE_ONLY_INCOMPATIBLE_PLUGINS_PROPERTY)) {
-        partitionNonBundled(loadablePlugins, pluginsToDownload, pluginsToMigrate, descriptor -> {
+        partitionNonBundled(candidatePlugins, pluginsToDownload, pluginsToMigrate, descriptor -> {
           var brokenVersions = brokenPluginVersions != null ? brokenPluginVersions.get(descriptor.getPluginId()) : null;
           return brokenVersions != null && brokenVersions.contains(descriptor.getVersion());
         });
@@ -1087,10 +1125,10 @@ public final class ConfigImportHelper {
         // Here we also put there plugins for which updates are available (or they are broken).
         // So the only difference is that here we try to download more plugins.
         var nonBundledPlugins = new ArrayList<IdeaPluginDescriptor>();
-        partitionNonBundled(loadablePlugins, nonBundledPlugins, pluginsToMigrate, _ -> true);
+        partitionNonBundled(candidatePlugins, nonBundledPlugins, pluginsToMigrate, _ -> true);
         partitionNonBundled(nonLoadablePlugins.values(), nonBundledPlugins, pluginsToMigrate, _ -> true);
         var updates = fetchPluginUpdatesFromMarketplace(options, ContainerUtil.map2Set(nonBundledPlugins, d -> d.getPluginId()));
-        partitionNonBundled(loadablePlugins, pluginsToDownload, pluginsToMigrate, d -> {
+        partitionNonBundled(candidatePlugins, pluginsToDownload, pluginsToMigrate, d -> {
           if (updates != null && updates.containsKey(d.getPluginId()) && !updates.get(d.getPluginId()).getVersion().equals(d.getVersion())) {
             return true;
           }
@@ -1103,29 +1141,29 @@ public final class ConfigImportHelper {
     return true;
   }
 
-  @SuppressWarnings({"KotlinInternalInJava", "UnnecessaryFullyQualifiedName"})
-  private static void performMigrations(com.intellij.openapi.application.PluginMigrationOptions options) {
+  @SuppressWarnings("UnnecessaryFullyQualifiedName")
+  private static void performMigrations(PluginMigrationOptions options) {
     // WRITE IN MIGRATIONS HERE
     // Note that migrations are not taken into account for IDE updates through Toolbox
     new com.intellij.openapi.application.migrations.NotebooksMigration242().migratePlugins(options);
     new com.intellij.openapi.application.migrations.SpaceMigration252().migratePlugins(options);
     new com.intellij.openapi.application.migrations.BigDataToolsMigration253().migratePlugins(options);
+    new com.intellij.openapi.application.migrations.BigDataToolsMigration263().migratePlugins(options);
     new com.intellij.openapi.application.migrations.VcsPluginsMigration261().migratePlugins(options);
     new com.intellij.openapi.application.migrations.CwmMigration261().migratePlugins(options);
     new com.intellij.openapi.application.migrations.RustMigration262().migratePlugins(options);
-    new com.intellij.openapi.application.migrations.KmpMigration262().migratePlugins(options);
+    new com.intellij.openapi.application.migrations.AIAssistantMigration263().migratePlugins(options);
   }
 
-  @SuppressWarnings({"KotlinInternalInJava", "UnnecessaryFullyQualifiedName"})
   private static void migrateGlobalPlugins(
     Path newConfigDir, Path oldConfigDir,
-    List<IdeaPluginDescriptor> toMigrate, List<IdeaPluginDescriptor> toDownload,
+    List<IdeaPluginDescriptor> toMigrate, List<IdeaPluginDescriptor> toDownload, List<PluginId> toDisable,
     Logger log
   ) {
     var currentProductVersion = PluginManagerCore.getBuildNumber().asStringWithoutProductCode();
     var previousVersion = parseVersionFromConfig(oldConfigDir);
-    var options = new com.intellij.openapi.application.PluginMigrationOptions(
-      previousVersion, currentProductVersion, newConfigDir, oldConfigDir, toMigrate, toDownload, log
+    var options = new PluginMigrationOptions(
+      previousVersion, currentProductVersion, newConfigDir, oldConfigDir, toMigrate, toDownload, toDisable, log
     );
     performMigrations(options);
     var downloadIds = toDownload.stream()
@@ -1153,8 +1191,11 @@ public final class ConfigImportHelper {
     }
   }
 
-  private static Predicate<IdeaPluginDescriptor> collectPendingPluginUpdates(List<ActionCommand> actionCommands, FileSystem fs, Logger log) {
+  private static Set<PluginId> getPendingPluginUpdates(@Nullable List<ActionCommand> actionCommands, FileSystem fs, Logger log) {
+    if (actionCommands == null) return Set.of();
+
     var result = new LinkedHashSet<PluginId>();
+
     for (var command : actionCommands) {
       var source = switch (command) {
         case StartupActionScriptManager.CopyCommand cc -> cc.getSource();
@@ -1177,16 +1218,7 @@ public final class ConfigImportHelper {
       }
     }
 
-    return descriptor -> {
-      var pluginId = descriptor.getPluginId();
-      if (result.contains(pluginId)) {
-        log.info("Plugin '" + pluginId + "' skipped due to a pending update");
-        return true;
-      }
-      else {
-        return false;
-      }
-    };
+    return result;
   }
 
   public static void migratePlugins(Path newPluginsDir, List<IdeaPluginDescriptor> descriptors, Logger log) throws IOException {
@@ -1194,7 +1226,7 @@ public final class ConfigImportHelper {
       var pluginPath = descriptor.getPluginPath();
       var pluginId = descriptor.getPluginId();
       if (pluginPath == null) {
-        log.info("Skipping migration of plugin '" + pluginId + "', because it is officially homeless");
+        log.info("Skipping migration of plugin '%s', because it is officially homeless".formatted(pluginId));
         continue;
       }
 
@@ -1274,11 +1306,11 @@ public final class ConfigImportHelper {
         }
       }
       catch (@SuppressWarnings("IncorrectCancellationExceptionHandling") ProcessCanceledException ignored) {
-        log.info("Plugin download cancelled");
+        log.info("Plugin download canceled");
         break;
       }
       catch (IOException e) {
-        log.info("Failed to download and install compatible version of '" + pluginId + "': " + e.getMessage());
+        log.info("Failed to download and install a compatible version of '" + pluginId + "': " + e.getMessage());
       }
     }
   }
@@ -1420,7 +1452,7 @@ public final class ConfigImportHelper {
               </application>""");
           }
           catch (IOException e) {
-            log.error("Cannot set keymap", e);
+            log.error("Cannot set a keymap", e);
           }
         }
       }
@@ -1518,7 +1550,7 @@ public final class ConfigImportHelper {
         }
       }
       catch (IOException e) {
-        log.warn("Failed to update custom VM options file " + vmOptionsFile, e);
+        log.warn("Failed to update the custom VM options file " + vmOptionsFile, e);
       }
     }
   }
@@ -1560,7 +1592,7 @@ public final class ConfigImportHelper {
     }
     catch (IOException e) {
       // exceptions should not prevent a user's VM options file from being processed
-      log.warn("Cannot read platform VM options file " + platformVmOptionsFile, e);
+      log.warn("Cannot read the platform VM options file " + platformVmOptionsFile, e);
       return List.of();
     }
   }

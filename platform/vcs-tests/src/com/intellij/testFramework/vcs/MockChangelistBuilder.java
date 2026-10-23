@@ -44,7 +44,7 @@ public class MockChangelistBuilder implements ChangelistBuilder {
   }
 
   @Override
-  public void removeRegisteredChangeFor(FilePath path) {
+  public void removeRegisteredChangeFor(@NotNull FilePath path) {
     for (Iterator<Change> iterator = myChanges.iterator(); iterator.hasNext(); ) {
       final Change change = iterator.next();
       if (path.equals(ChangesUtil.getFilePath(change))) {
@@ -98,14 +98,6 @@ public class MockChangelistBuilder implements ChangelistBuilder {
   @Override
   public boolean reportChangesOutsideProject() {
     return false;
-  }
-
-  @Override
-  public void reportAdditionalInfo(final String text) {
-  }
-
-  @Override
-  public void reportAdditionalInfo(Factory<JComponent> infoComponent) {
   }
 
   public List<Change> getChanges() {

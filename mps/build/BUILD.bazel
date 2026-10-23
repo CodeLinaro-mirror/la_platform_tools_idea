@@ -1,8 +1,8 @@
 load("@community//build:tests-options.bzl", "jps_test")
+load("@intellij_add_opens//:intellij_add_opens.bzl", "INTELLIJ_ADD_OPENS")
 load("@jps_dynamic_deps_community//:targets.bzl", "ALL_COMMUNITY_TARGETS", "BAZEL_TARGETS_JSON_COMMUNITY")
 load("@rules_java//java:defs.bzl", "java_binary")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
-load("//build:intellij_dev.bzl", "INTELLIJ_ADD_OPENS")
 
 java_binary(
     name = "mps_builder",
@@ -16,7 +16,6 @@ java_binary(
 )
 
 ### auto-generated section `build intellij.mps.build` start
-
 jvm_library(
     name = "build",
     srcs = glob(
@@ -28,6 +27,10 @@ jvm_library(
         allow_empty = True,
     ),
     module_name = "intellij.mps.build",
+    resource_strip_prefix = "build/manifests",
+    resources = glob(
+        ["build/manifests/**/*"],
+    ),
     visibility = ["//visibility:public"],
     deps = [
         # do not sort,
@@ -37,8 +40,9 @@ jvm_library(
         "//jps/standalone-builder:tools-jps-build-standalone",
         "@lib//:kotlin-stdlib",
         "//platform/build-scripts/downloader",
-        "@lib//:kotlinx-collections-immutable",
-        "@lib//:kotlinx-coroutines-core",
+        "//libraries/kotlinx/collections-immutable:libraries-kotlinx-collections-immutable",
+        "//libraries/kotlinx/coroutines/core",
+        "//libraries/jetbrains/annotations",
     ],
 )
 
@@ -58,6 +62,9 @@ jvm_library(
         "//java/java-runtime:rt_test_lib",
         "//jps/standalone-builder:tools-jps-build-standalone_test_lib",
         "//platform/build-scripts/downloader:downloader_test_lib",
+        "//libraries/kotlinx/collections-immutable:libraries-kotlinx-collections-immutable_test_lib",
+        "//libraries/kotlinx/coroutines/core:core_test_lib",
+        "//libraries/jetbrains/annotations:annotations_test_lib",
     ],
 )
 ### auto-generated section `build intellij.mps.build` end
@@ -66,13 +73,13 @@ jvm_library(
 exports_files(
     [
         "intellij.mps.build.iml",
+        "build/manifests/java-impl.jar/META-INF/plugin.xml",
     ],
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.mps.build` end
 
 ### auto-generated section `build intellij.mps.build.tests` start
-
 jvm_library(
     name = "build-tests",
     srcs = glob(
@@ -101,8 +108,8 @@ jvm_library(
     deps = [
         # do not sort,
         "@lib//:kotlin-stdlib",
-        "//libraries/junit5",
-        "//libraries/junit5:junit5_test_lib",
+        "//libraries/junit6",
+        "//libraries/junit6:junit6_test_lib",
         "//platform/build-scripts/testFramework",
         "//platform/build-scripts/testFramework:testFramework_test_lib",
         "//platform/util",
@@ -127,7 +134,6 @@ exports_files(
 ### auto-generated section `iml intellij.mps.build.tests` end
 
 ### auto-generated section `test intellij.mps.build.tests` start
-
 jps_test(
     name = "build-tests_test",
     runtime_deps = [":build-tests_test_lib"],

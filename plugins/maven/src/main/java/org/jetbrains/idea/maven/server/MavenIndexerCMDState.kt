@@ -1,4 +1,4 @@
-// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.idea.maven.server
 
 import com.google.common.base.Charsets
@@ -119,13 +119,13 @@ class MavenIndexerCMDState(
       addMavenLibs(classpath, distribution.mavenHome)
       addIndexerRTLibs(classpath)
       if (MavenUtil.isRunningFromSources()) {
-        // we are running from some kind of sources build, packed or not.
+        // JPS module outputs only - no assembled plugin layout to read from
         MavenLog.LOG.debug("collecting classpath for local run")
         prepareClassPathForLocalRunAndUnitTests(classpath)
         addDependenciesFromMavenRepo(classpath)
       }
       else {
-        // we are running in production
+        // an installed IDE *and* a dev build: both ship the same plugin layout
         MavenLog.LOG.debug("collecting classpath for production")
         prepareClassPathForProduction(distribution.version!!, classpath)
       }
@@ -171,7 +171,7 @@ class MavenIndexerCMDState(
         try {
           MavenIndexerCMDState::class.java.classLoader
             .getResourceAsStream("META-INF/org.jetbrains.idea.maven.maven-indexer-api-rt").use { `is` ->
-              if (`is` == null) throw PluginException("Cannot find indexer rt libs", PluginId.findId(MavenUtil.INTELLIJ_PLUGIN_ID))
+              if (`is` == null) throw PluginException("Cannot find indexer rt libs", PluginId(MavenUtil.INTELLIJ_PLUGIN_ID))
               return Arrays.asList(*StreamUtil.readText(InputStreamReader(`is`, Charsets.UTF_8)).split(
                 "\n".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray())
             }

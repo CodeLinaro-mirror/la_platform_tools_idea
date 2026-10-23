@@ -4,7 +4,6 @@ package com.jetbrains.python.packaging.toolwindow.ui
 import com.intellij.icons.AllIcons
 import com.jetbrains.python.icons.PythonIcons
 import com.intellij.openapi.application.EDT
-import com.intellij.openapi.application.readAction
 import com.intellij.util.text.trimMiddle
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.project.Project
@@ -16,10 +15,9 @@ import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import com.intellij.python.pyproject.PyDependencyGroup
 import com.jetbrains.python.packaging.management.PyWorkspaceMember
-import com.jetbrains.python.packaging.management.PythonPackageManager
 import com.jetbrains.python.packaging.toolwindow.PyPackagingToolWindowService
-import com.jetbrains.python.sdk.findModuleForSdk
-import com.jetbrains.python.sdk.pyInterpreterPresentation
+import com.intellij.ide.ui.icons.icon
+import com.intellij.python.sdk.backend.asItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -138,18 +136,28 @@ internal class PyInstallDialogWorkspaceSelector(
     topPanel.repaint()
   }
 
+  /**
+   * The interpreter label, empty at first and filled in once the interpreter has been read.
+   *
+   * Reading it runs the interpreter, which must not happen on the EDT, so the component is returned bare and the
+   * fragments arrive a moment later.
+   */
   private fun createInterpreterLabel(): JComponent? {
-    val sdk = packagingService.currentSdk ?: return null
-    val presentation = sdk.pyInterpreterPresentation()
+    val interpreter = packagingService.currentInterpreter ?: return null
     val component = com.intellij.ui.SimpleColoredComponent().apply {
-      icon = presentation.icon
       iconTextGap = JBUI.scale(4)
       isOpaque = false
-      toolTipText = presentation.fullName
-      putClientProperty(INTERPRETER_NAME_KEY, presentation.name)
-      putClientProperty(INTERPRETER_SUFFIX_KEY, presentation.suffix)
     }
-    fillInterpreterFragments(component, presentation.name, presentation.suffix)
+    packagingService.serviceScope.launch {
+      val item = interpreter.asItem()
+      withContext(Dispatchers.EDT) {
+        component.icon = item.icon.icon()
+        component.toolTipText = item.fullName
+        component.putClientProperty(INTERPRETER_NAME_KEY, item.name)
+        component.putClientProperty(INTERPRETER_SUFFIX_KEY, item.suffix)
+        fillInterpreterFragments(component, item.name, item.suffix)
+      }
+    }
     return component
   }
 
@@ -325,10 +333,9 @@ internal class PyInstallDialogWorkspaceSelector(
   }
 
   private fun loadWorkspaceMembers() {
-    val sdk = packagingService.currentSdk ?: return
-    val workspace = PythonPackageManager.forSdk(project, sdk).workspaceSupport
+    val workspace = (packagingService.currentPackageManager ?: return).workspaceSupport
     packagingService.serviceScope.launch {
-      val sdkModule = readAction { project.findModuleForSdk(sdk) }
+      val sdkModule = packagingService.findCurrentInterpreterModule()
       val state = PyInstallWorkspaceState.load(
         workspace = workspace,
         projectFallbackName = project.name,

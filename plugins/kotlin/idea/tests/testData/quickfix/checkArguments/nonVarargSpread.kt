@@ -1,5 +1,5 @@
 // "Remove '*'" "true"
-// K2_ERROR: The spread operator (*foo) can only be applied in a vararg position.
+// K2_ERROR: NON_VARARG_SPREAD
 fun join(x : Int, vararg a : String) : String {
     val b = StringBuilder(x.toString())
     for (s in a) {
@@ -12,4 +12,3 @@ fun main(args : Array<String>) {
     join(*<caret>1, "2")
 }
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.RemovePsiElementSimpleFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.RemovePsiElementSimpleFix

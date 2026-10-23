@@ -1,7 +1,14 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.libraries.jackson3.dataformat.yaml` start
+content_module_jar(
+    libraries = ["@lib//:libraries-jackson3-dataformat-yaml-jackson3-dataformat-yaml"],
+    module = ":libraries-jackson3-dataformat-yaml",
+)
+### auto-generated section `dev intellij.libraries.jackson3.dataformat.yaml` end
 
 ### auto-generated section `build intellij.libraries.jackson3.dataformat.yaml` start
-
 jvm_library(
     name = "libraries-jackson3-dataformat-yaml",
     srcs = glob(
@@ -45,6 +52,7 @@ jvm_library(
 exports_files(
     [
         "intellij.libraries.jackson3.dataformat.yaml.iml",
+        "resources/intellij.libraries.jackson3.dataformat.yaml.xml",
     ],
     visibility = ["//visibility:public"],
 )

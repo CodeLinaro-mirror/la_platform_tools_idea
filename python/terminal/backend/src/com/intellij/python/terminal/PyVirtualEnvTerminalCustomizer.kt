@@ -4,39 +4,45 @@ package com.intellij.python.terminal
 import com.intellij.openapi.application.runReadActionBlocking
 import com.intellij.openapi.diagnostic.fileLogger
 import com.intellij.openapi.module.ModuleUtilCore
+import com.intellij.openapi.progress.runBlockingMaybeCancellable
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.guessProjectDir
 import com.intellij.openapi.projectRoots.Sdk
-import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.openapi.vfs.toNioPathOrNull
 import com.intellij.platform.backend.workspace.WorkspaceModel
 import com.intellij.platform.backend.workspace.virtualFile
 import com.intellij.platform.eel.EelDescriptor
+import com.intellij.platform.eel.provider.asEelPath
 import com.intellij.platform.eel.provider.asNioPath
+import com.intellij.platform.eel.provider.equalsMayBeUsingMachine
 import com.intellij.platform.eel.provider.getEelDescriptor
 import com.intellij.platform.workspace.jps.entities.ModuleEntity
 import com.intellij.platform.workspace.storage.entities
-import com.intellij.python.terminal.shared.PyTerminalBundle
+import com.intellij.python.sdk.backend.PythonEnvironment
+import com.intellij.python.sdk.backend.ShellActivation
+import com.intellij.python.sdk.backend.pythonInterpreter
 import com.intellij.python.terminal.shared.PyVirtualEnvTerminalSettings
-import com.jetbrains.python.PyNames
+import com.intellij.util.concurrency.annotations.RequiresBackgroundThread
 import com.jetbrains.python.orLogException
-import com.jetbrains.python.sdk.Activatable
-import com.jetbrains.python.sdk.PySdkUtil
-import com.jetbrains.python.sdk.PythonEnvironment
-import com.jetbrains.python.sdk.pyRichSdk
+import com.jetbrains.python.sdk.activationEnvironment
+import com.jetbrains.python.sdk.internal.PYTHON_MODULE_ID
 import com.jetbrains.python.sdk.pythonSdk
-import com.jetbrains.python.sdk.terminal.Shell
+import com.jetbrains.python.sdk.ShellType
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.VisibleForTesting
 import org.jetbrains.plugins.terminal.TerminalOptionsProvider
+import org.jetbrains.plugins.terminal.session.ShellName
 import org.jetbrains.plugins.terminal.startup.MutableShellExecOptions
 import org.jetbrains.plugins.terminal.startup.ShellExecOptionsCustomizer
 import java.nio.file.Path
-import kotlin.io.path.isExecutable
 
-
+/**
+ * The activation that the terminal shell integration runs: a script file to source, or a snippet of code.
+ *
+ * When [source] is a snippet and not a file, only PowerShell runs it.
+ */
 private data class Jediterm(val source: String, val sourceArgs: List<String>? = null) {
   private companion object {
     const val JEDITERM_SOURCE = "JEDITERM_SOURCE"
@@ -47,8 +53,13 @@ private data class Jediterm(val source: String, val sourceArgs: List<String>? = 
     const val JEDITERM_SOURCE_SINGLE_ARG = "JEDITERM_SOURCE_SINGLE_ARG"
   }
 
-  constructor(path: Path, args: List<String>? = null) : this(path.toAbsolutePath().toString(), args)
-  constructor(activateScript: Activatable.Script) : this(activateScript.scriptPath, activateScript.args)
+  /**
+   * [path] is a path on the IDE side, for example `\\wsl.localhost\Ubuntu\home\user\.venv\bin\activate`.
+   * The shell runs inside the eel of [path] and cannot open this path.
+   * So [asEelPath] converts [path] to the path inside the eel, for example `/home/user/.venv/bin/activate`.
+   * A local path does not change.
+   */
+  constructor(path: Path, args: List<String>? = null) : this(path.asEelPath().toString(), args)
 
   fun buildEnvironmentVariables(): Map<String, String> = buildMap {
     put(JEDITERM_SOURCE, source)
@@ -63,45 +74,15 @@ private data class Jediterm(val source: String, val sourceArgs: List<String>? = 
   }
 }
 
-class PyVirtualEnvTerminalCustomizer : ShellExecOptionsCustomizer {
+internal class PyVirtualEnvTerminalCustomizer : ShellExecOptionsCustomizer {
   private companion object {
     val logger = fileLogger()
   }
 
-  /**
-   *``conda init`` installs conda activation hook into user profile
-   *  We run this hook manually because we can't ask user to install hook and restart terminal
-   *  In case of failure we ask user to run "conda init" manually
-   */
-  private fun PythonEnvironment.Conda.getPowerShellActivationCommand(): Jediterm {
-    val condaPath = condaExecutable?.takeIf { it.isExecutable() }
-
-    if (condaPath == null) {
-      logger.warn("Can't find $condaExecutable, will not activate conda")
-      val message = PyTerminalBundle.message("powershell.conda.not.activated", "conda")
-      return Jediterm("echo '$message'")
-    }
-
-    // ' are in "Write-Host"
-    val errorMessage = PyTerminalBundle.message("powershell.conda.not.activated", condaPath).replace('\'', '"')
-
-
-    // No need to escape path: conda can't have spaces
-    return Jediterm(
-      """
-        & '${StringUtil.escapeChar(condaPath.toString(), '\'')}' shell.powershell hook | Out-String | Invoke-Expression ;
-        try {
-          conda activate '${StringUtil.escapeChar(pythonHomePath.toString(), '\'')}'
-        } catch {
-          Write-Host('${StringUtil.escapeChar(errorMessage, '\'')}')
-        }
-        """.trimIndent()
-    )
-  }
-
+  @RequiresBackgroundThread
   private fun activateUnknownShell(sdk: Sdk, envs: MutableMap<String, String>): Jediterm? {
     //for other shells we read envs from activate script by the default shell and pass them to the process
-    val envVars = PySdkUtil.activateVirtualEnv(sdk)
+    val envVars = runBlockingMaybeCancellable { sdk.activationEnvironment() }.successOrNull ?: emptyMap()
     if (envVars.isEmpty()) {
       logger.warn("No vars found to activate in ${sdk.homePath}")
     }
@@ -111,29 +92,30 @@ class PyVirtualEnvTerminalCustomizer : ShellExecOptionsCustomizer {
     return null
   }
 
-  private fun activateVenv(shell: Shell, sdk: Sdk, venv: PythonEnvironment.Venv, envs: MutableMap<String, String>): Jediterm? {
-    return when (shell.type) {
-      Shell.Type.UNKNOWN -> activateUnknownShell(sdk, envs)
-      else -> venv.activation.invoke(shell.type)?.let { Jediterm(it) }
+  /**
+   * What the shell must run to activate [environment], or null when there is nothing to run.
+   *
+   * When [shell] is null, the shell is not known and cannot source anything. So the default shell reads the
+   * environment, and the terminal gets it as variables. Every other shell asks the environment itself, so no kind of environment is named here.
+   */
+  @RequiresBackgroundThread
+  private fun activate(shell: ShellType?, sdk: Sdk, environment: PythonEnvironment, envs: MutableMap<String, String>): Jediterm? {
+    if (shell == null) return activateUnknownShell(sdk, envs)
+    return when (val activation = environment.activationScript(shell)) {
+      null -> null
+      is ShellActivation.SourceScript -> Jediterm(activation.scriptPath, activation.args)
+      // See the TODO on [ShellActivation.Snippet]: only PowerShell runs a snippet
+      is ShellActivation.Snippet -> Jediterm(activation.code)
     }
   }
 
-  private fun activateConda(shell: Shell, sdk: Sdk, condaEnv: PythonEnvironment.Conda, envs: MutableMap<String, String>): Jediterm? {
-    return when (shell.type) {
-      Shell.Type.POWERSHELL -> condaEnv.getPowerShellActivationCommand()
-      Shell.Type.BASH, Shell.Type.SH, Shell.Type.ZSH, Shell.Type.FISH, Shell.Type.CSH -> {
-        condaEnv.activation.invoke(shell.type)?.let { Jediterm(it) }
-      }
-      Shell.Type.UNKNOWN -> activateUnknownShell(sdk, envs)
-    }
-  }
-
+  @RequiresBackgroundThread(generateAssertion = false)
   override fun customizeExecOptions(project: Project, shellExecOptions: MutableShellExecOptions) {
     val activationEnvs = LinkedHashMap<String, String>()
     customizeEnvironment(
       project = project,
       workingDirectory = shellExecOptions.workingDirectory.asNioPath().toString(),
-      command = shellExecOptions.execCommand.command.toTypedArray(),
+      shellName = shellExecOptions.execCommand.shellName,
       envs = activationEnvs,
       terminalEelDescriptor = shellExecOptions.eelDescriptor,
     )
@@ -142,33 +124,19 @@ class PyVirtualEnvTerminalCustomizer : ShellExecOptionsCustomizer {
     }
   }
 
-  @Deprecated(
-    "Use `customizeEnvironment` instead",
-    ReplaceWith("customizeEnvironment(project, workingDirectory, command, envs, terminalEelDescriptor)")
-  )
-  fun customizeCommandAndEnvironment(
-    project: Project,
-    workingDirectory: String?,
-    command: Array<out String>,
-    envs: MutableMap<String, String>,
-  ): Array<out String> {
-    customizeEnvironment(project, workingDirectory, command, envs, project.getEelDescriptor())
-    return command
-  }
-
   /**
-   * Computes the virtual env activation for a shell running [command] in [workingDirectory], writing the
+   * Computes the virtual env activation for a shell running [shellName] in [workingDirectory], writing the
    * activation environment variables into [envs]. The SDK is taken from the module that owns [workingDirectory].
    *
-   * When [terminalEelDescriptor] is provided, activation is skipped if the SDK lives in a different environment
-   * than the terminal (e.g. a Windows interpreter for a WSL shell), to avoid injecting cross-environment paths.
+   * Activation is skipped if the SDK lives in an environment other than [terminalEelDescriptor]
+   * (e.g. a Windows interpreter for a WSL shell), to avoid injecting cross-environment paths.
    */
   @VisibleForTesting
-  @ApiStatus.Experimental
-  fun customizeEnvironment(
+  @RequiresBackgroundThread
+  internal fun customizeEnvironment(
     project: Project,
     workingDirectory: String?,
-    command: Array<out String>,
+    shellName: ShellName,
     envs: MutableMap<String, String>,
     terminalEelDescriptor: EelDescriptor,
   ) {
@@ -179,12 +147,6 @@ class PyVirtualEnvTerminalCustomizer : ShellExecOptionsCustomizer {
 
     if (!PyVirtualEnvTerminalSettings.getInstance(project).virtualEnvActivate) {
       logger.debug("Virtual env activation is disabled for ${project.name}")
-      return
-    }
-
-    val shell = Shell.resolve(command)
-    if (shell == null) {
-      logger.warn("No shell to run for ${project.name}, cmd: ${command.joinToString(" ")}")
       return
     }
 
@@ -205,31 +167,23 @@ class PyVirtualEnvTerminalCustomizer : ShellExecOptionsCustomizer {
       return
     }
 
-    val pythonEnvironment = sdk.pyRichSdk().environmentResult?.orLogException(logger) ?: run {
+    val pythonEnvironment = sdk.pythonInterpreter().environmentResult?.orLogException(logger) ?: run {
       logger.warn("Cannot detect Python environment for SDK ${sdk.homePath}, skipping activation")
       return
     }
 
-    if (pythonEnvironment.pythonBinaryPath.getEelDescriptor() != terminalEelDescriptor) {
+    if (!pythonEnvironment.pythonBinaryPath.getEelDescriptor().equalsMayBeUsingMachine(terminalEelDescriptor)) {
       logger.info("Skipping virtual env activation: interpreter ${pythonEnvironment.pythonBinaryPath} runs " +
                   "in a different environment than the terminal ($terminalEelDescriptor)")
       return
     }
 
-    val jediterm = when (pythonEnvironment) {
-      is PythonEnvironment.Venv -> {
-        activateVenv(shell, sdk, pythonEnvironment, envs)
-      }
-      is PythonEnvironment.Conda -> {
-        activateConda(shell, sdk, pythonEnvironment, envs)
-      }
-      is PythonEnvironment.SystemPython -> {
-        logger.debug("No activation for system python ${sdk.homePath}")
-        null
-      }
+    if (!pythonEnvironment.isActivatable) {
+      logger.debug("Nothing to activate for ${sdk.homePath}")
+      return
     }
+    val jediterm = activate(ShellType.resolve(shellName.value), sdk, pythonEnvironment, envs)
     jediterm?.buildEnvironmentVariables()?.let { envs.putAll(it) }
-
 
     logger.debug("Activating ${sdk.homePath} with ${envs.entries.joinToString("\n")}")
   }
@@ -264,5 +218,5 @@ fun pyTerminalDefaultWorkingDirectory(project: Project, file: VirtualFile?): Pat
   } ?: return null
 
   // Follow the module only if it's a Python module; otherwise keep the platform default.
-  return if (module.type?.name == PyNames.PYTHON_MODULE_ID) contentRoot.toNioPathOrNull() else null
+  return if (module.type?.name == PYTHON_MODULE_ID) contentRoot.toNioPathOrNull() else null
 }

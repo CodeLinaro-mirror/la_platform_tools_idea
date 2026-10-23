@@ -20,21 +20,23 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.VirtualFileContentsChangedAdapter
 import com.intellij.openapi.vfs.VirtualFileManager
-import com.intellij.openapi.vfs.impl.BulkVirtualFileListenerAdapter
-import com.intellij.openapi.vfs.newvfs.BulkFileListener
+import com.intellij.openapi.vfs.impl.BulkVirtualFileListenerAdapterBackgroundable
+import com.intellij.openapi.vfs.newvfs.BulkFileListenerBackgroundable
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
 import com.intellij.psi.PsiTreeAnyChangeAbstractAdapter
 import com.intellij.util.messages.Topic
 import com.jetbrains.jsonSchema.ide.JsonSchemaService
 import com.jetbrains.jsonSchema.impl.JsonSchemaServiceImpl
+import com.jetbrains.jsonSchema.remote.http.RemoteSchemaDownloadListener
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import org.jetbrains.annotations.ApiStatus
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.milliseconds
@@ -43,7 +45,10 @@ import kotlin.time.Duration.Companion.milliseconds
 @Service(Service.Level.PROJECT)
 private class JsonSchemaUpdater(project: Project, scope: CoroutineScope) : Disposable {
 
-  private val myDirtySchemas: Channel<VirtualFile> = Channel(Channel.BUFFERED)
+  private val myDirtySchemas = ConcurrentHashMap.newKeySet<VirtualFile>()
+  private val myDirtySchemasChanged: Channel<Unit> = Channel(Channel.CONFLATED)
+  private val myDownloadedSchemas = ConcurrentHashMap.newKeySet<String>()
+  private val myDownloadedSchemasChanged: Channel<Unit> = Channel(Channel.CONFLATED)
 
   private val DELAY_MS = 200L
 
@@ -60,11 +65,22 @@ private class JsonSchemaUpdater(project: Project, scope: CoroutineScope) : Dispo
       }
     }
 
+    scope.launch(CoroutineName("JsonSchemaUpdater remote download consumer")) {
+      while (isActive) {
+        try {
+          consumeDownloadedSchemas(project)
+        }
+        catch (e: Exception) {
+          if (e is CancellationException) throw e
+          logger<JsonSchemaUpdater>().error(e)
+        }
+      }
+    }
   }
 
   private suspend fun consumeDirtySchemas(project: Project) {
     val service = project.serviceAsync<JsonSchemaService>()
-    val scope = drainChannelWithDebounce()
+    val scope = drainDirtySchemasWithDebounce()
 
     if (scope.any { f: VirtualFile -> service.possiblyHasReference(f.getName()) }
     ) {
@@ -99,30 +115,76 @@ private class JsonSchemaUpdater(project: Project, scope: CoroutineScope) : Dispo
     }
   }
 
-  private suspend fun drainChannelWithDebounce(): Set<VirtualFile> {
+  private suspend fun drainDirtySchemasWithDebounce(): Set<VirtualFile> {
+    myDirtySchemasChanged.receive()
     val scope = HashSet<VirtualFile>()
-    scope.add(myDirtySchemas.receive())
-    mainLoop@while (currentCoroutineContext().isActive) {
-      if (!ApplicationManager.getApplication().isUnitTestMode()) {
-        delay(DELAY_MS.milliseconds)
+    drainDirtySchemas(scope)
+    while (currentCoroutineContext().isActive) {
+      val hasMoreChanges = if (ApplicationManager.getApplication().isUnitTestMode()) {
+        myDirtySchemasChanged.tryReceive().getOrNull() != null
       }
-      val secondRemaining = myDirtySchemas.tryReceive().getOrNull()
-      if (secondRemaining == null) break@mainLoop
-      scope.add(secondRemaining)
-      tailLoop@while (currentCoroutineContext().isActive) {
-        val nextRemaining = myDirtySchemas.tryReceive().getOrNull()
-        if(nextRemaining == null) break@tailLoop
-        scope.add(nextRemaining)
+      else {
+        withTimeoutOrNull(DELAY_MS.milliseconds) {
+          myDirtySchemasChanged.receive()
+        } != null
       }
+      if (!hasMoreChanges) break
+      drainDirtySchemas(scope)
     }
     return scope
   }
 
+  private fun drainDirtySchemas(scope: MutableSet<VirtualFile>) {
+    val iterator = myDirtySchemas.iterator()
+    while (iterator.hasNext()) {
+      scope.add(iterator.next())
+      iterator.remove()
+    }
+  }
+
+  private suspend fun consumeDownloadedSchemas(project: Project) {
+    val batch = drainDownloadedSchemasWithDebounce()
+    (JsonSchemaService.Impl.get(project) as JsonSchemaServiceImpl).catalogManager.updateIfDownloaded(batch)
+    JsonSchemaService.Impl.get(project).reset()
+    project.messageBus.syncPublisher(JSON_SCHEMA_CHANGED).run()
+  }
+
+  private suspend fun drainDownloadedSchemasWithDebounce(): Set<String> {
+    myDownloadedSchemasChanged.receive()
+    val batch = HashSet<String>()
+    drainDownloadedSchemas(batch)
+    while (currentCoroutineContext().isActive) {
+      val hasMoreDownloads = if (ApplicationManager.getApplication().isUnitTestMode()) {
+        myDownloadedSchemasChanged.tryReceive().getOrNull() != null
+      }
+      else {
+        withTimeoutOrNull(DELAY_MS.milliseconds) {
+          myDownloadedSchemasChanged.receive()
+        } != null
+      }
+      if (!hasMoreDownloads) break
+      drainDownloadedSchemas(batch)
+    }
+    return batch
+  }
+
+  private fun drainDownloadedSchemas(batch: MutableSet<String>) {
+    val iterator = myDownloadedSchemas.iterator()
+    while (iterator.hasNext()) {
+      batch.add(iterator.next())
+      iterator.remove()
+    }
+  }
+
+  fun onSchemaDownloaded(url: String) {
+    myDownloadedSchemas.add(url)
+    myDownloadedSchemasChanged.trySend(Unit)
+  }
+
   fun onFileChange(schemaFile: VirtualFile) {
     if (JsonFileType.DEFAULT_EXTENSION == schemaFile.getExtension()) {
-      if (myDirtySchemas.trySend(schemaFile).isFailure) {
-        logger<JsonSchemaUpdater>().warn("Failed to send schema file change notification")
-      }
+      myDirtySchemas.add(schemaFile)
+      myDirtySchemasChanged.trySend(Unit)
     }
   }
 
@@ -138,7 +200,8 @@ private class JsonSchemaUpdater(project: Project, scope: CoroutineScope) : Dispo
 }
 
 @JvmField
-internal val JSON_SCHEMA_CHANGED: Topic<Runnable> =
+@ApiStatus.Internal
+val JSON_SCHEMA_CHANGED: Topic<Runnable> =
   Topic.create("JsonSchemaVfsListener.Json.Schema.Changed", Runnable::class.java)
 
 @JvmField
@@ -147,22 +210,22 @@ val JSON_DEPS_CHANGED: Topic<Runnable> = Topic.create("JsonSchemaVfsListener.Jso
 
 internal fun startListening(project: Project) {
   val updater = project.service<JsonSchemaUpdater>()
-  project.messageBus.connect(updater).subscribe<BulkFileListener>(VirtualFileManager.VFS_CHANGES,
-                                                                  BulkVirtualFileListenerAdapter(object :
-                                                                                                   VirtualFileContentsChangedAdapter() {
-                                                                    override fun onFileChange(schemaFile: VirtualFile) {
-                                                                      updater.onFileChange(schemaFile)
-                                                                    }
+  val connection = project.messageBus.connect(updater)
+  connection.subscribe(RemoteSchemaDownloadListener.TOPIC, RemoteSchemaDownloadListener(updater::onSchemaDownloaded))
+  connection.subscribe<BulkFileListenerBackgroundable>(
+    VirtualFileManager.VFS_CHANGES_BG,
+    BulkVirtualFileListenerAdapterBackgroundable(object : VirtualFileContentsChangedAdapter() {
+      override fun onFileChange(schemaFile: VirtualFile) {
+        updater.onFileChange(schemaFile)
+      }
 
-                                                                    override fun onBeforeFileChange(schemaFile: VirtualFile) {
-                                                                      updater.onFileChange(schemaFile)
-                                                                    }
-                                                                  }))
+      override fun onBeforeFileChange(schemaFile: VirtualFile) {
+        updater.onFileChange(schemaFile)
+      }
+    }))
   PsiManager.getInstance(project).addPsiTreeChangeListener(object : PsiTreeAnyChangeAbstractAdapter() {
     override fun onChange(file: PsiFile?) {
       if (file != null) updater.onFileChange(file.getViewProvider().getVirtualFile())
     }
   }, updater)
 }
-
-

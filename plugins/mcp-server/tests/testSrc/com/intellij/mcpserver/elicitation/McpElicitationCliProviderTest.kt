@@ -12,6 +12,7 @@ import com.intellij.mcpserver.impl.McpServerService
 import com.intellij.mcpserver.impl.util.asTool
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.use
+import com.intellij.testFramework.junit5.RegistryKey
 import com.intellij.util.application
 import io.modelcontextprotocol.kotlin.sdk.client.Client
 import io.modelcontextprotocol.kotlin.sdk.client.ClientOptions
@@ -20,7 +21,8 @@ import io.modelcontextprotocol.kotlin.sdk.types.ElicitRequest
 import io.modelcontextprotocol.kotlin.sdk.types.ElicitRequestFormParams
 import io.modelcontextprotocol.kotlin.sdk.types.ElicitRequestParams.RequestedSchema
 import io.modelcontextprotocol.kotlin.sdk.types.ElicitResult
-import io.modelcontextprotocol.kotlin.sdk.types.EmptyJsonObject
+import io.modelcontextprotocol.kotlin.sdk.types.McpException
+import io.modelcontextprotocol.kotlin.sdk.types.RPCError
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import io.modelcontextprotocol.kotlin.sdk.types.TitledMultiSelectEnumSchema
 import io.modelcontextprotocol.kotlin.sdk.types.UntitledSingleSelectEnumSchema
@@ -37,6 +39,7 @@ import kotlinx.serialization.json.putJsonArray
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Drives a real MCP client <-> server session and verifies that [McpElicitationCliProvider], invoked from
@@ -72,7 +75,7 @@ class McpElicitationCliProviderTest : McpToolsetTestBase() {
   @Test
   fun accept_is_decoded_into_typed_result() =
     cliElicitationTest(
-      capabilities = ClientCapabilities(elicitation = EmptyJsonObject),
+      capabilities = ClientCapabilities(elicitation = ClientCapabilities.Elicitation()),
       elicitHandler = { ElicitResult(ElicitResult.Action.Accept, buildJsonObject { put("confirm", true) }) },
     ) {
       val result = callAndAwait(elicitationTool, confirmationResult)
@@ -82,7 +85,7 @@ class McpElicitationCliProviderTest : McpToolsetTestBase() {
   @Test
   fun decline_is_mapped() =
     cliElicitationTest(
-      capabilities = ClientCapabilities(elicitation = EmptyJsonObject),
+      capabilities = ClientCapabilities(elicitation = ClientCapabilities.Elicitation()),
       elicitHandler = { ElicitResult(ElicitResult.Action.Decline) },
     ) {
       val result = callAndAwait(elicitationTool, confirmationResult)
@@ -92,7 +95,7 @@ class McpElicitationCliProviderTest : McpToolsetTestBase() {
   @Test
   fun cancel_is_mapped() =
     cliElicitationTest(
-      capabilities = ClientCapabilities(elicitation = EmptyJsonObject),
+      capabilities = ClientCapabilities(elicitation = ClientCapabilities.Elicitation()),
       elicitHandler = { ElicitResult(ElicitResult.Action.Cancel) },
     ) {
       val result = callAndAwait(elicitationTool, confirmationResult)
@@ -115,7 +118,7 @@ class McpElicitationCliProviderTest : McpToolsetTestBase() {
     // even though the client fully supports elicitation.
     val capableClient = Client(
       Implementation(name = "test client", version = "1.0"),
-      ClientOptions(capabilities = ClientCapabilities(elicitation = EmptyJsonObject)),
+      ClientOptions(capabilities = ClientCapabilities(elicitation = ClientCapabilities.Elicitation())),
     )
     capableClient.setElicitationHandler { ElicitResult(ElicitResult.Action.Accept, buildJsonObject { put("confirm", true) }) }
 
@@ -123,6 +126,35 @@ class McpElicitationCliProviderTest : McpToolsetTestBase() {
       val result = client.callAndAwait(elicitationTool, confirmationResult)
       assertThat(result).isNull()
     }
+  }
+
+  @Test
+  @RegistryKey("mcp.server.elicitation.timeout.seconds", "1")
+  fun elicitation_fails_with_timeout_error_when_client_does_not_answer() =
+    cliElicitationTest(
+      capabilities = ClientCapabilities(elicitation = ClientCapabilities.Elicitation()),
+      elicitHandler = {
+        Thread.sleep(CLIENT_ANSWER_DELAY.inWholeMilliseconds)
+        ElicitResult(ElicitResult.Action.Accept, buildJsonObject { put("confirm", true) })
+      },
+    ) {
+      val timedOutTool = this@McpElicitationCliProviderTest::request_elicitation_with_timeout.asTool()
+      val error = callAndAwait(timedOutTool, timedOutResult).exceptionOrNull()
+      assertThat(error).isInstanceOf(McpException::class.java)
+      assertThat((error as McpException).code).isEqualTo(RPCError.ErrorCode.REQUEST_TIMEOUT)
+    }
+
+  private val timedOutResult = CompletableDeferred<Result<ElicitationResult<ConfirmInput>?>>()
+
+  @com.intellij.mcpserver.annotations.McpTool
+  @McpDescription("Asks the client to confirm via MCP elicitation and keeps the error")
+  suspend fun request_elicitation_with_timeout() {
+    timedOutResult.complete(runCatching {
+      elicitationProvider()?.requestElicitation<ConfirmInput> {
+        message { text("Confirm request?") }
+        booleanField("confirm") { required = true }
+      }
+    })
   }
 
   /** Mirrors every primitive elicitation field kind so the full schema mapping is exercised. */
@@ -164,7 +196,7 @@ class McpElicitationCliProviderTest : McpToolsetTestBase() {
   fun complex_form_maps_all_field_kinds() {
     val capturedSchema = CompletableDeferred<RequestedSchema>()
     cliElicitationTest(
-      capabilities = ClientCapabilities(elicitation = EmptyJsonObject),
+      capabilities = ClientCapabilities(elicitation = ClientCapabilities.Elicitation()),
       elicitHandler = { request ->
         capturedSchema.complete((request.params as ElicitRequestFormParams).requestedSchema)
         val clientResponse = buildJsonObject {
@@ -237,5 +269,6 @@ class McpElicitationCliProviderTest : McpToolsetTestBase() {
   companion object {
     private val TOOL_REFRESH_DELAY = 500.milliseconds
     private val TOOL_RESULT_TIMEOUT = 2000.milliseconds
+    private val CLIENT_ANSWER_DELAY = 3.seconds
   }
 }

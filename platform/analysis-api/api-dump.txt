@@ -687,6 +687,7 @@ a:com.intellij.codeInsight.template.Expression
 - <init>():V
 - a:calculateLookupItems(com.intellij.codeInsight.template.ExpressionContext):com.intellij.codeInsight.lookup.LookupElement[]
 - a:calculateResult(com.intellij.codeInsight.template.ExpressionContext):com.intellij.codeInsight.template.Result
+- getStaticLookupStrings():java.util.List
 com.intellij.codeInsight.template.ExpressionContext
 - sf:SELECTION:com.intellij.openapi.util.Key
 - a:getEditor():com.intellij.openapi.editor.Editor
@@ -746,6 +747,7 @@ f:com.intellij.codeInsight.template.impl.ConstantNode
 - com.intellij.codeInsight.template.Expression
 - <init>(com.intellij.codeInsight.template.Result):V
 - <init>(java.lang.String):V
+- getStaticLookupStrings():java.util.List
 - withLookupItems(java.util.Collection):com.intellij.codeInsight.template.impl.ConstantNode
 - withLookupItems(com.intellij.codeInsight.lookup.LookupElement[]):com.intellij.codeInsight.template.impl.ConstantNode
 - withLookupStrings(java.util.Collection):com.intellij.codeInsight.template.impl.ConstantNode
@@ -1474,6 +1476,8 @@ com.intellij.modcommand.ModCommandAction
 - availableInBatchMode():Z
 - generatePreview(com.intellij.modcommand.ActionContext):com.intellij.codeInsight.intention.preview.IntentionPreviewInfo
 - a:getPresentation(com.intellij.modcommand.ActionContext):com.intellij.modcommand.Presentation
+- s:of(java.lang.String,java.lang.String,java.util.function.Function):com.intellij.modcommand.ModCommandAction
+- s:of(java.lang.String,java.util.function.Function):com.intellij.modcommand.ModCommandAction
 - a:perform(com.intellij.modcommand.ActionContext):com.intellij.modcommand.ModCommand
 - withPresentation(java.util.function.UnaryOperator):com.intellij.modcommand.ModCommandAction
 com.intellij.modcommand.ModCommandExecutor
@@ -1642,7 +1646,8 @@ com.intellij.openapi.fileEditor.FileEditorComposite
 - a:getAllEditors():java.util.List
 - a:getAllProviders():java.util.List
 - a:isPreview():Z
-a:com.intellij.openapi.fileEditor.FileEditorManager
+Fa:com.intellij.openapi.fileEditor.FileEditorManager
+- sf:Companion:com.intellij.openapi.fileEditor.FileEditorManager$Companion
 - addFileEditorManagerListener(com.intellij.openapi.fileEditor.FileEditorManagerListener):V
 - a:closeFile(com.intellij.openapi.vfs.VirtualFile):V
 - a:getAllEditors():com.intellij.openapi.fileEditor.FileEditor[]
@@ -1651,7 +1656,7 @@ a:com.intellij.openapi.fileEditor.FileEditorManager
 - getEditorList(com.intellij.openapi.vfs.VirtualFile):java.util.List
 - a:getEditors(com.intellij.openapi.vfs.VirtualFile):com.intellij.openapi.fileEditor.FileEditor[]
 - getFocusedEditor():com.intellij.openapi.fileEditor.FileEditor
-- s:getInstance(com.intellij.openapi.project.Project):com.intellij.openapi.fileEditor.FileEditorManager
+- sf:getInstance(com.intellij.openapi.project.Project):com.intellij.openapi.fileEditor.FileEditorManager
 - a:getOpenFiles():com.intellij.openapi.vfs.VirtualFile[]
 - a:getProject():com.intellij.openapi.project.Project
 - getSelectedEditor():com.intellij.openapi.fileEditor.FileEditor
@@ -1664,6 +1669,8 @@ a:com.intellij.openapi.fileEditor.FileEditorManager
 - a:openFile(com.intellij.openapi.vfs.VirtualFile):java.util.List
 - removeFileEditorManagerListener(com.intellij.openapi.fileEditor.FileEditorManagerListener):V
 - updateFilePresentation(com.intellij.openapi.vfs.VirtualFile):V
+f:com.intellij.openapi.fileEditor.FileEditorManager$Companion
+- f:getInstance(com.intellij.openapi.project.Project):com.intellij.openapi.fileEditor.FileEditorManager
 f:com.intellij.openapi.fileEditor.FileEditorManagerEvent
 - f:getManager():com.intellij.openapi.fileEditor.FileEditorManager
 - f:getNewEditor():com.intellij.openapi.fileEditor.FileEditor
@@ -1702,6 +1709,7 @@ com.intellij.openapi.fileEditor.FileEditorProvider
 - a:getEditorTypeId():java.lang.String
 - a:getPolicy():com.intellij.openapi.fileEditor.FileEditorPolicy
 - readState(org.jdom.Element,com.intellij.openapi.project.Project,com.intellij.openapi.vfs.VirtualFile):com.intellij.openapi.fileEditor.FileEditorState
+- readState(org.jdom.Element,com.intellij.openapi.project.Project,kotlin.Lazy):com.intellij.openapi.fileEditor.FileEditorState
 - writeState(com.intellij.openapi.fileEditor.FileEditorState,com.intellij.openapi.project.Project,org.jdom.Element):V
 com.intellij.openapi.fileEditor.FileNavigator
 - sf:Companion:com.intellij.openapi.fileEditor.FileNavigator$Companion
@@ -1838,6 +1846,7 @@ a:com.intellij.openapi.vfs.newvfs.NewVirtualFileSystem
 a:com.intellij.openapi.vfs.newvfs.RefreshQueue
 - sf:Companion:com.intellij.openapi.vfs.newvfs.RefreshQueue$Companion
 - sf:getInstance():com.intellij.openapi.vfs.newvfs.RefreshQueue
+- f:refreshPaths(Z,Z,java.lang.Runnable,java.util.Collection):V
 f:com.intellij.openapi.vfs.newvfs.RefreshQueue$Companion
 - f:getInstance():com.intellij.openapi.vfs.newvfs.RefreshQueue
 a:com.intellij.openapi.vfs.newvfs.RefreshSession

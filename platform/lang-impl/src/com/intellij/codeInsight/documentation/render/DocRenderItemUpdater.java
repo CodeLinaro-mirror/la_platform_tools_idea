@@ -7,6 +7,7 @@ import com.intellij.openapi.editor.CustomFoldRegion;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.VisualPosition;
 import com.intellij.openapi.editor.ex.util.EditorScrollingPositionKeeper;
+import com.intellij.openapi.util.Disposer;
 import com.intellij.util.containers.ContainerUtil;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
@@ -85,11 +86,7 @@ public final class DocRenderItemUpdater implements Runnable {
       boolean updateContent = myQueue.remove(region);
       if (region.isValid()) {
         Editor editor = region.getEditor();
-        keepers.computeIfAbsent(editor, e -> {
-          EditorScrollingPositionKeeper keeper = new EditorScrollingPositionKeeper(editor);
-          keeper.savePosition();
-          return keeper;
-        });
+        keepPosition(keepers, editor);
         var tasks = editorTasks.computeIfAbsent(editor, e -> new ArrayList<>());
         ((DocRenderer)region.getRenderer()).update(true, updateContent, tasks);
         if (tasks.size() > 20) {
@@ -99,9 +96,28 @@ public final class DocRenderItemUpdater implements Runnable {
     }
     while (!toProcess.isEmpty() && System.currentTimeMillis() < deadline);
     editorTasks.entrySet().forEach((entry -> runFoldingTasks(entry.getKey(), entry.getValue())));
-    keepers.values().forEach(k -> k.restorePosition(false));
+    restorePosition(keepers);
     if (!myQueue.isEmpty()) ApplicationManager.getApplication().invokeLater(() -> processChunk(onAfterDone));
     if (myQueue.isEmpty() && onAfterDone != null) onAfterDone.run();
+  }
+
+  private static void keepPosition(@NotNull Map<Editor, EditorScrollingPositionKeeper> keepers, @NotNull Editor editor) {
+    keepers.computeIfAbsent(editor, e -> {
+      EditorScrollingPositionKeeper keeper = new EditorScrollingPositionKeeper(editor);
+      keeper.savePosition();
+      return keeper;
+    });
+  }
+
+  private static void restorePosition(@NotNull Map<Editor, EditorScrollingPositionKeeper> keepers) {
+    keepers.values().forEach(k -> {
+      try {
+        k.restorePosition(false);
+      }
+      finally {
+        Disposer.dispose(k);
+      }
+    });
   }
 
   private static void runFoldingTasks(@NotNull Editor editor, @NotNull List<Runnable> tasks) {

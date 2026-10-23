@@ -77,16 +77,12 @@ public abstract class AbstractExpandableItemsHandler<KeyType, ComponentType exte
       else if (myKey != null) {
         ToolTipDetails details = calcToolTipDetails(myKey);
         if (details != null) {
-          Graphics2D g2d = (Graphics2D)g.create();
-          try {
+          PaintUtil.useCopy(g, g2d -> {
             if (details.clip != null) {
               g2d.clip(details.clip);
             }
             details.painter.accept(g2d);
-          }
-          finally {
-            g2d.dispose();
-          }
+          });
         }
       }
     }
@@ -333,18 +329,16 @@ public abstract class AbstractExpandableItemsHandler<KeyType, ComponentType exte
   private BufferedImage createPopupContent(Rectangle bounds, Consumer<Graphics2D> painter, Shape clip) {
     // We paint to an 'opaque' image type (RGB, not ARGB) initially to support subpixel-antialiased text
     BufferedImage img = UIUtil.createImage(myComponent, bounds.width, bounds.height, BufferedImage.TYPE_INT_RGB);
-    Graphics2D g = img.createGraphics();
-    painter.accept(g);
-    g.dispose();
+    PaintUtil.use(img.createGraphics(), painter);
     if (clip == null) {
       return img;
     }
     else {
       BufferedImage clippedImg = UIUtil.createImage(myComponent, bounds.width, bounds.height, BufferedImage.TYPE_INT_ARGB);
-      Graphics2D g2 = clippedImg.createGraphics();
-      g2.clip(clip);
-      UIUtil.drawImage(g2, img, 0, 0, null);
-      g2.dispose();
+      PaintUtil.use(clippedImg.createGraphics(), g2 -> {
+        g2.clip(clip);
+        UIUtil.drawImage(g2, img, 0, 0, null);
+      });
       return clippedImg;
     }
   }
@@ -475,6 +469,11 @@ public abstract class AbstractExpandableItemsHandler<KeyType, ComponentType exte
     int borderSize = isPaintBorder() ? 1 : 0;
     int width = Math.min(screen.width + screen.x - location.x - borderSize, cellMaxX - visMaxX);
     int height = cellBounds.height;
+
+    // The popup never leaves this screen, so anything laid out past the screen's right edge is measured and shaped but
+    // never painted - megabytes of text for a huge cell value, on every paint.
+    int cellScreenX = location.x + cellBounds.x - visMaxX; // the cell's left edge, often scrolled off to the left
+    cellBounds.width = Math.min(cellBounds.width, screen.x + screen.width - cellScreenX);
 
     int cellY = 0;
     if (arc > 0 && selectablePanel != null) {

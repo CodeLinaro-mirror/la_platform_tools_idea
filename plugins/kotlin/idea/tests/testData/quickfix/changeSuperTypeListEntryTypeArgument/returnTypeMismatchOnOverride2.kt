@@ -1,5 +1,5 @@
 // "Change type argument to String" "true"
-// K2_ERROR: Return type of 'fun bar2(): String' is not a subtype of the return type of the overridden member 'fun bar2(): Int' defined in 'Test'.
+// K2_ERROR: RETURN_TYPE_MISMATCH_ON_OVERRIDE
 abstract class Foo<T1, T2> {
     abstract fun foo1(): T1
     abstract val foo2: T2
@@ -17,5 +17,4 @@ class Test : Foo<Int, Int>(), Bar<Int, Int> {
     override val bar1: Int = 3
     override fun <caret>bar2() = "4"
 }
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ChangeSuperTypeListEntryTypeArgumentFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeSuperTypeListEntryTypeArgumentFixFactory$ChangeSuperTypeListEntryTypeArgumentFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeSuperTypeListEntryTypeArgumentFixFactory$ChangeSuperTypeListEntryTypeArgumentFix

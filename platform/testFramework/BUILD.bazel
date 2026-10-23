@@ -1,16 +1,42 @@
 load("@community//build:tests-options.bzl", "jps_test")
 load("@rules_jvm//:jvm.bzl", "jvm_library", "jvm_provided_library")
 
-### auto-generated section `build intellij.platform.testFramework` start
+jps_test(
+    name = "testFramework-tests_test_smoke",
+    timeout = "moderate",
+    env = {
+        "JB_TEST_JUNIT5_FILTERS": "include-package=com.intellij.testFramework.extensions.ignore",
+    },
+    tags = ["ultimate-smoke"],
+    runtime_deps = [":testFramework-tests_test_lib"],
+)
 
+jps_test(
+    name = "testFramework-tests_test",
+    timeout = "moderate",
+    ####
+    ## testFramework-tests_test runs tests from testFramework-tests_test_lib.jar,
+    ## but its runtime classpath also contains testFramework.jar.
+    ## That production framework jar contains classes in the default package:
+    ## _FirstInSuiteTest.class, _LastInSuiteTest.class
+    ## to prevent them from being executed as actual tests, we use filtering by testFramework-tests_test_lib.jar
+    ####
+    env = {"JB_TEST_JAR": "testFramework-tests_test_lib.jar"},
+    tags = ["community-aggregator"],
+    runtime_deps = [":testFramework-tests_test_lib"],
+)
+
+### skip generation section `test intellij.platform.testFramework.tests`
+
+### auto-generated section `build intellij.platform.testFramework` start
 jvm_provided_library(
-    name = "libraries_junit5_provided",
-    lib = "//libraries/junit5",
+    name = "libraries_junit6_provided",
+    lib = "//libraries/junit6",
 )
 
 jvm_provided_library(
-    name = "libraries_junit5-params_provided",
-    lib = "//libraries/junit5-params",
+    name = "libraries_junit6-params_provided",
+    lib = "//libraries/junit6-params",
 )
 
 jvm_provided_library(
@@ -19,8 +45,8 @@ jvm_provided_library(
 )
 
 jvm_provided_library(
-    name = "libraries_junit5-launcher_provided",
-    lib = "//libraries/junit5-launcher",
+    name = "libraries_junit6-launcher_provided",
+    lib = "//libraries/junit6-launcher",
 )
 
 jvm_library(
@@ -46,14 +72,10 @@ jvm_library(
         "//platform/testFramework/common",
         "//platform/testFramework/core",
     ],
-    runtime_deps = [
-        # do not sort,
-        "//images",
-        "//RegExpSupport:regexp",
-    ],
+    runtime_deps = ["//images"],
     deps = [
         # do not sort,
-        "@lib//:jet_check",
+        "//libraries/jetcheck",
         "//libraries/assertj-core",
         "@lib//:kotlin-stdlib",
         "//libraries/kotlinx/coroutines/core",
@@ -91,6 +113,7 @@ jvm_library(
         "//platform/lang-api:lang",
         "//platform/lang-core",
         "//platform/lang-impl",
+        "//platform/buildView",
         "//platform/lvcs-api:lvcs",
         "//platform/projectModel-api:projectModel",
         "//platform/refactoring",
@@ -112,7 +135,8 @@ jvm_library(
         "//platform/runtime/product",
         "//platform/pluginSystem/parser/impl",
         "//platform/execution",
-        "//platform/structure-view-impl/frontend",
+        "//platform/consoleView",
+        "//platform/consoleView/impl",
         "//libraries/fastutil",
         "//libraries/kotlinx/collections-immutable:libraries-kotlinx-collections-immutable",
         "//platform/eel",
@@ -121,10 +145,10 @@ jvm_library(
         "//jps/model-impl",
         "//platform/util:util-ui",
         "//platform/util-ex",
-        ":libraries_junit5_provided",
-        ":libraries_junit5-params_provided",
+        ":libraries_junit6_provided",
+        ":libraries_junit6-params_provided",
         ":libraries_junit4_provided",
-        ":libraries_junit5-launcher_provided",
+        ":libraries_junit6-launcher_provided",
     ],
 )
 
@@ -136,10 +160,6 @@ jvm_library(
         allow_empty = True,
     ),
     module_name = "intellij.platform.testFramework",
-    resource_strip_prefix = "testResources",
-    resources = glob(
-        ["testResources/**/*"],
-    ),
     visibility = ["//visibility:public"],
     exports = [
         # do not sort,
@@ -155,10 +175,11 @@ jvm_library(
     runtime_deps = [
         # do not sort,
         ":testFramework",
-        "//libraries/junit5",
-        "//libraries/junit5:junit5_test_lib",
-        "//libraries/junit5-params",
-        "//libraries/junit5-params:junit5-params_test_lib",
+        "//libraries/jetcheck:jetcheck_test_lib",
+        "//libraries/junit6",
+        "//libraries/junit6:junit6_test_lib",
+        "//libraries/junit6-params",
+        "//libraries/junit6-params:junit6-params_test_lib",
         "//libraries/assertj-core:assertj-core_test_lib",
         "//libraries/kotlinx/coroutines/core:core_test_lib",
         "//libraries/kotlinx/coroutines/slf4j",
@@ -171,14 +192,13 @@ jvm_library(
         "//libraries/jackson3/databind:databind_test_lib",
         "//libraries/jackson3/module-kotlin:libraries-jackson3-module-kotlin",
         "//libraries/jackson3/module-kotlin:libraries-jackson3-module-kotlin_test_lib",
-        "@lib//:okhttp",
         "//community-resources:customization",
         "//community-resources:customization_test_lib",
         "//java/java-runtime:rt_test_lib",
         "//libraries/junit4",
         "//libraries/junit4:junit4_test_lib",
-        "//libraries/junit5-launcher",
-        "//libraries/junit5-launcher:junit5-launcher_test_lib",
+        "//libraries/junit6-launcher",
+        "//libraries/junit6-launcher:junit6-launcher_test_lib",
         "//platform/analysis-api:analysis_test_lib",
         "//platform/analysis-impl:analysis-impl_test_lib",
         "//platform/backend/observation:observation_test_lib",
@@ -213,6 +233,7 @@ jvm_library(
         "//platform/lang-api:lang_test_lib",
         "//platform/lang-core:lang-core_test_lib",
         "//platform/lang-impl:lang-impl_test_lib",
+        "//platform/buildView:buildView_test_lib",
         "//platform/lvcs-api:lvcs_test_lib",
         "//platform/main/intellij.platform.monolith.main:monolith-main",
         "//platform/main/intellij.platform.monolith.main:monolith-main_test_lib",
@@ -235,14 +256,17 @@ jvm_library(
         "//platform/util/jdom:jdom_test_lib",
         "//platform/workspace/jps:jps_test_lib",
         "//platform/workspace/storage:storage_test_lib",
-        "//RegExpSupport:regexp_test_lib",
         "//platform/testFramework/bootstrap:tools-testsBootstrap",
         "//platform/testFramework/bootstrap:tools-testsBootstrap_test_lib",
-        "@lib//:platform-test_framework-okhttp3-mockwebserver",
         "//platform/runtime/product:product_test_lib",
         "//platform/pluginSystem/parser/impl:impl_test_lib",
         "//platform/execution:execution_test_lib",
+        "//platform/consoleView:consoleView_test_lib",
+        "//platform/consoleView/impl:impl_test_lib",
+        "//platform/structure-view-impl/frontend",
         "//platform/structure-view-impl/frontend:frontend_test_lib",
+        "//platform/structure-view-impl/backend",
+        "//platform/structure-view-impl/backend:backend_test_lib",
         "//libraries/fastutil:fastutil_test_lib",
         "//libraries/kotlinx/collections-immutable:libraries-kotlinx-collections-immutable_test_lib",
         "//platform/eel:eel_test_lib",
@@ -259,13 +283,13 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.testFramework.iml",
+        "resources/intellij.platform.testFramework.xml",
     ],
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.platform.testFramework` end
 
 ### auto-generated section `build intellij.platform.testFramework.tests` start
-
 jvm_library(
     name = "testFramework-tests",
     srcs = glob(
@@ -286,6 +310,7 @@ jvm_library(
         "//images",
         "//RegExpSupport:regexp",
         "//xml/dom-impl",
+        "//xml/plugin",
     ],
 )
 
@@ -304,6 +329,10 @@ jvm_library(
         "//platform/testFramework",
         "//platform/testFramework:testFramework_test_lib",
     ],
+    resource_strip_prefix = "testResources",
+    resources = glob(
+        ["testResources/**/*"],
+    ),
     visibility = ["//visibility:public"],
     exports = [
         # do not sort,
@@ -329,14 +358,16 @@ jvm_library(
         "//images:images_test_lib",
         "//RegExpSupport:regexp_test_lib",
         "//xml/dom-impl:dom-impl_test_lib",
+        "//xml/plugin:plugin_test_lib",
     ],
     deps = [
         # do not sort,
-        "@lib//:jet_check",
-        "//libraries/junit5",
-        "//libraries/junit5:junit5_test_lib",
-        "//libraries/junit5-params",
-        "//libraries/junit5-params:junit5-params_test_lib",
+        "//libraries/jetcheck",
+        "//libraries/jetcheck:jetcheck_test_lib",
+        "//libraries/junit6",
+        "//libraries/junit6:junit6_test_lib",
+        "//libraries/junit6-params",
+        "//libraries/junit6-params:junit6-params_test_lib",
         "//libraries/assertj-core",
         "//libraries/assertj-core:assertj-core_test_lib",
         "@lib//:kotlin-stdlib",
@@ -352,15 +383,14 @@ jvm_library(
         "//libraries/jackson3/databind:databind_test_lib",
         "//libraries/jackson3/module-kotlin:libraries-jackson3-module-kotlin",
         "//libraries/jackson3/module-kotlin:libraries-jackson3-module-kotlin_test_lib",
-        "@lib//:okhttp",
         "//community-resources:customization",
         "//community-resources:customization_test_lib",
         "//java/java-runtime:rt",
         "//java/java-runtime:rt_test_lib",
         "//libraries/junit4",
         "//libraries/junit4:junit4_test_lib",
-        "//libraries/junit5-launcher",
-        "//libraries/junit5-launcher:junit5-launcher_test_lib",
+        "//libraries/junit6-launcher",
+        "//libraries/junit6-launcher:junit6-launcher_test_lib",
         "//platform/analysis-api:analysis",
         "//platform/analysis-api:analysis_test_lib",
         "//platform/analysis-impl",
@@ -458,7 +488,6 @@ jvm_library(
         "//platform/workspace/storage:storage_test_lib",
         "//platform/testFramework/bootstrap:tools-testsBootstrap",
         "//platform/testFramework/bootstrap:tools-testsBootstrap_test_lib",
-        "@lib//:platform-test_framework-tests-okhttp3-mockwebserver",
         "//platform/runtime/product",
         "//platform/runtime/product:product_test_lib",
         "//platform/pluginSystem/parser/impl",
@@ -485,11 +514,3 @@ exports_files(
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.platform.testFramework.tests` end
-
-### auto-generated section `test intellij.platform.testFramework.tests` start
-
-jps_test(
-    name = "testFramework-tests_test",
-    runtime_deps = [":testFramework-tests_test_lib"],
-)
-### auto-generated section `test intellij.platform.testFramework.tests` end

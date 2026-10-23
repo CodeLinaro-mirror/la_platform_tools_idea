@@ -1,5 +1,5 @@
 // "Add 'crossinline' to parameter 'block'" "true"
-// K2_ERROR: Cannot inline 'block: () -> Unit' here: it might contain non-local returns. Add 'crossinline' modifier to parameter declaration 'block: () -> Unit'.
+// K2_ERROR: NON_LOCAL_RETURN_NOT_ALLOWED
 
 interface I {
     fun foo()
@@ -13,5 +13,4 @@ inline fun bar(block: () -> Unit) {
     }
 }
 
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AddInlineModifierFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.AddInlineModifierFixFactories$AddInlineModifierFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.AddInlineModifierFixFactories$AddInlineModifierFix

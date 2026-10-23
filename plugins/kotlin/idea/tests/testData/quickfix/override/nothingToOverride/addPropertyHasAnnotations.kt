@@ -1,5 +1,5 @@
 // "Add 'abstract val bar: Int' to 'I'" "true"
-// K2_ERROR: 'bar' overrides nothing.
+// K2_ERROR: NOTHING_TO_OVERRIDE
 annotation class A(vararg val names: String)
 annotation class B(val i: Int)
 
@@ -11,6 +11,4 @@ class C : I {
     @B(1)
     <caret>override val bar = 1
 }
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AddPropertyToSupertypeFix
-
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.AddPropertyToSupertypeFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.AddPropertyToSupertypeFix

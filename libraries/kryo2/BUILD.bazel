@@ -1,7 +1,6 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
 ### auto-generated section `build intellij.libraries.kryo2` start
-
 jvm_library(
     name = "kryo2",
     srcs = glob(
@@ -49,6 +48,7 @@ jvm_library(
 exports_files(
     [
         "intellij.libraries.kryo2.iml",
+        "resources/intellij.libraries.kryo2.xml",
     ],
     visibility = ["//visibility:public"],
 )

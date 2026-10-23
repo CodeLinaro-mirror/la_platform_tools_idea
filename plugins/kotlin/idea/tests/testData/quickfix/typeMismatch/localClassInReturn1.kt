@@ -1,5 +1,5 @@
 // "Specify 'U' return type for enclosing function 'foo'" "true"
-// K2_ERROR: Return type mismatch: expected 'Unit', actual 'B'.
+// K2_ERROR: RETURN_TYPE_MISMATCH
 interface T
 interface U
 
@@ -9,5 +9,4 @@ fun foo() {
 
     return <caret>B()
 }
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ChangeCallableReturnTypeFix$ForEnclosing
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeTypeQuickFixFactories$UpdateTypeQuickFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeTypeQuickFixFactories$UpdateTypeQuickFix

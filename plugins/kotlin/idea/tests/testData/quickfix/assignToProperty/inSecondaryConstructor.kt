@@ -1,6 +1,6 @@
 // "Assign to property" "true"
-// K2_ERROR: 'val' cannot be reassigned.
-// K2_ERROR: Property must be initialized or be abstract.
+// K2_ERROR: MUST_BE_INITIALIZED_OR_BE_ABSTRACT
+// K2_ERROR: VAL_REASSIGNMENT
 class Test {
     val foo: Int
 
@@ -9,4 +9,3 @@ class Test {
     }
 }
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AssignToPropertyFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AssignToPropertyFix

@@ -7,13 +7,11 @@ import com.intellij.openapi.application.runInEdt
 import com.intellij.openapi.diagnostic.getOrLogException
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.extensions.PluginId
-import com.intellij.openapi.progress.util.PotemkinProgress
 import com.intellij.openapi.project.Project
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.Nls
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicBoolean
-import javax.swing.JComponent
 
 private val LOG = logger<DynamicPluginEnabler>()
 
@@ -50,11 +48,12 @@ class DynamicPluginEnabler : PluginEnabler {
     progressTitle: @Nls String?,
     project: Project? = null,
   ): Boolean {
-    if (descriptors.any { !PluginManagerCore.isCompatible(it) }) {
+    val incompatibleDescriptor = descriptors.firstOrNull { !PluginManagerCore.isCompatible(it) }
+    if (incompatibleDescriptor != null) {
+      LOG.info("Cannot enable plugin ${incompatibleDescriptor.pluginId} (${incompatibleDescriptor.version}): the plugin is incompatible.")
       // mark plugins enabled and require restart
       PluginManagerUsageCollector.pluginsStateChanged(descriptors, enable = true, project)
       PluginEnabler.HEADLESS.enable(descriptors)
-
       return false
     }
 
@@ -70,23 +69,12 @@ class DynamicPluginEnabler : PluginEnabler {
       // nothing to do
       pluginsLoaded = true
     }
-    else if (
-      progressTitle == null
-      || DynamicPluginsSupport.getInstance() != null // FIXME disregards custom title, `PotemkinProgress` causes a deadlock with the new support enabled
-    ) {
+    else {
       val loaded = AtomicBoolean(false)
       runInEdt {
-        loaded.set(DynamicPlugins.loadPlugins(installedDescriptors, project))
+        loaded.set(DynamicPlugins.loadPlugins(installedDescriptors, project, progressTitle))
       }
       pluginsLoaded = loaded.get()
-    }
-    else {
-      val progress = PotemkinProgress(progressTitle, project, null, null)
-      var result = false
-      progress.runInSwingThread {
-        result = DynamicPlugins.loadPlugins(installedDescriptors, project)
-      }
-      pluginsLoaded = result
     }
 
     for (listener in pluginEnableStateChangedListeners) {
@@ -104,13 +92,12 @@ class DynamicPluginEnabler : PluginEnabler {
   fun disable(
     descriptors: Collection<IdeaPluginDescriptor>,
     project: Project? = null,
-    parentComponent: JComponent? = null,
   ): Boolean {
     PluginManagerUsageCollector.pluginsStateChanged(descriptors, enable = false, project)
 
     PluginEnabler.HEADLESS.disable(descriptors)
     val installedDescriptors = findInstalledPlugins(descriptors) ?: return false
-    val pluginsUnloaded = DynamicPlugins.unloadPlugins(installedDescriptors, project, parentComponent)
+    val pluginsUnloaded = DynamicPlugins.unloadPlugins(installedDescriptors, project)
     for (listener in pluginEnableStateChangedListeners) {
       try {
         listener.stateChanged(descriptors, false)

@@ -1,7 +1,14 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.platform.ide.bootstrap` start
+content_module_jar(
+    libraries = ["@lib//:googlecode-plist-dd"],
+    module = ":bootstrap",
+)
+### auto-generated section `dev intellij.platform.ide.bootstrap` end
 
 ### auto-generated section `build intellij.platform.ide.bootstrap` start
-
 jvm_library(
     name = "bootstrap",
     srcs = glob(
@@ -13,6 +20,10 @@ jvm_library(
         allow_empty = True,
     ),
     module_name = "intellij.platform.ide.bootstrap",
+    resource_strip_prefix = "resources",
+    resources = glob(
+        ["resources/**/*"],
+    ),
     visibility = ["//visibility:public"],
     deps = [
         # do not sort,
@@ -48,7 +59,6 @@ jvm_library(
         "//fleet/kernel",
         "//platform/platform-impl/bootstrap/kernel",
         "//platform/util/jdom",
-        "@lib//:jna",
         "//libraries/hash4j",
         "//libraries/jbr",
         "@lib//:googlecode-plist-dd",
@@ -128,6 +138,7 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.ide.bootstrap.iml",
+        "resources/intellij.platform.ide.bootstrap.xml",
     ],
     visibility = ["//visibility:public"],
 )

@@ -1,4 +1,4 @@
-// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.codeInsight.postfix
 
 import com.intellij.codeInsight.completion.CompletionUtil
@@ -68,7 +68,7 @@ interface PyPostfixTemplateExpressionCondition : PostfixTemplateExpressionCondit
       val floatType = builtinCache.floatType
       val complexType = builtinCache.complexType
       return PyTypeChecker.match(
-        PyUnionType.union(listOf(intType, floatType, complexType)), type, context
+        PyUnionType.unionOrUnknown(listOf(intType, floatType, complexType)), type, context
       )
     }
 

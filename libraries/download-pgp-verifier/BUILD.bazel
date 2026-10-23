@@ -1,7 +1,14 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.libraries.download.pgp.verifier` start
+content_module_jar(
+    libraries = ["@lib//:libraries-download-pgp-verifier-download-pgp-verifier"],
+    module = ":download-pgp-verifier",
+)
+### auto-generated section `dev intellij.libraries.download.pgp.verifier` end
 
 ### auto-generated section `build intellij.libraries.download.pgp.verifier` start
-
 jvm_library(
     name = "download-pgp-verifier",
     srcs = glob(
@@ -37,6 +44,7 @@ jvm_library(
 exports_files(
     [
         "intellij.libraries.download.pgp.verifier.iml",
+        "resources/intellij.libraries.download.pgp.verifier.xml",
     ],
     visibility = ["//visibility:public"],
 )

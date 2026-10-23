@@ -4,11 +4,6 @@
 package org.jetbrains.intellij.build.productLayout.generator
 
 import com.intellij.platform.pluginGraph.ContentModuleName
-import com.intellij.platform.pluginGraph.DependencyClassification
-import com.intellij.platform.pluginGraph.PluginGraph
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import org.jetbrains.intellij.build.productLayout.LIB_MODULE_PREFIX
 import org.jetbrains.intellij.build.productLayout.ModuleSet
 import org.jetbrains.intellij.build.productLayout.pipeline.ComputeContext
@@ -23,6 +18,7 @@ import org.jetbrains.intellij.build.productLayout.stats.SuppressionType
 import org.jetbrains.intellij.build.productLayout.stats.SuppressionUsage
 import org.jetbrains.intellij.build.productLayout.xml.updateXmlDependencies
 import org.jetbrains.intellij.build.productLayout.xml.visitAllModules
+import org.jetbrains.intellij.build.mapConcurrent
 
 /**
  * Generator for product module dependency XML files.
@@ -39,20 +35,24 @@ import org.jetbrains.intellij.build.productLayout.xml.visitAllModules
  *
  * @see org.jetbrains.intellij.build.productLayout.validator.SelfContainedModuleSetValidator for self-contained module set validation
  * @see org.jetbrains.intellij.build.productLayout.validator.ProductModuleSetValidator for product module set validation
- * @see org.jetbrains.intellij.build.productLayout.validator.LibraryModuleValidator for library module dependency validation
  */
 internal object ProductModuleDependencyGenerator : PipelineNode {
   override val id get() = NodeIds.PRODUCT_MODULE_DEPS
   override val produces: Set<DataSlot<*>> get() = setOf(Slots.PRODUCT_MODULE_DEPS)
 
-  override suspend fun execute(ctx: ComputeContext) {
-    coroutineScope {
+  override fun execute(ctx: ComputeContext) {
+    run {
       val model = ctx.model
-      val allModuleSets = model.discovery.communityModuleSets + model.discovery.coreModuleSets + model.discovery.ultimateModuleSets
+      val allModuleSets = buildList {
+        addAll(model.discovery.communityModuleSets)
+        addAll(model.discovery.coreModuleSets)
+        addAll(model.discovery.libraryModuleSets)
+        addAll(model.discovery.ultimateModuleSets)
+      }
       val modulesToProcess = collectModulesToProcess(allModuleSets)
       if (modulesToProcess.isEmpty()) {
         ctx.publish(Slots.PRODUCT_MODULE_DEPS, ProductModuleDepsOutput(files = emptyList()))
-        return@coroutineScope
+        return@run
       }
 
       val cache = model.descriptorCache
@@ -62,26 +62,43 @@ internal object ProductModuleDependencyGenerator : PipelineNode {
       val updateSuppressions = model.updateSuppressions
 
       // Write XML files in parallel
-      val results = modulesToProcess.map { moduleName ->
-        async {
-          val info = cache.getOrAnalyze(moduleName) ?: return@async null
+      val results = modulesToProcess.mapConcurrent { moduleName ->
+        run {
+          val info = cache.getOrAnalyze(moduleName) ?: return@mapConcurrent null
           if (info.skipDependencyGeneration) {
-            return@async null
+            return@mapConcurrent null
           }
 
           val contentModuleName = ContentModuleName(moduleName)
           val suppressedModules = suppressionConfig.getSuppressedModules(contentModuleName)
 
-          // Compute dependencies from graph (only content modules - those with descriptors)
-          val dependencies = computeProductModuleDeps(graph, moduleName).map(::ContentModuleName)
-          val dependencyNames = dependencies.mapTo(HashSet()) { it.value }
+          // Compute dependencies from the same JPS-scope-aware path as content module XML generation.
+          val productionDeps = computeJpsDeps(
+            graph = graph,
+            moduleName = contentModuleName,
+            includeTestScope = false,
+            outputProvider = model.outputProvider,
+          ).moduleDeps
+          val testAwareDeps = computeJpsDeps(
+            graph = graph,
+            moduleName = contentModuleName,
+            includeTestScope = true,
+            outputProvider = model.outputProvider,
+          ).moduleDeps
+          val dependencies = productionDeps.sortedBy { it.value }
+          val nonProductionDependencies = testAwareDeps - productionDeps
           val existingXmlModules = info.existingModuleDependencies.toSet()
           val existingXmlModulesAsContentModuleName = existingXmlModules.mapTo(HashSet(), ::ContentModuleName)
+          val xmlOnlySuppressionCandidateDeps = existingXmlModulesAsContentModuleName.filterTo(LinkedHashSet()) {
+            it !in nonProductionDependencies
+          }
+          val dependencyNames = dependencies.mapTo(HashSet()) { it.value }
           val moduleHandling = computeExistingDependencyHandling(
             updateSuppressions = updateSuppressions,
             existingXmlDeps = existingXmlModulesAsContentModuleName,
             jpsDeps = dependencies.toSet(),
             suppressedDeps = suppressedModules,
+            xmlOnlySuppressionCandidateDeps = xmlOnlySuppressionCandidateDeps,
           )
           val effectiveSuppressedModules = moduleHandling.effectiveSuppressedDeps
           val suppressionUsages = ArrayList<SuppressionUsage>()
@@ -119,45 +136,11 @@ internal object ProductModuleDependencyGenerator : PipelineNode {
             suppressionUsages = suppressionUsages,
           )
         }
-      }.awaitAll().filterNotNull()
+      }.filterNotNull()
 
       ctx.publish(Slots.PRODUCT_MODULE_DEPS, ProductModuleDepsOutput(files = results))
     }
   }
-}
-
-/**
- * Computes JPS dependencies for a product module that are content modules (have descriptors).
- *
- * Uses graph's EDGE_TARGET_DEPENDS_ON edges and filters to only those that classify as ModuleDep
- * (i.e., have a content module descriptor).
- *
- * Only includes COMPILE and RUNTIME scope deps (excludes TEST and PROVIDED).
- */
-private fun computeProductModuleDeps(
-  graph: PluginGraph,
-  moduleName: String,
-): List<String> {
-  val deps = ArrayList<String>()
-  graph.query {
-    val target = target(moduleName) ?: return@query
-    target.dependsOn { dep ->
-      // Only include COMPILE and RUNTIME scope (production deps)
-      if (!dep.isProduction()) return@dependsOn
-      // Only include deps that are content modules (have descriptors)
-      when (val c = classifyTarget(dep.targetId)) {
-        is DependencyClassification.ModuleDep -> {
-          val depName = c.moduleName.value
-          if (depName == moduleName) {
-            return@dependsOn
-          }
-          deps.add(depName)
-        }
-        else -> {}
-      }
-    }
-  }
-  return deps.distinct().sorted()
 }
 
 private fun collectModulesToProcess(moduleSets: List<ModuleSet>): Set<String> {
@@ -165,8 +148,7 @@ private fun collectModulesToProcess(moduleSets: List<ModuleSet>): Set<String> {
   for (set in moduleSets) {
     visitAllModules(set) { module ->
       val moduleName = module.moduleId.name
-      if (module.includeDependencies ||
-          moduleName.startsWith(LIB_MODULE_PREFIX) ||
+      if (moduleName.startsWith(LIB_MODULE_PREFIX) ||
           moduleName.startsWith("intellij.platform.settings.")) {
         result.add(moduleName)
       }

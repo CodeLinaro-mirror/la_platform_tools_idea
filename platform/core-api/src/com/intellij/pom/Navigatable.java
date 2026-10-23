@@ -35,7 +35,11 @@ public interface Navigatable {
 
   /**
    * Open an editor and select/navigate to the object there if possible.
-   * Just do nothing if navigation is not possible like in case of a package
+   * Does nothing if navigation is not possible like in case of a package
+   * <p>
+   * The platform calls this method when it executes a raw navigation request.
+   * Submit navigation through {@link com.intellij.platform.ide.navigation.NavigationService#requestNavigate}.
+   * Always prefer implementing {@link #navigationRequest()} whenever possible.
    *
    * @param requestFocus {@code true} if focus requesting is necessary
    */

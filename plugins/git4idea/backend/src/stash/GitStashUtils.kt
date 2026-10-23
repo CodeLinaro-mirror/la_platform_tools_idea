@@ -143,7 +143,7 @@ object GitStashOperations {
     ChangeListViewerDialog.show(project, GitBundle.message("unstash.view.dialog.title", stash.stash), panel, null, false)
   }
 
-  @RequiresBackgroundThread
+  @RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
   @Throws(VcsException::class)
   fun loadStashChanges(
     project: Project,
@@ -423,9 +423,16 @@ private fun createUnstashHandler(
   return h
 }
 
-fun createStashHandler(project: Project, root: VirtualFile, keepIndex: Boolean = false, message: String = ""): GitLineHandler {
+fun createStashHandler(
+  project: Project,
+  root: VirtualFile,
+  keepIndex: Boolean = false,
+  includeUntracked: Boolean = false,
+  message: String = "",
+): GitLineHandler {
   return createStashHandler(project, root, emptyList(), buildList {
     if (keepIndex) add("--keep-index")
+    if (includeUntracked) add("--include-untracked")
     val msg = message.trim()
     if (msg.isNotEmpty()) {
       add("--message")

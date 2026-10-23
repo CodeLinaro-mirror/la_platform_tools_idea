@@ -1,4 +1,4 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 @file:Suppress("DEPRECATION", "removal")
 
 package com.intellij.ide.impl
@@ -70,6 +70,10 @@ open class DataManagerImpl : DataManager() {
     val rule = myRulesCache[dataId] ?: return null
     return getDataFromRuleInner(rule, dataId, provider)
   }
+
+  /** Whether the current thread is inside a data rule run, i.e. the request is nested. */
+  @ApiStatus.Internal
+  fun isInsideDataRule(): Boolean = ourGetDataLevel.get().depth > 0
 
   private fun getDataFromProviderAndRules(dataId: String, provider: DataProvider): Any? {
     ProgressManager.checkCanceled()
@@ -234,11 +238,7 @@ open class DataManagerImpl : DataManager() {
 
   @Deprecated("Deprecated in Java")
   override fun getDataContext(): DataContext {
-    var component: Component? = null
-    if (`is`("actionSystem.getContextByRecentMouseEvent", false)) {
-      component = IdeUiService.getInstance().componentFromRecentMouseEvent
-    }
-    return getDataContext(component ?: getFocusedComponent())
+    return getDataContext(getFocusedComponent())
   }
 
   override fun getDataContextFromFocusAsync(): Promise<DataContext> {
@@ -248,7 +248,16 @@ open class DataManagerImpl : DataManager() {
     return result
   }
 
-  private fun getFocusedComponent(): Component? {
+  @ApiStatus.Internal
+  fun getFocusedComponent(): Component? {
+    var component: Component? = null
+    if (`is`("actionSystem.getContextByRecentMouseEvent", false)) {
+      component = IdeUiService.getInstance().componentFromRecentMouseEvent
+    }
+    return component ?: getFocusedComponent0()
+  }
+
+  private fun getFocusedComponent0(): Component? {
     val windowManager = WindowManager.getInstance()
 
     var activeWindow =

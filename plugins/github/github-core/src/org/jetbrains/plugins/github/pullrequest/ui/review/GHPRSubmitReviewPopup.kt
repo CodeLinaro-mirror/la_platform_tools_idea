@@ -3,14 +3,19 @@ package org.jetbrains.plugins.github.pullrequest.ui.review
 
 import com.intellij.collaboration.messages.CollaborationToolsBundle
 import com.intellij.collaboration.ui.HorizontalListPanel
+import com.intellij.collaboration.ui.VerticalListPanel
 import com.intellij.collaboration.ui.codereview.list.error.ErrorStatusPresenter
 import com.intellij.collaboration.ui.codereview.review.CodeReviewSubmitPopupHandler
 import com.intellij.collaboration.ui.util.bindDisabledIn
 import com.intellij.collaboration.ui.util.bindVisibilityIn
 import com.intellij.ide.plugins.newui.InstallButton
 import com.intellij.openapi.ui.MessageDialogBuilder
+import com.intellij.ui.components.JBCheckBox
 import com.intellij.util.ui.InlineIconButton
+import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
+import git4idea.i18n.GitBundle
 import icons.CollaborationToolsIcons
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.combine
@@ -21,6 +26,7 @@ import org.jetbrains.plugins.github.i18n.GithubBundle
 import java.awt.event.ActionListener
 import javax.swing.JButton
 import javax.swing.JComponent
+import javax.swing.JLabel
 import javax.swing.JPanel
 
 internal object GHPRSubmitReviewPopup : CodeReviewSubmitPopupHandler<GHPRSubmitReviewViewModel>() {
@@ -54,10 +60,33 @@ internal object GHPRSubmitReviewPopup : CodeReviewSubmitPopupHandler<GHPRSubmitR
         addActionListener { vm.submit(GHPullRequestReviewEvent.COMMENT) }
       }.let(::add)
     }
-    return HorizontalListPanel(ACTIONS_GAP).apply {
+    val buttonsPanel = HorizontalListPanel(ACTIONS_GAP).apply {
       buttons.forEach { add(it) }
     }
+    if (!vm.canDeleteWorktree) return buttonsPanel
+
+    val deleteWorktreeCheckBox =
+      JBCheckBox(GitBundle.message("Git.WorkingTrees.delete.current.worktree.checkbox"), vm.deleteWorktreeAfterSubmit.value).apply {
+        isOpaque = false
+        bindDisabledIn(cs, vm.isBusy)
+        addActionListener { vm.setDeleteWorktreeAfterSubmit(isSelected) }
+      }
+    val deleteWorktreeComment = JLabel(GitBundle.message("Git.WorkingTrees.delete.current.worktree.project.will.be.closed")).apply {
+      foreground = UIUtil.getContextHelpForeground()
+      font = JBFont.small()
+      border = JBUI.Borders.emptyLeft(UIUtil.getCheckBoxTextHorizontalOffset(deleteWorktreeCheckBox))
+    }
+    val deleteWorktreePanel = VerticalListPanel().apply {
+      add(deleteWorktreeCheckBox)
+      add(deleteWorktreeComment)
+    }
+    return VerticalListPanel(DELETE_WORKTREE_GAP).apply {
+      add(deleteWorktreePanel)
+      add(buttonsPanel)
+    }
   }
+
+  private const val DELETE_WORKTREE_GAP = 6
 
   override fun createTitleActionsComponentIn(cs: CoroutineScope, vm: GHPRSubmitReviewViewModel): JComponent {
     val defaultActions = super.createTitleActionsComponentIn(cs, vm)

@@ -1,6 +1,6 @@
 // "Cast expression 'a.foo().single()' to 'Int'" "true"
 // WITH_STDLIB
-// K2_ERROR: Argument type mismatch: actual type is 'Any', but 'Int' was expected.
+// K2_ERROR: ARGUMENT_TYPE_MISMATCH
 class A {
     fun foo(): List<Any> = listOf()
 
@@ -11,5 +11,4 @@ class A {
         a.bar(a.foo().single<caret>(), "Asd")
     }
 }
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.CastExpressionFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.CastExpressionFixFactories$CastExpressionModCommandAction
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.CastExpressionFixFactories$CastExpressionModCommandAction

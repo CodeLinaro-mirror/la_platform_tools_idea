@@ -1,4 +1,4 @@
-// "Remove redundant 'if' statement" "true"
+// "Remove redundant 'if' statement" "false"
 operator fun String.not(): Boolean = false
 
 fun bar(value: Int): Boolean {
@@ -9,5 +9,4 @@ fun bar(value: Int): Boolean {
         return true
     }
 }
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.codeinsights.impl.base.RedundantIfInspectionBase$RemoveRedundantIf
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.codeinsights.impl.base.RedundantIfInspectionBase$RemoveRedundantIf

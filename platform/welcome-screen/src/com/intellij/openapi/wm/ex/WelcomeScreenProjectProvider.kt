@@ -12,12 +12,19 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.util.PlatformUtils
 import org.jetbrains.annotations.ApiStatus.Internal
+import java.io.IOException
+import java.nio.file.LinkOption
 import java.nio.file.Path
+import kotlin.io.path.ExperimentalPathApi
 import kotlin.io.path.absolute
+import kotlin.io.path.createDirectories
+import kotlin.io.path.deleteRecursively
+import kotlin.io.path.exists
+import kotlin.io.path.forEachDirectoryEntry
+import kotlin.io.path.name
 
 private val LOG = logger<WelcomeScreenProjectProvider>()
 private val EP_NAME: ExtensionPointName<WelcomeScreenProjectProvider> = ExtensionPointName("com.intellij.welcomeScreenProjectProvider")
-private const val PROJECTS_DIR = "projects"
 private const val PROPERTY_PROJECT_PATH = "%s.project.path"
 
 @Volatile
@@ -39,9 +46,17 @@ fun getWelcomeScreenProjectProvider(): WelcomeScreenProjectProvider? {
 
 @Internal
 interface WelcomeScreenProjectSupport {
-  suspend fun createOrOpenWelcomeScreenProject(extension: WelcomeScreenProjectProvider, projectToClose: Project? = null): Project
+  /**
+   * @param forceOpenInNewFrame open the project in a frame of its own, without the "this window or a new one"
+   * question the platform asks while another project is open. An automatic open at IDE start passes `true`.
+   */
+  suspend fun createOrOpenWelcomeScreenProject(
+    extension: WelcomeScreenProjectProvider,
+    projectToClose: Project? = null,
+    forceOpenInNewFrame: Boolean = false,
+  ): Project
 
-  suspend fun openProject(path: Path): Project
+  suspend fun openProject(path: Path, name: String, forceOpenInNewFrame: Boolean = false): Project
 }
 
 /**
@@ -56,6 +71,7 @@ interface WelcomeScreenProjectSupport {
 @Internal
 abstract class WelcomeScreenProjectProvider {
   companion object {
+    @JvmStatic
     fun isWelcomeScreenProject(project: Project): Boolean {
       val extension = getWelcomeScreenProjectProvider() ?: return false
       return extension.doIsWelcomeScreenProject(project)
@@ -65,11 +81,6 @@ abstract class WelcomeScreenProjectProvider {
     fun isEditableWelcomeProject(project: Project): Boolean {
       val extension = getWelcomeScreenProjectProvider() ?: return false
       return extension.doIsWelcomeScreenProject(project) && extension.doIsEditableProject(project)
-    }
-
-    fun isVcsEnabled(project: Project): Boolean {
-      val isEditable = isEditableWelcomeProject(project)
-      return isEditable && getWelcomeScreenProjectProvider()?.doIsVcsEnabled() ?: false
     }
 
     fun isForceDisabledFileColors(): Boolean {
@@ -99,10 +110,20 @@ abstract class WelcomeScreenProjectProvider {
       return getWelcomeScreenProjectProvider()?.doGetStartupToolWindowIdToActivate()
     }
 
-    suspend fun createOrOpenWelcomeScreenProject(extension: WelcomeScreenProjectProvider, projectToClose: Project? = null): Project {
-      return serviceAsync<WelcomeScreenProjectSupport>().createOrOpenWelcomeScreenProject(extension, projectToClose)
+    fun getToolWindowIdsToExclusiveShowing(): Set<String> {
+      return getWelcomeScreenProjectProvider()?.getToolWindowIdsToExclusiveShowing() ?: emptySet()
+    }
+
+    suspend fun createOrOpenWelcomeScreenProject(
+      extension: WelcomeScreenProjectProvider,
+      projectToClose: Project? = null,
+      forceOpenInNewFrame: Boolean = false,
+    ): Project {
+      return serviceAsync<WelcomeScreenProjectSupport>().createOrOpenWelcomeScreenProject(extension, projectToClose, forceOpenInNewFrame)
     }
   }
+
+  open suspend fun createSimpleProject(projectToClose: Project?, forceOpenInNewFrame: Boolean): Project? = null
 
   /**
    * Return true if the welcome screen project can open [filePath] from the file manager (Explorer, Finder) or command line.
@@ -117,17 +138,65 @@ abstract class WelcomeScreenProjectProvider {
   open fun shouldOpenInWelcomeScreenIfFileBelongsToProject(filePath: Path): Boolean = true
 
   protected open fun getWelcomeScreenProjectPath(): Path {
-    return Path.of(getProjectsBasePath(), getWelcomeScreenProjectName()).absolute()
+    return Path.of(getProjectsBasePath(), getWelcomeScreenProjectDirName()).absolute()
   }
 
+  @OptIn(ExperimentalPathApi::class)
   @Internal
   fun getWelcomeScreenProjectPathForInternalUsage(): Path {
-    return getWelcomeScreenProjectPath()
+    val projectPath = getWelcomeScreenProjectPath()
+
+    if (!projectPath.exists(LinkOption.NOFOLLOW_LINKS)) {
+      try {
+        projectPath.createDirectories()
+      }
+      catch (_: IOException) {
+      }
+    }
+    else {
+      try {
+        projectPath.forEachDirectoryEntry { child ->
+          val name = child.name
+          if (name == ".idea") {
+            return@forEachDirectoryEntry
+          }
+          if (PlatformUtils.isPyCharm() && name == ".venv") {
+            return@forEachDirectoryEntry
+          }
+          try {
+            child.deleteRecursively()
+          }
+          catch (_: IOException) {
+          }
+        }
+      }
+      catch (_: IOException) {
+      }
+    }
+
+    return projectPath
   }
 
-  protected abstract fun getWelcomeScreenProjectName(): String
+  protected open fun getWelcomeScreenProjectDirName(): String {
+    val productName = if (PlatformUtils.isIntelliJ() || PlatformUtils.isMPS()) {
+      ApplicationNamesInfo.getInstance().lowercaseProductName
+    }
+    else {
+      ApplicationNamesInfo.getInstance().productName
+    }
+    return "${productName}Home"
+  }
 
-  protected abstract fun doIsWelcomeScreenProject(project: Project): Boolean
+  open fun getWelcomeScreenProjectName(): String {
+    return "${ApplicationNamesInfo.getInstance().fullProductName} Home"
+  }
+
+  protected open fun doIsWelcomeScreenProject(project: Project): Boolean {
+    val name = project.name
+    return name == getWelcomeScreenProjectName() || name == getWelcomeScreenProjectDirName()
+  }
+
+  open fun showHomeActionInProjectWidget(): Boolean = true
 
   /**
    * Return true if your project is not only a welcome screen, but also a real project where the user can create, store and edit files.
@@ -138,12 +207,6 @@ abstract class WelcomeScreenProjectProvider {
     return false
   }
 
-  /**
-   * Return true if your project is a welcome screen that supports version control operations. This setting will be ignored unless the
-   * project is also editable. See [doIsEditableProject]
-   */
-  protected open fun doIsVcsEnabled(): Boolean = false
-
   protected abstract fun doIsForceDisabledFileColors(): Boolean
 
   protected abstract fun doGetCreateNewFileProjectPrefix(): String
@@ -153,16 +216,24 @@ abstract class WelcomeScreenProjectProvider {
   }
 
   protected open suspend fun doCreateOrOpenWelcomeScreenProject(path: Path, projectToClose: Project?): Project {
-    return serviceAsync<WelcomeScreenProjectSupport>().openProject(path)
+    return serviceAsync<WelcomeScreenProjectSupport>().openProject(path, getWelcomeScreenProjectName())
+  }
+
+  /**
+   * Opens the welcome project in a frame of its own, with no "this window or a new one" question.
+   *
+   * The default opens through [WelcomeScreenProjectSupport.openProject]. A product with an open of its own
+   * overrides this too when it can honour the flag; otherwise its own open runs and may ask.
+   */
+  protected open suspend fun doCreateOrOpenWelcomeScreenProjectInNewFrame(path: Path): Project {
+    return serviceAsync<WelcomeScreenProjectSupport>().openProject(path, getWelcomeScreenProjectName(), forceOpenInNewFrame = true)
   }
 
   @Internal
-  suspend fun doCreateOrOpenWelcomeScreenProjectForInternalUsage(path: Path): Project {
-    return doCreateOrOpenWelcomeScreenProject(path, projectToClose = null)
-  }
-
-  @Internal
-  suspend fun doCreateOrOpenWelcomeScreenProjectForInternalUsage(path: Path, projectToClose: Project?): Project {
+  suspend fun doCreateOrOpenWelcomeScreenProjectForInternalUsage(path: Path, projectToClose: Project?, forceOpenInNewFrame: Boolean = false): Project {
+    if (forceOpenInNewFrame) {
+      return doCreateOrOpenWelcomeScreenProjectInNewFrame(path)
+    }
     return doCreateOrOpenWelcomeScreenProject(path, projectToClose)
   }
 
@@ -172,8 +243,9 @@ abstract class WelcomeScreenProjectProvider {
 
   protected open fun doGetStartupToolWindowIdToActivate(): String? = null
 
-  @Internal
-  fun isHiddenInRecentProjectsForInternalUsage(): Boolean = doIsHiddenInRecentProjects()
+  protected open fun getToolWindowIdsToExclusiveShowing(): Set<String> = emptySet()
+
+  open fun addWelcomeProjectNewAction(): Boolean = true
 }
 
 @Suppress("DuplicatedCode")
@@ -192,14 +264,11 @@ private fun getProjectsBasePath(): String {
       PathManager.getAbsolutePath(StringUtil.unquoteString(propertyValue, '"'))
     }
     else {
-      projectsDirDefault
+      getUserHomeProjectDir()
     }
   }
   return cachedProjectsBasePath!!
 }
-
-private val projectsDirDefault: String
-  get() = if (PlatformUtils.isDataGrip()) getUserHomeProjectDir() else Path.of(PathManager.getConfigPath(), PROJECTS_DIR).toString()
 
 private fun getUserHomeProjectDir(): String {
   val appNamesInfo = ApplicationNamesInfo.getInstance()

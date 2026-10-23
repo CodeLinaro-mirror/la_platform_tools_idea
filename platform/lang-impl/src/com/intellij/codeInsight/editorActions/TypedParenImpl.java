@@ -5,14 +5,15 @@ import com.intellij.codeInsight.CodeInsightSettings;
 import com.intellij.codeInsight.highlighting.BraceMatcher;
 import com.intellij.codeInsight.highlighting.BraceMatchingUtil;
 import com.intellij.codeInsight.highlighting.NontrivialBraceMatcher;
+import com.intellij.codeInsight.multiverse.EditorContextManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.EditorModificationUtil;
-import com.intellij.openapi.editor.EditorThreading;
 import com.intellij.openapi.editor.RangeMarker;
 import com.intellij.openapi.editor.ScrollType;
 import com.intellij.openapi.editor.actionSystem.TypedAction;
+import com.intellij.openapi.editor.elf.Elf;
 import com.intellij.openapi.editor.highlighter.EditorHighlighter;
 import com.intellij.openapi.editor.highlighter.HighlighterIterator;
 import com.intellij.openapi.editor.impl.DefaultRawTypedHandler;
@@ -20,7 +21,6 @@ import com.intellij.openapi.editor.impl.TypedActionImpl;
 import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.fileTypes.FileTypes;
 import com.intellij.openapi.project.Project;
-import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.tree.IElementType;
 import com.intellij.util.IncorrectOperationException;
@@ -140,7 +140,7 @@ final class TypedParenImpl {
     }
     int spaceStart = CharArrayUtil.shiftBackward(chars, offset - 1, " \t");
     if (spaceStart < 0 || chars.charAt(spaceStart) == '\n' || chars.charAt(spaceStart) == '\r') {
-      PsiFile file = PsiDocumentManager.getInstance(project).getPsiFile(document);
+      PsiFile file = EditorContextManager.getPsiFileForEditor(editor, project);
       if (file == null || !file.isWritable()) {
         return;
       }
@@ -165,7 +165,7 @@ final class TypedParenImpl {
         DefaultRawTypedHandler handler = ((TypedActionImpl)TypedAction.getInstance()).getDefaultRawTypedHandler();
         handler.beginUndoablePostProcessing();
         int finalLBraceOffset = lBraceOffset;
-        EditorThreading.write(() -> {
+        Elf.getElf().runWriteAction(() -> {
           TypingActionsExtension extension = TypingActionsExtension.findForContext(project, editor);
           try {
             RangeMarker marker = document.createRangeMarker(offset, offset + 1);
@@ -213,7 +213,7 @@ final class TypedParenImpl {
   ) {
     int offset = editor.getCaretModel().getOffset();
     HighlighterIterator iterator = editor.getHighlighter().createIterator(offset);
-    Document document = editor.getElfDocument();
+    Document document = editor.getDocument();
     boolean atEndOfDocument = offset == document.getTextLength();
     if (!atEndOfDocument) {
       iterator.retreat();

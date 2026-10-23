@@ -6,10 +6,12 @@ import com.intellij.codeInspection.util.IntentionFamilyName
 import com.intellij.modcommand.ActionContext
 import com.intellij.modcommand.ModPsiUpdater
 import com.intellij.openapi.util.TextRange
-import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaSession
+import org.jetbrains.kotlin.analysis.api.renderer.render
 import org.jetbrains.kotlin.analysis.api.renderer.types.impl.KaTypeRendererForSource
+import org.jetbrains.kotlin.analysis.api.symbols.symbol
 import org.jetbrains.kotlin.analysis.api.types.KaErrorType
+import org.jetbrains.kotlin.idea.base.psi.setCallableTypeReference
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.codeinsight.api.applicable.intentions.KotlinApplicableModCommandAction
 import org.jetbrains.kotlin.psi.KtCodeFragment
@@ -20,7 +22,6 @@ import org.jetbrains.kotlin.psi.KtTypeReference
 import org.jetbrains.kotlin.psi.psiUtil.endOffset
 import org.jetbrains.kotlin.psi.psiUtil.startOffset
 import org.jetbrains.kotlin.types.Variance
-import kotlin.collections.iterator
 
 internal class SpecifyTypeExplicitlyInDestructuringAssignmentIntention :
     KotlinApplicableModCommandAction<KtDestructuringDeclaration, SpecifyTypeExplicitlyInDestructuringAssignmentIntention.Context>(
@@ -43,8 +44,8 @@ internal class SpecifyTypeExplicitlyInDestructuringAssignmentIntention :
         return listOf(TextRange(0, endOffset - element.startOffset))
     }
 
-    @OptIn(KaExperimentalApi::class)
-    override fun KaSession.prepareContext(element: KtDestructuringDeclaration): Context? {
+    context(session: KaSession)
+    override fun prepareContext(element: KtDestructuringDeclaration): Context? {
         val entries = element.entriesWithoutExplicitTypes()
         val factory = KtPsiFactory(element.project)
         val entriesAndTypeReferences = mutableMapOf<KtDestructuringDeclarationEntry, KtTypeReference>()
@@ -68,9 +69,9 @@ internal class SpecifyTypeExplicitlyInDestructuringAssignmentIntention :
         val entriesAndTypeReferences = elementContext.entriesAndTypeReferences
         var lastEntry: KtDestructuringDeclarationEntry? = null
 
-        for (entryAndTypeReference in entriesAndTypeReferences) {
-            entryAndTypeReference.key.typeReference = entryAndTypeReference.value
-            lastEntry = entryAndTypeReference.key
+        for ((key, value) in entriesAndTypeReferences) {
+            key.setCallableTypeReference(value)
+            lastEntry = key
         }
         lastEntry?.let { updater.moveCaretTo(lastEntry.endOffset) }
     }

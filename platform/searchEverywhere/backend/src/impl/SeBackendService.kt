@@ -21,15 +21,20 @@ import com.intellij.platform.searchEverywhere.SePreviewInfo
 import com.intellij.platform.searchEverywhere.SeProviderId
 import com.intellij.platform.searchEverywhere.SeProviderIdUtils
 import com.intellij.platform.searchEverywhere.SeSession
+import com.intellij.platform.searchEverywhere.SeTabBackendInfoProvider
 import com.intellij.platform.searchEverywhere.SeTransferEnd
 import com.intellij.platform.searchEverywhere.SeTransferEvent
 import com.intellij.platform.searchEverywhere.SeTransferItem
+import com.intellij.platform.searchEverywhere.SeTransferSkippedItem
 import com.intellij.platform.searchEverywhere.asRef
 import com.intellij.platform.searchEverywhere.equalityProviders.SeEqualityChecker
+import com.intellij.platform.searchEverywhere.impl.SeFindToolWindowManager
 import com.intellij.platform.searchEverywhere.presentations.SeItemPresentation
+import com.intellij.platform.searchEverywhere.providers.SeLegacyContributorsRegistry
 import com.intellij.platform.searchEverywhere.providers.SeLog
 import com.intellij.platform.searchEverywhere.providers.SeProvidersHolder
 import com.intellij.platform.searchEverywhere.providers.SeSortedProviderIds
+import com.intellij.platform.searchEverywhere.providers.SeWrappedLegacyContributorItemsProviderFactory
 import com.intellij.platform.searchEverywhere.providers.areCommandsSupported
 import com.intellij.platform.searchEverywhere.providers.isExtendedInfoEnabled
 import com.intellij.platform.searchEverywhere.providers.isPreviewEnabled
@@ -114,8 +119,9 @@ class SeBackendService(val project: Project, private val coroutineScope: Corouti
     return flow {
       itemsFlows.merge().buffer(capacity = 0, onBufferOverflow = BufferOverflow.SUSPEND).mapNotNull { transferEvent ->
         when (transferEvent) {
-          is SeTransferEnd -> transferEvent
+          is SeTransferEnd, is SeTransferSkippedItem -> transferEvent
           is SeTransferItem -> equalityChecker.checkAndUpdateIfNeeded(transferEvent.itemData)?.let { SeTransferItem(it) }
+                               ?: SeTransferSkippedItem(transferEvent.itemData.providerId)
         }
       }.collect { item ->
         requestedCountState.first { it > 0 }
@@ -134,7 +140,11 @@ class SeBackendService(val project: Project, private val coroutineScope: Corouti
     dataContextId: DataContextId,
   ): SeSortedProviderIds? {
     val providersHolder = getProvidersHolder(session, dataContextId) ?: return null
-    val allProviderIds = (SeItemsProviderFactory.EP_NAME.extensionList.map { it.id.toProviderId() } +
+    val allProviderIds = (SeItemsProviderFactory.EP_NAME.extensionList.filter {
+      // A wrapped legacy factory has no provider when its legacy contributor is not available.
+      // Do not report such an ID: the frontend drops its own provider with the same ID.
+      it !is SeWrappedLegacyContributorItemsProviderFactory || providersHolder.get(it.id.toProviderId(), false) != null
+    }.map { it.id.toProviderId() } +
                           providersHolder.legacyContributors.allTab.map { it.key }).filter {
       // Remove the frontend version of TopHit contributor
       it.value != SeProviderIdUtils.TOP_HIT_ID
@@ -177,6 +187,7 @@ class SeBackendService(val project: Project, private val coroutineScope: Corouti
         return@withLock null
       }
       sessionIdToProviderHolders[sessionEntity.eid] = providersHolder
+      SeLegacyContributorsRegistry.getInstance().register(session, providersHolder.legacyContributors, providersHolder)
 
       sessionEntity.onDispose(coroutineScope.coroutineContext[Rete]!!) {
         Disposer.dispose(providersHolder)
@@ -246,7 +257,7 @@ class SeBackendService(val project: Project, private val coroutineScope: Corouti
   }
 
   suspend fun getTypeVisibilityStatesForProviders(
-    index: Int,
+    key: String,
     session: SeSession,
     dataContextId: DataContextId,
     providerIds: List<SeProviderId>,
@@ -254,7 +265,7 @@ class SeBackendService(val project: Project, private val coroutineScope: Corouti
   ): List<SeTypeVisibilityStatePresentation> {
     return providerIds.mapNotNull { providerId ->
       val provider = getProvidersHolder(session, dataContextId)?.get(providerId, isAllTab)
-      provider?.getTypeVisibilityStates(index)
+      provider?.getTypeVisibilityStates(key)
     }.flatten()
   }
 
@@ -290,6 +301,8 @@ class SeBackendService(val project: Project, private val coroutineScope: Corouti
   ): Boolean {
     return getProvidersHolder(session, dataContextId)?.getLegacyContributor(providerId, false)?.isShownInSeparateTab ?: false
   }
+
+  suspend fun isTabAvailable(tabId: String): Boolean = SeTabBackendInfoProvider.isTabAvailable(project, tabId)
 
   suspend fun openInFindToolWindow(
     projectId: ProjectId,

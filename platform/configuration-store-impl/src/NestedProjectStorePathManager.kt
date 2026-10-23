@@ -19,16 +19,18 @@ import com.intellij.openapi.util.NlsSafe
 import com.intellij.openapi.util.Pair
 import com.intellij.openapi.util.io.FileUtilRt
 import com.intellij.openapi.util.io.NioFiles
-import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.util.PathUtil
 import com.intellij.util.PathUtilRt
 import org.jdom.Element
 import org.jetbrains.annotations.VisibleForTesting
 import org.jetbrains.jps.util.JpsPathUtil
+import java.io.IOException
 import java.nio.file.AccessDeniedException
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.attribute.BasicFileAttributes
 
 private val EP_NAME: ExtensionPointName<ProjectStorePathCustomizer> = ExtensionPointName("com.intellij.projectStorePathCustomizer")
 private val DEPRECATED_PROJECT_FILE_STORAGE_ANNOTATION = FileStorageAnnotation(StoragePathMacros.PROJECT_FILE, true)
@@ -66,13 +68,21 @@ internal class NestedProjectStorePathManager : ProjectStorePathManager {
       return IprProjectStoreDescriptor(userBaseDir, projectRoot)
     }
 
-    return if (Files.isRegularFile(projectRoot)) {
+    // One stat call answers both the isRegularFile and the isDirectory checks below.
+    // Each separate check costs a network round trip on a remote Eel path.
+    val attributes = try {
+      Files.readAttributes(projectRoot, BasicFileAttributes::class.java)
+    }
+    catch (_: IOException) {
+      null
+    }
+    return if (attributes != null && attributes.isRegularFile) {
       DotIdeaProjectStoreDescriptor(
         projectIdentityFile = projectRoot.parent,
         historicalProjectBasePath = projectRoot.parent,
       )
     }
-    else if (Files.isDirectory(projectRoot)
+    else if (attributes != null && attributes.isDirectory
              && System.getProperty("store.basedir.parent.detection", "true").toBoolean()
              && (projectRoot.fileName?.toString()?.startsWith("${Project.DIRECTORY_STORE_FOLDER}.") == true)) {
       DotIdeaProjectStoreDescriptor(
@@ -227,7 +237,7 @@ private class DotIdeaProjectStoreDescriptor(
         doSave()
       }
       catch (e: AccessDeniedException) {
-        val status = ensureFilesWritable(project, listOf(LocalFileSystem.getInstance().refreshAndFindFileByNioFile(nameFile)!!))
+        val status = ensureFilesWritable(project, listOf(VirtualFileManager.getInstance().refreshAndFindFileByNioPath(nameFile)!!))
         if (status.hasReadonlyFiles()) {
           throw e
         }

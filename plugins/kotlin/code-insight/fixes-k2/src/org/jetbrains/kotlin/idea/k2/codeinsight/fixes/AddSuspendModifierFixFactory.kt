@@ -3,16 +3,15 @@ package org.jetbrains.kotlin.idea.k2.codeinsight.fixes
 
 import com.intellij.modcommand.ActionContext
 import com.intellij.modcommand.ModPsiUpdater
-import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.components.containingDeclaration
-import org.jetbrains.kotlin.analysis.api.components.resolveToCall
 import org.jetbrains.kotlin.analysis.api.fir.diagnostics.KaFirDiagnostic
-import org.jetbrains.kotlin.analysis.api.resolution.successfulFunctionCallOrNull
+import org.jetbrains.kotlin.analysis.api.resolution.resolveSuccessfulCall
 import org.jetbrains.kotlin.analysis.api.resolution.symbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaDeclarationSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaNamedFunctionSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbolVisibility
+import org.jetbrains.kotlin.analysis.api.symbols.containingDeclaration
+import org.jetbrains.kotlin.idea.base.psi.addModifierKeyword
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.codeinsight.api.applicable.intentions.KotlinPsiUpdateModCommandAction
 import org.jetbrains.kotlin.idea.codeinsight.api.applicators.fixes.KotlinQuickFixFactory
@@ -48,7 +47,7 @@ internal object AddSuspendModifierFixFactory {
             elementContext: ElementContext,
             updater: ModPsiUpdater,
         ) {
-            element.addModifier(KtTokens.SUSPEND_KEYWORD)
+            element.addModifierKeyword(KtTokens.SUSPEND_KEYWORD)
         }
 
         override fun getFamilyName(): String = KotlinBundle.message("fix.add.suspend.modifier.function", context.functionName)
@@ -60,8 +59,8 @@ internal fun KtElement.containingFunction(): KtNamedFunction? {
     return when (val containingFunction = getParentOfTypes2<KtFunctionLiteral, KtNamedFunction>()) {
         is KtFunctionLiteral -> {
             val call = containingFunction.getStrictParentOfType<KtCallExpression>()
-            val resolvedCall = call?.resolveToCall()?.successfulFunctionCallOrNull()
-            if (resolvedCall?.partiallyAppliedSymbol?.symbol?.isInlineOrInsideInline() == true) {
+            val symbol = call?.resolveSuccessfulCall()?.symbol
+            if (symbol.isInlineOrInsideInline()) {
                 containingFunction.containingFunction()
             } else {
                 null
@@ -76,7 +75,6 @@ internal fun KtElement.containingFunction(): KtNamedFunction? {
 context(_: KaSession)
 private fun KaDeclarationSymbol?.isInlineOrInsideInline(): Boolean = getInlineCallSiteVisibility() != null
 
-@OptIn(KaExperimentalApi::class)
 context(_: KaSession)
 private fun KaDeclarationSymbol?.getInlineCallSiteVisibility(): KaSymbolVisibility? {
     var declaration: KaDeclarationSymbol? = this

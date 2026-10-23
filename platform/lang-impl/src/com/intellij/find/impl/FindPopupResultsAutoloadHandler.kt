@@ -22,7 +22,6 @@ import com.intellij.reference.SoftReference
 import com.intellij.usages.UsageInfo2UsageAdapter
 import com.intellij.usages.UsageInfoAdapter
 import com.intellij.util.ui.UIUtil
-import org.jetbrains.annotations.ApiStatus
 import java.lang.ref.WeakReference
 import java.util.Vector
 import java.util.concurrent.atomic.AtomicBoolean
@@ -49,8 +48,10 @@ private val LOG = logger<FindPopupResultsAutoloadHandler>()
  * interface — no Swing imports beyond [DefaultTableModel], which is the only Swing surface
  * the executor touches directly.
  */
-@ApiStatus.Internal
-internal class FindPopupResultsAutoloadHandler(private val host: Host) {
+internal class FindPopupResultsAutoloadHandler(
+  private val host: Host,
+  private val findAndReplaceExecutor: FindAndReplaceExecutor,
+) {
 
   /** Session-scoped paging state. */
   private val state = FindPopupSearchState()
@@ -313,7 +314,7 @@ internal class FindPopupResultsAutoloadHandler(private val host: Host) {
           val recentItemRef = ThreadLocal<java.lang.ref.Reference<FindPopupItem>>()
 
           LOG.debug { "FiF: run -> executor.findUsages hash=$hash loadMore=$loadMore" }
-          FindAndReplaceExecutor.getInstance(project).findUsages(
+          findAndReplaceExecutor.findUsages(
             project,
             progressIndicatorWhenSearchStarted,
             processPresentation,
@@ -442,9 +443,7 @@ internal class FindPopupResultsAutoloadHandler(private val host: Host) {
         }
 
         // Update paging state after the search finishes naturally.
-        val occurrences = resultsCount.get()
-        val reachedCap = occurrences >= maxUsages
-        state.isExhausted = !reachedCap
+        state.recordPassFinished(loadMore, host.resultsRowCount, resultsCount.get(), maxUsages)
 
         // Defer the autoload / finalization decision so the table layout (scrollbar bounds,
         // viewport extent) has had a chance to stabilize after the last row was added.
@@ -452,6 +451,7 @@ internal class FindPopupResultsAutoloadHandler(private val host: Host) {
           if (isCancelled(progressIndicatorWhenSearchStarted)) return@invokeLater
 
           val autoLoadMore = !state.isExhausted &&
+                             !state.autoloadStalled &&
                              loadingHash == 0 &&
                              (host.isContentFullyVisible || host.isUserAtBottom) &&
                              host.resultsRowCount > 0

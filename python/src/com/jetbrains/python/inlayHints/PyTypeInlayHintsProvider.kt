@@ -26,6 +26,8 @@ import com.jetbrains.python.psi.PyTupleExpression
 import com.jetbrains.python.psi.PyTypeParameter
 import com.jetbrains.python.psi.impl.PyCallExpressionHelper
 import com.jetbrains.python.psi.resolve.PyResolveContext
+import com.jetbrains.python.psi.types.PyCallableArgument
+import com.jetbrains.python.psi.types.PyCallableParameter
 import com.jetbrains.python.psi.types.PyClassLikeType
 import com.jetbrains.python.psi.types.PyClassType
 import com.jetbrains.python.psi.types.PyInferredVarianceJudgment
@@ -33,7 +35,7 @@ import com.jetbrains.python.psi.types.PyType
 import com.jetbrains.python.psi.types.PyTypeChecker
 import com.jetbrains.python.psi.types.PyTypeInferenceCspFactory
 import com.jetbrains.python.psi.types.PyTypeParameterType
-import com.jetbrains.python.psi.types.PyTypeParameterType.Variance
+import com.jetbrains.python.psi.types.PyVariance
 import com.jetbrains.python.psi.types.TypeEvalContext
 import com.jetbrains.python.psi.types.isUnknown
 
@@ -110,6 +112,7 @@ class PyTypeInlayHintsProvider : InlayHintsProvider {
       val typeEvalContext = resolveContext.typeEvalContext
       val function = element.parent as? PyFunction ?: return
       if (element == function.nameIdentifier && function.annotationValue == null && function.typeCommentAnnotation == null) {
+        @Suppress("USELESS_IS_CHECK")  // When guard
         val type = when (val type = typeEvalContext.getReturnType(function)) {
           is Any? if function.isAsync -> (type as? PyClassType)?.typeArguments?.getOrNull(2)
           else -> type
@@ -132,7 +135,7 @@ class PyTypeInlayHintsProvider : InlayHintsProvider {
       val qualifierType = resolveContext.typeEvalContext.getType(qualifier) as? PyClassLikeType ?: return
       if (PyTypingTypeProvider.GENERIC != qualifierType.classQName) return
       val typeVarType = PyTypingTypeProvider.getType(refExpr, resolveContext.typeEvalContext)?.get() as? PyTypeParameterType ?: return
-      if (typeVarType.variance == Variance.INVARIANT) return
+      if (typeVarType.variance == PyVariance.INVARIANT) return
 
       val inferredVariance = PyInferredVarianceJudgment.getDeclaredOrInferredVariance(typeVarType, resolveContext.typeEvalContext)
       sink.addPresentation(inferredVariance, element)
@@ -145,12 +148,12 @@ class PyTypeInlayHintsProvider : InlayHintsProvider {
       sink.addPresentation(inferredVariance, element)
     }
 
-    fun InlayTreeSink.addPresentation(inferredVariance: Variance?, element: PsiElement) {
+    fun InlayTreeSink.addPresentation(inferredVariance: PyVariance?, element: PsiElement) {
       val position = InlineInlayPosition(element.textRange.startOffset, false)
-      if (inferredVariance == Variance.COVARIANT) {
+      if (inferredVariance == PyVariance.COVARIANT) {
         this.addPresentation(position, tooltip = "covariant: <code>${element.text}</code> only appears in output positions", hintFormat = varianceHintFormat) { text("out") }
       }
-      if (inferredVariance == Variance.CONTRAVARIANT) {
+      if (inferredVariance == PyVariance.CONTRAVARIANT) {
         this.addPresentation(position, tooltip = "contravariant: <code>${element.text}</code> only appears in input positions", hintFormat = varianceHintFormat) { text("in") }
       }
     }
@@ -171,7 +174,7 @@ class PyTypeInlayHintsProvider : InlayHintsProvider {
                             parameter.isPositionalContainer -> (rawParameterType as? PyClassType)?.getIteratedItemType()
                             parameter.isKeywordContainer -> (rawParameterType as? PyClassType)?.typeArguments?.getOrNull(1)
                             else -> rawParameterType
-                          } ?: return
+                          }?.takeUnless { it.isUnknown } ?: return
 
       val offset = parameter.nameIdentifier?.textRange?.endOffset ?: parameter.textRange.endOffset
 
@@ -240,8 +243,8 @@ class PyTypeInlayHintsProvider : InlayHintsProvider {
       val callableType = mapping.callableType ?: return null
       val typeParameters = callableType.getTypeParameters(typeEvalContext)?.takeIf { it.isNotEmpty() } ?: return null
 
-      val receiver = call.getReceiver(callableType.callable)
-      val substitutions = PyTypeInferenceCspFactory.unifyGenericCall(call, receiver, callableType, mapping.mappedParameters, typeEvalContext)
+      val mappedParameters = mapping.mappedParameters.mapKeys { PyCallableArgument(it.key) }
+      val substitutions = PyTypeInferenceCspFactory.unifyGenericCall(call, callableType, mappedParameters, typeEvalContext)
                           ?: return null
       return typeParameters.map { PyTypeChecker.substitute(it, substitutions, typeEvalContext) }
     }

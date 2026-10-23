@@ -15,14 +15,19 @@
  */
 package com.intellij.psi.impl.source.resolve.graphInference;
 
+import com.intellij.codeInsight.Nullability;
+import com.intellij.codeInsight.NullabilitySource;
+import com.intellij.codeInsight.TypeNullability;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.psi.CommonClassNames;
 import com.intellij.psi.GenericsUtil;
+import com.intellij.psi.JavaPsiFacade;
 import com.intellij.psi.PsiCapturedWildcardType;
 import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiClassType;
+import com.intellij.psi.PsiElementFactory;
 import com.intellij.psi.PsiSubstitutor;
 import com.intellij.psi.PsiType;
 import com.intellij.psi.PsiTypeParameter;
@@ -36,6 +41,8 @@ import com.intellij.psi.util.PsiUtil;
 import com.intellij.psi.util.TypeConversionUtil;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.containers.ContainerUtil;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -119,9 +126,9 @@ public class InferenceIncorporationPhase {
         eqEq(eqBounds, changedEqBounds);
       }
 
-      upDown(lowerBounds, changedLowerBounds, upperBounds, changedUpperBounds);
-      upDown(eqBounds, changedEqBounds, upperBounds, changedUpperBounds);
-      upDown(lowerBounds, changedLowerBounds, eqBounds, changedEqBounds);
+      upDown(inferenceVariable, lowerBounds, changedLowerBounds, upperBounds, changedUpperBounds);
+      upDown(inferenceVariable, eqBounds, changedEqBounds, upperBounds, changedUpperBounds);
+      upDown(null, lowerBounds, changedLowerBounds, eqBounds, changedEqBounds);
 
       if (changedUpperBounds != null) {
         upUp(upperBounds);
@@ -150,6 +157,16 @@ public class InferenceIncorporationPhase {
         typeArgs = args.toArray(PsiType.EMPTY_ARRAY);
       }
       if (parameters.length != typeArgs.length) continue;
+      // JLS 18.3.2: the fresh variables B1..Bn substitute the captured type parameters P1..Pn inside the bounds.
+      // Map each captured type parameter to *its own* fresh variable so that a self-referential (F-bounded) parameter,
+      // e.g. T in T extends Foo<T, U>, refers to this capture instead of leaking to a sibling capture of the same
+      // wildcard through the session-global inference substitution, which is overwritten across captures that share
+      // the same declaration type parameter.
+      PsiSubstitutor captureSubstitutor = PsiSubstitutor.EMPTY;
+      final PsiElementFactory elementFactory = JavaPsiFacade.getElementFactory(gClass.getProject());
+      for (InferenceVariable parameter : parameters) {
+        captureSubstitutor = captureSubstitutor.put(parameter.getParameter(), elementFactory.createType(parameter));
+      }
       for (int i = 0; i < typeArgs.length; i++) {
         final PsiType aType = typeArgs[i];
         final InferenceVariable inferenceVariable = parameters[i];
@@ -184,7 +201,7 @@ public class InferenceIncorporationPhase {
 
             for (PsiType upperBound : upperBounds) {
               if (glb != null && mySession.getInferenceVariable(upperBound) == null) {
-                addConstraint(new StrictSubtypingConstraint(upperBound, mySession.substituteWithInferenceVariables(glb)));
+                addConstraint(new StrictSubtypingConstraint(upperBound, mySession.substituteWithInferenceVariables(captureSubstitutor.substitute(glb))));
               }
             }
 
@@ -204,7 +221,7 @@ public class InferenceIncorporationPhase {
                   addConstraint(new StrictSubtypingConstraint(upperBound, extendsBound));
                 }
                 else if (extendsBound.equalsToText(CommonClassNames.JAVA_LANG_OBJECT) && glb != null) {
-                  addConstraint(new StrictSubtypingConstraint(upperBound, mySession.substituteWithInferenceVariables(glb)));
+                  addConstraint(new StrictSubtypingConstraint(upperBound, mySession.substituteWithInferenceVariables(captureSubstitutor.substitute(glb))));
                 }
               }
             }
@@ -221,7 +238,7 @@ public class InferenceIncorporationPhase {
 
             for (PsiType upperBound : upperBounds) {
               if (glb != null && mySession.getInferenceVariable(upperBound) == null) {
-                addConstraint(new StrictSubtypingConstraint(mySession.substituteWithInferenceVariables(glb), upperBound));
+                addConstraint(new StrictSubtypingConstraint(mySession.substituteWithInferenceVariables(captureSubstitutor.substitute(glb)), upperBound));
               }
             }
 
@@ -239,15 +256,19 @@ public class InferenceIncorporationPhase {
     return true;
   }
 
-  protected void upDown(List<? extends PsiType> lowerBounds,
+  /**
+   * @param variable the variable that has the bounds, or null if the bounds cannot reach a not-null usage of it
+   */
+  protected void upDown(@Nullable InferenceVariable variable,
+                        List<? extends PsiType> lowerBounds,
                         Collection<? extends PsiType> changedLowerBounds,
                         List<? extends PsiType> upperBounds,
                         Collection<? extends PsiType> changedUpperBounds) {
     if (changedLowerBounds != null) {
-      upDown(changedLowerBounds, upperBounds);
+      upDown(variable, changedLowerBounds, upperBounds);
     }
     if (changedUpperBounds != null) {
-      upDown(lowerBounds, changedUpperBounds);
+      upDown(variable, lowerBounds, changedUpperBounds);
     }
   }
 
@@ -296,16 +317,48 @@ public class InferenceIncorporationPhase {
 
         if (lowerBounds != null) {
           for (PsiType lowerBound : lowerBounds) {
+            if (inferenceBound == InferenceBound.LOWER) {
+              lowerBound = withUsageNullability(inferenceVar, inferenceVariable, lowerBound);
+            }
             result |= inferenceVar.addBound(lowerBound, inferenceBound, this);
           }
         }
 
         for (PsiType varUpperBound : inferenceVar.getBounds(oppositeBound)) {
+          if (oppositeBound == InferenceBound.LOWER) {
+            varUpperBound = withUsageNullability(inferenceVariable, inferenceVar, varUpperBound);
+          }
           result |= inferenceVariable.addBound(varUpperBound, oppositeBound, this);
         }
       }
     }
     return result;
+  }
+
+  /**
+   * {@code S <: a} and {@code @NotNull a <: b} imply {@code @NotNull S <: b}.
+   * {@code StrictSubtypingConstraint} records such a not-null usage of {@code a} as a lower bound of {@code b}.
+   *
+   * @param target the variable {@code b} that gets the bound
+   * @param source the variable {@code a} that has the bound
+   * @param bound the lower bound or the equal bound {@code S} of {@code a}
+   * @return the bound to add to {@code b}
+   */
+  private static @NotNull PsiType withUsageNullability(@NotNull InferenceVariable target,
+                                                       @NotNull InferenceVariable source,
+                                                       @NotNull PsiType bound) {
+    if (PsiTypes.nullType().equals(bound)) return bound;
+    for (PsiType usage : target.getBounds(InferenceBound.LOWER)) {
+      if (PsiUtil.resolveClassInClassTypeOnly(usage) != source) continue;
+      TypeNullability usageNullability = usage.getNullability();
+      if (usageNullability.nullability() != Nullability.NOT_NULL ||
+          usageNullability.source() instanceof NullabilitySource.ExtendsBound) {
+        return bound;
+      }
+      TypeNullability nullability = usageNullability.instantiatedWith(bound.getNullability());
+      return nullability.equals(bound.getNullability()) ? bound : bound.withNullability(nullability);
+    }
+    return bound;
   }
 
   /**
@@ -315,9 +368,12 @@ public class InferenceIncorporationPhase {
    *           or
    * S <: a & a <: T imply S <: T
    */
-  private void upDown(Collection<? extends PsiType> eqBounds, Collection<? extends PsiType> upperBounds) {
+  private void upDown(@Nullable InferenceVariable variable,
+                      Collection<? extends PsiType> eqBounds,
+                      Collection<? extends PsiType> upperBounds) {
     for (PsiType upperBound : upperBounds) {
       if (upperBound == null || PsiTypes.nullType().equals(upperBound) || upperBound instanceof PsiWildcardType) continue;
+      InferenceVariable upperVariable = variable == null ? null : mySession.getInferenceVariable(upperBound);
 
       for (PsiType eqBound : eqBounds) {
         if (eqBound == null || PsiTypes.nullType().equals(eqBound) || eqBound instanceof PsiWildcardType) continue;
@@ -337,6 +393,9 @@ public class InferenceIncorporationPhase {
           }
         }
 
+        if (upperVariable != null) {
+          eqBound = withUsageNullability(upperVariable, variable, eqBound);
+        }
         addConstraint(new StrictSubtypingConstraint(upperBound, eqBound));
       }
     }

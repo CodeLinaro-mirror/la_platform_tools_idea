@@ -1,7 +1,6 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
 ### auto-generated section `build intellij.libraries.junit5.pioneer` start
-
 jvm_library(
     name = "junit5-pioneer",
     srcs = glob(
@@ -18,8 +17,8 @@ jvm_library(
     runtime_deps = [
         # do not sort,
         "@lib//:libraries-junit5-pioneer-_j_unit5_pioneer",
-        "//libraries/junit5-launcher",
-        "//libraries/junit5-params",
+        "//libraries/junit6-launcher",
+        "//libraries/junit6-params",
     ],
 )
 
@@ -36,8 +35,8 @@ jvm_library(
     runtime_deps = [
         # do not sort,
         ":junit5-pioneer",
-        "//libraries/junit5-launcher:junit5-launcher_test_lib",
-        "//libraries/junit5-params:junit5-params_test_lib",
+        "//libraries/junit6-launcher:junit6-launcher_test_lib",
+        "//libraries/junit6-params:junit6-params_test_lib",
     ],
 )
 ### auto-generated section `build intellij.libraries.junit5.pioneer` end
@@ -46,6 +45,7 @@ jvm_library(
 exports_files(
     [
         "intellij.libraries.junit5.pioneer.iml",
+        "resources/intellij.libraries.junit5.pioneer.xml",
     ],
     visibility = ["//visibility:public"],
 )

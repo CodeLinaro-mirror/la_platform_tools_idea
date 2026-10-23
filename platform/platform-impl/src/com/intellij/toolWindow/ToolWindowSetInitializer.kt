@@ -31,6 +31,7 @@ import com.intellij.openapi.wm.impl.DesktopLayout
 import com.intellij.openapi.wm.impl.ToolWindowManagerAppLevelHelper
 import com.intellij.openapi.wm.impl.ToolWindowManagerImpl
 import com.intellij.openapi.wm.impl.WindowInfoImpl
+import com.intellij.openapi.wm.impl.seedFromFactoryDefault
 import com.intellij.openapi.wm.safeToolWindowPaneId
 import com.intellij.platform.diagnostic.telemetry.impl.span
 import com.intellij.util.ui.UIUtil
@@ -95,11 +96,24 @@ internal class ToolWindowSetInitializer(private val project: Project, private va
     }
   }
 
-  suspend fun initUi(reopeningEditorJob: Job, taskListDeferred: Deferred<List<RegisterToolWindowTaskData>>?) {
+  /**
+   * [onDefaultPaneToolWindowsRegistered] runs once on the EDT after the tool windows of the default pane are registered.
+   * It runs before the `toolWindowsRegistered` event, the activation action registration, and the pending tasks.
+   */
+  suspend fun initUi(
+    reopeningEditorJob: Job,
+    taskListDeferred: Deferred<List<RegisterToolWindowTaskData>>?,
+    onDefaultPaneToolWindowsRegistered: (() -> Unit)? = null,
+  ) {
     try {
       val tasks = taskListDeferred?.await()
       LOG.debug(project) { "create and layout tool windows (project=$it, tasks=${tasks?.joinToString(separator = "\n")}" }
-      createAndLayoutToolWindows(manager = manager, tasks = tasks ?: return, reopeningEditorJob = reopeningEditorJob)
+      createAndLayoutToolWindows(
+        manager = manager,
+        tasks = tasks ?: return,
+        reopeningEditorJob = reopeningEditorJob,
+        onDefaultPaneToolWindowsRegistered = onDefaultPaneToolWindowsRegistered,
+      )
       // separate EDT task - ensure that more important tasks like editor restoring maybe executed
       span("toolwindow init pending tasks processing") {
         while (true) {
@@ -126,6 +140,7 @@ internal class ToolWindowSetInitializer(private val project: Project, private va
     manager: ToolWindowManagerImpl,
     tasks: List<RegisterToolWindowTaskData>,
     reopeningEditorJob: Job,
+    onDefaultPaneToolWindowsRegistered: (() -> Unit)?,
   ) {
     val ep = (ApplicationManager.getApplication().extensionArea as ExtensionsAreaImpl)
       .getExtensionPoint<RegisterToolWindowTaskProvider>("com.intellij.registerToolWindowTaskProvider")
@@ -133,7 +148,25 @@ internal class ToolWindowSetInitializer(private val project: Project, private va
     val layout = pendingLayout.getAndSet(null) ?: throw IllegalStateException("Expected some pending layout")
     val stripeManager = project.serviceAsync<ToolWindowStripeManager>()
     val list = span("toolwindow creating preparation") {
-      addExtraTasks(tasks = tasks, project = project, ep = ep, suppressedToolWindowIds = manager.getSuppressedToolWindowIds()).map { task ->
+      val allTasks = addExtraTasks(tasks = tasks, project = project, ep = ep, suppressedToolWindowIds = manager.getSuppressedToolWindowIds())
+      if (manager.isNewUi) {
+        val defaultLayoutManager = serviceAsync<ToolWindowDefaultLayoutManager>()
+        val seedIds = defaultLayoutManager.getFactoryDefaultSeedIds()
+        val seeded = if (seedIds.isEmpty()) {
+          emptyList()
+        }
+        else {
+          seedFromFactoryDefault(
+            layout = layout,
+            ids = allTasks.map { it.id }.filter { it in seedIds },
+            factoryDefault = defaultLayoutManager.getFactoryDefaultLayoutCopy(),
+          )
+        }
+        if (seeded.isNotEmpty()) {
+          LOG.debug(project) { "seeded from the factory default layout: ${seeded.joinToString { info -> "${info.id}=${info.anchor}:${info.order}" }} (project=$it)" }
+        }
+      }
+      allTasks.map { task ->
         val existingInfo = layout.getInfo(task.id)
         val paneId = existingInfo?.safeToolWindowPaneId ?: WINDOW_INFO_DEFAULT_TOOL_WINDOW_PANE_ID
         PreparedRegisterToolWindowTask(
@@ -171,6 +204,22 @@ internal class ToolWindowSetInitializer(private val project: Project, private va
     }
 
     serviceAsync<ToolWindowManagerAppLevelHelper>()
+
+    if (onDefaultPaneToolWindowsRegistered != null) {
+      // a separate EDT task, the same as the pending tasks: the editor restoring can run between the two tasks
+      span("toolwindow default pane registered hook", Dispatchers.EDT) {
+        try {
+          onDefaultPaneToolWindowsRegistered()
+        }
+        catch (e: CancellationException) {
+          throw e
+        }
+        catch (e: Throwable) {
+          // a failure of the hook must not stop the initialization of the tool windows
+          LOG.error(e)
+        }
+      }
+    }
 
     postEntryProcessing(entries)
 
@@ -377,11 +426,8 @@ private fun beanToTask(
 
 @OptIn(ExperimentalCoroutinesApi::class)
 internal suspend fun computeToolWindowBeans(project: Project, projectFrameTypeId: String? = null): List<RegisterToolWindowTaskData> {
-  val projectFrameToolWindowLayoutProfileId = serviceAsync<ProjectFrameTypeService>().getToolWindowLayoutProfileId(projectFrameTypeId)
-  val suppressedToolWindowIds = serviceAsync<ProjectFrameToolWindowLayoutService>().getSuppressedToolWindowIds(
-    frameType = projectFrameTypeId,
-    profileId = projectFrameToolWindowLayoutProfileId,
-  )
+  val profileId = serviceAsync<ProjectFrameTypeService>().getToolWindowLayoutProfileId(projectFrameTypeId)
+  val suppressedToolWindowIds = serviceAsync<ProjectFrameToolWindowLayoutService>().getSuppressedToolWindowIds(profileId)
   return coroutineScope {
     ToolWindowEP.EP_NAME.filterableLazySequence().map { item ->
       async {

@@ -3,6 +3,7 @@ package com.intellij.formatting.visualLayer
 
 import com.intellij.application.options.CodeStyle
 import com.intellij.codeInsight.documentation.render.DocRenderItemUpdater
+import com.intellij.codeInsight.multiverse.EditorContextManager
 import com.intellij.codeInspection.incorrectFormatting.FormattingChanges
 import com.intellij.codeInspection.incorrectFormatting.detectFormattingChanges
 import com.intellij.formatting.visualLayer.VisualFormattingLayerElement.BlockInlay
@@ -17,7 +18,6 @@ import com.intellij.openapi.editor.ex.FoldingModelEx
 import com.intellij.openapi.editor.ex.util.EditorScrollingPositionKeeper
 import com.intellij.openapi.editor.impl.LineSet
 import com.intellij.openapi.util.Disposer
-import com.intellij.psi.PsiDocumentManager
 import org.jetbrains.annotations.ApiStatus
 import kotlin.math.min
 
@@ -78,7 +78,7 @@ class VisualFormattingLayerServiceImpl : VisualFormattingLayerService() {
   override fun collectVisualFormattingLayerElements(editor: Editor): List<VisualFormattingLayerElement> {
     if (!ApplicationManager.getApplication().isUnitTestMode && editor.document.isWritable) return emptyList()
     val project = editor.project ?: return emptyList()
-    val file = PsiDocumentManager.getInstance(project).getPsiFile(editor.document) ?: return emptyList()
+    val file = EditorContextManager.getPsiFileForEditor(editor, project) ?: return emptyList()
     val codeStyleSettings = editor.visualFormattingLayerCodeStyleSettings ?: return emptyList()
 
     var formattingChanges: FormattingChanges? = null
@@ -106,7 +106,7 @@ class VisualFormattingLayerServiceImpl : VisualFormattingLayerService() {
                                  formattedTextLineSet: LineSet,
                                  mismatch: FormattingChanges.WhitespaceMismatch,
                                  tabSize: Int): Sequence<VisualFormattingLayerElement?> = sequence {
-    val originalText = document.text
+    val originalText = document.immutableCharSequence
 
     val originalFirstLine = document.getLineNumber(mismatch.preFormatRange.startOffset)
     val replacementFirstLine = formattedTextLineSet.findLineIndex(mismatch.postFormatRange.startOffset)
@@ -160,8 +160,10 @@ class VisualFormattingLayerServiceImpl : VisualFormattingLayerService() {
                            formattedText, replacementLineStartOffset, replacementStartOffset, replacementEndOffset,
                            tabSize))
 
-      // add block inlay for M - N lines after firstLine, might be empty.
-      yield(blockInlay(document.getLineStartOffset(originalFirstLine + 1), m - n))
+      // add block inlay for M - N lines after firstLine. When N = M, firstLine can be the last line of the document.
+      if (m > n) {
+        yield(BlockInlay(document.getLineStartOffset(originalFirstLine + 1), m - n))
+      }
     }
 
 
@@ -241,11 +243,6 @@ class VisualFormattingLayerServiceImpl : VisualFormattingLayerService() {
         }
       }
     }
-  }
-
-  private fun blockInlay(offset: Int, lines: Int): VisualFormattingLayerElement? {
-    if (lines == 0) return null
-    return BlockInlay(offset, lines)
   }
 }
 

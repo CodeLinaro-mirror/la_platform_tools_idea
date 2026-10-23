@@ -4,8 +4,8 @@ A Kotlin DSL for defining IntelliJ product module composition and generating mod
 
 ## How to Run
 
+- **Bazel (preferred):** `bazel run //platform/buildScripts:plugin-model-tool`
 - **IDE:** Run configuration `Generate Product Layouts`
-- **Bazel:** `bazel run //platform/buildScripts:plugin-model-tool`
 - **CLI flags:**
   - `--json` outputs model analysis
   - `--json='{"filter":"products"}'` for specific sections
@@ -59,6 +59,8 @@ Module sets are defined in:
 ## Product Definition
 
 Products are defined in:
-- `platform/buildScripts/src/productLayout/` - Product specifications and ultimateGenerator.kt
+- `platform/buildScripts/src/productLayout/` - Product specifications
+- `platform/buildScripts/plugin-model/src/` - The generator, `ultimateGenerator.kt`
+- `community/platform/build-scripts/dev-dist-generator/src/` - The dev-distribution generator, which both halves run
 
-See [ultimateGenerator.kt](../../../../../../platform/buildScripts/src/productLayout/ultimateGenerator.kt) for the main entry point.
+See [ultimateGenerator.kt](../../../../../../platform/buildScripts/plugin-model/src/ultimateGenerator.kt) for the main entry point.

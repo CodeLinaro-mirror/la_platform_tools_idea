@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.platform.codeStyle.impl` start
+content_module_jar(module = ":codeStyle-impl")
+### auto-generated section `dev intellij.platform.codeStyle.impl` end
 
 ### auto-generated section `build intellij.platform.codeStyle.impl` start
-
 jvm_library(
     name = "codeStyle-impl",
     srcs = glob(
@@ -29,7 +33,6 @@ jvm_library(
         "//platform/util:util-ui",
         "//platform/core-impl",
         "@lib//:kotlin-stdlib",
-        "//libraries/stream",
         "//libraries/fastutil",
         "//platform/editor-ui-api:editor-ui",
         "//platform/progress/shared:ide-progress",
@@ -58,7 +61,6 @@ jvm_library(
         "//platform/util:util_test_lib",
         "//platform/util:util-ui_test_lib",
         "//platform/core-impl:core-impl_test_lib",
-        "//libraries/stream:stream_test_lib",
         "//libraries/fastutil:fastutil_test_lib",
         "//platform/editor-ui-api:editor-ui_test_lib",
         "//platform/progress/shared:ide-progress_test_lib",
@@ -72,6 +74,7 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.codeStyle.impl.iml",
+        "resources/intellij.platform.codeStyle.impl.xml",
     ],
     visibility = ["//visibility:public"],
 )

@@ -2,11 +2,14 @@
 
 package com.intellij.mcpserver.toolsets
 
+import com.intellij.internal.statistic.FUCollectorTestCase
 import com.intellij.mcpserver.GeneralMcpToolsetTestBase
 import com.intellij.mcpserver.McpExpectedError
 import com.intellij.mcpserver.McpSessionInvocationMode
 import com.intellij.mcpserver.settings.McpToolFilterSettings
 import com.intellij.mcpserver.toolsets.general.UniversalToolset
+import com.intellij.openapi.Disposable
+import com.intellij.testFramework.junit5.TestDisposable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
@@ -53,6 +56,63 @@ class UniversalToolsetTest : GeneralMcpToolsetTestBase() {
   @AfterEach
   fun restoreInvocationMode() {
     McpToolFilterSettings.getInstance().invocationMode = oldInvocationMode
+  }
+
+  /**
+   * A routed call is three rows: the `execute_tool` entry, the tool it dispatched to, and the dispatch itself. They
+   * only describe one call if they agree on `tool_call_id` — otherwise the dispatch row cannot be attributed to the
+   * tool that served it.
+   */
+  @Test
+  fun routed_call_reports_one_tool_call_id_on_all_of_its_rows(@TestDisposable disposable: Disposable) {
+    val rows = FUCollectorTestCase.collectLogEvents(disposable) {
+      runBlocking(Dispatchers.Default) {
+        testMcpTool(
+          UniversalToolset::execute_tool.name,
+          buildJsonObject {
+            put("command", JsonPrimitive("reformat_file --files '[\"src/Main.java\"]'"))
+          },
+          "ok",
+        )
+      }
+    }.filter { it.group.id == "mcpserver.events" }
+      .filter { it.event.id == "mcp.tool.call" || it.event.id == "mcp.execute_tool.dispatch" }
+
+    assertThat(rows.map { "${it.event.id}/${it.event.data["invocation_mode"] ?: "-"}" }).contains(
+      "mcp.tool.call/ROUTER_ENTRY",
+      "mcp.tool.call/VIA_ROUTER",
+      "mcp.execute_tool.dispatch/-",
+    )
+    // "undefined" is what an absent value reports as, so it is asserted against rather than treated as one id.
+    assertThat(rows.map { it.event.data["tool_call_id"] }.distinct())
+      .hasSize(1)
+      .doesNotContain(null, "undefined")
+  }
+
+  /**
+   * A client the IDE did not launch has no chat to name. The fields must then be absent rather than blank: a
+   * present-but-empty value would count that call into whatever bucket the empty string lands in.
+   */
+  @Test
+  fun a_call_with_no_owner_reports_no_chat_and_no_turn(@TestDisposable disposable: Disposable) {
+    val rows = FUCollectorTestCase.collectLogEvents(disposable) {
+      runBlocking(Dispatchers.Default) {
+        testMcpTool(
+          UniversalToolset::execute_tool.name,
+          buildJsonObject {
+            put("command", JsonPrimitive("reformat_file --files '[\"src/Main.java\"]'"))
+          },
+          "ok",
+        )
+      }
+    }.filter { it.group.id == "mcpserver.events" && it.event.id == "mcp.tool.call" }
+
+    assertThat(rows).isNotEmpty()
+    // The test session sets no owner key, which is the same state an external client is in.
+    assertThat(rows.map { it.event.data["launch_origin"] }.distinct()).containsExactly("EXTERNAL_CLIENT")
+    // "undefined" is what an absent value reports as; the point is that neither key is present at all.
+    assertThat(rows.flatMap { listOf(it.event.data["agent_session_id"], it.event.data["turn_id"]) })
+      .allMatch { it == null }
   }
 
   @Test
@@ -161,6 +221,19 @@ class UniversalToolsetTest : GeneralMcpToolsetTestBase() {
   }
 
   @Test
+  fun parse_args_to_json_accepts_array_for_object_schema() {
+    val jsonArgs = parseUniversalArgs(
+      listOf("--payload", "[]"),
+      buildJsonObject {
+        put("payload", buildJsonObject { put("type", JsonPrimitive("object")) })
+      },
+    )
+
+    assertThat(jsonArgs["payload"]).isInstanceOf(JsonArray::class.java)
+    assertThat(jsonArgs["payload"].toString()).isEqualTo("[]")
+  }
+
+  @Test
   fun parse_args_to_json_rejects_malformed_array_parameter() {
     val error = assertThrows(McpExpectedError::class.java) {
       parseUniversalArgs(
@@ -178,14 +251,14 @@ class UniversalToolsetTest : GeneralMcpToolsetTestBase() {
   fun parse_args_to_json_rejects_wrong_structured_json_shape() {
     val error = assertThrows(McpExpectedError::class.java) {
       parseUniversalArgs(
-        listOf("--payload", "[]"),
+        listOf("--items", "{\"enabled\":true}"),
         buildJsonObject {
-          put("payload", buildJsonObject { put("type", JsonPrimitive("object")) })
+          put("items", buildJsonObject { put("type", JsonPrimitive("array")) })
         },
       )
     }
 
-    assertThat(error.mcpErrorText).contains("Parameter 'payload' expects a JSON object")
+    assertThat(error.mcpErrorText).contains("Parameter 'items' expects a JSON array")
   }
 
   @Test

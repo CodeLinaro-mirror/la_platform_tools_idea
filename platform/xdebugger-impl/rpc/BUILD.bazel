@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.platform.debugger.impl.rpc` start
+content_module_jar(module = ":rpc")
+### auto-generated section `dev intellij.platform.debugger.impl.rpc` end
 
 ### auto-generated section `build intellij.platform.debugger.impl.rpc` start
-
 jvm_library(
     name = "rpc",
     srcs = glob(
@@ -20,6 +24,7 @@ jvm_library(
     visibility = ["//visibility:public"],
     deps = [
         # do not sort,
+        "//platform/kernel/rpc.lite",
         "@lib//:kotlin-stdlib",
         "//platform/kernel/shared:kernel",
         "//platform/xdebugger-api:debugger",
@@ -33,6 +38,7 @@ jvm_library(
         "//platform/remote-topics/shared:rpc-topics",
         "//platform/core-api:core",
         "//platform/execution",
+        "//platform/consoleView",
         "//platform/util/concurrency",
         "//fleet/rhizomedb",
     ],
@@ -50,6 +56,7 @@ jvm_library(
     runtime_deps = [
         # do not sort,
         ":rpc",
+        "//platform/kernel/rpc.lite:rpc.lite_test_lib",
         "//platform/kernel/shared:kernel_test_lib",
         "//platform/xdebugger-api:debugger_test_lib",
         "//libraries/kotlinx/serialization/core:core_test_lib",
@@ -62,6 +69,7 @@ jvm_library(
         "//platform/remote-topics/shared:rpc-topics_test_lib",
         "//platform/core-api:core_test_lib",
         "//platform/execution:execution_test_lib",
+        "//platform/consoleView:consoleView_test_lib",
         "//platform/util/concurrency:concurrency_test_lib",
         "//fleet/rhizomedb:rhizomedb_test_lib",
     ],
@@ -72,6 +80,8 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.debugger.impl.rpc.iml",
+        "resources/intellij.platform.debugger.impl.rpc.content.xml",
+        "resources/intellij.platform.debugger.impl.rpc.xml",
     ],
     visibility = ["//visibility:public"],
 )

@@ -1,7 +1,24 @@
+load("@jps_dynamic_deps_community//:targets.bzl", "dev_dist_plugin")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
-### auto-generated section `build intellij.sh.plugin` start
+### auto-generated section `dev intellij.sh.plugin` start
+dev_dist_plugin(
+    content_modules = [
+        # do not sort,
+        "intellij.sh.core",
+        "intellij.sh.backend",
+        "intellij.sh.terminal",
+        "intellij.sh.terminal.frontend",
+        "intellij.sh.copyright",
+        "intellij.sh.markdown",
+        "intellij.sh.python",
+        "intellij.sh.spellchecker",
+    ],
+    main_module = "intellij.sh.plugin",
+)
+### auto-generated section `dev intellij.sh.plugin` end
 
+### auto-generated section `build intellij.sh.plugin` start
 jvm_library(
     name = "plugin",
     srcs = glob(
@@ -33,13 +50,13 @@ jvm_library(
 exports_files(
     [
         "intellij.sh.plugin.iml",
+        "resources/META-INF/plugin.xml",
     ],
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.sh.plugin` end
 
 ### auto-generated section `build intellij.sh.plugin.main` start
-
 jvm_library(
     name = "plugin-main",
     srcs = glob(
@@ -57,6 +74,7 @@ jvm_library(
         "//plugins/sh/copyright",
         "//plugins/sh/markdown",
         "//plugins/sh/python",
+        "//plugins/sh/spellchecker",
     ],
 )
 
@@ -79,6 +97,7 @@ jvm_library(
         "//plugins/sh/copyright:copyright_test_lib",
         "//plugins/sh/markdown:markdown_test_lib",
         "//plugins/sh/python:python_test_lib",
+        "//plugins/sh/spellchecker:spellchecker_test_lib",
     ],
 )
 ### auto-generated section `build intellij.sh.plugin.main` end

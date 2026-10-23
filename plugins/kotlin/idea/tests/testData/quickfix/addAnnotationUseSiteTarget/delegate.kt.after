@@ -1,5 +1,5 @@
 // "Add use-site target 'delegate'" "true"
-// K2_ERROR: This annotation is not applicable to target 'top level property with delegate'. Applicable targets: field
+// K2_ERROR: WRONG_ANNOTATION_TARGET
 import kotlin.reflect.KProperty
 
 @Target(AnnotationTarget.FIELD)
@@ -13,5 +13,4 @@ class Abcd {
 @delegate:Anno
 var a by Abcd()
 
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AddAnnotationUseSiteTargetFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.WrongAnnotationTargetFixFactories$AddAnnotationUseSiteTargetFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.WrongAnnotationTargetFixFactories$AddAnnotationUseSiteTargetFix

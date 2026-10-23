@@ -12,6 +12,7 @@ import com.intellij.platform.backend.presentation.TargetPresentation
 import com.intellij.platform.lsp.api.customization.LspHoverSupport
 import com.intellij.platform.lsp.impl.LspClientImpl
 import com.intellij.platform.lsp.impl.LspClientManagerImpl
+import com.intellij.platform.lsp.impl.supportsHover
 import com.intellij.psi.PsiFile
 import com.intellij.util.concurrency.annotations.RequiresReadLock
 import org.eclipse.lsp4j.MarkupContent
@@ -26,7 +27,7 @@ internal class LspDocumentationTargetProvider : DocumentationTargetProvider {
     val offsetInHost = injectedLanguageManager.injectedToHost(psiFile, offset)
     val file = hostPsiFile.virtualFile ?: return emptyList()
 
-    return LspClientManagerImpl.getInstanceImpl(project).getClientsWithThisFileOpen(file).mapNotNull { lspClient ->
+    return LspClientManagerImpl.getInstanceImpl(project).getClientsForFileRequests(file).mapNotNull { lspClient ->
       if (lspClient.descriptor.lspCustomization.hoverCustomizer !is LspHoverSupport) return@mapNotNull null
       if (!lspClient.supportsHover()) return@mapNotNull null
 
@@ -64,7 +65,7 @@ private class LspDocumentationTarget(
       .builder(presentableText ?: CodeInsightBundle.message("documentation.tool.window.title"))
       .presentation()
 
-  @RequiresReadLock
+  @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
   override fun computeDocumentation(): DocumentationResult =
     createLspDocumentationData(markupContent)
       .toQuickDocHtml(project)

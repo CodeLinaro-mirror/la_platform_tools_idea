@@ -3,10 +3,20 @@ load("@rules_jvm//:jvm.bzl", "jvm_library")
 load("//build:compiler-options.bzl", "create_kotlinc_options")
 
 ### auto-generated section `build intellij.kotlin.refactorings.tests` start
-
 create_kotlinc_options(
     name = "custom_kotlin-refactorings-tests",
-    opt_in = ["org.jetbrains.kotlin.analysis.api.permissions.KaAllowProhibitedAnalyzeFromWriteAction"],
+    opt_in = [
+        "org.jetbrains.kotlin.psi.KtExperimentalApi",
+        "org.jetbrains.kotlin.psi.KtNonPublicApi",
+        "org.jetbrains.kotlin.psi.KtIdeApi",
+        "org.jetbrains.kotlin.analysis.api.KaExperimentalApi",
+        "org.jetbrains.kotlin.analysis.api.KaIdeApi",
+        "org.jetbrains.kotlin.analysis.api.KaPlatformInterface",
+        "org.jetbrains.kotlin.analysis.api.fir.diagnostics.KaUnstableDiagnosticApi",
+        "org.jetbrains.kotlin.analysis.api.KaNonPublicApi",
+        "org.jetbrains.kotlin.analysis.api.KaContextParameterApi",
+        "org.jetbrains.kotlin.analysis.api.permissions.KaAllowProhibitedAnalyzeFromWriteAction",
+    ],
     x_context_parameters = True,
 )
 
@@ -18,11 +28,7 @@ jvm_library(
     ),
     module_name = "intellij.kotlin.refactorings.tests",
     visibility = ["//visibility:public"],
-    runtime_deps = [
-        # do not sort,
-        "//plugins/kotlin/fir",
-        "//plugins/kotlin/base/psi",
-    ],
+    runtime_deps = ["//plugins/kotlin:kotlin-plugin-community-main"],
 )
 
 jvm_library(
@@ -45,6 +51,7 @@ jvm_library(
     runtime_deps = [
         # do not sort,
         ":kotlin-refactorings-tests",
+        "//plugins/kotlin:kotlin-plugin-community-main_test_lib",
         "//platform/ide-core:ide-core_test_lib",
         "//platform/platform-impl:ide-impl_test_lib",
         "//platform/observable:observable_test_lib",
@@ -65,13 +72,13 @@ jvm_library(
         "//platform/lang-core:lang-core_test_lib",
         "//platform/lang-api:lang",
         "//platform/lang-api:lang_test_lib",
-        "//plugins/kotlin/plugin/k2",
-        "//plugins/kotlin/plugin/k2:k2_test_lib",
         "//plugins/kotlin/references",
         "//plugins/kotlin/references:references_test_lib",
         "@lib//:kotlinc-kotlin-compiler-tests",
-        "@lib//:kotlinc-kotlin-compiler-common",
-        "@lib//:kotlinc-analysis-api",
+        "//libraries/kotlinc/kotlin-compiler-common:libraries-kotlinc-kotlin-compiler-common",
+        "//libraries/kotlinc/kotlin-compiler-common:libraries-kotlinc-kotlin-compiler-common_test_lib",
+        "//libraries/kotlinc/analysis-api:libraries-kotlinc-analysis-api",
+        "//libraries/kotlinc/analysis-api:libraries-kotlinc-analysis-api_test_lib",
         "//plugins/kotlin/fir",
         "//plugins/kotlin/fir:fir_test_lib",
         "//java/testFramework",
@@ -117,6 +124,8 @@ jvm_library(
         "//libraries/gson:gson_test_lib",
         "//plugins/kotlin/intellij.kotlin.base.test:base-test",
         "//plugins/kotlin/intellij.kotlin.base.test:base-test_test_lib",
+        "//plugins/editorconfig:editorconfig-plugin",
+        "//plugins/editorconfig:editorconfig-plugin_test_lib",
         "//jps/model-api:model",
         "//jps/model-api:model_test_lib",
         "//platform/projectModel-api:projectModel",
@@ -147,7 +156,10 @@ jvm_library(
         "//platform/observable",
         "//java/openapi:java",
         "//java/openapi:java_test_lib",
-        "@lib//:kotlinc-analysis-api-platform-interface",
+        "//libraries/kotlinc/analysis-api-platform-interface:libraries-kotlinc-analysis-api-platform-interface",
+        "//libraries/kotlinc/analysis-api-platform-interface:libraries-kotlinc-analysis-api-platform-interface_test_lib",
+        "//libraries/kotlinc/symbol-light-classes:libraries-kotlinc-symbol-light-classes",
+        "//libraries/kotlinc/symbol-light-classes:libraries-kotlinc-symbol-light-classes_test_lib",
         "//plugins/kotlin/base/external-build-system:kotlin-base-externalSystem",
         "//plugins/kotlin/base/external-build-system:kotlin-base-externalSystem_test_lib",
         "//platform/util/jdom",
@@ -158,8 +170,10 @@ jvm_library(
         "//platform/code-style-api:codeStyle_test_lib",
         "//libraries/junit4",
         "//libraries/junit4:junit4_test_lib",
-        "//libraries/junit5",
-        "//libraries/junit5:junit5_test_lib",
+        "//libraries/junit6",
+        "//libraries/junit6:junit6_test_lib",
+        "//plugins/editorconfig/backend",
+        "//plugins/editorconfig/backend:backend_test_lib",
     ],
 )
 ### auto-generated section `build intellij.kotlin.refactorings.tests` end
@@ -174,7 +188,6 @@ exports_files(
 ### auto-generated section `iml intellij.kotlin.refactorings.tests` end
 
 ### auto-generated section `test intellij.kotlin.refactorings.tests` start
-
 jps_test(
     name = "kotlin-refactorings-tests_test",
     runtime_deps = [":kotlin-refactorings-tests_test_lib"],

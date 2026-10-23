@@ -8,10 +8,10 @@ import com.intellij.modcommand.ModPsiUpdater
 import com.intellij.modcommand.Presentation
 import com.intellij.openapi.util.TextRange
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.components.KaDiagnosticCheckerFilter
-import org.jetbrains.kotlin.analysis.api.components.collectDiagnostics
+import org.jetbrains.kotlin.analysis.api.diagnostics.diagnostics
 import org.jetbrains.kotlin.analysis.api.fir.diagnostics.KaFirDiagnostic
 import org.jetbrains.kotlin.analysis.api.symbols.KaPropertySymbol
+import org.jetbrains.kotlin.analysis.api.symbols.symbol
 import org.jetbrains.kotlin.idea.codeinsight.api.applicable.asUnit
 import org.jetbrains.kotlin.idea.codeinsight.api.applicable.intentions.KotlinApplicableModCommandAction
 import org.jetbrains.kotlin.idea.codeinsight.api.applicators.ApplicabilityRange
@@ -58,7 +58,8 @@ internal abstract class AbstractAddAccessorIntention(
         return true
     }
 
-    override fun KaSession.prepareContext(element: KtProperty): Unit? {
+    context(session: KaSession)
+    override fun prepareContext(element: KtProperty): Unit? {
         if (element.isPropertyNotInitialized()) return null
         if (element.annotationEntries.isEmpty()) return Unit
         val symbol = element.symbol as? KaPropertySymbol ?: return null
@@ -69,10 +70,7 @@ internal abstract class AbstractAddAccessorIntention(
 
     context(_: KaSession)
     private fun KtProperty.isPropertyNotInitialized(): Boolean {
-        // TODO: when KT-63221 is fixed use `diagnostics(KaDiagnosticCheckerFilter.ONLY_COMMON_CHECKERS)` instead
-        return containingKtFile.collectDiagnostics(KaDiagnosticCheckerFilter.ONLY_COMMON_CHECKERS)
-            .filter { it.psi == this@isPropertyNotInitialized }
-            .any { it is KaFirDiagnostic.MustBeInitialized }
+        return diagnostics().directOnly(true).any { it is KaFirDiagnostic.MustBeInitialized }
     }
 
     override fun invoke(

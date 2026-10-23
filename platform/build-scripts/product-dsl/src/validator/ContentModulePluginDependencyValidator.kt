@@ -46,7 +46,7 @@ internal object ContentModulePluginDependencyValidator : PipelineNode {
 
   override val requires: Set<DataSlot<*>> get() = setOf(Slots.CONTENT_MODULE_PLAN)
 
-  override suspend fun execute(ctx: ComputeContext) {
+  override fun execute(ctx: ComputeContext) {
     val model = ctx.model
     val plans = ctx.get(Slots.CONTENT_MODULE_PLAN).plans
     val dslDeclaredModules = HashSet<ContentModuleName>()
@@ -133,7 +133,7 @@ private fun validateContentModulePluginDependencies(
       val moduleName = plan.contentModuleName
 
       val writtenPluginDeps = plan.writtenPluginDependencies.toHashSet()
-      val allJpsPluginDeps = plan.allJpsPluginDependencies
+      val requiredPluginDeps = plan.requiredPluginDependencies
 
       val isDslDeclaredModule = moduleName in dslDeclaredModules
       val allowedForModule = if (isDslDeclaredModule) {
@@ -147,7 +147,9 @@ private fun validateContentModulePluginDependencies(
       // (including --update-suppressions auto-capture) and must not fail validation.
       val plannerSuppressedForModule = plan.suppressedPlugins
 
-      val candidateMissing = allJpsPluginDeps - writtenPluginDeps - allowedForModule - plannerSuppressedForModule
+      val candidateMissing = requiredPluginDeps.filterNotTo(LinkedHashSet()) {
+        it in writtenPluginDeps || it in allowedForModule || it in plannerSuppressedForModule
+      }
       if (candidateMissing.isEmpty()) {
         continue
       }

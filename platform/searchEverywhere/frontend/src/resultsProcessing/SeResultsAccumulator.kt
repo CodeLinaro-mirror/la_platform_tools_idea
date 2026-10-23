@@ -9,6 +9,8 @@ import com.intellij.platform.searchEverywhere.SeResultAddedEvent
 import com.intellij.platform.searchEverywhere.SeResultEndEvent
 import com.intellij.platform.searchEverywhere.SeResultEvent
 import com.intellij.platform.searchEverywhere.SeResultReplacedEvent
+import com.intellij.platform.searchEverywhere.SeResultSkippedEvent
+import com.intellij.platform.searchEverywhere.composedWeight
 import com.intellij.platform.searchEverywhere.providers.topHit.SeTopHitItemsProvider
 import com.intellij.platform.searchEverywhere.toProviderId
 import com.intellij.platform.searchEverywhere.withUuidToReplace
@@ -36,7 +38,7 @@ class SeResultsAccumulator() {
 
           items[event.newItemData.uuid] = event.newItemData
         }
-        is SeResultEndEvent, null -> {}
+        is SeResultEndEvent, is SeResultSkippedEvent, null -> {}
       }
 
       return event
@@ -54,7 +56,7 @@ class SeResultsAccumulator() {
         }?.let { oldItem ->
           // If we found a duplicated topHit value, we check the priority. If the priority is higher, we replace the existing one,
           // otherwise, we ignore this element by returning null from the function
-          if (newItem.weight > oldItem.weight) oldItem.uuid
+          if (newItem.composedWeight > oldItem.composedWeight) oldItem.uuid
           else return null
         }
       }

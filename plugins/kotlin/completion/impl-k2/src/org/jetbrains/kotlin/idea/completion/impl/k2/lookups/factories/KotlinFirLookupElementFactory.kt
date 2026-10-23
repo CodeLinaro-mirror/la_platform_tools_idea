@@ -5,12 +5,11 @@ package org.jetbrains.kotlin.idea.completion.impl.k2.lookups.factories
 import com.intellij.codeInsight.lookup.LookupElement
 import com.intellij.codeInsight.lookup.LookupElementBuilder
 import org.jetbrains.annotations.ApiStatus
-import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.components.asSignature
 import org.jetbrains.kotlin.analysis.api.signatures.KaCallableSignature
 import org.jetbrains.kotlin.analysis.api.signatures.KaFunctionSignature
 import org.jetbrains.kotlin.analysis.api.signatures.KaVariableSignature
+import org.jetbrains.kotlin.analysis.api.signatures.asSignature
 import org.jetbrains.kotlin.analysis.api.symbols.KaCallableSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassKind
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassLikeSymbol
@@ -24,6 +23,7 @@ import org.jetbrains.kotlin.analysis.api.types.KaType
 import org.jetbrains.kotlin.analysis.api.types.KaTypeProjection
 import org.jetbrains.kotlin.idea.completion.ItemPriority
 import org.jetbrains.kotlin.idea.completion.impl.k2.ImportStrategyDetector
+import org.jetbrains.kotlin.idea.completion.impl.k2.contributors.K2NamedArgumentCompletionContributor.MissingParameterInfo
 import org.jetbrains.kotlin.idea.completion.impl.k2.handlers.BracketOperatorInsertionHandler
 import org.jetbrains.kotlin.idea.completion.impl.k2.handlers.Tail
 import org.jetbrains.kotlin.idea.completion.impl.k2.lookups.CallableInsertionOptions
@@ -66,7 +66,6 @@ object KotlinFirLookupElementFactory {
         is KaTypeParameterSymbol -> TypeParameterLookupElementFactory.createLookup(symbol)
     }
 
-    @OptIn(KaExperimentalApi::class)
     context(_: KaSession)
     fun createLookupElement(
         symbol: KaNamedSymbol,
@@ -92,9 +91,10 @@ object KotlinFirLookupElementFactory {
         options: CallableInsertionOptions,
         expectedType: KaType? = null,
         aliasName: Name? = null,
+        smartCastType: KaType? = null,
     ): LookupElementBuilder = when (signature) {
         is KaFunctionSignature<*> -> FunctionLookupElementFactory.createLookup(name, signature, options, expectedType, aliasName)
-        is KaVariableSignature<*> -> VariableLookupElementFactory.createLookup(signature, options, aliasName)
+        is KaVariableSignature<*> -> VariableLookupElementFactory.createLookup(signature, options, aliasName, smartCastType)
     }
 
     context(_: KaSession)
@@ -151,8 +151,8 @@ object KotlinFirLookupElementFactory {
         PackagePartLookupElementFactory.createLookup(packagePartFqName)
 
     context(_: KaSession)
-    fun createNamedArgumentLookupElement(name: Name, types: List<IndexedValue<KaType>>): LookupElement =
-        NamedArgumentLookupElementFactory.createLookup(name, types)
+    internal fun createNamedArgumentLookupElement(name: Name, missingParameters: List<MissingParameterInfo>): LookupElement =
+        NamedArgumentLookupElementFactory.createLookup(name, missingParameters)
 
     fun createNamedArgumentWithValueLookupElement(name: Name, value: String, index: Int): LookupElement =
         NamedArgumentLookupElementFactory.createLookup(name, value, index)

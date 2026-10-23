@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.platform.execution.serviceView` start
+content_module_jar(module = ":execution.serviceView")
+### auto-generated section `dev intellij.platform.execution.serviceView` end
 
 ### auto-generated section `build intellij.platform.execution.serviceView` start
-
 jvm_library(
     name = "execution.serviceView",
     srcs = glob(
@@ -50,6 +54,7 @@ jvm_library(
         "//libraries/fastutil",
         "//platform/util:util-ui",
         "//fleet/rhizomedb",
+        "//platform/execution-impl",
     ],
 )
 
@@ -95,6 +100,7 @@ jvm_library(
         "//libraries/fastutil:fastutil_test_lib",
         "//platform/util:util-ui_test_lib",
         "//fleet/rhizomedb:rhizomedb_test_lib",
+        "//platform/execution-impl:execution-impl_test_lib",
     ],
 )
 ### auto-generated section `build intellij.platform.execution.serviceView` end
@@ -103,6 +109,7 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.execution.serviceView.iml",
+        "resources/intellij.platform.execution.serviceView.xml",
     ],
     visibility = ["//visibility:public"],
 )

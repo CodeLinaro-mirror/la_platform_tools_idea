@@ -4,9 +4,11 @@ package com.intellij.compiler;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.io.IoTestUtil;
-import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.StandardFileSystems;
 import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.vfs.newvfs.RefreshQueue;
+import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.io.Compressor;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
@@ -14,7 +16,6 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.jps.builders.impl.java.JavacCompilerTool;
 import org.jetbrains.jps.builders.java.CannotCreateJavaCompilerException;
 import org.jetbrains.jps.javac.JpsJavacFileManager;
-import org.jetbrains.jps.javac.JpsJavacFileProvider;
 import org.jetbrains.jps.javac.OutputFileObject;
 import org.jetbrains.jps.javac.ZipFileObject;
 
@@ -53,7 +54,7 @@ public class JavaCompilerBasicTest extends BaseCompilerTestCase {
 
     File b = new File(VfsUtilCore.virtualToIoFile(srcRoot), "B.java");
     FileUtil.writeToFile(b, "public class B{}");
-    LocalFileSystem.getInstance().refreshIoFiles(Collections.singletonList(b));
+    RefreshQueue.getInstance().refreshPaths(false, false, null, ContainerUtil.map(Collections.singletonList(b), File::toPath));
     make(module);
     assertOutput(module, fs().file("A.class").file("B.class"));
 
@@ -78,7 +79,7 @@ public class JavaCompilerBasicTest extends BaseCompilerTestCase {
       }
     }, Locale.US, null);
 
-    try (final JpsJavacFileManager fileManager = new JpsJavacFileManager(new DummyContext(stdFileManager), true, Collections.emptyList(), (JpsJavacFileProvider)null)) {
+    try (final JpsJavacFileManager fileManager = new JpsJavacFileManager(new DummyContext(stdFileManager), true, Collections.emptyList())) {
       fileManager.setLocation(StandardLocation.CLASS_PATH, Collections.singleton(jarFile));
       fileManager.setLocation(StandardLocation.SOURCE_PATH, Collections.emptyList());
 
@@ -112,7 +113,7 @@ public class JavaCompilerBasicTest extends BaseCompilerTestCase {
       }
     }, Locale.US, null);
 
-    try (final JpsJavacFileManager fileManager = new JpsJavacFileManager(new DummyContext(stdFileManager), true, Collections.emptyList(), (JpsJavacFileProvider)null)) {
+    try (final JpsJavacFileManager fileManager = new JpsJavacFileManager(new DummyContext(stdFileManager), true, Collections.emptyList())) {
       fileManager.setLocation(StandardLocation.CLASS_OUTPUT, Collections.singleton(outputRoot));
 
       final Iterable<JavaFileObject> files = fileManager.list(StandardLocation.CLASS_OUTPUT, "ppp", Set.of(JavaFileObject.Kind.CLASS, JavaFileObject.Kind.OTHER), false);
@@ -147,7 +148,7 @@ public class JavaCompilerBasicTest extends BaseCompilerTestCase {
       }
     }, Locale.US, null);
     
-    try (final JpsJavacFileManager fileManager = new JpsJavacFileManager(new DummyContext(stdFileManager), true, Collections.emptyList(), (JpsJavacFileProvider)null)) {
+    try (final JpsJavacFileManager fileManager = new JpsJavacFileManager(new DummyContext(stdFileManager), true, Collections.emptyList())) {
       fileManager.setLocation(StandardLocation.CLASS_PATH, Collections.singleton(jarFile));
       fileManager.setLocation(StandardLocation.SOURCE_PATH, Collections.emptyList());
 
@@ -200,7 +201,7 @@ public class JavaCompilerBasicTest extends BaseCompilerTestCase {
       }
     }, Locale.US, null);
 
-    try (final JpsJavacFileManager fileManager = new JpsJavacFileManager(new DummyContext(stdFileManager), true, Collections.emptyList(), (JpsJavacFileProvider)null)) {
+    try (final JpsJavacFileManager fileManager = new JpsJavacFileManager(new DummyContext(stdFileManager), true, Collections.emptyList())) {
       fileManager.setLocation(StandardLocation.SOURCE_PATH, Collections.emptyList());
       fileManager.handleOption("--patch-module", Arrays.asList("java.desktop=" + srcRoot.getPath()).iterator());
 
@@ -252,7 +253,7 @@ public class JavaCompilerBasicTest extends BaseCompilerTestCase {
     FileUtil.delete(linkFile); // ensure the link does not exist
     String symlink = Files.createSymbolicLink(linkFile.toPath(), Paths.get(srcRoot.getPath())).getFileName().toString();
 
-    VirtualFile sourceRoot = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(new File(srcRoot.getParent().getPath(), symlink));
+    VirtualFile sourceRoot = StandardFileSystems.local().refreshAndFindFileByPath(new File(srcRoot.getParent().getPath(), symlink).getAbsolutePath());
     assertNotNull(sourceRoot);
     final Module module = addModule("a", sourceRoot);
 

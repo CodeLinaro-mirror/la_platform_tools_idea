@@ -43,6 +43,7 @@
   <action id="SaveAll">
     <keyboard-shortcut first-keystroke="control shift S"/>
   </action>
+  <action id="SaveAs"/>
   <action id="CloseContent"/>
   <action id="CloseEditor">
     <keyboard-shortcut first-keystroke="control F4"/>
@@ -90,7 +91,6 @@
   <action id="ActivateProjectToolWindow">
     <keyboard-shortcut first-keystroke="alt X"/>
   </action>
-  <action id="FocusTracer"/>
   <action id="ToggleFullScreen">
     <keyboard-shortcut first-keystroke="control shift F11"/>
   </action>

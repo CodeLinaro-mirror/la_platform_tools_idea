@@ -2,6 +2,7 @@
 
 package com.intellij.mcpserver.toolsets.vcs
 
+import com.intellij.mcpserver.McpServerBundle
 import com.intellij.mcpserver.McpToolset
 import com.intellij.mcpserver.annotations.McpDescription
 import com.intellij.mcpserver.annotations.McpTool
@@ -16,8 +17,8 @@ import com.intellij.mcpserver.util.resolveInProject
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vcs.ProjectLevelVcsManager
 import com.intellij.openapi.vcs.VcsException
-import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.vfs.VirtualFileManager
 import git4idea.commands.Git
 import git4idea.commands.GitCommand
 import git4idea.commands.GitLineHandler
@@ -32,6 +33,9 @@ import kotlin.io.path.exists
 import kotlin.io.path.isDirectory
 
 class VcsToolset : McpToolset {
+  override fun displayName(): String = McpServerBundle.message("toolset.display.name.vcs")
+
+  override fun displayDescription(toolName: String): String? = McpServerBundle.message("tool.description.$toolName")
 
   @Serializable
   class VcsRoots(val roots: Array<VcsRoot>)
@@ -185,7 +189,7 @@ class VcsToolset : McpToolset {
 
     while (current.startsWith(projectDirectory)) {
       if (current.resolve(".git").exists()) {
-        val root = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(current) ?: break
+        val root = VirtualFileManager.getInstance().refreshAndFindFileByNioPath(current) ?: break
         val currentBranch = try {
           readCurrentBranchName(project, root)
         }

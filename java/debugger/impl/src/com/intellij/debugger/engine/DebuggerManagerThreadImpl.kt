@@ -41,6 +41,7 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Runnable
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
@@ -62,7 +63,8 @@ import kotlin.system.measureNanoTime
 class DebuggerManagerThreadImpl @ApiStatus.Internal constructor(
   parent: Disposable,
   private val parentScope: CoroutineScope,
-) : InvokeAndWaitThread<DebuggerCommandImpl?>(), DebuggerManagerThread, Disposable {
+  workJob: Job,
+) : InvokeAndWaitThread<DebuggerCommandImpl?>(workJob), DebuggerManagerThread, Disposable {
 
   @Volatile
   private var myDisposed = false
@@ -90,6 +92,7 @@ class DebuggerManagerThreadImpl @ApiStatus.Internal constructor(
 
   init {
     Disposer.register(parent, this)
+    startNewWorkerThread()
   }
 
   override fun dispose() {
@@ -97,11 +100,12 @@ class DebuggerManagerThreadImpl @ApiStatus.Internal constructor(
     closeAndCancel()
   }
 
+  /** Stops the current workers and commands. The owner can restart this manager before final disposal. */
   @ApiStatus.Internal
   fun closeAndCancel() {
     if (myClosed.compareAndSet(false, true)) {
       close()
-      cancelScope()
+      coroutineScope.cancel()
     }
   }
 
@@ -217,7 +221,8 @@ class DebuggerManagerThreadImpl @ApiStatus.Internal constructor(
               throw RuntimeException(e)
             }
             finally {
-              if (!myDisposed) {
+              // after close the stopped worker drains the queue itself, and a new worker would outlive the work job
+              if (!myDisposed && !myClosed.get()) {
                 startNewWorkerThread()
               }
             }
@@ -367,17 +372,18 @@ class DebuggerManagerThreadImpl @ApiStatus.Internal constructor(
   }
 
   @ApiStatus.Internal
-  fun cancelScope() {
-    coroutineScope.cancel()
-  }
-
-  @ApiStatus.Internal
   @OptIn(AwaitCancellationAndInvoke::class)
   fun afterScopeCancellation(callback: Runnable) {
     coroutineScope.awaitCancellationAndInvoke { callback.run() }
   }
 
   companion object {
+    private fun createWorkJob(parent: Disposable): Job {
+      val job = SupervisorJob()
+      Disposer.register(parent, Disposable { job.complete() })
+      return job
+    }
+
     private val LOG = Logger.getInstance(DebuggerManagerThreadImpl::class.java)
     private val myCurrentCommands = ThreadLocal.withInitial { ArrayDeque<DebuggerCommandImpl>() }
 
@@ -396,7 +402,7 @@ class DebuggerManagerThreadImpl @ApiStatus.Internal constructor(
         thread?.currentRequest?.join()
       }
       Disposer.register(parent, disposable)
-      return DebuggerManagerThreadImpl(disposable, (project as ComponentManagerEx).getCoroutineScope())
+      return DebuggerManagerThreadImpl(disposable, (project as ComponentManagerEx).getCoroutineScope(), createWorkJob(disposable))
         .also { thread = it }
     }
 

@@ -65,7 +65,7 @@ abstract class DvcsCloneDialogComponent @ApiStatus.Internal constructor(
           CloneDvcsValidationUtils.checkRepositoryURL(it, it.text.trim())
         }
       }
-      row(VcsBundle.message("vcs.common.labels.directory")) {
+      row(VcsBundle.message("clone.dialog.directory.to.clone.label.text")) {
         cell(directoryField).align(AlignX.FILL).validationOnApply {
           checkDirectory(it.text, it.textField, dialogStateListener)
         }
@@ -123,10 +123,10 @@ abstract class DvcsCloneDialogComponent @ApiStatus.Internal constructor(
 
   override fun dispose() {}
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   protected open fun isOkActionEnabled(): Boolean = getUrl().isNotBlank()
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   protected fun updateOkActionState(dialogStateListener: VcsCloneDialogComponentStateListener) {
     dialogStateListener.onOkActionEnabled(isOkActionEnabled())
   }

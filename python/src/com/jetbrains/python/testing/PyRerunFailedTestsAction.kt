@@ -9,7 +9,6 @@ import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.configurations.RunConfigurationBase
 import com.intellij.execution.configurations.RunProfileState
 import com.intellij.execution.runners.ExecutionEnvironment
-import com.intellij.execution.runners.ProgramRunner
 import com.intellij.execution.target.TargetEnvironment
 import com.intellij.execution.target.TargetEnvironmentRequest
 import com.intellij.execution.target.value.TargetEnvironmentFunction
@@ -92,9 +91,6 @@ class PyRerunFailedTestsAction(componentContainer: ComponentContainer) : Abstrac
       return super.execute(executor, converter)
     }
 
-    @Throws(ExecutionException::class)
-    override fun execute(executor: Executor, runner: ProgramRunner<*>): ExecutionResult = execute(executor, *arrayOfNulls<CommandLinePatcher>(0))
-
     /**
      * *To be deprecated. The part of the legacy implementation based on [GeneralCommandLine].*
      */
@@ -108,7 +104,7 @@ class PyRerunFailedTestsAction(componentContainer: ComponentContainer) : Abstrac
         getTestSpecImpl(request)
       })
 
-    @RequiresReadLock
+    @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
     private fun getTestSpecImpl(): List<String> {
       val failedTests = getFailedTests(project)
       val failedTestLocations = getTestLocations(failedTests)
@@ -126,7 +122,7 @@ class PyRerunFailedTestsAction(componentContainer: ComponentContainer) : Abstrac
       return result
     }
 
-    @RequiresReadLock
+    @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
     private fun getTestSpecImpl(request: TargetEnvironmentRequest): List<TargetEnvironmentFunction<String>> {
       val failedTests = getFailedTests(project)
       val failedTestLocations = getTestLocations(failedTests)

@@ -17,7 +17,6 @@ import com.intellij.idea.AppMode
 import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.diagnostic.thisLogger
-import com.intellij.platform.runtime.product.ProductMode
 import com.intellij.platform.runtime.product.serialization.ProductModulesSerialization
 import com.intellij.platform.runtime.repository.RuntimeModuleId
 import com.intellij.platform.runtime.repository.RuntimeModuleLoadingRule
@@ -32,51 +31,27 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.name
 
 internal class ModuleBasedProductLoadingStrategy(internal val moduleRepository: RuntimeModuleRepository) : ProductLoadingStrategy() {
-  private val currentMode: MutableStateFlow<String> by lazy { MutableStateFlow(computeInitialModeId()) }
-
-  override val currentModeId: String
-    get() = currentMode.value
-
-  override val currentModeIdFlow: StateFlow<String>
-    get() = currentMode
-
   private val productModules by lazy {
     val rootModuleId = System.getProperty(PLATFORM_ROOT_MODULE_PROPERTY)
     if (rootModuleId == null) {
       error("'$PLATFORM_ROOT_MODULE_PROPERTY' system property is not specified")
     }
 
-    val rootModule = moduleRepository.getModule(RuntimeModuleId.legacyJpsModule(rootModuleId))
+    val rootModule = moduleRepository.findModuleHeader(RuntimeModuleId.legacyJpsModule(rootModuleId))
+    if (rootModule == null) {
+      error("Root module '$rootModuleId' is not found in the module repository")
+    }
     val productModulesPath = "META-INF/$rootModuleId/product-modules.xml"
     val moduleGroupStream = rootModule.readFile(productModulesPath)
     if (moduleGroupStream == null) {
       error("$productModulesPath is not found in '$rootModuleId' module")
     }
     ProductModulesSerialization.loadProductModules(moduleGroupStream, productModulesPath, moduleRepository)
-  }
-
-  private fun computeInitialModeId(): String {
-    val initialModeId = if (AppMode.isIjLight()) ProductMode.LIGHT.id
-                        else System.getProperty(PLATFORM_PRODUCT_MODE_PROPERTY, ProductMode.MONOLITH.id)
-    if (ProductMode.findById(initialModeId) == null) {
-      error("Unknown mode '$initialModeId' specified in '$PLATFORM_PRODUCT_MODE_PROPERTY' system property")
-    }
-    return initialModeId
-  }
-
-  override fun advanceToLightWithRdConnectionMode(): Boolean {
-    return currentMode.compareAndSet(ProductMode.LIGHT.id, ProductMode.LIGHT_WITH_RD_CONNECTION.id)
-  }
-
-  override fun advanceToFrontendMode(): Boolean {
-    return currentMode.compareAndSet(ProductMode.LIGHT_WITH_RD_CONNECTION.id, ProductMode.FRONTEND.id)
   }
 
   override fun addMainModuleGroupToClassPath(bootstrapClassLoader: ClassLoader) {
@@ -299,11 +274,11 @@ internal class ModuleBasedProductLoadingStrategy(internal val moduleRepository: 
   }
 
   override fun findProductContentModuleClassesRoot(moduleId: PluginModuleId, moduleDir: Path): Path? {
-    var resolvedModule = moduleRepository.resolveModule(RuntimeModuleId.contentModule(moduleId.name, moduleId.namespace)).resolvedModule
+    var resolvedModule = moduleRepository.findModuleHeader(RuntimeModuleId.contentModule(moduleId.name, moduleId.namespace))
     if (resolvedModule == null && moduleId.namespace == PluginModuleId.JETBRAINS_NAMESPACE) {
       /* until IJPL-241655 is implemented, we may not detect proper namespace for some modules, e.g. `intellij.cwm.connection.frontend.split`,
          so try searching with a different namespace */
-      resolvedModule = moduleRepository.resolveModule(RuntimeModuleId.legacyJpsModule(moduleId.name)).resolvedModule
+      resolvedModule = moduleRepository.findModuleHeader(RuntimeModuleId.legacyJpsModule(moduleId.name))
     }
     if (resolvedModule == null) {
       // https://youtrack.jetbrains.com/issue/CPP-38280
@@ -312,7 +287,7 @@ internal class ModuleBasedProductLoadingStrategy(internal val moduleRepository: 
       return null
     }
 
-    val paths = resolvedModule.resourceRootPaths
+    val paths = resolvedModule.ownClasspath
     val singlePath = paths.singleOrNull()
     if (singlePath != null) {
       return singlePath
@@ -328,4 +303,3 @@ internal class ModuleBasedProductLoadingStrategy(internal val moduleRepository: 
 
 private const val PLATFORM_CORE_PLUGIN_DESCRIPTOR_MODULE_PROPERTY = "intellij.platform.core.plugin.descriptor.module"
 private const val PLATFORM_ROOT_MODULE_PROPERTY = "intellij.platform.root.module"
-private const val PLATFORM_PRODUCT_MODE_PROPERTY = "intellij.platform.product.mode"

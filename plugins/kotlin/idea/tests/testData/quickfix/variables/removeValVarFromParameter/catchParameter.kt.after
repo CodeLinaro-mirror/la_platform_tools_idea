@@ -1,6 +1,6 @@
 // "Remove 'val' from parameter" "true"
 // WITH_STDLIB
-// K2_ERROR: 'val' on catch parameter is prohibited.
+// K2_ERROR: VAL_OR_VAR_ON_CATCH_PARAMETER
 fun f() {
     try {
 
@@ -9,4 +9,3 @@ fun f() {
     }
 }
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.RemoveValVarFromParameterFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.RemoveValVarFromParameterFix

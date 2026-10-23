@@ -27,7 +27,6 @@ import com.intellij.openapi.actionSystem.AbbreviationManager
 import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.ActionPlaces
 import com.intellij.openapi.actionSystem.ActionPopupMenu
-import com.intellij.openapi.actionSystem.ActionStub
 import com.intellij.openapi.actionSystem.ActionToolbar
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -141,9 +140,11 @@ open class ActionManagerImpl protected constructor(private val coroutineScope: C
     val state = ActionManagerState()
     val actionPreInitRegistrar = ActionPreInitRegistrar(idToAction = idToAction, boundShortcuts = boundShortcuts, state = state)
     val keymapToOperations = HashMap<String, MutableList<KeymapShortcutOperation>>()
-    doRegisterActions(descriptors = PluginManagerCore.getPluginSet().sequenceResolvedSortedDescriptorsForRegistration(),
+    val pluginSet = PluginManagerCore.getPluginSet()
+    doRegisterActions(descriptors = pluginSet.sequenceResolvedSortedDescriptorsForRegistration(),
                       keymapToOperations = keymapToOperations,
-                      actionRegistrar = actionPreInitRegistrar)
+                      actionRegistrar = actionPreInitRegistrar,
+                      prelude = loadCoreActionsPrelude(pluginSet))
 
     coroutineScope.launch {
       CustomActionsSchema.getInstanceAsync().incrementModificationStamp()
@@ -196,6 +197,10 @@ open class ActionManagerImpl protected constructor(private val coroutineScope: C
         updateHandlers(action)
       }
     }
+    // otherwise they will perform classloading from EDT on first hit
+    coroutineScope.launch {
+      preloadPromoters()
+    }
   }
 
   private fun callDynamicRegistration(customizer: DynamicActionConfigurationCustomizer, mutator: ActionRuntimeRegistrar) {
@@ -240,8 +245,12 @@ open class ActionManagerImpl protected constructor(private val coroutineScope: C
     descriptors: Sequence<IdeaPluginDescriptorImpl>,
     keymapToOperations: MutableMap<String, MutableList<KeymapShortcutOperation>>,
     actionRegistrar: ActionRegistrar,
+    prelude: CoreActionsPrelude? = null,
   ) {
-    pluginRegistrar.registerActions(descriptors = descriptors, keymapToOperations = keymapToOperations, actionRegistrar = actionRegistrar)
+    pluginRegistrar.registerActions(descriptors = descriptors,
+                                    keymapToOperations = keymapToOperations,
+                                    actionRegistrar = actionRegistrar,
+                                    prelude = prelude)
   }
 
   internal fun getKeymapPendingOperations(keymapName: String): List<KeymapShortcutOperation> {

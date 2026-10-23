@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.inspections.typeignore
 
 import com.intellij.codeInspection.InspectionSuppressor
@@ -6,49 +6,59 @@ import com.intellij.codeInspection.SuppressQuickFix
 import com.intellij.psi.PsiComment
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
-import com.intellij.psi.PsiWhiteSpace
-import com.jetbrains.python.codeInsight.typing.PyTypingTypeProvider
+import com.jetbrains.python.inspections.PyIgnoreCommentUtil
+import com.jetbrains.python.inspections.PySuppressionUtil
+import com.jetbrains.python.inspections.quickfix.PySuppressWithTypeIgnoreFix
 import com.jetbrains.python.psi.PyFile
 import com.jetbrains.python.psi.impl.PyPsiUtils
 
+/**
+ * Suppresses inspections on lines (or whole files) annotated with a `# type: ignore` or `# pycharm: ignore`
+ * comment.
+ *
+ * A code in brackets can be one of these:
+ *  - a suppress id (`PyTypeChecker`) or its kebab-case alias (`unresolved-references`), with an optional
+ *    `pycharm:` prefix. It suppresses the whole inspection.
+ *  - a granular type-checker code (`unsupported-operator`). [com.jetbrains.python.inspections.PyTypeCheckerProblemReporter]
+ *    applies it. Here it only counts as a known code.
+ *  - a PyCharm code that names nothing, such as `pycharm:amongus`. It suppresses nothing.
+ *    [PyUnknownIgnoreCodeInspection] reports it.
+ *  - a foreign code, such as mypy's `attr-defined`. It is not a known code.
+ *
+ * A comment that names no PyCharm code suppresses every inspection on the line. The one exception is
+ * [PyTypeIgnoreWithoutCodeInspection], which reports such a comment. Every bare code of a `# pycharm: ignore`
+ * comment is a PyCharm code.
+ */
 class TypeIgnoreInspectionSuppressor : InspectionSuppressor {
 
   override fun isSuppressedFor(element: PsiElement, toolId: String): Boolean {
     if (element is PsiFile) return false
     val containingFile = element.containingFile
     if (containingFile !is PyFile) return false
-    if (toolId !in inspectionsToSuppress) return false
-    if (isSuppressedForFile(containingFile)) return true
-    val comment = PyPsiUtils.findSameLineComment(element) ?: return false
-    return isTypeIgnore(comment)
+
+    val sameLineComment = PyPsiUtils.findSameLineComment(element)
+    if (sameLineComment != null && suppresses(sameLineComment, toolId)) return true
+    return containingFile.leadingFileLevelComments().any { suppresses(it, toolId) }
   }
 
   override fun getSuppressActions(element: PsiElement?, toolId: String): Array<SuppressQuickFix> {
-    return SuppressQuickFix.EMPTY_ARRAY
+    // PyTypeChecker offers a suppress action per granular code, see PyTypeCheckerSuppressableProblemGroup.
+    if (PySuppressionUtil.isCustomManaged(toolId)) return SuppressQuickFix.EMPTY_ARRAY
+    return arrayOf(PySuppressWithTypeIgnoreFix.forInspection(toolId))
   }
 }
 
-private fun isSuppressedForFile(file: PsiFile): Boolean {
-  var node = file.firstChild
-  while (node is PsiComment || node is PsiWhiteSpace) {
-    if (node is PsiComment && isTypeIgnore(node)) {
-      return true
+private fun suppresses(comment: PsiComment, toolId: String): Boolean {
+  val parsed = PyIgnoreCommentUtil.parse(comment) ?: return false
+  var namesPyCharmCode = false
+  for (ref in PyIgnoreCommentUtil.codeRefs(parsed)) {
+    when (val resolution = PyIgnoreCodeResolver.resolve(ref)) {
+      is PyIgnoreCodeResolver.Resolution.Inspection -> if (resolution.suppressId == toolId) return true
+      PyIgnoreCodeResolver.Resolution.Foreign -> continue
+      PyIgnoreCodeResolver.Resolution.Granular, PyIgnoreCodeResolver.Resolution.Unknown -> Unit
     }
-    node = node.getNextSibling()
+    namesPyCharmCode = true
   }
-  return false
+  if (namesPyCharmCode) return false
+  return toolId != PyTypeIgnoreWithoutCodeInspection.SUPPRESS_ID
 }
-
-private fun isTypeIgnore(comment: PsiComment): Boolean {
-  val text = comment.text ?: return false
-  return PyTypingTypeProvider.TYPE_IGNORE_PATTERN.matcher(text).matches()
-}
-
-private val inspectionsToSuppress = listOf("PyUnresolvedReferences",
-                                           "PyTypeHints",
-                                           "PyTypeChecker",
-                                           "PyRedeclaration",
-                                           "PyArgumentList",
-                                           "PyFinal",
-                                           "PyProtocol",
-                                           "PyTypedDict")

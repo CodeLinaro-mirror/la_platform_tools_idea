@@ -1,6 +1,7 @@
 // Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.notification.impl;
 
+import com.intellij.internal.statistic.collectors.fus.ProjectlessData;
 import com.intellij.internal.statistic.collectors.fus.actions.persistence.ActionsCollectorImpl;
 import com.intellij.internal.statistic.collectors.fus.actions.persistence.ActionsEventLogGroup;
 import com.intellij.internal.statistic.eventLog.events.EventFields;
@@ -23,6 +24,7 @@ import com.intellij.openapi.components.Service;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.util.text.Strings;
+import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -49,6 +51,7 @@ import static com.intellij.notification.impl.NotificationsEventLogGroup.NOTIFICA
 import static com.intellij.notification.impl.NotificationsEventLogGroup.SETTINGS_CLICKED;
 import static com.intellij.notification.impl.NotificationsEventLogGroup.SEVERITY;
 import static com.intellij.notification.impl.NotificationsEventLogGroup.SHOWN;
+import static com.intellij.notification.impl.NotificationsEventLogGroup.SOUND_PLAYED;
 
 @ApiStatus.Internal
 @Service
@@ -67,6 +70,7 @@ public final class NotificationCollector {
     NotificationSeverity severity = getType(notification);
     data.add(SEVERITY.with(severity));
     data.add(IS_EXPANDABLE.with(isExpandable));
+    ContainerUtil.addIfNotNull(data, ProjectlessData.forProject(project));
     SHOWN.log(project, data);
   }
 
@@ -76,6 +80,7 @@ public final class NotificationCollector {
     data.add(DISPLAY_TYPE.with(NotificationDisplayType.TOOL_WINDOW));
     NotificationSeverity severity = getType(notification);
     data.add(SEVERITY.with(severity));
+    ContainerUtil.addIfNotNull(data, ProjectlessData.forProject(project));
     SHOWN.log(project, data);
   }
 
@@ -84,6 +89,13 @@ public final class NotificationCollector {
     NotificationSeverity severity = getType(notification);
     data.add(SEVERITY.with(severity));
     LOGGED.log(project, data);
+  }
+
+  public void logSoundPlayed(@NotNull Notification notification, @NotNull NotificationDisplayType displayType) {
+    List<EventPair<?>> data = createNotificationData(notification.getGroupId(), notification.id, notification.getDisplayId());
+    data.add(DISPLAY_TYPE.with(displayType));
+    data.add(SEVERITY.with(getType(notification)));
+    SOUND_PLAYED.log(data);
   }
 
   private static @NotNull NotificationSeverity getType(@NotNull Notification notification) {

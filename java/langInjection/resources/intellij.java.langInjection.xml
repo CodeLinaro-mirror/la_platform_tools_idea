@@ -2,7 +2,6 @@
   <!-- region Generated dependencies - run `Generate Product Layouts` to regenerate -->
   <dependencies>
     <module name="intellij.platform.langInjection.backend"/>
-    <module name="intellij.regexp"/>
     <module name="intellij.java"/>
     <module name="intellij.java.compiler.impl"/>
     <module name="intellij.java.impl"/>
@@ -10,8 +9,25 @@
     <module name="intellij.java.langInjection.jps"/>
     <module name="intellij.java.psi"/>
     <module name="intellij.java.syntax"/>
+    <module name="intellij.libraries.kotlinx.collections.immutable"/>
+    <module name="intellij.platform.analysis"/>
     <module name="intellij.platform.backend"/>
+    <module name="intellij.platform.concurrency"/>
+    <module name="intellij.platform.core"/>
+    <module name="intellij.platform.core.impl"/>
+    <module name="intellij.platform.core.ui"/>
+    <module name="intellij.platform.editor.ui"/>
+    <module name="intellij.platform.ide"/>
+    <module name="intellij.platform.ide.core"/>
+    <module name="intellij.platform.ide.impl"/>
+    <module name="intellij.platform.indexing"/>
+    <module name="intellij.platform.lang"/>
+    <module name="intellij.platform.lang.impl"/>
     <module name="intellij.platform.langInjection"/>
+    <module name="intellij.platform.projectModel"/>
+    <module name="intellij.platform.util.ex"/>
+    <module name="intellij.platform.util.ui"/>
+    <module name="intellij.regexp"/>
   </dependencies>
   <!-- endregion -->
   <extensions defaultExtensionNs="com.intellij">
@@ -39,6 +55,12 @@
     <multiHostInjector implementation="org.intellij.plugins.intelliLang.inject.java.JavaFormatInjector"/>
 
     <psi.referenceContributor language="UAST" implementation="org.intellij.plugins.intelliLang.inject.java.LanguageReferenceProvider"/>
+
+    <!--suppress SplitModeXmlApiUsage The page edits Java class names, so it needs Java PSI. Its parent page IntelliLang.Configuration is also backend. -->
+    <projectConfigurable parentId="IntelliLang.Configuration" id="IntelliLang.Advanced"
+                         bundle="messages.IntelliLangBundle" key="configurable.AdvancedSettingsUI.display.name"
+                         instance="org.intellij.plugins.intelliLang.AdvancedSettingsUI"
+                         nonDefaultProject="true"/>
   </extensions>
 
   <extensions defaultExtensionNs="com.intellij">

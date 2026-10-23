@@ -3,6 +3,7 @@ package com.intellij.openapi.updateSettings.impl
 
 import org.jetbrains.annotations.ApiStatus
 
+/** The provider of every process without a split frontend layer. The split frontend registers its own provider with `order="first"`. */
 @ApiStatus.Internal
 class DefaultPluginUpdateHandlerProvider : PluginUpdateHandlerProvider {
   private val defaultHandler = DefaultPluginUpdateHandler()

@@ -1,23 +1,17 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.plugins.terminal.util
 
-import com.intellij.application.options.schemes.SchemeNameGenerator
 import com.intellij.diagnostic.PluginException
 import com.intellij.openapi.Disposable
-import com.intellij.openapi.actionSystem.KeyboardShortcut
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.diagnostic.fileLogger
 import com.intellij.openapi.diagnostic.logger
-import com.intellij.openapi.keymap.KeyMapBundle
-import com.intellij.openapi.keymap.Keymap
-import com.intellij.openapi.keymap.KeymapManager
-import com.intellij.openapi.keymap.ex.KeymapManagerEx
 import com.intellij.openapi.util.Disposer
 import com.intellij.platform.eel.EelDescriptor
-import com.intellij.platform.eel.annotations.NativePath
 import com.intellij.platform.eel.path.EelPath
 import com.intellij.platform.eel.path.EelPathException
 import com.intellij.platform.eel.provider.asNioPath
+import com.intellij.platform.util.annotations.paths.OsPath
 import com.intellij.util.concurrency.annotations.RequiresBackgroundThread
 import com.intellij.util.concurrency.annotations.RequiresReadLockAbsence
 import com.intellij.util.io.awaitExit
@@ -172,7 +166,7 @@ internal fun TtyConnector.getDebugName(): @NonNls String {
 fun <T : Any> fireListenersAndLogAllExceptions(
   listeners: List<T>,
   logger: Logger,
-  message: String,
+  message: () -> String,
   callListener: (T) -> Unit,
 ) {
   for (listener in listeners) {
@@ -181,43 +175,9 @@ fun <T : Any> fireListenersAndLogAllExceptions(
     }
     catch (e: Exception) {
       // Even log a cancellation exception because we do not expect it to be thrown from the listener
-      PluginException.logPluginError(logger, message, e, listener.javaClass)
+      PluginException.logPluginError(logger, message(), e, listener.javaClass)
     }
   }
-}
-
-/**
- * Sets the shortcut for the given action ID.
- * If the provided shortcut is null, removes all shortcuts for the action.
- * Takes care of creating a new keymap if the current one cannot be modified.
- */
-@ApiStatus.Internal
-fun updateActionShortcut(actionId: String, value: KeyboardShortcut?) {
-  val keymapToModify = getKeymapToModify() ?: return
-  keymapToModify.removeAllActionShortcuts(actionId)
-  if (value != null) {
-    keymapToModify.addShortcut(actionId, value)
-  }
-}
-
-private fun getKeymapToModify(): Keymap? {
-  val keymapManager = KeymapManager.getInstance() as? KeymapManagerEx ?: return null
-
-  val keymapToModify = keymapManager.activeKeymap
-  return if (!keymapToModify.canModify()) {
-    val allKeymaps = keymapManager.allKeymaps
-    val name = SchemeNameGenerator.getUniqueName(
-      KeyMapBundle.message("new.keymap.name", keymapToModify.presentableName)
-    ) { newName: String ->
-      allKeymaps.any { it.name == newName || it.presentableName == newName }
-    }
-
-    val newKeymap = keymapToModify.deriveKeymap(name)
-    keymapManager.schemeManager.addScheme(newKeymap)
-    keymapManager.activeKeymap = newKeymap
-    newKeymap
-  }
-  else keymapToModify
 }
 
 @RequiresBackgroundThread(generateAssertion = false)
@@ -260,7 +220,7 @@ internal fun String?.toExistentNioDirectory(labelToLogOnFailure: String? = null)
  * @return null if failed to convert [remotePath] to nio Path.
  */
 @ApiStatus.Internal
-fun convertNativePathToNioPath(remotePath: @NativePath String, descriptor: EelDescriptor): Path? {
+fun convertNativePathToNioPath(remotePath: @OsPath String, descriptor: EelDescriptor): Path? {
   val eelPath: EelPath = try {
     EelPath.parse(remotePath, descriptor)
   }

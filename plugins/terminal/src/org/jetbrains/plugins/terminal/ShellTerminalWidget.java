@@ -1,6 +1,7 @@
 // Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.plugins.terminal;
 
+import com.intellij.ide.actions.ToolWindowTabLocationFusUtil;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
@@ -88,7 +89,7 @@ public class ShellTerminalWidget extends JBTerminalWidget implements TerminalPan
       }
       if (e.getKeyCode() == KeyEvent.VK_ENTER || TerminalShellCommandHandlerHelper.matchedExecutor(e) != null) {
         String shellCommand = getTypedShellCommand();
-        TerminalUsageTriggerCollector.triggerCommandStarted(project, shellCommand, false);
+        TerminalUsageTriggerCollector.triggerCommandStarted(project, shellCommand, false, ToolWindowTabLocationFusUtil.fromComponentHierarchy(this));
         myCommandStartedDispatcher.getMulticaster().commandStarted(shellCommand);
         if (myShellCommandHandlerHelper.processEnterKeyPressed(e)) {
           e.consume();
@@ -236,11 +237,16 @@ public class ShellTerminalWidget extends JBTerminalWidget implements TerminalPan
   @Override
   public List<TerminalAction> getActions() {
     List<TerminalAction> actions = new ArrayList<>(super.getActions());
-    if (TerminalToolWindowManager.isInTerminalToolWindow(this)) {
-      ContainerUtil.addIfNotNull(actions, TerminalActionUtil.createTerminalAction(this, "Terminal.RenameSession", true));
-    }
     JBTerminalWidgetListener listener = getListener();
     JBTerminalSystemSettingsProvider settingsProvider = getSettingsProvider();
+    if (TerminalToolWindowManager.isInTerminalToolWindow(this)) {
+      ContainerUtil.addIfNotNull(actions, TerminalActionUtil.createTerminalAction(this, "Terminal.RenameSession", true));
+
+      actions.add(TerminalActionUtil.createTerminalAction(this, settingsProvider.getMoveToolWindowTabToEditorActionPresentation(), l -> {
+        l.moveToolWindowTabToEditor();
+        return true;
+      }));
+    }
     actions.add(TerminalActionUtil.createTerminalAction(this, settingsProvider.getNewTabActionPresentation(), l -> {
       l.onNewSession();
       return true;

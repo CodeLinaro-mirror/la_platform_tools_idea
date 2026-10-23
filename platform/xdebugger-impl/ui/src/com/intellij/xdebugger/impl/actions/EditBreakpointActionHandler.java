@@ -9,7 +9,6 @@ import com.intellij.openapi.editor.ex.EditorEx;
 import com.intellij.openapi.editor.ex.EditorGutterComponentEx;
 import com.intellij.openapi.editor.markup.GutterIconRenderer;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.Pair;
 import com.intellij.platform.debugger.impl.shared.proxy.XBreakpointProxy;
 import com.intellij.xdebugger.breakpoints.XLineBreakpointVerticalPlacement;
 import com.intellij.xdebugger.impl.breakpoints.XBreakpointUIUtil;
@@ -17,12 +16,19 @@ import com.intellij.xdebugger.impl.breakpoints.ui.BreakpointItem;
 import com.intellij.xdebugger.impl.breakpoints.ui.BreakpointsDialogFactory;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import javax.swing.JComponent;
 import java.awt.Point;
 
 @ApiStatus.Internal
 public abstract class EditBreakpointActionHandler extends DebuggerActionHandler {
+
+  @ApiStatus.Experimental
+  protected void doShowPopup(Project project, JComponent component, Point whereToShow, XBreakpointProxy breakpoint,
+                             @NotNull PreferredFocusOwner preferredFocusOwner) {
+    doShowPopup(project, component, whereToShow, breakpoint);
+  }
 
   protected abstract void doShowPopup(Project project, JComponent component, Point whereToShow, XBreakpointProxy breakpoint);
 
@@ -32,14 +38,10 @@ public abstract class EditBreakpointActionHandler extends DebuggerActionHandler 
     Editor editor = CommonDataKeys.EDITOR.getData(dataContext);
     if (editor == null) return;
 
-    final Pair<GutterIconRenderer, XBreakpointProxy> pair = XBreakpointUIUtil.findSelectedBreakpointProxy(project, editor,
-                                                                                                          getSelectedBreakpointPlacement());
+    XBreakpointProxy breakpoint = XBreakpointUIUtil.findSelectedBreakpoint(project, editor, getSelectedBreakpointPlacement());
+    if (breakpoint == null) return;
 
-    XBreakpointProxy breakpoint = pair.second;
-    GutterIconRenderer breakpointGutterRenderer = pair.first;
-
-    if (breakpointGutterRenderer == null) return;
-    editBreakpoint(project, editor, breakpoint, breakpointGutterRenderer);
+    editBreakpoint(project, editor, breakpoint, breakpoint.getGutterIconRenderer());
   }
 
   @NotNull
@@ -50,17 +52,36 @@ public abstract class EditBreakpointActionHandler extends DebuggerActionHandler 
   public void editBreakpoint(@NotNull Project project,
                              @NotNull Editor editor,
                              @NotNull XBreakpointProxy breakpoint,
-                             @NotNull GutterIconRenderer breakpointGutterRenderer) {
+                             @Nullable GutterIconRenderer breakpointGutterRenderer) {
+    editBreakpoint(project, editor, breakpoint, breakpointGutterRenderer, PreferredFocusOwner.DEFAULT);
+  }
+
+  @ApiStatus.Experimental
+  public void editBreakpoint(@NotNull Project project,
+                             @NotNull Editor editor,
+                             @NotNull XBreakpointProxy breakpoint,
+                             @Nullable GutterIconRenderer breakpointGutterRenderer,
+                             @NotNull PreferredFocusOwner preferredFocusOwner) {
     if (BreakpointsDialogFactory.getInstance(project).popupRequested(breakpoint)) {
       return;
     }
     EditorGutterComponentEx gutterComponent = ((EditorEx)editor).getGutterComponentEx();
-    Point point = gutterComponent.getCenterPoint(breakpointGutterRenderer);
+    Point point = getPopupPoint(editor, breakpointGutterRenderer);
+    doShowPopup(project, gutterComponent, point, breakpoint, preferredFocusOwner);
+  }
+
+  public static @NotNull Point getPopupPoint(@NotNull Editor editor,
+                                             @Nullable GutterIconRenderer breakpointGutterRenderer) {
+    EditorGutterComponentEx gutterComponent = ((EditorEx)editor).getGutterComponentEx();
+    Point point = null;
+    if (breakpointGutterRenderer != null) {
+      point = gutterComponent.getCenterPoint(breakpointGutterRenderer);
+    }
     if (point == null) { // disabled gutter icons for example
       point = new Point(gutterComponent.getWidth(),
                         editor.visualPositionToXY(editor.getCaretModel().getVisualPosition()).y + editor.getLineHeight() / 2);
     }
-    doShowPopup(project, gutterComponent, point, breakpoint);
+    return point;
   }
 
   public void editBreakpoint(@NotNull Project project,
@@ -69,5 +90,12 @@ public abstract class EditBreakpointActionHandler extends DebuggerActionHandler 
                              @NotNull BreakpointItem breakpoint) {
     XBreakpointProxy breakpointProxy = breakpoint.getBreakpoint();
     doShowPopup(project, parent, whereToShow, breakpointProxy);
+  }
+
+  @ApiStatus.Experimental
+  public enum PreferredFocusOwner {
+    DEFAULT,
+    CONDITION_TEXT_FIELD,
+    EVALUATE_AND_LOG_TEXT_FIELD,
   }
 }

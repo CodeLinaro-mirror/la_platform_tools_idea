@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.sdk.add.v2
 
 import com.intellij.icons.AllIcons
@@ -11,22 +11,26 @@ import com.intellij.openapi.help.HelpManager
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.observable.properties.AtomicProperty
 import com.intellij.openapi.observable.properties.ObservableProperty
-import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.openapi.ui.ValidationInfo
 import com.intellij.openapi.ui.validation.DialogValidationRequestor
 import com.intellij.openapi.ui.validation.WHEN_PROPERTY_CHANGED
 import com.intellij.openapi.ui.validation.and
 import com.intellij.openapi.wm.IdeFocusManager
 import com.intellij.python.community.common.tools.ToolId
-import com.intellij.python.community.impl.conda.icons.PythonCommunityImplCondaIcons
-import com.intellij.python.community.impl.pipenv.icons.PythonCommunityImplPipenvIcons
+import com.intellij.python.community.impl.conda.common.icons.PythonCommunityImplCondaCommonIcons
+import com.intellij.python.community.impl.pipenv.common.icons.PythonCommunityImplPipenvCommonIcons
 import com.intellij.python.community.impl.poetry.common.POETRY_TOOL_ID
 import com.intellij.python.community.impl.poetry.common.icons.PythonCommunityImplPoetryCommonIcons
-import com.intellij.python.hatch.icons.PythonHatchIcons
+import com.intellij.python.hatch.common.icons.PythonHatchCommonIcons
 import com.intellij.python.hatch.impl.HATCH_TOOL_ID
+import com.intellij.python.pytools.backend.PyExecutable
+import com.intellij.python.pytools.backend.setCustomExecutablePath
+import com.intellij.python.sdk.backend.PythonInterpreter
+import com.intellij.python.sdk.backend.getSdkAPI
+import com.intellij.python.sdk.backend.pythonInterpreterAsync
 import com.intellij.python.uv.common.UV_TOOL_ID
 import com.intellij.python.uv.common.icons.PythonUvCommonIcons
-import com.intellij.python.venv.icons.PythonVenvIcons
+import com.intellij.python.venv.common.icons.PythonVenvCommonIcons
 import com.intellij.ui.dsl.builder.Align
 import com.intellij.ui.dsl.builder.Panel
 import com.intellij.ui.dsl.builder.Row
@@ -44,15 +48,11 @@ import com.jetbrains.python.sdk.configuration.PIPENV_TOOL_ID
 import com.jetbrains.python.sdk.configuration.VENV_TOOL_ID
 import com.jetbrains.python.sdk.createSdkGuessingTypeByPath
 import com.jetbrains.python.sdk.excludeInnerVirtualEnv
-import com.jetbrains.python.sdk.moduleIfExists
-import com.jetbrains.python.sdk.pythonSdk
-import com.jetbrains.python.sdk.setAssociationToModule
 import com.jetbrains.python.statistics.InterpreterTarget
 import com.jetbrains.python.statistics.PythonInterpreterInstallationIdsHolder.Companion.PYTHON_INSTALLATION_INTERRUPTED
 import com.jetbrains.python.target.ui.TargetPanelExtension
 import kotlinx.coroutines.CoroutineScope
 import org.jetbrains.annotations.ApiStatus
-import java.nio.file.Path
 import javax.swing.Icon
 
 abstract class PythonAddEnvironment<P : PathHolder>(open val model: PythonAddInterpreterModel<P>) {
@@ -66,6 +66,14 @@ abstract class PythonAddEnvironment<P : PathHolder>(open val model: PythonAddInt
   protected abstract val toolExecutable: ObservableProperty<ValidatedPath.Executable<P>?>?
   protected abstract val toolExecutablePersister: suspend (P) -> Unit
 
+  /**
+   * Whether the resolved [toolExecutable] should be persisted to the custom-path store when the SDK is
+   * created. Default `false`: an auto-detected tool path must NOT be persisted (detection is cached with
+   * a TTL instead, so it self-heals when the tool moves). Overridden to `true` only when the value is an
+   * explicit user choice (the tool field was browsed/typed) — see [ValidatedPathField.isUserEdited].
+   */
+  protected open val persistToolExecutableOnSetup: Boolean get() = false
+
   abstract fun setupUI(panel: Panel, validationRequestor: DialogValidationRequestor)
   abstract fun onShown(scope: CoroutineScope)
 
@@ -74,36 +82,38 @@ abstract class PythonAddEnvironment<P : PathHolder>(open val model: PythonAddInt
    *
    * Error is shown to user. Do not catch all exceptions, only return exceptions valuable to user
    */
-  protected abstract suspend fun getOrCreateSdk(moduleOrProject: ModuleOrProject): PyResult<Sdk>
+  protected abstract suspend fun getOrCreateSdk(moduleOrProject: ModuleOrProject): PyResult<PythonInterpreter>
 
+  /**
+   * Creates the interpreter this panel describes, or finds the one that exists. A new SDK gets its module association
+   * when it is created.
+   *
+   * It does not make the interpreter the interpreter of a project. The caller does that with
+   * [com.intellij.python.pyproject.model.evolution.setPythonInterpreter].
+   */
   @ApiStatus.Internal
-  suspend fun setupSdk(moduleOrProject: ModuleOrProject): PyResult<Sdk> {
-    savePathToExecutableToProperties(null)
-    val sdk = getOrCreateSdk(moduleOrProject).getOr { return it }
-
-    moduleOrProject.project.excludeInnerVirtualEnv(sdk)
-    moduleOrProject.moduleIfExists?.let {
-      it.pythonSdk = sdk
-      sdk.setAssociationToModule(it)
-    }
-
-    return Result.success(sdk)
+  suspend fun setupSdk(moduleOrProject: ModuleOrProject): PyResult<PythonInterpreter> {
+    savePathToExecutableToProperties()
+    val pythonInterpreter = getOrCreateSdk(moduleOrProject).getOr { return it }
+    moduleOrProject.project.excludeInnerVirtualEnv(pythonInterpreter.getSdkAPI())
+    return Result.success(pythonInterpreter)
   }
 
   /**
-   * Saves the provided path to an executable in the properties of the environment
-   *
-   * @param [pathHolder] The path holder of the path to the executable that needs to be saved. This may be null when we try to find the tool automatically.
+   * Persists the user-chosen tool executable to the custom-path store, but only when
+   * [persistToolExecutableOnSetup] is `true` (i.e. the user explicitly picked the path). Auto-detected
+   * paths are intentionally not persisted.
    */
-  protected suspend fun savePathToExecutableToProperties(pathHolder: P?) {
-    val savingPath = pathHolder ?: toolExecutable?.get()?.pathHolder ?: return
-    if (!model.fileSystem.isLocal) return
+  protected suspend fun savePathToExecutableToProperties() {
+    if (!persistToolExecutableOnSetup) return
+    val savingPath = toolExecutable?.get()?.pathHolder?.successOrNull ?: return
     toolExecutablePersister(savingPath)
   }
 
-  open suspend fun createPythonModuleStructure(module: Module): PyResult<Unit> = Result.success(Unit)
+  /** @see PySdkCreator.createPythonModuleStructure */
+  open suspend fun createPythonModuleStructure(module: Module, createGitRepository: Boolean): PyResult<Unit> = Result.success(Unit)
 
-  abstract fun createStatisticsInfo(target: PythonInterpreterCreationTargets): InterpreterStatisticsInfo
+  internal abstract fun createStatisticsInfo(target: PythonInterpreterCreationTargets): InterpreterStatisticsInfo
 }
 
 abstract class PythonNewEnvironmentCreator<P : PathHolder>(override val model: PythonMutableTargetAddInterpreterModel<P>) :
@@ -132,7 +142,8 @@ abstract class PythonNewEnvironmentCreator<P : PathHolder>(override val model: P
   }
 }
 
-abstract class PythonExistingEnvironmentConfigurator<P : PathHolder>(model: PythonAddInterpreterModel<P>) : PythonAddEnvironment<P>(model)
+internal abstract class PythonExistingEnvironmentConfigurator<P : PathHolder>(model: PythonAddInterpreterModel<P>) :
+  PythonAddEnvironment<P>(model)
 
 
 enum class PythonSupportedEnvironmentManagers(
@@ -142,12 +153,12 @@ enum class PythonSupportedEnvironmentManagers(
   val sshAutoUploadRequired: Boolean,
   val isFSSupported: (FileSystem<*>) -> Boolean = { it.isLocal },
 ) {
-  VIRTUALENV(VENV_TOOL_ID, "sdk.create.custom.virtualenv", PythonVenvIcons.VirtualEnv, sshAutoUploadRequired = false, { true }),
-  CONDA(CONDA_TOOL_ID, "sdk.create.custom.conda", PythonCommunityImplCondaIcons.Anaconda, sshAutoUploadRequired = false, { true }),
-  POETRY(POETRY_TOOL_ID, "sdk.create.custom.poetry", PythonCommunityImplPoetryCommonIcons.Poetry, sshAutoUploadRequired = true),
-  PIPENV(PIPENV_TOOL_ID, "sdk.create.custom.pipenv", PythonCommunityImplPipenvIcons.PythonClosed, sshAutoUploadRequired = true),
+  VIRTUALENV(VENV_TOOL_ID, "sdk.create.custom.virtualenv", PythonVenvCommonIcons.VirtualEnv, sshAutoUploadRequired = false, { true }),
+  CONDA(CONDA_TOOL_ID, "sdk.create.custom.conda", PythonCommunityImplCondaCommonIcons.Anaconda, sshAutoUploadRequired = false, { true }),
+  POETRY(POETRY_TOOL_ID, "sdk.create.custom.poetry", PythonCommunityImplPoetryCommonIcons.Poetry, sshAutoUploadRequired = true, { true }),
+  PIPENV(PIPENV_TOOL_ID, "sdk.create.custom.pipenv", PythonCommunityImplPipenvCommonIcons.Pipenv, sshAutoUploadRequired = true, { true }),
   UV(UV_TOOL_ID, "sdk.create.custom.uv", PythonUvCommonIcons.UV, sshAutoUploadRequired = true, { true }),
-  HATCH(HATCH_TOOL_ID, "sdk.create.custom.hatch", PythonHatchIcons.Logo, sshAutoUploadRequired = true),
+  HATCH(HATCH_TOOL_ID, "sdk.create.custom.hatch", PythonHatchCommonIcons.Logo, sshAutoUploadRequired = true, { true }),
   PYTHON(VENV_TOOL_ID, "sdk.create.custom.python", PythonParserIcons.PythonFile, sshAutoUploadRequired = false, { true })
 }
 
@@ -175,13 +186,14 @@ enum class PythonInterpreterSelectionMethod {
   CREATE_NEW, SELECT_EXISTING
 }
 
-@RequiresEdt
-internal fun installBaseSdk(installRequest: InstallablePythonSdk): Sdk? {
+@RequiresEdt(generateAssertion = false /* IJPL-115548 */)
+internal suspend fun installBaseSdk(installRequest: InstallablePythonSdk): kotlin.Result<PythonInterpreter> {
   val installed = installRequest.install(null) {
     PythonSdkUtil.getAllSdks()
-  }.getOrLogException(LOGGER)
+  }
 
-  if (installed == null) {
+  // Logs the failure and rethrows control flow exceptions (cancellation must not show the balloon)
+  if (installed.getOrLogException(LOGGER) == null) {
     val notification = NotificationGroupManager.getInstance()
       .getNotificationGroup("Python interpreter installation")
       .createNotification(message("python.sdk.installation.balloon.error.message"), NotificationType.ERROR)
@@ -196,33 +208,23 @@ internal fun installBaseSdk(installRequest: InstallablePythonSdk): Sdk? {
     NotificationsManager
       .getNotificationsManager()
       .showNotification(notification, IdeFocusManager.getGlobalInstance().lastFocusedFrame?.project)
-    return null
   }
-  return installed
+  return installed.map { it.pythonInterpreterAsync() }
 }
 
 
-internal suspend fun <P : PathHolder> PythonSelectableInterpreter<P>.setupSdk(
+internal suspend fun <P : PathHolder> InterpreterWithPath<P>.setupSdk(
   moduleOrProject: ModuleOrProject,
   fileSystem: FileSystem<P>,
   targetPanelExtension: TargetPanelExtension?,
-  isAssociateWithModule: Boolean,
-): PyResult<Sdk> {
+): PyResult<PythonInterpreter> {
   when (this) {
-    is ExistingSelectableInterpreter -> return PyResult.success(sdkWrapper.sdk)
-    is DetectedSelectableInterpreter, is InstallableSelectableInterpreter, is ManuallyAddedSelectableInterpreter -> Unit
+    is ExistingSelectableInterpreter -> return PyResult.success(pythonInterpreterWrapper.pythonInterpreter)
+    is DetectedSelectableInterpreter, is ManuallyAddedSelectableInterpreter -> Unit
   }
-
-  val homePath = this@setupSdk.homePath!!
 
   // Do our best to guess the flavor
-  return createSdkGuessingTypeByPath(homePath, fileSystem, moduleOrProject, targetPanelExtension, isAssociateWithModule)
+  return createSdkGuessingTypeByPath(homePath, fileSystem, moduleOrProject, targetPanelExtension)
 }
 
 
-internal fun savePathForEelOnly(pathHolder: PathHolder, pathPersister: (Path) -> Unit) {
-  when (pathHolder) {
-    is PathHolder.Eel -> pathPersister(pathHolder.path)
-    is PathHolder.Target -> Unit
-  }
-}

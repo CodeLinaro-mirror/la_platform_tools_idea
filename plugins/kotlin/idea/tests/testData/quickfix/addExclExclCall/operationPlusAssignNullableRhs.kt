@@ -1,5 +1,5 @@
 // "Add non-null asserted (i!!) call" "true"
-// K2_ERROR: Argument type mismatch: actual type is 'Int?', but 'Int' was expected.
+// K2_ERROR: ARGUMENT_TYPE_MISMATCH
 fun test() {
     val i: Int? = 0
     val result: IntArray = intArrayOf(0)
@@ -7,4 +7,3 @@ fun test() {
 }
 
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AddExclExclCallFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AddExclExclCallFix

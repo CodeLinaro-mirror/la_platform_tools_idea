@@ -3,9 +3,12 @@ package com.intellij.util.indexing;
 
 import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.util.ExceptionUtil;
+import com.intellij.util.io.ClosedStorageException;
 import com.intellij.util.indexing.dependencies.FileIndexingStamp;
 import com.intellij.util.indexing.diagnostic.FileIndexingStatistics;
 import com.intellij.util.indexing.diagnostic.IndexesEvaluated;
+import com.intellij.util.indexing.events.FileIndexingRequest;
 import com.intellij.util.indexing.events.IndexingEventsLogger;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
@@ -17,6 +20,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
+
+import static com.intellij.diagnostic.ControlFlowExceptionsKt.rethrowControlFlowException;
 
 /**
  * Carries the results of indexing given file [file] by all applicable indexers.
@@ -36,6 +41,8 @@ public final class FileIndexingResult {
 
   private final @NotNull VirtualFile file;
   private final int fileId;
+  /// Which request to clean when finished: used as a witness to avoid cleaning a concurrently inserted request for the same fileId.
+  private final @NotNull FileIndexingRequest coveredRequest;
 
   private final @NotNull ApplicationMode applicationMode;
 
@@ -53,6 +60,7 @@ public final class FileIndexingResult {
   FileIndexingResult(@NotNull FileBasedIndexImpl index,
                      int fileId,
                      @NotNull VirtualFile file,
+                     @NotNull FileIndexingRequest coveredRequest,
                      @NotNull FileIndexingStamp indexingStamp,
                      @NotNull List<SingleIndexValueApplier<?>> appliers,
                      @NotNull List<SingleIndexValueRemover> removers,
@@ -65,6 +73,7 @@ public final class FileIndexingResult {
 
     this.file = file;
     this.fileId = fileId;
+    this.coveredRequest = coveredRequest;
     this.appliers = appliers;
     this.removers = removers;
 
@@ -135,23 +144,37 @@ public final class FileIndexingResult {
 
   public void markFileProcessed(boolean allModificationsSuccessful,
                                 @NotNull Supplier<String> debugString) {
-    if (allModificationsSuccessful) {
-      IndexingEventsLogger.tryLog("INDEX_UPDATED", file, debugString);
-      //remove indexed (=processed) files from the 'dirty files queue' (FilesToUpdateCollector)
-      indexImpl.getFilesToUpdateCollector().removeFileIdFromFilesScheduledForUpdate(fileId);
+    if (indexImpl.isShutdownStarted()) {
+      return;
+    }
 
-      if (shouldMarkFileAsIndexed) {
-        IndexingFlag.setIndexedIfFileWithSameLock(file, fileStatusLockObject, indexingStamp);
+    try {
+      if (allModificationsSuccessful) {
+        IndexingEventsLogger.tryLog("INDEX_UPDATED", file, debugString);
+        indexImpl.getFilesToUpdateCollector().removeIfCurrent(coveredRequest);
+
+        if (shouldMarkFileAsIndexed) {
+          IndexingFlag.setIndexedIfFileWithSameLock(file, fileStatusLockObject, indexingStamp);
+        }
+        else if (fileStatusLockObject != IndexingFlag.getNonExistentHash()) {
+          IndexingFlag.unlockFile(file);
+        }
       }
-      else if (fileStatusLockObject != IndexingFlag.getNonExistentHash()) {
-        IndexingFlag.unlockFile(file);
+      else {
+        IndexingEventsLogger.tryLog("INDEX_PARTIAL_UPDATE", file, debugString);
+        if (fileStatusLockObject != IndexingFlag.getNonExistentHash()) {
+          IndexingFlag.unlockFile(file);
+        }
       }
     }
-    else {
-      IndexingEventsLogger.tryLog("INDEX_PARTIAL_UPDATE", file, debugString);
-      if (fileStatusLockObject != IndexingFlag.getNonExistentHash()) {
-        IndexingFlag.unlockFile(file);
+    catch (Throwable t) {
+      rethrowControlFlowException(t);
+      if (indexImpl.isShutdownStarted() && ExceptionUtil.causedBy(t, ClosedStorageException.class)) {
+        //shutdown is already started, ClosedStorageException is most likely caused by some storage being already closed
+        // => just ignore it and let shutdown continue
+        return;
       }
+      ExceptionUtil.rethrow(t);
     }
   }
 

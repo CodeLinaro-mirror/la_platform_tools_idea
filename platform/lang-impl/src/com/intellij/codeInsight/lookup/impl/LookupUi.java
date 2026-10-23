@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.lookup.impl;
 
 import com.intellij.application.options.CodeCompletionConfigurable;
@@ -40,6 +40,7 @@ import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.registry.Registry;
+import com.intellij.psi.util.PsiVersioningService;
 import com.intellij.ui.ComponentUtil;
 import com.intellij.ui.ExperimentalUI;
 import com.intellij.ui.ScreenUtil;
@@ -228,7 +229,10 @@ final class LookupUi {
       public void valueChanged(ListSelectionEvent e) {
         if (!lookup.isLookupDisposed()) {
           hintAlarm.cancelAllRequests();
-          updateHint();
+          PsiVersioningService.freezePsiVersion(() -> {
+            updateHint();
+            return null;
+          });
         }
       }
     });
@@ -246,7 +250,7 @@ final class LookupUi {
     }
 
     LookupElement item = lookup.getCurrentItem();
-    if (item != null && ReadAction.computeBlocking(() -> item.isValid())) {
+    if (item != null && item.isValid()) {
       ReadAction.nonBlocking(() -> lookup.getActionsFor(item))
         .expireWhen(() -> !item.isValid() || hintAlarm.isDisposed())
         .finishOnUiThread(modalityState, actions -> {

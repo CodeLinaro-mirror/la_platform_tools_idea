@@ -7,6 +7,7 @@ import com.intellij.ide.ui.LafManager
 import com.intellij.ide.ui.LafManagerListener
 import com.intellij.ide.ui.RegistryBooleanOptionDescriptor
 import com.intellij.ide.ui.UISettings
+import com.intellij.ide.ui.UITheme
 import com.intellij.ide.ui.experimental.ExperimentalUiCollector
 import com.intellij.openapi.actionSystem.DataSink
 import com.intellij.openapi.actionSystem.UiDataProvider
@@ -83,6 +84,8 @@ import com.intellij.util.ui.JBSwingUtilities
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.StartupUiUtil
 import com.intellij.util.ui.UIUtil
+import fleet.util.cast
+import org.jetbrains.annotations.ApiStatus
 import java.awt.AWTEvent
 import java.awt.BorderLayout
 import java.awt.Color
@@ -116,9 +119,9 @@ private data class WindowBackgroundComponentData(val origOpaque: Boolean, val or
 private val WINDOW_BACKGROUND_COMPONENT_KEY: Key<WindowBackgroundComponentData> = Key.create("Islands.WINDOW_BACKGROUND_COMPONENT_KEY")
 
 private val DEFAULT_THEME_IDS = setOf(
-  "ExperimentalDark",
-  "ExperimentalLight",
-  "ExperimentalLightWithLightHeader",
+  UITheme.EXPERIMENTAL_DARK_ID,
+  UITheme.EXPERIMENTAL_LIGHT_ID,
+  UITheme.EXPERIMENTAL_LIGHT_WITH_LIGHT_HEADER_ID,
   "JetBrainsHighContrastTheme",
   "Darcula",
 )
@@ -131,7 +134,8 @@ private fun isDefaultTheme(): Boolean {
 internal val islandsInactiveAlpha: Float
   get() = JBUI.getFloat("Island.inactiveAlpha", 0.5f)
 
-internal class IslandsUICustomization : InternalUICustomization() {
+@ApiStatus.Internal
+class IslandsUICustomization : InternalUICustomization() {
 
   private var isManyIslandEnabledCache: Boolean? = null
 
@@ -330,9 +334,8 @@ internal class IslandsUICustomization : InternalUICustomization() {
   }
 
   private fun applyMissingKeys() {
+    val uiDefaults = UIManager.getLookAndFeelDefaults()
     if (IslandsState.isCustomEnabled()) {
-      val uiDefaults = UIManager.getLookAndFeelDefaults()
-
       uiDefaults["MainToolbar.borderColor"] = Gray.TRANSPARENT
       uiDefaults["ToolWindow.borderColor"] = Gray.TRANSPARENT
       uiDefaults["ToolWindow.Stripe.borderColor"] = Gray.TRANSPARENT
@@ -356,9 +359,9 @@ internal class IslandsUICustomization : InternalUICustomization() {
   }
 
   private fun enableManyIslands() {
-    editorTabPainterAdapter.isEnabled = true
-    commonTabPainterAdapter.isEnabled = true
-    debuggerTabPainterAdapter.isEnabled = true
+    editorTabPainterAdapter.cast<IslandsTabPainterAdapter>().isEnabled = true
+    commonTabPainterAdapter.cast<IslandsTabPainterAdapter>().isEnabled = true
+    debuggerTabPainterAdapter.cast<IslandsTabPainterAdapter>().isEnabled = true
 
     // XXX: dialogs
 
@@ -412,9 +415,9 @@ internal class IslandsUICustomization : InternalUICustomization() {
   }
 
   private fun disableManyIslands() {
-    editorTabPainterAdapter.isEnabled = false
-    commonTabPainterAdapter.isEnabled = false
-    debuggerTabPainterAdapter.isEnabled = false
+    editorTabPainterAdapter.cast<IslandsTabPainterAdapter>().isEnabled = false
+    commonTabPainterAdapter.cast<IslandsTabPainterAdapter>().isEnabled = false
+    debuggerTabPainterAdapter.cast<IslandsTabPainterAdapter>().isEnabled = false
 
     // XXX: dialogs
 
@@ -449,7 +452,7 @@ internal class IslandsUICustomization : InternalUICustomization() {
 
       val project = frameHelper.project
       if (project != null) {
-        val manager = ToolWindowManager.getInstance(project) as ToolWindowManagerEx
+        val manager = ToolWindowManagerEx.getInstanceEx(project)
         updateToolStripesVisibility(manager)
         for (toolwindow in manager.toolWindows) {
           if (toolwindow is ToolWindowImpl) {
@@ -664,6 +667,7 @@ internal class IslandsUICustomization : InternalUICustomization() {
 
   private fun configureSearchReplaceComponent(component: EditorHeaderComponent, extraTopBorder: Any?): JComponent {
     val wrapper = SearchReplaceWrapper(component)
+    SearchReplaceComponentTracker(wrapper)
     wrapper.putClientProperty("SearchComponent", component)
     if (extraTopBorder != null) {
       wrapper.putClientProperty("extraTopBorder", extraTopBorder)
@@ -843,7 +847,7 @@ internal class IslandsUICustomization : InternalUICustomization() {
 
   override fun shouldPaintEditorTabsBottomBorder(editorCompositePanel: JComponent): Boolean {
     if (isManyIslandEnabled && !isBreadcrumbsAbove) {
-      return UIUtil.findComponentOfType(editorCompositePanel, SearchReplaceWrapper::class.java) == null
+      return EditorSearchComponentState.get(editorCompositePanel)?.hasSearchComponents != true
     }
     return true
   }
@@ -1019,9 +1023,9 @@ internal class IslandsUICustomization : InternalUICustomization() {
     }
   }
 
-  override val editorTabPainterAdapter: IslandsTabPainterAdapter = IslandsTabPainterAdapter(false, false, isManyIslandEnabled)
+  override val editorTabPainterAdapter: TabPainterAdapter = IslandsTabPainterAdapter(false, false, isManyIslandEnabled)
 
-  override val toolWindowTabPainter: IslandsTabPainter = object : IslandsTabPainter(false, false) {
+  override val toolWindowTabPainter: JBTabPainter = object : IslandsTabPainter(false, false) {
     private val defaultPainter = JBTabPainter.TOOL_WINDOW
 
     override fun paintTab(
@@ -1072,13 +1076,14 @@ internal class IslandsUICustomization : InternalUICustomization() {
     }
   }
 
-  override val commonTabPainterAdapter: IslandsTabPainterAdapter = IslandsTabPainterAdapter(true, false, isManyIslandEnabled)
+  override val commonTabPainterAdapter: TabPainterAdapter = IslandsTabPainterAdapter(true, false, isManyIslandEnabled)
 
-  override val debuggerTabPainterAdapter: IslandsTabPainterAdapter = IslandsTabPainterAdapter(true, true, isManyIslandEnabled)
+  override val debuggerTabPainterAdapter: TabPainterAdapter = IslandsTabPainterAdapter(true, true, isManyIslandEnabled)
 
   override fun paintTab(g: Graphics, position: JBTabsPosition, rect: Rectangle, hovered: Boolean, selected: Boolean): Boolean {
     if (isManyIslandEnabled) {
-      toolWindowTabPainter.paintTab(g as Graphics2D, position, rect, null, true, hovered, selected)
+      toolWindowTabPainter.cast<IslandsTabPainter>()
+        .paintTab(g as Graphics2D, position, rect, null, true, hovered, selected)
       return true
     }
     return true
@@ -1099,6 +1104,17 @@ internal class IslandsUICustomization : InternalUICustomization() {
     val compactMode = UISettings.getInstance().compactMode
 
     return if (isManyIslandEnabled && tabsPosition.isSide && compactMode) JBUI.insetsTop(3) else null
+  }
+
+  override fun getEditorTabComposedBgColor(
+    component: JComponent,
+    tabPainter: JBTabPainter,
+    tabColor: Color?,
+    active: Boolean,
+    hovered: Boolean,
+    selected: Boolean,
+  ): Color? {
+    return (tabPainter as? IslandsTabPainter)?.getEditorTabComposedBgColor(component, tabColor, active, hovered, selected)
   }
 
   private fun getMainBackgroundColor(): Color {

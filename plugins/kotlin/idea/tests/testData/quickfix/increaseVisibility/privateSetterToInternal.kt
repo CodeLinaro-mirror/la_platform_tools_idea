@@ -2,7 +2,7 @@
 // ACTION: Converts the assignment statement to an expression
 // ACTION: Make '<set-attribute>' internal
 // ACTION: Make '<set-attribute>' public
-// K2_ERROR: Cannot access 'attribute': it is private in 'Demo'.
+// K2_ERROR: INVISIBLE_SETTER
 
 class Demo {
     var attribute = "a"
@@ -13,5 +13,4 @@ fun main() {
     val c = Demo()
     <caret>c.attribute = "test"
 }
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ChangeVisibilityFix$ChangeToInternalFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeVisibilityFixFactories$ChangeToInternalModCommandAction
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeVisibilityFixFactories$ChangeToInternalModCommandAction

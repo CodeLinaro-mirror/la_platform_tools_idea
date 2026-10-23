@@ -9,6 +9,7 @@ import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.platform.lsp.api.LspClient
+import com.intellij.platform.lsp.impl.features.highlightingCommon.LspPullResult
 import com.intellij.platform.lsp.util.getLsp4jRange
 import com.intellij.psi.impl.PsiDocumentManagerBase
 import com.intellij.util.concurrency.annotations.RequiresBackgroundThread
@@ -53,7 +54,7 @@ class LspDocumentMapping(private val lspClient: LspClientImpl) {
     return getAdapterForFile(file).toLspDocumentPosition(lspClient, file, document, offset)
   }
 
-  @RequiresReadLock
+  @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
   fun getDocumentRangesSync(file: VirtualFile, document: Document, range: Range): List<LspDocumentRange> {
     return getAdapterForFile(file).toLspDocumentRangeSync(lspClient, file, document, range)
   }
@@ -82,8 +83,8 @@ class LspDocumentMapping(private val lspClient: LspClientImpl) {
    * @param file might be an injected VirtualFileWindow
    * @param offset might be an offset in the injected file
    */
-  @RequiresReadLock
-  @RequiresBackgroundThread
+  @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
+  @RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
   fun <T> withDocumentAtFileOffset(file: VirtualFile, offset: Int, block: (LspDocument, Position) -> T): T? {
     val host = unwrapInjection(file, offset) ?: return null
     return withDocumentAtOffset(host.hostFile, host.hostDocument, host.hostOffset, block)
@@ -106,8 +107,8 @@ class LspDocumentMapping(private val lspClient: LspClientImpl) {
    * Unwraps language injection, returning the host file, document, and offset.
    * If [file] is not injected, returns it as-is.
    */
-  @RequiresReadLock
-  @RequiresBackgroundThread
+  @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
+  @RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
   fun unwrapInjection(file: VirtualFile, offset: Int): HostCoordinates? {
     ProgressManager.checkCanceled()
     val document = FileDocumentManager.getInstance().getDocument(file)
@@ -131,6 +132,15 @@ class LspDocumentMapping(private val lspClient: LspClientImpl) {
 internal fun <T> List<List<T>?>.aggregatePerDocumentResults(): List<T>? {
   if (all { it == null }) return null
   return filterNotNull().flatten()
+}
+
+/**
+ * Like [aggregatePerDocumentResults], but wraps the outcome into an [LspPullResult]
+ * for [com.intellij.platform.lsp.impl.features.highlightingCommon.LspHighlightingCache.sendRequest].
+ */
+internal fun <T> List<List<Pair<Range, T>>?>.aggregateToPullResult(): LspPullResult<T> {
+  val aggregated = aggregatePerDocumentResults() ?: return LspPullResult.Failed
+  return LspPullResult.Full(aggregated)
 }
 
 /**

@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.platform
 
 import com.intellij.configurationStore.ProjectStorePathManager
@@ -10,6 +10,8 @@ import com.intellij.ide.impl.TrustedPaths
 import com.intellij.ide.impl.runUnderModalProgressIfIsEdt
 import com.intellij.ide.impl.toOpenProjectTask
 import com.intellij.ide.lightEdit.LightEditService
+import com.intellij.ide.lightEdit.isClaimedByWelcomeScreenProject
+import com.intellij.ide.TrustedFiles
 import com.intellij.ide.util.PsiNavigationSupport
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.EDT
@@ -34,8 +36,8 @@ import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.Ref
 import com.intellij.openapi.util.io.FileUtilRt
 import com.intellij.openapi.util.registry.Registry
-import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.platform.ide.diagnostic.startUpPerformanceReporter.FUSProjectHotStartUpMeasurer
 import com.intellij.platform.ide.progress.runWithModalProgressBlocking
 import com.intellij.projectImport.ProjectAttachProcessor
@@ -69,6 +71,10 @@ fun isConfiguredByPlatformProcessor(project: Project): Boolean = project.getUser
 internal fun isLoadedFromCacheButHasNoModules(project: Project): Boolean {
   return project.getUserData(PROJECT_LOADED_FROM_CACHE_BUT_HAS_NO_MODULES) == true
 }
+
+/** A project opens with no module: directory project configurators do not run, and JPS files do not contribute modules. */
+@Internal
+fun isProjectOpenWithoutModule(): Boolean = Registry.`is`("ide.project.open.without.module")
 
 class PlatformProjectOpenProcessor : ProjectOpenProcessor(), CommandLineProjectOpenProcessor {
   enum class Option {
@@ -122,9 +128,12 @@ class PlatformProjectOpenProcessor : ProjectOpenProcessor(), CommandLineProjectO
         projectName = dummyProjectName,
         runConfigurators = false,
         runConversionBeforeOpen = false,
-        beforeOpen = { project ->
-          project.service<OpenProjectSettingsService>().state.isLocatedInTempDirectory = true
-          options.beforeOpen?.invoke(project) ?: true
+        beforeOpenTasks = buildList {
+          add { project ->
+            project.service<OpenProjectSettingsService>().state.isLocatedInTempDirectory = true
+            true
+          }
+          addAll(options.beforeOpenTasks)
         }
       ).let {
         // both callers of this go on to `openFileFromCommandLine`, which is what releases the hold this asks for
@@ -152,26 +161,29 @@ class PlatformProjectOpenProcessor : ProjectOpenProcessor(), CommandLineProjectO
       return project
     }
 
+    /**
+     * Do not use this method. It should be private. Use [ProjectUtil.openOrImport] or [ProjectUtil.openOrImportAsync]
+     */
     @Internal
     fun doOpenProject(file: Path, originalOptions: OpenProjectTask): Project? {
       LOG.info("Opening (sync) $file")
 
       if (originalOptions.createModule && Files.isDirectory(file)) {
-        val options = runUnderModalProgressIfIsEdt {
-          createOptionsToOpenDotIdeaOrCreateNewIfNotExists(file, projectToClose = null).copy(
-            projectName = originalOptions.projectName,
-            beforeOpen = {
-              it.putUserData(PROJECT_OPENED_BY_PLATFORM_PROCESSOR, true)
-              true
-            }
-          )
-        }
+        val options = originalOptions.copy(
+          runConfigurators = originalOptions.runConfigurators ?: true,
+          projectRootDir = originalOptions.projectRootDir ?: file,
+          beforeOpenTasks = originalOptions.beforeOpenTasks + { project ->
+            project.putUserData(PROJECT_OPENED_BY_PLATFORM_PROCESSOR, true)
+            true
+          }
+        )
         return ProjectManagerEx.getInstanceEx().openProject(file, options)
       }
 
       var options = originalOptions
+      val claimedByWelcomeScreenProject = isClaimedByWelcomeScreenProject(file)
       val lightEditService = serviceOrNull<LightEditService>()
-      if (lightEditService != null && lightEditService.isForceOpenInLightEditMode()) {
+      if (!claimedByWelcomeScreenProject && lightEditService != null && lightEditService.isForceOpenInLightEditMode()) {
         LightEditService.getInstance().openFile(file, false)?.let {
           FUSProjectHotStartUpMeasurer.lightEditProjectFound()
           return it
@@ -188,7 +200,7 @@ class PlatformProjectOpenProcessor : ProjectOpenProcessor(), CommandLineProjectO
       // no reasonable directory -> create new temp one or use parent
       if (baseDirCandidate == null) {
         LOG.info("No project directory found")
-        if (lightEditService != null) {
+        if (!claimedByWelcomeScreenProject && lightEditService != null) {
           if (lightEditService.isLightEditEnabled() && !LightEditService.getInstance().isPreferProjectMode) {
             val lightEditProject = LightEditService.getInstance().openFile(file, true)
             if (lightEditProject != null) {
@@ -226,18 +238,31 @@ class PlatformProjectOpenProcessor : ProjectOpenProcessor(), CommandLineProjectO
       return project
     }
 
-    suspend fun openProjectAsync(file: Path, originalOptions: OpenProjectTask = OpenProjectTask()): Project? {
+    /**
+     * Do not use this method. It should be private. Use [ProjectUtil.openOrImportAsync]
+     */
+    @Internal
+    suspend fun openProjectAsync(file: Path, originalOptions: OpenProjectTask): Project? {
       LOG.info("Opening (async) $file")
 
       val isDirectory = Files.isDirectory(file)
       if (originalOptions.createModule && isDirectory) {
-        // todo: originalOptions should not be dropped
+        // todo: this is a shortcut to bypass all the "normal" logic and let project be imported via directory configurators only.
+        //  createModule is a rather new thing. Moreover, it is @Internal. It has no external usages yet, and  only a few internal usages.
+        //  Effectively, this condition means: if we reached PlatformProjectOpenProcessor with a directory, then use directory configurators
+        //   (except a very few very special cases: opening a directory (usually as a temp project) and opening a temp project)
+        //   (We also have bazel plugin which sets createModule to false, but at the same time it explicitly sets runConfigurators=true)
+        //  Earlier we had `createOptionsToOpenDotIdeaOrCreateNewIfNotExists` instead of `originalOptions.copy`, and it worked as follows:
+        //   if we reach this place with a directory - then forget originalOptions, and try to open the folder as exisitng .idea project
+        //   or create a new .idea project here and import it via directory condifurators.
+        //  Now we try to not reject existing originalOptions and capture the intent (most notably - runConfigurators flag) on the callers side.
         return ProjectManagerEx.getInstanceEx().openProjectAsync(
           projectIdentityFile = file,
-          options = createOptionsToOpenDotIdeaOrCreateNewIfNotExists(file, projectToClose = null).copy(
-            projectName = originalOptions.projectName,
-            beforeOpen = {
-              it.putUserData(PROJECT_OPENED_BY_PLATFORM_PROCESSOR, true)
+          options = originalOptions.copy(
+            runConfigurators = originalOptions.runConfigurators ?: true,
+            projectRootDir = originalOptions.projectRootDir ?: file,
+            beforeOpenTasks = originalOptions.beforeOpenTasks + { project ->
+              project.putUserData(PROJECT_OPENED_BY_PLATFORM_PROCESSOR, true)
               true
             }
           ),
@@ -245,8 +270,9 @@ class PlatformProjectOpenProcessor : ProjectOpenProcessor(), CommandLineProjectO
       }
 
       var options = originalOptions
+      val claimedByWelcomeScreenProject = isClaimedByWelcomeScreenProject(file)
       val lightEditService = serviceOrNull<LightEditService>()
-      if (lightEditService != null && lightEditService.isForceOpenInLightEditMode()) {
+      if (!claimedByWelcomeScreenProject && lightEditService != null && lightEditService.isForceOpenInLightEditMode()) {
         LightEditService.getInstance().openFile(file, false)?.let {
           FUSProjectHotStartUpMeasurer.lightEditProjectFound()
           return it
@@ -263,7 +289,7 @@ class PlatformProjectOpenProcessor : ProjectOpenProcessor(), CommandLineProjectO
       // no reasonable directory -> create new temp one or use parent
       if (baseDirCandidate == null) {
         LOG.info("No project directory found")
-        if (lightEditService != null) {
+        if (!claimedByWelcomeScreenProject && lightEditService != null) {
           if (lightEditService.isLightEditEnabled() && !LightEditService.getInstance().isPreferProjectMode) {
             val lightEditProject = LightEditService.getInstance().openFile(file, true)
             if (lightEditProject != null) {
@@ -309,7 +335,7 @@ class PlatformProjectOpenProcessor : ProjectOpenProcessor(), CommandLineProjectO
     ): Module? {
       project.putUserData(PROJECT_CONFIGURED_BY_PLATFORM_PROCESSOR, true)
 
-      val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(projectFile)!!
+      val virtualFile = VirtualFileManager.getInstance().refreshAndFindFileByNioPath(projectFile)!!
       withContext(Dispatchers.EDT) {
         virtualFile.refresh(false, false)
       }
@@ -346,7 +372,7 @@ class PlatformProjectOpenProcessor : ProjectOpenProcessor(), CommandLineProjectO
       return moduleRef.get()
     }
 
-    @RequiresEdt
+    @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
     @Internal
     fun attachToProject(project: Project, projectDir: Path, callback: ProjectOpenedCallback?): Boolean {
       return runWithModalProgressBlocking(project, "") {
@@ -367,11 +393,7 @@ class PlatformProjectOpenProcessor : ProjectOpenProcessor(), CommandLineProjectO
     @JvmStatic
     suspend fun createOptionsToOpenDotIdeaOrCreateNewIfNotExists(projectDir: Path, projectToClose: Project?): OpenProjectTask {
       return OpenProjectTask {
-        runConfigurators = true
-        isNewProject = !ProjectUtil.isValidProjectPath(projectDir)
-        this.projectToClose = projectToClose
-        useDefaultProjectAsTemplate = true
-        projectRootDir = projectDir
+        configureToOpenDotIdeaOrCreateNewIfNotExists(projectDir, projectToClose)
       }
     }
 
@@ -381,6 +403,7 @@ class PlatformProjectOpenProcessor : ProjectOpenProcessor(), CommandLineProjectO
       isNewProject = !ProjectUtil.isValidProjectPath(projectDir)
       this.projectToClose = projectToClose
       useDefaultProjectAsTemplate = true
+      projectRootDir = projectDir
     }
   }
 
@@ -439,6 +462,7 @@ private fun openFileFromCommandLine(project: Project, file: Path, line: Int, col
         }
 
         val virtualFile = ProjectUtilCore.getFileAndRefresh(file) ?: return@Runnable
+        TrustedFiles.markExternallyOpened(virtualFile)
         val navigatable = if (line > 0) {
           OpenFileDescriptor(project, virtualFile, line - 1, column.coerceAtLeast(0))
         }
@@ -461,7 +485,7 @@ private fun openFileFromCommandLine(project: Project, file: Path, line: Int, col
  * Nothing to release if the editor area was never built: `mainSplitters` is a `lateinit` assigned inside `initJob`, and where that job
  * did not complete, editor restoring never took a hold either.
  */
-@RequiresEdt
+@RequiresEdt(generateAssertion = false /* IJPL-115548 */)
 private fun endStartupEmptyStatePresentationHold(project: Project) {
   if (project.isDisposed) {
     return
@@ -473,7 +497,8 @@ private fun endStartupEmptyStatePresentationHold(project: Project) {
   fileEditorManager.mainSplitters.endStartupEmptyStatePresentationHold()
 }
 
-internal suspend fun attachToProjectAsync(
+@Internal
+suspend fun attachToProjectAsync(
   projectToClose: Project,
   projectDir: Path,
   processor: ProjectAttachProcessor? = null,
@@ -484,17 +509,18 @@ internal suspend fun attachToProjectAsync(
     return false
   }
   if (processor != null) {
-    return attachImpl(processor, projectToClose, projectDir, callback, beforeOpen)
+    return attachSafe(processor, projectToClose, projectDir, callback, beforeOpen)
   }
   for (attachProcessor in ProjectAttachProcessor.EP_NAME.lazySequence()) {
-    if (attachImpl(attachProcessor, projectToClose, projectDir, callback, beforeOpen)) {
+    if (attachSafe(attachProcessor, projectToClose, projectDir, callback, beforeOpen)) {
       return true
     }
   }
   return false
 }
 
-private suspend fun attachImpl(
+@Internal
+suspend fun attachSafe(
   attachProcessor: ProjectAttachProcessor,
   projectToClose: Project,
   projectDir: Path,

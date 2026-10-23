@@ -16,11 +16,11 @@ import com.intellij.platform.icons.design.Color
 import com.intellij.platform.icons.design.IconDesigner
 import com.intellij.platform.icons.filters.ColorFilter
 import com.intellij.platform.icons.filters.tint
-import com.intellij.platform.icons.icon
+import com.intellij.platform.icons.iconDescriptor
 import com.intellij.platform.icons.modifiers.IconModifier
 import com.intellij.platform.icons.modifiers.colorFilter
 import com.intellij.platform.icons.scale.IconScale
-import com.intellij.platform.icons.swing.toSwingIcon
+import com.intellij.platform.icons.swing.createSwingIcon
 import com.intellij.ui.ExperimentalUI
 import com.intellij.ui.JBIntSpinner
 import com.intellij.ui.UIBundle
@@ -36,7 +36,6 @@ import com.intellij.ui.components.JBTextArea
 import com.intellij.ui.components.JBTextField
 import com.intellij.ui.components.fields.ExpandableTextField
 import com.intellij.ui.components.fields.ExtendableTextField
-import com.intellij.ui.dsl.UiDslException
 import com.intellij.ui.dsl.builder.AlignX
 import com.intellij.ui.dsl.builder.BottomGap
 import com.intellij.ui.dsl.builder.COLUMNS_SHORT
@@ -84,7 +83,6 @@ import javax.swing.ListCellRenderer
 import javax.swing.SpinnerNumberModel
 
 @Suppress("OVERRIDE_DEPRECATION")
-@ApiStatus.Internal
 internal open class RowImpl(private val dialogPanelConfig: DialogPanelConfig,
                             private val panelContext: PanelContext,
                             private val parent: PanelImpl,
@@ -114,6 +112,8 @@ internal open class RowImpl(private val dialogPanelConfig: DialogPanelConfig,
   var customGaps: UnscaledGapsY? = null
 
   val cells: MutableList<CellBaseImpl<*>?> = mutableListOf()
+
+  var creationStackTrace: Throwable? = null
 
   private var visible = true
   private var enabled = true
@@ -321,16 +321,18 @@ internal open class RowImpl(private val dialogPanelConfig: DialogPanelConfig,
     return cell(label)
   }
 
-  override fun icon(icon: com.intellij.platform.icons.Icon, scale: IconScale): CellImpl<JLabel> {
-    val label = JBLabel(icon, scale)
-    label.disabledIcon = com.intellij.platform.icons.icon {
-      icon(icon, IconModifier.colorFilter(ColorFilter.tint(Color.Black, BlendMode.Saturation)))
-    }.toSwingIcon()
+  @ApiStatus.Internal
+  override fun icon(iconDescriptor: com.intellij.platform.icons.IconDescriptor, scale: IconScale): CellImpl<JLabel> {
+    val label = JBLabel(iconDescriptor, scale)
+    label.disabledIcon = iconDescriptor {
+      icon(iconDescriptor, IconModifier.colorFilter(ColorFilter.tint(Color.Black, BlendMode.Saturation)))
+    }.createSwingIcon()
     return cell(label)
   }
 
+  @ApiStatus.Internal
   override fun icon(scale: IconScale, designer: IconDesigner.() -> Unit): Cell<JLabel> {
-    return icon(icon(designer), scale)
+    return icon(iconDescriptor(designer), scale)
   }
 
   override fun contextHelp(description: String, title: String?): CellImpl<JLabel> {
@@ -483,8 +485,8 @@ internal open class RowImpl(private val dialogPanelConfig: DialogPanelConfig,
   }
 
   private fun registerRadioButton(cell: CellImpl<out JRadioButton>, value: Any?) {
-    val buttonsGroup = dialogPanelConfig.context.getButtonsGroup() ?: throw UiDslException(
-      "Button group must be defined before using radio button")
+    val buttonsGroup = dialogPanelConfig.context.getButtonsGroup()
+    checkNotNull(buttonsGroup) { "Button group must be defined before using radio button" }
     buttonsGroup.add(cell, value)
   }
 
@@ -500,5 +502,15 @@ internal open class RowImpl(private val dialogPanelConfig: DialogPanelConfig,
     }
 
     return result
+  }
+
+  /**
+   * Should be called after row initialization. The stack trace may be created by mistake
+   * because of usages such as: `row { }.label("Label")`
+   */
+  fun initCreationStackTrace() {
+    if (cells.isEmpty() && isSaveStacktraces()) {
+      creationStackTrace = Throwable()
+    }
   }
 }

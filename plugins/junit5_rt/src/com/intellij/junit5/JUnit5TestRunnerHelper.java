@@ -1,6 +1,7 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.junit5;
 
+import com.intellij.rt.junit.JUnitStarter;
 import org.junit.platform.commons.support.ReflectionSupport;
 import org.junit.platform.engine.DiscoverySelector;
 import org.junit.platform.engine.FilterResult;
@@ -45,6 +46,10 @@ public class JUnit5TestRunnerHelper {
 
     LauncherDiscoveryRequestBuilder builder = LauncherDiscoveryRequestBuilder.request();
 
+    if (Boolean.getBoolean(JUnitStarter.DRY_RUN_PROPERTY)) {
+      builder.configurationParameter("junit.jupiter.extensions.autodetection.enabled", "true");
+      builder.configurationParameter(JUnitStarter.DRY_RUN_PROPERTY, "true");
+    }
 
     if (suiteClassNames.length == 1 && suiteClassNames[0].charAt(0) == '@') {
       // all tests in the package specified

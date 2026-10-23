@@ -29,4 +29,5 @@ public final class DaemonBundle {
     }
     return IdeDeprecatedMessagesBundle.messagePointer(key, params);
   }
+
 }

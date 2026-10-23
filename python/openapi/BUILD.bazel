@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.python.community` start
+content_module_jar(module = ":community")
+### auto-generated section `dev intellij.python.community` end
 
 ### auto-generated section `build intellij.python.community` start
-
 jvm_library(
     name = "community",
     srcs = glob(
@@ -25,12 +29,13 @@ jvm_library(
     ],
     deps = [
         # do not sort,
+        "//python/python-process-output/common",
         "//python/python-psi-api:psi",
         "//platform/analysis-api:analysis",
         "//platform/platform-util-io:ide-util-io",
         "//libraries/jsoup",
         "@lib//:kotlin-stdlib",
-        "@lib//:jetbrains-annotations",
+        "//libraries/jetbrains/annotations",
         "//platform/util",
         "//platform/extensions",
         "//platform/core-api:core",
@@ -42,6 +47,8 @@ jvm_library(
         "//platform/backend/workspace",
         "//platform/workspace/storage",
         "//platform/workspace/jps",
+        "//platform/ide-core",
+        "//platform/util-ex",
     ],
 )
 
@@ -64,10 +71,12 @@ jvm_library(
     runtime_deps = [
         # do not sort,
         ":community",
+        "//python/python-process-output/common:common_test_lib",
         "//python/python-psi-api:psi_test_lib",
         "//platform/analysis-api:analysis_test_lib",
         "//platform/platform-util-io:ide-util-io_test_lib",
         "//libraries/jsoup:jsoup_test_lib",
+        "//libraries/jetbrains/annotations:annotations_test_lib",
         "//platform/util:util_test_lib",
         "//platform/extensions:extensions_test_lib",
         "//platform/core-api:core_test_lib",
@@ -79,6 +88,8 @@ jvm_library(
         "//platform/backend/workspace:workspace_test_lib",
         "//platform/workspace/storage:storage_test_lib",
         "//platform/workspace/jps:jps_test_lib",
+        "//platform/ide-core:ide-core_test_lib",
+        "//platform/util-ex:util-ex_test_lib",
     ],
 )
 ### auto-generated section `build intellij.python.community` end
@@ -87,6 +98,7 @@ jvm_library(
 exports_files(
     [
         "intellij.python.community.iml",
+        "resources/intellij.python.community.xml",
     ],
     visibility = ["//visibility:public"],
 )

@@ -22,6 +22,7 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.util.QualifiedName;
 import com.intellij.util.ObjectUtils;
+import com.jetbrains.python.documentation.PythonDocumentationProvider;
 import com.jetbrains.python.psi.LanguageLevel;
 import com.jetbrains.python.psi.PyClass;
 import com.jetbrains.python.psi.PyPsiFacade;
@@ -32,8 +33,10 @@ import com.jetbrains.python.psi.types.PyClassType;
 import com.jetbrains.python.psi.types.PyClassTypeImpl;
 import com.jetbrains.python.psi.types.PyTupleType;
 import com.jetbrains.python.psi.types.PyType;
-import com.jetbrains.python.psi.types.PyTypeParser;
+import com.jetbrains.python.psi.types.PyLegacyDocstringTypeParser;
+import com.jetbrains.python.psi.types.PyTypeRendererFeature;
 import com.jetbrains.python.psi.types.PyUnionType;
+import com.jetbrains.python.psi.types.TypeEvalContext;
 import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -41,6 +44,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
 
 public final class PyPsiFacadeImpl extends PyPsiFacade {
@@ -67,7 +71,7 @@ public final class PyPsiFacadeImpl extends PyPsiFacade {
 
   @Override
   public @Nullable PyType createUnionType(@NotNull Collection<PyType> members) {
-    return PyUnionType.union(members);
+    return PyUnionType.unionOrUnknown(members);
   }
 
   @Override
@@ -77,7 +81,12 @@ public final class PyPsiFacadeImpl extends PyPsiFacade {
 
   @Override
   public @Nullable PyType parseTypeAnnotation(@NotNull String annotation, @NotNull PsiElement anchor) {
-    return PyTypeParser.getTypeByName(anchor, annotation);
+    return PyLegacyDocstringTypeParser.getTypeByName(anchor, annotation);
+  }
+
+  @Override
+  public @NotNull String renderType(@Nullable PyType type, @NotNull TypeEvalContext context, @NotNull Set<PyTypeRendererFeature> features) {
+    return PythonDocumentationProvider.getTypeName(type, context, features.toArray(new PyTypeRendererFeature[0]));
   }
 
   public static @NotNull List<@Nullable PsiElement> resolveQName(@NotNull QualifiedName qualifiedName, @NotNull PsiElement anchor) {

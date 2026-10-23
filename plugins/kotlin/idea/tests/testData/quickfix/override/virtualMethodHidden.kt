@@ -1,5 +1,5 @@
 // "Add 'override' modifier" "true"
-// K2_ERROR: 'foo' hides member of supertype 'A' and needs an 'override' modifier.
+// K2_ERROR: VIRTUAL_MEMBER_HIDDEN
 open class A() {
     open fun foo() {}
 }
@@ -9,4 +9,3 @@ class B() : A() {
 }
 
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AddModifierFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AddModifierFix

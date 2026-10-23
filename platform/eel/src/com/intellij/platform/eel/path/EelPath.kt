@@ -19,6 +19,10 @@ val EelPath.platform: EelOsFamily get() = descriptor.osFamily
  * All operations listed here do not require I/O.
  *
  * In the examples below, `descriptor` is a POSIX [EelDescriptor] and `windowsDescriptor` is a Windows one.
+ *
+ * [EelPath] contains both: [EelDescriptor] and a path on it (e.g. a descriptor of a Docker container and path `/root` inside of it).
+ * To get the path on [EelDescriptor] (to pass it to a remote command for example), use [toString];
+ * [fileName] returns only the last component of it.
  */
 @ApiStatus.Experimental
 sealed interface EelPath {
@@ -26,7 +30,7 @@ sealed interface EelPath {
     @Throws(EelPathException::class)
     @JvmStatic
     fun parse(raw: String, descriptor: EelDescriptor): EelPath {
-      return ArrayListEelAbsolutePath.parseOrNull(raw, descriptor) ?: throw EelPathException(raw, "Not a valid absolute path")
+      return ArrayListEelAbsolutePath.parseOrNull(raw, descriptor) ?: throw EelPathException(raw, "Not a valid absolute path on $descriptor")
     }
 
     @Throws(EelPathException::class)

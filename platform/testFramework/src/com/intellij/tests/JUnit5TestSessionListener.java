@@ -35,6 +35,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.prefs.Preferences;
 
+
 /**
  * This class is a replacement for {@linkplain _FirstInSuiteTest} and {@linkplain _LastInSuiteTest} when running JUnit5 tests
  * using the JUnit Jupiter test engine, or JUnit 3/4 tests using the JUnit Vintage test engine.
@@ -100,9 +101,6 @@ public class JUnit5TestSessionListener implements LauncherSessionListener {
           // so we try to forcibly terminate EDT here to urge JVM to re-spawn new shiny permanent EDT-1
           UITestUtil.replaceIdeEventQueueSafely();
           SwingUtilities.invokeAndWait(() -> System.out.println("EDT is " + Thread.currentThread()));
-
-          // force platform JNA load
-          Class.forName("com.sun.jna.Native");
         }
 
         String tempDirectory = FileUtilRt.getTempDirectory();

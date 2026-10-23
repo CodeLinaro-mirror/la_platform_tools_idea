@@ -1,4 +1,4 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.configuration
 
 import com.intellij.icons.AllIcons
@@ -23,22 +23,26 @@ import com.intellij.openapi.ui.InputValidatorEx
 import com.intellij.openapi.ui.MasterDetailsComponent
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.util.Condition
+import com.intellij.platform.ide.progress.ModalTaskOwner
+import com.intellij.platform.ide.progress.runWithModalProgressBlocking
+import com.intellij.python.sdk.backend.pyInterpreterItems
+import com.intellij.python.sdk.common.PyInterpreterItem
 import com.intellij.ui.ColoredTreeCellRenderer
 import com.intellij.util.IconUtil
 import com.intellij.util.ui.tree.TreeUtil
 import com.jetbrains.python.PyBundle
+import com.jetbrains.python.onFailure
 import com.jetbrains.python.sdk.ModuleOrProject
 import com.jetbrains.python.sdk.ModuleOrProject.ModuleAndProject
 import com.jetbrains.python.sdk.ModuleOrProject.ProjectOnly
 import com.jetbrains.python.sdk.PythonSdkUpdater
 import com.jetbrains.python.sdk.collectAddInterpreterActions
 import com.jetbrains.python.sdk.customizeWithSdkValue
-import com.jetbrains.python.sdk.filterAssignablePythonSdks
+import com.jetbrains.python.sdk.filter.filterAssignablePythonSdks
 import com.jetbrains.python.sdk.isAssociatedWithAnotherModule
 import com.jetbrains.python.sdk.legacy.PythonSdkUtil
 import com.jetbrains.python.sdk.noInterpreterMarker
 import com.jetbrains.python.sdk.renameSdk
-import com.jetbrains.python.onFailure
 import javax.swing.JTree
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeModel
@@ -106,8 +110,7 @@ internal class PythonInterpreterMasterDetails(private val moduleOrProject: Modul
       hasFocus: Boolean,
     ) {
       val configurable = (value as? DefaultMutableTreeNode)?.userObject as? PythonInterpreterDetailsConfigurable
-      val sdk = configurable?.sdk
-      customizeWithSdkValue(sdk, noInterpreterMarker, nullSdkValue = null)
+      customizeWithSdkValue(configurable?.item, noInterpreterMarker, nullItem = null)
     }
   }
 
@@ -118,7 +121,7 @@ internal class PythonInterpreterMasterDetails(private val moduleOrProject: Modul
   }
 
   private val allPythonSdksInEdit: List<Sdk>
-    get() = project.filterAssignablePythonSdks(projectSdksModel.sdks.toList(), module)
+    get() = moduleOrProject.filterAssignablePythonSdks(projectSdksModel.sdks.toList())
 
   override fun reset() {
     pythonPathsModified = false
@@ -133,20 +136,30 @@ internal class PythonInterpreterMasterDetails(private val moduleOrProject: Modul
       hideOtherProjectVirtualenvs -> allPythonSdksInEdit.filter { !it.isAssociatedWithAnotherModule(module) }
       else -> allPythonSdksInEdit
     }
-    visiblePythonSdks.forEach(::addSdkNode)
+    // One progress for the whole list, because a row states whether its interpreter is usable and only the interpreter
+    // can answer that. Before PY-91967 every row probed the file system while it was being painted, under a modal
+    // progress of its own.
+    val items = interpreterItems(visiblePythonSdks)
+    visiblePythonSdks.zip(items).forEach { (sdk, item) -> addSdkNode(sdk, item) }
 
     super.reset()
   }
 
+  /** These SDKs as the tree holds them. Runs each interpreter, so it is done under a progress rather than on the EDT. */
+  private fun interpreterItems(sdks: List<Sdk>): List<PyInterpreterItem> =
+    runWithModalProgressBlocking(ModalTaskOwner.component(myTree), PyBundle.message("python.interpreters.reading.interpreters.progress")) {
+      sdks.pyInterpreterItems()
+    }
+
   /**
    * Suits for incremental addition [sdk] to the tree: it preserves a selection and inserts the provided [sdk] to the proper place.
    */
-  private fun addSdkNode(sdk: Sdk) {
-    addNode(MyNode(PythonInterpreterDetailsConfigurable(project, module, sdk, parentConfigurable)), myRoot)
+  private fun addSdkNode(sdk: Sdk, item: PyInterpreterItem) {
+    addNode(MyNode(PythonInterpreterDetailsConfigurable(project, module, sdk, item, parentConfigurable)), myRoot)
   }
 
   private fun addSdkNodeAndSelect(sdk: Sdk) {
-    addSdkNode(sdk)
+    addSdkNode(sdk, interpreterItems(listOf(sdk)).single())
     selectNodeInTree(sdk)
   }
 
@@ -286,7 +299,8 @@ internal class PythonInterpreterMasterDetails(private val moduleOrProject: Modul
     override fun setSelected(e: AnActionEvent, state: Boolean) {
       if (hideOtherProjectVirtualenvs && !state) {
         // reveal other virtualenvs
-        allPythonSdksInEdit.filter { it.isAssociatedWithAnotherModule(module) }.forEach(::addSdkNode)
+        val revealed = allPythonSdksInEdit.filter { it.isAssociatedWithAnotherModule(module) }
+        revealed.zip(interpreterItems(revealed)).forEach { (sdk, item) -> addSdkNode(sdk, item) }
       }
       else if (!hideOtherProjectVirtualenvs && state) {
         // hide other virtualenvs

@@ -1,5 +1,5 @@
 // "Create class 'A'" "true"
-// K2_ERROR: Unresolved reference 'A'.
+// K2_ERROR: UNRESOLVED_REFERENCE
 package p
 
 class X {
@@ -9,5 +9,4 @@ class X {
 class Foo: X.<caret>A(1, "2") {
 
 }
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.createFromUsage.createClass.CreateClassFromUsageFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.quickFixes.createFromUsage.CreateKotlinClassAction
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.quickFixes.createFromUsage.CreateKotlinClassAction

@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.execution.target
 
 import com.intellij.execution.ExecutionException
@@ -26,6 +26,7 @@ import com.intellij.platform.eel.EelPathBoundDescriptor
 import com.intellij.platform.eel.EelTunnelsApi
 import com.intellij.platform.eel.EnvironmentVariablesOptionsBuilder
 import com.intellij.platform.eel.ExecuteProcessException
+import com.intellij.platform.eel.convertToJVMProcess
 import com.intellij.platform.eel.fs.createTemporaryDirectory
 import com.intellij.platform.eel.fs.getPath
 import com.intellij.platform.eel.getAcceptorForRemotePort
@@ -149,7 +150,10 @@ class EelTargetEnvironmentRequest(
     override fun getTargetPathIfLocalPathIsOnTarget(probablyPathOnTarget: Path): FullPathOnTarget? {
       val eelPath = probablyPathOnTarget.asEelPath()
       val targetMachine = descriptor.getResolvedEelMachine()
-      return eelPath.takeIf { it.descriptor == descriptor || targetMachine?.ownsDescriptor(it.descriptor) == true }?.toString()
+      return eelPath.takeIf {
+        @Suppress("EelDescriptorEquality")
+        it.descriptor == descriptor || targetMachine?.ownsDescriptor(it.descriptor) == true
+      }?.toString()
     }
 
     override fun getState(): PersistentState {
@@ -291,7 +295,7 @@ class EelTargetEnvironment(override val request: EelTargetEnvironmentRequest) : 
       catch (err: NoSuchFileException) {
         if (!Files.exists(from)) throw err
       }
-      // TODO: generalize com.intellij.execution.wsl.ijent.nio.IjentWslNioFileSystemProvider.copy
+      // TODO: generalize com.intellij.platform.ijent.community.impl.nio.fs.IjentEphemeralRootAwareFileSystemProvider.copy
       EelPathTransfer.walkingTransfer(from,
                                       to,
                                       removeSource = false,
@@ -309,7 +313,7 @@ class EelTargetEnvironment(override val request: EelTargetEnvironmentRequest) : 
       catch (err: NoSuchFileException) {
         if (!Files.exists(from)) throw err
       }
-      // TODO: generalize com.intellij.execution.wsl.ijent.nio.IjentWslNioFileSystemProvider.copy
+      // TODO: generalize com.intellij.platform.ijent.community.impl.nio.fs.IjentEphemeralRootAwareFileSystemProvider.copy
       EelPathTransfer.walkingTransfer(from,
                                       to,
                                       removeSource = false,
@@ -335,6 +339,7 @@ class EelTargetEnvironment(override val request: EelTargetEnvironmentRequest) : 
         val remoteRoot = when (val targetRootPath = targetPathGetter()) {
           is TargetPath.Temporary -> {
             val localEelPath = localRootPath.asEelPath()
+            @Suppress("EelDescriptorEquality")
             if (localEelPath.descriptor == eel.descriptor || eelMachine.ownsDescriptor(localEelPath.descriptor)) {
               localEelPath.toString()
             }
@@ -390,7 +395,7 @@ class EelTargetEnvironment(override val request: EelTargetEnvironmentRequest) : 
     return runBlockingCancellable {
       builder.env(buildEnvs(commandLine.environmentVariables, parentEnvVarsOptions))
       try {
-        builder.eelIt().convertToJavaProcess()
+        builder.eelIt().convertToJVMProcess()
       }
       catch (e: ExecuteProcessException) {
         throw ExecutionException(e)

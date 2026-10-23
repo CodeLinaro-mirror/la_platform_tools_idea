@@ -4,11 +4,18 @@ package com.intellij.find;
 import com.intellij.find.editorHeaderActions.AddOccurrenceAction;
 import com.intellij.find.editorHeaderActions.RemoveOccurrenceAction;
 import com.intellij.find.editorHeaderActions.ToggleFindInSelectionAction;
+import com.intellij.ide.DataManager;
 import com.intellij.openapi.actionSystem.ActionButtonComponent;
 import com.intellij.openapi.actionSystem.ActionManager;
+import com.intellij.openapi.actionSystem.ActionPlaces;
+import com.intellij.openapi.actionSystem.ActionUiKind;
+import com.intellij.openapi.actionSystem.AnAction;
+import com.intellij.openapi.actionSystem.AnActionEvent;
+import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.actionSystem.IdeActions;
 import com.intellij.openapi.actionSystem.Shortcut;
 import com.intellij.openapi.actionSystem.ShortcutSet;
+import com.intellij.openapi.actionSystem.ex.ActionUtil;
 import com.intellij.openapi.actionSystem.impl.ActionButton;
 import com.intellij.openapi.actionSystem.impl.ActionToolbarImpl;
 import com.intellij.openapi.application.ApplicationBundle;
@@ -22,13 +29,14 @@ import com.intellij.util.ArrayUtil;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.ComponentWithEmptyText;
 import com.intellij.util.ui.UIUtil;
-import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.JComponent;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 public class FindInEditorFunctionalTest extends AbstractFindInEditorTest {
   @Override
@@ -73,8 +81,8 @@ public class FindInEditorFunctionalTest extends AbstractFindInEditorTest {
     for (ActionToolbarImpl toolbar : UIUtil.findComponentsOfType(component, ActionToolbarImpl.class)) {
       PlatformTestUtil.waitForFuture(toolbar.updateActionsAsync());
     }
-    Map<Class<?>, ActionButton> actions = StreamEx.of(UIUtil.findComponentsOfType(component, ActionButton.class))
-      .toMap(button -> button.getAction().getClass(), Function.identity(), (a, b) -> null);
+    Map<Class<?>, ActionButton> actions = UIUtil.findComponentsOfType(component, ActionButton.class).stream()
+      .collect(Collectors.toMap(button -> button.getAction().getClass(), Function.identity(), (a, b) -> null));
     model.setGlobal(false);// 'Find' action puts multiline text in search field (in contrast to 'Replace' action)
     assertFalse(model.isGlobal()); // multiline selection = no-global
     assertEquals(ActionButtonComponent.PUSHED, actions.get(ToggleFindInSelectionAction.class).getPopState());
@@ -255,6 +263,33 @@ public class FindInEditorFunctionalTest extends AbstractFindInEditorTest {
     model.setCaseSensitive(true);
     assertTrue(actionButton.isSelected());
     assertEquals(ApplicationBundle.message("editorsearch.current.cursor.position", 1, 1), component.getStatusText());
+  }
+
+  public void testSearchContextActionsDisabledWithoutSession() {
+    List<String> actionIds = List.of("SearchContext.Anywhere", "SearchContext.InComments", "SearchContext.InStringLiterals",
+                                     "SearchContext.ExceptComments", "SearchContext.ExceptStringLiterals",
+                                     "SearchContext.ExceptCommentsAndStringLiterals");
+    init("some text");
+    for (String actionId : actionIds) {
+      AnAction action = getRegisteredAction(actionId);
+      AnActionEvent event = AnActionEvent.createEvent(action, DataContext.EMPTY_CONTEXT, null, ActionPlaces.ACTION_SEARCH, ActionUiKind.NONE, null);
+      ActionUtil.updateAction(action, event);
+      assertFalse(actionId + " must be disabled without a search session", event.getPresentation().isEnabled());
+    }
+    initFind();
+    DataContext sessionContext = DataManager.getInstance().getDataContext(getEditorSearchComponent().getComponent());
+    for (String actionId : actionIds) {
+      AnAction action = getRegisteredAction(actionId);
+      AnActionEvent event = AnActionEvent.createEvent(action, sessionContext, null, ActionPlaces.EDITOR_TOOLBAR, ActionUiKind.TOOLBAR, null);
+      ActionUtil.updateAction(action, event);
+      assertTrue(actionId + " must be enabled in a search session", event.getPresentation().isEnabled());
+    }
+  }
+
+  private static @NotNull AnAction getRegisteredAction(String actionId) {
+    AnAction action = ActionManager.getInstance().getAction(actionId);
+    assertNotNull(actionId, action);
+    return action;
   }
 
   public void testNextFromFoldedRegion() {

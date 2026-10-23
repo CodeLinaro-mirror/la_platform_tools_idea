@@ -1,52 +1,7 @@
+load("@intellij_add_opens//:intellij_add_opens.bzl", "INTELLIJ_ADD_OPENS")
 load("@rules_java//java:defs.bzl", "java_test")
 
-PKGS = [
-    "java.base/java.io",
-    "java.base/java.lang",
-    "java.base/java.lang.reflect",
-    "java.base/java.net",
-    "java.base/java.nio",
-    "java.base/java.nio.charset",
-    "java.base/java.text",
-    "java.base/java.time",
-    "java.base/java.util",
-    "java.base/java.util.concurrent",
-    "java.base/java.util.concurrent.atomic",
-    "java.base/jdk.internal.ref",
-    "java.base/jdk.internal.vm",
-    "java.base/sun.nio.ch",
-    "java.base/sun.nio.fs",
-    "java.base/sun.security.ssl",
-    "java.base/sun.security.util",
-    "java.desktop/com.apple.eawt",
-    "java.desktop/com.apple.eawt.event",
-    "java.desktop/com.apple.laf",
-    "java.desktop/java.awt",
-    "java.desktop/java.awt.dnd.peer",
-    "java.desktop/java.awt.event",
-    "java.desktop/java.awt.font",
-    "java.desktop/java.awt.image",
-    "java.desktop/java.awt.peer",
-    "java.desktop/javax.swing",
-    "java.desktop/javax.swing.plaf.basic",
-    "java.desktop/javax.swing.text.html",
-    "java.desktop/javax.swing.text.html.parser",
-    "java.desktop/sun.awt",
-    "java.desktop/sun.awt.datatransfer",
-    "java.desktop/sun.awt.image",
-    "java.desktop/sun.font",
-    "java.desktop/sun.java2d",
-    "java.desktop/sun.lwawt",
-    "java.desktop/sun.lwawt.macosx",
-    "java.desktop/sun.swing",
-    "java.desktop/sun.swing.text",
-    "jdk.attach/sun.tools.attach",
-    "jdk.compiler/com.sun.tools.javac.api",
-    "jdk.internal.jvmstat/sun.jvmstat.monitor",
-    "jdk.jdi/com.sun.tools.jdi",
-]
-
-ADD_OPENS_FLAGS = ["--add-opens=" + pkg + "=ALL-UNNAMED" for pkg in PKGS]
+ADD_OPENS_FLAGS = ["--add-opens=" + pkg + "=ALL-UNNAMED" for pkg in INTELLIJ_ADD_OPENS]
 
 # Mirrors COMMON_VM_OPTIONS in VmOptionsGenerator.kt
 JAVA_TEST_FLAGS = [
@@ -58,7 +13,11 @@ JAVA_TEST_FLAGS = [
     "-Didea.reset.classpath.from.manifest=true",
     "-Dintellij.build.use.compiled.classes=false",
     "-Djava.util.zip.use.nio.for.zip.file.access=true",
-]
+    "-ea",
+] + select({
+    "@platforms//os:windows": ["-XX:+ErrorFileToStderr"],
+    "//conditions:default": ['-XX:ErrorFile="$${TEST_UNDECLARED_OUTPUTS_DIR}/hs_err_pid%p.log"'],
+})
 
 JAVA_TEST_ARGS = [
 ]
@@ -71,18 +30,15 @@ TEST_FRAMEWORK_DEPS = [
 
     # Provide test engines to run actual tests
     # Junit 3/4 is also run by junit5 via junit vintage
-    "@community//libraries/junit5-vintage",
-    "@community//libraries/junit5-launcher",
+    "@community//libraries/junit6-vintage",
+    "@community//libraries/junit6-launcher",
 ]
 
 # needed to avoid runtime duplications in jps_test of community/platform/util/BUILD.bazel
 # as depset can't recognize that ":util-tests_test_lib" and "@community//platform/util:util-tests_test_lib" is the same lib
 def _normalize_runtime_dep(dep):
-    if dep in [
-        ":util-tests_test_lib",
-        "//platform/util:util-tests_test_lib",
-        "@community//platform/util:util-tests_test_lib",
-    ]:
+    if ((dep == ":util-tests_test_lib" and native.package_name() == "platform/util") or
+        dep in ["//platform/util:util-tests_test_lib", "@community//platform/util:util-tests_test_lib"]):
         return "@community//platform/util:util-tests_test_lib"
     return dep
 
@@ -112,7 +68,9 @@ def jps_test(name, jvm_flags = [], runtime_deps = [], args = [], data = [], tags
     normalized_runtime_deps = [_normalize_runtime_dep(d) for d in runtime_deps]
     all_runtime_deps = depset(TEST_FRAMEWORK_DEPS + normalized_runtime_deps).to_list()
 
-    all_data = list(data)
+    # only what this macro contributes: the caller's `data` is concatenated at the end, so it may be
+    # a select() - a target whose data depends on the platform, as the macOS-only dev-launch sets do
+    all_data = []
     all_tags = list(tags)
     all_env = dict(env)
 
@@ -139,6 +97,8 @@ def jps_test(name, jvm_flags = [], runtime_deps = [], args = [], data = [], tags
         # so com.intellij.tests.JUnit5BazelRunner.guessBazelWorkspaceDir will find a real workspace root
         all_data.append("@community//:intellij.idea.community.main.iml")
 
+        all_tags.append("external")
+
         if "no-sandbox" not in all_tags:
             all_tags.append("no-sandbox")
 
@@ -155,7 +115,7 @@ def jps_test(name, jvm_flags = [], runtime_deps = [], args = [], data = [], tags
         # which is also a reasonable tests timeout for current state of things
         size = "enormous",
         tags = all_tags,
-        data = all_data,
+        data = data + all_data,
         env = all_env,
         use_testrunner = False,
         **kwargs

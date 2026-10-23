@@ -22,7 +22,6 @@ import com.jetbrains.python.run.AbstractPythonRunConfigurationParams
 import com.jetbrains.python.run.PythonRunParams
 import org.jetbrains.annotations.ApiStatus
 
-@ApiStatus.Internal
 @State(
   name = "PyConsoleOptionsProvider",
   storages = [Storage(StoragePathMacros.WORKSPACE_FILE)]
@@ -87,7 +86,6 @@ class PyConsoleOptions(private val project: Project) : PersistentStateComponent<
     myState.myCodeCompletionOption = state.myCodeCompletionOption
   }
 
-  @ApiStatus.Internal
   companion object {
     @JvmStatic
     fun getInstance(project: Project): PyConsoleOptions = project.getService(PyConsoleOptions::class.java)
@@ -236,6 +234,7 @@ class PyConsoleOptions(private val project: Project) : PersistentStateComponent<
     @Attribute("custom-start-script")
     fun getCustomStartScript(): String = myCustomStartScript
 
+    @Deprecated("Deprecated in Java")
     @Attribute("sdk-home")
     override fun getSdkHome(): String? = mySdkHome
 
@@ -272,6 +271,7 @@ class PyConsoleOptions(private val project: Project) : PersistentStateComponent<
       myCustomStartScript = customStartScript
     }
 
+    @Deprecated("Deprecated in Java")
     override fun setSdkHome(sdkHome: String?) {
       mySdkHome = sdkHome
     }

@@ -1,5 +1,5 @@
 // "Change function signature to 'fun f(a: Int)'" "true"
-// K2_ERROR: 'f' overrides nothing. Potential signatures for overriding:<br>fun f(a: Int): Unit
+// K2_ERROR: NOTHING_TO_OVERRIDE
 annotation class annon
 
 open class A {
@@ -10,5 +10,4 @@ class B : A(){
     annon <caret>override fun f(a: String) {}
 }
 
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ChangeMemberFunctionSignatureFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeMemberFunctionSignatureFixFactory$ChangeMemberFunctionSignatureFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeMemberFunctionSignatureFixFactory$ChangeMemberFunctionSignatureFix

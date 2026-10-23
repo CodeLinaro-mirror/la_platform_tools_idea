@@ -1,5 +1,5 @@
 // "Add non-null asserted (a!!) call" "true"
-// K2_ERROR: Only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type 'Foo?'.
+// K2_ERROR: UNSAFE_CALL
 
 interface Foo {
     fun bar()
@@ -15,4 +15,3 @@ open class MyClass {
     }
 }
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AddExclExclCallFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AddExclExclCallFix

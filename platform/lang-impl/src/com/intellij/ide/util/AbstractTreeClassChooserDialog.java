@@ -1,4 +1,4 @@
-// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.ide.util;
 
 import com.intellij.ide.IdeBundle;
@@ -17,6 +17,7 @@ import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.project.DumbService;
+import com.intellij.openapi.project.DumbUtil;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.util.Disposer;
@@ -242,7 +243,9 @@ public abstract class AbstractTreeClassChooserDialog<T extends PsiNamedElement> 
         super.initUI(callback, modalityState, allowMultipleSelection);
         dummyPanel.add(myGotoByNamePanel.getPanel(), BorderLayout.CENTER);
         if (myProject != null && !myProject.isDefault() && DumbService.getInstance(myProject).isDumb()) {
-          JBLabel dumbLabel = new JBLabel(IdeBundle.message("dumb.mode.analyzing.project"), SwingConstants.LEFT);
+          JBLabel dumbLabel = new JBLabel(DumbUtil.dumbModeMessage(IdeBundle.message("dumb.mode.analyzing.project"),
+                                                                   IdeBundle.message("dumb.mode.light.analyzing.project")),
+                                          SwingConstants.LEFT);
           dumbLabel.setIcon(AnimatedIcon.Default.INSTANCE);
           dumbLabel.setBorder(new JBEmptyBorder(10, 3, 0, 3));
           dummyPanel.add(dumbLabel, BorderLayout.SOUTH);
@@ -414,7 +417,7 @@ public abstract class AbstractTreeClassChooserDialog<T extends PsiNamedElement> 
     return myClassFilter;
   }
 
-  T getBaseClass() {
+  protected T getBaseClass() {
     return myBaseClass;
   }
 

@@ -3,6 +3,7 @@
 
 package org.jetbrains.kotlin.idea.fir.extensions
 
+import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.openapi.components.PathMacroManager
 import com.intellij.openapi.diagnostic.getOrLogException
 import com.intellij.openapi.diagnostic.logger
@@ -13,19 +14,23 @@ import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.CompilerModuleExtension
+import com.intellij.openapi.util.BuildNumber
+import com.intellij.openapi.util.io.getJarAttribute
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.platform.eel.path.EelPath
+import com.intellij.platform.eel.provider.LocalEelDescriptor
+import com.intellij.platform.eel.provider.asNioPath
+import com.intellij.platform.eel.provider.getEelDescriptor
 import com.intellij.util.concurrency.SynchronizedClearableLazy
 import com.intellij.util.containers.ContainerUtil
 import com.intellij.util.containers.orNull
 import com.intellij.util.lang.UrlClassLoader
 import org.jetbrains.annotations.ApiStatus
-import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.platform.projectStructure.KotlinCompilerPluginsProvider
 import org.jetbrains.kotlin.analysis.api.platform.projectStructure.areCompilerPluginsSupported
 import org.jetbrains.kotlin.analysis.api.projectStructure.KaModule
 import org.jetbrains.kotlin.analysis.api.projectStructure.KaScriptModule
 import org.jetbrains.kotlin.analysis.api.projectStructure.KaSourceModule
-import org.jetbrains.kotlin.analysis.low.level.api.fir.LLFirInternals
 import org.jetbrains.kotlin.cli.common.arguments.CommonCompilerArguments
 import org.jetbrains.kotlin.cli.common.arguments.K2JVMCompilerArguments
 import org.jetbrains.kotlin.cli.create
@@ -55,6 +60,7 @@ import java.io.File
 import java.nio.file.Path
 import java.util.Optional
 import java.util.concurrent.ConcurrentMap
+import kotlin.io.path.nameWithoutExtension
 import kotlin.script.experimental.api.ScriptCompilationConfiguration
 import kotlin.script.experimental.api.compilerOptions
 
@@ -89,7 +95,6 @@ class KtCompilerPluginsCache private constructor(
             .any { it.extensions[extension]?.isNotEmpty() == true }
     }
 
-    @OptIn(KaExperimentalApi::class)
     fun <T : Any> getRegisteredExtensions(
         module: KaModule,
         extensionType: ExtensionPointDescriptor<T>
@@ -126,7 +131,6 @@ class KtCompilerPluginsCache private constructor(
         @Suppress("UNCHECKED_CAST") return registrars as List<T>
     }
 
-    @OptIn(KaExperimentalApi::class)
     private fun computeExtensionStorage(
         classLoader: ClassLoader,
         module: KaModule
@@ -222,7 +226,10 @@ class KtCompilerPluginsCache private constructor(
 
         fun new(project: Project, onlyBundledPluginsEnabled: Boolean): KtCompilerPluginsCache {
             val pluginsClassLoader: UrlClassLoader = UrlClassLoader.build().apply {
-                parent(KaModule::class.java.classLoader)
+                // current classloader includes all attached AA libraries, so should work as parent classloader
+                // more clean would be to take classloader of analysis-api-k2 library, but it's an implementation detail
+                // only api library itself is not enough because compiler plugins might depend on implementations
+                parent(KtCompilerPluginsCache::class.java.classLoader)
                 val compilerArguments = ModuleManager.getInstance(project).modules.map { it.getCompilerArguments() }
                 val pluginClasspaths = collectSubstitutedPluginClasspaths(project, onlyBundledPluginsEnabled, compilerArguments)
                 files(pluginClasspaths)
@@ -254,16 +261,25 @@ class KtCompilerPluginsCache private constructor(
         private fun CommonCompilerArguments.getOriginalPluginClasspaths(project: Project): List<Path> {
             val pluginClassPaths = this.pluginClasspaths
 
-            if (pluginClassPaths.isNullOrEmpty()) return emptyList()
+            if (pluginClassPaths.isEmpty()) return emptyList()
 
             val layoutService = KotlinPluginLayoutService.getInstance(project)
 
             val pathMacroManager = PathMacroManager.getInstance(project)
             val expandedPluginClassPaths = pluginClassPaths.map { pathMacroManager.expandPath(it) }
 
+            val eelDescriptor = project.getEelDescriptor()
+
             return expandedPluginClassPaths.mapNotNull {
+                val pathString = it ?: return@mapNotNull null
                 runCatching {
-                    layoutService.resolveRelativeToRemoteKotlinc(Path.of(it))
+                    val path =
+                        if (eelDescriptor == LocalEelDescriptor) {
+                            null
+                        } else {
+                            runCatching { EelPath.parse(pathString, eelDescriptor).asNioPath() }.getOrNull()
+                        } ?: Path.of(pathString)
+                    layoutService.resolveRelativeToRemoteKotlinc(path)
                 }.getOrLogException(LOG)
             }
         }
@@ -271,6 +287,7 @@ class KtCompilerPluginsCache private constructor(
         /**
          * We have the following logic for plugins' substitution:
          * 1. Always replace our own plugins (like "allopen", "noarg", etc.) with bundled ones to avoid binary incompatibility.
+         * 2. Allow using compiler plugins that have [CompilerPluginManifestAttributes.SINCE_BUILD_ATTR] manifest attribute if the build range matches.
          * 2. Allow using other compiler plugins only if [onlyBundledPluginsEnabled] is set to false; otherwise, filter them.
          */
         private fun substitutePluginJar(project: Project, onlyBundledPluginsEnabled: Boolean, userSuppliedPluginJar: Path): Path? {
@@ -279,7 +296,49 @@ class KtCompilerPluginsCache private constructor(
             val bundledPlugin = KotlinBundledFirCompilerPluginProvider.provideBundledPluginJar(project, userSuppliedPluginJar)
             if (bundledPlugin != null) return bundledPlugin
 
-            return userSuppliedPluginJar.takeUnless { onlyBundledPluginsEnabled }
+            val sinceBuild = getJarAttribute(userSuppliedPluginJar, CompilerPluginManifestAttributes.SINCE_BUILD_ATTR)
+            val untilBuild = getJarAttribute(userSuppliedPluginJar, CompilerPluginManifestAttributes.UNTIL_BUILD_ATTR)
+            return when {
+                sinceBuild != null && isCompilerPluginCompatible(
+                    sinceBuild,
+                    untilBuild,
+                    userSuppliedPluginJar.nameWithoutExtension,
+                    PluginManagerCore.buildNumber
+                ) -> userSuppliedPluginJar
+
+                onlyBundledPluginsEnabled -> null
+                else -> userSuppliedPluginJar
+            }
+        }
+
+        // Modified from com.intellij.ide.plugins.PluginCompatibilityUtils
+        private fun isCompilerPluginCompatible(
+            sinceBuild: String,
+            untilBuild: String?,
+            pluginName: String,
+            ideBuildNumber: BuildNumber
+        ): Boolean {
+            val logPrefix = "$pluginName is incompatible with the product:"
+            val sinceBuildNumber = runCatching {
+                BuildNumber.fromString(sinceBuild, pluginName, null)
+            }.getOrLogException(LOG) ?: return false
+
+            if (sinceBuildNumber > ideBuildNumber) {
+                LOG.warn("$logPrefix requires build >= ${sinceBuildNumber}, actual ${ideBuildNumber.withoutProductCode()}")
+                return false
+            }
+
+            if (untilBuild != null) {
+                val untilBuildNumber = runCatching {
+                    BuildNumber.fromString(untilBuild, pluginName, null)
+                }.getOrLogException(LOG) ?: return false
+
+                if (untilBuildNumber < ideBuildNumber) {
+                    LOG.warn("$logPrefix requires build <= ${untilBuildNumber}, actual ${ideBuildNumber.withoutProductCode()}")
+                    return false
+                }
+            }
+            return true
         }
 
         /**

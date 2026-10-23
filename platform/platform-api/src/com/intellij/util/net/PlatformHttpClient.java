@@ -31,6 +31,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.WebSocket;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
@@ -56,12 +57,12 @@ import static java.util.Objects.requireNonNullElse;
 ///
 /// Example:
 ///
-/// <pre>
+/// ```java
 ///   try (var client = PlatformHttpClient.client()) {
 ///     var request = PlatformHttpClient.request(uri);
 ///     var content = PlatformHttpClient.send(client, request, HttpResponse.BodyHandlers.ofString());
 ///   }
-/// </pre>
+/// ```
 ///
 /// Notable differences with [HttpRequests]:
 /// - No default read timeout. Clients should use [HttpClient#sendAsync] instead.
@@ -127,41 +128,42 @@ public final class PlatformHttpClient {
   public static <T> T send(
     @NotNull HttpClient client,
     @NotNull HttpRequest request,
-    @NotNull HttpResponse.BodyHandler<T> bodyHandler
+    HttpResponse.@NotNull BodyHandler<T> bodyHandler
   ) throws IOException, InterruptedException {
+    return response(client, request, bodyHandler).body();
+  }
+
+  /// Throws [HttpStatusException] if a response status code is not in the `[200, 300)` range, and returns the response object.
+  ///
+  /// **Note:** It is important to use this method instead of [HttpClient#send], because it handles I/O exceptions from JRE internals
+  /// and detects proxy misconfiguration issues.
+  public static <T> @NotNull HttpResponse<T> response(
+    @NotNull HttpClient client,
+    @NotNull HttpRequest request,
+    HttpResponse.@NotNull BodyHandler<T> bodyHandler
+  ) throws InterruptedException, IOException {
     HttpResponse<T> response;
+
     try {
       response = client.send(request, bodyHandler);
     }
     catch (IOException e) {
       ProgressManager.checkCanceled();
-      var cause = e.getCause();
-      if (cause instanceof IOException && requireNonNullElse(e.getMessage(), "").contains("too many authentication attempts")) {
-        var stack = cause.getStackTrace();
-        if (
-          stack.length > 1 &&
-          "jdk.internal.net.http.AuthenticationFilter".equals(stack[0].getClassName()) &&
-          "response".equals(stack[0].getMethodName())
-        ) {
-          var proxy = IdeProxyAuthenticator.isProxied(request.uri());
-          if (proxy) {
-            JdkProxyProvider.showProxyAuthNotification();
-            var logger = Logger.getInstance(PlatformHttpClient.class);
-            if (logger.isDebugEnabled()) logger.debug("proxy auth failed for " + request.uri(), e);
-          }
-          var statusCode = proxy ? HttpURLConnection.HTTP_PROXY_AUTH : HttpURLConnection.HTTP_UNAUTHORIZED;
-          var message = IdeCoreBundle.message("error.connection.failed.status", statusCode);
-          throw new HttpStatusException(message, statusCode, request.uri().toString());
+      if (requireNonNullElse(e.getMessage(), "").contains("too many authentication attempts")
+          && isAuthenticationFilterError(e)) {
+        var proxy = IdeProxyAuthenticator.isProxied(request.uri());
+        if (proxy) {
+          JdkProxyProvider.showProxyAuthNotification();
+          var logger = Logger.getInstance(PlatformHttpClient.class);
+          if (logger.isDebugEnabled()) logger.debug("proxy auth failed for " + request.uri(), e);
         }
+        var statusCode = proxy ? HttpURLConnection.HTTP_PROXY_AUTH : HttpURLConnection.HTTP_UNAUTHORIZED;
+        var message = IdeCoreBundle.message("error.connection.failed.status", statusCode);
+        throw new HttpStatusException(message, statusCode, request.uri().toString());
       }
       throw e;
     }
-    return checkResponse(response).body();
-  }
 
-  /// @deprecated does not detect misconfigured proxy situations; use [#send] instead.
-  @Deprecated(forRemoval = true)
-  public static <T> HttpResponse<T> checkResponse(@NotNull HttpResponse<T> response) throws HttpStatusException {
     var statusCode = response.statusCode();
     if (statusCode < 200 || statusCode >= 300) {
       if (statusCode == HttpURLConnection.HTTP_PROXY_AUTH) {
@@ -181,7 +183,24 @@ public final class PlatformHttpClient {
       }
       throw new HttpStatusException(message, statusCode, response.uri().toString());
     }
+
     return response;
+  }
+
+  ///
+  /// Checks whether the exception was thrown from the authentication filter.
+  /// Can be used to adapt the client to the hard-coded auth handling
+  ///
+  /// @param connectionException an exception caught from HttpClient send methods
+  /// @return whether the exception occurred in {@code jdk.internal.net.http.AuthenticationFilter.response} method
+  ///
+  public static boolean isAuthenticationFilterError(@NotNull IOException connectionException) {
+    var cause = connectionException.getCause();
+    if (!(cause instanceof IOException)) return false;
+    var stack = cause.getStackTrace();
+    return stack.length > 1
+           && "jdk.internal.net.http.AuthenticationFilter".equals(stack[0].getClassName())
+           && "response".equals(stack[0].getMethodName());
   }
 
   public static HttpResponse.BodyHandler<String> gzipStringBodyHandler() {
@@ -373,6 +392,36 @@ public final class PlatformHttpClient {
     }
 
     @Override
+    public WebSocket.Builder newWebSocketBuilder() {
+      return delegate.newWebSocketBuilder();
+    }
+
+    @Override
+    public void shutdown() {
+      delegate.shutdown();
+    }
+
+    @Override
+    public boolean awaitTermination(Duration duration) throws InterruptedException {
+      return delegate.awaitTermination(duration);
+    }
+
+    @Override
+    public boolean isTerminated() {
+      return delegate.isTerminated();
+    }
+
+    @Override
+    public void shutdownNow() {
+      delegate.shutdownNow();
+    }
+
+    @Override
+    public void close() {
+      delegate.close();
+    }
+
+    @Override
     public <T> HttpResponse<T> send(HttpRequest request, HttpResponse.BodyHandler<T> responseHandler) throws IOException, InterruptedException {
       if (request instanceof FileHttpRequest) {
         try {
@@ -525,7 +574,7 @@ public final class PlatformHttpClient {
   }
 
   private static final class FileHttpRequest extends HttpRequest {
-    private static final HttpHeaders EMPTY_HEADERS = HttpHeaders.of(Map.of(), (name, value) -> true);
+    private static final HttpHeaders EMPTY_HEADERS = HttpHeaders.of(Map.of(), (_, _) -> true);
 
     private final URI uri;
 

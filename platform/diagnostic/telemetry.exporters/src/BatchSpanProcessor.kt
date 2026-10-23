@@ -14,6 +14,8 @@ import io.opentelemetry.sdk.trace.data.SpanData
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancelAndJoin
@@ -39,8 +41,8 @@ class BatchSpanProcessor(
   private val scheduleDelay: Duration = 1.minutes,
   private val maxExportBatchSize: Int = 512,
 ) : SpanProcessor {
-  private val queue = Channel<ReadableSpan>(capacity = Channel.UNLIMITED)
-  private val flushRequested = Channel<FlushRequest>(capacity = Channel.UNLIMITED)
+  private val queue = Channel(capacity = Channel.UNLIMITED, onUndeliveredElement = ::onEnd)
+  private val flushRequested = Channel<FlushRequest>(capacity = Channel.UNLIMITED, onUndeliveredElement = { it.job.complete(Unit) })
 
   private data class FlushRequest(@JvmField val exportOnly: Boolean) {
     @JvmField
@@ -48,18 +50,18 @@ class BatchSpanProcessor(
   }
 
   init {
-    coroutineScope.launch {
+    coroutineScope.launch(Dispatchers.IO, start = CoroutineStart.UNDISPATCHED) {
       val batch = ArrayList<SpanData>(maxExportBatchSize)
       try {
         while (true) {
           select {
             flushRequested.onReceive { request ->
               try {
-                val isExported = exportCurrentBatch(batch)
-                if (isExported && !request.exportOnly) {
+                drainQueueInto(batch)
+                exportCurrentBatch(batch)
+                if (!request.exportOnly) {
                   flushExporters()
                 }
-                Unit
               }
               finally {
                 request.job.complete(Unit)
@@ -83,7 +85,10 @@ class BatchSpanProcessor(
       }
       catch (e: CancellationException) {
         withContext(NonCancellable) {
+          // a closed queue still hands out its buffered spans, and rejects every later span
+          queue.close()
           try {
+            drainQueueInto(batch)
             exportCurrentBatch(batch)
           }
           finally {
@@ -95,10 +100,30 @@ class BatchSpanProcessor(
                 logger<BatchSpanProcessor>().error("Failed to shutdown", e)
               }
             }
+            flushRequested.close()
+            completePendingFlushRequests()
           }
         }
         throw e
       }
+    }
+  }
+
+  private suspend fun drainQueueInto(batch: MutableList<SpanData>) {
+    while (true) {
+      val span = queue.tryReceive().getOrNull() ?: break
+      batch.add(span.toSpanData())
+      if (batch.size >= maxExportBatchSize) {
+        exportCurrentBatch(batch)
+      }
+    }
+  }
+
+  /** Completes each flush request that was sent before the channel was closed, so its [flush] call returns. */
+  private fun completePendingFlushRequests() {
+    while (true) {
+      val request = flushRequested.tryReceive().getOrNull() ?: break
+      request.job.complete(Unit)
     }
   }
 
@@ -123,6 +148,7 @@ class BatchSpanProcessor(
 
   override fun isStartRequired(): Boolean = false
 
+  /** After the shutdown the queue is closed, so a span that ends later is dropped. */
   override fun onEnd(span: ReadableSpan) {
     if (span.spanContext.isSampled) {
       queue.trySend(span)
@@ -148,8 +174,9 @@ class BatchSpanProcessor(
     }
   }
 
-  suspend fun scheduleFlush() {
-    flushRequested.send(FlushRequest(exportOnly = true))
+  /** The channel is unlimited, so the send always succeeds at once and the caller needs no coroutine. */
+  fun scheduleFlush() {
+    flushRequested.trySend(FlushRequest(exportOnly = true))
   }
 
   override fun forceFlush(): CompletableResultCode {

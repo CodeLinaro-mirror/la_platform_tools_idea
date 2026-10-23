@@ -2,9 +2,9 @@
 package org.jetbrains.plugins.terminal.startup
 
 import com.intellij.platform.eel.EelDescriptor
-import com.intellij.platform.eel.annotations.NativePath
 import com.intellij.platform.project.ProjectId
-import com.intellij.platform.rpc.RemoteApiProviderService
+import com.intellij.platform.rpc.lite.LiteRemoteApiProviderService
+import com.intellij.platform.util.annotations.paths.OsPath
 import fleet.rpc.RemoteApi
 import fleet.rpc.Rpc
 import fleet.rpc.remoteApiDescriptor
@@ -28,7 +28,8 @@ interface TerminalExecOptionsCustomizationRemoteApi : RemoteApi<Unit> {
   companion object {
     @JvmStatic
     suspend fun getInstance(): TerminalExecOptionsCustomizationRemoteApi {
-      return RemoteApiProviderService.resolve(remoteApiDescriptor<TerminalExecOptionsCustomizationRemoteApi>())
+      // TODO: IJPL-252054
+      return LiteRemoteApiProviderService.awaitConnectionAndResolve(remoteApiDescriptor<TerminalExecOptionsCustomizationRemoteApi>())
     }
   }
 }
@@ -44,12 +45,12 @@ interface TerminalExecOptionsCustomizationRemoteApi : RemoteApi<Unit> {
 @ApiStatus.Internal
 @Serializable
 data class TerminalExecOptionsCustomizationRequest(
-  val projectId: ProjectId,
-  val shellCommand: List<String>,
-  val workingDirectory: @NativePath String,
-  val envVariables: Map<String, String>,
-  val shellIntegrationAvailable: Boolean,
-  @Transient val eelDescriptor: EelDescriptor? = null,
+    val projectId: ProjectId,
+    val shellCommand: List<String>,
+    val workingDirectory: @OsPath String,
+    val envVariables: Map<String, String>,
+    val shellIntegrationAvailable: Boolean,
+    @Transient val eelDescriptor: EelDescriptor? = null,
 )
 
 /**

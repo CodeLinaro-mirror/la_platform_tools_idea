@@ -28,6 +28,7 @@ import com.intellij.debugger.jdi.ThreadReferenceProxyImpl;
 import com.intellij.debugger.memory.utils.StackFrameItem;
 import com.intellij.debugger.settings.CapturePoint;
 import com.intellij.debugger.settings.DebuggerSettings;
+import com.intellij.debugger.ui.overhead.OverheadProducer;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
@@ -35,7 +36,6 @@ import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.PsiElement;
-import com.intellij.ui.SimpleColoredComponent;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.FixedHashMap;
 import com.sun.jdi.IncompatibleThreadStateException;
@@ -90,10 +90,10 @@ public class StackCapturingLineBreakpoint extends SyntheticMethodBreakpoint {
               AsyncStacksUtils.putProcessUserData(CAPTURED_STACKS, Collections.synchronizedMap(stacks), process);
             }
             Value key = myCaptureEvaluator.evaluate(new EvaluationContextImpl(suspendContext, frameProxy));
-            if (key instanceof ObjectReference) {
+            if (key instanceof ObjectReference reference) {
               List<StackFrameItem> frames = StackFrameItem.createFrames(suspendContext, true);
               frames = ContainerUtil.getFirstItems(frames, AsyncStacksUtils.getMaxStackLength());
-              stacks.put(getKey((ObjectReference)key), frames);
+              stacks.put(getKey(reference), frames);
             }
           }
         }
@@ -142,8 +142,9 @@ public class StackCapturingLineBreakpoint extends SyntheticMethodBreakpoint {
   }
 
   @Override
-  public void customizeRenderer(SimpleColoredComponent renderer) {
-    renderer.append(JavaDebuggerBundle.message("label.capture.point.at", myCapturePoint.myClassName, myCapturePoint.myMethodName));
+  public @NotNull OverheadProducer.Presentation computePresentation() {
+    return new OverheadProducer.Presentation(
+      JavaDebuggerBundle.message("label.capture.point.at", myCapturePoint.myClassName, myCapturePoint.myMethodName));
   }
 
   @Override
@@ -189,7 +190,7 @@ public class StackCapturingLineBreakpoint extends SyntheticMethodBreakpoint {
             StringUtil.equals(b.myCapturePoint.myInsertMethodName, methodName)) {
           try {
             Value key = b.myInsertEvaluator.evaluate(new EvaluationContextImpl(suspendContext, frame));
-            return key instanceof ObjectReference ? capturedStacks.get(getKey((ObjectReference)key)) : null;
+            return key instanceof ObjectReference reference ? capturedStacks.get(getKey(reference)) : null;
           }
           catch (EvaluateException e) {
             LOG.debug(e);
@@ -217,7 +218,7 @@ public class StackCapturingLineBreakpoint extends SyntheticMethodBreakpoint {
   }
 
   private static Object getKey(ObjectReference reference) {
-    return reference instanceof StringReference ? ((StringReference)reference).value() : reference;
+    return reference instanceof StringReference stringReference ? stringReference.value() : reference;
   }
 
   private static class MyEvaluator {

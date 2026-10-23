@@ -7,6 +7,7 @@ import com.intellij.codeInsight.daemon.impl.SeverityRegistrar;
 import com.intellij.codeInsight.daemon.impl.TrafficLightRenderer;
 import com.intellij.codeInsight.daemon.impl.TrafficLightRendererContributor;
 import com.intellij.codeInsight.intention.IntentionManager;
+import com.intellij.codeInsight.multiverse.EditorContextManager;
 import com.intellij.codeInspection.ex.InspectionProfileWrapper;
 import com.intellij.ide.ui.UISettingsUtils;
 import com.intellij.lang.annotation.HighlightSeverity;
@@ -49,10 +50,12 @@ import com.intellij.ui.SeparatorFactory;
 import com.intellij.ui.SoftWrapsEditorCustomization;
 import com.intellij.ui.TitledSeparator;
 import com.intellij.ui.components.JBLoadingPanel;
+import com.intellij.util.EventDispatcher;
 import com.intellij.util.concurrency.ThreadingAssertions;
 import com.intellij.util.concurrency.annotations.RequiresEdt;
 import com.intellij.util.ui.UIUtil;
 import com.intellij.util.ui.components.BorderLayoutPanel;
+import com.intellij.vcs.commit.CommitMessageListener;
 import com.intellij.vcs.commit.CommitMessageUi;
 import com.intellij.vcs.commit.message.BodyLimitSettings;
 import com.intellij.vcs.commit.message.CommitMessageInspectionProfile;
@@ -83,6 +86,8 @@ public class CommitMessage extends JPanel implements Disposable, UiCompatibleDat
   private final @NotNull JBLoadingPanel myLoadingPanel;
 
   private final @Nullable @Nls String myMessagePlaceholder;
+
+  private final EventDispatcher<CommitMessageListener> myCommitMessageDispatcher = EventDispatcher.create(CommitMessageListener.class);
 
   private static final @NotNull EditorCustomization COLOR_SCHEME_FOR_CURRENT_UI_THEME_CUSTOMIZATION = editor -> {
     preventRecursiveBackground(editor.getComponent());
@@ -132,10 +137,16 @@ public class CommitMessage extends JPanel implements Disposable, UiCompatibleDat
     myMessagePlaceholder = messagePlaceholder;
     myEditorField = createCommitMessageEditor(project, runInspections);
     myEditorField.getDocument().putUserData(DATA_KEY, this);
-    restartHighlightingOnEdit(project, myEditorField.getDocument());
+    myEditorField.getDocument().putUserData(DaemonCodeAnalyzer.INTERACTIVE_NON_PHYSICAL_DOCUMENT, project);
     myEditorField.setPlaceholder(myMessagePlaceholder);
     myEditorField.setShowPlaceholderWhenFocused(true);
     myEditorField.getAccessibleContext().setAccessibleName(VcsBundle.message("commit.message.editor.accessible.name"));
+    myEditorField.addDocumentListener(new DocumentListener() {
+      @Override
+      public void documentChanged(@NotNull DocumentEvent event) {
+        myCommitMessageDispatcher.getMulticaster().onTextChanged(getComment());
+      }
+    });
 
     myLoadingPanel = new JBLoadingPanel(new BorderLayout(), this, 0);
     myLoadingPanel.add(myEditorField, BorderLayout.CENTER);
@@ -166,6 +177,11 @@ public class CommitMessage extends JPanel implements Disposable, UiCompatibleDat
   }
 
   @Override
+  public void addCommitMessageListener(@NotNull CommitMessageListener listener) {
+    myCommitMessageDispatcher.addListener(listener);
+  }
+
+  @Override
   public void stopLoading() {
     myLoadingPanel.stopLoading();
     myEditorField.setEnabled(true);
@@ -184,20 +200,6 @@ public class CommitMessage extends JPanel implements Disposable, UiCompatibleDat
       Editor editor = myEditorField.getEditor();
       if (editor instanceof EditorEx) RightMarginCustomization.customize(project, (EditorEx)editor);
     });
-  }
-
-  // Plain-text commit editor: the daemon's typing optimization skips re-highlighting on in-line edits, so annotator
-  // checks (which can't opt into runForWholeFile like inspections) go stale. Force a full pass per edit. See IJPL-245329.
-  private void restartHighlightingOnEdit(@NotNull Project project, @NotNull Document document) {
-    document.addDocumentListener(new DocumentListener() {
-      @Override
-      public void documentChanged(@NotNull DocumentEvent event) {
-        PsiFile psiFile = PsiDocumentManager.getInstance(project).getPsiFile(document);
-        if (psiFile != null) {
-          DaemonCodeAnalyzer.getInstance(project).restart(psiFile, this);
-        }
-      }
-    }, this);
   }
 
   @Override
@@ -349,7 +351,7 @@ public class CommitMessage extends JPanel implements Disposable, UiCompatibleDat
 
     @Override
     public void customize(@NotNull EditorEx editor) {
-      PsiFile file = PsiDocumentManager.getInstance(myProject).getPsiFile(editor.getDocument());
+      PsiFile file = EditorContextManager.getPsiFileForEditor(editor, myProject);
 
       if (file != null) {
         InspectionProfileWrapper.setCustomInspectionProfileWrapperTemporarily(file, profile ->

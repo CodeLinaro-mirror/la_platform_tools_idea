@@ -1,10 +1,10 @@
 // Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
-@file:OptIn(ExperimentalCoroutinesApi::class)
 
 package com.intellij.grazie.spellcheck.engine
 
 import ai.grazie.nlp.langs.Language
 import ai.grazie.nlp.langs.LanguageISO
+import ai.grazie.nlp.langs.LanguageWithVariant
 import ai.grazie.nlp.utils.normalization.StripAccentsNormalizer
 import ai.grazie.rules.common.KnownPhrases
 import ai.grazie.spell.GrazieSpeller
@@ -25,10 +25,7 @@ import com.intellij.grazie.spellcheck.ranker.DiacriticSuggestionRanker
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.readAction
-import com.intellij.openapi.components.serviceAsync
-import com.intellij.openapi.extensions.ExtensionNotApplicableException
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.startup.ProjectActivity
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.spellchecker.SpellCheckerManager
 import com.intellij.spellchecker.dictionary.Dictionary
@@ -41,7 +38,6 @@ import com.intellij.spellchecker.engine.Transformation
 import com.intellij.spellchecker.settings.CustomDictionarySettingsListener
 import com.intellij.util.containers.ContainerUtil
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import org.jetbrains.annotations.ApiStatus
@@ -76,23 +72,6 @@ class GrazieSpellCheckerEngine(private val project: Project, private val corouti
   private val modificationTracker: DictionaryModificationTracker
     get() = DictionaryModificationTracker.getInstance(project)
 
-  internal class SpellerLoadActivity : ProjectActivity {
-    init {
-      // Do not preload the speller in test mode, so it won't slow down tests not related to the spellchecker.
-      // We will still load it in tests but only when it is actually necessary.
-      if (ApplicationManager.getApplication().isUnitTestMode) {
-        throw ExtensionNotApplicableException.create()
-      }
-    }
-
-    override suspend fun execute(project: Project) {
-      getInstance(project).initializeSpeller(project)
-      project.serviceAsync<SpellCheckerManager>()
-      knownPhrases.computeIfAbsent(Language.ENGLISH) { KnownPhrases.forLanguage(Language.ENGLISH) }
-        .validPhrases("Bugfix")
-    }
-  }
-
   internal class SuggestionCacheInvalidator(private val project: Project): CustomDictionarySettingsListener {
     override fun customDictionaryPathsChanged(newPaths: List<String>) {
       getInstance(project).suggestionCache.invalidateAll()
@@ -105,7 +84,6 @@ class GrazieSpellCheckerEngine(private val project: Project, private val corouti
     }
   }
 
-  @OptIn(ExperimentalCoroutinesApi::class)
   private val suggestionCache = Caffeine.newBuilder().maximumSize(1024).build<SuggestionRequest, List<String>> { request ->
     val speller = speller!!
     manager.updateBundledDictionaries()
@@ -133,7 +111,9 @@ class GrazieSpellCheckerEngine(private val project: Project, private val corouti
   @ApiStatus.Internal
   fun initializeSpeller(project: Project) {
     val speller = GrazieSplittingSpeller(
-      speller = GrazieSpeller(createSpellerConfig()),
+      speller = object : GrazieSpeller(createSpellerConfig()) {
+        override fun languages(): List<LanguageWithVariant> = GrazieConfig.get().enabledLanguages.mapNotNull { it.withVariant }
+      },
       config = GrazieSplittingSpeller.UserConfig()
     )
     if (this.speller == null) {

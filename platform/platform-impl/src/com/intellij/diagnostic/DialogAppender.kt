@@ -2,21 +2,18 @@
 package com.intellij.diagnostic
 
 import com.intellij.featureStatistics.fusCollectors.LifecycleUsageTriggerCollector
-import com.intellij.ide.plugins.IdeaPluginDescriptor
-import com.intellij.ide.plugins.PluginManagerCore
-import com.intellij.ide.plugins.PluginUtil
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.ExceptionWithAttachments
-import com.intellij.openapi.diagnostic.IdeaLoggingEvent
+import com.intellij.openapi.diagnostic.IdeaLogRecord
 import com.intellij.openapi.diagnostic.RuntimeExceptionWithAttachments
-import com.intellij.openapi.updateSettings.impl.UpdateCheckerFacade
-import com.intellij.openapi.updateSettings.impl.UpdateSettings
+import com.intellij.openapi.diagnostic.UnhandledExceptionKind
 import com.intellij.util.ExceptionUtil
 import com.intellij.util.io.pagecache.impl.Throttler
 import kotlinx.coroutines.CoroutineName
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.job
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import org.jetbrains.annotations.ApiStatus
 import java.util.ArrayDeque
@@ -29,28 +26,33 @@ import java.util.logging.LogRecord
 @ApiStatus.Internal
 class DialogAppender : Handler() {
   private val MAX_EARLY_LOGGING_EVENTS = 20
-  private val NOTIFICATIONS_ENABLED = System.getProperty("idea.fatal.error.notification") != "disabled"
 
-  private val context = Dispatchers.IO.limitedParallelism(1) + CoroutineName("DialogAppender")
+  @Suppress("RAW_SCOPE_CREATION") // DialogAppender is a process-wide root logger handler.
+  private val coroutineScope = CoroutineScope(SupervisorJob() + DiagnosticDispatchers.Default + CoroutineName("DialogAppender"))
 
   private var earlyEventCounter = 0
-  private val earlyEvents = ArrayDeque<Pair<String?, Throwable>>()
+  private val earlyEvents = ArrayDeque<Entry>()
   private var loggerBroken = AtomicBoolean(false)
-  private val pluginUpdateScheduled = AtomicBoolean(false)
+
+  /** An error that goes to the message pool. [throwable] is the real cause. See IJPL-254578. */
+  private class Entry(val message: String?, val throwable: Throwable, val unhandledExceptionKind: UnhandledExceptionKind)
 
   override fun publish(event: LogRecord) {
     if (event.level.intValue() < Level.SEVERE.intValue() || loggerBroken.get()) return
 
     val throwable = event.thrown ?: return
+    // `JulLogger` drops the `UnhandledException` wrapper and puts the kind here. See IJPL-254578.
+    val kind = (event as? IdeaLogRecord)?.unhandledExceptionKind ?: UnhandledExceptionKind.HANDLED
+    val entry = Entry(event.message, throwable, kind)
     synchronized(this) {
       if (LoadingState.APP_READY.isOccurred) {
         processEarlyEventsIfNeeded()
-        queueEvent(event.message, throwable)
+        queueEvent(entry)
       }
       else {
         earlyEventCounter++
         if (earlyEvents.size < MAX_EARLY_LOGGING_EVENTS) {
-          earlyEvents.add(event.message to throwable)
+          earlyEvents.add(entry)
         }
       }
     }
@@ -60,9 +62,9 @@ class DialogAppender : Handler() {
     if (earlyEventCounter == 0) return
 
     while (true) {
-      val (message, throwable) = earlyEvents.poll() ?: break
+      val entry = earlyEvents.poll() ?: break
       earlyEventCounter--
-      queueEvent(message, throwable)
+      queueEvent(entry)
     }
 
     if (earlyEventCounter > 0) {
@@ -71,20 +73,20 @@ class DialogAppender : Handler() {
     }
   }
 
-  @OptIn(DelicateCoroutinesApi::class)
-  private fun queueEvent(message: String?, throwable: Throwable) {
-    GlobalScope.launch(context) {
-      processEvent(message, throwable)
+  private fun queueEvent(entry: Entry) {
+    coroutineScope.launch {
+      processEvent(entry)
     }
   }
 
   private val oomReportsThrottler = Throttler(100, SECONDS)
 
-  private fun processEvent(message: String?, throwable: Throwable) {
+  private fun processEvent(entry: Entry) {
     try {
       val app = ApplicationManager.getApplication()
       if (app == null || app.isExitInProgress || app.isDisposed()) return
 
+      val throwable = entry.throwable
       val oomErrorKind = DefaultIdeaErrorLogger.getOOMErrorKind(throwable)
       if (oomErrorKind != null) {
         val shouldNotify = synchronized(oomReportsThrottler) {
@@ -95,13 +97,14 @@ class DialogAppender : Handler() {
         }
       }
       else {
-        val plugin = findPlugin(throwable)
-        if (app.isInternal() || NOTIFICATIONS_ENABLED || showPluginError(throwable, message, plugin)) {
-          val withAttachments = ExceptionUtil.causeAndSuppressed(throwable, ExceptionWithAttachments::class.java).toList()
-          val message = withAttachments.asSequence().filterIsInstance<RuntimeExceptionWithAttachments>().firstOrNull()?.userMessage ?: message
-          val attachments = withAttachments.asSequence().flatMap { it.attachments.asSequence() }.toList()
-          MessagePool.getInstance().addErrorMessage(LogMessage(throwable, message, attachments))
-        }
+        val withAttachments = ExceptionUtil.causeAndSuppressed(throwable, ExceptionWithAttachments::class.java).toList()
+        val message = withAttachments.asSequence().filterIsInstance<RuntimeExceptionWithAttachments>().firstOrNull()?.userMessage
+                      ?: entry.message
+        val attachments = withAttachments.asSequence().flatMap { it.attachments.asSequence() }.toList()
+        // always add to MessagePool, dialog notification will decide if it shows or not in IdeMessagePanel
+        MessagePool.getInstance().addErrorMessage(
+          LogMessage(throwable, message, attachments, entry.unhandledExceptionKind)
+        )
       }
     }
     catch (e: Throwable) {
@@ -110,17 +113,13 @@ class DialogAppender : Handler() {
     }
   }
 
-  private fun findPlugin(throwable: Throwable): IdeaPluginDescriptor? {
-    val plugin = PluginManagerCore.getPlugin(PluginUtil.getInstance().findPluginId(throwable))
-    if (plugin != null && !plugin.isBundled && !pluginUpdateScheduled.getAndSet(true) && UpdateSettings.getInstance().isPluginsCheckNeeded) {
-      UpdateCheckerFacade.getInstance().updateAndShowResult()
+  @ApiStatus.Internal
+  suspend fun awaitPendingJobs() {
+    val currentPendingJobs = synchronized(this) {
+      processEarlyEventsIfNeeded()
+      coroutineScope.coroutineContext.job.children.toList()
     }
-    return plugin
-  }
-
-  private fun showPluginError(throwable: Throwable, message: String?, plugin: IdeaPluginDescriptor?): Boolean {
-    val submitter = DefaultIdeaErrorLogger.findSubmitter(throwable, plugin)
-    return submitter !is ITNReporter || submitter.showErrorInRelease(IdeaLoggingEvent(message, throwable))
+    currentPendingJobs.joinAll()
   }
 
   override fun flush() { }

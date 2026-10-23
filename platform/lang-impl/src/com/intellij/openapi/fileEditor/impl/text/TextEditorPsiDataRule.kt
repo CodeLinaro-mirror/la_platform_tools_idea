@@ -2,7 +2,9 @@
 package com.intellij.openapi.fileEditor.impl.text
 
 import com.intellij.codeInsight.TargetElementUtil
+import com.intellij.codeInsight.multiverse.EditorContextManager
 import com.intellij.codeInsight.multiverse.EditorContextManager.Companion.getEditorContext
+import com.intellij.codeInsight.multiverse.anyContext
 import com.intellij.codeInsight.navigation.activateFileWithPsiElement
 import com.intellij.ide.IdeView
 import com.intellij.injected.editor.EditorWindow
@@ -36,6 +38,8 @@ import com.intellij.psi.impl.source.tree.injected.InjectedCaret
 import com.intellij.psi.impl.source.tree.injected.InjectedLanguageEditorUtil
 import com.intellij.psi.impl.source.tree.injected.InjectedLanguageUtil
 import com.intellij.psi.util.PsiUtilCore
+import com.intellij.psi.util.PsiVersioningService
+import com.intellij.util.application
 import com.intellij.util.containers.ContainerUtil
 
 internal class TextEditorPsiDataRule : UiDataRule {
@@ -58,9 +62,14 @@ internal class TextEditorPsiDataRule : UiDataRule {
     val project = editor.project ?: return
     // regular lazy keys
     sink.lazy(CommonDataKeys.PSI_FILE) {
-      getPsiFile(editor, file)
+      PsiVersioningService.freezePsiVersion {
+        getPsiFile(editor, file)
+      }
     }
-    sink.lazy(CommonDataKeys.PSI_ELEMENT) {
+    sink.lazyValue(CommonDataKeys.PSI_ELEMENT) { data ->
+      // During the injected lookup, data[EDITOR] requests the injected editor.
+      // If absent, return null so the fallback can reuse the cached host PSI_ELEMENT
+      data[CommonDataKeys.EDITOR] ?: return@lazyValue null
       getPsiElementIn(editor, caret, file)
     }
     sink.lazy(PlatformCoreDataKeys.MODULE) {
@@ -90,11 +99,11 @@ internal class TextEditorPsiDataRule : UiDataRule {
     }
     sink.lazy(InjectedDataKeys.VIRTUAL_FILE) {
       val editor = getInjectedEditor(project, editor, caret, file) ?: return@lazy null
-      PsiDocumentManager.getInstance(project).getPsiFile(editor.document)?.virtualFile
+      EditorContextManager.getPsiFileForEditor(editor, project)?.virtualFile
     }
     sink.lazy(InjectedDataKeys.PSI_FILE) {
       val editor = getInjectedEditor(project, editor, caret, file) ?: return@lazy null
-      PsiDocumentManager.getInstance(project).getPsiFile(editor.document)
+      EditorContextManager.getPsiFileForEditor(editor, project)
     }
     sink.lazy(InjectedDataKeys.PSI_ELEMENT) {
       val editor = getInjectedEditor(project, editor, caret, file) ?: return@lazy null
@@ -131,7 +140,7 @@ private fun getIdeView(e: Editor, file: VirtualFile): IdeView? {
 
 private fun getInjectedLanguage(project: Project, e: EditorEx, caret: Caret, file: VirtualFile): Language? {
   val editor = getInjectedEditor(project, e, caret, file) ?: return null
-  val psiFile = PsiDocumentManager.getInstance(project).getPsiFile(editor.getDocument()) ?: return null
+  val psiFile = EditorContextManager.getPsiFileForEditor(editor, project) ?: return null
   val injectedCaret = getInjectedCaret(editor, caret)
   return getLanguageAtCurrentPositionInEditor(injectedCaret, psiFile)
 }
@@ -194,7 +203,11 @@ private fun getPsiElementIn(editor: Editor, caret: Caret, file: VirtualFile): Ps
 private fun getPsiFile(editor: Editor, file: VirtualFile): PsiFile? {
   if (editor.isDisposed || !file.isValid) return null
   val project = editor.project ?: return null
-  val context = getEditorContext(editor, project)
+  val context = if (application.isReadAccessAllowed) {
+    getEditorContext(editor, project)
+  } else {
+    anyContext()
+  }
   val psiFile = PsiManager.getInstance(project).findFile(file, context)
   return if (psiFile != null && psiFile.isValid()) psiFile else null
 }

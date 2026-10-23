@@ -1,5 +1,5 @@
 // "Add parameter to function 'process'" "true"
-// K2_ERROR: Too many arguments for 'fun process(): Unit'.
+// K2_ERROR: TOO_MANY_ARGUMENTS
 interface A {
     fun foo()
 }
@@ -16,5 +16,4 @@ fun test() {
         override fun bar() {}
     })
 }
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AddFunctionParametersFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.refactoring.changeSignature.quickFix.ChangeSignatureFixFactory$ParameterQuickFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.refactoring.changeSignature.quickFix.ChangeSignatureFixFactory$ParameterQuickFix

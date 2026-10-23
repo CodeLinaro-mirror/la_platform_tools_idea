@@ -1,7 +1,14 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.platform.coverage.agent` start
+content_module_jar(
+    libraries = ["@lib//:platform-coverage-agent-intellij-coverage"],
+    module = ":coverage-agent",
+)
+### auto-generated section `dev intellij.platform.coverage.agent` end
 
 ### auto-generated section `build intellij.platform.coverage.agent` start
-
 jvm_library(
     name = "coverage-agent",
     srcs = glob(
@@ -37,6 +44,7 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.coverage.agent.iml",
+        "resources/intellij.platform.coverage.agent.xml",
     ],
     visibility = ["//visibility:public"],
 )

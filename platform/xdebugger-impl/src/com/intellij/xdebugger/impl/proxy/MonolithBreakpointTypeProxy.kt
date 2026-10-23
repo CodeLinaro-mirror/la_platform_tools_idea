@@ -33,7 +33,7 @@ internal open class MonolithBreakpointTypeProxy @Deprecated("Use type.asProxy() 
   override val id: String get() = breakpointType.id
 
   override val index: Int
-    get() = XBreakpointUtil.breakpointTypes().indexOf(breakpointType).orElse(-1).toInt()
+    get() = XBreakpointUtil.breakpointTypes().indexOf(breakpointType)
   override val title: String
     get() = breakpointType.title
   override val enabledIcon: Icon
@@ -42,6 +42,8 @@ internal open class MonolithBreakpointTypeProxy @Deprecated("Use type.asProxy() 
     get() = breakpointType.disabledIcon
   override val suspendNoneIcon: Icon
     get() = breakpointType.suspendNoneIcon
+  override val suspendNoneDisabledIcon: Icon
+    get() = breakpointType.suspendNoneDisabledIcon
   override val mutedEnabledIcon: Icon
     get() = breakpointType.mutedEnabledIcon
   override val mutedDisabledIcon: Icon
@@ -52,6 +54,8 @@ internal open class MonolithBreakpointTypeProxy @Deprecated("Use type.asProxy() 
     get() = breakpointType.inactiveDependentIcon
   override val isSuspendThreadSupported: Boolean
     get() = breakpointType.isSuspendThreadSupported
+  override val isTemporaryBreakpointSupported: Boolean
+    get() = breakpointType.isTemporaryBreakpointSupported
 
   override val defaultSuspendPolicy: SuspendPolicy
     get() = defaultState.suspendPolicy
@@ -84,6 +88,10 @@ internal open class MonolithBreakpointTypeProxy @Deprecated("Use type.asProxy() 
 
   override fun isAddBreakpointButtonVisible(): Boolean {
     return breakpointType.isAddBreakpointButtonVisible
+  }
+
+  override fun isNewBadgeVisible(): Boolean {
+    return breakpointType.isNewBadgeVisible
   }
 
   override suspend fun addBreakpoint(project: Project): XBreakpointProxy? {

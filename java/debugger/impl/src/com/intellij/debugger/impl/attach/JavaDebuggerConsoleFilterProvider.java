@@ -52,7 +52,7 @@ public final class JavaDebuggerConsoleFilterProvider implements ConsoleFilterPro
   }
 
   private static class JavaDebuggerAttachFilter implements Filter {
-    @NotNull Project myProject;
+    @NotNull final Project myProject;
 
     private JavaDebuggerAttachFilter(@NotNull Project project) {
       this.myProject = project;
@@ -81,7 +81,7 @@ public final class JavaDebuggerConsoleFilterProvider implements ConsoleFilterPro
     }
   }
 
-  private static boolean isDebuggerAttached(String transport, String address, Project project) {
+  public static boolean isDebuggerAttached(@NotNull String transport, @NotNull String address, @NotNull Project project) {
     return isDebuggerAttached(transport, address, project, null);
   }
 
@@ -204,12 +204,12 @@ public final class JavaDebuggerConsoleFilterProvider implements ConsoleFilterPro
       addListener(new InlayContentListener(inlay));
       myProject.getMessageBus().connect(inlay).subscribe(DebuggerManagerListener.TOPIC, new DebuggerManagerListener() {
         @Override
-        public void sessionCreated(DebuggerSession session) {
+        public void sessionCreated(@NotNull DebuggerSession session) {
           updateLater(inlay);
         }
 
         @Override
-        public void sessionRemoved(DebuggerSession session) {
+        public void sessionRemoved(@NotNull DebuggerSession session) {
           updateLater(inlay);
         }
       });

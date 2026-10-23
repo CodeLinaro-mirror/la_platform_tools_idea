@@ -48,6 +48,7 @@ import com.intellij.ui.ToolbarService
 import com.intellij.ui.mac.screenmenu.Menu
 import com.intellij.ui.mac.touchbar.TouchbarSupport
 import com.intellij.util.ui.ImageUtil
+import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -89,6 +90,7 @@ open class FrameWrapper @JvmOverloads constructor(
   private var isCloseOnEsc = false
   private var onCloseHandler: BooleanSupplier? = null
   private var frame: Window? = null
+  internal var fullScreenSupport: FullScreenSupport? = null
   @JvmField
   internal var isDisposing: Boolean = false
 
@@ -141,7 +143,9 @@ open class FrameWrapper @JvmOverloads constructor(
       ToolbarService.getInstance().setTransparentTitleBar(
         window = frame,
         rootPane = frame.rootPane,
-        handlerProvider = { FullScreenSupport.NEW.apply("com.intellij.ui.mac.MacFullScreenSupport") },
+        handlerProvider = {
+          FullScreenSupport.NEW.apply("com.intellij.ui.mac.MacFullScreenSupport").also { fullScreenSupport = it }
+        },
         onDispose = { runnable ->
           executeOnDispose { runnable.run() }
         },
@@ -246,6 +250,7 @@ open class FrameWrapper @JvmOverloads constructor(
 
     val frame = frame
     this.frame = null
+    fullScreenSupport = null
     preferredFocusedComponent = null
     component = null
     images = emptyList()
@@ -355,11 +360,13 @@ private class MyJFrame(
     }
     MouseGestureManager.getInstance().add(this)
     focusTraversalPolicy = IdeFocusTraversalPolicy()
+
+    rootPane.border = JBUI.CurrentTheme.Window.getDialogBorder(isUndecorated)
   }
 
   override fun isWindowDisposed(): Boolean = owner.isDisposed
 
-  override fun isInFullScreen() = false
+  override fun isInFullScreen(): Boolean = owner.fullScreenSupport?.isFullScreen() == true
 
   override fun toggleFullScreen(state: Boolean): Job = CompletableDeferred(value = Unit)
 
@@ -471,6 +478,8 @@ private class MyJDialog(
     background = UIUtil.getPanelBackground()
     MouseGestureManager.getInstance().add(this)
     focusTraversalPolicy = IdeFocusTraversalPolicy()
+
+    rootPane.border = JBUI.CurrentTheme.Window.getDialogBorder(isUndecorated)
   }
 
   override fun setFrameTitle(title: String) {

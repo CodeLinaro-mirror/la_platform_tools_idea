@@ -11,6 +11,8 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.NlsSafe
 import com.intellij.platform.scopes.SearchScopeData
 import com.intellij.platform.scopes.SearchScopesInfo
+import com.intellij.platform.searchEverywhere.SeTypeFilterKeys
+import com.intellij.platform.searchEverywhere.frontend.SeTabsCustomizer
 import com.intellij.platform.searchEverywhere.frontend.tabs.utils.SeFilterEditorBase
 import com.intellij.platform.searchEverywhere.frontend.tabs.utils.SeTypeVisibilityStateHolder
 import com.intellij.platform.searchEverywhere.providers.SeLog
@@ -26,20 +28,37 @@ class SeTargetsFilterEditor(
   typeVisibilityStates: List<SeTypeVisibilityStatePresentation>?,
   private val hasPreviewAction: Boolean,
   persistScopeIfAvailable: Boolean = false,
+  /**
+   * The key of the one type filter this editor shows.
+   *
+   * A provider that shows one filter leaves the default, and so does this editor. An editor for a
+   * provider with several filters names each one instead.
+   */
+  private val typeFilterKey: String = SeTypeFilterKeys.DEFAULT,
 ) : SeFilterEditorBase<SeTargetsFilter>( run {
   val selectedScopeId = SeScopePersistentStorage.create(project, tabId, scopesInfo, persistScopeIfAvailable)?.getScope()?.scopeId
                         ?: scopesInfo?.selectedScopeId
+
+  val actualHiddenTypes = if (SeTabsCustomizer.getInstance().isTypeFilterEnabled(tabId)) {
+    mapOf(typeFilterKey to hiddenTypes(typeVisibilityStates).orEmpty())
+  }
+  else {
+    emptyMap()
+  }
+
   SeTargetsFilter(selectedScopeId,
                   selectedScopeId != scopesInfo?.everywhereScopeId,
-                  hiddenTypes(typeVisibilityStates))
+                  actualHiddenTypes)
 }
 ) {
+  private val isTypeFilterEnabled = SeTabsCustomizer.getInstance().isTypeFilterEnabled(tabId)
+
   private val updateFilterValueWithVisibilityStates = {
-    filterValue = filterValue.cloneWith(hiddenTypes(visibilityStateHolder?.elements))
+    filterValue = filterValue.cloneWith(typeFilterKey, hiddenTypes(visibilityStateHolder?.elements).orEmpty())
   }
 
   private val visibilityStateHolder: SeTypeVisibilityStateHolder? =
-    typeVisibilityStates?.takeIf { it.isNotEmpty() }?.let {
+    typeVisibilityStates?.takeIf { isTypeFilterEnabled && it.isNotEmpty() }?.let {
       SeTypeVisibilityStateHolder(it, updateFilterValueWithVisibilityStates)
     }
 

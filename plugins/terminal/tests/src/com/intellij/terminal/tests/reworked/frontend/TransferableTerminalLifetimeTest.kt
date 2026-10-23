@@ -31,9 +31,12 @@ import org.jetbrains.plugins.terminal.session.impl.TerminalInputEvent
 import org.jetbrains.plugins.terminal.session.impl.TerminalOutputEvent
 import org.jetbrains.plugins.terminal.session.impl.TerminalSession
 import org.jetbrains.plugins.terminal.session.impl.TerminalStartupOptionsImpl
+import org.jetbrains.plugins.terminal.session.impl.dto.KeyEventProcessingResultDto
 import org.jetbrains.plugins.terminal.startup.TerminalProcessType
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import java.awt.event.KeyEvent
+import java.awt.event.MouseEvent
 
 @TestApplication
 class TransferableTerminalLifetimeTest {
@@ -243,6 +246,8 @@ class TransferableTerminalLifetimeTest {
           startLineLogicalIndex = 0,
           cursorLogicalLineIndex = 0,
           cursorColumnIndex = 0,
+          screenTopLogicalLineIndex = 0,
+          screenTopColumnIndex = 0,
         )
       )
       yield()
@@ -257,6 +262,8 @@ class TransferableTerminalLifetimeTest {
           startLineLogicalIndex = 0,
           cursorLogicalLineIndex = 0,
           cursorColumnIndex = 19,
+          screenTopLogicalLineIndex = 0,
+          screenTopColumnIndex = 0,
         )
       )
       yield()
@@ -294,6 +301,14 @@ private class TestRawTerminalSession(
 
   suspend fun emit(event: TerminalOutputEvent) {
     output.emit(listOf(event))
+  }
+
+  override fun processMouseEvent(e: MouseEvent, x: Int, y: Int): ByteArray? {
+    error("Unexpected processMouseEvent call in TransferableTerminalLifetimeTest")
+  }
+
+  override fun processKeyEvent(e: KeyEvent): KeyEventProcessingResultDto {
+    error("Unexpected processKeyEvent call in TransferableTerminalLifetimeTest")
   }
 
   override suspend fun getInputChannel(): SendChannel<TerminalInputEvent> = input

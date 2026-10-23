@@ -15,7 +15,7 @@ import com.intellij.openapi.project.Project
 import org.jetbrains.annotations.ApiStatus
 
 private const val PM_MP_GROUP_ID = "mp.$PM_FUS_GROUP_ID"
-private const val PM_MP_GROUP_VERSION = 2
+private const val PM_MP_GROUP_VERSION = 4
 private val EVENT_GROUP = EventLogGroup(
   PM_MP_GROUP_ID,
   // this is necessary to be able to change `PM_MP_GROUP_ID` child group without a requirement to update `PM_FUS_GROUP_ID` parent group version.
@@ -43,16 +43,16 @@ class PluginManagerMPCollector : PluginManagerFUSCollector() {
 
   private val MARKETPLACE_TAB_SEARCH_PERFORMED = group.registerVarargEvent(
     "marketplace.tab.search", USER_QUERY_FEATURES_DATA_KEY, MARKETPLACE_SEARCH_FEATURES_DATA_KEY,
-    SEARCH_RESULTS_FEATURES_DATA_KEY, PLUGIN_MANAGER_SESSION_ID, PLUGIN_MANAGER_SEARCH_INDEX
+    SEARCH_RESULTS_FEATURES_DATA_KEY, PLUGIN_MANAGER_SESSION_ID, PLUGIN_MANAGER_SEARCH_SESSION_ID, PLUGIN_MANAGER_SEARCH_INDEX
   )
   private val INSTALLED_TAB_SEARCH_PERFORMED = group.registerVarargEvent(
     "installed.tab.search", USER_QUERY_FEATURES_DATA_KEY, LOCAL_SEARCH_FEATURES_DATA_KEY,
-    SEARCH_RESULTS_FEATURES_DATA_KEY, PLUGIN_MANAGER_SESSION_ID, PLUGIN_MANAGER_SEARCH_INDEX
+    SEARCH_RESULTS_FEATURES_DATA_KEY, PLUGIN_MANAGER_SESSION_ID, PLUGIN_MANAGER_SEARCH_SESSION_ID, PLUGIN_MANAGER_SEARCH_INDEX
   )
-  private val SEARCH_RESET = group.registerEvent("search.reset", PLUGIN_MANAGER_SESSION_ID)
+  private val SEARCH_RESET = group.registerEvent("search.reset", PLUGIN_MANAGER_SESSION_ID, PLUGIN_MANAGER_SEARCH_SESSION_ID)
 
   fun performMarketplaceSearch(project: Project?, query: SearchQueryParser.Marketplace,
-                               results: List<PluginUiModel>, searchIndex: Int, sessionId: Int,
+                               results: List<PluginUiModel>, searchIndex: Int, sessionId: Int, searchSessionId: Int,
                                pluginToScore: Map<PluginUiModel, Double>? = null) {
     MARKETPLACE_TAB_SEARCH_PERFORMED.getIfInitializedOrNull()?.log(project) {
       add(USER_QUERY_FEATURES_DATA_KEY.with(ObjectEventData(
@@ -65,12 +65,13 @@ class PluginManagerMPCollector : PluginManagerFUSCollector() {
         PluginManagerSearchResultsFeatureProvider.getSearchStateFeatures(query.searchQuery, results, pluginToScore)
       )))
       add(PLUGIN_MANAGER_SESSION_ID.with(sessionId))
+      add(PLUGIN_MANAGER_SEARCH_SESSION_ID.with(searchSessionId))
       add(PLUGIN_MANAGER_SEARCH_INDEX.with(searchIndex))
     }
   }
 
   fun performInstalledTabSearch(project: Project?, query: SearchQueryParser.Installed,
-                                results: List<PluginUiModel>, searchIndex: Int, sessionId: Int,
+                                results: List<PluginUiModel>, searchIndex: Int, sessionId: Int, searchSessionId: Int,
                                 pluginToScore: Map<PluginUiModel, Double>? = null) {
     INSTALLED_TAB_SEARCH_PERFORMED.getIfInitializedOrNull()?.log(project) {
       add(USER_QUERY_FEATURES_DATA_KEY.with(ObjectEventData(
@@ -83,11 +84,12 @@ class PluginManagerMPCollector : PluginManagerFUSCollector() {
         PluginManagerSearchResultsFeatureProvider.getSearchStateFeatures(query.searchQuery, results, pluginToScore)
       )))
       add(PLUGIN_MANAGER_SESSION_ID.with(sessionId))
+      add(PLUGIN_MANAGER_SEARCH_SESSION_ID.with(searchSessionId))
       add(PLUGIN_MANAGER_SEARCH_INDEX.with(searchIndex))
     }
   }
 
-  fun searchReset(sessionId: Int) {
-    SEARCH_RESET.log(sessionId)
+  fun searchReset(sessionId: Int, searchSessionId: Int) {
+    SEARCH_RESET.log(sessionId, searchSessionId)
   }
 }

@@ -2,7 +2,7 @@
 // ERROR: A 'return' expression required in a function with a block body ('{...}')
 // ERROR: Unresolved reference: TODO
 // ERROR: Unresolved reference: TODO
-// K2_ERROR: Enum entry 'KtEnumClass.ENUM_ENTRY' does not implement abstract members:<br>fun saySomething(): String<br>fun foo(): Unit
+// K2_ERROR: ABSTRACT_MEMBER_NOT_IMPLEMENTED_BY_ENUM_ENTRY
 
 interface KtInterface {
     fun foo()
@@ -15,5 +15,4 @@ enum class KtEnumClass : KtInterface {
     abstract fun saySomething(): String
 }
 
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.core.overrideImplement.ImplementMembersHandler
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.core.overrideImplement.KtImplementMembersQuickfix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.core.overrideImplement.KtImplementMembersQuickfix

@@ -1,4 +1,4 @@
-// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.statistics
 
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer
@@ -10,18 +10,18 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.extensions.ExtensionNotApplicableException
 import com.intellij.openapi.fileEditor.FileEditor
-import com.intellij.openapi.module.ModuleUtil
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.MultiplePsiFilesPerDocumentFileViewProvider
 import com.intellij.psi.PsiManager
+import com.intellij.python.sdk.backend.getSdkAPI
+import com.intellij.python.pyproject.model.evolution.findEvoPyProject
 import com.jetbrains.python.PyPsiPackageUtil
 import com.jetbrains.python.packaging.management.PythonPackageManager
 import com.jetbrains.python.psi.PyFile
 import com.jetbrains.python.psi.PyImportStatementBase
-import com.jetbrains.python.sdk.legacy.PythonSdkUtil
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -44,11 +44,12 @@ private val VirtualFile.isUpToDate: Boolean
   }
 
 @Service(Service.Level.PROJECT)
-@ApiStatus.Internal
 @VisibleForTesting
-class PackageDaemonTaskExecutor(private val project: Project, private val cs: CoroutineScope) {
+internal class PackageDaemonTaskExecutor(private val project: Project, private val cs: CoroutineScope) {
   fun execute(vFile: VirtualFile): Job {
     return cs.launch {
+      // Wait for the Python project structure, so a file opened before it is ready is still counted.
+      val evoPyProject = project.findEvoPyProject(vFile, mainForOrphans = false) ?: return@launch
       constrainedReadAction(ReadConstraint.inSmartMode(project)) readAction@{
         val fileIndex = ProjectFileIndex.getInstance(project)
         if (!fileIndex.isInProject(vFile) || fileIndex.isInLibrary(vFile)) {
@@ -61,16 +62,16 @@ class PackageDaemonTaskExecutor(private val project: Project, private val cs: Co
           viewProvider.allFiles.firstOrNull { it is PyFile }
         } else psiFile
         if (pyPsiFile !is PyFile) return@readAction emptyList()
-        val module = ModuleUtil.findModuleForFile(pyPsiFile) ?: return@readAction emptyList()
-        val sdk = PythonSdkUtil.findPythonSdk(module)
+        val interpreter = evoPyProject.interpreter
+        @Suppress("DEPRECATION") // The statistics read the SDK type and target.
+        val sdk = interpreter?.getSdkAPI()
         val interpreterType = sdk?.interpreterType ?: InterpreterType.REGULAR
         val interpreterTarget = sdk?.executionType ?: InterpreterTarget.LOCAL
-        val packages2Versions = sdk?.let {
-          // it's mock sdk
-          if (sdk.sdkAdditionalData == null) return@let emptyMap()
-          val packagesFromPackageManager = PythonPackageManager.forSdk(project, sdk).listInstalledPackagesSnapshot()
-          packagesFromPackageManager.associate { it.name to it.version }
-        } ?: emptyMap()
+        // A mock SDK has no additional data, and the package manager cannot be built for it.
+        val packages2Versions = if (interpreter == null || sdk?.sdkAdditionalData == null) emptyMap()
+        else {
+          PythonPackageManager.forPythonInterpreter(project, interpreter).listInstalledPackagesSnapshot().associate { it.name to it.version }
+        }
 
         pyPsiFile.children.filterIsInstance<PyImportStatementBase>().mapNotNull { import ->
           // all imports from the same statement should start with the same module
@@ -93,7 +94,7 @@ class PackageDaemonTaskExecutor(private val project: Project, private val cs: Co
   }
 }
 
-class PyPackageDaemonListener(private val project: Project) : DaemonCodeAnalyzer.DaemonListener {
+internal class PyPackageDaemonListener(private val project: Project) : DaemonCodeAnalyzer.DaemonListener {
   init {
     if (!isEnabled) {
       throw ExtensionNotApplicableException.create()

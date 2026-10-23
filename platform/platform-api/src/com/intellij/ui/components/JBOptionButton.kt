@@ -9,8 +9,11 @@ import com.intellij.openapi.ui.popup.JBPopup
 import com.intellij.openapi.util.NlsContexts
 import com.intellij.openapi.util.Weighted
 import com.intellij.ui.UIBundle
+import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.Nls
 import java.awt.Color
+import java.awt.Component
+import java.awt.Rectangle
 import java.awt.event.ActionEvent
 import java.awt.event.InputEvent
 import java.awt.event.KeyEvent
@@ -21,7 +24,7 @@ import javax.swing.KeyStroke.getKeyStroke
 
 private val DEFAULT_SHOW_POPUP_SHORTCUT = CustomShortcutSet(getKeyStroke(KeyEvent.VK_ENTER, InputEvent.ALT_MASK or InputEvent.SHIFT_MASK))
 
-open class JBOptionButton(action: Action?, options: Array<Action>?) : JButton(action), Weighted {
+open class JBOptionButton(action: Action?, options: Array<Action>?) : JButton(action), Weighted, SplitButtonZones {
   var options: Array<Action>? = null
     set(value) {
       val oldOptions = options
@@ -46,7 +49,11 @@ open class JBOptionButton(action: Action?, options: Array<Action>?) : JButton(ac
     }
   var optionAdText: @NlsContexts.PopupAdvertisement String? = null
 
-  val isSimpleButton: Boolean get() = options.isNullOrEmpty()
+  /**
+   * Tells the UI to draw one plain button without the arrow half.
+   * The default answers `true` when [options] is empty. A subclass that opens its own popup from [togglePopup] can answer `false`.
+   */
+  open val isSimpleButton: Boolean get() = options.isNullOrEmpty()
 
   var addSeparator: Boolean = true
   var hideDisabledOptions: Boolean = false
@@ -64,9 +71,24 @@ open class JBOptionButton(action: Action?, options: Array<Action>?) : JButton(ac
 
   override fun getWeight(): Double = 0.5
 
-  fun togglePopup(): Unit = getUI().togglePopup()
+  /** Opens or closes the option popup. The arrow half calls this. A subclass can open its own popup instead. */
+  open fun togglePopup(): Unit = getUI().togglePopup()
   fun showPopup(actionToSelect: Action? = null, ensureSelection: Boolean = true): Unit = getUI().showPopup(actionToSelect, ensureSelection)
   fun closePopup(): Unit = getUI().closePopup()
+
+  /** The half button's own bounds: the halves are this button's children, so they are already in its coordinates. */
+  @ApiStatus.Internal
+  override fun splitButtonZone(half: SplitButtonHalf): Rectangle? = splitButtonHalfComponent(half)?.bounds
+
+  /**
+   * The child button the UI laid the half out as — an option button's halves own their listeners themselves.
+   *
+   * Goes through [getUI] of the superclass rather than the narrowed [getUI] above, which casts: a button whose
+   * UI is not installed, or is not an [OptionButtonUI], has no halves to report instead of failing.
+   */
+  @ApiStatus.Internal
+  override fun splitButtonHalfComponent(half: SplitButtonHalf): Component? =
+    (super.getUI() as? OptionButtonUI)?.splitButtonHalfButton(half)
 
   companion object {
     const val PROP_OPTIONS: String = "OptionActions"

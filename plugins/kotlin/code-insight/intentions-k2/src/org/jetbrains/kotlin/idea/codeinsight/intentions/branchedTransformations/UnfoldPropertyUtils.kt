@@ -1,10 +1,13 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.kotlin.idea.codeinsight.intentions.branchedTransformations
 
-import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaSession
+import org.jetbrains.kotlin.analysis.api.expressions.expressionType
+import org.jetbrains.kotlin.analysis.api.renderer.render
 import org.jetbrains.kotlin.analysis.api.renderer.types.impl.KaTypeRendererForSource
 import org.jetbrains.kotlin.idea.base.codeInsight.ShortenReferencesFacility
+import org.jetbrains.kotlin.idea.base.psi.setPropertyInitializer
+import org.jetbrains.kotlin.idea.base.psi.setPropertyTypeReference
 import org.jetbrains.kotlin.psi.KtBinaryExpression
 import org.jetbrains.kotlin.psi.KtProperty
 import org.jetbrains.kotlin.psi.KtPsiFactory
@@ -14,8 +17,8 @@ import org.jetbrains.kotlin.types.Variance
 object UnfoldPropertyUtils {
     class Context(val propertyExplicitType: String?)
 
-    @OptIn(KaExperimentalApi::class)
-    internal fun KaSession.prepareUnfoldPropertyContext(element: KtProperty): Context? {
+    context(session: KaSession)
+    internal fun prepareUnfoldPropertyContext(element: KtProperty): Context? {
         val initializer = element.initializer ?: return null
 
         if (element.typeReference != null) return Context(null)
@@ -42,11 +45,11 @@ object UnfoldPropertyUtils {
         val assignment = parent.addAfter(expression, property) as KtBinaryExpression
         parent.addAfter(psiFactory.createNewLine(), property)
 
-        property.initializer = null
+        property.setPropertyInitializer(null)
 
         if (propertyTypeAsString != null) {
             val typeReference = psiFactory.createType(propertyTypeAsString)
-            property.setTypeReference(typeReference)?.let { ShortenReferencesFacility.getInstance().shorten(it) }
+            property.setPropertyTypeReference(typeReference)?.let { ShortenReferencesFacility.getInstance().shorten(it) }
         }
         return assignment
     }

@@ -29,13 +29,15 @@ import com.intellij.htmltools.lang.annotation.HtmlNonExistentInternetResourcesAn
 import com.intellij.htmltools.xml.util.CheckImageSizeInspection;
 import com.intellij.ide.highlighter.HtmlHighlighterFactory;
 import com.intellij.javaee.ExternalResourceManagerEx;
-import com.intellij.javaee.ExternalResourceManagerExImpl;
+import com.intellij.javaee.ExternalResourceManagerExBase;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.PathManager;
 import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.editor.colors.EditorColorsManager;
 import com.intellij.openapi.editor.highlighter.EditorHighlighter;
 import com.intellij.openapi.editor.highlighter.HighlighterIterator;
+import com.intellij.openapi.progress.EmptyProgressIndicator;
+import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.xml.XmlTag;
 import com.intellij.psi.xml.XmlTokenType;
@@ -450,7 +452,7 @@ public class HtmlHighlightingTest extends BasePlatformTestCase {
     final String location = "XInclude.xsd";
     final String url = "http://www.w3.org/2001/XInclude";
 
-    ExternalResourceManagerExImpl.registerResourceTemporarily(url, location, getTestRootDisposable());
+    ExternalResourceManagerExBase.registerResourceTemporarily(url, location, getTestRootDisposable());
 
     myFixture.configureByFiles(testName + ".xhtml", location);
     myFixture.checkHighlighting(true, false, false);
@@ -903,7 +905,7 @@ public class HtmlHighlightingTest extends BasePlatformTestCase {
   private void doTestHtml5QuickFixShouldBeFirst() {
     myFixture.configureByFile(getTestName(false) + ".html");
     myFixture.doHighlighting();
-    ShowIntentionsPass.IntentionsInfo intentions = ShowIntentionsPass.getActionsToShow(myFixture.getEditor(), myFixture.getFile());
+    ShowIntentionsPass.IntentionsInfo intentions = ProgressManager.getInstance().runProcess(()->ShowIntentionsPass.getActionsToShow(myFixture.getEditor(), myFixture.getFile()), new EmptyProgressIndicator());
     assertFalse(intentions.isEmpty());
     CachedIntentions actions = CachedIntentions.createAndUpdateActions(getProject(), myFixture.getFile(), myFixture.getEditor(), intentions);
     assertNotEmpty(actions.getAllActions());

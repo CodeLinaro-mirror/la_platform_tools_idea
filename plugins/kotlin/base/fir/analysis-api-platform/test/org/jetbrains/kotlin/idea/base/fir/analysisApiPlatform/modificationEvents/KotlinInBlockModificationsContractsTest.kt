@@ -4,13 +4,12 @@ package org.jetbrains.kotlin.idea.base.fir.analysisApiPlatform.modificationEvent
 import com.intellij.openapi.application.runReadAction
 import com.intellij.openapi.application.runUndoTransparentWriteAction
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.analyze
-import org.jetbrains.kotlin.analysis.api.components.KaDiagnosticCheckerFilter
-import org.jetbrains.kotlin.analysis.api.components.collectDiagnostics
+import org.jetbrains.kotlin.analysis.api.diagnostics.diagnostics
 import org.jetbrains.kotlin.analysis.api.permissions.KaAllowAnalysisFromWriteAction
 import org.jetbrains.kotlin.analysis.api.permissions.KaAllowAnalysisOnEdt
 import org.jetbrains.kotlin.analysis.api.permissions.allowAnalysisFromWriteAction
 import org.jetbrains.kotlin.analysis.api.permissions.allowAnalysisOnEdt
+import org.jetbrains.kotlin.analysis.api.session.analyze
 import org.jetbrains.kotlin.idea.test.KotlinLightCodeInsightFixtureTestCase
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.KtNamedFunction
@@ -18,22 +17,19 @@ import org.jetbrains.kotlin.psi.KtNamedFunction
 @OptIn(KaAllowAnalysisOnEdt::class, KaAllowAnalysisFromWriteAction::class)
 class KotlinInBlockModificationsContractsTest : KotlinLightCodeInsightFixtureTestCase() {
 
-    context(_: KaSession)
-    private fun KtFile.diagnostics() = collectDiagnostics(KaDiagnosticCheckerFilter.ONLY_COMMON_CHECKERS)
-
     fun `test isolated`() {
         doTest(
             insideWriteActionBefore = { file ->
-                val diagnostics = file.diagnostics()
+                val diagnosticsCount = file.diagnostics().count()
 
                 // unresolved reference diagnostic
-                assertEquals(1, diagnostics.size)
+                assertEquals(1, diagnosticsCount)
             },
             insideWriteActionAfter = { file ->
-                val diagnostics = file.diagnostics()
+                val diagnosticsCount = file.diagnostics().count()
 
                 // without unresolved reference diagnostic
-                assertEquals(0, diagnostics.size)
+                assertEquals(0, diagnosticsCount)
             },
             isolatedAnalyzeInsideWrite = true,
         )
@@ -42,24 +38,24 @@ class KotlinInBlockModificationsContractsTest : KotlinLightCodeInsightFixtureTes
     fun `test non-isolated`() {
         doTest(
             insideWriteActionBefore = { file ->
-                val diagnostics = file.diagnostics()
+                val diagnosticsCount = file.diagnostics().count()
 
                 // unresolved reference diagnostic
-                assertEquals(1, diagnostics.size)
+                assertEquals(1, diagnosticsCount)
             },
             insideWriteActionAfter = { file ->
-                val diagnostics = file.diagnostics()
+                val diagnosticsCount = file.diagnostics().count()
 
                 // still unresolved reference diagnostic due to unpublished modification
-                assertEquals(1, diagnostics.size)
+                assertEquals(1, diagnosticsCount)
             },
             isolatedAnalyzeInsideWrite = false,
         )
     }
 
     private fun doTest(
-        insideWriteActionBefore: KaSession.(KtFile) -> Unit = {},
-        insideWriteActionAfter: KaSession.(KtFile) -> Unit = {},
+        insideWriteActionBefore: context(KaSession) (KtFile) -> Unit = {},
+        insideWriteActionAfter: context(KaSession) (KtFile) -> Unit = {},
         isolatedAnalyzeInsideWrite: Boolean,
     ) {
         val ktFile = myFixture.configureByText(
@@ -81,10 +77,10 @@ class KotlinInBlockModificationsContractsTest : KotlinLightCodeInsightFixtureTes
             allowAnalysisOnEdt {
                 runReadAction {
                     analyze(ktFile) {
-                        val diagnostics = ktFile.diagnostics()
+                        val diagnosticsCount = ktFile.diagnostics().count()
 
                         // unresolved reference diagnostic
-                        assertEquals(1, diagnostics.size)
+                        assertEquals(1, diagnosticsCount)
                     }
                 }
 
@@ -109,10 +105,10 @@ class KotlinInBlockModificationsContractsTest : KotlinLightCodeInsightFixtureTes
 
                 runReadAction {
                     analyze(ktFile) {
-                        val diagnostics = ktFile.diagnostics()
+                        val diagnosticsCount = ktFile.diagnostics().count()
 
                         // without unresolved reference diagnostic
-                        assertEquals(0, diagnostics.size)
+                        assertEquals(0, diagnosticsCount)
                     }
                 }
             }

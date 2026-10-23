@@ -3,10 +3,9 @@
 
 package org.jetbrains.intellij.build.dev
 
+import com.intellij.platform.buildScripts.concurrency.Subtask
 import io.opentelemetry.api.common.AttributeKey
-import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.intellij.build.BuildContext
 import org.jetbrains.intellij.build.BuildOptions
 import org.jetbrains.intellij.build.JvmArchitecture
@@ -14,7 +13,7 @@ import org.jetbrains.intellij.build.LibcImpl
 import org.jetbrains.intellij.build.OsFamily
 import org.jetbrains.intellij.build.PluginBundlingRestrictions
 import org.jetbrains.intellij.build.SearchableOptionSetDescriptor
-import org.jetbrains.intellij.build.classPath.PluginBuildDescriptor
+import org.jetbrains.intellij.build.classPath.PluginBuildResult
 import org.jetbrains.intellij.build.impl.DistributionBuilderState
 import org.jetbrains.intellij.build.impl.PlatformLayout
 import org.jetbrains.intellij.build.impl.PluginLayout
@@ -26,13 +25,14 @@ import org.jetbrains.intellij.build.impl.plugins.buildPlugins
 import org.jetbrains.intellij.build.impl.plugins.scrambleAlreadyLaidOutPlugins
 import org.jetbrains.intellij.build.impl.projectStructureMapping.DistributionFileEntry
 import org.jetbrains.intellij.build.impl.satisfiesBundlingRequirements
+import org.jetbrains.intellij.build.impl.satisfiesDevBundlingRequirements
 import org.jetbrains.intellij.build.telemetry.TraceManager.spanBuilder
 import org.jetbrains.intellij.build.telemetry.use
 import java.nio.file.Files
 import java.nio.file.Path
 
 internal data class PluginsLayoutResult(
-  @JvmField val pluginEntries: List<PluginBuildDescriptor>,
+  @JvmField val pluginEntries: List<PluginBuildResult>,
   @JvmField val additionalPlugins: List<Pair<Path, List<Path>>>?,
 )
 
@@ -41,11 +41,11 @@ internal enum class DevModePluginBuildStrategy {
   LAYOUT_BEFORE_PLATFORM_SCRAMBLE,
 }
 
-internal fun selectDevModePluginBuildStrategy(request: BuildRequest, context: BuildContext): DevModePluginBuildStrategy {
+internal fun selectDevModePluginBuildStrategy(request: BuildRequest, context: BuildContext, pluginLayouts: List<PluginLayout>): DevModePluginBuildStrategy {
   if (!context.productProperties.scrambleMainJar || request.scrambleTool == null || context.isStepSkipped(BuildOptions.SCRAMBLING_STEP)) {
     return DevModePluginBuildStrategy.NORMAL
   }
-  return if (devModePluginCandidates(request, context).any { it.scrambleWithPlatform }) {
+  return if (pluginLayouts.any { it.scrambleWithPlatform }) {
     DevModePluginBuildStrategy.LAYOUT_BEFORE_PLATFORM_SCRAMBLE
   }
   else {
@@ -53,17 +53,19 @@ internal fun selectDevModePluginBuildStrategy(request: BuildRequest, context: Bu
   }
 }
 
-internal suspend fun buildPluginsForDevMode(
+internal fun buildPluginsForDevMode(
   request: BuildRequest,
+  pluginLayouts: List<PluginLayout>,
   context: BuildContext,
   runDir: Path,
-  platformLayout: Deferred<PlatformLayout>,
+  platformLayout: Subtask<PlatformLayout>,
   searchableOptionSet: SearchableOptionSetDescriptor?,
-  platformEntriesProvider: suspend () -> List<DistributionFileEntry>,
+  platformEntriesProvider: () -> List<DistributionFileEntry>,
 ): PluginsLayoutResult {
-  val plugins = devModePluginCandidates(request, context)
   val descriptors = buildPluginDescriptorsForDevMode(
-    plugins = plugins,
+    os = request.os,
+    arch = request.arch,
+    plugins = pluginLayouts,
     context = context,
     runDir = runDir,
     platformLayout = platformLayout,
@@ -71,6 +73,7 @@ internal suspend fun buildPluginsForDevMode(
     platformEntriesProvider = platformEntriesProvider,
     layoutOnly = false,
   )
+  // The prebuilt plugin directories are not plugin layouts. The one assembly that owns plugins owns them too.
   val additionalPlugins = copyAdditionalPlugins(runDir.resolve("plugins"), context)
   return PluginsLayoutResult(descriptors, additionalPlugins)
 }
@@ -80,16 +83,18 @@ internal suspend fun buildPluginsForDevMode(
  * run via `coScrambleEntriesProvider` / `classpathDirsProvider`, then per-plugin scramble runs
  * after platform scramble via [scrambleAlreadyLaidOutPluginsForDevMode].
  */
-internal suspend fun layoutAllPluginsForDevMode(
+internal fun layoutAllPluginsForDevMode(
   request: BuildRequest,
+  pluginLayouts: List<PluginLayout>,
   context: BuildContext,
   runDir: Path,
-  platformLayout: Deferred<PlatformLayout>,
+  platformLayout: Subtask<PlatformLayout>,
   searchableOptionSet: SearchableOptionSetDescriptor?,
-): List<PluginBuildDescriptor> {
-  val plugins = devModePluginCandidates(request, context)
+): List<PluginBuildResult> {
   return buildPluginDescriptorsForDevMode(
-    plugins = plugins,
+    os = request.os,
+    arch = request.arch,
+    plugins = pluginLayouts,
     context = context,
     runDir = runDir,
     platformLayout = platformLayout,
@@ -99,24 +104,24 @@ internal suspend fun layoutAllPluginsForDevMode(
   )
 }
 
-private suspend fun buildPluginDescriptorsForDevMode(
+private fun buildPluginDescriptorsForDevMode(
+  os: OsFamily,
+  arch: JvmArchitecture,
   plugins: List<PluginLayout>,
   context: BuildContext,
   runDir: Path,
-  platformLayout: Deferred<PlatformLayout>,
+  platformLayout: Subtask<PlatformLayout>,
   searchableOptionSet: SearchableOptionSetDescriptor?,
-  platformEntriesProvider: (suspend () -> List<DistributionFileEntry>)?,
+  platformEntriesProvider: (() -> List<DistributionFileEntry>)?,
   layoutOnly: Boolean,
-): List<PluginBuildDescriptor> {
+): List<PluginBuildResult> {
   if (plugins.isEmpty()) return emptyList()
   val pluginRootDir = runDir.resolve("plugins")
-  withContext(Dispatchers.IO) {
-    Files.createDirectories(pluginRootDir)
-  }
+  Files.createDirectories(pluginRootDir)
   val platform = platformLayout.await()
   val spanName = if (layoutOnly) "lay out plugins" else "build plugins"
   return spanBuilder(spanName).setAttribute(AttributeKey.longKey("count"), plugins.size.toLong()).use {
-    val targetPlatform = SupportedDistribution(os = OsFamily.currentOs, arch = JvmArchitecture.currentJvmArch, libcImpl = LibcImpl.current(OsFamily.currentOs))
+    val targetPlatform = SupportedDistribution(os = os, arch = arch, libcImpl = LibcImpl.current(os))
     buildPlugins(
       plugins = plugins,
       os = null,
@@ -128,24 +133,30 @@ private suspend fun buildPluginDescriptorsForDevMode(
       descriptorCacheContainer = platform.descriptorCacheContainer,
       context = context,
       layoutOnly = layoutOnly,
-    ) { layout, pluginDirOrFile ->
-      buildPlatformSpecificPluginResources(
-        plugin = layout,
-        pluginDirs = listOf(targetPlatform to pluginDirOrFile),
-        context = context,
-        isDevMode = true,
-      )
+    ) { _, layout, pluginDirOrFile ->
+      if (layout != null) {
+        buildPlatformSpecificPluginResources(
+          plugin = layout,
+          pluginDirs = listOf(targetPlatform to pluginDirOrFile),
+          context = context,
+          isDevMode = true,
+        )
+      }
+      else {
+        emptyList()
+      }
     }
   }
 }
 
 /** Per-plugin scramble for non-co-scramble plugins after platform scramble has completed (dev mode). */
-internal suspend fun scrambleAlreadyLaidOutPluginsForDevMode(
-  descriptors: List<PluginBuildDescriptor>,
+internal fun scrambleAlreadyLaidOutPluginsForDevMode(
+  descriptors: List<PluginBuildResult>,
   context: BuildContext,
   runDir: Path,
-  platformLayout: Deferred<PlatformLayout>,
-  platformEntriesProvider: suspend () -> List<DistributionFileEntry>,
+  platformLayout: Subtask<PlatformLayout>,
+  layoutsOfPluginsToScramble: Map<String, PluginLayout>,
+  platformEntriesProvider: () -> List<DistributionFileEntry>,
 ): PluginsLayoutResult {
   val platform = platformLayout.await()
   val state = DistributionBuilderState(platformLayout = platform, pluginsToPublish = emptySet(), context = context)
@@ -155,20 +166,205 @@ internal suspend fun scrambleAlreadyLaidOutPluginsForDevMode(
     descriptors = descriptors,
     state = state,
     platformEntries = platformEntries,
+    layoutsOfPluginsToScramble = layoutsOfPluginsToScramble,
     context = context,
   )
-  val pluginRootDir = runDir.resolve("plugins")
-  val additionalPlugins = copyAdditionalPlugins(pluginRootDir, context)
+  val additionalPlugins = copyAdditionalPlugins(runDir.resolve("plugins"), context)
   return PluginsLayoutResult(descriptors, additionalPlugins)
 }
 
-private fun devModePluginCandidates(request: BuildRequest, context: BuildContext): List<PluginLayout> {
+internal fun devModePluginCandidates(request: BuildRequest, context: BuildContext): List<PluginLayout> {
+  check(request.fragment.ownsPlugins || request.fragment.ownsRuntimeModuleRepository) {
+    "The '${request.fragment}' fragment owns no plugin"
+  }
   val bundledMainModuleNames = getBundledMainModuleNames(context, request.additionalModules)
-  return getPluginLayoutsByJpsModuleNames(bundledMainModuleNames, context.productProperties.productLayout)
-    .filter { isPluginApplicable(bundledMainModuleNames = bundledMainModuleNames, plugin = it, context = context) }
+  // The candidate set is the product's whole bundled set: the one assembly that owns plugins owns every one of them.
+  val owned = getPluginLayoutsByJpsModuleNames(bundledMainModuleNames, context.productProperties.productLayout)
+
+  // One plugin reaches this point as one variant for each supported (os, arch): see `NATIVE_DEBUG_ALL_LAYOUTS` and
+  // `rustPluginOsSpecificLayouts`. A distribution holds one of them, so the target platform selects a variant rather
+  // than filtering a flat list. Grouping asks the question the caller asks, which is about a plugin and not about a
+  // variant. `groupBy` keeps the encounter order, so the result follows the order of `owned`.
+  val demanded = demandedMainModules(request)
+  return selectDevModePluginVariants(
+    owned = owned,
+    os = request.os,
+    arch = request.arch,
+    isApplicable = { isPluginApplicable(bundledMainModuleNames, it, request.os, request.arch, context) },
+    checkAbsence = { mainModule, variants ->
+      checkTheAbsenceIsIntended(mainModule = mainModule, variants = variants, demanded = demanded, request = request, context = context)
+    },
+  )
 }
 
-private fun isPluginApplicable(bundledMainModuleNames: Set<String>, plugin: PluginLayout, context: BuildContext): Boolean {
+/** Selects original layouts from source/model facts. Dev builds do not apply release-cycle restrictions. */
+@ApiStatus.Internal
+fun devModePluginCandidates(
+  owned: List<PluginLayout>,
+  bundledMainModuleNames: Set<String>,
+  demanded: Set<String>,
+  fragmentName: String,
+  platformPrefix: String,
+  os: OsFamily,
+  arch: JvmArchitecture,
+  bundledPluginDirectoriesToSkip: Collection<String>,
+): List<PluginLayout> {
+  return selectDevModePluginVariants(
+    owned = owned,
+    os = os,
+    arch = arch,
+    isApplicable = { plugin ->
+      isPluginApplicable(bundledMainModuleNames, plugin, os) { targetOs ->
+        satisfiesDevBundlingRequirements(plugin, targetOs, arch, bundledPluginDirectoriesToSkip)
+      }
+    },
+    checkAbsence = { mainModule, variants ->
+      checkTheAbsenceIsIntended(
+        mainModule, variants, demanded, fragmentName, platformPrefix, os, arch,
+        isAbsentBecauseOfTargetPlatform = { plugin ->
+          isAbsentBecauseOfTheTargetPlatform(plugin) { targetOs, targetArch ->
+            satisfiesDevBundlingRequirements(plugin, targetOs, targetArch, bundledPluginDirectoriesToSkip)
+          }
+        },
+        buildDescription = { " isDevDistribution=true, useReleaseCycleRelatedBundlingRestrictions=false, skippedDirectories=$bundledPluginDirectoriesToSkip." },
+      )
+    },
+  )
+}
+
+private fun selectDevModePluginVariants(
+  owned: Collection<PluginLayout>,
+  os: OsFamily,
+  arch: JvmArchitecture,
+  isApplicable: (PluginLayout) -> Boolean,
+  checkAbsence: (String, List<PluginLayout>) -> Unit,
+): List<PluginLayout> {
+  val result = ArrayList<PluginLayout>(owned.size)
+  for ((mainModule, variants) in owned.groupBy(PluginLayout::mainModule)) {
+    val applicable = variants.filter(isApplicable)
+    when (applicable.size) {
+      1 -> result.add(applicable.single())
+      0 -> checkAbsence(mainModule, variants)
+      else -> error(
+        "Plugin '$mainModule' has ${applicable.size} variants for $os $arch. A distribution holds" +
+        " one variant of a plugin, so these would overwrite each other: " +
+        applicable.joinToString { "[${it.bundlingRestrictions}] -> plugins/${it.directoryName}" } +
+        ". Restrict the variants so that one of them remains."
+      )
+    }
+  }
+  return result
+}
+
+/** The plugins this assembly was told to bundle, which is not the same set as the plugins it may assemble. */
+private fun demandedMainModules(request: BuildRequest): Set<String> = HashSet(request.additionalModules)
+
+/**
+ * Fails when a plugin this assembly was told to bundle is absent, and the target platform does not explain it.
+ *
+ * A plugin that quietly does not appear is invisible here and surfaces far away. It cost an EAP branch a day of red
+ * builds. The layout dropped `intellij.air.plugin` and `intellij.devkit` over a release-cycle bundling restriction a dev
+ * distribution should never have applied. The only symptom was a report about 149 jars with no destination.
+ *
+ * The target platform is the normal reason for an absence, so it is never a failure here. `intellij.laf.macos` has a
+ * MACOS variant alone, and a LINUX distribution is right to hold none of it. What this checks is the rest:
+ * [org.jetbrains.intellij.build.BuildOptions.bundledPluginDirectoriesToSkip] and the release cycle.
+ *
+ * What is *not* checked is a bundled plugin nobody named. Its own restrictions are the normal reason for it to be
+ * absent.
+ */
+private fun checkTheAbsenceIsIntended(
+  mainModule: String,
+  variants: List<PluginLayout>,
+  demanded: Set<String>,
+  request: BuildRequest,
+  context: BuildContext,
+) {
+  checkTheAbsenceIsIntended(
+    mainModule, variants, demanded, request.fragment.name, request.platformPrefix, request.os, request.arch,
+    isAbsentBecauseOfTargetPlatform = { isAbsentBecauseOfTheTargetPlatform(plugin = it, context = context) },
+    buildDescription = { " isDevDistribution=${context.options.isDevDistribution}, isNightlyBuild=${context.isNightlyBuild}." },
+  )
+}
+
+private fun checkTheAbsenceIsIntended(
+  mainModule: String,
+  variants: List<PluginLayout>,
+  demanded: Set<String>,
+  fragmentName: String,
+  platformPrefix: String,
+  os: OsFamily,
+  arch: JvmArchitecture,
+  isAbsentBecauseOfTargetPlatform: (PluginLayout) -> Boolean,
+  buildDescription: () -> String,
+) {
+  if (!demanded.contains(mainModule) || variants.all(isAbsentBecauseOfTargetPlatform)) {
+    return
+  }
+
+  error(
+    "Fragment '$fragmentName' of $platformPrefix was asked for the plugin '$mainModule', and then" +
+    " left it out of the distribution, so nothing would assemble it. Its variants are " +
+    variants.joinToString { "[${it.bundlingRestrictions}]" } +
+    ", and the target platform is $os $arch." +
+    buildDescription() +
+    " Either stop requesting it here, or let the restriction admit it."
+  )
+}
+
+/**
+ * Whether the target platform alone keeps [plugin] out of the distribution.
+ *
+ * Asks [satisfiesBundlingRequirements] again with the platform the variant itself names, so neither the os clause nor
+ * the arch clause can say no a second time. What can still say no is what a target platform does not explain.
+ */
+private fun isAbsentBecauseOfTheTargetPlatform(plugin: PluginLayout, context: BuildContext): Boolean {
+  return isAbsentBecauseOfTheTargetPlatform(plugin) { os, arch ->
+    satisfiesBundlingRequirements(plugin = plugin, osFamily = os, arch = arch, context = context)
+  }
+}
+
+private fun isAbsentBecauseOfTheTargetPlatform(
+  plugin: PluginLayout,
+  satisfiesRequirements: (OsFamily?, JvmArchitecture?) -> Boolean,
+): Boolean {
+  val restrictions = plugin.bundlingRestrictions
+  if (restrictions === PluginBundlingRestrictions.MARKETPLACE) {
+    // A marketplace variant is uploaded, never bundled. `PluginBundlingRestrictions.MARKETPLACE` requires a bundled
+    // sibling of its own, and `validatePluginModel` owns that rule.
+    return true
+  }
+
+  // `satisfiesBundlingRequirements` wants a null os for an os-independent variant, so ask it both ways.
+  val arch = restrictions.supportedArch.firstOrNull()
+  return satisfiesRequirements(restrictions.supportedOs.firstOrNull(), arch) || satisfiesRequirements(null, arch)
+}
+
+internal fun collectLayoutsOfPluginsToScramble(pluginLayouts: Collection<PluginLayout>): Map<String, PluginLayout> {
+  return pluginLayouts.asSequence()
+    .filter { it.pathsToScramble.isNotEmpty() }
+    .groupBy { it.mainModule }
+    .mapValues { it.value.singleOrNull() ?: error("Multiple layouts for plugin ${it.key}") }
+}
+
+internal fun isPluginApplicable(
+  bundledMainModuleNames: Set<String>,
+  plugin: PluginLayout,
+  os: OsFamily,
+  arch: JvmArchitecture,
+  context: BuildContext,
+): Boolean {
+  return isPluginApplicable(bundledMainModuleNames, plugin, os) { targetOs ->
+    satisfiesBundlingRequirements(plugin = plugin, osFamily = targetOs, arch = arch, context = context)
+  }
+}
+
+private fun isPluginApplicable(
+  bundledMainModuleNames: Set<String>,
+  plugin: PluginLayout,
+  os: OsFamily,
+  satisfiesRequirements: (OsFamily?) -> Boolean,
+): Boolean {
   if (!bundledMainModuleNames.contains(plugin.mainModule)) {
     return false
   }
@@ -177,8 +373,7 @@ private fun isPluginApplicable(bundledMainModuleNames: Set<String>, plugin: Plug
     return true
   }
 
-  return satisfiesBundlingRequirements(plugin = plugin, osFamily = OsFamily.currentOs, arch = JvmArchitecture.currentJvmArch, context = context) ||
-         satisfiesBundlingRequirements(plugin = plugin, osFamily = null, arch = JvmArchitecture.currentJvmArch, context = context)
+  return satisfiesRequirements(os) || satisfiesRequirements(null)
 }
 
 private fun getBundledMainModuleNames(context: BuildContext, additionalModules: List<String>): Set<String> {

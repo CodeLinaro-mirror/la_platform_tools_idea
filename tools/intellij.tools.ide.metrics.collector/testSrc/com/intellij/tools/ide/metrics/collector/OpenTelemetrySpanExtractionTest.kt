@@ -3,14 +3,18 @@ package com.intellij.tools.ide.metrics.collector
 import com.intellij.tools.ide.metrics.collector.metrics.PerformanceMetrics.Metric
 import com.intellij.tools.ide.metrics.collector.telemetry.OpentelemetrySpanJsonParser
 import com.intellij.tools.ide.metrics.collector.telemetry.SpanFilter
+import com.intellij.tools.ide.metrics.collector.telemetry.getDeltaMetricsBetweenMarks
 import com.intellij.tools.ide.metrics.collector.telemetry.getMetricsBasedOnDiffBetweenSpans
 import com.intellij.tools.ide.metrics.collector.telemetry.getMetricsForStartup
 import com.intellij.util.io.URLUtil
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.collections.shouldHaveSize
+import kotlinx.serialization.SerializationException
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
+import java.nio.file.Files
 import java.nio.file.FileSystemAlreadyExistsException
 import java.nio.file.FileSystems
 import java.nio.file.Paths
@@ -382,5 +386,41 @@ class OpenTelemetrySpanExtractionTest {
       //Check that the alias applies only to the specified metric
       Metric.newDuration("performance_test", 30661)
     ))
+  }
+
+  @Test
+  fun truncatedTelemetryFileFailsWithDiagnostics() {
+    // a file read while still being written ends without the closing "]}]}"; the failure must carry the real
+    // cause and the on-disk file state instead of being masked by a synthetic NPE upstream (see AT-1875)
+    val complete = Files.readAllBytes(openTelemetryReports / "opentelemetry.json")
+    val truncated = Files.createTempFile("truncated", "-opentelemetry.json")
+    Files.write(truncated, complete.copyOf(complete.size / 2))
+
+    val failure = assertThrows<IllegalStateException> {
+      OpentelemetrySpanJsonParser(SpanFilter.any()).getSpanElements(truncated)
+    }
+    assertThat(failure.message).contains("finalized=false")
+    assertThat(failure.cause).isInstanceOf(SerializationException::class.java)
+  }
+
+  @Test
+  fun deltaMetricsBetweenMarksComputePerKeyDeltas() {
+    val file = (openTelemetryReports / "opentelemetry_marks.json")
+    val metrics = getDeltaMetricsBetweenMarks(file, phase = "phase")
+    // Every numeric jvm.* attribute is diffed and named `<phase>#<key>`; the non-numeric `jvm.bad`
+    // and the non-`jvm.` `finish` attribute are excluded.
+    metrics.shouldContainExactlyInAnyOrder(
+      Metric.newCounter("phase#jvm.alloc.mb", 250),
+      Metric.newCounter("phase#jvm.gc.count", 4),
+      Metric.newCounter("phase#jvm.cpu.time.ms", 750),
+    )
+  }
+
+  @Test
+  fun deltaMetricsBetweenMarksThrowWhenMarkMissing() {
+    val file = (openTelemetryReports / "opentelemetry_marks.json")
+    assertThrows<IllegalStateException> {
+      getDeltaMetricsBetweenMarks(file, phase = "ghost")
+    }
   }
 }

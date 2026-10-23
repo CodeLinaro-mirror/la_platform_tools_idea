@@ -1,5 +1,5 @@
 // "Add '== true'" "true"
-// K2_ERROR: Initializer type mismatch: expected 'Boolean', actual 'Boolean?'.
+// K2_ERROR: INITIALIZER_TYPE_MISMATCH
 class Foo {
     fun bar() = true
 }
@@ -9,4 +9,3 @@ fun test(foo: Foo?) {
 }
 
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AddEqEqTrueFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AddEqEqTrueFix

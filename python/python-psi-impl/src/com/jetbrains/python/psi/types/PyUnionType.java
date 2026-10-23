@@ -1,7 +1,7 @@
 // Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python.psi.types;
 
-import com.intellij.openapi.util.registry.Registry;
+import com.intellij.openapi.options.advanced.AdvancedSettings;
 import com.intellij.psi.PsiElement;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.ProcessingContext;
@@ -33,9 +33,16 @@ import static com.jetbrains.python.psi.types.PyTypeUtilKt.isUnknown;
 
 public class PyUnionType extends PyCompositeTypeBase {
 
+  /**
+   * The advanced setting for the strict semantics of union types.
+   * A user can turn it off to go back to the lenient checks of the earlier releases.
+   */
+  @ApiStatus.Internal
+  public static final String STRICT_UNIONS_SETTING = "python.typing.strict.unions";
+
   @ApiStatus.Internal
   public static boolean isStrictSemanticsEnabled() {
-    return Registry.is("python.typing.strict.unions", true);
+    return AdvancedSettings.getBoolean(STRICT_UNIONS_SETTING);
   }
 
   private final @NotNull LinkedHashSet<@Nullable PyType> myMembers;
@@ -110,32 +117,51 @@ public class PyUnionType extends PyCompositeTypeBase {
     }
   }
 
-  public static @Nullable PyType union(@Nullable PyType type1, @Nullable PyType type2) {
-    return union(Arrays.asList(type1, type2));
+  public static @Nullable PyType unionOrUnknown(@Nullable PyType type1, @Nullable PyType type2) {
+    return unionOrUnknown(Arrays.asList(type1, type2));
+  }
+
+  /**
+   * Constructs a union of the given types, but collapses an empty result to Unknown.
+   * <p>
+   * {@link #unionOrNever} is the natural collapse of a union. Most call sites here mean that one, so each of
+   * them still has to be audited and moved.
+   *
+   * @param members a collection of types to union
+   * @return a PyType representing the union, or Unknown if no valid members
+   */
+  public static @Nullable PyType unionOrUnknown(@NotNull Collection<@Nullable PyType> members) {
+    return unionOrDefault(members, PyAnyType.getUnknown());
   }
 
   /**
    * Constructs a union of the given types.
    * <p>
-   * If the resulting union would be empty, returns {@code null} (representing Any type).
-   * Consider using {@link #unionOrNever} instead, which falls back to {@link PyNeverType#NEVER}.
-   *
-   * @param members a collection of types to union
-   * @return a PyType representing the union, or null if no valid members
-   */
-  // TODO: change the default to Never
-  public static @Nullable PyType union(@NotNull Collection<@Nullable PyType> members) {
-    return unionOrDefault(members, PyAnyType.getUnknown());
-  }
-
-  /**
-   * Constructs a union of the given types, falling back to {@link PyNeverType#NEVER} instead of null (Any).
+   * A union of no types holds no value, so an empty result collapses to {@link PyNeverType#NEVER}.
    *
    * @param members a collection of types to union
    * @return a PyType representing the union, or {@link PyNeverType#NEVER} if no valid members
    */
   public static @Nullable PyType unionOrNever(@NotNull Collection<@Nullable PyType> members) {
     return unionOrDefault(members, PyNeverType.NEVER);
+  }
+
+  /**
+   * @deprecated the name does not say which type an empty result collapses to.
+   * Use {@link #unionOrUnknown} to keep the same behaviour, or {@link #unionOrNever}.
+   */
+  @Deprecated
+  public static @Nullable PyType union(@Nullable PyType type1, @Nullable PyType type2) {
+    return unionOrUnknown(type1, type2);
+  }
+
+  /**
+   * @deprecated the name does not say which type an empty result collapses to.
+   * Use {@link #unionOrUnknown} to keep the same behaviour, or {@link #unionOrNever}.
+   */
+  @Deprecated
+  public static @Nullable PyType union(@NotNull Collection<@Nullable PyType> members) {
+    return unionOrUnknown(members);
   }
 
   private static @Nullable PyType unionOrDefault(@NotNull Collection<@Nullable PyType> members, @Nullable PyType defaultResult) {
@@ -178,7 +204,7 @@ public class PyUnionType extends PyCompositeTypeBase {
     if (isStrictSemanticsEnabled()) {
       return PyUnsafeUnionType.unsafeUnion(type, PyAnyType.getUnknown());
     }
-    return union(type, PyAnyType.getUnknown());
+    return unionOrUnknown(type, PyAnyType.getUnknown());
   }
 
   /**
@@ -221,7 +247,7 @@ public class PyUnionType extends PyCompositeTypeBase {
   }
 
   public @Nullable PyType map(@NotNull Function<@Nullable PyType, @Nullable PyType> mapper) {
-    return union(ContainerUtil.map(getMembers(), t -> mapper.apply(t)));
+    return unionOrUnknown(ContainerUtil.map(getMembers(), t -> mapper.apply(t)));
   }
 
   /**
@@ -240,7 +266,7 @@ public class PyUnionType extends PyCompositeTypeBase {
         members.add(m);
       }
     }
-    return union(members);
+    return unionOrUnknown(members);
   }
 
   /**
@@ -250,9 +276,9 @@ public class PyUnionType extends PyCompositeTypeBase {
    */
   public @Nullable PyType excludeNull() {
     if (!isStrictSemanticsEnabled()) {
-      return !isWeak() ? this : union(ContainerUtil.filter(getMembers(), it -> !isUnknown(it)));
+      return !isWeak() ? this : unionOrUnknown(ContainerUtil.filter(getMembers(), it -> !isUnknown(it)));
     }
-    return union(ContainerUtil.filter(getMembers(), it -> !isUnknown(it)));
+    return unionOrUnknown(ContainerUtil.filter(getMembers(), it -> !isUnknown(it)));
   }
 
   @Override

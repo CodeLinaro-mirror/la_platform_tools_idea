@@ -1,10 +1,9 @@
 // "Add 'toString()' call" "true"
 // PRIORITY: LOW
-// K2_ERROR: Assignment type mismatch: actual type is 'Int', but 'String' was expected.
+// K2_ERROR: ASSIGNMENT_TYPE_MISMATCH
 
 fun test() {
     var s: String = ""
     s = 1 <caret>+ 2 * 3
 }
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AddToStringFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AddToStringFix

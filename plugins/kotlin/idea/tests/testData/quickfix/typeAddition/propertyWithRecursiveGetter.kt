@@ -5,6 +5,7 @@
 // ACTION: Convert property to function
 // ACTION: Move to companion object
 // ACTION: Specify type explicitly
+// K2_ERROR: TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM
 
 class A {
     val a<caret>
@@ -12,4 +13,3 @@ class A {
 }
 // IGNORE_K2
 
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.intentions.SpecifyTypeExplicitlyIntention

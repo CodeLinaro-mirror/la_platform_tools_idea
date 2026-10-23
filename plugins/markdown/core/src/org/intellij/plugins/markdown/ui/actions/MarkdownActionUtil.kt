@@ -28,14 +28,14 @@ import org.jetbrains.annotations.ApiStatus
 
 @ApiStatus.Internal
 object MarkdownActionUtil {
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   @JvmStatic
   fun findSplitEditor(event: AnActionEvent): MarkdownEditorWithPreview? {
     val editor = event.getData(PlatformCoreDataKeys.FILE_EDITOR)
     return findSplitEditor(editor)
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   @JvmStatic
   fun findSplitEditor(editor: FileEditor?): MarkdownEditorWithPreview? {
     if (editor == null) return null
@@ -45,7 +45,7 @@ object MarkdownActionUtil {
     }
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   @JvmStatic
   fun findMarkdownPreviewEditor(event: AnActionEvent): MarkdownPreviewFileEditor? {
     val splitEditor = findSplitEditor(event) ?: return null
@@ -56,7 +56,7 @@ object MarkdownActionUtil {
     }
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   @JvmStatic
   fun findPreviewBrowserActions(event: AnActionEvent): MarkdownPreviewBrowserActions? {
     val editor = findMarkdownPreviewEditor(event)
@@ -73,13 +73,13 @@ object MarkdownActionUtil {
   fun findMarkdownEditor(event: AnActionEvent, strictMarkdown: Boolean = false): Editor? {
     val file = event.getData(CommonDataKeys.PSI_FILE) ?: return null
     return when {
-      if (strictMarkdown) file.language.isMarkdownLanguage() else file.language.supportsMarkdown(event.dataContext) ->
+      if (strictMarkdown) file.language.isMarkdownLanguage() else file.supportsMarkdown(event.dataContext) ->
         event.getData(CommonDataKeys.EDITOR)
       else -> null
     }
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   @JvmStatic
   fun getElementsUnderCaretOrSelection(file: PsiFile, caret: Caret): Pair<PsiElement, PsiElement> {
     return getElementsUnderCaretOrSelection(file, caret.selectionStart, caret.selectionEnd)

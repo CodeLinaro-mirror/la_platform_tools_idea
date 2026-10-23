@@ -3,12 +3,9 @@ package com.intellij.pycharm.community.ide.impl.welcomeScreen
 
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.project.ex.ProjectEx
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.wm.ex.WelcomeScreenProjectProvider
 import com.intellij.platform.PlatformProjectOpenProcessor
-import com.intellij.platform.ide.nonModalWelcomeScreen.isNonModalWelcomeScreenEnabled
-import com.intellij.pycharm.community.ide.impl.miscProject.impl.MISC_PROJECT_WITH_WELCOME_NAME
 import com.intellij.pycharm.community.ide.impl.miscProject.impl.miscProjectDefaultPath
 import com.jetbrains.python.orLogException
 import com.jetbrains.python.projectCreation.SystemPythonRequirements
@@ -19,8 +16,6 @@ import java.nio.file.Path
 import kotlin.io.path.extension
 
 internal class PyCharmWelcomeScreenProjectProvider : WelcomeScreenProjectProvider() {
-  override fun getWelcomeScreenProjectName(): String = MISC_PROJECT_WITH_WELCOME_NAME
-
   override fun getWelcomeScreenProjectPath(): Path = miscProjectDefaultPath
 
   override fun doIsWelcomeScreenProject(project: Project): Boolean {
@@ -39,24 +34,12 @@ internal class PyCharmWelcomeScreenProjectProvider : WelcomeScreenProjectProvide
   // We explicitly want to open existing project if the file already belongs to it
   override fun shouldOpenInWelcomeScreenIfFileBelongsToProject(filePath: Path): Boolean = false
 
-  /**
-   * The non-modal Welcome screen must be on. The file opening path creates the Welcome screen project through
-   * [com.intellij.openapi.wm.ex.NoProjectStateHandler], and the only handler declines when the setting is off.
-   */
   override fun canOpenFilesFromSystemFileManager(filePath: Path): Boolean {
-    return isNonModalWelcomeScreenEnabled &&
-           Registry.`is`("welcome.screen.open.files", false) &&
-           filePath.extension == "ipynb"
+    return Registry.`is`("welcome.screen.open.files", false) && filePath.extension == "ipynb"
   }
 
   override suspend fun doCreateOrOpenWelcomeScreenProject(path: Path): Project {
     val project = super.doCreateOrOpenWelcomeScreenProject(path)
-    // The name might be a MiscProject, since we are reusing that project.
-    // We have to rename it to Welcome.
-    if (project.name != MISC_PROJECT_WITH_WELCOME_NAME && project is ProjectEx) {
-      project.setProjectName(MISC_PROJECT_WITH_WELCOME_NAME)
-      project.save()
-    }
 
     if (PlatformProjectOpenProcessor.isNewProject(project)) {
       // Don't prompt to install Python on the welcome screen (PY-88204).

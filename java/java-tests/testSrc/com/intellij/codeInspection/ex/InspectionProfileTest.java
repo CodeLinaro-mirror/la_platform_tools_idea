@@ -10,8 +10,10 @@ import com.intellij.codeInspection.dataFlow.DataFlowInspection;
 import com.intellij.codeInspection.deadCode.UnusedDeclarationInspectionBase;
 import com.intellij.codeInspection.incorrectFormatting.IncorrectFormattingInspection;
 import com.intellij.codeInspection.unusedSymbol.UnusedSymbolLocalInspection;
+import com.intellij.diagnostic.ThreadDumper;
 import com.intellij.execution.junit.codeInspection.naming.TestClassNamingConvention;
 import com.intellij.ide.plugins.PluginManagerCore;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.JDOMUtil;
 import com.intellij.profile.ProfileChangeAdapter;
@@ -23,6 +25,8 @@ import com.intellij.psi.PsiModifier;
 import com.intellij.psi.search.scope.packageSet.NamedScope;
 import com.intellij.testFramework.InspectionsKt;
 import com.intellij.testFramework.LightIdeaTestCase;
+import com.intellij.util.ConcurrencyUtil;
+import com.intellij.util.containers.ContainerUtil;
 import com.siyeh.ig.naming.ClassNamingConvention;
 import com.siyeh.ig.naming.FieldNamingConventionInspection;
 import com.siyeh.ig.naming.NewClassNamingConventionInspection;
@@ -37,6 +41,9 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
 import static com.intellij.testFramework.assertions.Assertions.assertThat;
@@ -111,7 +118,7 @@ public class InspectionProfileTest extends LightIdeaTestCase {
     InspectionProfileImpl profile = createProfile();
     assertNotEmpty(profile.getAllTools());
     assertTrue(profile.wasInitialized());
-    profile.modifyProfile(m -> {});
+    profile.modifyProfile(_ -> {});
     assertTrue(profile.wasInitialized());
     assertNotEmpty(profile.getAllTools());
   }
@@ -1058,6 +1065,32 @@ public class InspectionProfileTest extends LightIdeaTestCase {
     assertEquals(0, countInitializedTools(model));
   }
 
+  public void testMissingDisplayNameIsComputedLazily() {
+    String shortName = "ijpl257488LazyDisplayName";
+    LocalInspectionEP ep = new LocalInspectionEP();
+    ep.shortName = shortName;
+    ep.level = "ERROR";
+    ep.enabledByDefault = true;
+    ep.implementationClass = LazyDisplayNameTool.class.getName();
+    ep.setPluginDescriptor(PluginManagerCore.getPlugin(PluginManagerCore.CORE_ID));
+    LocalInspectionToolWrapper wrapper = new LocalInspectionToolWrapper(ep);
+    InspectionToolsSupplier.Simple toolSupplier = new InspectionToolsSupplier.Simple(List.of(wrapper));
+    Disposer.register(getTestRootDisposable(), toolSupplier);
+
+    try {
+      createProfile(toolSupplier).initInspectionTools(getProject());
+      assertFalse(wrapper.isInitialized());
+
+      HighlightDisplayKey key = HighlightDisplayKey.find(shortName);
+      assertNotNull(key);
+      assertEquals("Lazy display name", HighlightDisplayKey.getDisplayNameByKey(key));
+      assertTrue(wrapper.isInitialized());
+    }
+    finally {
+      HighlightDisplayKey.unregister(shortName);
+    }
+  }
+
   public void testDoNotInstantiateOnSave() {
     InspectionProfileImpl profile = new InspectionProfileImpl("profile", InspectionToolRegistrar.getInstance(), (InspectionProfileImpl)null);
     assertEquals(0, countInitializedTools(profile));
@@ -1074,17 +1107,111 @@ public class InspectionProfileTest extends LightIdeaTestCase {
   }
 
   public void testInspectionInitializationForSerialization() throws Exception {
-    InspectionProfileImpl foo = new InspectionProfileImpl("foo");
-    foo.readExternal(JDOMUtil.load("""
-                                     <profile version="1.0">
-                                         <option name="myName" value="idea.default" />
-                                         <inspection_tool class="AbstractMethodCallInConstructor" enabled="true" level="WARNING" enabled_by_default="true" />
-                                         <inspection_tool class="AssignmentToForLoopParameter" enabled="true" level="WARNING" enabled_by_default="true">
-                                           <option name="m_checkForeachParameters" value="false" />
-                                         </inspection_tool>
-                                     </profile>"""));
-    foo.initInspectionTools(getProject());
-    assertEquals(1, countInitializedTools(foo));
+    String shortName = "ijpl257488LazyDefaultSettings";
+    InspectionToolsSupplier toolSupplier = createLazySettingsToolSupplier(shortName);
+    InspectionProfileImpl base = new InspectionProfileImpl("base", toolSupplier, (InspectionProfileImpl)null);
+    InspectionProfileImpl profile = new InspectionProfileImpl("foo", toolSupplier, base);
+    Element settings = JDOMUtil.load("""
+                                        <profile version="1.0">
+                                          <option name="myName" value="foo" />
+                                          <inspection_tool class="ijpl257488LazyDefaultSettings" enabled="true" level="ERROR" enabled_by_default="true">
+                                            <option name="option" value="false" />
+                                          </inspection_tool>
+                                        </profile>""");
+    try {
+      profile.readExternal(settings);
+      profile.initInspectionTools(getProject());
+      assertEquals(0, countInitializedTools(profile));
+
+      InspectionToolWrapper<?, ?> wrapper = profile.getInspectionTool(shortName, getProject());
+      assertNotNull(wrapper);
+      assertFalse(wrapper.isInitialized());
+      assertThat(profile.writeScheme()).isEqualTo(settings);
+
+      LazySettingsTool tool = (LazySettingsTool)wrapper.getTool();
+      assertFalse(tool.option);
+      assertEquals(1, countInitializedTools(profile));
+      assertThat(profile.writeScheme()).isEqualTo(settings);
+    }
+    finally {
+      HighlightDisplayKey.unregister(shortName);
+    }
+  }
+
+  public void testScopeSettingsAreReadLazily() throws Exception {
+    String shortName = "ijpl257488LazyScopeSettings";
+    InspectionToolsSupplier toolSupplier = createLazySettingsToolSupplier(shortName);
+    InspectionProfileImpl base = new InspectionProfileImpl("base", toolSupplier, (InspectionProfileImpl)null);
+    InspectionProfileImpl profile = new InspectionProfileImpl("foo", toolSupplier, base);
+    Element settings = JDOMUtil.load("""
+                                        <profile version="1.0">
+                                          <option name="myName" value="foo" />
+                                          <inspection_tool class="ijpl257488LazyScopeSettings" enabled="true" level="ERROR" enabled_by_default="true">
+                                            <scope name="Production" level="ERROR" enabled="true">
+                                              <option name="option" value="false" />
+                                            </scope>
+                                          </inspection_tool>
+                                        </profile>""");
+    try {
+      profile.readExternal(settings);
+      profile.initInspectionTools(getProject());
+
+      ToolsImpl tools = profile.getToolsOrNull(shortName, getProject());
+      assertNotNull(tools);
+      List<ScopeToolState> scopeStates = tools.getNonDefaultTools();
+      assertNotNull(scopeStates);
+      assertSize(1, scopeStates);
+      InspectionToolWrapper<?, ?> scopeWrapper = scopeStates.getFirst().getTool();
+      assertFalse(scopeWrapper.isInitialized());
+      assertEquals(0, countInitializedTools(profile));
+      assertThat(profile.writeScheme()).isEqualTo(settings);
+
+      LazySettingsTool tool = (LazySettingsTool)scopeWrapper.getTool();
+      assertFalse(tool.option);
+      assertEquals(1, countInitializedTools(profile));
+      assertThat(profile.writeScheme()).isEqualTo(settings);
+    }
+    finally {
+      HighlightDisplayKey.unregister(shortName);
+    }
+  }
+
+  /**
+   * IJPL-235583. Every profile must keep the tool, even when the profiles register the key at the same time.
+   * <p>
+   * A loaded agent can fail to interleave the threads, so this test can pass without a real race. It is a
+   * regression net, not a reproduction.
+   */
+  public void testConcurrentInitializationKeepsEveryTool() throws Exception {
+    String shortName = "ijpl235583Concurrent";
+    int profileCount = 8;
+    List<InspectionProfileImpl> profiles = new ArrayList<>();
+    for (int i = 0; i < profileCount; i++) {
+      profiles.add(createProfile(new InspectionToolsSupplier.Simple(List.of(createTool(shortName, true)))));
+    }
+
+    try {
+      CyclicBarrier barrier = new CyclicBarrier(profileCount);
+      var futures = ContainerUtil.map(profiles, profile -> ApplicationManager.getApplication().executeOnPooledThread(() -> {
+        barrier.await(1, TimeUnit.MINUTES);
+        // a null project keeps the profile out of the Disposer tree
+        profile.initInspectionTools(null);
+        return null;
+      }));
+      try {
+        ConcurrencyUtil.getAll(1, TimeUnit.MINUTES, futures);
+      }
+      catch (TimeoutException e) {
+        fail("the profiles did not initialize: " + ThreadDumper.dumpThreadsToString());
+      }
+
+      for (InspectionProfileImpl profile : profiles) {
+        assertNotNull("the profile lost " + shortName, profile.getInspectionTool(shortName, getProject()));
+      }
+    }
+    finally {
+      HighlightDisplayKey.unregister(shortName);
+    }
   }
 
   public static int countInitializedTools(@NotNull InspectionProfileImpl foo) {
@@ -1093,6 +1220,23 @@ public class InspectionProfileTest extends LightIdeaTestCase {
 
   public static @NotNull List<? extends InspectionToolWrapper<?, ?>> getInitializedTools(@NotNull InspectionProfileImpl foo) {
     return foo.getAllTools().stream().map(ScopeToolState::getTool).filter(InspectionToolWrapper::isInitialized).toList();
+  }
+
+  private InspectionToolsSupplier createLazySettingsToolSupplier(String shortName) {
+    InspectionToolsSupplier supplier = new InspectionToolsSupplier() {
+      @Override
+      public @NotNull List<InspectionToolWrapper<?, ?>> createTools() {
+        LocalInspectionEP ep = new LocalInspectionEP();
+        ep.shortName = ep.displayName = ep.groupDisplayName = shortName;
+        ep.level = "ERROR";
+        ep.enabledByDefault = true;
+        ep.implementationClass = LazySettingsTool.class.getName();
+        ep.setPluginDescriptor(PluginManagerCore.getPlugin(PluginManagerCore.CORE_ID));
+        return List.of(new LocalInspectionToolWrapper(ep));
+      }
+    };
+    Disposer.register(getTestRootDisposable(), supplier);
+    return supplier;
   }
 
   private static LocalInspectionToolWrapper createTool(String name, boolean enabled) {
@@ -1105,5 +1249,17 @@ public class InspectionProfileTest extends LightIdeaTestCase {
     return new LocalInspectionToolWrapper(ep);
   }
 
+  @SuppressWarnings("WeakerAccess")
   public static final class TestTool extends LocalInspectionTool { }
+
+  public static final class LazyDisplayNameTool extends LocalInspectionTool {
+    @Override
+    public @NotNull String getDisplayName() {
+      return "Lazy display name";
+    }
+  }
+
+  public static final class LazySettingsTool extends LocalInspectionTool {
+    public boolean option = true;
+  }
 }

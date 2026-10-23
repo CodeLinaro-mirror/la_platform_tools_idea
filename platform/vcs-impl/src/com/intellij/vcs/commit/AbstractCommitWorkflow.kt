@@ -198,7 +198,7 @@ abstract class AbstractCommitWorkflow(val project: Project) {
     commitContext = CommitContext()
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   internal fun startExecution(block: suspend () -> Boolean) {
     check(!isExecuting) { "Commit session is already started" }
     isExecuting = true
@@ -228,7 +228,7 @@ abstract class AbstractCommitWorkflow(val project: Project) {
     }
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   internal fun endExecution() {
     check(isExecuting) { "Commit session has already finished" }
 
@@ -440,7 +440,6 @@ abstract class AbstractCommitWorkflow(val project: Project) {
     @JvmStatic
     fun getCommitExecutors(project: Project, vcses: Collection<AbstractVcs>): List<CommitExecutor> {
       return vcses.flatMap { it.commitExecutors } +
-             ChangeListManager.getInstance(project).registeredExecutors +
              CommitExecutor.LOCAL_COMMIT_EXECUTOR.getExtensions(project)
     }
 

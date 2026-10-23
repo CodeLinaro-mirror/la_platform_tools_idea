@@ -44,6 +44,7 @@ public class DataFlowInspectionTest extends DataFlowInspectionTestCase {
 
   public void testNotNullOnSuperParameter() { doTest(); }
   public void testNullableOnSuperParameter() { doTest(); }
+  public void testNullableOnSuperParameterNoInference() { doTest(); }
 
   public void testFieldInAnonymous() { doTest(); }
   public void testFieldInitializerInAnonymous() { doTest(); }
@@ -768,4 +769,5 @@ public class DataFlowInspectionTest extends DataFlowInspectionTestCase {
 
   public void testHugeMethodFlow() { doTest(); }
   public void testPrivateFieldPureMethod() { doTest(); }
+  public void testNullPrivateFieldForeignCall() { doTest(); }
 }

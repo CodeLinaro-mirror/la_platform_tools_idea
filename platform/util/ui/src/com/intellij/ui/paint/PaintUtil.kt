@@ -3,6 +3,29 @@ package com.intellij.ui.paint
 
 import java.awt.Graphics
 import java.awt.Graphics2D
+import kotlin.contracts.ExperimentalContracts
+import kotlin.contracts.InvocationKind
+import kotlin.contracts.contract
+
+@JvmSynthetic
+@OptIn(ExperimentalContracts::class)
+inline fun <G : Graphics, R> G.use(block: (G) -> R): R {
+  contract { callsInPlace(block, InvocationKind.EXACTLY_ONCE) }
+  try {
+    return block(this)
+  }
+  finally {
+    dispose()
+  }
+}
+
+@JvmSynthetic
+@OptIn(ExperimentalContracts::class)
+inline fun <R> Graphics.useCopy(block: (Graphics2D) -> R): R {
+  contract { callsInPlace(block, InvocationKind.EXACTLY_ONCE) }
+
+  return (create() as Graphics2D).use(block)
+}
 
 inline fun withTxAndClipAligned(
   g: Graphics,
@@ -10,7 +33,7 @@ inline fun withTxAndClipAligned(
   y: Int,
   width: Int,
   height: Int,
-  paintingCode: (Graphics2D) -> Unit
+  paintingCode: (Graphics2D) -> Unit,
 ) {
   val aligned = g.create(x, y, width, height) as Graphics2D
   try {

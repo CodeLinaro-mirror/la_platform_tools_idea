@@ -1,7 +1,14 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.libraries.jgoodies.forms` start
+content_module_jar(
+    libraries = ["@lib//:libraries-jgoodies-forms-jgoodies-forms"],
+    module = ":forms",
+)
+### auto-generated section `dev intellij.libraries.jgoodies.forms` end
 
 ### auto-generated section `build intellij.libraries.jgoodies.forms` start
-
 jvm_library(
     name = "forms",
     srcs = glob(
@@ -37,6 +44,7 @@ jvm_library(
 exports_files(
     [
         "intellij.libraries.jgoodies.forms.iml",
+        "resources/intellij.libraries.jgoodies.forms.xml",
     ],
     visibility = ["//visibility:public"],
 )

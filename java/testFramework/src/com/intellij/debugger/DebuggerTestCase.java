@@ -51,15 +51,18 @@ import com.intellij.openapi.compiler.CompilerManager;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx;
 import com.intellij.openapi.util.Disposer;
+import com.intellij.openapi.util.EmptyRunnable;
 import com.intellij.openapi.util.Key;
-import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.StandardFileSystems;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.JavaPsiFacade;
 import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiFile;
+import com.intellij.psi.PsiImplicitClass;
 import com.intellij.psi.search.GlobalSearchScope;
+import com.intellij.psi.search.searches.ImplicitClassSearch;
 import com.intellij.testFramework.EdtTestUtil;
 import com.intellij.testFramework.RunAll;
 import com.intellij.testFramework.UsefulTestCase;
@@ -123,7 +126,7 @@ public abstract class DebuggerTestCase extends ExecutionWithDebuggerToolsTestCas
     // Without a recursive refresh, newly added test-source files (e.g. companion .java classes for new debugger tests)
     // are invisible to PSI, and JavaPsiFacade.findClass returns null inside createBreakpoints(String).
     String srcPath = getSrcPath(getTestAppPath()).replace(File.separatorChar, '/');
-    VirtualFile srcDir = LocalFileSystem.getInstance().refreshAndFindFileByPath(srcPath);
+    VirtualFile srcDir = StandardFileSystems.local().refreshAndFindFileByPath(srcPath);
     if (srcDir != null) {
       VfsUtil.markDirtyAndRefresh(false, true, true, srcDir);
     }
@@ -194,6 +197,9 @@ public abstract class DebuggerTestCase extends ExecutionWithDebuggerToolsTestCas
       waitProcess(getDebugProcess().getProcessHandler());
       waitForCompleted();
       //disposeSession(myDebuggerSession);
+      // DebuggerSession.dispose() unregisters the session in Application.invokeLater().
+      // The Swing events of waitForCompleted() can run before it, e.g. while a background write action holds the lock.
+      ApplicationManager.getApplication().invokeAndWait(EmptyRunnable.getInstance(), ModalityState.any());
       assertNull(DebuggerManagerEx.getInstanceEx(myProject).getDebugProcess(getDebugProcess().getProcessHandler()));
       myDebuggerSession = null;
     }
@@ -415,8 +421,18 @@ public abstract class DebuggerTestCase extends ExecutionWithDebuggerToolsTestCas
   protected void createBreakpoints(final String className) {
     final PsiFile psiFile = ReadAction.compute(() -> {
       PsiClass psiClass = JavaPsiFacade.getInstance(myProject).findClass(className, GlobalSearchScope.allScope(myProject));
-      assertNotNull("Class for breakpoint installation not found " + className, psiClass);
-      return psiClass.getContainingFile();
+      if (psiClass != null) {
+        return psiClass.getContainingFile();
+      }
+
+      // else try to find a compact source file with the same name
+      var implicitClass = findImplicitClass(className);
+      if (implicitClass != null) {
+        return implicitClass.getContainingFile();
+      }
+
+      fail("Class for breakpoint installation not found " + className);
+      return null;
     });
 
     createBreakpoints(psiFile);
@@ -723,5 +739,12 @@ public abstract class DebuggerTestCase extends ExecutionWithDebuggerToolsTestCas
         throw new RuntimeException(e);
       }
     }
+  }
+
+  protected @Nullable PsiImplicitClass findImplicitClass(@NotNull String className) {
+    return ReadAction.computeCancellable(() -> {
+      return ImplicitClassSearch.search(className, myProject, GlobalSearchScope.projectScope(myProject))
+        .findFirst();
+    });
   }
 }

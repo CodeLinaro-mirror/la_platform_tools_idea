@@ -6,7 +6,7 @@
 // ACTION: Make 'Derived' internal
 // ACTION: Make 'Derived' private
 // ACTION: Make 'Outer' public
-// K2_ERROR: 'public' sub-interface exposes its 'internal' supertype containing declaration 'Outer'.
+// K2_ERROR: EXPOSED_SUPER_INTERFACE
 
 import Outer.Base
 
@@ -17,5 +17,4 @@ class Outer {
 class Container {
     interface Derived : Base
 }
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ChangeVisibilityFix$ChangeToPublicFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeVisibilityFixFactories$ChangeToPublicModCommandAction
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeVisibilityFixFactories$ChangeToPublicModCommandAction

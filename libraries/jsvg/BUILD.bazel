@@ -1,7 +1,14 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.libraries.jsvg` start
+content_module_jar(
+    libraries = ["@lib//:libraries-jsvg-jsvg"],
+    module = ":jsvg",
+)
+### auto-generated section `dev intellij.libraries.jsvg` end
 
 ### auto-generated section `build intellij.libraries.jsvg` start
-
 jvm_library(
     name = "jsvg",
     srcs = glob(
@@ -37,6 +44,7 @@ jvm_library(
 exports_files(
     [
         "intellij.libraries.jsvg.iml",
+        "resources/intellij.libraries.jsvg.xml",
     ],
     visibility = ["//visibility:public"],
 )

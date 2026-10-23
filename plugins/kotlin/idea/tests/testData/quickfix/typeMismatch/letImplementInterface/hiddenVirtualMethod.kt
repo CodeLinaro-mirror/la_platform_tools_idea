@@ -1,5 +1,5 @@
 // "Let 'C' implement interface 'I'" "true"
-// K2_ERROR: Argument type mismatch: actual type is 'C', but 'I' was expected.
+// K2_ERROR: ARGUMENT_TYPE_MISMATCH
 
 class C {
     fun exampleMethod() {
@@ -19,5 +19,4 @@ fun testCase(c: C) {
 }
 
 
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.LetImplementInterfaceFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.LetImplementInterfaceFixFactories$LetImplementInterfaceFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.LetImplementInterfaceFixFactories$LetImplementInterfaceFix

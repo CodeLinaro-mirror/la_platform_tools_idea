@@ -5,17 +5,36 @@ import com.intellij.driver.sdk.ui.components.ComponentData
 import com.intellij.driver.sdk.ui.components.common.IdeaFrameUI
 import com.intellij.driver.sdk.ui.components.elements.tree
 import com.intellij.driver.sdk.ui.xQuery
+import com.intellij.driver.sdk.waitFor
+import kotlin.time.Duration
 
 fun IdeaFrameUI.projectView(
   locator: QueryBuilder.() -> String = {
-    componentWithChild(byType("com.intellij.toolWindow.InternalDecoratorImpl"),
-                       byType("com.intellij.ide.projectView.impl.ProjectViewTree"))
+    componentWithChild(
+      byType("com.intellij.toolWindow.InternalDecoratorImpl"),
+      or(
+        byType("com.intellij.ide.projectView.impl.ProjectViewTree"),
+        byType("com.intellij.platform.projectView.frontend.impl.FrontendProjectViewTree"),
+      )
+    )
   },
   action: ProjectViewToolWindowUi.() -> Unit = {},
 ): ProjectViewToolWindowUi = x(ProjectViewToolWindowUi::class.java, locator).apply(action)
 
 class ProjectViewToolWindowUi(data: ComponentData) : ToolWindowUiComponent(data) {
-  val projectViewTree = tree(xQuery { byType("com.intellij.ide.projectView.impl.ProjectViewTree") })
+  val projectViewTree = tree(xQuery {
+    or(
+      byType("com.intellij.ide.projectView.impl.ProjectViewTree"),
+      byType("com.intellij.platform.projectView.frontend.impl.FrontendProjectViewTree"),
+    )
+  })
+
+  override fun waitReady(timeout: Duration) {
+    super.waitReady(timeout)
+    waitFor("The project tree has at least one node", timeout) {
+      projectViewTree.collectExpandedPaths().isNotEmpty()
+    }
+  }
 
   val expandAllIcon = x("//div[@myicon='expandAll.svg']")
   fun expandAll() = x("//div[@myicon='expandAll.svg']").click()

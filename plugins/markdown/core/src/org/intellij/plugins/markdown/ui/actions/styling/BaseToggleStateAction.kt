@@ -4,8 +4,7 @@ import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.ToggleAction
-import com.intellij.openapi.application.runWriteAction
-import com.intellij.openapi.command.executeCommand
+import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.editor.Caret
 import com.intellij.openapi.editor.Document
@@ -14,9 +13,9 @@ import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
+import com.intellij.psi.impl.source.tree.injected.InjectedLanguageEditorUtil
 import com.intellij.psi.tree.IElementType
 import com.intellij.psi.util.PsiTreeUtil
-import com.intellij.psi.util.elementType
 import org.intellij.plugins.markdown.editor.runForEachCaret
 import org.intellij.plugins.markdown.lang.MarkdownElementTypes
 import org.intellij.plugins.markdown.lang.MarkdownTokenTypes
@@ -36,7 +35,7 @@ abstract class BaseToggleStateAction: ToggleAction(), DumbAware {
   protected abstract val targetNodeType: IElementType
 
   override fun update(event: AnActionEvent) {
-    val editor = MarkdownActionUtil.findMarkdownEditor(event)
+    val editor = findHostEditor(event)
     event.presentation.isEnabled = editor != null
     super.update(event)
   }
@@ -46,17 +45,11 @@ abstract class BaseToggleStateAction: ToggleAction(), DumbAware {
   }
 
   override fun isSelected(event: AnActionEvent): Boolean {
-    if (MarkdownActionUtil.findMarkdownEditor(event) == null) {
-      return false
-    }
+    val editor = findHostEditor(event) ?: return false
     val file = event.getData(CommonDataKeys.PSI_FILE) ?: return false
-    val caretSnapshots = SelectionUtil.obtainCaretSnapshots(this, event)?.asSequence() ?: return false
+    val caretSnapshots = SelectionUtil.obtainCaretSnapshots(this, event, editor).asSequence()
     val selectionElements = caretSnapshots.map { getElementsUnderCaretOrSelection(file, it.selectionStart, it.selectionEnd) }
     if (shouldIgnoreSelectedElements(selectionElements)) {
-      event.presentation.isEnabled = false
-      return false
-    }
-    if (shouldIgnoreLinkElement(selectionElements)) {
       event.presentation.isEnabled = false
       return false
     }
@@ -73,35 +66,33 @@ abstract class BaseToggleStateAction: ToggleAction(), DumbAware {
   }
 
   override fun setSelected(event: AnActionEvent, state: Boolean) {
-    val editor = MarkdownActionUtil.findMarkdownEditor(event) ?: return
+    val editor = findHostEditor(event) ?: return
     val file = event.getData(CommonDataKeys.PSI_FILE) ?: return
-    runWriteAction {
-      executeCommand(file.project, templatePresentation.text) {
+    WriteCommandAction.writeCommandAction(file.project, file)
+      .withName(templatePresentation.text)
+      .run<RuntimeException> {
         editor.caretModel.runForEachCaret(reverseOrder = true) { caret ->
           processCaret(file, editor, caret, state)
         }
       }
-    }
   }
 
   private fun processCaret(file: PsiFile, editor: Editor, caret: Caret, state: Boolean) {
-    val (first, second) = getElementsUnderCaretOrSelection(file, caret)
     if (!state) {
+      val (first, second) = getElementsUnderCaretOrSelection(file, caret)
       val parent = getCommonParentOfType(first, second, targetNodeType)
       if (parent == null) {
         thisLogger().warn("Could not find enclosing element on its destruction")
         return
       }
-      removeEmphasisFromSelection(editor.document, caret, parent.textRange)
+      removeEmphasisFromSelection(editor.document, caret, parent)
       return
     }
-    val parent = PsiTreeUtil.findCommonParent(first, second)
-    if (parent.elementType !in elementsToIgnore) {
-      addEmphasisToSelection(editor.document, caret)
-    }
+    addEmphasisToSelection(editor.document, caret)
   }
 
-  private fun removeEmphasisFromSelection(document: Document, caret: Caret, nodeRange: TextRange) {
+  private fun removeEmphasisFromSelection(document: Document, caret: Caret, parent: PsiElement) {
+    val nodeRange = parent.textRange
     val text = document.charsSequence
     val boundString = getExistingBoundString(text, nodeRange.startOffset)
     if (boundString == null) {
@@ -111,8 +102,7 @@ abstract class BaseToggleStateAction: ToggleAction(), DumbAware {
     val boundLength = boundString.length
 
     // Easy case --- selection corresponds to some emph
-    if (nodeRange.startOffset + boundLength == caret.selectionStart
-        && nodeRange.endOffset - boundLength == caret.selectionEnd) {
+    if (selectionMatchesNodeContent(caret, nodeRange, boundLength) || selectionCoversContent(caret, parent)) {
       document.deleteString(nodeRange.endOffset - boundLength, nodeRange.endOffset)
       document.deleteString(nodeRange.startOffset, nodeRange.startOffset + boundLength)
       return
@@ -141,6 +131,22 @@ abstract class BaseToggleStateAction: ToggleAction(), DumbAware {
     }
   }
 
+  private fun selectionMatchesNodeContent(caret: Caret, nodeRange: TextRange, boundLength: Int): Boolean {
+    return nodeRange.startOffset + boundLength == caret.selectionStart
+           && nodeRange.endOffset - boundLength == caret.selectionEnd
+  }
+
+  private fun selectionCoversContent(caret: Caret, parent: PsiElement): Boolean {
+    val content = PsiTreeUtil.collectElements(parent) { element ->
+      element.firstChild == null
+      && element.node.elementType != MarkdownTokenTypes.EMPH
+      && element.node.elementType != MarkdownTokenTypes.TILDE
+    }
+    return content.isNotEmpty() && content.all {
+      it.textRange.startOffset >= caret.selectionStart && it.textRange.endOffset <= caret.selectionEnd
+    }
+  }
+
   private fun addEmphasisToSelection(document: Document, caret: Caret) {
     var from = caret.selectionStart
     var to = caret.selectionEnd
@@ -165,25 +171,27 @@ abstract class BaseToggleStateAction: ToggleAction(), DumbAware {
     }
   }
 
-  private fun shouldIgnoreSelectedElements(selectionElements: Sequence<Pair<PsiElement, PsiElement>>) =
-    targetNodeType !in elementsToProhibit
-    && elementsToProhibit.any { elementType -> selectionElements.any { getCommonParentOfType(it.first, it.second, elementType) != null } }
-
-  private fun shouldIgnoreLinkElement(selectionElements: Sequence<Pair<PsiElement, PsiElement>>) =
-    selectionElements.any { (left, right) ->
-      elementsToIgnore.any { type -> getCommonParentOfType(left, right, type) != null }
+  private fun shouldIgnoreSelectedElements(selectionElements: Sequence<Pair<PsiElement, PsiElement>>): Boolean {
+    return elementsToProhibit.any { elementType ->
+      elementType != targetNodeType
+      && selectionElements.any { getCommonParentOfType(it.first, it.second, elementType) != null }
     }
+  }
+
+  private fun findHostEditor(event: AnActionEvent): Editor? {
+    val editor = MarkdownActionUtil.findMarkdownEditor(event) ?: return null
+    return InjectedLanguageEditorUtil.getTopLevelEditor(editor)
+  }
 
   companion object {
     // If element is prohibited then action's presentation will be disabled
     private val elementsToProhibit = setOf(
+      MarkdownElementTypes.CODE_FENCE,
       MarkdownElementTypes.CODE_SPAN,
-      MarkdownElementTypes.TEST_LINK,
-    )
-
-    // If element is ignored then action won't be invoked
-    private val elementsToIgnore = setOf(
+      MarkdownElementTypes.LINK_TEXT,
       MarkdownElementTypes.LINK_DESTINATION,
+      MarkdownElementTypes.TEST_LINK,
+      MarkdownElementTypes.AT_PATH,
       MarkdownElementTypes.AUTOLINK,
       MarkdownTokenTypes.GFM_AUTOLINK
     )

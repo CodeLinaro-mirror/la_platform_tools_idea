@@ -18,7 +18,6 @@ import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.options.UnnamedConfigurable
 import com.intellij.openapi.options.ex.ConfigurableWrapper
 import com.intellij.openapi.ui.DialogPanel
-import com.intellij.ui.components.Badge
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.dsl.builder.Cell
 import com.intellij.ui.dsl.builder.Panel
@@ -29,7 +28,6 @@ import com.intellij.ui.dsl.builder.bindItem
 import com.intellij.ui.dsl.builder.columns
 import com.intellij.ui.dsl.builder.panel
 import com.intellij.ui.dsl.builder.selected
-import com.intellij.ui.dsl.gridLayout.UnscaledGaps
 import com.intellij.ui.dsl.listCellRenderer.textListCellRenderer
 import com.intellij.util.PlatformUtils
 import org.jetbrains.annotations.ApiStatus
@@ -67,7 +65,7 @@ class EditorAppearanceConfigurable : BoundCompositeSearchableConfigurable<Unname
   ApplicationBundle.message("tab.editor.settings.appearance"),
   "reference.settingsdialog.IDE.editor.appearance",
   "editor.preferences.appearance"
-), Configurable.WithEpDependencies, Configurable.NewOptions {
+), Configurable.WithEpDependencies {
   override fun createPanel(): DialogPanel {
     val model = EditorSettingsExternalizable.getInstance()
     return panel {
@@ -83,7 +81,6 @@ class EditorAppearanceConfigurable : BoundCompositeSearchableConfigurable<Unname
         }
         row {
           checkBox(myCbSmoothBlinkCaret)
-          icon(Badge.new)
         }.enabledIf(cbBlinkCaret!!.selected)
         row {
           checkBox(myCbBlockCursor)
@@ -97,14 +94,12 @@ class EditorAppearanceConfigurable : BoundCompositeSearchableConfigurable<Unname
             DefaultComboBoxModel(EditorSettings.CaretEasing.entries.toTypedArray()),
             renderer = textListCellRenderer {
               when (it) {
-                EditorSettings.CaretEasing.NINJA -> ApplicationBundle.message("settings.editor.animated.caret.ninja")
-                EditorSettings.CaretEasing.EASE -> ApplicationBundle.message("settings.editor.animated.caret.ease")
+                EditorSettings.CaretEasing.SNAPPY -> ApplicationBundle.message("settings.editor.animated.caret.snappy")
+                EditorSettings.CaretEasing.GLIDING -> ApplicationBundle.message("settings.editor.animated.caret.gliding")
                 null -> ""
               }
             }
           ).bindItem(model::getCaretEasing, model::setCaretEasing)
-            .customize(UnscaledGaps(right = 20))
-          icon(Badge.new)
         }
       }
 
@@ -140,6 +135,10 @@ class EditorAppearanceConfigurable : BoundCompositeSearchableConfigurable<Unname
       }
 
       group(message("title.presentation")) {
+        for (configurable in ConfigurableWrapper.createConfigurables(PRIORITIZED_EP_NAME)) {
+          appendDslConfigurable(configurable)
+        }
+
         row {
           checkBox(myCbHighlightSelectionOccurrences)
         }
@@ -195,7 +194,7 @@ class EditorAppearanceConfigurable : BoundCompositeSearchableConfigurable<Unname
   }
 
   override fun getDependencies(): Collection<BaseExtensionPointName<*>> {
-    return listOf(EP_NAME)
+    return listOf(EP_NAME, PRIORITIZED_EP_NAME)
   }
 
   override fun apply() {
@@ -220,6 +219,7 @@ class EditorAppearanceConfigurable : BoundCompositeSearchableConfigurable<Unname
 
   private val INLINE_DOC_EP_NAME = ExtensionPointName.create<InlineDocAdditionalHandlerEP>("com.intellij.editorAppearanceInlineDocHandler")
   private val EP_NAME = ExtensionPointName.create<EditorAppearanceConfigurableEP>("com.intellij.editorAppearanceConfigurable")
+  private val PRIORITIZED_EP_NAME = ExtensionPointName.create<EditorAppearancePrioritizedConfigurableEP>("com.intellij.editorAppearancePrioritizedConfigurable")
 
   private val lazyInlineDocAdditionalConfigurable by lazy { ConfigurableWrapper.createConfigurables(INLINE_DOC_EP_NAME) }
 

@@ -7,7 +7,6 @@ import com.intellij.tools.build.bazel.jvmIncBuilder.impl.MVStoreSwapMap;
 import com.intellij.tools.build.bazel.jvmIncBuilder.impl.Utils;
 import com.intellij.tools.build.bazel.jvmIncBuilder.impl.ZipElement;
 import com.intellij.tools.build.bazel.jvmIncBuilder.impl.ZipOutputBuilderImpl;
-import com.intellij.tools.build.bazel.jvmIncBuilder.impl.forms.FormBinding;
 import com.intellij.tools.build.bazel.jvmIncBuilder.impl.graph.MVStoreGraphConfiguration;
 import com.intellij.tools.build.bazel.jvmIncBuilder.instrumentation.InstrumentationClassFinder;
 import com.sun.nio.file.ExtendedOpenOption;
@@ -55,7 +54,6 @@ public class StorageManager implements CloseableExt {
   private ZipOutputBuilderImpl myAbiOutputBuilder;
   private CompositeZipOutputBuilder myComposite;
   private InstrumentationClassFinder myInstrumentationClassFinder;
-  private FormBinding myFormBinding;
 
   private final MVStore myDataSwapStore;
 
@@ -99,12 +97,16 @@ public class StorageManager implements CloseableExt {
 
     closeDataStorages(false);
 
+    // ensure the config state is always deleted first
+    // => if build process crashes or gets killed, the missing build state will effectively cause full target rebuild next time the build is triggered
+    deleteOrTrashRecursively(DataPaths.getConfigStateStoreFile(myContext));
+
     Utils.deleteIfExists(output);
     if (abiOutput != null) {
       Utils.deleteIfExists(abiOutput);
     }
 
-    deleteOrMoveRecursively(myContext.getDataDir(), DataPaths.getTrashDir(myContext));
+    deleteOrTrashRecursively(myContext.getDataDir());
   }
 
   public void cleanTrashDir() throws IOException {
@@ -113,14 +115,6 @@ public class StorageManager implements CloseableExt {
 
   public <K, V> Map<K, V> createOffHeapMap(String name) {
     return new MVStoreSwapMap<>(myDataSwapStore.openMap(name));
-  }
-
-  public FormBinding getFormsBinding() throws Exception {
-    FormBinding binding = myFormBinding;
-    if (binding == null) {
-      myFormBinding = binding = FormBinding.create(myContext);
-    }
-    return binding;
   }
 
   public BuildContext getContext() {
@@ -364,6 +358,10 @@ public class StorageManager implements CloseableExt {
       Path tempFile = Files.createTempFile(trash, null, null);
       Files.move(backup, tempFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
     }
+  }
+
+  public final void deleteOrTrashRecursively(Path fileOrDir) throws IOException {
+    deleteOrMoveRecursively(fileOrDir, DataPaths.getTrashDir(myContext));
   }
 
   private static void deleteOrMoveRecursively(Path dataDir, Path trashDir) throws IOException {

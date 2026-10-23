@@ -13,9 +13,7 @@ import com.intellij.psi.util.nextLeaf
 import com.intellij.psi.util.prevLeaf
 import com.intellij.psi.util.startOffset
 import kotlinx.serialization.Serializable
-import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.components.isDeprecated
 import org.jetbrains.kotlin.analysis.api.permissions.KaAllowAnalysisFromWriteAction
 import org.jetbrains.kotlin.analysis.api.permissions.KaAllowAnalysisOnEdt
 import org.jetbrains.kotlin.analysis.api.permissions.allowAnalysisFromWriteAction
@@ -25,7 +23,9 @@ import org.jetbrains.kotlin.analysis.api.symbols.KaCallableSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassifierSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaDeclarationSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaPropertySymbol
+import org.jetbrains.kotlin.analysis.api.symbols.isDeprecated
 import org.jetbrains.kotlin.analysis.api.types.KaFunctionType
+import org.jetbrains.kotlin.analysis.api.types.KaType
 import org.jetbrains.kotlin.idea.base.analysis.api.utils.shortenReferencesInRange
 import org.jetbrains.kotlin.idea.base.codeInsight.KotlinIconProvider.getIconFor
 import org.jetbrains.kotlin.idea.completion.api.serialization.SerializableInsertHandler
@@ -55,14 +55,18 @@ internal fun withClassifierSymbolInfo(
 context(_: KaSession)
 internal fun withCallableSignatureInfo(
     signature: KaCallableSignature<*>,
-    elementBuilder: LookupElementBuilder
+    elementBuilder: LookupElementBuilder,
+    smartCastType: KaType? = null,
 ): LookupElementBuilder = elementBuilder
     .withPsiElement(signature.symbol.psi)
     .withIcon(getIconFor(signature.symbol))
-    .withTypeText(getTypeTextForCallable(signature, treatAsFunctionCall = elementBuilder.`object` is FunctionCallLookupObject))
+    .withTypeText(getTypeTextForCallable(
+        signature = signature,
+        treatAsFunctionCall = elementBuilder.`object` is FunctionCallLookupObject,
+        smartCastType = smartCastType
+    ))
     .withStrikeoutness(signature.symbol.requireStrikeoutness())
 
-@OptIn(KaExperimentalApi::class)
 context(_: KaSession)
 private fun KaDeclarationSymbol.requireStrikeoutness(): Boolean = when {
     isDeprecated -> true

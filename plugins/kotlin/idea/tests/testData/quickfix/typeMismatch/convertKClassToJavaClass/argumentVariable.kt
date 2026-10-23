@@ -1,7 +1,7 @@
 // "Convert 'KClass' to 'Class'" "true"
 // PRIORITY: HIGH
 // WITH_STDLIB
-// K2_ERROR: Argument type mismatch: actual type is 'KClass<String>', but 'Class<*>' was expected.
+// K2_ERROR: ARGUMENT_TYPE_MISMATCH
 
 fun main() {
     val clazz = String::class
@@ -11,4 +11,3 @@ fun main() {
 fun acceptClass(cls: Class<*>) = Unit
 
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ConvertKClassToClassFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ConvertKClassToClassFix

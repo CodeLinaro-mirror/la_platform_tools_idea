@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 @file:Suppress("ClassName")
 
 package com.intellij.execution.wsl
@@ -18,18 +18,25 @@ import com.intellij.platform.eel.EelArchiveApi
 import com.intellij.platform.eel.EelDescriptor
 import com.intellij.platform.eel.EelExecApi
 import com.intellij.platform.eel.EelExecApi.ExternalCliEntrypoint
-import com.intellij.platform.eel.EelExecPosixApi
+import com.intellij.platform.eel.EelHttpApi
 import com.intellij.platform.eel.EelOsFamily
 import com.intellij.platform.eel.EelPlatform
 import com.intellij.platform.eel.EelPosixProcess
+import com.intellij.platform.eel.EelProcessManagementPosixApi
 import com.intellij.platform.eel.EelUserPosixInfo
 import com.intellij.platform.eel.ExecuteProcessException
+import com.intellij.platform.eel.LoginShellSpawner
+import com.intellij.platform.eel.SafeDeferred
 import com.intellij.platform.eel.channels.EelReceiveChannel
 import com.intellij.platform.eel.channels.EelSendChannel
 import com.intellij.platform.eel.path.EelPath
 import com.intellij.platform.ijent.IjentPosixApi
 import com.intellij.platform.ijent.IjentProcessInfo
+import com.intellij.platform.ijent.IjentSession
+import com.intellij.platform.ijent.IjentSessionState
 import com.intellij.platform.ijent.IjentTunnelsPosixApi
+import com.intellij.platform.ijent.ParentOfIjentScopes
+import com.intellij.platform.ijent.fs.IjentExecPosixApi
 import com.intellij.platform.ijent.fs.IjentFileSystemPosixApi
 import com.intellij.testFramework.junit5.TestApplication
 import com.intellij.testFramework.junit5.TestDisposable
@@ -42,6 +49,8 @@ import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.assertj.core.api.SoftAssertions.assertSoftly
@@ -60,8 +69,6 @@ import org.junit.jupiter.api.extension.ParameterResolver
 import org.junit.jupiter.api.extension.TestTemplateInvocationContext
 import org.junit.jupiter.api.extension.TestTemplateInvocationContextProvider
 import java.io.File
-import java.io.InputStream
-import java.io.OutputStream
 import java.nio.file.FileSystems
 import java.util.UUID
 import java.util.stream.Stream
@@ -499,12 +506,27 @@ class WSLDistributionTest {
       ApplicationManager.getApplication().replaceService(
         WslIjentManager::class.java,
         object : WslIjentManager {
+          private val ijentSessionState = MutableStateFlow<IjentSessionState>(IjentSessionState.NotDeployed)
+
           @DelicateCoroutinesApi
           override val processAdapterScope: CoroutineScope = scope
 
           override suspend fun getIjentApi(descriptor: EelDescriptor?, wslDistribution: WSLDistribution, project: Project?, rootUser: Boolean): IjentPosixApi {
             require(wslDistribution == mockWslDistribution) { "$wslDistribution != $mockWslDistribution" }
             return MockIjentApi(adapter, rootUser)
+          }
+
+          override fun getIjentSessionState(wslDistribution: WSLDistribution, rootUser: Boolean): StateFlow<IjentSessionState> {
+            return ijentSessionState
+          }
+
+          override suspend fun getIjentSession(
+            wslDistribution: WSLDistribution,
+            project: Project?,
+            rootUser: Boolean,
+            sessionScope: ParentOfIjentScopes,
+          ): IjentSession.Posix {
+            error("The mock does not expose its IJent session")
           }
 
           override val isIjentAvailable: Boolean = true
@@ -545,6 +567,8 @@ private class MockIjentApi(private val adapter: GeneralCommandLine, val rootUser
 
   override val archive: EelArchiveApi get() = throw UnsupportedOperationException()
 
+  override val http: EelHttpApi get() = throw UnsupportedOperationException()
+
   override val isRunning: Boolean get() = true
 
   override val ijentProcessInfo: IjentProcessInfo get() = throw UnsupportedOperationException()
@@ -555,7 +579,9 @@ private class MockIjentApi(private val adapter: GeneralCommandLine, val rootUser
 
   override suspend fun waitUntilExit(): Unit = Unit
 
-  override val exec: EelExecPosixApi get() = MockIjentExecApi(adapter, rootUser)
+  override suspend fun testRequest(data: String): String = data
+
+  override val exec: IjentExecPosixApi get() = MockIjentExecApi(adapter, rootUser)
 
   override val fs: IjentFileSystemPosixApi get() = throw UnsupportedOperationException()
 
@@ -565,12 +591,12 @@ private class MockIjentApi(private val adapter: GeneralCommandLine, val rootUser
 
   override suspend fun requestUnixSockets(): IjentPosixApi.IjentTransportUnixSockets? = null
 
-  override fun addGrpcChannel(inputStream: InputStream, outputStream: OutputStream): Unit = Unit
+  override fun addGrpcChannel(input: EelReceiveChannel, output: EelSendChannel): Unit = Unit
 
   override fun addSpecialChannel(input: EelReceiveChannel, output: EelSendChannel): Unit = Unit
 }
 
-private class MockIjentExecApi(private val adapter: GeneralCommandLine, private val rootUser: Boolean) : EelExecPosixApi {
+private class MockIjentExecApi(private val adapter: GeneralCommandLine, private val rootUser: Boolean) : IjentExecPosixApi {
 
   override val descriptor: EelDescriptor get() = throw UnsupportedOperationException()
 
@@ -587,13 +613,14 @@ private class MockIjentExecApi(private val adapter: GeneralCommandLine, private 
 
   override suspend fun fetchLoginShellEnvVariables(): Map<String, String> = mapOf("SHELL" to TEST_SHELL)
   override fun environmentVariables(opts: EelExecApi.EnvironmentVariablesOptions): EelExecApi.EnvironmentVariablesDeferred =
-    EelExecApi.EnvironmentVariablesDeferred(CompletableDeferred(mapOf("SHELL" to TEST_SHELL)))
+    EelExecApi.EnvironmentVariablesDeferred(SafeDeferred(CompletableDeferred(mapOf("SHELL" to TEST_SHELL))))
   override suspend fun getUserLoginShell(): EelPath = EelPath.parse("/bin/sh", descriptor)
-  override suspend fun spawnLoginShell(opts: EelExecApi.LoginShellOptions): EelExecApi.LoginShellHandle = throw UnsupportedOperationException()
+  override suspend fun spawnLoginShell(opts: LoginShellSpawner.LoginShellOptions): LoginShellSpawner.LoginShellHandle = throw UnsupportedOperationException()
   override suspend fun findExeFilesInPath(binaryName: String): List<EelPath> = listOf(EelPath.parse("/bin/$binaryName", descriptor))
   override suspend fun createExternalCli(options: EelExecApi.ExternalCliOptions): ExternalCliEntrypoint {
     throw UnsupportedOperationException()
   }
+  override val processManagement: EelProcessManagementPosixApi get() = throw UnsupportedOperationException()
 }
 
 private val TEST_ROOT_USER_SET by lazy { Key.create<Boolean>("TEST_ROOT_USER_SET") }

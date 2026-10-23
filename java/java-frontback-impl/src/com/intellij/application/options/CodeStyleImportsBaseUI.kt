@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.application.options
 
 import com.intellij.java.frontback.impl.JavaFrontbackBundle
@@ -6,6 +6,7 @@ import com.intellij.openapi.application.ApplicationBundle
 import com.intellij.openapi.ui.DialogPanel
 import com.intellij.psi.codeStyle.JavaImportsLayoutSettings
 import com.intellij.ui.dsl.builder.Align
+import com.intellij.ui.dsl.builder.COLUMNS_TINY
 import com.intellij.ui.dsl.builder.Panel
 import com.intellij.ui.dsl.builder.columns
 import com.intellij.ui.dsl.builder.panel
@@ -42,15 +43,15 @@ open class CodeStyleImportsBaseUI(private val packages: JComponent, private val 
 
         row(JavaFrontbackBundle.message("editbox.class.count.to.use.import.with.star")) {
           classCountField = textField()
-            .columns(3)
+            .columns(COLUMNS_TINY)
             .component
         }
         row(JavaFrontbackBundle.message("editbox.names.count.to.use.static.import.with.star")) {
           namesCountField = textField()
-            .columns(3)
+            .columns(COLUMNS_TINY)
             .component
         }
-      }.resizableRow()
+      }
 
       row {
         cell(packages).align(Align.FILL)

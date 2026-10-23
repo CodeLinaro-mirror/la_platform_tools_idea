@@ -1,6 +1,7 @@
 package com.intellij.platform.lsp.impl.features.highlightingCommon
 
 import com.intellij.openapi.application.readAction
+import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.event.DocumentEvent
 import com.intellij.openapi.fileEditor.FileDocumentManager
@@ -9,34 +10,63 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.platform.lsp.impl.LspCoroutineScopeService
 import com.intellij.platform.lsp.impl.cache.LspCache
 import com.intellij.platform.lsp.util.getRangeInDocument
-import com.intellij.psi.util.PsiModificationTracker
 import com.intellij.util.concurrency.annotations.RequiresBackgroundThread
 import com.intellij.util.concurrency.annotations.RequiresReadLock
 import com.intellij.util.containers.MultiMap
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import org.eclipse.lsp4j.Range
-import java.util.Collections
+import org.jetbrains.annotations.TestOnly
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Helps to keep reasonable highlighting ranges for edited files until updated info arrives from the server.
+ *
+ * Staleness is per document. The snapshot stores the `Document.modificationStamp` that the request was
+ * sent for. [getHighlightings] re-requests only when the current stamp differs, and a response is
+ * accepted only when the stamp still matches. A change in another file does not touch this file's
+ * cache: the server learns about that change from its own `didChange` notification, and a server-side
+ * cross-file effect arrives as a server-forced refresh, which [invalidate] turns into a re-request.
  */
 internal abstract class LspHighlightingCache<T>(protected val project: Project) : LspCache {
   private val fileToCachedHighlightingsSnapshot: MutableMap<VirtualFile, CachedHighlightingsSnapshot<T>> = mutableMapOf()
   private val fileToPendingEdits: MultiMap<VirtualFile, PendingEdit> = MultiMap()
-  private val fileToPsiModCountWhenRequestSent: MutableMap<VirtualFile, Long> = Collections.synchronizedMap(mutableMapOf())
+  private val fileToStampWhenRequestSent: MutableMap<VirtualFile, Long> = mutableMapOf()
+  private val fileToInFlightRequest: MutableMap<VirtualFile, Job> = mutableMapOf()
 
-  @RequiresReadLock
+  /**
+   * How long the requested document must stay stable before a pull is sent.
+   * Rapid consecutive edits then converge on one final stamp, and the dedup guard in
+   * [scheduleHighlightingsUpdate] collapses the triggers into a single server request.
+   * Without the delay, an edit burst produces a send, an immediate `$/cancelRequest`, and a re-send.
+   *
+   * The first pull for a file (nothing cached, nothing in flight) skips the delay,
+   * so the file-open latency is unaffected.
+   */
+  protected open val quiescenceDelay: Duration get() = LOW_PRIORITY_QUIESCENCE_DELAY
+
+  /** Whether this cache requests data from the server. `false` for a cache fed by server notifications. */
+  internal open val supportsPull: Boolean get() = true
+
+  @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
   abstract fun isSupportedForFile(file: VirtualFile): Boolean
 
-  @RequiresBackgroundThread
-  @RequiresReadLock
+  @RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
+  @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
   internal fun getHighlightings(file: VirtualFile): List<LspCachedHighlighting<T>> {
     if (!isSupportedForFile(file)) return emptyList()
 
     synchronized(this) {
       val highlightingsSnapshot = fileToCachedHighlightingsSnapshot[file]
 
-      if (highlightingsSnapshot?.psiModCount != PsiModificationTracker.getInstance(project).modificationCount) {
+      val docModStamp = FileDocumentManager.getInstance().getCachedDocument(file)?.modificationStamp
+      if (supportsPull && docModStamp != null && highlightingsSnapshot?.docModStamp != docModStamp) {
         scheduleHighlightingsUpdate(file)
       }
 
@@ -46,7 +76,7 @@ internal abstract class LspHighlightingCache<T>(protected val project: Project) 
 
       val updatedHighlightings = applyPendingEdits(file, highlightingsSnapshot.cachedHighlightings)
 
-      fileToCachedHighlightingsSnapshot[file] = CachedHighlightingsSnapshot(highlightingsSnapshot.psiModCount, updatedHighlightings)
+      fileToCachedHighlightingsSnapshot[file] = CachedHighlightingsSnapshot(highlightingsSnapshot.docModStamp, updatedHighlightings)
       fileToPendingEdits.remove(file)
 
       return updatedHighlightings
@@ -55,33 +85,130 @@ internal abstract class LspHighlightingCache<T>(protected val project: Project) 
 
   private fun scheduleHighlightingsUpdate(file: VirtualFile) {
     LspCoroutineScopeService.getInstance(project).cs.launch {
-      val psiModCount = PsiModificationTracker.getInstance(project).modificationCount
-      val previousModCount = fileToPsiModCountWhenRequestSent.put(file, psiModCount)
-      if (psiModCount == previousModCount) return@launch // the same request has been already sent
+      val docModStamp = settleRequestStamp(file) ?: return@launch // no document => nothing to highlight
 
-      val infosFromServer = sendRequest(file) ?: return@launch
-      responseReceived(file, psiModCount, infosFromServer)
+      val job = coroutineContext.job
+      synchronized(this@LspHighlightingCache) {
+        if (fileToCachedHighlightingsSnapshot[file]?.docModStamp == docModStamp) {
+          return@launch // a response for the same document version has been applied while this trigger was settling
+        }
+        if (fileToStampWhenRequestSent.put(file, docModStamp) == docModStamp) {
+          // A request for this document version has been already sent, and its response stays
+          // acceptable, because acceptance is gated by the document stamp. The daemon restarts on
+          // every PSI tick, so this dedup also keeps the running request alive across a change in
+          // another file. A server-forced refresh does not take this path: [invalidate] drops the
+          // stamp and cancels the request.
+          return@launch
+        }
+        // The previous in-flight request was sent for another document version: cancel it, so the server
+        // stops working on it ($/cancelRequest), and its late response does not queue this request behind it.
+        fileToInFlightRequest.put(file, job)?.cancel()
+      }
+
+      try {
+        when (val result = sendRequest(file)) {
+          is LspPullResult.Full -> responseReceived(file, docModStamp, result)
+          is LspPullResult.Unchanged -> markSnapshotFresh(file, docModStamp, result)
+          is LspPullResult.Failed -> {}
+        }
+      }
+      catch (e: CancellationException) {
+        throw e
+      }
+      catch (e: Exception) {
+        thisLogger().warn("LSP highlighting request failed for ${file.name}", e)
+      }
+      finally {
+        synchronized(this@LspHighlightingCache) {
+          if (fileToInFlightRequest[file] === job) {
+            // Still the current request for the file: release the slot and the dedup guard,
+            // so the next getHighlightings() call can re-request.
+            // When a newer request took over - possibly with the same document stamp after a forced
+            // refresh - both entries belong to it, so leave them alone.
+            fileToInFlightRequest.remove(file)
+            fileToStampWhenRequestSent.remove(file, docModStamp)
+          }
+        }
+      }
     }
   }
 
-  protected abstract suspend fun sendRequest(file: VirtualFile): List<Pair<Range, T>>?
+  /**
+   * Reads this document's modification stamp and, except for the first pull, waits until the document
+   * is stable across one full [quiescenceDelay].
+   */
+  private suspend fun settleRequestStamp(file: VirtualFile): Long? {
+    var stamp = readDocModStamp(file) ?: return null
+
+    // The override is null in production; only tests set it.
+    @Suppress("TestOnlyProblems")
+    val quiescence = quiescenceDelayOverride ?: quiescenceDelay
+    if (quiescence > Duration.ZERO && !isFirstPullFor(file)) {
+      while (true) {
+        val previousStamp = stamp
+        delay(quiescence)
+        stamp = readDocModStamp(file) ?: return null
+        if (stamp == previousStamp) break
+      }
+    }
+    return stamp
+  }
+
+  private suspend fun readDocModStamp(file: VirtualFile): Long? = readAction {
+    FileDocumentManager.getInstance().getDocument(file)?.modificationStamp
+  }
+
+  private fun isFirstPullFor(file: VirtualFile): Boolean = synchronized(this) {
+    fileToCachedHighlightingsSnapshot[file] == null && fileToInFlightRequest[file] == null
+  }
+
+  protected abstract suspend fun sendRequest(file: VirtualFile): LspPullResult<T>
 
   /**
-   * @param psiModCount `PsiModificationTracker.modificationCount` at the moment of sending the request to the server
+   * @param docModStamp the document stamp captured at the moment of sending the request to the server
    */
-  private suspend fun responseReceived(file: VirtualFile, psiModCount: Long, infosFromServer: List<Pair<Range, T>>) {
+  private suspend fun responseReceived(file: VirtualFile, docModStamp: Long, result: LspPullResult.Full<T>) {
     val highlightings = readAction {
-      if (psiModCount != PsiModificationTracker.getInstance(project).modificationCount) {
+      val document = FileDocumentManager.getInstance().getDocument(file) ?: return@readAction null
+      if (document.modificationStamp != docModStamp) {
+        // This document changed while the request was in flight, so the response ranges are stale.
         scheduleHighlightingsUpdate(file)
         return@readAction null
       }
-
-      val document = FileDocumentManager.getInstance().getDocument(file) ?: return@readAction null
-      buildHighlightings(document, infosFromServer)
+      buildHighlightings(document, result.items)
     }
     if (highlightings == null) return
 
-    applyServerHighlightings(file, psiModCount, highlightings)
+    // A forced refresh may have cancelled this request after the last suspension point.
+    currentCoroutineContext().ensureActive()
+    applyServerHighlightings(file, docModStamp, highlightings, result.onAccepted)
+    onResponseReceived(file)
+  }
+
+  /**
+   * The server confirmed that the cached results are still valid (see [LspPullResult.Unchanged]).
+   * Refreshes the snapshot's mod count, so the cache counts as fresh. Keeps the contents and the pending edits.
+   */
+  private suspend fun markSnapshotFresh(file: VirtualFile, docModStamp: Long, result: LspPullResult.Unchanged) {
+    val docUnchanged = readAction {
+      FileDocumentManager.getInstance().getDocument(file)?.modificationStamp == docModStamp
+    }
+    if (!docUnchanged) {
+      // Same acceptance rule as for a full response.
+      scheduleHighlightingsUpdate(file)
+      return
+    }
+
+    // A forced refresh may have cancelled this request after the last suspension point.
+    currentCoroutineContext().ensureActive()
+    synchronized(this) {
+      // An "unchanged" report without a cached snapshot cannot be trusted. Treat it as a failure.
+      val snapshot = fileToCachedHighlightingsSnapshot[file] ?: return
+      fileToCachedHighlightingsSnapshot[file] = CachedHighlightingsSnapshot(docModStamp, snapshot.cachedHighlightings)
+      // Keep fileToPendingEdits: the kept highlightings still need the pending-edit adjustment.
+      fileToStampWhenRequestSent.remove(file, docModStamp)
+      result.onAccepted?.invoke()
+    }
     onResponseReceived(file)
   }
 
@@ -94,11 +221,22 @@ internal abstract class LspHighlightingCache<T>(protected val project: Project) 
     return result
   }
 
-  protected fun applyServerHighlightings(file: VirtualFile, psiModCount: Long, highlightings: List<LspCachedHighlighting<T>>) {
+  /**
+   * Commits a snapshot for the document version [docModStamp]. The caller checks acceptance first.
+   */
+  protected fun applyServerHighlightings(
+    file: VirtualFile,
+    docModStamp: Long,
+    highlightings: List<LspCachedHighlighting<T>>,
+    onAccepted: (() -> Unit)? = null,
+  ) {
     synchronized(this) {
-      fileToCachedHighlightingsSnapshot[file] = CachedHighlightingsSnapshot(psiModCount, highlightings)
+      fileToCachedHighlightingsSnapshot[file] = CachedHighlightingsSnapshot(docModStamp, highlightings)
       fileToPendingEdits.remove(file)
-      fileToPsiModCountWhenRequestSent.remove(file)
+      if (fileToStampWhenRequestSent[file] == docModStamp) {
+        fileToStampWhenRequestSent.remove(file)
+      }
+      onAccepted?.invoke()
     }
   }
 
@@ -125,11 +263,36 @@ internal abstract class LspHighlightingCache<T>(protected val project: Project) 
   override fun clearCache() = synchronized(this) {
     fileToCachedHighlightingsSnapshot.clear()
     fileToPendingEdits.clear()
-    fileToPsiModCountWhenRequestSent.clear()
+    fileToStampWhenRequestSent.clear()
+    fileToInFlightRequest.values.forEach { it.cancel() }
+    fileToInFlightRequest.clear()
     clearAdditionalCache()
   }
 
   protected open fun clearAdditionalCache() {}
+
+  /**
+   * Drops everything cached for [file] and cancels its running request. Called once the client has closed the file.
+   * A reopened file keeps its document stamp, so the old results would look fresh,
+   * while the server may answer differently by then, for example after a change in another file.
+   */
+  internal fun fileClosed(file: VirtualFile) = synchronized(this) {
+    fileToCachedHighlightingsSnapshot.remove(file)
+    fileToPendingEdits.remove(file)
+    fileToStampWhenRequestSent.remove(file)
+    fileToInFlightRequest.remove(file)?.cancel()
+    clearAdditionalCache(file)
+  }
+
+  protected open fun clearAdditionalCache(file: VirtualFile) {}
+
+  /**
+   * Marks [file] stale like [invalidate]. It also forgets the per-file protocol state that would let the server
+   * answer "unchanged", a stored result id for example, because what changed is the answer itself.
+   */
+  internal open fun forceFullRepull(file: VirtualFile) {
+    invalidate(file)
+  }
 
   /**
    * Marks the cached results for [file] stale so the next [getHighlightings] re-requests them from the server, while
@@ -137,29 +300,54 @@ internal abstract class LspHighlightingCache<T>(protected val project: Project) 
    *
    * Used for server-forced refreshes (e.g. `workspace/inlayHint/refresh`), where results change without a document edit
    * and the
-   * [psiModCount][CachedHighlightingsSnapshot.psiModCount] staleness check would otherwise consider the cache fresh.
+   * [docModStamp][CachedHighlightingsSnapshot.docModStamp] staleness check would otherwise consider the cache fresh.
    * Unlike [clearCache], reactive consumers keep showing the previous results (no flicker); the refreshed results flow
    * in through the usual [onResponseReceived] path.
    */
   internal fun invalidate(file: VirtualFile) {
     synchronized(this) {
+      // An in-flight request predates the refresh. Cancel it and drop the dedup guard,
+      // so the forced request is actually sent, and the stale response cannot mark the snapshot fresh
+      // (that would dedup the forced request away).
+      fileToInFlightRequest.remove(file)?.cancel()
+      fileToStampWhenRequestSent.remove(file)
       val snapshot = fileToCachedHighlightingsSnapshot[file] ?: return
-      // STALE_PSI_MOD_COUNT never equals a real PsiModificationTracker count, so getHighlightings always re-requests.
-      fileToCachedHighlightingsSnapshot[file] = CachedHighlightingsSnapshot(STALE_PSI_MOD_COUNT, snapshot.cachedHighlightings)
-      fileToPsiModCountWhenRequestSent.remove(file) // drop the dedup guard so the forced request is actually sent
+      // STALE_DOC_MOD_STAMP never equals a real document stamp, so getHighlightings always re-requests.
+      fileToCachedHighlightingsSnapshot[file] = CachedHighlightingsSnapshot(STALE_DOC_MOD_STAMP, snapshot.cachedHighlightings)
     }
   }
 
 
   private class CachedHighlightingsSnapshot<T>(
-    /**
-     * `PsiModificationTracker.modificationCount` at the moment of sending the request
-     */
-    val psiModCount: Long,
+    /** the `Document.modificationStamp` the snapshot was built for; [STALE_DOC_MOD_STAMP] marks a forced refresh */
+    val docModStamp: Long,
     val cachedHighlightings: List<LspCachedHighlighting<T>>,
   )
 
-  private companion object {
-    private const val STALE_PSI_MOD_COUNT: Long = -1L
+  companion object {
+    private const val STALE_DOC_MOD_STAMP: Long = -1L
+
+    /**
+     * Diagnostics are what the user waits for, so their debounce is shorter than [LOW_PRIORITY_QUIESCENCE_DELAY].
+     * The delay must still absorb the typing cadence. A fluent typist produces a keystroke every 100-200 ms,
+     * so a shorter delay starts a pull at almost every keystroke and cancels it at the next one.
+     * With 250 ms the pull starts at a natural pause, for example at a word boundary.
+     */
+    val DIAGNOSTICS_QUIESCENCE_DELAY: Duration = 250.milliseconds
+
+    /**
+     * Semantic tokens, document links, folding, code lens, inlay hints, and colors are cosmetic while
+     * the user types. Hold them back until the document settles, so the server can serve `didChange`,
+     * completion, and diagnostics first.
+     */
+    val LOW_PRIORITY_QUIESCENCE_DELAY: Duration = 300.milliseconds
+
+    /**
+     * Widens or disables the quiescence window in tests, where the production values are too
+     * timing-sensitive to assert against.
+     */
+    @set:TestOnly
+    @Volatile
+    var quiescenceDelayOverride: Duration? = null
   }
 }

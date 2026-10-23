@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.terminal
 
 import com.intellij.execution.process.KillableProcessHandler
@@ -11,9 +11,9 @@ import com.intellij.execution.process.SelfKiller
 import com.intellij.openapi.util.Disposer
 import com.intellij.platform.eel.EelExecApi.Pty
 import com.intellij.platform.eel.ExecuteProcessException
+import com.intellij.platform.eel.convertToJVMProcess
 import com.intellij.platform.eel.isWindows
 import com.intellij.platform.eel.provider.LocalEelDescriptor
-import com.intellij.util.io.BaseDataReader
 import com.intellij.util.io.BaseOutputReader
 import com.jediterm.core.util.TermSize
 import com.pty4j.windows.conpty.WinConPtyProcess
@@ -43,7 +43,7 @@ internal suspend fun createTerminalProcessHandler(
   catch (err: ExecuteProcessException) {
     throw IllegalStateException("Failed to start ${javaCommand.commandLine}", err)
   }
-  val javaProcess = eelProcess.convertToJavaProcess()
+  val javaProcess = eelProcess.convertToJVMProcess()
   assumeTestableProcess(javaProcess)
   return createTerminalProcessHandler(javaProcess, javaCommand.commandLine)
 }
@@ -64,7 +64,6 @@ private fun assumeTestableProcess(localProcess: Process) {
 
 private fun createTerminalProcessHandler(process: Process, commandLine: String): KillableProcessHandler {
   val terminalOutputOptions = object : BaseOutputReader.Options() {
-    override fun policy(): BaseDataReader.SleepingPolicy = BaseDataReader.SleepingPolicy.BLOCKING
     override fun splitToLines(): Boolean = false
     override fun withSeparators(): Boolean = true
   }

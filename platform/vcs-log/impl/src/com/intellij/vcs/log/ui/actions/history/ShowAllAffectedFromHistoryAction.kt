@@ -3,16 +3,12 @@ package com.intellij.vcs.log.ui.actions.history
 
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.vcs.changes.ui.ChangeListViewerDialog
-import com.intellij.openapi.vcs.changes.ui.LoadingCommittedChangeListPanel
-import com.intellij.openapi.vcs.changes.ui.LoadingCommittedChangeListPanel.ChangelistData
 import com.intellij.vcs.log.VcsFullCommitDetails
-import com.intellij.vcs.log.VcsLogBundle
 import com.intellij.vcs.log.VcsLogCommitDataCache
 import com.intellij.vcs.log.VcsLogCommitSelection
 import com.intellij.vcs.log.data.VcsLogData
 import com.intellij.vcs.log.history.FileHistoryModel
-import com.intellij.vcs.log.util.VcsLogUtil
+import com.intellij.vcs.log.ui.frame.CommitChangesViewer
 import org.jetbrains.annotations.ApiStatus
 
 @ApiStatus.Internal
@@ -30,15 +26,6 @@ class ShowAllAffectedFromHistoryAction : FileHistoryOneCommitAction<VcsFullCommi
                              model: FileHistoryModel,
                              detail: VcsFullCommitDetails,
                              e: AnActionEvent) {
-    val file = model.getPathInCommit(detail.id)
-    val title = VcsLogBundle.message("dialog.title.paths.affected.by.commit", detail.id.toShortString())
-
-    val panel = LoadingCommittedChangeListPanel(project)
-    panel.loadChangesInBackground {
-      val committedChangeList = VcsLogUtil.createCommittedChangeList(detail)
-      ChangelistData(committedChangeList, file)
-    }
-
-    ChangeListViewerDialog.show(project, title, panel)
+    CommitChangesViewer.showCommitChanges(project, detail, model.getPathInCommit(detail.id))
   }
 }

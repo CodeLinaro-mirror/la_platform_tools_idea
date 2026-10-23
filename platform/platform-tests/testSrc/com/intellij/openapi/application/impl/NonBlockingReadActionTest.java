@@ -1,6 +1,7 @@
 // Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.application.impl;
 
+import com.intellij.concurrency.ThreadContext;
 import com.intellij.ide.startup.ServiceNotReadyException;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ApplicationManager;
@@ -22,7 +23,7 @@ import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiFile;
-import com.intellij.psi.impl.PsiDocumentManagerImpl;
+import com.intellij.psi.impl.PsiDocumentManagerEx;
 import com.intellij.psi.util.PsiUtilCore;
 import com.intellij.testFramework.LeakHunter;
 import com.intellij.testFramework.LightPlatformTestCase;
@@ -35,11 +36,14 @@ import com.intellij.util.ConcurrencyUtil;
 import com.intellij.util.ExceptionUtil;
 import com.intellij.util.TimeoutUtil;
 import com.intellij.util.concurrency.AppExecutorUtil;
+import com.intellij.util.concurrency.BlockingJob;
 import com.intellij.util.concurrency.BoundedTaskExecutor;
 import com.intellij.util.concurrency.Semaphore;
 import com.intellij.util.concurrency.SequentialTaskExecutor;
 import com.intellij.util.ui.UIUtil;
-import one.util.streamex.IntStreamEx;
+import kotlin.Unit;
+import kotlinx.coroutines.CompletableJob;
+import kotlinx.coroutines.JobKt;
 import org.assertj.core.api.Assertions;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -62,6 +66,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.stream.IntStream;
 
 import static com.intellij.testFramework.PlatformTestUtil.waitForPromise;
 
@@ -329,7 +334,7 @@ public class NonBlockingReadActionTest extends LightPlatformTestCase {
   }
 
   private void setupUncommittedDocument() {
-    ((PsiDocumentManagerImpl)PsiDocumentManager.getInstance(getProject())).disableBackgroundCommit(getTestRootDisposable());
+    ((PsiDocumentManagerEx)PsiDocumentManager.getInstance(getProject())).disableBackgroundCommit(getTestRootDisposable());
     PsiFile file = createFile("a.txt", "");
     WriteCommandAction.runWriteCommandAction(getProject(), () -> file.getViewProvider().getDocument().insertString(0, "a"));
   }
@@ -473,6 +478,21 @@ public class NonBlockingReadActionTest extends LightPlatformTestCase {
     });
   }
 
+  public void testSyncExecutionDeliversFailureUnderBlockingJob() {
+    CompletableJob blockingJob = JobKt.Job(null);
+    watchLoggedExceptions(loggedError -> {
+      ThreadContext.installThreadContext(ThreadContext.currentThreadContext().plus(new BlockingJob(blockingJob)), true, () -> {
+        assertThrows(UnsupportedOperationException.class, () -> ReadAction.nonBlocking(() -> {
+          throw new UnsupportedOperationException();
+        }).executeSynchronously());
+        return Unit.INSTANCE;
+      });
+      assertNull(loggedError.get());
+    });
+    blockingJob.complete();
+    assertFalse("the blocking job must not be canceled by a delivered sync failure", blockingJob.isCancelled());
+  }
+
   private static void watchLoggedExceptions(Consumer<? super AtomicReference<Throwable>> runnable) {
     AtomicReference<Throwable> loggedError = new AtomicReference<>();
     LoggedErrorProcessor.executeWith(new LoggedErrorProcessor() {
@@ -562,7 +582,7 @@ public class NonBlockingReadActionTest extends LightPlatformTestCase {
   public void test_submit_doesNot_fail_without_readAction_when_parent_isDisposed() throws Exception {
     try (ExecutorService executor = AppExecutorUtil.createBoundedApplicationPoolExecutor(StringUtil.capitalize(getName()), 1000)) {
       for (int i = 0; i < 50; i++) {
-        List<Disposable> parents = IntStreamEx.range(100).mapToObj(_ -> Disposer.newDisposable()).toList();
+        List<Disposable> parents = IntStream.range(0, 100).mapToObj(_ -> Disposer.newDisposable()).toList();
         List<Future<?>> futures = new ArrayList<>();
         for (Disposable parent : parents) {
           futures.add(executor.submit(() -> ReadAction.nonBlocking(() -> {
@@ -609,7 +629,7 @@ public class NonBlockingReadActionTest extends LightPlatformTestCase {
   public void test_executeSynchronously_doesNot_return_null_with_not_nullable_callable() {
     try (ExecutorService executor = AppExecutorUtil.createBoundedApplicationPoolExecutor(StringUtil.capitalize(getName()), 1000)) {
       for (int i = 0; i < 50; i++) {
-        List<Disposable> disposables = IntStreamEx.range(100).mapToObj(_ -> Disposer.newDisposable()).toList();
+        List<Disposable> disposables = IntStream.range(0, 100).mapToObj(_ -> Disposer.newDisposable()).toList();
         List<Future<?>> futuresList = new ArrayList<>();
         for (Disposable disposable : disposables) {
           futuresList.add(executor.submit(() -> {

@@ -1,7 +1,9 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.ide.plugins
 
+import com.intellij.ide.plugins.marketplace.statistics.enums.PluginManagerOpenSourceEnum
 import com.intellij.ide.plugins.newui.TabbedPaneHeaderComponent
+import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogBuilder
 import com.intellij.openapi.util.NlsSafe
 import com.intellij.ui.JBColor
@@ -15,7 +17,7 @@ object PluginManagerConfigurableUtils {
   fun showInstallPluginDialog(component: Component, filter: @NlsSafe String) {
     val configurable = PluginManagerConfigurable()
     AutoCloseable(configurable::disposeUIResources).use {
-      configurable.openMarketplaceTab(filter)
+      configurable.navigateToMarketplace(filter)
       val dialogBuilder = DialogBuilder(component)
       dialogBuilder.title(UIBundle.message("newProjectWizard.ProjectTypeStep.InstallPluginAction.title"))
       dialogBuilder.centerPanel(
@@ -32,6 +34,17 @@ object PluginManagerConfigurableUtils {
       if (dialogBuilder.showAndGet() && configurable.isModified) {
         configurable.apply()
       }
+    }
+  }
+
+  @JvmStatic
+  fun showInstalledTabWithSearch(
+    project: Project?,
+    searchQuery: @NlsSafe String,
+    openSource: PluginManagerOpenSourceEnum? = null,
+  ) {
+    PluginManagerConfigurable.showPluginManagerDialog(project, openSource ?: PluginManagerOpenSourceEnum.OTHER) { configurable ->
+      configurable.navigateToInstalled(searchQuery)
     }
   }
 }

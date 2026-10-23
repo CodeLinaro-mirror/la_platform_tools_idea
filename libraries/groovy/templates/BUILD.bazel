@@ -1,7 +1,6 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
 ### auto-generated section `build intellij.libraries.groovy.templates` start
-
 jvm_library(
     name = "templates",
     srcs = glob(
@@ -37,6 +36,7 @@ jvm_library(
 exports_files(
     [
         "intellij.libraries.groovy.templates.iml",
+        "resources/intellij.libraries.groovy.templates.xml",
     ],
     visibility = ["//visibility:public"],
 )

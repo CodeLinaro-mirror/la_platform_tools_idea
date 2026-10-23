@@ -1,6 +1,7 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.wm.impl.welcomeScreen
 
+import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.ActionGroupWrapper
@@ -30,8 +31,10 @@ import java.awt.Dimension
 import java.awt.Point
 import java.awt.Rectangle
 import java.awt.event.InputEvent
+import java.awt.event.KeyEvent
 import java.util.concurrent.ConcurrentHashMap
 import javax.swing.JComponent
+import javax.swing.KeyStroke
 import javax.swing.SwingConstants
 
 
@@ -172,7 +175,7 @@ private class VerticalToolbarLayoutStrategy(
       width = maxOf(width, JBUI.scale(unscaledPreferredButtonWidth))
     }
 
-    val result = JBUI.size(width, height)
+    val result = Dimension(width, height)
     JBInsets.addTo(result, toolbar.component.insets)
     return result
   }
@@ -189,6 +192,9 @@ private class WelcomeScreenDisclosureButtonAction(
     if (!presentation.isPopupGroup && getInlineActions(presentation).isEmpty()) {
       button.arrowIcon = null
     }
+    if (presentation.getClientProperty("ChevronDown") != null) {
+      button.arrowIcon = AllIcons.General.ChevronDown
+    }
     button.isOpaque = false
 
     if (type == WelcomeScreenToolbarType.FRAME) {
@@ -198,6 +204,10 @@ private class WelcomeScreenDisclosureButtonAction(
     }
 
     button.addActionListener { performAction(button, presentation) }
+    button.getInputMap(JComponent.WHEN_FOCUSED).apply {
+      put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0, false), "pressed")
+      put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0, true), "released")
+    }
 
     updateCustomComponent(button, presentation)
 

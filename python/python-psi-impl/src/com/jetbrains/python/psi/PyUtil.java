@@ -23,6 +23,7 @@ import com.intellij.openapi.roots.ModuleRootManager;
 import com.intellij.openapi.roots.ProjectFileIndex;
 import com.intellij.openapi.roots.SourceFolder;
 import com.intellij.openapi.util.Comparing;
+import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.util.io.FileUtilRt;
@@ -75,6 +76,7 @@ import com.jetbrains.python.psi.resolve.QualifiedNameFinder;
 import com.jetbrains.python.psi.resolve.RatedResolveResult;
 import com.jetbrains.python.psi.stubs.PyLiteralKind;
 import com.jetbrains.python.psi.stubs.PySetuptoolsNamespaceIndex;
+import com.jetbrains.python.psi.types.PyAnyType;
 import com.jetbrains.python.psi.types.PyCallableType;
 import com.jetbrains.python.psi.types.PyClassLikeType;
 import com.jetbrains.python.psi.types.PyClassType;
@@ -127,6 +129,8 @@ import static com.jetbrains.python.ast.PyAstFunction.Modifier.STATICMETHOD;
 public final class PyUtil {
 
   private static final boolean VERBOSE_MODE = System.getenv("_PYCHARM_VERBOSE_MODE") != null;
+
+  private static final Pattern SUPPRESS_PATTERN = Pattern.compile(SuppressionUtil.COMMON_SUPPRESS_REGEXP);
 
   private PyUtil() {
   }
@@ -725,9 +729,17 @@ public final class PyUtil {
     return context.getReturnType(function);
   }
 
+  private static final Key<Boolean> ADDED_FRAGMENT_PARENTHESES = Key.create("PyUtil.ADDED_FRAGMENT_PARENTHESES");
+
   /**
    * Create a new expressions fragment from the given text, setting the specified element as its context,
    * and return the contained expression of the first expression statement in it.
+   * <p>
+   * The text can span several lines, e.g. a parameter annotation stored in a stub.
+   * In the source, the enclosing brackets make such line breaks legal.
+   * If the text contains a line break and does not parse as one expression statement,
+   * it is parsed again inside parentheses, and the expression inside them is returned.
+   * {@link #getFragmentContextAwareParent} skips these parentheses.
    *
    * @param expressionText text of the expression
    * @param context        context element used to resolve symbols in the expression
@@ -735,11 +747,21 @@ public final class PyUtil {
    * @see PyExpressionCodeFragment
    */
   public static @Nullable PyExpression createExpressionFromFragment(@NotNull String expressionText, @NotNull PsiElement context) {
-    final PyExpressionCodeFragmentImpl codeFragment =
-      new PyExpressionCodeFragmentImpl(context.getProject(), "dummy.py", expressionText, false);
-    codeFragment.setContext(context);
-    final PyExpressionStatement statement = as(codeFragment.getFirstChild(), PyExpressionStatement.class);
+    var statement = parseExpressionStatement(expressionText, context);
+    if (expressionText.indexOf('\n') >= 0 && (statement == null || PsiTreeUtil.skipWhitespacesAndCommentsForward(statement) != null) &&
+        parseExpressionStatement("(" + expressionText + "\n)", context) instanceof PyExpressionStatement wrapped &&
+        wrapped.getExpression() instanceof PyParenthesizedExpression parenthesized &&
+        parenthesized.getContainedExpression() instanceof PyExpression contained) {
+      parenthesized.putUserData(ADDED_FRAGMENT_PARENTHESES, Boolean.TRUE);
+      return contained;
+    }
     return statement != null ? statement.getExpression() : null;
+  }
+
+  private static @Nullable PyExpressionStatement parseExpressionStatement(@NotNull String text, @NotNull PsiElement context) {
+    var codeFragment = new PyExpressionCodeFragmentImpl(context.getProject(), "dummy.py", text, false);
+    codeFragment.setContext(context);
+    return codeFragment.getFirstChild() instanceof PyExpressionStatement statement ? statement : null;
   }
 
   /**
@@ -756,11 +778,16 @@ public final class PyUtil {
    * Returns the parent of the given element.
    * Supports parent boundary transition if the given element is inside a {@link PyExpressionCodeFragment}
    * created by {@link PyUtil#createExpressionFromFragment}.
+   * The parentheses that this method adds around a text with a line break are skipped too.
    */
   public static @Nullable PsiElement getFragmentContextAwareParent(@Nullable PsiElement element) {
     if (element == null) return null;
     var parent = getStubOrPsiParent(element);
     if (parent == null) return null;
+    if (parent instanceof PyParenthesizedExpression && parent.getUserData(ADDED_FRAGMENT_PARENTHESES) != null) {
+      parent = getStubOrPsiParent(parent);
+      if (parent == null) return null;
+    }
     if (parent instanceof PyExpressionStatement && getStubOrPsiParent(parent) instanceof PyExpressionCodeFragment fragment) {
       return fragment.getContext();
     }
@@ -1227,24 +1254,14 @@ public final class PyUtil {
 
   @ApiStatus.Internal
   public static @Nullable PyType convertToType(@NotNull PyLiteralKind literalKind, @NotNull PyBuiltinCache builtinCache) {
-    switch (literalKind) {
-      case INT -> {
-        return builtinCache.getIntType();
-      }
-      case FLOAT -> {
-        return builtinCache.getFloatType();
-      }
-      case STRING -> {
-        return builtinCache.getStrType();
-      }
-      case BOOL -> {
-        return builtinCache.getBoolType();
-      }
-      case NONE -> {
-        return builtinCache.getNoneType();
-      }
-      default -> throw new IllegalArgumentException();
-    }
+    var result = switch (literalKind) {
+      case INT -> builtinCache.getIntType();
+      case FLOAT -> builtinCache.getFloatType();
+      case STRING -> builtinCache.getStrType();
+      case BOOL -> builtinCache.getBoolType();
+      case NONE -> builtinCache.getNoneType();
+    };
+    return result != null ? result : PyAnyType.getUnknown();
   }
 
   @ApiStatus.Internal
@@ -1499,7 +1516,7 @@ public final class PyUtil {
         }
       }
 
-      return PyUnionType.union(types);
+      return PyUnionType.unionOrUnknown(types);
     }
 
     return null;
@@ -1622,8 +1639,7 @@ public final class PyUtil {
   }
 
   public static boolean isNoinspectionComment(@NotNull PsiComment comment) {
-    Pattern suppressPattern = Pattern.compile(SuppressionUtil.COMMON_SUPPRESS_REGEXP);
-    return suppressPattern.matcher(comment.getText()).find();
+    return SUPPRESS_PATTERN.matcher(comment.getText()).find();
   }
 
   /**

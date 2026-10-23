@@ -2,48 +2,76 @@
 
 package com.intellij.platform.ijent.community.ui.actions.unavailable
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
+import org.jetbrains.annotations.ApiStatus
+import org.jetbrains.annotations.VisibleForTesting
 
-internal abstract class OnceTask<T> {
-  private val state: MutableStateFlow<State<T>> = MutableStateFlow(State.Uninitialized)
+/** Caches a value or a failure selected by [shouldCacheFailure]. Other failures permit another attempt. */
+@ApiStatus.Internal
+@VisibleForTesting
+abstract class OnceTask<T, C>(private val shouldCacheFailure: (Throwable) -> Boolean) {
+  private val state: MutableStateFlow<State<T, C>> = MutableStateFlow(State.Uninitialized)
 
   abstract suspend fun <R> executeUnderLockIfNotAlreadyAcquired(f: suspend () -> R): R
 
-  fun computedValue(): T? = (state.value as? State.Computed)?.value
+  fun computedValue(): Result<T>? = (state.value as? State.Computed)?.value
 
-  suspend fun getOrCompute(action: suspend () -> T): T {
-    (state.value as? State.Computed)?.let { return it.value }
+  suspend fun getOrCompute(
+    onComputing: (Deferred<C>) -> Unit,
+    action: suspend (CompletableDeferred<C>) -> T
+  ): T {
+    (state.value as? State.Computed)?.let { return it.value.getOrThrow() }
     while (true) {
-      val computed = executeUnderLockIfNotAlreadyAcquired { executeCriticalSection(action) }
-      if (computed != null) return computed.value
+      val computed = executeUnderLockIfNotAlreadyAcquired { executeCriticalSection(onComputing, action) }
+      if (computed != null) return computed.value.getOrThrow()
     }
   }
 
-  private suspend fun executeCriticalSection(action: suspend () -> T): State.Computed<T>? {
-    val tookLeadership = state.compareAndSet(State.Uninitialized, State.Computing)
+  private suspend fun executeCriticalSection(
+    onComputing: (Deferred<C>) -> Unit,
+    action: suspend (CompletableDeferred<C>) -> T
+  ): State.Computed<T>? {
+    val newComputingState = State.Computing(CompletableDeferred<C>())
+    val tookLeadership = state.compareAndSet(State.Uninitialized, newComputingState)
     if (!tookLeadership) {
-      val settled = state.filterIsInstance<State.NotComputing<T>>().first()
-      return when (settled) {
-        is State.Computed -> settled
+      return when (val currentState = state.value) {
+        is State.Computing -> {
+          onComputing(currentState.context)
+          awaitComputed()
+        }
+        is State.Computed -> currentState
         is State.Uninitialized -> null
       }
     }
+    onComputing(newComputingState.context)
     val result = try {
-      action()
+      Result.success(action(newComputingState.context))
     }
     catch (e: Throwable) {
-      state.compareAndSet(State.Computing, State.Uninitialized)
-      throw e
+      newComputingState.context.completeExceptionally(e)
+      if (!shouldCacheFailure(e)) {
+        state.compareAndSet(newComputingState, State.Uninitialized)
+        throw e
+      }
+      Result.failure(e)
     }
     return State.Computed(result).also { state.value = it }
   }
+  private suspend fun awaitComputed(): State.Computed<T>? {
+    return when (val settled = state.filterIsInstance<State.NotComputing<T>>().first()) {
+      is State.Computed -> settled
+      is State.Uninitialized -> null
+    }
+  }
 }
 
-private sealed class State<out T> {
-  object Computing : State<Nothing>()
-  sealed class NotComputing<T> : State<T>()
+private sealed class State<out T, out C> {
   object Uninitialized : NotComputing<Nothing>()
-  class Computed<T>(val value: T) : NotComputing<T>()
+  class Computing<C>(val context: CompletableDeferred<C>) : State<Nothing,  C>()
+  sealed class NotComputing<T> : State<T, Nothing>()
+  class Computed<T>(val value: Result<T>) : NotComputing<T>()
 }

@@ -4,6 +4,7 @@ package git4idea.inMemory.objects
 import git4idea.commands.GitObjectType
 import org.jetbrains.annotations.NonNls
 import java.io.ByteArrayOutputStream
+import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
 
 /**
@@ -100,6 +101,9 @@ internal sealed class GitObject {
       private const val GPGSIG_HEADER = "gpgsig"
 
       @NonNls
+      private const val ENCODING_HEADER = "encoding"
+
+      @NonNls
       private val NEW_LINE_REGEX = Regex("\n(?! )") // ignores continuation lines in gpg-signature
 
       class ParsedData(
@@ -122,16 +126,18 @@ internal sealed class GitObject {
        *  -----END PGP SIGNATURE-----
        *
        * Implement feature
+       *
+       * The message is decoded with the charset from the `encoding` header and re-encoded to UTF-8.
        */
       fun parseBody(body: ByteArray): ParsedData {
-        val bodyString = body.toString(Charsets.UTF_8)
-        val (headers, message) = bodyString.split("\n\n", limit = 2).takeIf { it.size == 2 }
-                                 ?: error("Invalid commit format: missing message separator")
+        val separatorIndex = indexOfMessageSeparator(body)
+        val headers = String(body, 0, separatorIndex, Charsets.UTF_8)
 
         var treeOid: Oid? = null
         var author: Author? = null
         var committer: Author? = null
         var gpgSignature: String? = null
+        var encoding: String? = null
         val parentsOids = mutableListOf<Oid>()
         val headerLines = headers.split(NEW_LINE_REGEX)
         for (header in headerLines) {
@@ -155,18 +161,42 @@ internal sealed class GitObject {
             GPGSIG_HEADER -> {
               gpgSignature = value
             }
+            ENCODING_HEADER -> {
+              encoding = value
+            }
           }
         }
         requireNotNull(author) { "Commit author not found" }
         requireNotNull(committer) { "Committer not found" }
         requireNotNull(treeOid) { "Commit tree not found" }
 
+        val messageBytes = body.copyOfRange(separatorIndex + 2, body.size)
+        val message = String(messageBytes, charsetOrUtf8(encoding)).toByteArray()
+
         return ParsedData(author,
                           committer,
                           parentsOids,
                           treeOid,
-                          message.toByteArray(),
+                          message,
                           gpgSignature?.toByteArray())
+      }
+
+      private fun indexOfMessageSeparator(body: ByteArray): Int {
+        val newLine = '\n'.code.toByte()
+        for (i in 0 until body.size - 1) {
+          if (body[i] == newLine && body[i + 1] == newLine) return i
+        }
+        error("Invalid commit format: missing message separator")
+      }
+
+      private fun charsetOrUtf8(name: String?): Charset {
+        if (name == null) return Charsets.UTF_8
+        return try {
+          Charset.forName(name)
+        }
+        catch (_: IllegalArgumentException) {
+          Charsets.UTF_8
+        }
       }
 
       fun buildBody(
@@ -256,23 +286,26 @@ internal sealed class GitObject {
 
     companion object {
       /**
-       * Each entry: mode + space + name + null byte + 20-byte SHA-1 hash
+       * Each entry: mode + space + name + null byte + raw object id bytes
        * There is no separator between entries.
        */
-      fun parseBody(body: ByteArray): Map<FileName, Entry> {
+      fun parseBody(body: ByteArray, oidByteSize: Int): Map<FileName, Entry> {
         val entries = mutableMapOf<FileName, Entry>()
         var ptr = 0
         while (ptr < body.size) {
           val spacePos = body.indexOf(' '.code.toByte(), ptr)
+          require(spacePos != -1) { "Invalid tree object: missing mode separator" }
           val mode = String(body, ptr, spacePos - ptr, StandardCharsets.UTF_8)
           ptr = spacePos + 1
 
           val nullPos = body.indexOf(0.toByte(), ptr)
+          require(nullPos != -1) { "Invalid tree object: missing file name separator" }
           val name = String(body, ptr, nullPos - ptr, StandardCharsets.UTF_8)
           ptr = nullPos + 1
 
-          val hashBytes = body.copyOfRange(ptr, ptr + Oid.HASH_LENGTH)
-          ptr += Oid.HASH_LENGTH
+          require(ptr + oidByteSize <= body.size) { "Invalid tree object: truncated object id" }
+          val hashBytes = body.copyOfRange(ptr, ptr + oidByteSize)
+          ptr += oidByteSize
 
           entries[FileName(name)] = Entry(
             FileMode.fromValue(mode) ?: error("Unknown file mode: $mode"),

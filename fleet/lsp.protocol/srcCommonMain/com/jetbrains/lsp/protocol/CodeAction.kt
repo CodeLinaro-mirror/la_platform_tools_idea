@@ -19,7 +19,7 @@ interface CodeActionOptions : WorkDoneProgressOptions {
      * The list of kinds may be generic, such as `CodeActionKind.Refactor`,
      * or the server may list out every specific kind they provide.
      */
-    val codeActionKinds: List<CodeActionKind>
+    val codeActionKinds: List<CodeActionKind>?
 
     /**
      * The server provides support to resolve additional
@@ -41,7 +41,7 @@ data class CodeActionRegistrationOptions(
      * The list of kinds may be generic, such as `CodeActionKind.Refactor`,
      * or the server may list out every specific kind they provide.
      */
-    override val codeActionKinds: List<CodeActionKind>,
+    override val codeActionKinds: List<CodeActionKind>? = null,
 
     /**
      * The server provides support to resolve additional
@@ -147,6 +147,17 @@ value class CodeActionKind(val value: String) {
          */
         val SourceFixAll: CodeActionKind = CodeActionKind("source.fixAll")
     }
+
+    /**
+     * LSP hierarchical kind matching: this kind matches the [requested] kind if it is equal to it
+     * or is one of its sub-kinds (e.g. `source.organizeImports` matches `source`).
+     *
+     * This is the matching semantics clients use when filtering code actions by [CodeActionContext.only].
+     * For example, VS Code's "Source Action…" menu requests actions with `only = ["source"]`, which must
+     * match providers/actions of kind `source.organizeImports`, `source.fixAll`, etc.
+     */
+    fun isKindOf(requested: CodeActionKind): Boolean =
+        this == requested || value.startsWith(requested.value + ".")
 }
 
 /**
@@ -174,7 +185,7 @@ data class CodeActionParams(
     override val partialResultToken: ProgressToken? = null,
 ) : WorkDoneProgressParams, PartialResultParams {
     fun shouldProvideKind(kind: CodeActionKind): Boolean =
-        context.only == null || kind in context.only
+        context.only == null || context.only.any { kind.isKindOf(it) }
 }
 
 /**
@@ -224,7 +235,8 @@ enum class CodeActionTriggerKind(val value: Int) {
     class Serializer : EnumAsIntSerializer<CodeActionTriggerKind>(
         serialName = CodeActionTriggerKind::class.simpleName!!,
         serialize = CodeActionTriggerKind::value,
-        deserialize = { entries[it - 1] },
+        deserialize = { entries.getOrNull(it - 1) },
+        fallback = CodeActionTriggerKind.Invoked,
     )
 }
 

@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.execution.eel
 
 import com.intellij.execution.configurations.PathEnvironmentVariableUtil
@@ -9,15 +9,17 @@ import com.intellij.execution.eel.processOutputReader.OutStream.STDERR
 import com.intellij.execution.eel.processOutputReader.OutStream.STDOUT
 import com.intellij.execution.eel.processOutputReader.OutputType
 import com.intellij.execution.eel.processOutputReader.ProcessOutputReader
-import com.intellij.execution.process.UnixSignal
 import com.intellij.openapi.diagnostic.fileLogger
 import com.intellij.openapi.util.SystemInfoRt
 import com.intellij.platform.eel.EelExecApi.Pty
+import com.intellij.platform.eel.EelPlatform
 import com.intellij.platform.eel.EelPosixProcess
 import com.intellij.platform.eel.EelProcess
 import com.intellij.platform.eel.EelWindowsProcess
 import com.intellij.platform.eel.ExecuteProcessException
 import com.intellij.platform.eel.ThrowsChecked
+import com.intellij.platform.eel.UnixSignal
+import com.intellij.platform.eel.convertToJVMProcess
 import com.intellij.platform.eel.getShell
 import com.intellij.platform.eel.impl.local.getShellFromPasswdRecords
 import com.intellij.platform.eel.isPosix
@@ -25,6 +27,7 @@ import com.intellij.platform.eel.provider.LocalEelDescriptor
 import com.intellij.platform.eel.provider.localEel
 import com.intellij.platform.eel.provider.utils.sendWholeText
 import com.intellij.platform.eel.spawnProcess
+import com.intellij.platform.eel.terminate
 import com.intellij.platform.eel.where
 import com.intellij.platform.tests.eelHelpers.EelHelper
 import com.intellij.platform.tests.eelHelpers.ttyAndExit.Command
@@ -40,22 +43,31 @@ import io.mockk.coEvery
 import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.hamcrest.CoreMatchers.anyOf
 import org.hamcrest.CoreMatchers.`is`
 import org.hamcrest.MatcherAssert.assertThat
 import org.junit.jupiter.api.Assertions
+import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestFactory
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
+import java.util.concurrent.LinkedBlockingQueue
+import kotlin.coroutines.CoroutineContext
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
@@ -161,13 +173,12 @@ class EelLocalExecApiTest {
       }
     }
 
-    val outputType =
-      if (ptyManagement.hasTTY) {
-        OutputType.TTY(PTY_COLS, PTY_ROWS)
-      }
-      else {
-        OutputType.NoTTY(process.stderr)
-      }
+    val outputType = if (ptyManagement.hasTTY) {
+      OutputType.TTY(PTY_COLS, PTY_ROWS)
+    }
+    else {
+      OutputType.NoTTY(process.stderr)
+    }
     ProcessOutputReader(process.stdout, outputType).use { output ->
 
       withTimeout(30.seconds) {
@@ -243,14 +254,16 @@ class EelLocalExecApiTest {
         assertNotEquals(0, exitCode) //Brutal kill is never 0
       }
       ExitType.TERMINATE -> {
-        if (SystemInfoRt.isWindows) { // We provide 0 as `ExitProcess` on Windows
-          assertEquals(0, exitCode)
-        }
-        else {
-          val sigCode = UnixSignal.SIGTERM.getSignalNumber(SystemInfoRt.isMac)
-          assertThat("Exit code must be signal code or +128 (if run using shell)",
-                     exitCode,
-                     anyOf(`is`(sigCode), `is`(sigCode + UnixSignal.EXIT_CODE_OFFSET)))
+        when (val platform = localEel.platform) {
+          is EelPlatform.Posix -> {
+            val sigCode = UnixSignal.SIGTERM.getSignalNumber(UnixSignal.PlatformHint.FromEelPlatform(platform))
+            assertThat("Exit code must be signal code or +128 (if run using shell)",
+                       exitCode,
+                       anyOf(`is`(sigCode), `is`(sigCode + UnixSignal.EXIT_CODE_OFFSET)))
+          }
+          is EelPlatform.Windows -> {
+            assertEquals(0, exitCode) // We provide 0 as `ExitProcess` on Windows
+          }
         }
       }
       ExitType.INTERRUPT -> {
@@ -331,6 +344,69 @@ class EelLocalExecApiTest {
   }
 
   /**
+   * The OS process exists before `spawnProcess` returns its handle, so cancellation in between must not leave a
+   * running process behind: no caller would hold a handle to kill it.
+   */
+  @Test
+  // the spawn scope is deliberately unparented: the test owns its dispatcher, its cancellation, and its draining
+  @Suppress("checkedExceptions", "SSBasedInspection")
+  fun `test cancelled spawn kills the process it could not hand over`(): Unit = timeoutRunBlocking(1.minutes) {
+    assumeTrue(SystemInfoRt.isUnix, "The test needs a long-running executable with a stable path")
+
+    // Continuations are queued instead of executed, so the resumption that carries the process handle back to the
+    // caller can be cancelled deterministically instead of being raced against.
+    val queuedContinuations = LinkedBlockingQueue<Runnable>()
+    val queueingDispatcher = object : CoroutineDispatcher() {
+      override fun dispatch(context: CoroutineContext, block: Runnable) {
+        queuedContinuations.put(block)
+      }
+    }
+    val spawnJob = Job()
+    val childrenBefore = ProcessHandle.current().children().map { it.pid() }.toList()
+    var spawned: List<ProcessHandle> = emptyList()
+    try {
+      CoroutineScope(queueingDispatcher + spawnJob).launch {
+        val process = localEel.exec.spawnProcess("/bin/sleep").args("300").eelIt()
+        // The handle did reach the caller, so killing it is the caller's job now.
+        withContext(NonCancellable) { process.kill() }
+      }
+
+      // The first continuation is the coroutine itself; it runs until the spawn switches to another dispatcher.
+      withTimeout(20.seconds) {
+        var started = false
+        while (!started) {
+          started = queuedContinuations.poll()?.also { it.run() } != null
+          if (!started) delay(10.milliseconds)
+        }
+      }
+      // Once the next continuation is queued, `Process.start` has returned, so the process exists and is untouched:
+      // its handle is on its way back to the caller and nothing has killed it yet.
+      withTimeout(20.seconds) {
+        while (queuedContinuations.isEmpty()) delay(10.milliseconds)
+      }
+      spawned = ProcessHandle.current().children().filter { it.pid() !in childrenBefore }.toList()
+      Assertions.assertFalse(spawned.isEmpty(), "The spawned process is not a child of this process")
+
+      spawnJob.cancel()
+
+      // Whoever ends up owning the process must kill it: the caller when the handle got through, EEL itself otherwise.
+      withTimeout(20.seconds) {
+        while (spawned.any { it.isAlive }) {
+          queuedContinuations.poll()?.run()
+          delay(10.milliseconds)
+        }
+      }
+    }
+    finally {
+      spawned.forEach { it.destroyForcibly() }
+      while (true) {
+        val continuation = queuedContinuations.poll() ?: break
+        runCatching { continuation.run() }
+      }
+    }
+  }
+
+  /**
    * Sends [command] to the helper and flush
    */
   private suspend fun EelProcess.sendCommand(command: Command) {
@@ -338,7 +414,7 @@ class EelLocalExecApiTest {
   }
 
   private val EelProcess.isWinConPtyProcess: Boolean
-    get() = this is EelWindowsProcess && convertToJavaProcess()::class.java.name == "com.pty4j.windows.conpty.WinConPtyProcess"
+    get() = this is EelWindowsProcess && convertToJVMProcess()::class.java.name == "com.pty4j.windows.conpty.WinConPtyProcess"
 }
 
 private val DROP_HELLO = Regex("^.*$HELLO")

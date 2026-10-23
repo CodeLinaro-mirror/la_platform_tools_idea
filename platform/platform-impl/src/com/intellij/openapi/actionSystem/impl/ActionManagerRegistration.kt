@@ -8,6 +8,7 @@
 package com.intellij.openapi.actionSystem.impl
 
 import com.intellij.diagnostic.PluginException
+import com.intellij.diagnostic.rethrowControlFlowException
 import com.intellij.ide.plugins.IdeaPluginDescriptor
 import com.intellij.ide.plugins.PluginManager
 import com.intellij.ide.plugins.PluginManagerCore
@@ -305,14 +306,16 @@ internal fun reportActionIdCollision(
   oldAction: AnAction?,
   oldPluginId: PluginId?,
 ) {
-  val oldPluginInfo = oldPluginId?.let { getPluginInfo(it) }
+  val oldPluginInfo = oldPluginId?.let { getPluginInfo(it) + " (plugin $oldPluginId)" } ?: "<no-plugin>"
+  val pluginInfo = pluginId?.let { getPluginInfo(it) + " (plugin $pluginId)" } ?: "<no-plugin>"
+
   val message = "ID '$actionId' is already taken by action ${actionToString(oldAction)} $oldPluginInfo. " +
-                "Action ${actionToString(action)} cannot use the same ID"
+                "Action ${actionToString(action)} $pluginInfo cannot use the same ID"
   if (pluginId == null) {
     actionManagerImplLog.error(message)
   }
   else {
-    actionManagerImplLog.error(PluginException("$message (plugin $pluginId)", null, pluginId))
+    actionManagerImplLog.error(PluginException(message, null, pluginId))
   }
 }
 
@@ -543,6 +546,16 @@ internal fun unregisterAction(actionId: String, actionRegistrar: ActionRegistrar
   ModifierKeyDoubleClickHandler.scheduleKeymapShortcutSyncIfCreated()
 }
 
+private fun reportReplaceActionError(message: String, pluginId: PluginId?) {
+  val module = if (pluginId == null) null else PluginManagerCore.getPluginSet().findEnabledPlugin(pluginId)
+  if (module == null) {
+    actionManagerImplLog.error(PluginException("$message $pluginId", null, pluginId))
+  }
+  else {
+    reportActionManagerError(module, message)
+  }
+}
+
 internal fun replaceAction(actionId: String, newAction: AnAction, pluginId: PluginId?, actionRegistrar: ActionRegistrar): AnAction? {
   val state = actionRegistrar.state
   if (state.isActionProhibited(actionId)) {
@@ -551,15 +564,8 @@ internal fun replaceAction(actionId: String, newAction: AnAction, pluginId: Plug
 
   val existingNewActionId = state.getActionId(newAction)
   if (existingNewActionId != null && existingNewActionId != actionId) {
-    val module = if (pluginId == null) null else PluginManagerCore.getPluginSet().findEnabledPlugin(pluginId)
-    val message = "ID '$existingNewActionId' is already taken by action ${actionToString(newAction)}." +
-                  " ID '$actionId' cannot be registered for the same action"
-    if (module == null) {
-      actionManagerImplLog.error(PluginException("$message $pluginId", null, pluginId))
-    }
-    else {
-      reportActionManagerError(module, message)
-    }
+    reportReplaceActionError("ID '$existingNewActionId' is already taken by action ${actionToString(newAction)}." +
+                             " ID '$actionId' cannot be registered for the same action", pluginId)
     return null
   }
 
@@ -574,11 +580,11 @@ internal fun replaceAction(actionId: String, newAction: AnAction, pluginId: Plug
   // valid indices >= 0
   val oldIndex = state.getRegistrationIndex(actionId)
   if (oldAction != null) {
-    state.putBaseAction(actionId, oldAction)
-    val isGroup = oldAction is ActionGroup
-    check(isGroup == newAction is ActionGroup) {
-      "cannot replace a group with an action and vice versa: $actionId"
+    if (oldAction is ActionGroup != newAction is ActionGroup) {
+      reportReplaceActionError("cannot replace a group with an action and vice versa: $actionId", pluginId)
+      return null
     }
+    state.putBaseAction(actionId, oldAction)
 
     if (oldGroups.isNotEmpty()) {
       for (groupId in oldGroups) {
@@ -602,7 +608,6 @@ internal fun replaceAction(actionId: String, newAction: AnAction, pluginId: Plug
   return oldAction
 }
 
-@Suppress("RedundantIf")
 internal fun registerOrReplaceActionInner(
   element: XmlElement,
   id: String,
@@ -614,10 +619,17 @@ internal fun registerOrReplaceActionInner(
     return false
   }
 
+  val overrides = element.attributes.get(OVERRIDES_ATTR_NAME).toBoolean()
+  val keepContent = element.attributes.get(KEEP_CONTENT_ATTR_NAME).toBoolean()
+  if (keepContent && !(overrides && action is ActionGroup)) {
+    reportActionManagerError(plugin, "'$id': \"$KEEP_CONTENT_ATTR_NAME\" attribute is allowed only on a group with $OVERRIDES_ATTR_NAME=\"true\"")
+    return false
+  }
+
   // XML add-to-group links are processed by callers only after this returns true. This keeps failed registrations from leaving
   // stale group children or groupMappings entries.
   return actionRegistrar.state.withLock {
-    if (element.attributes.get(OVERRIDES_ATTR_NAME).toBoolean()) {
+    if (overrides) {
       val actionOrStub = getAction(id = id, canReturnStub = true, actionRegistrar = actionRegistrar)
       if (actionOrStub == null) {
         actionManagerImplLog.error("'$id' action group in '${plugin.name}' does not override anything")
@@ -631,9 +643,24 @@ internal fun registerOrReplaceActionInner(
       if (prev == null) {
         return@withLock false
       }
-      if (action is DefaultActionGroup && prev is DefaultActionGroup) {
-        if (element.attributes.get("keep-content").toBoolean()) {
-          action.copyFromGroup(prev)
+      if (keepContent) {
+        if (action is DefaultActionGroup && prev is DefaultActionGroup) {
+          action.copyFrom(prev)
+          action.isPopup = prev.isPopup
+          if (action is ActionGroupStub) {
+            // the inherited popup flag must survive the stub-to-class conversion in ActionGroupStub.initGroup
+            action.popupDefinedInXml = true
+          }
+          action.mergeFrom(prev)
+          // replaceAction removed the replaced group's child mappings; the transplanted children stay members under the same id
+          prev.childActionsOrStubs.forEach { child ->
+            val childId = if (child is ActionStubBase) child.id else actionRegistrar.state.getActionId(child)
+            childId?.let { actionRegistrar.state.addGroupMapping(actionId = it, groupId = id) }
+          }
+        }
+        else {
+          reportActionManagerError(plugin, "'$id': \"$KEEP_CONTENT_ATTR_NAME\" cannot transplant content from ${prev.javaClass.name};" +
+                                           " ${DefaultActionGroup::class.java.name} required")
         }
       }
     }
@@ -646,7 +673,13 @@ internal fun registerOrReplaceActionInner(
         return@withLock false
       }
     }
-    onActionLoadedFromXml(actionId = id, plugin = plugin)
+    try {
+      onActionLoadedFromXml(actionId = id, plugin = plugin)
+    }
+    catch (e: Throwable) {
+      rethrowControlFlowException(e)
+      actionManagerImplLog.error("Failed to process onActionLoadedFromXml $id", e)
+    }
     true
   }
 }

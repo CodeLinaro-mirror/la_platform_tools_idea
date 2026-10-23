@@ -3,12 +3,15 @@
 
 package org.jetbrains.intellij.build.productLayout.validator
 
+import com.intellij.platform.buildScripts.concurrency.SharedTaskOwner
 import com.intellij.platform.pluginGraph.ContentModuleName
 import com.intellij.platform.pluginSystem.parser.impl.elements.ModuleLoadingRuleValue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.assertj.core.api.Assertions.assertThat
 import org.jetbrains.intellij.build.productLayout.TestFailureLogger
+import org.jetbrains.intellij.build.productLayout.dependency.JpsProjectContext
+import org.jetbrains.intellij.build.productLayout.dependency.jpsProject
 import org.jetbrains.intellij.build.productLayout.dependency.pluginGraph
 import org.jetbrains.intellij.build.productLayout.dependency.runValidationRule
 import org.jetbrains.intellij.build.productLayout.dependency.testGenerationModel
@@ -16,6 +19,9 @@ import org.jetbrains.intellij.build.productLayout.model.error.PluginDependencyEr
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
+import org.junit.jupiter.api.io.TempDir
+import java.nio.file.Files
+import java.nio.file.Path
 
 /**
  * Isolated unit tests for [PluginContentDependencyValidator].
@@ -33,6 +39,13 @@ class PluginContentDependencyValidatorTest {
 
   @Nested
   inner class GraphDependencyQueryTest {
+    private val owner = SharedTaskOwner("GraphDependencyQueryTest")
+
+    @org.junit.jupiter.api.AfterEach
+    fun closeSharedTasks() {
+      owner.close()
+    }
+
     @Test
     fun `validation uses graph deps - available dep causes no error`(): Unit = runBlocking(Dispatchers.Default) {
       // This tests the fix: validation queries EDGE_CONTENT_MODULE_DEPENDS_ON from graph,
@@ -52,7 +65,7 @@ class PluginContentDependencyValidatorTest {
         linkContentModuleDeps("content.module", "available.dep")
       }
 
-      val model = testGenerationModel(graph)
+      val model = testGenerationModel(graph, owner = owner)
       val errors = runValidationRule(PluginContentDependencyValidator, model)
 
       assertThat(errors).isEmpty()
@@ -74,7 +87,7 @@ class PluginContentDependencyValidatorTest {
         // Even if JPS had deps, validation should not see them
       }
 
-      val model = testGenerationModel(graph)
+      val model = testGenerationModel(graph, owner = owner)
       val errors = runValidationRule(PluginContentDependencyValidator, model)
 
       // No errors because graph has no deps to validate
@@ -84,6 +97,13 @@ class PluginContentDependencyValidatorTest {
 
   @Nested
   inner class MissingDependencyTest {
+    private val owner = SharedTaskOwner("MissingDependencyTest")
+
+    @org.junit.jupiter.api.AfterEach
+    fun closeSharedTasks() {
+      owner.close()
+    }
+
     @Test
     fun `reports missing dependency not in any module set or plugin`(): Unit = runBlocking(Dispatchers.Default) {
       val graph = pluginGraph {
@@ -97,7 +117,7 @@ class PluginContentDependencyValidatorTest {
         linkContentModuleDeps("content.module", "missing.dep")
       }
 
-      val model = testGenerationModel(graph)
+      val model = testGenerationModel(graph, owner = owner)
       val errors = runValidationRule(PluginContentDependencyValidator, model)
 
       assertThat(errors).hasSize(1)
@@ -122,7 +142,7 @@ class PluginContentDependencyValidatorTest {
         linkContentModuleDeps("content.module", "dep.module")
       }
 
-      val model = testGenerationModel(graph)
+      val model = testGenerationModel(graph, owner = owner)
       val errors = runValidationRule(PluginContentDependencyValidator, model)
 
       assertThat(errors).isEmpty()
@@ -147,7 +167,7 @@ class PluginContentDependencyValidatorTest {
         linkContentModuleDeps("content.module", "dep.module")
       }
 
-      val model = testGenerationModel(graph)
+      val model = testGenerationModel(graph, owner = owner)
       val errors = runValidationRule(PluginContentDependencyValidator, model)
 
       assertThat(errors).hasSize(1)
@@ -169,7 +189,7 @@ class PluginContentDependencyValidatorTest {
         linkContentModuleDeps("content.module.a", "content.module.b")
       }
 
-      val model = testGenerationModel(graph)
+      val model = testGenerationModel(graph, owner = owner)
       val errors = runValidationRule(PluginContentDependencyValidator, model)
 
       assertThat(errors).isEmpty()
@@ -178,6 +198,13 @@ class PluginContentDependencyValidatorTest {
 
   @Nested
   inner class FilteredDependencyAllowlistTest {
+    private val owner = SharedTaskOwner("FilteredDependencyAllowlistTest")
+
+    @org.junit.jupiter.api.AfterEach
+    fun closeSharedTasks() {
+      owner.close()
+    }
+
     @Test
     fun `allowed test library module is ignored in filtered deps`(): Unit = runBlocking(Dispatchers.Default) {
       val graph = pluginGraph {
@@ -198,6 +225,7 @@ class PluginContentDependencyValidatorTest {
         testLibraryAllowedInModule = mapOf(
           ContentModuleName("content.module") to setOf("intellij.libraries.assertj.core"),
         ),
+        owner = owner,
       )
       val errors = runValidationRule(PluginContentDependencyValidator, model)
 
@@ -207,6 +235,13 @@ class PluginContentDependencyValidatorTest {
 
   @Nested
   inner class TestPluginEdgeTypeTest {
+    private val owner = SharedTaskOwner("TestPluginEdgeTypeTest")
+
+    @org.junit.jupiter.api.AfterEach
+    fun closeSharedTasks() {
+      owner.close()
+    }
+
     @Test
     fun `test plugin uses TEST edge type - sees test deps`(): Unit = runBlocking(Dispatchers.Default) {
       // Test plugins should include EDGE_CONTENT_MODULE_DEPENDS_ON_TEST
@@ -225,7 +260,7 @@ class PluginContentDependencyValidatorTest {
         linkContentModuleTestDeps("test.content", "test.dep")
       }
 
-      val model = testGenerationModel(graph)
+      val model = testGenerationModel(graph, owner = owner)
       val errors = runValidationRule(PluginContentDependencyValidator, model)
 
       // No error - test.dep is available and test plugin sees TEST edges
@@ -245,7 +280,7 @@ class PluginContentDependencyValidatorTest {
         linkContentModuleDeps("test.content", "missing.prod.dep")
       }
 
-      val model = testGenerationModel(graph)
+      val model = testGenerationModel(graph, owner = owner)
       val errors = runValidationRule(PluginContentDependencyValidator, model)
 
       assertThat(errors).hasSize(1)
@@ -268,7 +303,7 @@ class PluginContentDependencyValidatorTest {
         // Note: no linkContentModuleDeps for prod.content
       }
 
-      val model = testGenerationModel(graph)
+      val model = testGenerationModel(graph, owner = owner)
       val errors = runValidationRule(PluginContentDependencyValidator, model)
 
       // No error - production validation uses EDGE_CONTENT_MODULE_DEPENDS_ON,
@@ -289,7 +324,7 @@ class PluginContentDependencyValidatorTest {
         linkContentModuleTestDeps("test.content", "missing.test.dep")
       }
 
-      val model = testGenerationModel(graph)
+      val model = testGenerationModel(graph, owner = owner)
       val errors = runValidationRule(PluginContentDependencyValidator, model)
 
       assertThat(errors).hasSize(1)
@@ -302,13 +337,20 @@ class PluginContentDependencyValidatorTest {
 
   @Nested
   inner class EmptyAndEdgeCasesTest {
+    private val owner = SharedTaskOwner("EmptyAndEdgeCasesTest")
+
+    @org.junit.jupiter.api.AfterEach
+    fun closeSharedTasks() {
+      owner.close()
+    }
+
     @Test
     fun `no error when no bundled plugins`(): Unit = runBlocking(Dispatchers.Default) {
       val graph = pluginGraph {
         product("IDEA")
       }
 
-      val model = testGenerationModel(graph)
+      val model = testGenerationModel(graph, owner = owner)
       val errors = runValidationRule(PluginContentDependencyValidator, model)
 
       assertThat(errors).isEmpty()
@@ -325,10 +367,132 @@ class PluginContentDependencyValidatorTest {
         }
       }
 
-      val model = testGenerationModel(graph)
+      val model = testGenerationModel(graph, owner = owner)
       val errors = runValidationRule(PluginContentDependencyValidator, model)
 
       assertThat(errors).isEmpty()
     }
   }
+
+  /**
+   * A `private` content module is only reachable from the plugin that declares it. Before IJPL-252475 the model
+   * accepted any bundled plugin as a provider, so a production plugin packaging its own copy of a library wrapper
+   * silently satisfied every other plugin's dependency on it, and the missing declaration only surfaced when the IDE
+   * refused to load the module (IJPL-252452).
+   */
+  @Nested
+  inner class ContentModuleVisibilityTest {
+    private val owner = SharedTaskOwner("ContentModuleVisibilityTest")
+
+    @org.junit.jupiter.api.AfterEach
+    fun closeSharedTasks() {
+      owner.close()
+    }
+
+    @Test
+    fun `private module of another plugin does not satisfy a dependency`(@TempDir tempDir: Path): Unit = runBlocking(Dispatchers.Default) {
+      val jps = privateWrapperProject(tempDir)
+      val graph = pluginGraph {
+        product("IDEA") {
+          bundlesPlugin("owner.plugin")
+          bundlesPlugin("consumer.plugin")
+        }
+        plugin("owner.plugin") {
+          content(WRAPPER_MODULE, loading = ModuleLoadingRuleValue.EMBEDDED)
+        }
+        plugin("consumer.plugin") {
+          content("consumer.module", loading = ModuleLoadingRuleValue.REQUIRED)
+        }
+        linkContentModuleDeps("consumer.module", WRAPPER_MODULE)
+      }
+
+      val model = testGenerationModel(graph, outputProvider = jps.outputProvider, owner = owner)
+      val errors = runValidationRule(PluginContentDependencyValidator, model)
+
+      assertThat(errors).hasSize(1)
+      val error = errors[0] as PluginDependencyError
+      assertThat(error.missingDependencies.keys).contains(ContentModuleName(WRAPPER_MODULE))
+    }
+
+    @Test
+    fun `private module declared by the depending plugin satisfies the dependency`(@TempDir tempDir: Path): Unit = runBlocking(Dispatchers.Default) {
+      val jps = privateWrapperProject(tempDir)
+      val graph = pluginGraph {
+        product("IDEA") {
+          bundlesPlugin("owner.plugin")
+          bundlesPlugin("consumer.plugin")
+        }
+        plugin("owner.plugin") {
+          content(WRAPPER_MODULE, loading = ModuleLoadingRuleValue.EMBEDDED)
+        }
+        plugin("consumer.plugin") {
+          content("consumer.module", loading = ModuleLoadingRuleValue.REQUIRED)
+          content(WRAPPER_MODULE, loading = ModuleLoadingRuleValue.EMBEDDED)
+        }
+        linkContentModuleDeps("consumer.module", WRAPPER_MODULE)
+      }
+
+      val model = testGenerationModel(graph, outputProvider = jps.outputProvider, owner = owner)
+      val errors = runValidationRule(PluginContentDependencyValidator, model)
+
+      assertThat(errors).isEmpty()
+    }
+
+    @Test
+    fun `internal module of another plugin still satisfies a dependency`(@TempDir tempDir: Path): Unit = runBlocking(Dispatchers.Default) {
+      val jps = wrapperProject(tempDir, visibility = "internal")
+      val graph = pluginGraph {
+        product("IDEA") {
+          bundlesPlugin("owner.plugin")
+          bundlesPlugin("consumer.plugin")
+        }
+        plugin("owner.plugin") {
+          content(WRAPPER_MODULE, loading = ModuleLoadingRuleValue.EMBEDDED)
+        }
+        plugin("consumer.plugin") {
+          content("consumer.module", loading = ModuleLoadingRuleValue.REQUIRED)
+        }
+        linkContentModuleDeps("consumer.module", WRAPPER_MODULE)
+      }
+
+      val model = testGenerationModel(graph, outputProvider = jps.outputProvider, owner = owner)
+      val errors = runValidationRule(PluginContentDependencyValidator, model)
+
+      assertThat(errors).isEmpty()
+    }
+
+    private fun privateWrapperProject(tempDir: Path): JpsProjectContext = wrapperProject(tempDir, visibility = "private")
+
+    /**
+     * `consumer.module` declares the dependency in its own descriptor: only a declared dependency is resolved by the
+     * plugin system, and only a declared one is subject to the visibility check.
+     */
+    private fun wrapperProject(tempDir: Path, visibility: String): JpsProjectContext {
+      val jps = jpsProject(tempDir) {
+        module(WRAPPER_MODULE) {
+          resourceRoot()
+        }
+        module("consumer.module") {
+          resourceRoot()
+        }
+      }
+      Files.writeString(
+        tempDir.resolve(WRAPPER_MODULE.replace('.', '/')).resolve("resources/$WRAPPER_MODULE.xml"),
+        "<idea-plugin visibility=\"$visibility\">\n</idea-plugin>",
+      )
+      Files.writeString(
+        tempDir.resolve("consumer/module").resolve("resources/consumer.module.xml"),
+        """
+          |<idea-plugin>
+          |  <dependencies>
+          |    <module name="$WRAPPER_MODULE"/>
+          |  </dependencies>
+          |</idea-plugin>
+        """.trimMargin(),
+      )
+      return jps
+    }
+  }
 }
+
+private const val WRAPPER_MODULE = "intellij.libraries.wrapper"

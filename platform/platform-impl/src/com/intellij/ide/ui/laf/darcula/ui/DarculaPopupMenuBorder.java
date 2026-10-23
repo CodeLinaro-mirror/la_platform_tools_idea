@@ -2,10 +2,10 @@
 package com.intellij.ide.ui.laf.darcula.ui;
 
 import com.intellij.ide.ui.laf.intellij.IdeaPopupMenuUI;
-import com.intellij.openapi.util.SystemInfoRt;
 import com.intellij.ui.ExperimentalUI;
 import com.intellij.ui.Gray;
 import com.intellij.ui.JBColor;
+import com.intellij.ui.paint.PaintUtil;
 import com.intellij.util.ui.JBInsets;
 import com.intellij.util.ui.JBUI;
 
@@ -14,7 +14,6 @@ import javax.swing.plaf.UIResource;
 import javax.swing.plaf.basic.BasicComboPopup;
 import java.awt.Component;
 import java.awt.Graphics;
-import java.awt.Graphics2D;
 import java.awt.Insets;
 import java.awt.Rectangle;
 import java.awt.Shape;
@@ -28,18 +27,14 @@ public class DarculaPopupMenuBorder extends AbstractBorder implements UIResource
 
   @Override
   public void paintBorder(Component c, Graphics g, int x, int y, int width, int height) {
-    if (IdeaPopupMenuUI.isUnderPopup(c) && (!SystemInfoRt.isWindows || IdeaPopupMenuUI.isRoundBorder())) {
-      return;
+    if (IdeaPopupMenuUI.isRoundBorder()) {
+      return; // the border is painted by the JBR or OS, there's no reliable way to paint a rounded border in the platform
     }
 
-    Graphics2D g2 = (Graphics2D)g.create();
-    try {
+    PaintUtil.useCopy(g, g2 -> {
       g2.setColor(JBColor.namedColor("Menu.borderColor", new JBColor(Gray.xCD, Gray.x51)));
       g2.fill(getBorderShape(c, new Rectangle(x, y, width, height)));
-    }
-    finally {
-      g2.dispose();
-    }
+    });
   }
 
   private static Shape getBorderShape(Component c, Rectangle rect) {

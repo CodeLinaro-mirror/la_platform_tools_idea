@@ -1,3 +1,0 @@
-- name: dist.all/lib/intellij.platform.diagnostic.freezeAnalyzer.jar
-  modules:
-  - name: intellij.platform.diagnostic.freezeAnalyzer

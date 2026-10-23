@@ -18,18 +18,23 @@ class IncompleteDependenciesServiceImpl(private val project: Project) : Incomple
   private val tokens = HashSet<IncompleteDependenciesAccessTokenImpl>()
   private var incompleteModeActivity: StructuredIdeActivity? = null // atomic is not needed because reads/writes are guarded by synchronized
 
-  @RequiresReadLock
+  @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
   override fun getState(): DependenciesState {
     ThreadingAssertions.assertReadAccess() // @RequiresReadLock does nothing in Kotlin
     return stateFlow.value
   }
 
-  @RequiresWriteLock
+  @ApiStatus.Internal
+  override fun getStateUnsafe(): DependenciesState {
+    return stateFlow.value
+  }
+
+  @RequiresWriteLock(generateAssertion = false /* IJPL-115548 */)
   override fun enterIncompleteState(requestor: Any): IncompleteDependenciesAccessToken {
     return issueToken(requestor.javaClass)
   }
 
-  @RequiresWriteLock
+  @RequiresWriteLock(generateAssertion = false /* IJPL-115548 */)
   private fun issueToken(requestor: Class<*>): IncompleteDependenciesAccessTokenImpl {
     ThreadingAssertions.assertWriteAccess() // @RequiresWriteLock does nothing in Kotlin
     synchronized(tokens) {
@@ -54,7 +59,7 @@ class IncompleteDependenciesServiceImpl(private val project: Project) : Incomple
     }
   }
 
-  @RequiresWriteLock
+  @RequiresWriteLock(generateAssertion = false /* IJPL-115548 */)
   private fun deregisterToken(token: IncompleteDependenciesAccessTokenImpl) {
     ThreadingAssertions.assertWriteAccess() // @RequiresWriteLock does nothing in Kotlin
     synchronized(tokens) {
@@ -71,7 +76,7 @@ class IncompleteDependenciesServiceImpl(private val project: Project) : Incomple
     }
   }
 
-  @RequiresWriteLock
+  @RequiresWriteLock(generateAssertion = false /* IJPL-115548 */)
   private fun updateState(stateBefore: DependenciesState, stateAfter: DependenciesState) {
     ThreadingAssertions.assertWriteAccess() // @RequiresWriteLock does nothing in Kotlin
 
@@ -84,7 +89,7 @@ class IncompleteDependenciesServiceImpl(private val project: Project) : Incomple
   }
 
   private inner class IncompleteDependenciesAccessTokenImpl(val subtaskActivity: StructuredIdeActivity, val requestor: Class<*>) : IncompleteDependenciesAccessToken() {
-    @RequiresWriteLock
+    @RequiresWriteLock(generateAssertion = false /* IJPL-115548 */)
     override fun finish() {
       deregisterToken(this)
     }

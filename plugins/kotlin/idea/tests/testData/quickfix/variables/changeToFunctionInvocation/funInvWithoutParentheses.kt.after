@@ -1,5 +1,5 @@
 // "Change to function invocation" "true"
-// K2_ERROR: Function invocation 'foo()' expected.
+// K2_ERROR: FUNCTION_CALL_EXPECTED
 package a
 
 fun foo() {}
@@ -9,4 +9,3 @@ fun test() {
 }
 
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ChangeToFunctionInvocationFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ChangeToFunctionInvocationFix

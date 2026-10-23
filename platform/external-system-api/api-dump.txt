@@ -104,7 +104,6 @@ com.intellij.openapi.externalSystem.autoimport.ExternalSystemProjectTracker
 - a:register(com.intellij.openapi.externalSystem.autoimport.ExternalSystemProjectAware):V
 - register(com.intellij.openapi.externalSystem.autoimport.ExternalSystemProjectAware,com.intellij.openapi.Disposable):V
 - a:remove(com.intellij.openapi.externalSystem.autoimport.ExternalSystemProjectId):V
-- a:scheduleChangeProcessing():V
 - a:scheduleProjectRefresh():V
 f:com.intellij.openapi.externalSystem.autoimport.ExternalSystemProjectTracker$Companion
 - f:getInstance(com.intellij.openapi.project.Project):com.intellij.openapi.externalSystem.autoimport.ExternalSystemProjectTracker
@@ -313,6 +312,7 @@ f:com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerView
 com.intellij.openapi.externalSystem.execution.ExternalSystemExecutionConsoleManager
 - sf:EP_NAME:com.intellij.openapi.extensions.ExtensionPointName
 - attachExecutionConsole(com.intellij.openapi.project.Project,com.intellij.openapi.externalSystem.model.task.ExternalSystemTask,com.intellij.execution.runners.ExecutionEnvironment,com.intellij.execution.process.ProcessHandler):com.intellij.execution.ui.ExecutionConsole
+- getExecutionConsoleSettings():com.intellij.build.BuildViewSettingsProvider
 - a:getExternalSystemId():com.intellij.openapi.externalSystem.model.ProjectSystemId
 - a:getRestartActions(com.intellij.execution.ui.ExecutionConsole):com.intellij.openapi.actionSystem.AnAction[]
 - a:isApplicableFor(com.intellij.openapi.externalSystem.model.task.ExternalSystemTask):Z
@@ -1421,12 +1421,6 @@ f:com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil
 - s:toCanonicalPath(java.lang.String):java.lang.String
 - s:toExternalSource(com.intellij.openapi.externalSystem.model.ProjectSystemId):com.intellij.openapi.roots.ProjectModelExternalSource
 - s:visit(com.intellij.openapi.externalSystem.model.DataNode,java.util.function.Consumer):V
-c:com.intellij.openapi.externalSystem.util.ExternalSystemBundle
-- com.intellij.DynamicBundle
-- sf:PATH_TO_BUNDLE:java.lang.String
-- <init>():V
-- s:message(java.lang.String,java.lang.Object[]):java.lang.String
-- s:messagePointer(java.lang.String,java.lang.Object[]):java.util.function.Supplier
 f:com.intellij.openapi.externalSystem.util.ExternalSystemConstants
 - sf:BUILTIN_LIBRARY_DATA_SERVICE_ORDER:I
 - sf:BUILTIN_MODULE_DATA_SERVICE_ORDER:I

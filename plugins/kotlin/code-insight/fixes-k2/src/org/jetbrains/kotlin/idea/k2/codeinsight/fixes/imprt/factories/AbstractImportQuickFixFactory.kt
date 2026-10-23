@@ -13,29 +13,30 @@ import org.jetbrains.kotlin.idea.k2.codeinsight.fixes.imprt.ImportPositionTypeAn
 import org.jetbrains.kotlin.idea.k2.codeinsight.fixes.imprt.ImportQuickFixProvider
 import org.jetbrains.kotlin.name.Name
 
-/**
- * Note: Do not confuse with [org.jetbrains.kotlin.idea.k2.codeinsight.fixes.imprt.KotlinAddImportActionFactory].
- */
 @Internal
 abstract class AbstractImportQuickFixFactory : KotlinQuickFixFactory.IntentionBased<KaDiagnosticWithPsi<*>> {
 
     /**
      * Returns the detected [ImportPositionTypeAndReceiver] for the given diagnostic.
      */
-    internal abstract fun KaSession.detectPositionContext(diagnostic: KaDiagnosticWithPsi<*>): ImportContext?
+    context(session: KaSession)
+    internal abstract fun detectPositionContext(diagnostic: KaDiagnosticWithPsi<*>): ImportContext?
 
     internal abstract fun provideUnresolvedNames(diagnostic: KaDiagnosticWithPsi<*>, importContext: ImportContext): Set<Name>
 
-    internal abstract fun KaSession.provideImportCandidates(
+    context(session: KaSession)
+    internal abstract fun provideImportCandidates(
         unresolvedName: Name,
         importContext: ImportContext,
         indexProvider: KtSymbolFromIndexProvider,
     ): List<ImportCandidate>
 
-    override fun KaSession.createQuickFixes(diagnostic: KaDiagnosticWithPsi<*>): List<IntentionAction> =
+    context(session: KaSession)
+    override fun createQuickFixes(diagnostic: KaDiagnosticWithPsi<*>): List<IntentionAction> =
         createQuickFixes(setOf(diagnostic))
 
-    fun KaSession.createQuickFixes(diagnostics: Set<KaDiagnosticWithPsi<*>>): List<IntentionAction> {
+    context(session: KaSession)
+    fun createQuickFixes(diagnostics: Set<KaDiagnosticWithPsi<*>>): List<IntentionAction> {
         return diagnostics
             .mapNotNull { diagnostic ->
                 val positionContext = detectPositionContext(diagnostic) ?: return@mapNotNull null

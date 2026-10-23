@@ -18,6 +18,7 @@ import com.intellij.openapi.application.ApplicationListener
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.ModalityState
+import com.intellij.openapi.application.WriteIntentReadAction
 import com.intellij.openapi.application.impl.TestOnlyThreading
 import com.intellij.openapi.application.runInEdt
 import com.intellij.openapi.application.runReadActionBlocking
@@ -227,7 +228,7 @@ class LineStatusTrackerManager(
     return getLineStatusTracker(document)
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   override fun requestTrackerFor(document: Document, requester: Any) {
     synchronized(LOCK) {
       if (isDisposed) {
@@ -245,7 +246,7 @@ class LineStatusTrackerManager(
     }
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   override fun releaseTrackerFor(document: Document, requester: Any) {
     synchronized(LOCK) {
       val multiset = forcedDocuments[document]
@@ -301,7 +302,7 @@ class LineStatusTrackerManager(
   }
 
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private fun checkIfTrackerCanBeReleased(document: Document) {
     synchronized(LOCK) {
       val data = trackers[document] ?: return
@@ -337,7 +338,7 @@ class LineStatusTrackerManager(
   }
 
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private fun onEverythingChanged() {
     synchronized(LOCK) {
       if (isDisposed) return
@@ -359,7 +360,7 @@ class LineStatusTrackerManager(
     }
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private fun onFileChanged(virtualFile: VirtualFile) {
     val document = FileDocumentManager.getInstance().getCachedDocument(virtualFile) ?: return
 
@@ -523,7 +524,7 @@ class LineStatusTrackerManager(
     }
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private fun releaseTracker(document: Document, wasUnbound: Boolean = false) {
     val data = trackers.remove(document) ?: return
     if (!project.isDisposed) {
@@ -559,14 +560,14 @@ class LineStatusTrackerManager(
                                        settings.SHOW_WHITESPACES_IN_LST)
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private fun refreshTracker(
     tracker: LocalLineStatusTracker<*>,
     provider: LocalLineStatusTrackerProvider,
   ) {
     if (isDisposed) return
     if (provider !is LineStatusTrackerContentLoader) return
-    loader.scheduleRefresh(RefreshRequest(tracker.document, provider))
+    loader.scheduleRefresh(RefreshRequest(tracker.document, tracker.virtualFile, provider))
 
     log("Refresh queued", tracker.virtualFile)
   }
@@ -579,12 +580,12 @@ class LineStatusTrackerManager(
     override fun loadRequest(request: RefreshRequest): Result<RefreshData> {
       if (isDisposed) return Result.Canceled()
       val document = request.document
-      val virtualFile = FileDocumentManager.getInstance().getFile(document)
+      val virtualFile = request.virtualFile
       val loader = request.loader
 
       log("Loading started", virtualFile)
 
-      if (virtualFile == null || !virtualFile.isValid) {
+      if (!virtualFile.isValid) {
         log("Loading error: virtual file is not valid", virtualFile)
         return Result.Error()
       }
@@ -623,7 +624,7 @@ class LineStatusTrackerManager(
       return Result.Success(RefreshData(content, newContentInfo))
     }
 
-    @RequiresEdt
+    @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
     override fun handleResult(request: RefreshRequest, result: Result<RefreshData>) {
       val document = request.document
       when (result) {
@@ -653,11 +654,7 @@ class LineStatusTrackerManager(
     }
 
     private fun handleSuccess(request: RefreshRequest, document: Document, refreshData: RefreshData) {
-      val virtualFile = FileDocumentManager.getInstance().getFile(document)
-      if (virtualFile == null) {
-        log("Loading finished: document is not bound", null)
-        return
-      }
+      val virtualFile = request.virtualFile
 
       val loader = request.loader
 
@@ -709,7 +706,7 @@ class LineStatusTrackerManager(
    * We can speedup initial content loading if it was already loaded by someone.
    * We do not set 'contentInfo' here to ensure, that following refresh will fix potential inconsistency.
    */
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   @ApiStatus.Internal
   fun offerTrackerContent(document: Document, text: CharSequence) {
     try {
@@ -769,9 +766,13 @@ class LineStatusTrackerManager(
     }
 
     override fun editorCreated(event: EditorFactoryEvent) {
-      val editor = event.editor
-      if (isTrackedEditor(editor)) {
-        requestTrackerFor(editor.document, editor)
+      // Editors may be created on EDT without an implicit read lock, while requesting a tracker needs read access
+      // (see ChangelistsLocalStatusTrackerProvider.createTracker -> FileDocumentManager.getDocument). Same as in `install`.
+      WriteIntentReadAction.run {
+        val editor = event.editor
+        if (isTrackedEditor(editor)) {
+          requestTrackerFor(editor.document, editor)
+        }
       }
     }
 
@@ -1029,7 +1030,7 @@ class LineStatusTrackerManager(
     var clmFilePath: FilePath? = null,
   )
 
-  private class RefreshRequest(val document: Document, val loader: LineStatusTrackerContentLoader) {
+  private class RefreshRequest(val document: Document, val virtualFile: VirtualFile, val loader: LineStatusTrackerContentLoader) {
     override fun equals(other: Any?): Boolean = other is RefreshRequest && document == other.document
     override fun hashCode(): Int = document.hashCode()
     override fun toString(): String {
@@ -1069,7 +1070,7 @@ class LineStatusTrackerManager(
   }
 
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun resetExcludedFromCommitMarkers() {
     synchronized(LOCK) {
       val documents = mutableListOf<Document>()
@@ -1106,7 +1107,7 @@ class LineStatusTrackerManager(
     return result
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   internal fun restoreTrackersForPartiallyChangedFiles(trackerStates: List<ChangelistsLocalLineStatusTracker.State>) {
     runWriteAction {
       synchronized(LOCK) {
@@ -1147,7 +1148,7 @@ class LineStatusTrackerManager(
   }
 
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   internal fun notifyInactiveRangesDamaged(virtualFile: VirtualFile) {
     if (filesWithDamagedInactiveRanges.contains(virtualFile) || virtualFile == FileEditorManager.getInstance(project).currentFile) {
       return
@@ -1170,7 +1171,7 @@ class LineStatusTrackerManager(
     InactiveRangesDamagedNotification(project, files).notify(project)
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private fun expireInactiveRangesDamagedNotifications() {
     filesWithDamagedInactiveRanges.clear()
 
@@ -1270,13 +1271,13 @@ private abstract class SingleThreadLoader<Request, T> : Disposable {
   @Suppress("DEPRECATION")
   private val scope = (ApplicationManager.getApplication() as ComponentManagerEx).getCoroutineScope().childScope()
 
-  @RequiresBackgroundThread
+  @RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
   protected abstract fun loadRequest(request: Request): Result<T>
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   protected abstract fun handleResult(request: Request, result: Result<T>)
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun scheduleRefresh(request: Request) {
     if (isDisposed) {
       return
@@ -1292,7 +1293,7 @@ private abstract class SingleThreadLoader<Request, T> : Disposable {
     }
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   override fun dispose() {
     val callbacks = mutableListOf<Runnable>()
     synchronized(LOCK) {
@@ -1308,7 +1309,7 @@ private abstract class SingleThreadLoader<Request, T> : Disposable {
     executeCallbacks(callbacksWaitingUpdateCompletion)
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   protected fun hasRequest(condition: (Request) -> Boolean): Boolean {
     synchronized(LOCK) {
       return taskQueue.any(condition) ||
@@ -1402,7 +1403,7 @@ private abstract class SingleThreadLoader<Request, T> : Disposable {
     }
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private fun notifyTrackerRefreshed() {
     if (isDisposed) return
 
@@ -1417,7 +1418,7 @@ private abstract class SingleThreadLoader<Request, T> : Disposable {
     executeCallbacks(callbacks)
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private fun executeCallbacks(callbacks: List<Runnable>) {
     for (callback in callbacks) {
       try {
@@ -1557,7 +1558,7 @@ interface LocalLineStatusTrackerProvider {
   fun isTrackedFile(project: Project, file: VirtualFile): Boolean
   fun isMyTracker(tracker: LocalLineStatusTracker<*>): Boolean
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun createTracker(project: Project, file: VirtualFile): LocalLineStatusTracker<*>?
 
   companion object {

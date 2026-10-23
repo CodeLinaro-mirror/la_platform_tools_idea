@@ -12,13 +12,16 @@ import com.intellij.refactoring.rename.UnresolvableCollisionUsageInfo
 import com.intellij.usageView.UsageInfo
 import com.intellij.util.text.UniqueNameGenerator
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.components.resolveToCall
-import org.jetbrains.kotlin.analysis.api.resolution.successfulFunctionCallOrNull
+import org.jetbrains.kotlin.analysis.api.components.returnType
+import org.jetbrains.kotlin.analysis.api.resolution.resolveSuccessfulCall
 import org.jetbrains.kotlin.analysis.api.types.KaFunctionType
 import org.jetbrains.kotlin.analysis.api.types.KaType
 import org.jetbrains.kotlin.idea.base.analysis.api.utils.allowAnalysisFromWriteActionInEdt
 import org.jetbrains.kotlin.idea.base.psi.copied
+import org.jetbrains.kotlin.idea.base.psi.deleteParameter
+import org.jetbrains.kotlin.idea.base.psi.deleteValueArgument
 import org.jetbrains.kotlin.idea.base.psi.replaced
+import org.jetbrains.kotlin.idea.base.psi.setFunctionTypeReceiverTypeReference
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.codeinsight.api.classic.intentions.SelfTargetingRangeIntention
 import org.jetbrains.kotlin.idea.k2.refactoring.changeSignature.KotlinChangeInfo
@@ -54,7 +57,6 @@ import org.jetbrains.kotlin.psi.psiUtil.collectDescendantsOfType
 import org.jetbrains.kotlin.psi.psiUtil.containingClassOrObject
 import org.jetbrains.kotlin.psi.psiUtil.getParentOfTypeAndBranch
 import org.jetbrains.kotlin.psi.psiUtil.getValueParameters
-import org.jetbrains.kotlin.psi.typeRefHelpers.setReceiverTypeReference
 
 class ConvertFunctionTypeParameterToReceiverIntention : SelfTargetingRangeIntention<KtTypeReference>(
     KtTypeReference::class.java, KotlinBundle.messagePointer("convert.function.type.parameter.to.receiver")
@@ -68,8 +70,8 @@ class ConvertFunctionTypeParameterToReceiverIntention : SelfTargetingRangeIntent
         val elementBefore =
             (data.changeInfo.method as KtFunction).valueParameters[data.functionParameterIndex].typeReference!!.typeElement as KtFunctionType
         val elementAfter = elementBefore.copied().apply {
-            setReceiverTypeReference(element)
-            parameterList!!.removeParameter(data.typeParameterIndex)
+            setFunctionTypeReceiverTypeReference(element)
+            parameterList!!.deleteParameter(data.typeParameterIndex)
         }
 
         setTextGetter(KotlinBundle.messagePointer("convert.0.to.1", elementBefore.text, elementAfter.text))
@@ -195,9 +197,9 @@ private class Converter(
     }
 
     context(_: KaSession) private fun getArgumentExpressionToProcess(callElement: KtCallElement): KtExpression? {
-        val argumentMapping = callElement.resolveToCall()?.successfulFunctionCallOrNull()?.argumentMapping ?: return null
+        val valueArgumentMapping = callElement.resolveSuccessfulCall()?.valueArgumentMapping ?: return null
         val parameter = data.changeInfo.method.getValueParameters()[data.functionParameterIndex]
-        val entry = argumentMapping.entries.find { (_, value) -> value.name.asString() == parameter.name } ?: return null
+        val entry = valueArgumentMapping.entries.find { (_, value) -> value.name.asString() == parameter.name } ?: return null
         return KtPsiUtil.deparenthesize(entry.key)
     }
 
@@ -251,7 +253,7 @@ private class Converter(
             val expressionToMove = argumentList.arguments.getOrNull(data.typeParameterIndex)?.getArgumentExpression() ?: return null
             val callWithReceiver =
                 KtPsiFactory(project).createExpressionByPattern("$0.$1", expressionToMove, callExpression) as KtQualifiedExpression
-            (callWithReceiver.selectorExpression as KtCallExpression).valueArgumentList!!.removeArgument(data.typeParameterIndex)
+            (callWithReceiver.selectorExpression as KtCallExpression).valueArgumentList!!.deleteValueArgument(data.typeParameterIndex)
             return callExpression.replace(callWithReceiver) as KtElement?
         }
     }
@@ -314,7 +316,7 @@ private class Converter(
                         (ref.element as? KtSimpleNameExpression)?.replace(thisRefExpr)
                     }
                     val lambda = expression.functionLiteral
-                    lambda.valueParameterList!!.removeParameter(parameterToConvert)
+                    lambda.valueParameterList!!.deleteParameter(parameterToConvert)
                     if (lambda.valueParameters.isEmpty()) {
                         lambda.arrow?.delete()
                     }

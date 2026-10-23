@@ -296,8 +296,9 @@ class TerminalTypeAheadOutputModelControllerV2(
   }
 
   private fun updateOutputModel(update: Runnable) {
-    val lookup = LookupManager.getInstance(project).activeLookup
-    if (lookup != null && lookup.editor.isReworkedTerminalEditor) {
+    // No lookup service means no lookup: do not create the service on the first output.
+    val lookup = project.getServiceIfCreated(LookupManager::class.java)?.activeLookup
+    if (lookup != null && lookup.topLevelEditor.isReworkedTerminalEditor) {
       lookup.performGuardedChange(update)
     }
     else {
@@ -336,12 +337,17 @@ class TerminalTypeAheadOutputModelControllerV2(
     val cursorOffset = model.cursorOffset
     val lineIndex = model.getLineByOffset(cursorOffset)
     val lineStart = model.getStartOfLine(lineIndex)
+    // The screen top is carried over unchanged: a prediction never moves the screen.
+    val screenTopLine = model.getLineByOffset(model.screenTopOffset)
+    val screenTopLineStart = model.getStartOfLine(screenTopLine)
     return TerminalContentUpdatedEvent(
       text = text,
       styles = styles,
       startLineLogicalIndex = model.firstLineIndex.toAbsolute(),
       cursorLogicalLineIndex = lineIndex.toAbsolute(),
       cursorColumnIndex = (cursorOffset - lineStart).toInt(),
+      screenTopLogicalLineIndex = screenTopLine.toAbsolute(),
+      screenTopColumnIndex = (model.screenTopOffset - screenTopLineStart).toInt(),
       osc8Hyperlinks = osc8Hyperlinks,
     )
   }

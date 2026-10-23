@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.platform.images.jcef` start
+content_module_jar(module = ":jcef")
+### auto-generated section `dev intellij.platform.images.jcef` end
 
 ### auto-generated section `build intellij.platform.images.jcef` start
-
 jvm_library(
     name = "jcef",
     srcs = glob(
@@ -74,6 +78,7 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.images.jcef.iml",
+        "resources/intellij.platform.images.jcef.xml",
     ],
     visibility = ["//visibility:public"],
 )

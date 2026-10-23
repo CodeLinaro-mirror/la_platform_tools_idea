@@ -10,15 +10,15 @@ import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiElement
 import com.intellij.psi.createSmartPointer
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.analyze
-import org.jetbrains.kotlin.analysis.api.resolution.KaCallableMemberCall
-import org.jetbrains.kotlin.analysis.api.resolution.successfulCallOrNull
-import org.jetbrains.kotlin.analysis.api.resolution.symbol
+import org.jetbrains.kotlin.analysis.api.session.analyze
+import org.jetbrains.kotlin.idea.base.psi.deleteValueArgument
+import org.jetbrains.kotlin.idea.base.psi.insertValueArgumentAfter
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.codeinsight.api.applicable.asUnit
 import org.jetbrains.kotlin.idea.codeinsight.api.applicable.inspections.KotlinApplicableInspectionBase
 import org.jetbrains.kotlin.idea.codeinsight.api.applicable.inspections.KotlinModCommandQuickFix
 import org.jetbrains.kotlin.idea.codeinsight.utils.isArrayOfFunction
+import org.jetbrains.kotlin.idea.util.resolveSuccessfulExpressionSymbol
 import org.jetbrains.kotlin.psi.KtCallExpression
 import org.jetbrains.kotlin.psi.KtCollectionLiteralExpression
 import org.jetbrains.kotlin.psi.KtExpression
@@ -58,7 +58,8 @@ internal class RemoveRedundantSpreadOperatorInspection : KotlinApplicableInspect
         return listOf(TextRange(startOffset, endOffset))
     }
 
-    override fun KaSession.prepareContext(element: KtValueArgument): Unit? {
+    context(session: KaSession)
+    override fun prepareContext(element: KtValueArgument): Unit? {
         return when (val argumentExpression = element.getArgumentExpression()) {
             is KtCallExpression -> {
                 if (!argumentExpression.isArrayOfFunction()) return null
@@ -98,11 +99,7 @@ internal class RemoveRedundantSpreadOperatorInspection : KotlinApplicableInspect
 }
 
 private fun resolveCallToPsiElement(call: KtExpression): PsiElement? = analyze(call) {
-    call.resolveToCall()
-        ?.successfulCallOrNull<KaCallableMemberCall<*, *>>()
-        ?.partiallyAppliedSymbol
-        ?.symbol
-        ?.psi
+    call.resolveSuccessfulExpressionSymbol()?.psi
 }
 
 private fun removeRedundantSpreadOperator(
@@ -124,7 +121,7 @@ private fun removeRedundantSpreadOperator(
 
     val factory = KtPsiFactory(project)
     innerArgumentExpressions.reversed().forEach { (expression, isSpread) ->
-        outerArgumentList.addArgumentAfter(factory.createArgument(expression, isSpread = isSpread), element)
+        outerArgumentList.insertValueArgumentAfter(factory.createArgument(expression, isSpread = isSpread), element)
     }
-    outerArgumentList.removeArgument(element)
+    outerArgumentList.deleteValueArgument(element)
 }

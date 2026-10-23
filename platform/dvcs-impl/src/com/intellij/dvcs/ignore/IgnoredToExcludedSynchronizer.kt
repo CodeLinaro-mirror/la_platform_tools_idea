@@ -48,10 +48,8 @@ import com.intellij.platform.workspace.jps.entities.SourceRootEntity
 import com.intellij.ui.EditorNotificationPanel
 import com.intellij.ui.EditorNotificationProvider
 import com.intellij.ui.EditorNotifications
-import com.intellij.util.Alarm
 import com.intellij.util.messages.impl.subscribeAsFlow
-import com.intellij.util.ui.update.MergingUpdateQueue
-import com.intellij.util.ui.update.Update
+import com.intellij.util.ui.update.DebouncedUpdates
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -75,7 +73,9 @@ private val LOG = logger<IgnoredToExcludedSynchronizer>()
  */
 @Service(Service.Level.PROJECT)
 class IgnoredToExcludedSynchronizer(project: Project, private val cs: CoroutineScope) : FilesProcessorImpl(project, project) {
-  private val queue = MergingUpdateQueue("IgnoredToExcludedSynchronizer", 1000, true, null, this, null, Alarm.ThreadToUse.POOLED_THREAD)
+  private val queue = DebouncedUpdates.forScope<Unit>(cs, "IgnoredToExcludedSynchronizer", 1000)
+    .withContext(Dispatchers.Default)
+    .runLatest { performUpdate() }
 
   init {
     cs.launch {
@@ -97,22 +97,24 @@ class IgnoredToExcludedSynchronizer(project: Project, private val cs: CoroutineS
     if (synchronizationTurnOff()) return
     if (isFilesEmpty()) return
 
-    queue.queue(Update.create("update") {
-      val fileIndex = ProjectFileIndex.getInstance(project)
-      val sourceRoots = getProjectSourceRoots(project)
+    queue.queue(Unit)
+  }
 
-      val acquiredFiles = selectValidFiles()
-      LOG.debug("updateNotificationState, acquiredFiles", acquiredFiles)
-      val filesToRemove = acquiredFiles
-        .asSequence()
-        .filter { file -> runReadActionBlocking { fileIndex.isExcluded(file) } || sourceRoots.contains(file) }
-        .toList()
-      LOG.debug("updateNotificationState, filesToRemove", filesToRemove)
+  private fun performUpdate() {
+    val fileIndex = ProjectFileIndex.getInstance(project)
+    val sourceRoots = getProjectSourceRoots(project)
 
-      if (removeFiles(filesToRemove)) {
-        EditorNotifications.getInstance(project).updateAllNotifications()
-      }
-    })
+    val acquiredFiles = selectValidFiles()
+    LOG.debug("updateNotificationState, acquiredFiles", acquiredFiles)
+    val filesToRemove = acquiredFiles
+      .asSequence()
+      .filter { file -> runReadActionBlocking { fileIndex.isExcluded(file) } || sourceRoots.contains(file) }
+      .toList()
+    LOG.debug("updateNotificationState, filesToRemove", filesToRemove)
+
+    if (removeFiles(filesToRemove)) {
+      EditorNotifications.getInstance(project).updateAllNotifications()
+    }
   }
 
   fun isNotEmpty() = !isFilesEmpty()
@@ -136,8 +138,6 @@ class IgnoredToExcludedSynchronizer(project: Project, private val cs: CoroutineS
     markIgnoredAsExcluded(project, files)
   }
 
-  override fun doFilterFiles(files: Collection<VirtualFile>) = files.filter(VirtualFile::isValid)
-
   override fun needDoForCurrentProject() = VcsConfiguration.getInstance(project).MARK_IGNORED_AS_EXCLUDED
 
   fun onIgnoredFilesUpdate(ignoredFilePaths: Set<FilePath>, previouslyIgnoredFilePaths: Set<FilePath>) {
@@ -156,8 +156,7 @@ class IgnoredToExcludedSynchronizer(project: Project, private val cs: CoroutineS
   }
 
   private fun processIgnored(ignoredPaths: Collection<FilePath>) {
-    val ignoredDirs =
-      determineIgnoredDirsToExclude(project, ignoredPaths)
+    val ignoredDirs = determineValidIgnoredDirsToExclude(project, ignoredPaths)
 
     if (allowShowNotification()) {
       processFiles(ignoredDirs)
@@ -170,7 +169,7 @@ class IgnoredToExcludedSynchronizer(project: Project, private val cs: CoroutineS
         }
     }
     else if (needDoForCurrentProject()) {
-      doActionOnChosenFiles(doFilterFiles(ignoredDirs))
+      doActionOnChosenFiles(ignoredDirs)
     }
   }
 
@@ -189,7 +188,7 @@ class IgnoredToExcludedSynchronizer(project: Project, private val cs: CoroutineS
         val dirsToExclude = withModalProgress(project, ActionsBundle.message("action.CheckIgnoredAndNotExcludedDirectories.progress")) {
           awaitIgnoredFilesUpdate(project)
           val ignoredFilePaths = ChangeListManager.getInstance(project).ignoredFilePaths
-          determineIgnoredDirsToExclude(project, ignoredFilePaths)
+          determineValidIgnoredDirsToExclude(project, ignoredFilePaths)
         }
 
         if (dirsToExclude.isEmpty()) {
@@ -253,7 +252,7 @@ private suspend fun awaitIgnoredFilesUpdate(project: Project) {
   }
 }
 
-private fun determineIgnoredDirsToExclude(project: Project, ignoredPaths: Collection<FilePath>): List<VirtualFile> {
+private fun determineValidIgnoredDirsToExclude(project: Project, ignoredPaths: Collection<FilePath>): List<VirtualFile> {
   val sourceRoots = getProjectSourceRoots(project)
   val fileIndex = ProjectFileIndex.getInstance(project)
   val shelfPath = ShelveChangesManager.getShelfPath(project)

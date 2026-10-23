@@ -66,17 +66,14 @@ const val NODE_FLAG_SELF_CONTAINED: Int = 1 shl 9
 /** Flag: plugin is DSL-defined (auto-computed dependencies) */
 const val NODE_FLAG_IS_DSL_DEFINED: Int = 1 shl 10
 
-/** Flag: plugin is a module-set wrapper */
+/** Flag: plugin is a build-declared module-set wrapper */
 const val NODE_FLAG_IS_MODULE_SET_WRAPPER: Int = 1 shl 11
 
-/** Flag: content module is a test descriptor (._test suffix) */
-const val NODE_FLAG_IS_TEST_DESCRIPTOR: Int = 1 shl 12
-
 /** Flag: content module has a descriptor on disk ({moduleName}.xml) */
-const val NODE_FLAG_HAS_DESCRIPTOR: Int = 1 shl 13
+const val NODE_FLAG_HAS_DESCRIPTOR: Int = 1 shl 12
 
 /** Flag: plugin node is a synthetic alias target bundled by a product */
-const val NODE_FLAG_IS_ALIAS: Int = 1 shl 14
+const val NODE_FLAG_IS_ALIAS: Int = 1 shl 13
 
 // endregion
 
@@ -135,8 +132,29 @@ const val EDGE_CONTAINS_CONTENT_WITH_NAMESPACE: Int = 15
 /** Edge type: Test Plugin contains Content Module */
 const val EDGE_CONTAINS_CONTENT_TEST_WITH_NAMESPACE: Int = 16
 
+/**
+ * Edge type: Plugin declares a Plugin alias (from plugin.xml `<module value="..."/>`).
+ *
+ * The target is the node that carries the alias ID. It is an alias node that a product bundles,
+ * or a placeholder node for an unresolved ID. The source is the plugin that declares the alias.
+ * A dependency on an alias points at the target, so this edge is the hop to the declaring plugin.
+ */
+const val EDGE_PLUGIN_DECLARES_ALIAS: Int = 17
+
+/**
+ * Edge type: Product has a product implementation module Target.
+ *
+ * The source is the product, the target is a JPS module of `productLayout.productImplementationModules`.
+ * Such a module is packed into the product main jar, so the core classloader loads it, but it carries no
+ * descriptor and is therefore not a content module. This edge is the only way the graph can name it.
+ *
+ * It is deliberately NOT [EDGE_MAIN_TARGET]: a plugin main target does not share the core classloader,
+ * and a rule that reasons about that loader must tell the two apart.
+ */
+const val EDGE_PRODUCT_IMPLEMENTATION_TARGET: Int = 18
+
 /** Number of edge types (for array sizing) */
-internal const val EDGE_TYPE_COUNT: Int = 17
+internal const val EDGE_TYPE_COUNT: Int = 19
 
 // endregion
 
@@ -149,6 +167,9 @@ internal const val EDGE_TYPE_COUNT: Int = 17
 // - EDGE_CONTENT_MODULE_DEPENDS_ON / EDGE_CONTENT_MODULE_DEPENDS_ON_TEST: runtime deps from XML.
 // - EDGE_PLUGIN_XML_DEPENDS_ON_PLUGIN: plugin.xml <plugin> deps; optional + legacy/modern format flags packed per edge.
 // - EDGE_PLUGIN_XML_DEPENDS_ON_CONTENT_MODULE: plugin.xml <module> deps (content modules).
+//
+// EDGE_PLUGIN_DECLARES_ALIAS is not a dependency edge. It declares a second name for a plugin.
+// A walk that must follow a dependency on an alias takes this edge as an extra step.
 //
 // endregion
 
@@ -616,10 +637,10 @@ fun storesReverseEdges(edgeId: Int): Boolean {
 @PublishedApi
 internal fun edgeTargetWrapper(edgeId: Int): (Int) -> TypedNode {
   return when (edgeId) {
-    EDGE_BUNDLES, EDGE_BUNDLES_TEST, EDGE_PLUGIN_XML_DEPENDS_ON_PLUGIN -> ::PluginNode
+    EDGE_BUNDLES, EDGE_BUNDLES_TEST, EDGE_PLUGIN_XML_DEPENDS_ON_PLUGIN, EDGE_PLUGIN_DECLARES_ALIAS -> ::PluginNode
     EDGE_CONTAINS_CONTENT, EDGE_CONTAINS_CONTENT_TEST, EDGE_CONTAINS_MODULE, EDGE_ALLOWS_MISSING, EDGE_PLUGIN_XML_DEPENDS_ON_CONTENT_MODULE -> ::ContentModuleNode
     EDGE_INCLUDES_MODULE_SET, EDGE_NESTED_SET -> ::ModuleSetNode
-    EDGE_BACKED_BY, EDGE_MAIN_TARGET, EDGE_TARGET_DEPENDS_ON -> ::TargetNode
+    EDGE_BACKED_BY, EDGE_MAIN_TARGET, EDGE_TARGET_DEPENDS_ON, EDGE_PRODUCT_IMPLEMENTATION_TARGET -> ::TargetNode
     EDGE_CONTENT_MODULE_DEPENDS_ON, EDGE_CONTENT_MODULE_DEPENDS_ON_TEST -> ::ContentModuleNode
     else -> throw IllegalArgumentException("Unknown edge type: $edgeId")
   }
@@ -636,8 +657,9 @@ internal fun edgeSourceWrapper(edgeId: Int): (Int) -> TypedNode {
     EDGE_NESTED_SET -> ::ModuleSetNode
     EDGE_BACKED_BY -> ::ContentModuleNode
     EDGE_MAIN_TARGET, EDGE_PLUGIN_XML_DEPENDS_ON_PLUGIN, EDGE_PLUGIN_XML_DEPENDS_ON_CONTENT_MODULE -> ::PluginNode
+    EDGE_PLUGIN_DECLARES_ALIAS -> ::PluginNode
     EDGE_TARGET_DEPENDS_ON -> ::TargetNode
-    EDGE_ALLOWS_MISSING -> ::ProductNode
+    EDGE_ALLOWS_MISSING, EDGE_PRODUCT_IMPLEMENTATION_TARGET -> ::ProductNode
     EDGE_CONTENT_MODULE_DEPENDS_ON, EDGE_CONTENT_MODULE_DEPENDS_ON_TEST -> ::ContentModuleNode
     else -> throw IllegalArgumentException("Unknown edge type: $edgeId")
   }

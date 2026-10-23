@@ -1,8 +1,7 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package com.intellij.xdebugger;
 
-import com.intellij.idea.AppMode;
 import com.intellij.lang.Language;
 import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.application.ApplicationManager;
@@ -15,7 +14,6 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
-import com.intellij.util.PlatformUtils;
 import com.intellij.util.Processor;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.xdebugger.breakpoints.InlineBreakpointsDisabler;
@@ -139,9 +137,7 @@ public abstract class XDebuggerUtil {
   public static final String INLINE_BREAKPOINTS_KEY = "debugger.show.breakpoints.inline";
 
   public static boolean areInlineBreakpointsEnabled(@Nullable VirtualFile file) {
-    boolean isRemDev = AppMode.isRemoteDevHost() || PlatformUtils.isJetBrainsClient();
     return Registry.is(INLINE_BREAKPOINTS_KEY) &&
-           (SplitDebuggerMode.isSplitDebugger() || !isRemDev) &&
            !ContainerUtil.exists(InlineBreakpointsDisabler.Companion.getEP().getExtensionList(),
                                  disabler -> disabler.areInlineBreakpointsDisabled(file));
   }

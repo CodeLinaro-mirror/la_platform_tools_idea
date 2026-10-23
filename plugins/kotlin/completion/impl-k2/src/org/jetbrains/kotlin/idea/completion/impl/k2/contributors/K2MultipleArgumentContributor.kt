@@ -8,29 +8,32 @@ import kotlinx.serialization.Serializable
 import org.jetbrains.kotlin.analysis.api.KaSession
 import org.jetbrains.kotlin.analysis.api.components.KaScopeContext
 import org.jetbrains.kotlin.analysis.api.components.KaScopeKind
-import org.jetbrains.kotlin.analysis.api.components.resolveToCallCandidates
-import org.jetbrains.kotlin.analysis.api.components.upperBoundIfFlexible
-import org.jetbrains.kotlin.analysis.api.resolution.KaCallCandidateInfo
+import org.jetbrains.kotlin.analysis.api.resolution.KaCallCandidate
 import org.jetbrains.kotlin.analysis.api.resolution.KaFunctionCall
+import org.jetbrains.kotlin.analysis.api.resolution.collectCallCandidates
 import org.jetbrains.kotlin.analysis.api.signatures.KaFunctionSignature
 import org.jetbrains.kotlin.analysis.api.symbols.KaVariableSymbol
 import org.jetbrains.kotlin.analysis.api.types.KaType
+import org.jetbrains.kotlin.analysis.api.types.upperBoundIfFlexible
 import org.jetbrains.kotlin.idea.base.analysis.api.utils.isPossiblySubTypeOf
 import org.jetbrains.kotlin.idea.completion.api.serialization.SerializableInsertHandler
 import org.jetbrains.kotlin.idea.completion.impl.k2.K2CompletionSectionContext
 import org.jetbrains.kotlin.idea.completion.impl.k2.K2CompletionSetupScope
 import org.jetbrains.kotlin.idea.completion.impl.k2.K2ContributorSectionPriority
 import org.jetbrains.kotlin.idea.completion.impl.k2.K2SimpleCompletionContributor
+import org.jetbrains.kotlin.idea.completion.impl.k2.contributors.helpers.KtSymbolWithOrigin
 import org.jetbrains.kotlin.idea.completion.impl.k2.handlers.K2SmartCompletionTailOffsetProviderImpl
 import org.jetbrains.kotlin.idea.completion.impl.k2.handlers.Tail
 import org.jetbrains.kotlin.idea.completion.impl.k2.handlers.tryGetOffset
 import org.jetbrains.kotlin.idea.completion.impl.k2.lookups.factories.KotlinFirLookupElementFactory
+import org.jetbrains.kotlin.idea.completion.impl.k2.smartCastTypeForSymbol
 import org.jetbrains.kotlin.idea.util.positionContext.KotlinNameReferencePositionContext
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.KtArrayAccessExpression
 import org.jetbrains.kotlin.psi.KtElement
 import org.jetbrains.kotlin.psi.KtValueArgument
 import org.jetbrains.kotlin.psi.KtValueArgumentList
+import org.jetbrains.kotlin.resolution.KtResolvableCall
 
 /**
  * A completion contributor that is responsible for completing multiple arguments to function calls or array access at once.
@@ -61,7 +64,7 @@ internal class K2MultipleArgumentContributor : K2SimpleCompletionContributor<Kot
      * Given the argument as [this], the function returns the parent expression that
      * can be used with the analysis API to resolve the call candidates, or null if none could be found.
      */
-    private fun KtElement.getAppropriateCallParent(): KtElement? {
+    private fun KtElement.getAppropriateCallParent(): KtResolvableCall? {
         val nameExpressionParent = parent
         return when {
             nameExpressionParent is KtValueArgument -> {
@@ -70,14 +73,14 @@ internal class K2MultipleArgumentContributor : K2SimpleCompletionContributor<Kot
                 if (valueArgumentList.arguments.lastOrNull() != nameExpressionParent) return null
                 // We do not want to complete positional arguments if a named argument is already present
                 if (valueArgumentList.arguments.any { it.isNamed() }) return null
-                valueArgumentList.parent as? KtElement
+                valueArgumentList.parent as? KtResolvableCall
             }
 
             nameExpressionParent.parent is KtArrayAccessExpression -> {
                 val arrayAccessExpression = nameExpressionParent.parent as? KtArrayAccessExpression ?: return null
                 // This contributor is only enabled for the last argument of either calls or array access expressions
                 if (arrayAccessExpression.indexExpressions.lastOrNull() != this) return null
-                arrayAccessExpression
+                arrayAccessExpression as? KtResolvableCall
             }
 
             else -> null
@@ -93,7 +96,7 @@ internal class K2MultipleArgumentContributor : K2SimpleCompletionContributor<Kot
      * Given the [callCandidates], calculates the signatures together with their missing arguments.
      */
     context(_: KaSession)
-    private fun getApplicableSignatures(callCandidates: List<KaCallCandidateInfo>): List<MissingArgumentData> {
+    private fun getApplicableSignatures(callCandidates: List<KaCallCandidate>): List<MissingArgumentData> {
         val signatures: MutableList<MissingArgumentData> = mutableListOf()
 
         for (candidate in callCandidates) {
@@ -125,18 +128,21 @@ internal class K2MultipleArgumentContributor : K2SimpleCompletionContributor<Kot
      * or until all arguments have been matched and return the resulting matching variables.
      * Note that this function only returns the longest possible match unlike in K1 to avoid cluttering up completion too much.
      */
-    context(_: KaSession)
+    context(_: KaSession, context: K2CompletionSectionContext<KotlinNameReferencePositionContext>)
     private fun matchVariablesWithMissingArguments(
-        variableSymbols: Map<Name, KaVariableSymbol>,
+        variableSymbols: Map<Name, KtSymbolWithOrigin<KaVariableSymbol>>,
         missingArgumentData: MissingArgumentData,
         callParent: KtElement,
     ): MultiArgumentSignatureData? {
         val matchingVariableSymbols = mutableListOf<KaVariableSymbol>()
         for ((name, type) in missingArgumentData.missingArguments) {
             val correspondingVariable = variableSymbols[name] ?: break
+            val originalType = correspondingVariable.symbol.returnType
+            val typeWithSmartCast = smartCastTypeForSymbol(correspondingVariable.symbol, originalType, correspondingVariable.scopeKind)
+                ?: originalType
             // We use isPossiblySubTypeOf until KT-84184 is fixed to avoid false-negatives
-            if (!correspondingVariable.returnType.isPossiblySubTypeOf(type)) break
-            matchingVariableSymbols.add(correspondingVariable)
+            if (!typeWithSmartCast.isPossiblySubTypeOf(type)) break
+            matchingVariableSymbols.add(correspondingVariable.symbol)
         }
 
         val matchingVariableCount = matchingVariableSymbols.size
@@ -155,14 +161,14 @@ internal class K2MultipleArgumentContributor : K2SimpleCompletionContributor<Kot
     context(_: KaSession, context: K2CompletionSectionContext<KotlinNameReferencePositionContext>)
     override fun complete() {
         val callParent = context.positionContext.nameExpression.getAppropriateCallParent() ?: return
-        val callCandidates = callParent.resolveToCallCandidates()
+        val callCandidates = callParent.collectCallCandidates()
         if (callCandidates.isEmpty()) return
 
         val signatures = getApplicableSignatures(callCandidates)
         if (signatures.isEmpty()) return
 
         val allNamesToFind = signatures.flatMapTo(mutableSetOf()) { it.missingArguments.keys }
-        val variables = getLocalVariablesForNames(allNamesToFind, context.weighingContext.scopeContext)
+        val variables = getNonImportedAvailableVariables(allNamesToFind, context.weighingContext.scopeContext)
 
         val matchedNames = mutableMapOf<List<Name>, MultiArgumentSignatureData>()
         for (signature in signatures) {
@@ -211,12 +217,15 @@ internal class MultipleArgumentsInsertHandler : SerializableInsertHandler {
 
 
 /**
- * Returns local variables (i.e., from the same file) with the names from [allNamesToFind].
+ * Returns variables with the names from [allNamesToFind] that are available without coming from imports.
  * Note that shadowing is taken into account properly, and only the closest variable that is available is returned
  * for each name.
  */
 context(_: KaSession)
-internal fun getLocalVariablesForNames(allNamesToFind: Set<Name>, scopeContext: KaScopeContext): Map<Name, KaVariableSymbol> {
+internal fun getNonImportedAvailableVariables(
+    allNamesToFind: Set<Name>,
+    scopeContext: KaScopeContext
+): Map<Name, KtSymbolWithOrigin<KaVariableSymbol>> {
     // We do not want to consider variables that are imported
     val scopes = scopeContext.scopes.filterNot { it.kind is KaScopeKind.ImportingScope }
 
@@ -225,7 +234,7 @@ internal fun getLocalVariablesForNames(allNamesToFind: Set<Name>, scopeContext: 
     val variables = scopes.reversed().flatMap { scopeWithKind ->
         scopeWithKind.scope.callables(allNamesToFind)
             .filterIsInstance<KaVariableSymbol>()
-            .map { it.name to it }
+            .map { it.name to KtSymbolWithOrigin(it, scopeWithKind.kind) }
     }.toMap()
 
     return variables

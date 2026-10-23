@@ -1,16 +1,14 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.python.community.services.systemPython
 
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.platform.eel.EelApi
-import com.intellij.platform.eel.provider.localEel
 import com.intellij.python.community.services.shared.PythonInfoWithUiComparator
 import com.intellij.python.community.services.shared.PythonWithUi
 import com.intellij.python.community.services.shared.VanillaPythonWithPythonInfo
 import com.intellij.python.community.services.systemPython.impl.PySystemPythonBundle
-import com.intellij.python.community.services.systemPython.impl.asSysPythonRegisterError
-import com.intellij.python.community.services.systemPython.impl.ensureSystemPython
+import com.intellij.python.community.services.systemPython.impl.isSystemPython
 import com.intellij.python.venv.createVenv
 import com.jetbrains.python.PyToolUIInfo
 import com.jetbrains.python.PythonBinary
@@ -18,7 +16,6 @@ import com.jetbrains.python.Result
 import com.jetbrains.python.errorProcessing.MessageError
 import com.jetbrains.python.errorProcessing.PyError
 import com.jetbrains.python.errorProcessing.PyResult
-import com.jetbrains.python.mapError
 import com.jetbrains.python.packaging.PyVersionSpecifiers
 import com.jetbrains.python.venvReader.Directory
 import com.jetbrains.python.venvReader.VirtualEnvReader
@@ -35,7 +32,7 @@ interface SystemPythonService {
    * The result of this function might be cached. Use [forceRefresh] to reload it forcibly.
    * @return system pythons installed on OS sorted by type, then by lang.level: in order from highest (hence, the first one is usually the best one)
    */
-  suspend fun findSystemPythons(eelApi: EelApi = localEel, forceRefresh: Boolean = false): List<SystemPython>
+  suspend fun findSystemPythons(eelApi: EelApi, forceRefresh: Boolean = false): List<SystemPython>
 
   /**
    * When user provides a path to the python binary, use this method to the [SystemPython].
@@ -46,7 +43,7 @@ interface SystemPythonService {
   /**
    * @return tool to install python on OS If [eelApi] supports python installation
    */
-  fun getInstaller(eelApi: EelApi = localEel): PythonInstallerService?
+  fun getInstaller(eelApi: EelApi): PythonInstallerService?
 }
 
 /**
@@ -59,11 +56,13 @@ sealed interface SysPythonRegisterError {
   /**
    * Virtual env, not a system python
    */
-  class NotASystemPython private constructor(val notSystemPython: VanillaPythonWithPythonInfo, override val asPyError: PyError) : SysPythonRegisterError {
+  class NotASystemPython private constructor(val notSystemPython: VanillaPythonWithPythonInfo, override val asPyError: PyError) :
+    SysPythonRegisterError {
     companion object : suspend (VanillaPythonWithPythonInfo) -> NotASystemPython {
       override suspend fun invoke(notSystemPython: VanillaPythonWithPythonInfo): NotASystemPython = NotASystemPython(
         notSystemPython = notSystemPython,
-        asPyError = MessageError(PySystemPythonBundle.message("py.system.python.service.python.is.not.system", notSystemPython.getReadableName()))
+        asPyError = MessageError(PySystemPythonBundle.message("py.system.python.service.python.is.not.system",
+                                                              notSystemPython.getReadableName()))
       )
     }
 
@@ -92,19 +91,16 @@ fun SystemPythonService(): SystemPythonService = ApplicationManager.getApplicati
  *
  * Instances could be obtained with [SystemPythonService]
  */
-class SystemPython private constructor(private val delegate: VanillaPythonWithPythonInfo, override val ui: PyToolUIInfo?) : VanillaPythonWithPythonInfo by delegate, PythonWithUi, Comparable<SystemPython> {
+class SystemPython private constructor(private val delegate: VanillaPythonWithPythonInfo, override val ui: PyToolUIInfo?) :
+  VanillaPythonWithPythonInfo by delegate, PythonWithUi, Comparable<SystemPython> {
 
   internal companion object {
     val comparator = PythonInfoWithUiComparator<SystemPython>()
-    internal suspend fun create(delegate: VanillaPythonWithPythonInfo, ui: PyToolUIInfo?): Result<SystemPython, SysPythonRegisterError> {
-      val isSystemPython = ensureSystemPython(delegate).mapError { it.asSysPythonRegisterError() }.getOr { return it }
-      return if (isSystemPython) {
-        Result.success(SystemPython(delegate, ui))
-      }
-      else {
-        Result.failure(SysPythonRegisterError.NotASystemPython(delegate))
-      }
-    }
+
+    /**
+     * The caller decides that [delegate] is a system python, with [isSystemPython] of its environment.
+     */
+    internal fun create(delegate: VanillaPythonWithPythonInfo, ui: PyToolUIInfo?): SystemPython = SystemPython(delegate, ui)
   }
 
   override fun equals(other: Any?): Boolean {

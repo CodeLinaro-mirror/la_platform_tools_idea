@@ -2,6 +2,7 @@
 package com.intellij.ide.actions;
 
 import com.intellij.icons.AllIcons;
+import com.intellij.ide.ui.UISettings;
 import com.intellij.internal.statistic.eventLog.events.EventPair;
 import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnAction;
@@ -21,6 +22,7 @@ import com.intellij.openapi.wm.WindowInfo;
 import com.intellij.openapi.wm.impl.SquareStripeButton;
 import com.intellij.openapi.wm.impl.ToolWindowImpl;
 import com.intellij.toolWindow.ToolWindowDragHelper;
+import com.intellij.toolWindow.extendedToolWindowsUi.ToolWindowStripeExtension;
 import com.intellij.ui.ExperimentalUI;
 import com.intellij.ui.UIBundle;
 import org.jetbrains.annotations.ApiStatus;
@@ -150,8 +152,47 @@ public final class ToolWindowMoveAction extends DumbAwareAction implements FusAw
   private final @NotNull Anchor myAnchor;
 
   @ApiStatus.Internal
+  public static @NotNull @Nls String getToolWindowMoveActionText(@NotNull Anchor anchor, boolean isHorizontalSplit) {
+    if (anchor == Anchor.LeftTop && isHorizontalSplit) {
+      return UIBundle.message("tool.window.move.to.left.action.name");
+    }
+    else if (anchor == Anchor.LeftBottom && isHorizontalSplit) {
+      return UIBundle.message("tool.window.move.to.left.action.name") +
+             " " +
+             UIBundle.message("tool.window.move.to.side.by.side.action.name");
+    }
+    else if (anchor == Anchor.RightTop && isHorizontalSplit) {
+      return UIBundle.message("tool.window.move.to.right.action.name") +
+             " " +
+             UIBundle.message("tool.window.move.to.side.by.side.action.name");
+    }
+    else if (anchor == Anchor.RightBottom && isHorizontalSplit) {
+      return UIBundle.message("tool.window.move.to.right.action.name");
+    }
+
+    return anchor.toString();
+  }
+
+  private static Icon getToolWindowMoveActionIcon(@NotNull Anchor anchor) {
+    if (anchor == Anchor.LeftTop && UISettings.getInstance().getLeftHorizontalSplit()) {
+      return AllIcons.Actions.MoveToLeft;
+    }
+    else if (anchor == Anchor.LeftBottom && UISettings.getInstance().getLeftHorizontalSplit()) {
+      return AllIcons.Actions.MoveToLeftSideBySide;
+    }
+    else if (anchor == Anchor.RightTop && UISettings.getInstance().getRightHorizontalSplit()) {
+      return AllIcons.Actions.MoveToRightSideBySide;
+    }
+    else if (anchor == Anchor.RightBottom && UISettings.getInstance().getRightHorizontalSplit()) {
+      return AllIcons.Actions.MoveToRight;
+    }
+    return anchor.getIcon();
+  }
+
+  @ApiStatus.Internal
   public ToolWindowMoveAction(@NotNull Anchor anchor) {
-    super(() -> anchor.toString(), null, () -> anchor.getIcon());
+    super(() -> getToolWindowMoveActionText(anchor, !anchor.getAnchor().isSplitVertically()),
+          null, () -> getToolWindowMoveActionIcon(anchor));
 
     myAnchor = anchor;
   }
@@ -204,7 +245,8 @@ public final class ToolWindowMoveAction extends DumbAwareAction implements FusAw
     }
 
     private static boolean isAllowed(Anchor anchor) {
-      if (ExperimentalUI.isNewUI()) {
+      // The New UI has no TOP stripe unless a ToolWindowStripeExtension provides real Top/Bottom bars.
+      if (ExperimentalUI.isNewUI() && !ToolWindowStripeExtension.exists()) {
         return anchor != Anchor.TopLeft && anchor != Anchor.TopRight;
       }
 

@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.sh.backend` start
+content_module_jar(module = ":backend")
+### auto-generated section `dev intellij.sh.backend` end
 
 ### auto-generated section `build intellij.sh.backend` start
-
 jvm_library(
     name = "backend",
     srcs = glob(
@@ -41,7 +45,6 @@ jvm_library(
         "//platform/xdebugger-api:debugger",
         "//platform/util/jdom",
         "//platform/indexing-api:indexing",
-        "//spellchecker",
         "//platform/analysis-api:analysis",
         "//platform/statistics",
         "//platform/code-style-api:codeStyle",
@@ -89,7 +92,6 @@ jvm_library(
         "//platform/xdebugger-api:debugger_test_lib",
         "//platform/util/jdom:jdom_test_lib",
         "//platform/indexing-api:indexing_test_lib",
-        "//spellchecker:spellchecker_test_lib",
         "//platform/analysis-api:analysis_test_lib",
         "//platform/statistics:statistics_test_lib",
         "//platform/code-style-api:codeStyle_test_lib",
@@ -110,6 +112,10 @@ jvm_library(
 exports_files(
     [
         "intellij.sh.backend.iml",
+        "resources/intellij.sh.backend.xml",
+        "resources/liveTemplates/ShellScript.xml",
+        "resources/liveTemplates/ShellScriptArray.xml",
+        "resources/liveTemplates/ShellScriptHidden.xml",
     ],
     visibility = ["//visibility:public"],
 )

@@ -1,5 +1,5 @@
 // "Remove 'suspend' modifier from all functions in hierarchy" "true"
-// K2_ERROR: Suspend function 'foo' cannot override non-suspend function 'fun foo(): Unit' defined in 'B'.
+// K2_ERROR: NON_SUSPEND_OVERRIDDEN_BY_SUSPEND
 open class A {
     open fun foo() {
 
@@ -49,5 +49,4 @@ open class C1 : B() {
 
     }
 }
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ChangeSuspendInHierarchyFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeSuspendInHierarchyFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeSuspendInHierarchyFix

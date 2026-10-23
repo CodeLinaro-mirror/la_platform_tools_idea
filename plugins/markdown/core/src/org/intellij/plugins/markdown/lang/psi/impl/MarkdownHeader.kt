@@ -8,6 +8,7 @@ import com.intellij.openapi.editor.colors.TextAttributesKey
 import com.intellij.openapi.options.advanced.AdvancedSettings
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.util.text.StringUtil
+import com.intellij.psi.tree.IElementType
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiElementVisitor
 import com.intellij.psi.PsiFile
@@ -18,15 +19,17 @@ import com.intellij.psi.stubs.StubBuildCachedValuesManager.StubBuildCachedValueP
 import com.intellij.psi.stubs.StubBuildCachedValuesManager.getCachedValueStubBuildOptimized
 import com.intellij.psi.util.CachedValueProvider
 import com.intellij.psi.util.PsiModificationTracker
+import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.psi.util.elementType
 import org.intellij.markdown.html.entities.Entities
+import org.intellij.plugins.markdown.editor.toc.TableOfContentsMarkers
 import org.intellij.plugins.markdown.lang.MarkdownTokenTypeSets
+import org.intellij.plugins.markdown.lang.MarkdownTokenTypes
 import org.intellij.plugins.markdown.lang.psi.MarkdownElementVisitor
 import org.intellij.plugins.markdown.lang.psi.util.children
 import org.intellij.plugins.markdown.lang.psi.util.childrenOfType
 import org.intellij.plugins.markdown.lang.psi.util.hasType
 import org.intellij.plugins.markdown.lang.stubs.impl.MarkdownHeaderStubElement
-import org.intellij.plugins.markdown.lang.stubs.impl.MarkdownHeaderStubElementType
 import org.intellij.plugins.markdown.structureView.MarkdownStructureColors
 import org.jetbrains.annotations.ApiStatus
 import javax.swing.Icon
@@ -39,7 +42,7 @@ import javax.swing.Icon
 @Suppress("DEPRECATION")
 class MarkdownHeader: MarkdownHeaderImpl {
   constructor(node: ASTNode): super(node)
-  constructor(stub: MarkdownHeaderStubElement, type: MarkdownHeaderStubElementType): super(stub, type)
+  constructor(stub: MarkdownHeaderStubElement, type: IElementType): super(stub, type)
 
   val level
     get() = calculateHeaderLevel()
@@ -78,7 +81,7 @@ class MarkdownHeader: MarkdownHeaderImpl {
   }
 
   override fun getPresentation(): ItemPresentation {
-    val headerText = getHeaderText()
+    val headerText = if (isValid) getPresentationText() else null
     val text = headerText ?: "Invalid header: $text"
     return object: ColoredItemPresentation {
       override fun getPresentableText(): String {
@@ -119,6 +122,7 @@ class MarkdownHeader: MarkdownHeaderImpl {
   /**
    * Builds visible text for this header.
    * Visible text includes text content of all children without starting hash and a whitespace after hash.
+   * HTML tags are omitted.
    *
    * For a child inline link this method will only take it's visible part ([MarkdownLink.linkText]).
    *
@@ -128,24 +132,35 @@ class MarkdownHeader: MarkdownHeaderImpl {
    */
   @ApiStatus.Experimental
   fun buildVisibleText(hideImages: Boolean = true): String? {
+    return buildText { image -> if (hideImages) "" else image.text }
+  }
+
+  private fun getPresentationText(): String? {
+    return buildText { image ->
+      val linkText = PsiTreeUtil.findChildOfType(image, MarkdownLinkText::class.java)
+      linkText?.contentElements?.joinToString(separator = "") { it.text }
+        ?: PsiTreeUtil.findChildOfType(image, MarkdownLinkLabel::class.java)?.labelText.orEmpty()
+    }
+  }
+
+  private fun buildText(imageText: (MarkdownImage) -> String): String? {
     val contentHolder = findContentHolder() ?: return null
     val builder = StringBuilder()
     val children = contentHolder.children().dropWhile { it.hasType(MarkdownTokenTypeSets.WHITE_SPACES) }
-    traverseNameText(builder, children, hideImages)
-    return builder.toString().trim(' ')
+    traverseNameText(builder, children, imageText)
+    return builder.toString().trim(' ').takeUnless { it.isEmpty() }
   }
 
-  private fun traverseNameText(builder: StringBuilder, elements: Sequence<PsiElement>, hideImages: Boolean) {
+  private fun traverseNameText(builder: StringBuilder, elements: Sequence<PsiElement>, imageText: (MarkdownImage) -> String) {
     for (child in elements) {
+      if (child.hasType(MarkdownTokenTypes.HTML_TAG)) {
+        continue
+      }
       when (child) {
         is LeafPsiElement -> builder.append(child.text)
-        is MarkdownInlineLink -> traverseNameText(builder, child.linkText?.contentElements.orEmpty(), hideImages)
-        is MarkdownImage -> {
-          if (!hideImages) {
-            builder.append(child.text)
-          }
-        }
-        else -> traverseNameText(builder, child.children(), hideImages)
+        is MarkdownInlineLink -> traverseNameText(builder, child.linkText?.contentElements.orEmpty(), imageText)
+        is MarkdownImage -> builder.append(imageText(child))
+        else -> traverseNameText(builder, child.children(), imageText)
       }
     }
   }
@@ -153,11 +168,16 @@ class MarkdownHeader: MarkdownHeaderImpl {
   private fun buildRawAnchorText(): String? {
     val contentHolder = findContentHolder() ?: return null
     val children = contentHolder.children().dropWhile { it.hasType(MarkdownTokenTypeSets.WHITE_SPACES) }
+    var hasComment = false
     val text = buildString {
       var count = 0
       for (child in children) {
         if (child.hasType(MarkdownTokenTypeSets.WHITE_SPACES)) {
           append(" ")
+          continue
+        }
+        if (TableOfContentsMarkers.isHtmlComment(child)) {
+          hasComment = true
           continue
         }
         when (child) {
@@ -168,7 +188,8 @@ class MarkdownHeader: MarkdownHeaderImpl {
         count += 1
       }
     }
-    val replaced = replaceEntities(text).lowercase().replace(garbageRegex, "").replace(" ", "-")
+    val cleanedText = if (hasComment) text.trimEnd() else text
+    val replaced = replaceEntities(cleanedText).lowercase().replace(garbageRegex, "").replace(" ", "-")
 
     return when {
       AdvancedSettings.getBoolean("markdown.squash.multiple.dashes.in.header.anchors") -> replaced.replace(Regex("-{2,}"), "-")
@@ -190,26 +211,41 @@ class MarkdownHeader: MarkdownHeaderImpl {
   companion object {
     internal val garbageRegex = Regex("[^\\p{IsAlphabetic}\\d\\-_ ]")
 
-    private fun buildUniqueAnchorText(header: MarkdownHeader): String? {
-      val anchorText = obtainRawAnchorText(header) ?: return null
-      val number = calculateUniqueNumber(header, anchorText)
-      return createUniqueAnchorText(anchorText, number)
-    }
+    private class HeaderAnchors(
+      val anchorsByHeader: Map<MarkdownHeader, String>,
+      val headersByAnchor: Map<String, List<MarkdownHeader>>,
+    )
 
-    private fun calculateUniqueNumber(header: MarkdownHeader, rawAnchorText: String): Int {
-      val file = header.containingFile
-      val headers = getCachedValueStubBuildOptimized(file, HEADERS_LIST_PROVIDER)
-      val sameHeaders = headers.filter { obtainRawAnchorText(it) == rawAnchorText }
-      return sameHeaders.takeWhile { it != header }.count()
-    }
-
-    private val HEADERS_LIST_PROVIDER = StubBuildCachedValueProvider<Iterable<MarkdownHeader>, PsiFile>(
-      "markdown.header.headersList"
+    private val HEADER_ANCHORS_PROVIDER = StubBuildCachedValueProvider<HeaderAnchors, PsiFile>(
+      "markdown.header.anchors"
     ) { file ->
-      CachedValueProvider.Result.create(
-        file.children.filterIsInstance<MarkdownHeader>(),
-        PsiModificationTracker.MODIFICATION_COUNT
-      )
+      CachedValueProvider.Result.create(buildHeaderAnchors(file), PsiModificationTracker.MODIFICATION_COUNT)
+    }
+
+    /** Computes unique anchors in document order, including nested headers. */
+    private fun buildHeaderAnchors(file: PsiFile): HeaderAnchors {
+      val headers = PsiTreeUtil.findChildrenOfType(file, MarkdownHeader::class.java)
+      val occurrences = HashMap<String, Int>()
+      val anchorsByHeader = HashMap<MarkdownHeader, String>()
+      val headersByAnchor = HashMap<String, MutableList<MarkdownHeader>>()
+      for (header in headers) {
+        val rawAnchor = obtainRawAnchorText(header) ?: continue
+        val number = occurrences[rawAnchor] ?: 0
+        occurrences[rawAnchor] = number + 1
+        val anchor = createUniqueAnchorText(rawAnchor, number)
+        anchorsByHeader[header] = anchor
+        headersByAnchor.getOrPut(anchor) { ArrayList() }.add(header)
+      }
+      return HeaderAnchors(anchorsByHeader, headersByAnchor)
+    }
+
+    /**
+     * Finds headers of [file] by their unique anchor without the stub index,
+     * e.g., for files outside project content, which are not indexed.
+     */
+    @ApiStatus.Internal
+    fun findByAnchor(file: PsiFile, anchorText: String): Collection<MarkdownHeader> {
+      return getCachedValueStubBuildOptimized(file, HEADER_ANCHORS_PROVIDER).headersByAnchor[anchorText].orEmpty()
     }
 
     @ApiStatus.Internal
@@ -222,13 +258,7 @@ class MarkdownHeader: MarkdownHeaderImpl {
     }
 
     fun obtainAnchorText(header: MarkdownHeader): String? {
-      return getCachedValueStubBuildOptimized(header, OBTAIN_ANCHOR_PROVIDER)
-    }
-
-    private val OBTAIN_ANCHOR_PROVIDER = StubBuildCachedValueProvider<String?, MarkdownHeader>(
-      "markdown.header.anchorText"
-    ) { header ->
-      CachedValueProvider.Result.create(buildUniqueAnchorText(header), PsiModificationTracker.MODIFICATION_COUNT)
+      return getCachedValueStubBuildOptimized(header.containingFile, HEADER_ANCHORS_PROVIDER).anchorsByHeader[header]
     }
 
     private fun obtainRawAnchorText(header: MarkdownHeader): String? {

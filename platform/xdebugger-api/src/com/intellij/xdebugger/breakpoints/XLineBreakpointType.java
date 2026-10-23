@@ -45,6 +45,11 @@ public abstract class XLineBreakpointType<P extends XBreakpointProperties> exten
     super(id, title);
   }
 
+  @Override
+  public boolean isTemporaryBreakpointSupported() {
+    return true;
+  }
+
   /**
    * Return {@code true} if breakpoint can be put on {@code line} in {@code file}.
    */
@@ -92,7 +97,7 @@ public abstract class XLineBreakpointType<P extends XBreakpointProperties> exten
    * </ul>
    */
   public int getColumn(XLineBreakpoint<P> breakpoint) {
-    return ReadAction.computeBlocking(() -> { // todo non-cancellable RA leads to freezes!
+    return ReadAction.nonBlocking(() -> {
       var range = breakpoint.getType().getHighlightRange(breakpoint);
       if (range == null) return 0; // full line breakpoint
       var offset = range.getStartOffset();
@@ -104,7 +109,7 @@ public abstract class XLineBreakpointType<P extends XBreakpointProperties> exten
       if (!XDebuggerUtil.areInlineBreakpointsEnabled(file)) return -1;
       if (0 > offset || offset > document.getTextLength()) return -1;
       return offset - document.getLineStartOffset(document.getLineNumber(offset));
-    });
+    }).executeSynchronously();
   }
 
   /**
@@ -182,6 +187,16 @@ public abstract class XLineBreakpointType<P extends XBreakpointProperties> exten
    */
   public @Nullable TextRange getHighlightRange(XLineBreakpoint<P> breakpoint) {
     return null;
+  }
+
+  /**
+   * The frontend tracks the highlight range of a breakpoint with a range marker.
+   * After a document edit, it sends the tracked range to the backend with a position request.
+   * The backend calls this method with that range before it fires the change event.
+   * A type that stores the position in its properties updates them here.
+   * The default changes nothing.
+   */
+  public void highlightRangeMoved(@NotNull XLineBreakpoint<P> breakpoint, @NotNull TextRange range) {
   }
 
   /**

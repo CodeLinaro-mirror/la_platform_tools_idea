@@ -39,7 +39,7 @@ public interface ChangelistBuilder {
    */
   void processChangeInList(@NotNull Change change, @Nullable @NlsSafe String changeListName, VcsKey vcsKey);
 
-  void removeRegisteredChangeFor(final FilePath path);
+  void removeRegisteredChangeFor(@NotNull FilePath path);
 
   void processUnversionedFile(FilePath filePath);
 
@@ -86,8 +86,4 @@ public interface ChangelistBuilder {
   void processRootSwitch(VirtualFile file, @NlsSafe String branch);
 
   boolean reportChangesOutsideProject();
-
-  void reportAdditionalInfo(final @NlsContexts.Label String text);
-
-  void reportAdditionalInfo(@NotNull Factory<@Nullable JComponent> infoComponent);
 }

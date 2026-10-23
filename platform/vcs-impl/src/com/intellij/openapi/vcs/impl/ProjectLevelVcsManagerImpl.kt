@@ -2,7 +2,6 @@
 package com.intellij.openapi.vcs.impl
 
 import com.intellij.concurrency.ConcurrentCollectionFactory
-import com.intellij.execution.ui.ConsoleViewContentType
 import com.intellij.ide.trustedProjects.TrustedProjectsListener
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
@@ -14,7 +13,6 @@ import com.intellij.openapi.components.Storage
 import com.intellij.openapi.components.service
 import com.intellij.openapi.components.serviceAsync
 import com.intellij.openapi.diagnostic.Logger
-import com.intellij.openapi.editor.markup.TextAttributes
 import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
@@ -31,7 +29,6 @@ import com.intellij.openapi.vcs.ProjectLevelVcsManager
 import com.intellij.openapi.vcs.VcsBundle
 import com.intellij.openapi.vcs.VcsConfiguration.StandardConfirmation
 import com.intellij.openapi.vcs.VcsConfiguration.StandardOption
-import com.intellij.openapi.vcs.VcsConsoleLine
 import com.intellij.openapi.vcs.VcsDirectoryMapping
 import com.intellij.openapi.vcs.VcsRoot
 import com.intellij.openapi.vcs.VcsRootChecker
@@ -68,7 +65,6 @@ import com.intellij.util.concurrency.ThreadingAssertions
 import com.intellij.util.concurrency.annotations.RequiresEdt
 import com.intellij.util.text.DateFormatUtil
 import com.intellij.util.text.StringTokenizer
-import com.intellij.vcs.console.VcsConsoleTabService
 import kotlinx.coroutines.CoroutineScope
 import org.jdom.Element
 import org.jetbrains.annotations.ApiStatus
@@ -482,13 +478,13 @@ class ProjectLevelVcsManagerImpl(
   @CalledInAny
   fun isBackgroundTaskRunning(vararg keys: Any): Boolean = backgroundRunningTasks.contains(ActionKey(*keys))
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun startBackgroundTask(vararg keys: Any) {
     ThreadingAssertions.assertEventDispatchThread()
     LOG.assertTrue(backgroundRunningTasks.add(ActionKey(*keys)))
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun stopBackgroundTask(vararg keys: Any) {
     ThreadingAssertions.assertEventDispatchThread()
     LOG.assertTrue(backgroundRunningTasks.remove(ActionKey(*keys)))
@@ -618,30 +614,7 @@ class ProjectLevelVcsManagerImpl(
     VcsInitialization.getInstance(project).waitFinished()
   }
 
-  @Deprecated("Use {@link com.intellij.vcs.console.VcsConsoleTabService}")
-  override fun showConsole(then: Runnable?) {
-    VcsConsoleTabService.getInstance(project).showConsoleTab(true, null)
-  }
-
-  @Deprecated("Use {@link com.intellij.vcs.console.VcsConsoleTabService}")
-  override fun scrollConsoleToTheEnd() {
-    VcsConsoleTabService.getInstance(project).showConsoleTabAndScrollToTheEnd()
-  }
-
-  @Deprecated("")
-  override fun addMessageToConsoleWindow(message: String?, attributes: TextAttributes?) {
-    addMessageToConsoleWindow(message, ConsoleViewContentType("", attributes))
-  }
-
-  override fun addMessageToConsoleWindow(message: String?, contentType: ConsoleViewContentType) {
-    VcsConsoleTabService.getInstance(project).addMessage(message, contentType)
-  }
-
-  override fun addMessageToConsoleWindow(line: VcsConsoleLine?) {
-    VcsConsoleTabService.getInstance(project).addMessage(line)
-  }
-
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   override fun showUpdateProjectInfo(
     updatedFiles: UpdatedFiles?,
     displayActionName: String?,

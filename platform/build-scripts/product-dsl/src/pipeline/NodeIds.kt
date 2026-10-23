@@ -82,6 +82,9 @@ internal object NodeIds {
   /** Plugin-to-plugin dependency validation */
   @JvmField val PLUGIN_PLUGIN_VALIDATION = NodeId("pluginPluginValidation", NodeCategory.VALIDATION)
 
+  /** Content module descriptor dependency declaration validation (wrong form, unresolved id, duplicate id) */
+  @JvmField val CONTENT_MODULE_DEPENDENCY_DECLARATION_VALIDATION = NodeId("contentModuleDependencyDeclarationValidation", NodeCategory.VALIDATION)
+
   /** Duplicate legacy/modern plugin dependency declaration validation */
   @JvmField val PLUGIN_DEPENDENCY_DECLARATION_VALIDATION = NodeId("pluginDependencyDeclarationValidation", NodeCategory.VALIDATION)
 
@@ -97,11 +100,11 @@ internal object NodeIds {
   /** Product module set validation */
   @JvmField val PRODUCT_MODULE_SET_VALIDATION = NodeId("productModuleSetValidation", NodeCategory.VALIDATION)
 
-  /** Library module validation (auto-fixes .iml files) */
-  @JvmField val LIBRARY_MODULE_VALIDATION = NodeId("libraryModuleValidation", NodeCategory.VALIDATION)
-
   /** Plugin content module JPS dependency validation */
   @JvmField val PLUGIN_CONTENT_MODULE_VALIDATION = NodeId("pluginContentModuleValidation", NodeCategory.VALIDATION)
+
+  /** Restricted module activation in products, compatible plugin sets, and opted-in test plugins. */
+  @JvmField val RESTRICTED_MODULE_ACTIVATION_VALIDATION = NodeId("restrictedModuleActivationValidation", NodeCategory.VALIDATION)
 
   /** Duplicate content modules across bundled plugins */
   @JvmField val PLUGIN_CONTENT_DUPLICATE_VALIDATION = NodeId("pluginContentDuplicateValidation", NodeCategory.VALIDATION)
@@ -109,12 +112,24 @@ internal object NodeIds {
   /** Conflicting descriptor IDs between production and test plugins */
   @JvmField val PLUGIN_DESCRIPTOR_ID_CONFLICT_VALIDATION = NodeId("pluginDescriptorIdConflictValidation", NodeCategory.VALIDATION)
 
+  /** A content module that reaches two embedded copies of one content module name */
+  @JvmField val CONTENT_MODULE_COPY_CONFLICT_VALIDATION = NodeId("contentModuleCopyConflictValidation", NodeCategory.VALIDATION)
+
   /** Test library scope validation */
   @JvmField val TEST_LIBRARY_SCOPE_VALIDATION = NodeId("testLibraryScopeValidation", NodeCategory.VALIDATION)
 
-  /** Implicit embedded-module content-module inclusion validation */
-  @JvmField val IMPLICIT_EMBEDDED_CONTENT_MODULE_VALIDATION = NodeId("implicitEmbeddedContentModuleValidation", NodeCategory.VALIDATION)
-
   /** Product/module-set embedded content modules must not depend on non-embedded content modules */
   @JvmField val EMBEDDED_CONTENT_MODULE_DEPENDENCY_VALIDATION = NodeId("embeddedContentModuleDependencyValidation", NodeCategory.VALIDATION)
+
+  /** Embedded library modules must be reachable from embedded platform content */
+  @JvmField val UNUSED_EMBEDDED_LIBRARY_MODULE_VALIDATION = NodeId("unusedEmbeddedLibraryModuleValidation", NodeCategory.VALIDATION)
+
+  /** Shared (non-embedded) library modules must have at least one consumer */
+  @JvmField val UNUSED_SHARED_LIBRARY_MODULE_VALIDATION = NodeId("unusedSharedLibraryModuleValidation", NodeCategory.VALIDATION)
+
+  /** Library license coverage validation */
+  @JvmField val LIBRARY_LICENSE_VALIDATION = NodeId("libraryLicenseValidation", NodeCategory.VALIDATION)
+
+  /** Community license coverage for a library that a community or core module set ships */
+  @JvmField val COMMUNITY_LIBRARY_LICENSE_VALIDATION = NodeId("communityLibraryLicenseValidation", NodeCategory.VALIDATION)
 }

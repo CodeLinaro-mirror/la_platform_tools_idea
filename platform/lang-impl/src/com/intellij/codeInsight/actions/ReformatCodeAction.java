@@ -3,6 +3,7 @@ package com.intellij.codeInsight.actions;
 
 import com.intellij.CodeStyleBundle;
 import com.intellij.codeInsight.CodeInsightBundle;
+import com.intellij.codeInsight.multiverse.EditorContextManager;
 import com.intellij.find.impl.FindInProjectUtil;
 import com.intellij.formatting.service.CoreFormattingService;
 import com.intellij.formatting.service.FormattingService;
@@ -32,8 +33,6 @@ import com.intellij.openapi.util.Conditions;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.vfs.ReadonlyStatusHandler;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.platform.ide.core.permissions.Permission;
-import com.intellij.platform.ide.core.permissions.RequiresPermissions;
 import com.intellij.psi.PsiDirectory;
 import com.intellij.psi.PsiDirectoryContainer;
 import com.intellij.psi.PsiDocumentManager;
@@ -49,14 +48,11 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
 
 import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
 import java.util.regex.PatternSyntaxException;
 
-import static com.intellij.openapi.vfs.FilePermissionsKt.getProjectFilesWrite;
 
-public class ReformatCodeAction extends AnAction implements DumbAware, LightEditCompatible, RequiresPermissions, ActionRemoteBehaviorSpecification {
+public class ReformatCodeAction extends AnAction implements DumbAware, LightEditCompatible, ActionRemoteBehaviorSpecification {
   private static final Logger LOG = Logger.getInstance(ReformatCodeAction.class);
 
   private static ReformatFilesOptions myTestOptions;
@@ -89,7 +85,7 @@ public class ReformatCodeAction extends AnAction implements DumbAware, LightEdit
     boolean hasSelection = false;
 
     if (editor != null){
-      file = PsiDocumentManager.getInstance(project).getPsiFile(editor.getDocument());
+      file = EditorContextManager.getPsiFileForEditor(editor, project);
       if (file == null) return;
       dir = file.getContainingDirectory();
       hasSelection = editor.getSelectionModel().hasSelection();
@@ -192,11 +188,6 @@ public class ReformatCodeAction extends AnAction implements DumbAware, LightEdit
 
     currentRunOptions.setProcessingScope(processingScope);
     new FileInEditorProcessor(file, editor, currentRunOptions).processCode();
-  }
-
-  @Override
-  public @NotNull Collection<@NotNull Permission> getRequiredPermissions() {
-    return Collections.singletonList(getProjectFilesWrite());
   }
 
   private static @Nullable DirectoryFormattingOptions getDirectoryFormattingOptions(@NotNull Project project, @NotNull PsiDirectory dir) {
@@ -332,7 +323,7 @@ public class ReformatCodeAction extends AnAction implements DumbAware, LightEdit
     final VirtualFile[] files = CommonDataKeys.VIRTUAL_FILE_ARRAY.getData(dataContext);
 
     if (editor != null) {
-      PsiFile file = PsiDocumentManager.getInstance(project).getPsiFile(editor.getDocument());
+      PsiFile file = EditorContextManager.getPsiFileForEditor(editor, project);
       if (file == null || file.getVirtualFile() == null) {
         return false;
       }

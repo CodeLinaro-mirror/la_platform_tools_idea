@@ -9,17 +9,19 @@ import com.intellij.execution.wsl.WslIjentManager
 import com.intellij.openapi.diagnostic.ControlFlowException
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.ProjectManager
+import com.intellij.platform.core.nio.fs.MultiRoutingFileSystem
 import com.intellij.platform.core.nio.fs.MultiRoutingFileSystemProvider
 import com.intellij.platform.eel.EelDescriptor
+import com.intellij.platform.eel.EelDescriptorWithoutNativeFileChooserSupport
 import com.intellij.platform.eel.EelMachine
 import com.intellij.platform.eel.EelOsFamily
 import com.intellij.platform.eel.EelPathBoundDescriptor
-import com.intellij.platform.eel.annotations.MultiRoutingFileSystemPath
+import com.intellij.platform.util.annotations.paths.NioPath
 import com.intellij.platform.eel.nioFs.impl.MultiRoutingFileSystemBackend
 import com.intellij.platform.eel.provider.EelAlternativeRootProvider
 import com.intellij.platform.eel.provider.EelEnvironmentInitializer
 import com.intellij.platform.eel.provider.getEelDescriptor
-import com.intellij.platform.ide.impl.wsl.ijent.nio.IjentWslNioFileSystemProvider
+import com.intellij.platform.eel.provider.utils.impl.getActualWslPath
 import com.intellij.platform.ijent.community.impl.ijentFailSafeFileSystemApi
 import com.intellij.platform.ijent.community.impl.nio.IjentNioFileSystemProvider
 import com.intellij.platform.ijent.community.impl.nio.fs.IjentEphemeralRootAwareFileSystemProvider
@@ -40,23 +42,26 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.io.path.Path
 import kotlin.io.path.pathString
 
-private val useNewFileSystem = System.getProperty("wsl.use.new.filesystem") != null
-
 private val WSLDistribution.roots: Set<String>
   get() {
-    val localRoots = mutableSetOf(getWindowsPath("/"))
-    localRoots.single().let {
-      localRoots += it.replace("wsl.localhost", "wsl$")
-      localRoots += it.replace("wsl$", "wsl.localhost")
+    val localRoot = getWindowsPath("/")
+    // The same distribution is reachable under every known WSL host name, so report a root for each of them.
+    return WSL_PREFIXES.mapTo(mutableSetOf(localRoot)) { to ->
+      WSL_PREFIXES.fold(localRoot) { root, from -> root.replace(from, to) }
     }
-    return localRoots
   }
+
+/**
+ * The one root of a distribution that the IDE shows and enumerates: the file systems of all notations are equal,
+ * and a second notation would only show each distribution twice in the file chooser.
+ */
+private val WSLDistribution.preferredRoot: String
+  get() = roots.first { it.contains("wsl.localhost") }
 
 @ApiStatus.Internal
 @VisibleForTesting
 class EelWslMrfsBackend(private val coroutineScope: CoroutineScope) : MultiRoutingFileSystemBackend {
   private val providersCache = ContainerUtil.createConcurrentWeakMap<String, FileSystem>()
-
 
   private val reportedNonExistentWslIds = AtomicReference<List<String>>(listOf())
 
@@ -78,11 +83,10 @@ class EelWslMrfsBackend(private val coroutineScope: CoroutineScope) : MultiRouti
     }
 
     return providersCache.computeIfAbsent(wslRoot) {
-      val ijentUri = URI("ijent", "wsl", "/$distributionId", null, null)
-
       val ijentFsProvider = IjentNioFileSystemProvider.getInstance()
 
       val descriptor = WslEelDescriptor(WSLDistribution(distributionId), wslRoot)
+      val ijentUri = URI("ijent", "wsl", "/$distributionId", null, null)
       try {
         val ijentFs = ijentFailSafeFileSystemApi(coroutineScope, descriptor, checkIsIjentInitialized = {
           WslIjentManager.getInstance().isIjentInitialized(descriptor)
@@ -98,34 +102,28 @@ class EelWslMrfsBackend(private val coroutineScope: CoroutineScope) : MultiRouti
       }
 
       try {
-        val fileSystem = if (useNewFileSystem) {
-          IjentEphemeralRootAwareFileSystemProvider(
-            root = Path(wslRoot),
-            ijentFsProvider = ijentFsProvider,
-            originalFsProvider = localFS.provider(),
-            // FIXME: is this behavior really correct?
-            //
-            // It is known that `originalFs.rootDirectories` always returns all WSL drives.
-            // Also, it is known that `ijentFs.rootDirectories` returns a single WSL drive,
-            // which is already mentioned in `originalFs.rootDirectories`.
-            //
-            // `ijentFs` is usually represented by `IjentFailSafeFileSystemPosixApi`,
-            // which launches IJent and the corresponding WSL containers lazily.
-            //
-            // This function avoids fetching root directories directly from IJent.
-            // This way, various UI file trees don't start all WSL containers during loading the file system root.
-            useRootDirectoriesFromOriginalFs = true,
-            eelDescriptor = descriptor
-          ).getFileSystem(ijentUri)
-        }
-        else {
-          IjentWslNioFileSystemProvider(
-            wslId = distributionId,
-            ijentFsProvider = ijentFsProvider,
-            originalFsProvider = localFS.provider(),
-            eelDescriptor = descriptor,
-          ).getFileSystem(Path.of(wslRoot).toUri())
-        }
+        // The root is built by the local file system directly: `Path.of` would route through the multi-routing
+        // file system back into this backend.
+        val fileSystem = IjentEphemeralRootAwareFileSystemProvider(
+          root = localFS.getPath(wslRoot),
+          ijentFsProvider = ijentFsProvider,
+          originalFsProvider = localFS.provider(),
+          // It is known that `originalFs.rootDirectories` always returns all WSL drives.
+          // Also, it is known that `ijentFs.rootDirectories` returns a single WSL drive,
+          // which is already mentioned in `originalFs.rootDirectories`.
+          //
+          // `ijentFs` is usually represented by `IjentFailSafeFileSystemPosixApi`,
+          // which launches IJent and the corresponding WSL containers lazily.
+          //
+          // This function avoids fetching root directories directly from IJent.
+          // This way, various UI file trees don't start all WSL containers during loading the file system root.
+          useRootDirectoriesFromOriginalFs = true,
+          eelDescriptor = descriptor,
+          caseInsensitiveRoot = true,
+          // `\\wsl$` paths are served by the OS over 9P, so operations unsupported by IJent can fall back to them,
+          // and `\\wsl$\distro\mnt\c\...` is the local drive `C:\...`.
+          actualPathOnOriginalFs = ::getActualWslPath,
+        ).getFileSystem(ijentUri)
         LOG.info("Switching $distributionId to IJent WSL nio.FS: $fileSystem")
         fileSystem
       }
@@ -140,27 +138,21 @@ class EelWslMrfsBackend(private val coroutineScope: CoroutineScope) : MultiRouti
     }
   }
 
-  override fun getCustomRoots(): Collection<@MultiRoutingFileSystemPath String> {
-    // TODO Describe why it's fine to return local paths here.
-    // TODO Speed up.
-
-    // This code deliberately returns only `\\wsl.localhost\` paths despite the existence of `\\wsl$`.
-    // This function is often used in UI like file choosers, and it looks awkward
-    // if the same root appears in the file tree twice.
-    // The disadvantage is that `Path.of("""\\wsl$\Ubuntu\home").root` is not in `getRootDirectories()`,
-    // but the default Windows file system behaves exactly the same:
-    // its `getRootDirectories()` never returns WSL roots at all.
-    return WslDistributionManager.getInstance().installedDistributionsFuture.getNow(listOf()).map { wsl ->
-      wsl.roots.first { root ->
-        root.contains("wsl.localhost")
-      }
-    }
+  override fun getCustomRoots(): Collection<@NioPath String> {
+    // IJPL-172763: read the cache only; `installedDistributionsFuture` would spawn `wsl.exe --list`.
+    val distributions = WslDistributionManager.getInstance().lastInstalledDistributions ?: return emptyList()
+    return distributions.map { it.preferredRoot }
   }
 
   override fun getCustomFileStores(localFS: FileSystem): Collection<FileStore> {
-    return WslDistributionManager.getInstance().installedDistributionsFuture.getNow(listOf())
-      .flatMap { it.roots }
-      .flatMap { compute(localFS, it)!!.fileStores }
+    // IJPL-172763: see getCustomRoots.
+    val distributions = WslDistributionManager.getInstance().lastInstalledDistributions ?: return emptyList()
+    return distributions
+      // Enumerating file stores must not boot a distribution: `fileStores` of a lazily started IJent would start it.
+      .filter { WslIjentManager.getInstance().isIjentInitialized(WslEelDescriptor(it)) }
+      // `roots` are Windows strings, while `compute` expects a sanitized path.
+      .mapNotNull { compute(localFS, MultiRoutingFileSystem.sanitizeRoot(it.preferredRoot)) }
+      .flatMap { it.fileStores }
   }
 
   companion object {
@@ -196,28 +188,26 @@ class WslEelEnvironmentInitializer : EelEnvironmentInitializer {
 
 @ApiStatus.Internal
 class WslEelAlternativeRootProvider : EelAlternativeRootProvider {
-  override fun getAlternativeRoots(descriptor: EelDescriptor): Collection<@MultiRoutingFileSystemPath String>? =
+  override fun getAlternativeRoots(descriptor: EelDescriptor): Collection<@NioPath String>? =
     (descriptor as? WslEelDescriptor)?.distribution?.roots
 }
 
-@ApiStatus.Internal
-object WslPathParser {
+private val WSL_UNC_SERVER_NAMES: List<String> = WSL_PREFIXES.map { "//$it/" }
+
+internal object WslPathParser {
   // wsl root -> distribution id
   internal fun parsePath(sanitizedPath: String): Pair<String, String>? {
-    @MultiRoutingFileSystemPath
+    @NioPath
     val wslRoot: String
     val distributionId: String
 
-    val serverNameEndIdx = when {
-      sanitizedPath.startsWith("//wsl.localhost/", ignoreCase = true) -> 16
-      sanitizedPath.startsWith("//wsl$/", ignoreCase = true) -> 7
-      else -> return null
-    }
+    val serverNameEndIdx = WSL_UNC_SERVER_NAMES.firstOrNull { sanitizedPath.startsWith(it, ignoreCase = true) }?.length
+                           ?: return null
 
     val shareNameEndIdx = sanitizedPath.indexOf('/', startIndex = serverNameEndIdx)
 
     if (shareNameEndIdx == -1) {
-      wslRoot = sanitizedPath + "\\"
+      wslRoot = "$sanitizedPath/"
       distributionId = sanitizedPath.substring(serverNameEndIdx)
     }
     else {
@@ -229,7 +219,8 @@ object WslPathParser {
   }
 }
 
-class WslEelDescriptor internal constructor(val distribution: WSLDistribution, fsRoot: String) : EelPathBoundDescriptor {
+class WslEelDescriptor internal constructor(val distribution: WSLDistribution, fsRoot: String) : EelPathBoundDescriptor,
+                                                                                                 EelDescriptorWithoutNativeFileChooserSupport {
   internal val fsRoot = fsRoot.replace('/', '\\')
 
   constructor(distribution: WSLDistribution) : this(distribution, distribution.getUNCRootPath().pathString)

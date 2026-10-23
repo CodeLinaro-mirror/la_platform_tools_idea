@@ -8,6 +8,7 @@ import com.intellij.codeInsight.lookup.LookupEvent;
 import com.intellij.codeInsight.lookup.LookupListener;
 import com.intellij.codeInsight.lookup.LookupManager;
 import com.intellij.codeInsight.lookup.LookupUtil;
+import com.intellij.codeInsight.multiverse.EditorContextManager;
 import com.intellij.codeInsight.template.Expression;
 import com.intellij.codeInsight.template.ExpressionContext;
 import com.intellij.codeInsight.template.RecalculatableResult;
@@ -34,6 +35,7 @@ import com.intellij.openapi.editor.ScrollType;
 import com.intellij.openapi.editor.colors.EditorColors;
 import com.intellij.openapi.editor.colors.EditorColorsScheme;
 import com.intellij.openapi.editor.colors.TextAttributesKey;
+import com.intellij.openapi.editor.elf.Elf;
 import com.intellij.openapi.editor.event.CaretEvent;
 import com.intellij.openapi.editor.event.CaretListener;
 import com.intellij.openapi.editor.event.DocumentEvent;
@@ -44,7 +46,6 @@ import com.intellij.openapi.editor.ex.RangeHighlighterEx;
 import com.intellij.openapi.editor.ex.util.EditorActionAvailabilityHint;
 import com.intellij.openapi.editor.ex.util.EditorActionAvailabilityHintKt;
 import com.intellij.openapi.editor.impl.ImaginaryEditor;
-import com.intellij.openapi.editor.impl.elf.ElfTheManager;
 import com.intellij.openapi.editor.markup.EffectType;
 import com.intellij.openapi.editor.markup.HighlighterLayer;
 import com.intellij.openapi.editor.markup.HighlighterTargetArea;
@@ -134,7 +135,7 @@ public final class TemplateState extends TemplateStateBase implements Disposable
       public void beforeDocumentChange(@NotNull DocumentEvent e) {
         if (CommandProcessor.getInstance().isCommandInProgress() &&
             !isUndoOrRedoInProgress() &&
-            !ElfTheManager.getInstance().isElfCommandInProgress()) {
+            !Elf.getElf().isElfCommandInProgress()) {
           myDocumentChanged = true;
         }
       }
@@ -586,7 +587,10 @@ public final class TemplateState extends TemplateStateBase implements Disposable
   @Nullable
   @ApiStatus.Internal
   public PsiFile getPsiFile() {
-    return !isDisposed() ? PsiDocumentManager.getInstance(myProject).getPsiFile(getDocument()) : null;
+    if (isDisposed()) return null;
+    Editor editor = getEditor();
+    return editor != null ? EditorContextManager.getPsiFileForEditor(editor, myProject)
+                          : PsiDocumentManager.getInstance(myProject).getPsiFile(getDocument());
   }
 
   @ApiStatus.Internal

@@ -6,8 +6,7 @@ import com.intellij.openapi.observable.properties.ObservableMutableProperty
 import com.intellij.openapi.observable.properties.PropertyGraph
 import com.intellij.python.community.execService.UploadConfig
 import com.intellij.python.hatch.HATCH_TOML
-import com.intellij.python.hatch.HatchConfiguration
-import com.intellij.python.hatch.HatchConfiguration.getOrDetectHatchExecutablePath
+import com.intellij.python.hatch.HatchPyTool
 import com.intellij.python.hatch.HatchVirtualEnvironment
 import com.intellij.python.hatch.getHatchService
 import com.intellij.python.pyproject.PY_PROJECT_TOML
@@ -19,6 +18,8 @@ import com.jetbrains.python.sdk.add.v2.PathHolder
 import com.jetbrains.python.sdk.add.v2.PythonToolViewModel
 import com.jetbrains.python.sdk.add.v2.ToolValidator
 import com.jetbrains.python.sdk.add.v2.ValidatedPath
+import com.jetbrains.python.sdk.add.v2.pathHolder
+import com.jetbrains.python.sdk.add.v2.successOrNull
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,7 +30,7 @@ import java.nio.file.Path
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 
-class HatchViewModel<P : PathHolder>(
+internal class HatchViewModel<P : PathHolder>(
   val fileSystem: FileSystem<P>,
   propertyGraph: PropertyGraph,
   val projectPathFlows: ProjectPathFlows,
@@ -47,23 +48,21 @@ class HatchViewModel<P : PathHolder>(
 
   val toolValidator: ToolValidator<P> = ToolValidator(
     fileSystem = fileSystem,
-    toolVersionPrefix = "hatch",
+    tool = HatchPyTool.getInstance(),
     backProperty = hatchExecutable,
     propertyGraph = propertyGraph,
-    toolCommandSpec = HatchConfiguration.toolCommandSpec,
-    defaultPathSupplier = { getOrDetectHatchExecutablePath(fileSystem).successOrNull }
   )
 
   override fun initialize(scope: CoroutineScope) {
     toolValidator.initialize(scope)
 
     hatchExecutable.afterChange { hatchExecutable ->
-      if (hatchExecutable?.validationResult?.successOrNull == null) {
+      if (hatchExecutable?.successOrNull == null) {
         availableEnvironments.value = PyResult.success(emptyList())
         return@afterChange
       }
 
-      val hatchExecutablePath = hatchExecutable.pathHolder ?: return@afterChange
+      val hatchExecutablePath = hatchExecutable.pathHolder.successOrNull ?: return@afterChange
       scope.launch(Dispatchers.EDT) {
         availableEnvironments.value = detectHatchEnvironments(hatchExecutablePath)
       }

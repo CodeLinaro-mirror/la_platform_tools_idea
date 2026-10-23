@@ -25,43 +25,50 @@ import java.util.concurrent.atomic.AtomicReference
   ]
 )
 class TerminalUsageLocalStorage : PersistentStateComponent<TerminalUsageLocalStorage.State> {
-  private val feedbackNotificationShown = AtomicBoolean()
   private val enterKeyPressedTimes = AtomicInteger()
 
-  private val completionFeedbackNotificationShown = AtomicBoolean()
+  private val inlineCompletionShownTimes = AtomicInteger()
+  private val inlineCompletionAcceptedTimes = AtomicInteger()
+  private val inlineCompletionFeedbackNotificationShown = AtomicBoolean()
   private val completionPopupShownTimes = AtomicInteger()
   private val completionItemChosenTimes = AtomicInteger()
 
   private val firstIdeSessionMoment = AtomicReference<TerminalFirstIdeSessionMoment?>(null)
 
   override fun getState(): State = State(
-    feedbackNotificationShown.get(),
     enterKeyPressedTimes.get(),
-    completionFeedbackNotificationShown.get(),
+    inlineCompletionShownTimes.get(),
+    inlineCompletionAcceptedTimes.get(),
+    inlineCompletionFeedbackNotificationShown.get(),
     completionPopupShownTimes.get(),
     completionItemChosenTimes.get(),
     firstIdeSessionMoment.get(),
   )
 
   override fun loadState(state: State) {
-    feedbackNotificationShown.set(state.feedbackNotificationShown)
     enterKeyPressedTimes.set(state.enterKeyPressedTimes)
-    completionFeedbackNotificationShown.set(state.completionFeedbackNotificationShown)
+    inlineCompletionShownTimes.set(state.inlineCompletionShownTimes)
+    inlineCompletionAcceptedTimes.set(state.inlineCompletionAcceptedTimes)
+    inlineCompletionFeedbackNotificationShown.set(state.inlineCompletionFeedbackNotificationShown)
     completionPopupShownTimes.set(state.completionPopupShownTimes)
     completionItemChosenTimes.set(state.completionItemChosenTimes)
     firstIdeSessionMoment.set(state.firstIdeSessionMoment)
-  }
-
-  fun recordFeedbackNotificationShown() {
-    feedbackNotificationShown.set(true)
   }
 
   fun recordEnterKeyPressed() {
     enterKeyPressedTimes.incrementAndGet()
   }
 
-  fun recordCompletionFeedbackNotificationShown() {
-    completionFeedbackNotificationShown.set(true)
+  fun recordInlineCompletionShown() {
+    inlineCompletionShownTimes.incrementAndGet()
+  }
+
+  fun recordInlineCompletionAccepted() {
+    inlineCompletionAcceptedTimes.incrementAndGet()
+  }
+
+  fun recordInlineCompletionFeedbackNotificationShown() {
+    inlineCompletionFeedbackNotificationShown.set(true)
   }
 
   fun recordCompletionPopupShown() {
@@ -78,9 +85,10 @@ class TerminalUsageLocalStorage : PersistentStateComponent<TerminalUsageLocalSto
 
   @Serializable
   data class State(
-    val feedbackNotificationShown: Boolean = false,
     val enterKeyPressedTimes: Int = 0,
-    val completionFeedbackNotificationShown: Boolean = false,
+    val inlineCompletionShownTimes: Int = 0,
+    val inlineCompletionAcceptedTimes: Int = 0,
+    val inlineCompletionFeedbackNotificationShown: Boolean = false,
     val completionPopupShownTimes: Int = 0,
     val completionItemChosenTimes: Int = 0,
     val firstIdeSessionMoment: TerminalFirstIdeSessionMoment? = null,

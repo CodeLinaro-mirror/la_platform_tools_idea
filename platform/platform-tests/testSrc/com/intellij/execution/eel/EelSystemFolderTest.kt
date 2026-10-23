@@ -7,10 +7,12 @@ import com.intellij.platform.eel.EelArchiveApi
 import com.intellij.platform.eel.EelDescriptor
 import com.intellij.platform.eel.EelExecApi
 import com.intellij.platform.eel.EelExecPosixApi
+import com.intellij.platform.eel.EelHttpApi
 import com.intellij.platform.eel.EelOsFamily
 import com.intellij.platform.eel.EelPathBoundDescriptor
 import com.intellij.platform.eel.EelPlatform
 import com.intellij.platform.eel.EelPosixProcess
+import com.intellij.platform.eel.EelProcessManagementPosixApi
 import com.intellij.platform.eel.EelTunnelsApi
 import com.intellij.platform.eel.EelUserInfo
 import com.intellij.platform.eel.EelUserPosixInfo
@@ -19,7 +21,7 @@ import com.intellij.platform.eel.fs.EelFileSystemApi
 import com.intellij.platform.eel.path.EelPath
 import com.intellij.platform.eel.provider.LocalEelDescriptor
 import com.intellij.platform.eel.provider.asNioPath
-import com.intellij.platform.eel.provider.utils.EelPathUtils
+import com.intellij.platform.eel.provider.utils.EelSystemFolderUtils
 import com.intellij.testFramework.junit5.SystemPropertyClassLevel
 import com.intellij.testFramework.junit5.TestApplication
 import com.intellij.util.SystemProperties
@@ -103,7 +105,7 @@ class EelSystemFolderTest {
         val descriptor = FakeEelDescriptor(case.platform.osFamily, nonLocalRoot)
         val eel = FakeEelApi(descriptor, case.platform, EelPath.parse(case.home, descriptor), case.env)
 
-        val systemFolder = EelPathUtils.getSystemFolder(eel)
+        val systemFolder = EelSystemFolderUtils.getSystemFolder(eel)
 
         val expected = EelPath.parse(case.expected, descriptor)
         assertThat(systemFolder)
@@ -126,7 +128,7 @@ class EelSystemFolderTest {
   }
 
   @Test
-  fun `system folder of the local environment is a plain host path`() {
+  fun `system folder of the local environment is not invented`() {
     val hostHome = Path(SystemProperties.getUserHome()).toAbsolutePath()
     val eel = FakeEelApi(
       descriptor = LocalEelDescriptor,
@@ -135,22 +137,16 @@ class EelSystemFolderTest {
       env = emptyMap(),
     )
 
-    val systemFolder = EelPathUtils.getSystemFolder(eel)
-
-    assertThat(systemFolder.isAbsolute).describedAs("`%s` must be absolute", systemFolder).isTrue()
-    assertThat(systemFolder.startsWith(hostHome))
-      .describedAs("`%s` must be located under the host home directory `%s`", systemFolder, hostHome)
-      .isTrue()
-    assertThat(systemFolder.endsWith(Path(VENDOR, selector)))
-      .describedAs("`%s` must end with the vendor and the paths selector", systemFolder)
-      .isTrue()
+    val systemFolder = EelSystemFolderUtils.getSystemFolder(eel)
+    assertThat(systemFolder).isEqualTo(PathManager.getSystemDir())
   }
 
   private fun hostPlatform(): EelPlatform = when (OS.CURRENT) {
     OS.Windows -> EelPlatform.Windows(EelPlatform.Arch.Unknown)
     OS.macOS -> EelPlatform.Darwin(EelPlatform.Arch.Unknown)
     OS.FreeBSD -> EelPlatform.FreeBSD(EelPlatform.Arch.Unknown)
-    null, OS.Linux, OS.Other -> EelPlatform.Linux(EelPlatform.Arch.Unknown)
+    OS.Linux, OS.Other -> EelPlatform.Linux(EelPlatform.Arch.Unknown)
+    OS.OHOS -> EelPlatform.OHOS(EelPlatform.Arch.Unknown)
   }
 }
 
@@ -189,10 +185,9 @@ private class FakeEelApi(
     override fun environmentVariables(opts: EelExecApi.EnvironmentVariablesOptions): EelExecApi.EnvironmentVariablesDeferred =
       unused("exec.environmentVariables")
 
-    override suspend fun getUserLoginShell(): EelPath = unused("exec.getUserLoginShell")
+    override val processManagement: EelProcessManagementPosixApi get() = unused("exec.processManagement")
 
-    override suspend fun spawnLoginShell(opts: EelExecApi.LoginShellOptions): EelExecApi.LoginShellHandle =
-      unused("exec.spawnLoginShell")
+    override suspend fun getUserLoginShell(): EelPath = unused("exec.getUserLoginShell")
 
     override suspend fun findExeFilesInPath(binaryName: String): List<EelPath> = unused("exec.findExeFilesInPath")
 
@@ -203,7 +198,8 @@ private class FakeEelApi(
   override val fs: EelFileSystemApi get() = unused("fs")
   override val tunnels: EelTunnelsApi get() = unused("tunnels")
   override val archive: EelArchiveApi get() = unused("archive")
-}
+  override val http: EelHttpApi get() = unused("http")
 
-private fun unused(what: String): Nothing =
-  throw AssertionError("EelApi.$what is not implemented for EelSystemFolderTest")
+  private fun unused(what: String): Nothing =
+    throw AssertionError("EelApi.$what is not implemented for EelSystemFolderTest")
+}

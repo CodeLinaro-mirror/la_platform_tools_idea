@@ -2,14 +2,13 @@
 package org.jetbrains.kotlin.idea.codeinsights.impl.base
 
 import com.intellij.psi.PsiElement
-import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaSession
 import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotationValue
-import org.jetbrains.kotlin.analysis.api.components.evaluateAsAnnotationValue
 import org.jetbrains.kotlin.analysis.api.components.isClassType
-import org.jetbrains.kotlin.analysis.api.components.type
+import org.jetbrains.kotlin.analysis.api.evaluation.evaluateAsAnnotationValue
 import org.jetbrains.kotlin.analysis.api.symbols.markers.KaAnnotatedSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.symbol
+import org.jetbrains.kotlin.analysis.api.types.type
 import org.jetbrains.kotlin.config.AnalysisFlags
 import org.jetbrains.kotlin.config.ApiVersion
 import org.jetbrains.kotlin.idea.base.projectStructure.languageVersionSettings
@@ -22,7 +21,6 @@ import org.jetbrains.kotlin.psi.KtElement
 import org.jetbrains.kotlin.psi.ValueArgument
 import org.jetbrains.kotlin.psi.psiUtil.parentsWithSelf
 import org.jetbrains.kotlin.resolve.checkers.OptInNames
-import org.jetbrains.kotlin.utils.addToStdlib.safeAs
 
 /**
  * Checks whether there's an element lexically above in the tree, annotated with @[OptIn]`(X::class)`, or a declaration
@@ -52,13 +50,9 @@ private fun KtAnnotationEntry.getAnnotatedOptIns(): Set<ClassId> {
     return valueArguments.mapNotNull { it.getAnnotationClassValue() }.toSet()
 }
 
-@OptIn(KaExperimentalApi::class)
 context(_: KaSession)
 private fun ValueArgument.getAnnotationClassValue(): ClassId? =
-    getArgumentExpression()
-        ?.evaluateAsAnnotationValue()
-        ?.safeAs<KaAnnotationValue.ClassLiteralValue>()
-        ?.classId
+    (getArgumentExpression()?.evaluateAsAnnotationValue() as? KaAnnotationValue.ClassLiteralValue)?.classId
 
 context(_: KaSession)
 private fun PsiElement.isElementAnnotatedWithOptIn(annotationClassId: ClassId): Boolean =

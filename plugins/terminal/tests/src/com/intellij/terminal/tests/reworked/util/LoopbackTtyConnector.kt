@@ -6,6 +6,7 @@ import com.jediterm.terminal.TtyConnector
 import java.util.concurrent.BlockingQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
 
 /**
  * In-memory [TtyConnector] for terminal tests that need no process.
@@ -13,10 +14,17 @@ import java.util.concurrent.LinkedBlockingQueue
  * Text passed to [feed] is routed through [read] into the terminal emulator as
  * if a process produced it.
  */
-internal class LoopbackTtyConnector : TtyConnector {
+class LoopbackTtyConnector : TtyConnector {
   private val pipe: InMemoryPipe = InMemoryPipeImpl()
 
   private val closed = CountDownLatch(1)
+
+  /**
+   * Receives each chunk the terminal writes to the process (key/mouse events, query
+   * replies). Null — the default — drops the data.
+   */
+  @Volatile
+  var responseHandler: ((ByteArray) -> Unit)? = null
 
   /**
    * Feeds [text] to the terminal emulator, as if the process printed it.
@@ -26,10 +34,14 @@ internal class LoopbackTtyConnector : TtyConnector {
   }
 
   /** Data for the process (key/mouse events; replies to queries) */
-  override fun write(string: String) {}
+  override fun write(string: String) {
+    responseHandler?.invoke(string.toByteArray())
+  }
 
   /** Data for the process (key/mouse events; replies to queries) */
-  override fun write(bytes: ByteArray) {}
+  override fun write(bytes: ByteArray) {
+    responseHandler?.invoke(bytes)
+  }
 
   override fun read(buf: CharArray, offset: Int, length: Int): Int = pipe.read(buf, offset, length)
 
@@ -44,7 +56,15 @@ internal class LoopbackTtyConnector : TtyConnector {
 
   override fun getName(): String = "loopback"
 
-  override fun resize(termSize: TermSize) {}
+  /** Sizes passed to [resize], so a test can wait for one via [awaitResize]. */
+  private val resizes = LinkedBlockingQueue<TermSize>()
+
+  override fun resize(termSize: TermSize) {
+    resizes.add(termSize)
+  }
+
+  /** The next size the session asked for, or null if none arrived within [timeoutMillis]. */
+  fun awaitResize(timeoutMillis: Long): TermSize? = resizes.poll(timeoutMillis, TimeUnit.MILLISECONDS)
 
   override fun close() {
     closed.countDown()

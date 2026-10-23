@@ -1,7 +1,21 @@
+load("@jps_dynamic_deps_community//:targets.bzl", "dev_dist_plugin")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
-### auto-generated section `build intellij.editorconfig.plugin` start
+### auto-generated section `dev intellij.editorconfig.plugin` start
+dev_dist_plugin(
+    content_modules = [
+        # do not sort,
+        "intellij.editorconfig.common",
+        "intellij.editorconfig.frontend",
+        "intellij.editorconfig.backend",
+        "intellij.editorconfig.backend.spellchecking",
+        "intellij.libraries.ec4j.core",
+    ],
+    main_module = "intellij.editorconfig.plugin",
+)
+### auto-generated section `dev intellij.editorconfig.plugin` end
 
+### auto-generated section `build intellij.editorconfig.plugin` start
 jvm_library(
     name = "editorconfig-plugin",
     srcs = glob(
@@ -33,13 +47,13 @@ jvm_library(
 exports_files(
     [
         "intellij.editorconfig.plugin.iml",
+        "resources/META-INF/plugin.xml",
     ],
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.editorconfig.plugin` end
 
 ### auto-generated section `build intellij.editorconfig.plugin.main` start
-
 jvm_library(
     name = "editorconfig-plugin-main",
     srcs = glob(

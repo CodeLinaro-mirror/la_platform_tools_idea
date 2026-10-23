@@ -1,7 +1,18 @@
+load("@community//platform/build-scripts/bazel-rules:ij_plugin.bzl", "ij_plugin")
+load("@jps_dynamic_deps_community//:targets.bzl", "dev_dist_plugin")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
-### auto-generated section `build intellij.keymap.xcode` start
+### auto-generated section `dev intellij.keymap.xcode` start
+dev_dist_plugin(
+    descriptor = "resources/META-INF/plugin.xml",
+    jars = {
+        "lib/keymap-xcode.jar": ["intellij.keymap.xcode"],
+    },
+    main_module = "intellij.keymap.xcode",
+)
+### auto-generated section `dev intellij.keymap.xcode` end
 
+### auto-generated section `build intellij.keymap.xcode` start
 jvm_library(
     name = "keymap-xcode",
     srcs = glob(
@@ -14,6 +25,7 @@ jvm_library(
         ["resources/**/*"],
     ),
     visibility = ["//visibility:public"],
+    runtime_deps = ["//platform/platform-impl:ide-impl"],
 )
 
 jvm_library(
@@ -25,7 +37,17 @@ jvm_library(
     ),
     module_name = "intellij.keymap.xcode",
     visibility = ["//visibility:public"],
-    runtime_deps = [":keymap-xcode"],
+    runtime_deps = [
+        # do not sort,
+        ":keymap-xcode",
+        "//platform/platform-impl:ide-impl_test_lib",
+    ],
+)
+
+ij_plugin(
+    name = "keymap-xcode_plugin",
+    descriptor_module = ":keymap-xcode",
+    visibility = ["//visibility:public"],
 )
 ### auto-generated section `build intellij.keymap.xcode` end
 
@@ -33,6 +55,8 @@ jvm_library(
 exports_files(
     [
         "intellij.keymap.xcode.iml",
+        "resources/META-INF/plugin.xml",
+        "resources/keymaps/Xcode.xml",
     ],
     visibility = ["//visibility:public"],
 )

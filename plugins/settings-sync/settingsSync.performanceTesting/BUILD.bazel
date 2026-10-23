@@ -1,7 +1,6 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
 ### auto-generated section `build intellij.settingsSync.performanceTesting` start
-
 jvm_library(
     name = "settingsSync.performanceTesting",
     srcs = glob(
@@ -54,6 +53,7 @@ jvm_library(
 exports_files(
     [
         "intellij.settingsSync.performanceTesting.iml",
+        "resources/intellij.settingsSync.performanceTesting.xml",
     ],
     visibility = ["//visibility:public"],
 )

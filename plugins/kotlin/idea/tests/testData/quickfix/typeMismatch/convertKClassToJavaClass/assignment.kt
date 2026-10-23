@@ -1,7 +1,7 @@
 // "Convert 'KClass' to 'Class'" "true"
 // PRIORITY: HIGH
 // WITH_STDLIB
-// K2_ERROR: Assignment type mismatch: actual type is 'KClass<String>', but 'Class<*>' was expected.
+// K2_ERROR: ASSIGNMENT_TYPE_MISMATCH
 
 fun foo() {
     val clazz = String::class
@@ -10,4 +10,3 @@ fun foo() {
 }
 
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ConvertKClassToClassFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ConvertKClassToClassFix

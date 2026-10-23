@@ -11,7 +11,6 @@ import com.intellij.grazie.utils.filterFor
 import com.intellij.grazie.utils.toProofreadingContext
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiPlainText
-import kotlinx.coroutines.runBlocking
 import org.junit.Assert
 
 class GrammarCheckerTest : GrazieTestBase() {
@@ -94,6 +93,11 @@ class GrammarCheckerTest : GrazieTestBase() {
     assertIsEmpty(check(plain("Времено отключен, т.к. не работает.")))
   }
 
+  fun `test text with identifiers and call expression`() {
+    val token = plain("Using auto_cleanup is generally more eficient, in which case you shouldn't ever need to cleanup()")
+    assertIsEmpty(check(token))
+  }
+
   private fun plain(vararg texts: String) = plain(texts.toList())
 
   private fun plain(texts: List<String>): Collection<PsiElement> {
@@ -103,9 +107,7 @@ class GrammarCheckerTest : GrazieTestBase() {
   private fun check(tokens: Collection<PsiElement>): List<TextProblem> {
     return tokens.flatMap {
       TextExtractor.findTextsAt(it, TextContent.TextDomain.ALL).flatMap { text ->
-        runBlocking {
-          LanguageToolChecker().checkExternally(text.toProofreadingContext())
-        }
+        LanguageToolChecker().check(text.toProofreadingContext())
       }
     }
   }

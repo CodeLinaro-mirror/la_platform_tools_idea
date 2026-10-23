@@ -6,6 +6,8 @@ import com.intellij.debugger.JavaDebuggerBundle;
 import com.intellij.debugger.SourcePosition;
 import com.intellij.debugger.engine.evaluation.EvaluateException;
 import com.intellij.debugger.engine.evaluation.EvaluateExceptionUtil;
+import com.intellij.debugger.source.DebuggerSourceFileResolver;
+import com.intellij.lang.jvm.types.JvmPrimitiveTypeKind;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProcessCanceledException;
@@ -27,8 +29,6 @@ import com.intellij.psi.PsiModifier;
 import com.intellij.psi.PsiParameter;
 import com.intellij.psi.PsiPrimitiveType;
 import com.intellij.psi.PsiType;
-import com.intellij.psi.PsiTypes;
-import com.intellij.psi.jsp.JspFile;
 import com.intellij.psi.util.ClassUtil;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiUtil;
@@ -48,34 +48,22 @@ public final class JVMNameUtil {
   public static final String CONSTRUCTOR_NAME = "<init>";
 
   public static @Nullable String getPrimitiveSignature(String typeName) {
-    if (PsiTypes.booleanType().getCanonicalText().equals(typeName)) {
-      return "Z";
+    JvmPrimitiveTypeKind kind = JvmPrimitiveTypeKind.getKindByName(typeName);
+    return kind != null ? kind.getBinaryName() : null;
+  }
+
+  public static boolean isBoxingOrUnboxingMethod(@NotNull String owner, @NotNull String name, @NotNull String signature) {
+    JvmPrimitiveTypeKind kind = JvmPrimitiveTypeKind.getKindByFqn(owner);
+    if (kind == null || kind == JvmPrimitiveTypeKind.VOID) {
+      return false;
     }
-    else if (PsiTypes.byteType().getCanonicalText().equals(typeName)) {
-      return "B";
+
+    String primitiveDescriptor = kind.getBinaryName();
+    if (name.equals(kind.getName() + "Value")) {
+      return signature.equals("()" + primitiveDescriptor);
     }
-    else if (PsiTypes.charType().getCanonicalText().equals(typeName)) {
-      return "C";
-    }
-    else if (PsiTypes.shortType().getCanonicalText().equals(typeName)) {
-      return "S";
-    }
-    else if (PsiTypes.intType().getCanonicalText().equals(typeName)) {
-      return "I";
-    }
-    else if (PsiTypes.longType().getCanonicalText().equals(typeName)) {
-      return "J";
-    }
-    else if (PsiTypes.floatType().getCanonicalText().equals(typeName)) {
-      return "F";
-    }
-    else if (PsiTypes.doubleType().getCanonicalText().equals(typeName)) {
-      return "D";
-    }
-    else if (PsiTypes.voidType().getCanonicalText().equals(typeName)) {
-      return "V";
-    }
-    return null;
+    String wrapperDescriptor = "L" + owner.replace('.', '/') + ";";
+    return name.equals("valueOf") && signature.equals("(" + primitiveDescriptor + ")" + wrapperDescriptor);
   }
 
   private static void appendJVMSignature(JVMNameBuffer buffer, PsiType type) {
@@ -83,9 +71,9 @@ public final class JVMNameUtil {
       return;
     }
     final PsiType psiType = TypeConversionUtil.erasure(type);
-    if (psiType instanceof PsiArrayType) {
+    if (psiType instanceof PsiArrayType arrayType) {
       buffer.append(new JVMRawText("["));
-      appendJVMSignature(buffer, ((PsiArrayType)psiType).getComponentType());
+      appendJVMSignature(buffer, arrayType.getComponentType());
     }
     else if (psiType instanceof PsiClassType) {
       final JVMName jvmName = getJVMQualifiedName(psiType);
@@ -101,8 +89,8 @@ public final class JVMNameUtil {
 
   private static void appendJvmClassQualifiedName(JVMNameBuffer buffer, final JVMName jvmName) {
     buffer.append("L");
-    if (jvmName instanceof JVMRawText) {
-      buffer.append(((JVMRawText)jvmName).getName().replace('.', '/'));
+    if (jvmName instanceof JVMRawText text) {
+      buffer.append(text.getName().replace('.', '/'));
     }
     else {
       buffer.append(new JVMName() {
@@ -377,7 +365,7 @@ public final class JVMNameUtil {
 
     Pair<String, Boolean> res = ReadAction.compute(() -> {
       final PsiFile positionFile = position.getFile();
-      if (positionFile instanceof JspFile) {
+      if (DebuggerSourceFileResolver.isTemplateSourceFile(positionFile)) {
         return Pair.create(positionFile.getName(), false);
       }
 
@@ -448,7 +436,7 @@ public final class JVMNameUtil {
 
     String res = ReadAction.compute(() -> {
       final PsiFile positionFile = position.getFile();
-      if (positionFile instanceof JspFile) {
+      if (DebuggerSourceFileResolver.isTemplateSourceFile(positionFile)) {
         final PsiDirectory dir = positionFile.getContainingDirectory();
         return dir != null ? dir.getVirtualFile().getPresentableUrl() : null;
       }
@@ -466,8 +454,8 @@ public final class JVMNameUtil {
         }
       }
 
-      if (positionFile instanceof PsiClassOwner) {
-        String name = ((PsiClassOwner)positionFile).getPackageName();
+      if (positionFile instanceof PsiClassOwner owner) {
+        String name = owner.getPackageName();
         if (!StringUtil.isEmpty(name)) {
           return name;
         }

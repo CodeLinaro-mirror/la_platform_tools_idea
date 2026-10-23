@@ -6,7 +6,7 @@ import com.intellij.platform.eel.channels.EelDelicateApi
 import com.intellij.platform.eel.channels.EelReceiveChannel
 import com.intellij.platform.eel.channels.EelSendChannel
 import com.intellij.platform.eel.path.EelPath
-import kotlinx.coroutines.CancellationException
+import com.intellij.platform.util.annotations.VisibleToClasses
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
@@ -15,7 +15,6 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.CheckReturnValue
-import org.jetbrains.annotations.VisibleForTesting
 import java.io.IOException
 import java.util.Collections
 import java.util.WeakHashMap
@@ -141,7 +140,8 @@ sealed interface EelExecApi {
   @Suppress("FunctionName")
   @ApiStatus.Internal
   @ApiStatus.Obsolete
-  suspend fun `_private useEnvironmentVariableDefaultInFetchLoginShellEnvVariables`(): Boolean = false
+  @VisibleToClasses("com.intellij.platform.ijent.impl.base.GrpcIjentExecPosixApi")
+  suspend fun `_private useEnvironmentVariableDefaultInFetchLoginShellEnvVariables`(): EnvironmentVariablesOptions.Mode? = null
 
   /**
    * Use [environmentVariables] instead.
@@ -153,9 +153,12 @@ sealed interface EelExecApi {
   @ApiStatus.Experimental
   @ApiStatus.Obsolete
   suspend fun fetchLoginShellEnvVariables(): Map<String, String> {
-    if (`_private useEnvironmentVariableDefaultInFetchLoginShellEnvVariables`()) {
-      @Suppress("checkedExceptions")
-      return environmentVariables().eelIt().await()
+    when (val delegateToMode = `_private useEnvironmentVariableDefaultInFetchLoginShellEnvVariables`()) {
+      null -> {}
+      else -> {
+        @Suppress("checkedExceptions")
+        return environmentVariables().mode(delegateToMode).eelIt().await()
+      }
     }
 
     return when (this) {
@@ -232,82 +235,6 @@ sealed interface EelExecApi {
   suspend fun getUserLoginShell(): EelPath
 
   /**
-   * Spawns the user's login shell (resolved via [getUserLoginShell]) so that its full startup runs,
-   * captures the resulting environment, and hands back a live PTY-attached interactive shell.
-   */
-  @ApiStatus.Internal
-  @Throws(ExecuteProcessException::class)
-  @ThrowsChecked(ExecuteProcessException::class)
-  suspend fun spawnLoginShell(@GeneratedBuilder opts: LoginShellOptions): LoginShellHandle
-
-  @ApiStatus.Internal
-  interface LoginShellOptions {
-    /**
-     * Start the login shell with `-i` or equivalent so that the interactive profile is loaded.
-     * */
-    @get:ApiStatus.Internal
-    val interactive: Boolean get() = true
-
-    /**
-     * PTY dimensions for the underlying shell session. If null, a default PTY is used.
-     */
-    @get:ApiStatus.Internal
-    val pty: Pty? get() = null
-
-    /**
-     * Extra environment variables to pass to the outer shell process (e.g. `DISABLE_AUTO_UPDATE=true`
-     * to silence oh-my-zsh's update prompt, or `LANG=en_US.UTF-8`). Merged into the inherited env
-     * by the underlying [spawnProcess] — same semantics as [ExecuteProcessOptions.env].
-     */
-    @get:ApiStatus.Internal
-    val env: Map<String, String> get() = mapOf()
-
-    /**
-     * Working directory of the outer shell process. Useful e.g. when the caller wants the shell to
-     * start in a project root rather than `$HOME` — same semantics as [ExecuteProcessOptions.workingDirectory].
-     */
-    @get:ApiStatus.Internal
-    val workingDirectory: EelPath? get() = null
-
-    /**
-     * Lifetime of the spawn. When canceled, the shell process is killed and
-     * [LoginShellHandle.capturedEnv] completes exceptionally with [CancellationException].
-     */
-    @get:ApiStatus.Internal
-    val scope: CoroutineScope? get() = null
-  }
-
-  /**
-   * Result of [spawnLoginShell].
-   */
-  @ApiStatus.Internal
-  interface LoginShellHandle {
-    /**
-     * Live shell process. Its `stdout` can be a **filtered** PTY stream - bytes between the two internal
-     * sentinels (the env-capture window) are stripped from the consumer view; everything else (rcfile
-     * output, post-capture interactive prompt) flows through untouched.
-     *
-     * **Caller must consume `stderr`.** This implementation does NOT drain stderr internally — terminal
-     * widgets that surface stderr should attach a reader to `process.stderr` (e.g. forward into the
-     * same widget, or into a side log). An unread stderr channel may block the shell once its kernel
-     * pipe buffer fills.
-     *
-     * **Caller owns the lifecycle.** The process lives until `process.kill()` or until the spawn's
-     * coroutine scope (see `LoginShellOptions.scope`) is canceled.
-     */
-    @get:ApiStatus.Internal
-    val process: EelProcess
-    @get:ApiStatus.Internal
-    val capturedEnv: Deferred<List<EnvVar>>
-  }
-
-  @ApiStatus.Internal
-  class EnvVar(
-    val name: String,
-    val value: String,
-  )
-
-  /**
    * Indicates on the failure during fetching environment variables.
    * As an API user, you can't gracefully handle this error. You can either ignore it or show the message to the user as a critical error.
    * The message text may be localized with the locale of the remote machine.
@@ -324,16 +251,23 @@ sealed interface EelExecApi {
   @ApiStatus.Experimental
   class EnvironmentVariablesDeferred @ApiStatus.Internal constructor(
     @ApiStatus.Experimental
-    val deferred: Deferred<Map<String, String>>,
+    val deferred: SafeDeferred<Map<String, String>>,
   ) {
+    @Deprecated("Inline me")
+    constructor(deferred: Deferred<Map<String, String>>) : this(SafeDeferred(deferred))
+
     @ApiStatus.Experimental
     @ThrowsChecked(EnvironmentVariablesException::class)
     suspend fun await(): Map<String, String> = try {
       deferred.await()
     }
-    catch (e: CancellationException) {
-      currentCoroutineContext().ensureActive()
-      throw RuntimeException("Environment variables fetching was cancelled", e)
+    catch (e: SafeDeferred.DeferredException) {
+      // A broken Eel fails the deferred with its own error, for example `EelUnavailableException`.
+      // The cause chain keeps this error.
+      throw when (val cause = e.cause) {
+        is EnvironmentVariablesException, is EelUnavailableException -> cause
+        else -> EnvironmentVariablesException(e.message ?: "Failed to get environment variables", e)
+      }
     }
   }
 
@@ -402,7 +336,7 @@ sealed interface EelExecApi {
       LOGIN_INTERACTIVE,
 
       /**
-       * Like [LOGIN_INTERACTIVE], but uses the unified [spawnLoginShell] pipeline.
+       * Like [LOGIN_INTERACTIVE], but uses the unified [LoginShellSpawner.spawnLoginShell] pipeline.
        *
        * **Notice:** MAY throw [EnvironmentVariablesException].
        */
@@ -436,6 +370,15 @@ sealed interface EelExecApi {
    */
   @ApiStatus.Experimental
   suspend fun findExeFilesInPath(binaryName: String): List<EelPath>
+
+  /**
+   * Management of the processes running inside the environment: listing them, querying a single process by pid, and terminating them.
+   *
+   * On a POSIX environment this is an [EelProcessManagementPosixApi], on a Windows environment an [EelProcessManagementWindowsApi]
+   * (see [EelExecPosixApi.processManagement] / [EelExecWindowsApi.processManagement], which narrow the type accordingly).
+   */
+  @get:ApiStatus.Experimental
+  val processManagement: EelProcessManagementApi
 
   /**
    * Represents a callback script which can be called from command-line tools like `git`.
@@ -606,13 +549,10 @@ interface EelExecPosixApi : EelExecApi {
     @GeneratedBuilder(PosixEnvironmentVariablesOptions::class) opts: EelExecApi.EnvironmentVariablesOptions,
   ): EelExecApi.EnvironmentVariablesDeferred
 
-  interface PosixEnvironmentVariablesOptions : EelExecApi.EnvironmentVariablesOptions
+  @get:ApiStatus.Experimental
+  override val processManagement: EelProcessManagementPosixApi
 
-  @ApiStatus.Internal
-  @ThrowsChecked(ExecuteProcessException::class)
-  override suspend fun spawnLoginShell(
-    @GeneratedBuilder opts: EelExecApi.LoginShellOptions,
-  ): EelExecApi.LoginShellHandle
+  interface PosixEnvironmentVariablesOptions : EelExecApi.EnvironmentVariablesOptions
 }
 
 /**
@@ -629,13 +569,10 @@ interface EelExecWindowsApi : EelExecApi {
     @GeneratedBuilder(WindowsEnvironmentVariablesOptions::class) opts: EelExecApi.EnvironmentVariablesOptions,
   ): EelExecApi.EnvironmentVariablesDeferred
 
-  interface WindowsEnvironmentVariablesOptions : EelExecApi.EnvironmentVariablesOptions
+  @get:ApiStatus.Experimental
+  override val processManagement: EelProcessManagementWindowsApi
 
-  @ApiStatus.Internal
-  @ThrowsChecked(ExecuteProcessException::class)
-  override suspend fun spawnLoginShell(
-    @GeneratedBuilder opts: EelExecApi.LoginShellOptions,
-  ): EelExecApi.LoginShellHandle
+  interface WindowsEnvironmentVariablesOptions : EelExecApi.EnvironmentVariablesOptions
 }
 
 /**
@@ -700,6 +637,10 @@ suspend fun EelExecApi.execInShell(vararg commands: String): EelExecApiHelpers.S
 
 /** Hopefully, it's a temporary workaround. */
 @ApiStatus.Internal
+@VisibleToClasses(
+  "com.intellij.platform.eel.impl.local.EelLocalExecPosixApi",
+  "com.intellij.platform.eel.impl.local.EelLocalExecWindowsApi",
+)
 interface LocalEelExecApi
 
 /**
@@ -708,10 +649,10 @@ interface LocalEelExecApi
  * * `true` if the cache corresponds to a success record, false otherwise.
  */
 @ApiStatus.Internal
-@VisibleForTesting
+@VisibleToClasses("com.intellij.platform.ijent.functional.processes.EelExecApiTest")
 val cacheForObsoleteEnvVarExpireAt: MutableMap<EelDescriptor, Pair<Long, Boolean>> = Collections.synchronizedMap(WeakHashMap())
 
 // The previous implementation used the same timeout, and in the previous implementation it was chosen as a wild guess.
 @ApiStatus.Internal
-@VisibleForTesting
+@VisibleToClasses("com.intellij.platform.ijent.functional.processes.EelExecApiTest")
 var fetchLoginShellEnvVariablesCacheExpirationTime: Duration = 10.seconds

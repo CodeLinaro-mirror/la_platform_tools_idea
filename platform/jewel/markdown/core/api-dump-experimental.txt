@@ -144,13 +144,6 @@
 - getInlineContent():java.util.List
 - f:getLevel():I
 - hashCode():I
-*f:org.jetbrains.jewel.markdown.MarkdownBlock$HtmlBlock
-- org.jetbrains.jewel.markdown.MarkdownBlock
-- sf:$stable:I
-- <init>(java.lang.String):V
-- equals(java.lang.Object):Z
-- f:getContent():java.lang.String
-- hashCode():I
 *f:org.jetbrains.jewel.markdown.MarkdownBlock$HtmlBlockWithAttributes
 - org.jetbrains.jewel.markdown.MarkdownBlock
 - org.jetbrains.jewel.markdown.WithChildBlocks
@@ -214,13 +207,10 @@
 - equals(java.lang.Object):Z
 - hashCode():I
 f:org.jetbrains.jewel.markdown.MarkdownKt
-- *sf:LazyMarkdown(java.util.List,androidx.compose.ui.Modifier,androidx.compose.foundation.layout.PaddingValues,androidx.compose.foundation.lazy.LazyListState,Z,Z,kotlin.jvm.functions.Function1,kotlin.jvm.functions.Function0,org.jetbrains.jewel.markdown.rendering.MarkdownStyling,org.jetbrains.jewel.markdown.rendering.MarkdownBlockRenderer,androidx.compose.runtime.Composer,I,I):V
 - *sf:LazyMarkdown(java.util.List,androidx.compose.ui.Modifier,androidx.compose.foundation.layout.PaddingValues,androidx.compose.foundation.lazy.LazyListState,Z,Z,kotlin.jvm.functions.Function1,org.jetbrains.jewel.markdown.rendering.MarkdownBlockRenderer,androidx.compose.runtime.Composer,I,I):V
 - *sf:LazyMarkdown(java.util.List,androidx.compose.ui.Modifier,androidx.compose.foundation.layout.PaddingValues,androidx.compose.foundation.lazy.LazyListState,Z,Z,kotlin.jvm.functions.Function1,org.jetbrains.jewel.markdown.rendering.MarkdownStyling,org.jetbrains.jewel.markdown.rendering.MarkdownBlockRenderer,androidx.compose.runtime.Composer,I,I):V
-- *sf:Markdown(java.lang.String,androidx.compose.ui.Modifier,Z,Z,kotlinx.coroutines.CoroutineDispatcher,kotlin.jvm.functions.Function1,kotlin.jvm.functions.Function0,org.jetbrains.jewel.markdown.rendering.MarkdownStyling,org.jetbrains.jewel.markdown.processing.MarkdownProcessor,org.jetbrains.jewel.markdown.rendering.MarkdownBlockRenderer,androidx.compose.runtime.Composer,I,I):V
 - *sf:Markdown(java.lang.String,androidx.compose.ui.Modifier,Z,Z,kotlinx.coroutines.CoroutineDispatcher,kotlin.jvm.functions.Function1,org.jetbrains.jewel.markdown.processing.MarkdownProcessor,org.jetbrains.jewel.markdown.rendering.MarkdownBlockRenderer,androidx.compose.runtime.Composer,I,I):V
 - *sf:Markdown(java.lang.String,androidx.compose.ui.Modifier,Z,Z,kotlinx.coroutines.CoroutineDispatcher,kotlin.jvm.functions.Function1,org.jetbrains.jewel.markdown.rendering.MarkdownStyling,org.jetbrains.jewel.markdown.processing.MarkdownProcessor,org.jetbrains.jewel.markdown.rendering.MarkdownBlockRenderer,androidx.compose.runtime.Composer,I,I):V
-- *sf:Markdown(java.util.List,java.lang.String,androidx.compose.ui.Modifier,Z,Z,kotlin.jvm.functions.Function1,kotlin.jvm.functions.Function0,org.jetbrains.jewel.markdown.rendering.MarkdownStyling,org.jetbrains.jewel.markdown.rendering.MarkdownBlockRenderer,androidx.compose.runtime.Composer,I,I):V
 - *sf:Markdown(java.util.List,java.lang.String,androidx.compose.ui.Modifier,Z,Z,kotlin.jvm.functions.Function1,org.jetbrains.jewel.markdown.rendering.MarkdownBlockRenderer,androidx.compose.runtime.Composer,I,I):V
 - *sf:Markdown(java.util.List,java.lang.String,androidx.compose.ui.Modifier,Z,Z,kotlin.jvm.functions.Function1,org.jetbrains.jewel.markdown.rendering.MarkdownStyling,org.jetbrains.jewel.markdown.rendering.MarkdownBlockRenderer,androidx.compose.runtime.Composer,I,I):V
 *:org.jetbrains.jewel.markdown.MarkdownMode
@@ -287,7 +277,6 @@ f:org.jetbrains.jewel.markdown.SemanticsKt
 *:org.jetbrains.jewel.markdown.extensions.MarkdownBlockRendererExtension
 - a:RenderCustomBlock(org.jetbrains.jewel.markdown.MarkdownBlock$CustomBlock,org.jetbrains.jewel.markdown.rendering.MarkdownBlockRenderer,org.jetbrains.jewel.markdown.rendering.InlineMarkdownRenderer,Z,androidx.compose.ui.Modifier,kotlin.jvm.functions.Function1,androidx.compose.runtime.Composer,I):V
 - a:canRender(org.jetbrains.jewel.markdown.MarkdownBlock$CustomBlock):Z
-- render(org.jetbrains.jewel.markdown.MarkdownBlock$CustomBlock,org.jetbrains.jewel.markdown.rendering.MarkdownBlockRenderer,org.jetbrains.jewel.markdown.rendering.InlineMarkdownRenderer,Z,androidx.compose.ui.Modifier,kotlin.jvm.functions.Function1,kotlin.jvm.functions.Function0,androidx.compose.runtime.Composer,I):V
 *:org.jetbrains.jewel.markdown.extensions.MarkdownDelimitedInlineProcessorExtension
 - a:canProcess(org.commonmark.node.Delimited):Z
 - a:processDelimitedInline(org.commonmark.node.Delimited,org.jetbrains.jewel.markdown.processing.MarkdownProcessor):org.jetbrains.jewel.markdown.InlineMarkdown$CustomDelimitedNode
@@ -392,7 +381,6 @@ f:org.jetbrains.jewel.markdown.processing.ProcessingUtilKt
 - RenderFencedCodeBlock(org.jetbrains.jewel.markdown.MarkdownBlock$CodeBlock$FencedCodeBlock,org.jetbrains.jewel.markdown.rendering.MarkdownStyling$Code$Fenced,Z,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
 - RenderHeading(org.jetbrains.jewel.markdown.MarkdownBlock$Heading,org.jetbrains.jewel.markdown.rendering.MarkdownStyling$Heading$HN,Z,kotlin.jvm.functions.Function1,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
 - RenderHeading(org.jetbrains.jewel.markdown.MarkdownBlock$Heading,org.jetbrains.jewel.markdown.rendering.MarkdownStyling$Heading,Z,kotlin.jvm.functions.Function1,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
-- RenderHtmlBlock(org.jetbrains.jewel.markdown.MarkdownBlock$HtmlBlock,org.jetbrains.jewel.markdown.rendering.MarkdownStyling$HtmlBlock,Z,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
 - RenderHtmlBlockWithAttributes(org.jetbrains.jewel.markdown.MarkdownBlock$HtmlBlockWithAttributes,Z,kotlin.jvm.functions.Function1,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
 - RenderIndentedCodeBlock(org.jetbrains.jewel.markdown.MarkdownBlock$CodeBlock$IndentedCodeBlock,org.jetbrains.jewel.markdown.rendering.MarkdownStyling$Code$Indented,Z,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
 - RenderList(org.jetbrains.jewel.markdown.MarkdownBlock$ListBlock,org.jetbrains.jewel.markdown.rendering.MarkdownStyling$List,Z,kotlin.jvm.functions.Function1,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
@@ -407,21 +395,6 @@ f:org.jetbrains.jewel.markdown.processing.ProcessingUtilKt
 - getRendererExtensions():java.util.List
 - getRootStyling():org.jetbrains.jewel.markdown.rendering.MarkdownStyling
 - *:plus(org.jetbrains.jewel.markdown.extensions.MarkdownRendererExtension):org.jetbrains.jewel.markdown.rendering.MarkdownBlockRenderer
-- render(java.util.List,Z,kotlin.jvm.functions.Function1,kotlin.jvm.functions.Function0,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
-- render(org.jetbrains.jewel.markdown.MarkdownBlock$BlockQuote,org.jetbrains.jewel.markdown.rendering.MarkdownStyling$BlockQuote,Z,kotlin.jvm.functions.Function1,kotlin.jvm.functions.Function0,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
-- render(org.jetbrains.jewel.markdown.MarkdownBlock$CodeBlock$FencedCodeBlock,org.jetbrains.jewel.markdown.rendering.MarkdownStyling$Code$Fenced,Z,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
-- render(org.jetbrains.jewel.markdown.MarkdownBlock$CodeBlock$IndentedCodeBlock,org.jetbrains.jewel.markdown.rendering.MarkdownStyling$Code$Indented,Z,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
-- render(org.jetbrains.jewel.markdown.MarkdownBlock$CodeBlock,org.jetbrains.jewel.markdown.rendering.MarkdownStyling$Code,Z,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
-- render(org.jetbrains.jewel.markdown.MarkdownBlock$Heading,org.jetbrains.jewel.markdown.rendering.MarkdownStyling$Heading$HN,Z,kotlin.jvm.functions.Function1,kotlin.jvm.functions.Function0,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
-- render(org.jetbrains.jewel.markdown.MarkdownBlock$Heading,org.jetbrains.jewel.markdown.rendering.MarkdownStyling$Heading,Z,kotlin.jvm.functions.Function1,kotlin.jvm.functions.Function0,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
-- render(org.jetbrains.jewel.markdown.MarkdownBlock$HtmlBlock,org.jetbrains.jewel.markdown.rendering.MarkdownStyling$HtmlBlock,Z,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
-- render(org.jetbrains.jewel.markdown.MarkdownBlock$ListBlock$OrderedList,org.jetbrains.jewel.markdown.rendering.MarkdownStyling$List$Ordered,Z,kotlin.jvm.functions.Function1,kotlin.jvm.functions.Function0,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
-- render(org.jetbrains.jewel.markdown.MarkdownBlock$ListBlock$UnorderedList,org.jetbrains.jewel.markdown.rendering.MarkdownStyling$List$Unordered,Z,kotlin.jvm.functions.Function1,kotlin.jvm.functions.Function0,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
-- render(org.jetbrains.jewel.markdown.MarkdownBlock$ListBlock,org.jetbrains.jewel.markdown.rendering.MarkdownStyling$List,Z,kotlin.jvm.functions.Function1,kotlin.jvm.functions.Function0,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
-- render(org.jetbrains.jewel.markdown.MarkdownBlock$ListItem,Z,kotlin.jvm.functions.Function1,kotlin.jvm.functions.Function0,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
-- render(org.jetbrains.jewel.markdown.MarkdownBlock$Paragraph,org.jetbrains.jewel.markdown.rendering.MarkdownStyling$Paragraph,Z,kotlin.jvm.functions.Function1,kotlin.jvm.functions.Function0,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
-- render(org.jetbrains.jewel.markdown.MarkdownBlock,Z,kotlin.jvm.functions.Function1,kotlin.jvm.functions.Function0,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
-- renderThematicBreak(org.jetbrains.jewel.markdown.rendering.MarkdownStyling$ThematicBreak,Z,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
 - p:resolveImages(org.jetbrains.jewel.markdown.WithInlineMarkdown,androidx.compose.runtime.Composer,I):kotlin.Pair
 *f:org.jetbrains.jewel.markdown.rendering.DefaultMarkdownBlockRenderer$Companion
 *:org.jetbrains.jewel.markdown.rendering.ImageSourceResolver
@@ -468,7 +441,6 @@ f:org.jetbrains.jewel.markdown.rendering.InlineMarkdownRendererKt
 - sf:$stable:I
 - *sf:Companion:org.jetbrains.jewel.markdown.rendering.InlinesStyling$Companion
 - <init>(androidx.compose.ui.text.TextStyle,androidx.compose.ui.text.SpanStyle,androidx.compose.ui.text.SpanStyle,androidx.compose.ui.text.SpanStyle,androidx.compose.ui.text.SpanStyle,androidx.compose.ui.text.SpanStyle,androidx.compose.ui.text.SpanStyle,androidx.compose.ui.text.SpanStyle,androidx.compose.ui.text.SpanStyle,androidx.compose.ui.text.SpanStyle,androidx.compose.ui.text.SpanStyle):V
-- b:<init>(androidx.compose.ui.text.TextStyle,androidx.compose.ui.text.SpanStyle,androidx.compose.ui.text.SpanStyle,androidx.compose.ui.text.SpanStyle,androidx.compose.ui.text.SpanStyle,androidx.compose.ui.text.SpanStyle,androidx.compose.ui.text.SpanStyle,androidx.compose.ui.text.SpanStyle,androidx.compose.ui.text.SpanStyle,androidx.compose.ui.text.SpanStyle,androidx.compose.ui.text.SpanStyle,Z):V
 - equals(java.lang.Object):Z
 - f:getEmphasis():androidx.compose.ui.text.SpanStyle
 - f:getInlineCode():androidx.compose.ui.text.SpanStyle
@@ -493,7 +465,6 @@ f:org.jetbrains.jewel.markdown.rendering.InlineMarkdownRendererKt
 - a:RenderFencedCodeBlock(org.jetbrains.jewel.markdown.MarkdownBlock$CodeBlock$FencedCodeBlock,org.jetbrains.jewel.markdown.rendering.MarkdownStyling$Code$Fenced,Z,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
 - a:RenderHeading(org.jetbrains.jewel.markdown.MarkdownBlock$Heading,org.jetbrains.jewel.markdown.rendering.MarkdownStyling$Heading$HN,Z,kotlin.jvm.functions.Function1,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
 - a:RenderHeading(org.jetbrains.jewel.markdown.MarkdownBlock$Heading,org.jetbrains.jewel.markdown.rendering.MarkdownStyling$Heading,Z,kotlin.jvm.functions.Function1,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
-- a:RenderHtmlBlock(org.jetbrains.jewel.markdown.MarkdownBlock$HtmlBlock,org.jetbrains.jewel.markdown.rendering.MarkdownStyling$HtmlBlock,Z,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
 - RenderHtmlBlockWithAttributes(org.jetbrains.jewel.markdown.MarkdownBlock$HtmlBlockWithAttributes,Z,kotlin.jvm.functions.Function1,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
 - b:RenderHtmlBlockWithAttributes(org.jetbrains.jewel.markdown.MarkdownBlock$HtmlBlockWithAttributes,Z,kotlin.jvm.functions.Function1,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I,I):V
 - RenderImagesOnlyParagraph(java.util.Map,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
@@ -512,21 +483,6 @@ f:org.jetbrains.jewel.markdown.rendering.InlineMarkdownRendererKt
 - a:getRendererExtensions():java.util.List
 - a:getRootStyling():org.jetbrains.jewel.markdown.rendering.MarkdownStyling
 - *a:plus(org.jetbrains.jewel.markdown.extensions.MarkdownRendererExtension):org.jetbrains.jewel.markdown.rendering.MarkdownBlockRenderer
-- render(java.util.List,Z,kotlin.jvm.functions.Function1,kotlin.jvm.functions.Function0,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
-- render(org.jetbrains.jewel.markdown.MarkdownBlock$BlockQuote,org.jetbrains.jewel.markdown.rendering.MarkdownStyling$BlockQuote,Z,kotlin.jvm.functions.Function1,kotlin.jvm.functions.Function0,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
-- render(org.jetbrains.jewel.markdown.MarkdownBlock$CodeBlock$FencedCodeBlock,org.jetbrains.jewel.markdown.rendering.MarkdownStyling$Code$Fenced,Z,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
-- render(org.jetbrains.jewel.markdown.MarkdownBlock$CodeBlock$IndentedCodeBlock,org.jetbrains.jewel.markdown.rendering.MarkdownStyling$Code$Indented,Z,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
-- render(org.jetbrains.jewel.markdown.MarkdownBlock$CodeBlock,org.jetbrains.jewel.markdown.rendering.MarkdownStyling$Code,Z,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
-- render(org.jetbrains.jewel.markdown.MarkdownBlock$Heading,org.jetbrains.jewel.markdown.rendering.MarkdownStyling$Heading$HN,Z,kotlin.jvm.functions.Function1,kotlin.jvm.functions.Function0,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
-- render(org.jetbrains.jewel.markdown.MarkdownBlock$Heading,org.jetbrains.jewel.markdown.rendering.MarkdownStyling$Heading,Z,kotlin.jvm.functions.Function1,kotlin.jvm.functions.Function0,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
-- render(org.jetbrains.jewel.markdown.MarkdownBlock$HtmlBlock,org.jetbrains.jewel.markdown.rendering.MarkdownStyling$HtmlBlock,Z,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
-- render(org.jetbrains.jewel.markdown.MarkdownBlock$ListBlock$OrderedList,org.jetbrains.jewel.markdown.rendering.MarkdownStyling$List$Ordered,Z,kotlin.jvm.functions.Function1,kotlin.jvm.functions.Function0,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
-- render(org.jetbrains.jewel.markdown.MarkdownBlock$ListBlock$UnorderedList,org.jetbrains.jewel.markdown.rendering.MarkdownStyling$List$Unordered,Z,kotlin.jvm.functions.Function1,kotlin.jvm.functions.Function0,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
-- render(org.jetbrains.jewel.markdown.MarkdownBlock$ListBlock,org.jetbrains.jewel.markdown.rendering.MarkdownStyling$List,Z,kotlin.jvm.functions.Function1,kotlin.jvm.functions.Function0,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
-- render(org.jetbrains.jewel.markdown.MarkdownBlock$ListItem,Z,kotlin.jvm.functions.Function1,kotlin.jvm.functions.Function0,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
-- render(org.jetbrains.jewel.markdown.MarkdownBlock$Paragraph,org.jetbrains.jewel.markdown.rendering.MarkdownStyling$Paragraph,Z,kotlin.jvm.functions.Function1,kotlin.jvm.functions.Function0,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
-- render(org.jetbrains.jewel.markdown.MarkdownBlock,Z,kotlin.jvm.functions.Function1,kotlin.jvm.functions.Function0,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
-- renderThematicBreak(org.jetbrains.jewel.markdown.rendering.MarkdownStyling$ThematicBreak,Z,androidx.compose.ui.Modifier,androidx.compose.runtime.Composer,I):V
 *f:org.jetbrains.jewel.markdown.rendering.MarkdownBlockRenderer$Companion
 *f:org.jetbrains.jewel.markdown.rendering.MarkdownBlockRenderer$ComposeDefaultImpls
 - sf:RenderHtmlBlockWithAttributes$default(org.jetbrains.jewel.markdown.MarkdownBlock$HtmlBlockWithAttributes,Z,kotlin.jvm.functions.Function1,androidx.compose.ui.Modifier,org.jetbrains.jewel.markdown.rendering.MarkdownBlockRenderer,androidx.compose.runtime.Composer,I,I):V
@@ -825,6 +781,12 @@ f:org.jetbrains.jewel.markdown.rendering.InlineMarkdownRendererKt
 - a:getUnderlineWidth-D9Ej5fM():F
 f:org.jetbrains.jewel.markdown.scrolling.AutoScrollingUtilKt
 - *sf:AutoScrollableBlock(org.jetbrains.jewel.markdown.MarkdownBlock,org.jetbrains.jewel.markdown.scrolling.ScrollingSynchronizer,androidx.compose.ui.Modifier,kotlin.jvm.functions.Function2,androidx.compose.runtime.Composer,I,I):V
+*a:org.jetbrains.jewel.markdown.scrolling.ContinuousScrollingSynchronizer
+- org.jetbrains.jewel.markdown.scrolling.ScrollingSynchronizer
+- sf:$stable:I
+- <init>():V
+- a:editorOffsetAtPreview(I,kotlin.jvm.functions.Function1):I
+- a:scrollPreviewTo(I,I,kotlin.jvm.functions.Function1,kotlin.coroutines.Continuation):java.lang.Object
 *c:org.jetbrains.jewel.markdown.scrolling.ScrollSyncMarkdownBlockRenderer
 - org.jetbrains.jewel.markdown.rendering.DefaultMarkdownBlockRenderer
 - sf:$stable:I
@@ -838,7 +800,9 @@ f:org.jetbrains.jewel.markdown.scrolling.AutoScrollingUtilKt
 - *sf:Companion:org.jetbrains.jewel.markdown.scrolling.ScrollingSynchronizer$Companion
 - <init>():V
 - a:acceptBlockSpans(org.jetbrains.jewel.markdown.MarkdownBlock,kotlin.ranges.IntRange):org.jetbrains.jewel.markdown.MarkdownBlock
+- acceptContentPosition(androidx.compose.ui.layout.LayoutCoordinates):V
 - a:acceptGlobalPosition(org.jetbrains.jewel.markdown.MarkdownBlock,androidx.compose.ui.layout.LayoutCoordinates):V
+- acceptItemBlocks(java.util.List):V
 - a:acceptTextLayout(org.jetbrains.jewel.markdown.MarkdownBlock,androidx.compose.ui.text.TextLayoutResult):V
 - pa:afterProcessing():V
 - pa:beforeProcessing():V
@@ -850,6 +814,7 @@ f:org.jetbrains.jewel.markdown.scrolling.AutoScrollingUtilKt
 - bsF:scrollToLine$default(org.jetbrains.jewel.markdown.scrolling.ScrollingSynchronizer,I,androidx.compose.animation.core.AnimationSpec,kotlin.coroutines.Continuation,I,java.lang.Object):java.lang.Object
 *f:org.jetbrains.jewel.markdown.scrolling.ScrollingSynchronizer$Companion
 - f:create(androidx.compose.foundation.gestures.ScrollableState):org.jetbrains.jewel.markdown.scrolling.ScrollingSynchronizer
+- f:createContinuous(androidx.compose.foundation.gestures.ScrollableState):org.jetbrains.jewel.markdown.scrolling.ContinuousScrollingSynchronizer
 *f:org.jetbrains.jewel.markdown.scrolling.ScrollingSynchronizer$LocatableMarkdownBlock
 - org.jetbrains.jewel.markdown.MarkdownBlock$CustomBlock
 - sf:$stable:I
@@ -858,3 +823,6 @@ f:org.jetbrains.jewel.markdown.scrolling.AutoScrollingUtilKt
 - f:getLines():kotlin.ranges.IntRange
 - f:getOriginalBlock():org.jetbrains.jewel.markdown.MarkdownBlock
 - hashCode():I
+f:org.jetbrains.jewel.markdown.scrolling.SyncScrollingKt
+- *sf:sourceLineOffsets(androidx.compose.ui.text.TextLayoutResult):kotlin.jvm.functions.Function1
+- *sf:syncScrolling(org.jetbrains.jewel.markdown.scrolling.ContinuousScrollingSynchronizer,androidx.compose.foundation.ScrollState,kotlin.jvm.functions.Function0,kotlin.coroutines.Continuation):java.lang.Object

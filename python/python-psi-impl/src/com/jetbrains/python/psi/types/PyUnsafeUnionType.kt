@@ -83,7 +83,7 @@ class PyUnsafeUnionType private constructor(members: Collection<PyType?>) : PyCo
       .toTypedArray()
   }
 
-  override val name: @NlsSafe String = members.joinToString(separator = " | ") { it?.name ?: "Any" }
+  override val name: @NlsSafe String = members.joinToString(separator = ", ", prefix = "UnsafeUnion[", postfix = "]") { it?.name ?: "Any" }
 
   override val isBuiltin: Boolean = members.all { it != null && it.isBuiltin }
 
@@ -108,7 +108,7 @@ class PyUnsafeUnionType private constructor(members: Collection<PyType?>) : PyCo
     @JvmStatic
     fun unsafeUnion(vararg types: PyType?): PyType? {
       if (!PyUnionType.isStrictSemanticsEnabled()) {
-        return PyUnionType.union(types.toList())
+        return PyUnionType.unionOrUnknown(types.toList())
       }
       return unsafeUnion(types.toList())
     }
@@ -116,7 +116,7 @@ class PyUnsafeUnionType private constructor(members: Collection<PyType?>) : PyCo
     @JvmStatic
     fun unsafeUnion(types: Collection<PyType?>): PyType? {
       if (!PyUnionType.isStrictSemanticsEnabled()) {
-        return PyUnionType.union(types)
+        return PyUnionType.unionOrUnknown(types)
       }
       val newMembers = buildSet {
         for (member in types) {

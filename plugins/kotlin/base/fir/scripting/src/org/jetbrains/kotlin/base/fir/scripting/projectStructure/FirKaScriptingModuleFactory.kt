@@ -4,6 +4,7 @@ package org.jetbrains.kotlin.base.fir.scripting.projectStructure
 import com.intellij.injected.editor.VirtualFileWindow
 import com.intellij.openapi.project.Project
 import com.intellij.platform.backend.workspace.WorkspaceModel
+import com.intellij.platform.backend.workspace.findEntitiesByVirtualFile
 import com.intellij.platform.backend.workspace.toVirtualFileUrl
 import com.intellij.platform.backend.workspace.workspaceModel
 import com.intellij.psi.PsiFile
@@ -13,8 +14,8 @@ import org.jetbrains.kotlin.base.fir.scripting.projectStructure.modules.KaScript
 import org.jetbrains.kotlin.base.fir.scripting.projectStructure.modules.KaScriptModuleImpl
 import org.jetbrains.kotlin.idea.KotlinFileType
 import org.jetbrains.kotlin.idea.base.fir.projectStructure.FirKaModuleFactory
-import org.jetbrains.kotlin.idea.core.script.k2.modules.KotlinScriptEntity
-import org.jetbrains.kotlin.idea.core.script.k2.modules.KotlinScriptLibraryEntity
+import org.jetbrains.kotlin.idea.core.script.modules.KotlinScriptEntity
+import org.jetbrains.kotlin.idea.core.script.modules.KotlinScriptLibraryEntity
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.serialization.deserialization.DOT_METADATA_FILE_EXTENSION
 import org.jetbrains.kotlin.serialization.deserialization.builtins.BuiltInSerializerProtocol
@@ -64,8 +65,8 @@ internal class FirKaScriptingModuleFactory : FirKaModuleFactory {
         if (!nameSequence.endsWith(KotlinFileType.DOT_SCRIPT_EXTENSION)) {
             val workspaceModel = WorkspaceModel.getInstance(project)
 
-            val url = virtualFile.toVirtualFileUrl(workspaceModel.getVirtualFileUrlManager())
-            val entitiesByUrl = snapshot.getVirtualFileUrlIndex().findEntitiesByUrl(url)
+            val urlManager = workspaceModel.getVirtualFileUrlManager()
+            val entitiesByUrl = snapshot.getVirtualFileUrlIndex().findEntitiesByVirtualFile(virtualFile, urlManager)
             if (entitiesByUrl.none { it is KotlinScriptEntity }) {
                 return null
             }

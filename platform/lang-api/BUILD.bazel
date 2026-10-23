@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.platform.lang` start
+content_module_jar(module = ":lang")
+### auto-generated section `dev intellij.platform.lang` end
 
 ### auto-generated section `build intellij.platform.lang` start
-
 jvm_library(
     name = "lang",
     srcs = glob(
@@ -45,7 +49,6 @@ jvm_library(
         "//platform/code-style-api:codeStyle",
         "//platform/platform-util-io:ide-util-io",
         "//platform/ide-core",
-        "//platform/execution",
         "//platform/refactoring",
         "//platform/forms_rt:java-guiForms-rt",
         "//platform/workspace/jps",
@@ -86,7 +89,8 @@ jvm_library(
         "//platform/analysis-api:analysis_test_lib",
         "//platform/util/jdom:jdom_test_lib",
         "@lib//:jmock",
-        "@lib//:junit4",
+        "//libraries/junit4",
+        "//libraries/junit4:junit4_test_lib",
         "//libraries/hamcrest",
         "//libraries/hamcrest:hamcrest_test_lib",
         "//platform/util-ex:util-ex_test_lib",
@@ -97,7 +101,6 @@ jvm_library(
         "//platform/code-style-api:codeStyle_test_lib",
         "//platform/platform-util-io:ide-util-io_test_lib",
         "//platform/ide-core:ide-core_test_lib",
-        "//platform/execution:execution_test_lib",
         "//platform/refactoring:refactoring_test_lib",
         "//platform/forms_rt:java-guiForms-rt_test_lib",
         "//platform/workspace/jps:jps_test_lib",
@@ -113,6 +116,8 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.lang.iml",
+        "resources/intellij.platform.lang.actions.xml",
+        "resources/intellij.platform.lang.xml",
     ],
     visibility = ["//visibility:public"],
 )

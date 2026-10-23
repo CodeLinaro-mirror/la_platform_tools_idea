@@ -3,9 +3,10 @@ package git4idea.repo;
 
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.io.FileUtil;
-import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.StandardFileSystems;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.vfs.VirtualFileSystem;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.ApiStatus;
@@ -51,9 +52,13 @@ public final class GitRepositoryFiles {
   private static final @NonNls String REMOTES = "remotes";
   private static final @NonNls String SQUASH_MSG = "SQUASH_MSG";
   private static final @NonNls String HOOKS = "hooks";
-  private static final @NonNls String PRE_COMMIT_HOOK = "pre-commit";
-  private static final @NonNls String PRE_PUSH_HOOK = "pre-push";
-  private static final @NonNls String COMMIT_MSG_HOOK = "commit-msg";
+  /**
+   * Names of the files in the hookdir, which are also the names of the corresponding hook events
+   * used by the config-based hooks, see {@link GitConfig#getConfiguredHookEvents()}.
+   */
+  static final @NonNls String PRE_COMMIT_HOOK = "pre-commit";
+  static final @NonNls String PRE_PUSH_HOOK = "pre-push";
+  static final @NonNls String COMMIT_MSG_HOOK = "commit-msg";
   private static final @NonNls String SHALLOW = "shallow";
   private static final @NonNls String LOGS = "logs";
   private static final @NonNls String STASH = "stash";
@@ -159,7 +164,7 @@ public final class GitRepositoryFiles {
       return null;
     }
     String mainDir = FileUtil.toCanonicalPath(gitDirFile.getPath() + File.separator + pathToMain, true);
-    LocalFileSystem lfs = LocalFileSystem.getInstance();
+    VirtualFileSystem lfs = StandardFileSystems.local();
     VirtualFile mainDirVF = lfs.refreshAndFindFileByPath(mainDir);
     if (mainDirVF != null) return mainDirVF;
     return lfs.refreshAndFindFileByPath(pathToMain); // absolute path is also possible
@@ -183,6 +188,21 @@ public final class GitRepositoryFiles {
    */
   public @NotNull VirtualFile getWorktreeGitDir() {
     return myWorktreeDir;
+  }
+
+  /**
+   * The '.git' directory shared by all working trees of the underlying git repository
+   * (what {@code git rev-parse --git-common-dir} reports):
+   * <ul>
+   *   <li>a regular repository and each of its linked worktrees: {@code <root>/.git};</li>
+   *   <li>a bare repository and each of its worktrees: the bare {@code <root>/.git};</li>
+   *   <li>a submodule and each of its linked worktrees: {@code <parent>/.git/modules/<submodule>}.</li>
+   * </ul>
+   * Unlike {@link #getWorktreeGitDir()}, this is equal for every working tree of the same repository, which makes it
+   * the identity of that repository.
+   */
+  public @NotNull VirtualFile getCommonGitDir() {
+    return myMainDir;
   }
 
   /**
@@ -445,7 +465,7 @@ public final class GitRepositoryFiles {
    * Refresh .git/index asynchronously.
    */
   public void refreshIndexFile() {
-    VirtualFile indexFilePath = LocalFileSystem.getInstance().refreshAndFindFileByPath(myIndexFilePath);
+    VirtualFile indexFilePath = StandardFileSystems.local().refreshAndFindFileByPath(myIndexFilePath);
     VfsUtil.markDirtyAndRefresh(true, false, false, indexFilePath);
   }
 
@@ -456,9 +476,9 @@ public final class GitRepositoryFiles {
    * but some of it will be updated synchronously, the rest - asynchronously.
    */
   public void refreshTagsFiles() {
-    VirtualFile tagsDir = LocalFileSystem.getInstance().refreshAndFindFileByPath(myRefsTagsPath);
-    VirtualFile packedRefsFile = LocalFileSystem.getInstance().refreshAndFindFileByPath(myPackedRefsPath);
-    VirtualFile reftableDir = LocalFileSystem.getInstance().refreshAndFindFileByPath(myReftablePath);
+    VirtualFile tagsDir = StandardFileSystems.local().refreshAndFindFileByPath(myRefsTagsPath);
+    VirtualFile packedRefsFile = StandardFileSystems.local().refreshAndFindFileByPath(myPackedRefsPath);
+    VirtualFile reftableDir = StandardFileSystems.local().refreshAndFindFileByPath(myReftablePath);
     VfsUtil.markDirtyAndRefresh(true, true, false, tagsDir, packedRefsFile, reftableDir);
   }
 

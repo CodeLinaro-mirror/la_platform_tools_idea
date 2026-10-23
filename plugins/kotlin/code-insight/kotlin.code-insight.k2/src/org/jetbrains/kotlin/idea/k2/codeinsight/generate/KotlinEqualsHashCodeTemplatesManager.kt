@@ -7,6 +7,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.SettingsCategory
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
+import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiType
 import com.intellij.psi.PsiTypes
@@ -36,10 +37,10 @@ class KotlinEqualsHashCodeTemplatesManager : EqualsHashCodeTemplatesManagerBase(
     }
 
     private fun addPlatformVariables(map: MutableMap<String, PsiType>) {
-        map.put("isCommon", PsiTypes.booleanType())
-        map.put("isJs", PsiTypes.booleanType())
-        map.put("isNative", PsiTypes.booleanType())
-        map.put("isWasm", PsiTypes.booleanType())
+        map["isCommon"] = PsiTypes.booleanType()
+        map["isJs"] = PsiTypes.booleanType()
+        map["isNative"] = PsiTypes.booleanType()
+        map["isWasm"] = PsiTypes.booleanType()
     }
 
     override fun getHashCodeImplicitVars(project: Project): Map<String, PsiType> {
@@ -54,7 +55,8 @@ class KotlinEqualsHashCodeTemplatesManager : EqualsHashCodeTemplatesManagerBase(
         val extensionTemplates = mutableSetOf<TemplateResource>()
 
         try {
-            val alternativeDefaultTemplate = applicableExtension?.alternativeDefaultTemplateFor(ktClass)
+            val alternativeDefaultTemplate =
+                applicableExtension?.alternativeDefaultTemplateFor(ktClass)
             applicableExtension?.getTemplatesFor(ktClass)
                 ?.forEach { additionalTemplate ->
                     addTemplate(additionalTemplate)
@@ -77,10 +79,7 @@ class KotlinEqualsHashCodeTemplatesManager : EqualsHashCodeTemplatesManagerBase(
         private const val DEFAULT_EQUALS = "defaultEquals.vm"
         private const val DEFAULT_HASHCODE = "defaultHashcode.vm"
 
-        fun getInstance(): KotlinEqualsHashCodeTemplatesManager {
-            return ApplicationManager.getApplication().getService(
-                KotlinEqualsHashCodeTemplatesManager::class.java
-            )
-        }
+        fun getInstance(): KotlinEqualsHashCodeTemplatesManager =
+            ApplicationManager.getApplication().service<KotlinEqualsHashCodeTemplatesManager>()
     }
 }

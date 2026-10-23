@@ -1,6 +1,36 @@
-load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("@rules_jvm//:jvm.bzl", "jvm_library", "resourcegroup")
+load("//build:compiler-options.bzl", "create_kotlinc_options")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.kotlin.formatter` start
+content_module_jar(module = ":formatter")
+### auto-generated section `dev intellij.kotlin.formatter` end
 
 ### auto-generated section `build intellij.kotlin.formatter` start
+create_kotlinc_options(
+    name = "custom_formatter",
+    opt_in = [
+        "org.jetbrains.kotlin.psi.KtExperimentalApi",
+        "org.jetbrains.kotlin.psi.KtNonPublicApi",
+        "org.jetbrains.kotlin.psi.KtIdeApi",
+        "org.jetbrains.kotlin.analysis.api.KaExperimentalApi",
+        "org.jetbrains.kotlin.analysis.api.KaIdeApi",
+        "org.jetbrains.kotlin.analysis.api.KaPlatformInterface",
+        "org.jetbrains.kotlin.analysis.api.fir.diagnostics.KaUnstableDiagnosticApi",
+        "org.jetbrains.kotlin.analysis.api.KaNonPublicApi",
+        "org.jetbrains.kotlin.analysis.api.KaContextParameterApi",
+        "org.jetbrains.kotlin.analysis.api.permissions.KaAllowProhibitedAnalyzeFromWriteAction",
+    ],
+    x_context_parameters = True,
+)
+
+resourcegroup(
+    name = "formatter_resources",
+    srcs = glob(
+        ["resources-en/**/*"],
+    ),
+    strip_prefix = "resources-en",
+)
 
 jvm_library(
     name = "formatter",
@@ -12,17 +42,19 @@ jvm_library(
         ],
         allow_empty = True,
     ),
+    kotlinc_opts = ":custom_formatter",
     module_name = "intellij.kotlin.formatter",
-    resource_strip_prefix = "resources-en",
+    resource_jars = [":formatter_resources"],
+    resource_strip_prefix = "resources",
     resources = glob(
-        ["resources-en/**/*"],
+        ["resources/**/*"],
     ),
     visibility = ["//visibility:public"],
     exports = ["//plugins/kotlin/formatter/minimal"],
     deps = [
         # do not sort,
         "@lib//:kotlin-stdlib",
-        "@lib//:kotlinc-kotlin-compiler-common",
+        "//libraries/kotlinc/kotlin-compiler-common:libraries-kotlinc-kotlin-compiler-common",
         "//platform/code-style-api:codeStyle",
         "//platform/core-api:core",
         "//platform/projectModel-api:projectModel",
@@ -50,6 +82,7 @@ jvm_library(
         [],
         allow_empty = True,
     ),
+    kotlinc_opts = ":custom_formatter",
     module_name = "intellij.kotlin.formatter",
     visibility = ["//visibility:public"],
     exports = [
@@ -60,6 +93,7 @@ jvm_library(
     runtime_deps = [
         # do not sort,
         ":formatter",
+        "//libraries/kotlinc/kotlin-compiler-common:libraries-kotlinc-kotlin-compiler-common_test_lib",
         "//platform/code-style-api:codeStyle_test_lib",
         "//platform/core-api:core_test_lib",
         "//platform/projectModel-api:projectModel_test_lib",
@@ -85,6 +119,7 @@ jvm_library(
 exports_files(
     [
         "intellij.kotlin.formatter.iml",
+        "resources/intellij.kotlin.formatter.xml",
     ],
     visibility = ["//visibility:public"],
 )

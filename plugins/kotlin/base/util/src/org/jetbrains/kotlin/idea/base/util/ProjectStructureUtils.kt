@@ -1,6 +1,5 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 @file:JvmName("ProjectStructureUtils")
-@file:OptIn(UnsafeCastFunction::class)
 
 package org.jetbrains.kotlin.idea.base.util
 
@@ -37,8 +36,6 @@ import org.jetbrains.kotlin.config.ALL_KOTLIN_SOURCE_ROOT_TYPES
 import org.jetbrains.kotlin.idea.KotlinFileType
 import org.jetbrains.kotlin.idea.core.util.toPsiFile
 import org.jetbrains.kotlin.psi.KtFile
-import org.jetbrains.kotlin.utils.addToStdlib.UnsafeCastFunction
-import org.jetbrains.kotlin.utils.addToStdlib.safeAs
 
 val KOTLIN_FILE_EXTENSIONS: Set<String> = setOf("kt", "kts")
 val KOTLIN_FILE_TYPES: Set<KotlinFileType> = setOf(KotlinFileType.INSTANCE)
@@ -119,7 +116,7 @@ fun Project.containsKotlinFile(): Boolean = FileTypeIndex.containsFileOfType(Kot
 
 fun Project.containsNonScriptKotlinFile(): Boolean = !FileTypeIndex.processFiles(
     KotlinFileType.INSTANCE,
-    { it.toPsiFile(this)?.safeAs<KtFile>()?.isScript() != false },
+    { (it.toPsiFile(this) as? KtFile)?.isScript() != false },
     projectScope(),
 )
 
@@ -168,7 +165,7 @@ fun Module.collectKotlinAwareDestinationSourceRoots(): List<VirtualFile> {
 }
 
 fun PsiElement.isUnderKotlinSourceRootTypes(): Boolean {
-    val ktFile = this.containingFile.safeAs<KtFile>() ?: return false
+    val ktFile = this.containingFile as? KtFile ?: return false
     val file = ktFile.virtualFile?.takeIf { it !is VirtualFileWindow && it.fileSystem !is NonPhysicalFileSystem } ?: return false
     val projectFileIndex = ProjectRootManager.getInstance(ktFile.project).fileIndex
     return projectFileIndex.isUnderSourceRootOfType(file, KOTLIN_AWARE_SOURCE_ROOT_TYPES)

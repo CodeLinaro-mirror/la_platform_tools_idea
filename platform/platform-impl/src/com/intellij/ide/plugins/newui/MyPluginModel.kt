@@ -1,6 +1,7 @@
 // Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.ide.plugins.newui
 
+import com.intellij.core.CoreBundle
 import com.intellij.externalDependencies.DependencyOnPlugin
 import com.intellij.externalDependencies.ExternalDependenciesManager
 import com.intellij.ide.IdeBundle
@@ -12,6 +13,7 @@ import com.intellij.ide.plugins.PluginEnableDisableAction
 import com.intellij.ide.plugins.PluginEnabledState
 import com.intellij.ide.plugins.PluginEnabler
 import com.intellij.ide.plugins.PluginInstallCallbackData
+import com.intellij.ide.plugins.PluginLoadingProblem
 import com.intellij.ide.plugins.PluginManagerConfigurable
 import com.intellij.ide.plugins.PluginManagerMain
 import com.intellij.ide.plugins.marketplace.ApplyPluginsStateResult
@@ -25,6 +27,7 @@ import com.intellij.openapi.application.asContextElement
 import com.intellij.openapi.application.ex.ApplicationManagerEx
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.options.Configurable.TopComponentController
 import com.intellij.openapi.options.ConfigurationException
@@ -36,6 +39,7 @@ import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.openapi.ui.MessageDialogBuilder.Companion.okCancel
 import com.intellij.openapi.ui.Messages
+import com.intellij.openapi.updateSettings.impl.PluginUpdateSource
 import com.intellij.openapi.updateSettings.impl.pluginsAdvertisement.FUSEventSource
 import com.intellij.openapi.util.text.HtmlChunk
 import com.intellij.openapi.util.text.StringUtil
@@ -48,13 +52,17 @@ import com.intellij.platform.ide.CoreUiCoroutineScopeHolder
 import com.intellij.platform.ide.progress.withBackgroundProgress
 import com.intellij.platform.util.coroutines.childScope
 import com.intellij.util.SystemProperties
+import com.intellij.util.concurrency.ThreadingAssertions
+import com.intellij.util.concurrency.annotations.RequiresEdt
 import com.intellij.util.ui.accessibility.AccessibleAnnouncerUtil
 import com.intellij.xml.util.XmlStringUtil
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -72,7 +80,10 @@ import javax.swing.Icon
 import javax.swing.JComponent
 
 @ApiStatus.Internal
-open class MyPluginModel(project: Project?) : InstalledPluginsTableModel(project), PluginEnabler {
+open class MyPluginModel @JvmOverloads constructor(
+  project: Project?,
+  eventSink: PluginModelEventSink = PluginModelEventSink.NONE,
+) : InstalledPluginsTableModel(project), PluginEnabler {
   private var myInstalledPanel: PluginsGroupComponent? = null
   var userInstalled: PluginsGroup? = null
     private set
@@ -96,10 +107,13 @@ open class MyPluginModel(project: Project?) : InstalledPluginsTableModel(project
   private val myRequiredPluginsForProject: MutableMap<PluginId, Boolean> = HashMap()
   private val myUninstalled: MutableSet<PluginId> = HashSet()
   private val myPluginManagerCustomizer: PluginManagerCustomizer?
+  private val myEventPublisher = PluginModelEventPublisher(eventSink)
 
   private var myInstallSource: FUSEventSource? = null
 
   protected open val customRepoPlugins: Collection<PluginUiModel>? = null
+
+  protected open fun customRepoPluginsFor(target: PluginSource, plugin: PluginUiModel): Collection<PluginUiModel>? = customRepoPlugins
 
   private val myIcons: MutableMap<String?, Icon?> = HashMap<String?, Icon?>() // local cache for PluginLogo WeakValueMap
 
@@ -112,6 +126,31 @@ open class MyPluginModel(project: Project?) : InstalledPluginsTableModel(project
   @ApiStatus.Internal
   fun setInstallSource(source: FUSEventSource?) {
     this.myInstallSource = source
+  }
+
+  internal fun operationStarted(context: PluginOperationContext, presentationModel: PluginUiModel) {
+    myEventPublisher.operationStarted(sessionId, context, presentationModel)
+  }
+
+  internal fun operationTargetFinished(
+    context: PluginOperationContext,
+    target: PluginSource,
+    result: PluginOperationTerminalResult,
+    installedPlugins: Collection<PluginUiModel> = emptyList(),
+    restartRequired: Boolean = false,
+  ) {
+    myEventPublisher.operationTargetFinished(context, target, result, installedPlugins, restartRequired)
+  }
+
+  internal fun operationDependenciesScheduled(
+    context: PluginOperationContext,
+    dependencies: Collection<PluginUiModel>,
+  ) {
+    myEventPublisher.operationDependenciesScheduled(context, dependencies)
+  }
+
+  internal fun operationFinished(context: PluginOperationContext) {
+    myEventPublisher.operationFinished(context)
   }
 
   override fun isModified(): Boolean {
@@ -150,36 +189,70 @@ open class MyPluginModel(project: Project?) : InstalledPluginsTableModel(project
     myUninstalled.clear()
     updateButtons(applyResult)
     myPluginManagerCustomizer?.updateAfterModificationAsync {}
+    myEventPublisher.inventoryInvalidated(PluginInventoryChangeReason.APPLY)
     return !applyResult.needRestart
   }
 
   fun clear(parentComponent: JComponent?) {
     UiPluginManager.getInstance().resetSession(mySessionId.toString(), false, parentComponent) {
-      applyChangedStates(it)
+      applyChangedStates(it.changedEnabledStates)
       updateEnabledStateInUi()
+      applyChangedUpdateSourcesToUI(it.updateSourceStatesToRevert)
+      myEventPublisher.inventoryInvalidated(PluginInventoryChangeReason.RESET)
     }
   }
 
-  fun cancel(parentComponent: JComponent?, removeSession: Boolean) {
-    UiPluginManager.getInstance().resetSession(mySessionId.toString(), removeSession, parentComponent) {
-      applyChangedStates(it)
+  fun cancel(parentComponent: JComponent?, removeSession: Boolean): Job {
+    return UiPluginManager.getInstance().resetSession(mySessionId.toString(), removeSession, parentComponent) {
+      applyChangedStates(it.changedEnabledStates)
+      applyChangedUpdateSourcesToUI(it.updateSourceStatesToRevert)
+      myEventPublisher.inventoryInvalidated(PluginInventoryChangeReason.RESET)
     }
   }
 
   fun pluginInstalledFromDisk(callbackData: PluginInstallCallbackData, errors: List<HtmlChunk>) {
+    pluginInstalledFromDisk(callbackData, errors, PluginSource.LOCAL)
+  }
+
+  internal fun pluginInstalledFromDisk(
+    callbackData: PluginInstallCallbackData,
+    errors: List<HtmlChunk>,
+    source: PluginSource,
+  ) {
     val descriptor = callbackData.pluginDescriptor
+    val presentationModel = PluginUiModelAdapter(descriptor)
+    val operationContext = PluginOperationContext.create(
+      descriptor.pluginId, source, PluginOperationKind.INSTALL
+    )
     coroutineScope.launch {
-      appendOrUpdateDescriptor(PluginUiModelAdapter(descriptor), callbackData.restartNeeded, errors)
+      operationStarted(operationContext, presentationModel)
+      var terminalResult = PluginOperationTerminalResult.FAILED
+      try {
+        appendOrUpdateDescriptor(presentationModel, callbackData.restartNeeded, errors)
+        myEventPublisher.inventoryInvalidated(PluginInventoryChangeReason.INSTALL_FROM_DISK, listOf(descriptor.pluginId))
+        terminalResult = PluginOperationTerminalResult.SUCCEEDED
+      }
+      catch (c: CancellationException) {
+        terminalResult = PluginOperationTerminalResult.CANCELLED
+        throw c
+      }
+      finally {
+        operationTargetFinished(operationContext, source, terminalResult, restartRequired = callbackData.restartNeeded)
+        operationFinished(operationContext)
+      }
     }
   }
 
-  fun addComponent(component: ListPluginComponent) {
+  fun addComponent(component: ListPluginComponent, registerInstallingWithoutGroup: Boolean = false) {
     val descriptor = component.getPluginModel()
     val pluginId = descriptor.pluginId
     if (!component.isMarketplace()) {
-      if (installingPlugins.contains(descriptor) &&
-          (myInstalling == null || myInstalling!!.ui == null || myInstalling!!.ui!!.findComponent(pluginId) == null)
-      ) {
+      val registeredInLegacyInstallingGroup = myInstalling?.ui?.findComponent(pluginId) != null
+      if (!shouldRegisterNonMarketplaceComponent(
+          installing = installingPlugins.contains(descriptor),
+          registeredInLegacyInstallingGroup = registeredInLegacyInstallingGroup,
+          registerInstallingWithoutGroup = registerInstallingWithoutGroup,
+        )) {
         return
       }
 
@@ -236,24 +309,52 @@ open class MyPluginModel(project: Project?) : InstalledPluginsTableModel(project
   val sessionId: String
     get() = mySessionId.toString()
 
-  suspend fun installOrUpdatePlugin(
-    parentComponent: JComponent?,
+  internal suspend fun installOrUpdatePlugin(
+    operationUi: PluginOperationUiContext,
     descriptor: PluginUiModel,
     updateDescriptor: PluginUiModel?,
     installationScope: CoroutineScope,
-    modalityState: ModalityState,
     controller: UiPluginManagerController,
+    progressSink: PluginInstallationProgressSink = PluginInstallationProgressSink.NONE,
   ): InstallPluginResult? {
-    return withContext(Dispatchers.EDT + modalityState.asContextElement()) {
-      val actionDescriptor: PluginUiModel = updateDescriptor ?: descriptor
+    val requestedActionDescriptor = updateDescriptor ?: descriptor
+    val actionDescriptor = loadPluginActionDescriptor(requestedActionDescriptor, controller)
+    if (actionDescriptor == null) {
+      withContext(Dispatchers.EDT + operationUi.modalityState.asContextElement()) {
+        Messages.showErrorDialog(
+          operationUi.getParentComponent(),
+          IdeBundle.message(
+            "plugins.configurable.plugin.details.loading.failed",
+            requestedActionDescriptor.name ?: requestedActionDescriptor.pluginId.idString,
+          ),
+          IdeBundle.message("title.plugin.installation"),
+        )
+      }
+      return null
+    }
+    val operationDescriptor = if (updateDescriptor == null) actionDescriptor else descriptor
+    val operationUpdateDescriptor = if (updateDescriptor == null) null else actionDescriptor
+    return withContext(Dispatchers.EDT + operationUi.modalityState.asContextElement()) {
       if (!PluginManagerMain.checkThirdPartyPluginsAllowed(listOf(actionDescriptor.getDescriptor()))) {
         return@withContext null
       }
       val bgProgressIndicator = PluginDownloadBgProgressIndicator()
+      val indicatorProgressSink = progressSink.withDownloadProgressIndicator(bgProgressIndicator)
       val projectNotNull = tryToFindProject()
 
-      val info = InstallPluginInfo(bgProgressIndicator, descriptor, this@MyPluginModel, updateDescriptor == null)
-      val installResult = runPluginInstallation(projectNotNull, bgProgressIndicator, descriptor, updateDescriptor, controller, parentComponent, modalityState, installationScope, actionDescriptor, info)
+      val info = InstallPluginInfo(bgProgressIndicator, operationDescriptor, this@MyPluginModel, operationUpdateDescriptor == null)
+      val installResult = runPluginInstallation(
+        projectNotNull,
+        bgProgressIndicator,
+        operationDescriptor,
+        operationUpdateDescriptor,
+        controller,
+        operationUi,
+        installationScope,
+        actionDescriptor,
+        info,
+        indicatorProgressSink,
+      )
       applyInstallResult(installResult, info, actionDescriptor, controller)
     }
   }
@@ -264,19 +365,37 @@ open class MyPluginModel(project: Project?) : InstalledPluginsTableModel(project
     descriptor: PluginUiModel,
     updateDescriptor: PluginUiModel?,
     controller: UiPluginManagerController,
-    parentComponent: JComponent?,
-    modalityState: ModalityState,
+    operationUi: PluginOperationUiContext,
     installationScope: CoroutineScope,
     actionDescriptor: PluginUiModel,
     installPluginInfo: InstallPluginInfo,
+    progressSink: PluginInstallationProgressSink,
   ): InstallPluginResult = withContext(Dispatchers.IO) {
     if (project == null) {
-      return@withContext installOrUpdatePlugin(installPluginInfo, controller, parentComponent, descriptor, updateDescriptor, installationScope, modalityState, actionDescriptor)
+      return@withContext installOrUpdatePlugin(
+        installPluginInfo,
+        controller,
+        operationUi,
+        descriptor,
+        updateDescriptor,
+        installationScope,
+        actionDescriptor,
+        progressSink,
+      )
     }
     return@withContext withBackgroundProgress(project, IdeBundle.message("progress.title.loading.plugin.details")) {
       jobToIndicator(coroutineContext.job, bgProgressIndicator) {
         return@jobToIndicator runBlockingCancellable {
-          return@runBlockingCancellable installOrUpdatePlugin(installPluginInfo, controller, parentComponent, descriptor, updateDescriptor, installationScope, modalityState, actionDescriptor)
+          return@runBlockingCancellable installOrUpdatePlugin(
+            installPluginInfo,
+            controller,
+            operationUi,
+            descriptor,
+            updateDescriptor,
+            installationScope,
+            actionDescriptor,
+            progressSink,
+          )
         }
       }
     }
@@ -285,23 +404,45 @@ open class MyPluginModel(project: Project?) : InstalledPluginsTableModel(project
   private suspend fun installOrUpdatePlugin(
     installPluginInfo: InstallPluginInfo,
     controller: UiPluginManagerController,
-    parentComponent: JComponent?,
+    operationUi: PluginOperationUiContext,
     descriptor: PluginUiModel,
     updateDescriptor: PluginUiModel?,
     installationScope: CoroutineScope,
-    modalityState: ModalityState,
     actionDescriptor: PluginUiModel,
+    progressSink: PluginInstallationProgressSink,
   ): InstallPluginResult {
-    withContext(Dispatchers.EDT + modalityState.asContextElement()) {
+    withContext(Dispatchers.EDT + operationUi.modalityState.asContextElement()) {
       prepareToInstall(installPluginInfo, installationScope)
     }
-    val customPlugins = customRepoPlugins?.toList()
-    val result = controller.installOrUpdatePlugin(sessionId, parentComponent, descriptor, updateDescriptor, myInstallSource, modalityState, null, customPlugins)
+    val customPlugins = customRepoPluginsFor(controller.getTarget(), actionDescriptor)?.toList()
+    val result = controller.installOrUpdatePlugin(
+      sessionId,
+      operationUi::getParentComponent,
+      descriptor,
+      updateDescriptor,
+      myInstallSource,
+      operationUi.modalityState,
+      null,
+      customPlugins,
+      progressSink,
+    )
     if (result.disabledPlugins.isEmpty() && result.disabledDependants.isEmpty()) {
       return result
     }
-    val enableDependencies = withContext(Dispatchers.EDT + modalityState.asContextElement()) { PluginManagerMain.askToEnableDependencies(1, result.disabledPlugins, result.disabledDependants) }
-    return controller.continueInstallation(sessionId, actionDescriptor.pluginId, enableDependencies, result.allowInstallWithoutRestart, null, modalityState, parentComponent, customPlugins)
+    val enableDependencies = withContext(Dispatchers.EDT + operationUi.modalityState.asContextElement()) {
+      PluginManagerMain.askToEnableDependencies(1, result.disabledPlugins, result.disabledDependants)
+    }
+    return controller.continueInstallation(
+      sessionId,
+      actionDescriptor.pluginId,
+      enableDependencies,
+      result.allowInstallWithoutRestart,
+      null,
+      operationUi.modalityState,
+      operationUi::getParentComponent,
+      customPlugins,
+      progressSink,
+    )
   }
 
   suspend fun applyInstallResult(result: InstallPluginResult, info: InstallPluginInfo, descriptor: PluginUiModel, controller: UiPluginManagerController): InstallPluginResult {
@@ -325,6 +466,15 @@ open class MyPluginModel(project: Project?) : InstalledPluginsTableModel(project
     else {
       info.finish(result.success, result.cancel, result.showErrors, result.restartRequired, getErrors(result))
     }
+    val affectedPluginIds = buildSet {
+      addAll(result.pluginsToDisable)
+      addAll(result.pluginsToEnable)
+      add(info.descriptor.pluginId)
+      add(descriptor.pluginId)
+      installedDescriptor?.pluginId?.let(::add)
+    }
+    val reason = if (info.install) PluginInventoryChangeReason.INSTALL else PluginInventoryChangeReason.UPDATE
+    myEventPublisher.inventoryInvalidated(reason, affectedPluginIds)
     return result
   }
 
@@ -409,7 +559,7 @@ open class MyPluginModel(project: Project?) : InstalledPluginsTableModel(project
         listComponent.showProgress()
       }
     }
-    for (panel in myDetailPanels) {
+    forEachDetailPanel { panel ->
       if (panel.isShowingPlugin(pluginId)) {
         panel.showInstallProgress(installationScope)
       }
@@ -459,7 +609,7 @@ open class MyPluginModel(project: Project?) : InstalledPluginsTableModel(project
         listComponent.updateErrors(errorList)
       }
     }
-    for (panel in myDetailPanels) {
+    forEachDetailPanelSuspending { panel ->
       if (panel.isShowingPlugin(descriptor.pluginId)) {
         panel.setPlugin(installedDescriptor)
         panel.finishInstall(success, restartRequired, installedDescriptor)
@@ -528,7 +678,7 @@ open class MyPluginModel(project: Project?) : InstalledPluginsTableModel(project
           gridComponent.hideProgress()
         }
       }
-      for (panel in myDetailPanels) {
+      forEachDetailPanel { panel ->
         if (panel.isShowingPlugin(id)) {
           panel.hideProgress()
         }
@@ -604,8 +754,32 @@ open class MyPluginModel(project: Project?) : InstalledPluginsTableModel(project
     }
   }
 
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun addDetailPanel(detailPanel: PluginDetailsPageComponent) {
+    ThreadingAssertions.assertEventDispatchThread()
     myDetailPanels.add(detailPanel)
+  }
+
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
+  fun removeDetailPanel(detailPanel: PluginDetailsPageComponent) {
+    ThreadingAssertions.assertEventDispatchThread()
+    myDetailPanels.remove(detailPanel)
+  }
+
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
+  private fun forEachDetailPanel(action: (PluginDetailsPageComponent) -> Unit) {
+    ThreadingAssertions.assertEventDispatchThread()
+    for (panel in myDetailPanels.toList()) {
+      if (panel in myDetailPanels) action(panel)
+    }
+  }
+
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
+  private suspend fun forEachDetailPanelSuspending(action: suspend (PluginDetailsPageComponent) -> Unit) {
+    ThreadingAssertions.assertEventDispatchThread()
+    for (panel in myDetailPanels.toList()) {
+      if (panel in myDetailPanels) action(panel)
+    }
   }
 
   private fun appendOrUpdateDescriptor(descriptor: PluginUiModel) {
@@ -748,6 +922,7 @@ open class MyPluginModel(project: Project?) : InstalledPluginsTableModel(project
     if (result.pluginNamesToSwitch.isEmpty()) {
       applyChangedStates(result.changedStates)
       updateEnabledStateInUi()
+      invalidateAfterEnableDisable(result.changedStates)
     }
     else {
       askToUpdateDependencies(action, result.pluginNamesToSwitch, result.pluginsIdsToSwitch)
@@ -765,6 +940,7 @@ open class MyPluginModel(project: Project?) : InstalledPluginsTableModel(project
       if (it.pluginNamesToSwitch.isEmpty()) {
         applyChangedStates(it.changedStates)
         updateEnabledStateInUi()
+        invalidateAfterEnableDisable(it.changedStates)
       }
       else {
         askToUpdateDependencies(action, it.pluginNamesToSwitch, it.pluginsIdsToSwitch)
@@ -787,6 +963,13 @@ open class MyPluginModel(project: Project?) : InstalledPluginsTableModel(project
     if (result.changedStates.isNotEmpty()) {
       applyChangedStates(result.changedStates)
       updateEnabledStateInUi()
+      invalidateAfterEnableDisable(result.changedStates)
+    }
+  }
+
+  private fun invalidateAfterEnableDisable(enabledStates: Map<PluginId, Boolean>) {
+    if (enabledStates.isNotEmpty()) {
+      myEventPublisher.enablementChanged(enabledStates)
     }
   }
 
@@ -843,6 +1026,7 @@ open class MyPluginModel(project: Project?) : InstalledPluginsTableModel(project
                                                                               descriptor.pluginId)
     withContext(Dispatchers.EDT + ModalityState.any().asContextElement()) {
       setStatesByIds(pluginsToEnable, true)
+      invalidateAfterEnableDisable(pluginsToEnable.associateWith { true })
     }
   }
 
@@ -858,6 +1042,10 @@ open class MyPluginModel(project: Project?) : InstalledPluginsTableModel(project
 
   fun setCancelInstallCallback(callback: (PluginUiModel) -> Unit) {
     myCancelInstallCallback = callback
+  }
+
+  fun clearCancelInstallCallback() {
+    myCancelInstallCallback = null
   }
 
   private suspend fun updateButtons(applyResult: ApplyPluginsStateResult) {
@@ -878,7 +1066,7 @@ open class MyPluginModel(project: Project?) : InstalledPluginsTableModel(project
           }
         }
       }
-      for (detailPanel in myDetailPanels) {
+      forEachDetailPanelSuspending { detailPanel ->
         detailPanel.updateAll()
       }
     }
@@ -887,6 +1075,12 @@ open class MyPluginModel(project: Project?) : InstalledPluginsTableModel(project
   private fun applyChangedStates(changedStates: Map<PluginId, Boolean>) {
     changedStates.forEach { (pluginId: PluginId, enabled: Boolean) ->
       super.setEnabled(pluginId, if (enabled) PluginEnabledState.ENABLED else PluginEnabledState.DISABLED)
+    }
+  }
+
+  private fun applyChangedUpdateSourcesToUI(updateSourceStates: Map<PluginId, PluginUpdateSourceState>) {
+    for ((pluginId, updateSourceState) in updateSourceStates) {
+      updateUiAfterUpdateSourceChange(pluginId, updateSourceState.value)
     }
   }
 
@@ -954,7 +1148,7 @@ open class MyPluginModel(project: Project?) : InstalledPluginsTableModel(project
   ) {
     val scope = coroutineScope.childScope(javaClass.name, Dispatchers.IO, true)
     myTopController!!.showProgress(true)
-    for (panel in myDetailPanels) {
+    forEachDetailPanel { panel ->
       if (panel.descriptorForActions === descriptor) {
         panel.showUninstallProgress(scope)
       }
@@ -967,16 +1161,19 @@ open class MyPluginModel(project: Project?) : InstalledPluginsTableModel(project
       val errorCheckResult = UiPluginManager.getInstance().loadErrors(sessionId)
       needRestart = needRestart or (descriptor.isEnabled && needRestartForUninstall)
       val errors = getErrors(errorCheckResult)
+      val expectedExplanations = getExpectedExplanations(errorCheckResult)
       if (myPluginManagerCustomizer != null) {
         myPluginManagerCustomizer.updateAfterModificationAsync {
           hideProgresses(descriptor.pluginId)
-          updateUiAfterUninstall(descriptor, needRestartForUninstall, errors, completelyUninstalled)
+          updateUiAfterUninstall(descriptor, needRestartForUninstall, errors, completelyUninstalled, expectedExplanations)
+          myEventPublisher.inventoryInvalidated(PluginInventoryChangeReason.UNINSTALL, listOf(descriptor.pluginId))
           callback?.run()
         }
       }
       else {
         hideProgresses(descriptor.pluginId)
-        updateUiAfterUninstall(descriptor, needRestartForUninstall, errors, completelyUninstalled)
+        updateUiAfterUninstall(descriptor, needRestartForUninstall, errors, completelyUninstalled, expectedExplanations)
+        myEventPublisher.inventoryInvalidated(PluginInventoryChangeReason.UNINSTALL, listOf(descriptor.pluginId))
         callback?.run()
       }
     }
@@ -989,6 +1186,7 @@ open class MyPluginModel(project: Project?) : InstalledPluginsTableModel(project
     descriptor: PluginUiModel, needRestartForUninstall: Boolean,
     errors: Map<PluginId, List<HtmlChunk>>,
     completelyUninstalled: Boolean,
+    expectedExplanations: Map<PluginId, List<@Nls String>>,
   ) {
     val pluginId = descriptor.pluginId
     myTopController!!.showProgress(false)
@@ -1020,16 +1218,18 @@ open class MyPluginModel(project: Project?) : InstalledPluginsTableModel(project
     }
     for (component in myInstalledPluginComponents) {
       component.updateErrors(errors[component.getPluginModel().pluginId] ?: emptyList())
+      component.updateExpectedExplanations(expectedExplanations[component.getPluginModel().pluginId].orEmpty())
     }
     for (plugins in myMarketplacePluginComponentMap.values) {
       for (plugin in plugins) {
         if (plugin.myInstalledDescriptorForMarketplace != null) {
           plugin.updateErrors(errors[plugin.getPluginModel().pluginId] ?: emptyList())
+          plugin.updateExpectedExplanations(expectedExplanations[plugin.getPluginModel().pluginId].orEmpty())
         }
       }
     }
 
-    for (panel in myDetailPanels) {
+    forEachDetailPanelSuspending { panel ->
       if (panel.isShowingPlugin(descriptor.pluginId)) {
         panel.updateAfterUninstall(needRestartForUninstall)
       }
@@ -1068,6 +1268,24 @@ open class MyPluginModel(project: Project?) : InstalledPluginsTableModel(project
       }
     }
     return icon
+  }
+
+  fun updateUiAfterUpdateSourceChange(
+    pluginId: PluginId,
+    pluginUpdateSource: PluginUpdateSource?,
+  ) {
+    forEachDetailPanel { pageComponent ->
+      if (pageComponent.isShowingPlugin(pluginId)) {
+        pageComponent.updatePluginUpdateSourceUI(pluginUpdateSource)
+      }
+    }
+    val isUnknown = pluginUpdateSource == null
+    myInstalledPluginComponentMap[pluginId]?.forEach { listComponent ->
+      listComponent.updateUnknownUpdateSourceWarning(isUnknown)
+    }
+    myMarketplacePluginComponentMap[pluginId]?.forEach { listComponent ->
+      listComponent.updateUnknownUpdateSourceWarning(isUnknown)
+    }
   }
 
   companion object {
@@ -1154,9 +1372,76 @@ open class MyPluginModel(project: Project?) : InstalledPluginsTableModel(project
     }
 
     fun getErrors(checkErrorsResult: CheckErrorsResult): List<HtmlChunk> {
-      if (checkErrorsResult.isDisabledDependencyError) {
-        val loadingError = checkErrorsResult.loadingError
-        return if (loadingError != null) listOf<HtmlChunk>(createTextChunk(loadingError)) else emptyList()
+      return presentedLoadingProblems(checkErrorsResult).flatMap { (side, problem) ->
+        val errors = getSingleProblemErrors(problem)
+        if (side == null || errors.isEmpty()) errors
+        else listOf(HtmlChunk.span().addText(loadingProblemSidePrefix(side)).children(errors.first())) + errors.drop(1)
+      }
+    }
+
+    fun getExpectedExplanations(results: Map<PluginId, CheckErrorsResult>): Map<PluginId, List<@Nls String>> =
+      results.mapValues { (_, result) -> getExpectedExplanations(result) }
+
+    fun getExpectedExplanations(result: CheckErrorsResult): List<@Nls String> =
+      presentedLoadingProblems(result).mapNotNull { (side, problem) ->
+        val message = getSingleProblemExpectedExplanation(problem)
+        message?.let { if (side == null) it else loadingProblemSidePrefix(side) + it }
+      }
+
+    private fun getSingleProblemExpectedExplanation(problem: CheckErrorsResult): @Nls String? = when (problem.severity) {
+      PluginLoadingProblem.Severity.UNEXPECTED -> null
+      PluginLoadingProblem.Severity.EXPECTED -> when (problem.kind) {
+        PluginLoadingProblem.Kind.OTHER, PluginLoadingProblem.Kind.PRODUCT_MODE_MISMATCH -> problem.loadingError
+        PluginLoadingProblem.Kind.ULTIMATE_DISABLED -> null
+      }
+    }
+
+    private data class LoadingProblemPresentationKey(
+      val kind: PluginLoadingProblem.Kind,
+      val severity: PluginLoadingProblem.Severity,
+      val errors: List<String>,
+      val expectedExplanation: @Nls String?,
+    )
+
+    private fun loadingProblemPresentationKey(problem: CheckErrorsResult): LoadingProblemPresentationKey =
+      LoadingProblemPresentationKey(
+        kind = problem.kind,
+        severity = problem.severity,
+        errors = getSingleProblemErrors(problem).map { it.toString() },
+        expectedExplanation = getSingleProblemExpectedExplanation(problem),
+      )
+
+    private fun presentedLoadingProblems(result: CheckErrorsResult): List<Pair<PluginSource?, CheckErrorsResult>> {
+      if (result.problemsBySide.isEmpty()) return listOf(null to result)
+      val local = result.problemsBySide[PluginSource.LOCAL]
+      val remote = result.problemsBySide[PluginSource.REMOTE]
+      if (local != null && remote != null && loadingProblemPresentationKey(local) == loadingProblemPresentationKey(remote)) {
+        return listOf(null to local)
+      }
+      val bothPresent = local?.pluginPresent == true && remote?.pluginPresent == true
+      return listOf(PluginSource.LOCAL, PluginSource.REMOTE).mapNotNull { side ->
+        result.problemsBySide[side]?.let { (if (bothPresent) side else null) to it }
+      }
+    }
+
+    private fun loadingProblemSidePrefix(side: PluginSource): @Nls String = when (side) {
+      PluginSource.LOCAL -> CoreBundle.message("plugin.loading.problem.side.client") + " "
+      PluginSource.REMOTE -> CoreBundle.message("plugin.loading.problem.side.host") + " "
+      PluginSource.BOTH -> error("A shared explanation needs no side prefix")
+    }
+
+    private fun getSingleProblemErrors(checkErrorsResult: CheckErrorsResult): List<HtmlChunk> {
+      when (checkErrorsResult.severity) {
+        PluginLoadingProblem.Severity.EXPECTED -> return emptyList()
+        PluginLoadingProblem.Severity.UNEXPECTED -> {}
+      }
+      when (checkErrorsResult.kind) {
+        PluginLoadingProblem.Kind.ULTIMATE_DISABLED -> return emptyList()
+        PluginLoadingProblem.Kind.OTHER, PluginLoadingProblem.Kind.PRODUCT_MODE_MISMATCH -> {}
+      }
+      val loadingError = checkErrorsResult.loadingError
+      if (loadingError != null) {
+        return listOf(createTextChunk(loadingError))
       }
 
       val errors = mutableListOf<HtmlChunk>()
@@ -1197,5 +1482,42 @@ open class MyPluginModel(project: Project?) : InstalledPluginsTableModel(project
     private fun createTextChunk(message: @Nls String): HtmlChunk.Element {
       return HtmlChunk.span().addText(message)
     }
+  }
+}
+
+internal fun shouldRegisterNonMarketplaceComponent(
+  installing: Boolean,
+  registeredInLegacyInstallingGroup: Boolean,
+  registerInstallingWithoutGroup: Boolean,
+): Boolean {
+  return !installing || registeredInLegacyInstallingGroup || registerInstallingWithoutGroup
+}
+
+internal suspend fun loadPluginActionDescriptor(
+  descriptor: PluginUiModel,
+  controller: UiPluginManagerController,
+): PluginUiModel? {
+  if (!descriptor.isFromMarketplace || descriptor.detailsLoaded) return descriptor
+  val loadedDescriptor = withContext(Dispatchers.IO) {
+    controller.loadPluginDetails(descriptor)
+  }
+  return when {
+    loadedDescriptor == null -> {
+      logger<MyPluginModel>().warn("Could not load complete plugin details for ${descriptor.pluginId}: the controller returned null")
+      null
+    }
+    loadedDescriptor.pluginId != descriptor.pluginId -> {
+      logger<MyPluginModel>().warn(
+        "Could not load complete plugin details for ${descriptor.pluginId}: the controller returned a descriptor for ${loadedDescriptor.pluginId}"
+      )
+      null
+    }
+    !loadedDescriptor.detailsLoaded -> {
+      logger<MyPluginModel>().warn(
+        "Could not load complete plugin details for ${descriptor.pluginId}: the controller returned an incomplete descriptor"
+      )
+      null
+    }
+    else -> loadedDescriptor
   }
 }

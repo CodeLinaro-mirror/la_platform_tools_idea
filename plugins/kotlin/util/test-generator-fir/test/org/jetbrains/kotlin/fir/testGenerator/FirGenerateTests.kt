@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package org.jetbrains.kotlin.fir.testGenerator
 
@@ -15,6 +15,10 @@ import org.jetbrains.kotlin.fir.testGenerator.codeinsight.generateK2CodeInsightT
 import org.jetbrains.kotlin.fir.testGenerator.gradle.generateK2GradleTests
 import org.jetbrains.kotlin.idea.base.fir.analysisApiPlatform.AbstractIdeKotlinAnnotationsResolverTest
 import org.jetbrains.kotlin.idea.base.fir.analysisApiPlatform.dependents.AbstractModuleDependentsTest
+import org.jetbrains.kotlin.idea.base.fir.analysisApiPlatform.file.structure.AbstractDeclarationModificationServiceCallExpressionCalleeResilienceTest
+import org.jetbrains.kotlin.idea.base.fir.analysisApiPlatform.file.structure.AbstractDeclarationModificationServiceDotQualifiedExpressionReceiverResilienceTest
+import org.jetbrains.kotlin.idea.base.fir.analysisApiPlatform.file.structure.AbstractDeclarationModificationServiceDotQualifiedExpressionSelectorResilienceTest
+import org.jetbrains.kotlin.idea.base.fir.analysisApiPlatform.file.structure.AbstractDeclarationModificationServicePropertyDeclarationInitializerResilienceTest
 import org.jetbrains.kotlin.idea.base.fir.analysisApiPlatform.inheritors.AbstractDirectInheritorsProviderTest
 import org.jetbrains.kotlin.idea.base.fir.analysisApiPlatform.inheritors.AbstractSealedInheritorsProviderTest
 import org.jetbrains.kotlin.idea.base.fir.analysisApiPlatform.projectStructure.scopes.AbstractResolutionScopeStructureTest
@@ -53,7 +57,8 @@ import org.jetbrains.kotlin.idea.fir.completion.test.handlers.AbstractHighLevelJ
 import org.jetbrains.kotlin.idea.fir.completion.test.handlers.AbstractHighLevelSmartCompletionHandlerTest
 import org.jetbrains.kotlin.idea.fir.completion.test.handlers.AbstractK2CompletionCharFilterTest
 import org.jetbrains.kotlin.idea.fir.completion.test.handlers.AbstractK2CompletionIncrementalResolveTest
-import org.jetbrains.kotlin.idea.fir.completion.wheigher.AbstractHighLevelWeigherTest
+import org.jetbrains.kotlin.idea.fir.completion.wheigher.AbstractBasicCompletionWeigherTest
+import org.jetbrains.kotlin.idea.fir.completion.wheigher.AbstractSmartCompletionWeigherTest
 import org.jetbrains.kotlin.idea.fir.copyPaste.AbstractFirKotlinToKotlinMultiDollarStringsCopyPasteTest
 import org.jetbrains.kotlin.idea.fir.copyPaste.AbstractFirLiteralKotlinToKotlinCopyPasteTest
 import org.jetbrains.kotlin.idea.fir.copyPaste.AbstractFirLiteralTextToKotlinCopyPasteTest
@@ -94,14 +99,13 @@ import org.jetbrains.kotlin.idea.fir.parameterInfo.AbstractFirMultilineParameter
 import org.jetbrains.kotlin.idea.fir.parameterInfo.AbstractFirParameterInfoTest
 import org.jetbrains.kotlin.idea.fir.projectView.AbstractK2ProjectViewTest
 import org.jetbrains.kotlin.idea.fir.resolve.AbstractAdditionalKDocResolutionProviderTest
-import org.jetbrains.kotlin.idea.fir.resolve.AbstractFirInLibraryResolveEverythingTest
 import org.jetbrains.kotlin.idea.fir.resolve.AbstractFirReferenceResolveInJavaTest
 import org.jetbrains.kotlin.idea.fir.resolve.AbstractFirReferenceResolveTest
 import org.jetbrains.kotlin.idea.fir.resolve.AbstractFirReferenceResolveWithCompiledLibTest
+import org.jetbrains.kotlin.idea.fir.resolve.AbstractFirReferenceResolveWithCompilerPluginsInSourceTest
 import org.jetbrains.kotlin.idea.fir.resolve.AbstractFirReferenceResolveWithCompilerPluginsWithCompiledLibTest
 import org.jetbrains.kotlin.idea.fir.resolve.AbstractFirReferenceResolveWithCompilerPluginsWithCrossLibTest
 import org.jetbrains.kotlin.idea.fir.resolve.AbstractFirReferenceResolveWithCompilerPluginsWithLibTest
-import org.jetbrains.kotlin.idea.fir.resolve.AbstractFirReferenceResolveWithCompilerPluginsInSourceTest
 import org.jetbrains.kotlin.idea.fir.resolve.AbstractFirReferenceResolveWithCrossLibTest
 import org.jetbrains.kotlin.idea.fir.resolve.AbstractFirReferenceResolveWithLibTest
 import org.jetbrains.kotlin.idea.fir.resolve.AbstractFirReferenceToCompiledKotlinResolveInJavaTest
@@ -117,7 +121,9 @@ import org.jetbrains.kotlin.idea.highlighter.AbstractUsageHighlightingTest
 import org.jetbrains.kotlin.idea.k2.copyright.AbstractFirUpdateKotlinCopyrightTest
 import org.jetbrains.kotlin.idea.k2.refactoring.rename.AbstractFirMultiModuleRenameTest
 import org.jetbrains.kotlin.idea.k2.refactoring.rename.AbstractFirRenameTest
+import org.jetbrains.kotlin.idea.k2.refactoring.rename.AbstractK2HeadlessRenameProcessorTest
 import org.jetbrains.kotlin.idea.k2.refactoring.rename.AbstractK2InplaceRenameTest
+import org.jetbrains.kotlin.idea.k2.resolve.AbstractLombokReferenceResolveWithCompilerPluginWithoutIdePluginTest
 import org.jetbrains.kotlin.idea.maven.AbstractKotlinMavenInspectionTest
 import org.jetbrains.kotlin.idea.maven.configuration.AbstractMavenConfigureProjectByChangingFileTest
 import org.jetbrains.kotlin.idea.test.kmp.KMPTestPlatform
@@ -137,6 +143,7 @@ import org.jetbrains.kotlin.testGenerator.model.GroupCategory.J2K
 import org.jetbrains.kotlin.testGenerator.model.GroupCategory.NAVIGATION
 import org.jetbrains.kotlin.testGenerator.model.GroupCategory.QUICKFIXES
 import org.jetbrains.kotlin.testGenerator.model.GroupCategory.RENAME_REFACTORING
+import org.jetbrains.kotlin.testGenerator.model.Junit5Suite
 import org.jetbrains.kotlin.testGenerator.model.MutableTSuite
 import org.jetbrains.kotlin.testGenerator.model.Patterns
 import org.jetbrains.kotlin.testGenerator.model.Patterns.DIRECTORY
@@ -212,6 +219,22 @@ private fun assembleWorkspace(): TWorkspace = workspace() {
         testClass<AbstractResolutionScopeStructureTest> {
             model("resolutionScopes", pattern = DIRECTORY, isRecursive = false)
         }
+
+        testClass<AbstractDeclarationModificationServiceCallExpressionCalleeResilienceTest> {
+            model("declarationModificationPsiResilience/callExpression", pattern = KT_WITHOUT_DOTS)
+        }
+
+        testClass<AbstractDeclarationModificationServiceDotQualifiedExpressionReceiverResilienceTest> {
+            model("declarationModificationPsiResilience/dotQualifiedExpression", pattern = KT_WITHOUT_DOTS)
+        }
+
+        testClass<AbstractDeclarationModificationServiceDotQualifiedExpressionSelectorResilienceTest> {
+            model("declarationModificationPsiResilience/dotQualifiedExpression", pattern = KT_WITHOUT_DOTS)
+        }
+
+        testClass<AbstractDeclarationModificationServicePropertyDeclarationInitializerResilienceTest> {
+            model("declarationModificationPsiResilience/propertyDeclaration", pattern = KT_WITHOUT_DOTS)
+        }
     }
 
     testGroup("base/fir/project-structure") {
@@ -227,6 +250,12 @@ private fun assembleWorkspace(): TWorkspace = workspace() {
     testGroup("compiler-plugins/parcelize/tests/k2", testDataPath = "../testData", category = QUICKFIXES) {
         testClass<AbstractParcelizeK2QuickFixTest> {
             model("quickfix", pattern = Patterns.forRegex("^([\\w\\-_]+)\\.kt$"))
+        }
+    }
+
+    testGroup("lombok/tests", category = CODE_INSIGHT) {
+        testClass<AbstractLombokReferenceResolveWithCompilerPluginWithoutIdePluginTest> {
+            model("resolve/referenceWithCompilerPluginsInSource", pattern = DIRECTORY, isRecursive = false)
         }
     }
 
@@ -290,10 +319,6 @@ private fun assembleWorkspace(): TWorkspace = workspace() {
 
         testClass<AbstractFirReferenceToCompiledKotlinResolveInJavaTest> {
             model("resolve/referenceInJava/binaryAndSource", pattern = JAVA)
-        }
-
-        testClass<AbstractFirInLibraryResolveEverythingTest> {
-            model("resolve/compiled/sources")
         }
 
         testClass<AbstractFirLiteralTextToKotlinCopyPasteTest> {
@@ -533,8 +558,12 @@ private fun assembleWorkspace(): TWorkspace = workspace() {
             model("dumb")
         }
 
-        testClass<AbstractHighLevelWeigherTest> {
+        testClass<AbstractBasicCompletionWeigherTest> {
             model("weighers/basic", pattern = KT_OR_KTS_WITHOUT_DOTS)
+        }
+
+        testClass<AbstractSmartCompletionWeigherTest> {
+            model("weighers/smart", pattern = KT_OR_KTS_WITHOUT_DOTS)
         }
 
         testClass<AbstractHighLevelMultiFileJvmBasicCompletionTest> {
@@ -597,15 +626,18 @@ private fun assembleWorkspace(): TWorkspace = workspace() {
         }
     }
 
-    testGroup("refactorings/rename.k2", testDataPath = "../../idea/tests/testData", category = RENAME_REFACTORING) {
+    testGroup("refactorings/rename.k2", category = RENAME_REFACTORING) {
         testClass<AbstractFirRenameTest> {
-            model("refactoring/rename", pattern = TEST, flatten = true)
+            model("rename", pattern = TEST, flatten = true)
         }
         testClass<AbstractK2InplaceRenameTest> {
-            model("refactoring/rename/inplace", pattern = Patterns.KT_OR_JAVA, flatten = true)
+            model("rename/inplace", pattern = Patterns.KT_OR_JAVA, flatten = true)
         }
         testClass<AbstractFirMultiModuleRenameTest> {
-            model("refactoring/renameMultiModule", pattern = TEST, flatten = true)
+            model("renameMultiModule", pattern = TEST, flatten = true)
+        }
+        testClass<AbstractK2HeadlessRenameProcessorTest> {
+            model("headlessRename")
         }
     }
 
@@ -620,12 +652,19 @@ private fun assembleWorkspace(): TWorkspace = workspace() {
             model("configurator/jvm", pattern = DIRECTORY, isRecursive = false, testMethodName = "doTestWithMaven")
         }
 
-        testClass<AbstractKotlinMavenInspectionTest> {
-            val mavenInspections = "maven-inspections"
-            val pattern = Patterns.forRegex("^([\\w\\-]+).xml$")
-            testDataRoot.resolve(mavenInspections).listFiles()!!.onEach { check(it.isDirectory) }.sorted().forEach {
-                model("$mavenInspections/${it.name}", pattern = pattern, flatten = true)
-            }
+        testClass<AbstractKotlinMavenInspectionTest>(
+            junit5 = Junit5Suite(
+                constructorParams = "mavenVersion: String, modelVersion: String",
+                superConstructorArgs = "mavenVersion, modelVersion",
+                classAnnotations = listOf("ParameterizedClass", "ArgumentsSource(MavenVersionArguments::class)"),
+                imports = listOf(
+                    "com.intellij.maven.testFramework.fixtures.MavenVersionArguments",
+                    "org.junit.jupiter.params.ParameterizedClass",
+                    "org.junit.jupiter.params.provider.ArgumentsSource",
+                ),
+            ),
+        ) {
+            model("maven-inspections", pattern = Patterns.forRegex("^([\\w\\-]+).xml$"), isRecursive = false)
         }
     }
 

@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.platform.lsp.api
 
 import com.intellij.openapi.editor.Document
@@ -8,6 +8,7 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.concurrency.annotations.RequiresBackgroundThread
 import org.eclipse.lsp4j.InitializeResult
 import org.eclipse.lsp4j.TextDocumentIdentifier
+import org.jetbrains.annotations.ApiStatus
 import java.util.concurrent.CompletableFuture
 
 /**
@@ -45,6 +46,22 @@ interface LspClient {
    * @see LspClientDescriptor.lsp4jServerClass
    */
   fun sendNotification(lsp4jSender: (Lsp4jServer) -> Unit)
+
+  /**
+   * Drops everything the IDE has cached from this server — pulled diagnostics, inlay hints, semantic tokens,
+   * hovers, symbols, … — and re-requests it for the opened files.
+   *
+   * Call it after changing what the server bases its answers on, a settings push for example: every pulled result is
+   * cached until the file changes, so without this the server's new answers are only visible after an edit. Send the
+   * push first: the re-requests are ordered after everything already sent to the server.
+   *
+   * What is on screen stays there until the fresh results arrive, so there is no flicker. Note that this cannot
+   * guarantee the server has finished applying the change before it answers; a server that re-reads its
+   * configuration asynchronously should also send the matching `workspace/.../refresh` request once it has.
+   */
+  @ApiStatus.Experimental
+  @ApiStatus.Internal
+  fun invalidateServerResults()
 
   /**
    * Sends a request to the LSP server.
@@ -90,7 +107,7 @@ interface LspClient {
    *
    * @see LspClientDescriptor.lsp4jServerClass
    */
-  @RequiresBackgroundThread
+  @RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
   fun <Lsp4jResponse> sendRequestSync(
     timeoutMs: Int = DEFAULT_REQUEST_TIMEOUT_MS,
     lsp4jSender: (Lsp4jServer) -> CompletableFuture<Lsp4jResponse>,
@@ -110,6 +127,14 @@ interface LspClient {
    * or [PublishDiagnosticsParams](https://microsoft.github.io/language-server-protocol/specification/#publishDiagnosticsParams)
    */
   fun getDocumentVersion(document: Document): Int
+
+  /**
+   * Advances and returns the version to declare for [document]'s next `didOpen`/`didChange`. This client
+   * owns the number outright, so callers that must declare a version before an edit lands -- an incremental
+   * change's line numbers have to be computed from the pre-edit document, for instance -- can call this
+   * safely instead of trying to predict [document]'s own modification-tracking state.
+   */
+  fun nextDocumentVersion(document: Document): Int
 
   companion object {
     const val DEFAULT_REQUEST_TIMEOUT_MS: Int = 10_000

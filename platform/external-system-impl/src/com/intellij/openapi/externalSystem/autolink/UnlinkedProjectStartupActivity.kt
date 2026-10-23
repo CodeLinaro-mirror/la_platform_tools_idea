@@ -6,6 +6,7 @@ import com.intellij.openapi.application.readAction
 import com.intellij.openapi.components.serviceAsync
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.extensions.createExtensionDisposable
+import com.intellij.openapi.extensions.forEachExtensionSafeInline
 import com.intellij.openapi.externalSystem.autoimport.ExternalSystemProjectId
 import com.intellij.openapi.externalSystem.autoimport.changes.vfs.VirtualFileChangesListener
 import com.intellij.openapi.externalSystem.autoimport.changes.vfs.VirtualFileChangesListener.Companion.installAsyncVirtualFileListener
@@ -18,7 +19,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.startup.ProjectActivity
 import com.intellij.openapi.util.io.toNioPathOrNull
 import com.intellij.openapi.util.registry.Registry
-import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.vfs.StandardFileSystems
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.isFile
 import com.intellij.openapi.vfs.newvfs.events.VFileContentChangeEvent
@@ -109,7 +110,7 @@ class UnlinkedProjectStartupActivity : ProjectActivity {
   ): Pair<List<ExternalSystemUnlinkedProjectAware>, List<ExternalSystemUnlinkedProjectAware>> {
     val linkedProjects = ArrayList<ExternalSystemUnlinkedProjectAware>()
     val unlinkedProjects = ArrayList<ExternalSystemUnlinkedProjectAware>()
-    EP_NAME.forEachExtensionSafeAsync { extension ->
+    EP_NAME.forEachExtensionSafeInline { extension ->
       when {
         extension.isLinkedProject(project, externalProjectPath) ->
           linkedProjects.add(extension)
@@ -140,28 +141,29 @@ class UnlinkedProjectStartupActivity : ProjectActivity {
 
   private suspend fun installUnlinkedProjectScanner(project: Project, projectRoots: ProjectRoots) {
     EP_NAME.withEachExtensionSafeAsync(project) { extension, extensionDisposable ->
+      // Register the remove listener before the first update. A project root can be linked during this update.
+      projectRoots.whenProjectRootRemoved(extensionDisposable) { projectRoot ->
+        project.trackActivity(ExternalSystemActivityKey) {
+          expireNotification(project, projectRoot, extension)
+        }
+      }
       whenProjectRootsChanged(project, projectRoots, extensionDisposable) { changedRoots ->
         project.trackActivity(ExternalSystemActivityKey) {
           for (projectRoot in changedRoots) {
-            updateNotification(project, projectRoot, extension)
+            updateNotification(project, projectRoots, projectRoot, extension)
           }
         }
       }
       projectRoots.withProjectRoot(extensionDisposable) { projectRoot ->
         project.trackActivity(ExternalSystemActivityKey) {
-          updateNotification(project, projectRoot, extension)
-        }
-      }
-      projectRoots.whenProjectRootRemoved(extensionDisposable) { projectRoot ->
-        project.trackActivity(ExternalSystemActivityKey) {
-          expireNotification(project, projectRoot, extension)
+          updateNotification(project, projectRoots, projectRoot, extension)
         }
       }
     }
   }
 
   private fun hasLinkedProject(project: Project, projectRoot: String): Boolean {
-    EP_NAME.forEachExtensionSafeAsync { extension ->
+    EP_NAME.forEachExtensionSafeInline { extension ->
       if (extension.isLinkedProject(project, projectRoot)) {
         return true
       }
@@ -169,7 +171,12 @@ class UnlinkedProjectStartupActivity : ProjectActivity {
     return false
   }
 
-  private suspend fun updateNotification(project: Project, projectRoot: String, extension: ExternalSystemUnlinkedProjectAware) {
+  private suspend fun updateNotification(
+    project: Project,
+    projectRoots: ProjectRoots,
+    projectRoot: String,
+    extension: ExternalSystemUnlinkedProjectAware,
+  ) {
     when {
       extension.isLinkedProject(project, projectRoot) ->
         expireNotification(project, projectRoot, extension)
@@ -177,6 +184,11 @@ class UnlinkedProjectStartupActivity : ProjectActivity {
         notifyNotification(project, projectRoot, extension)
       else ->
         expireNotification(project, projectRoot, extension)
+    }
+    // The project root can be linked and removed after the isLinkedProject check.
+    // The remove listener cannot expire a notification that is not shown yet.
+    if (projectRoot !in projectRoots) {
+      expireNotification(project, projectRoot, extension)
     }
   }
 
@@ -265,7 +277,7 @@ class UnlinkedProjectStartupActivity : ProjectActivity {
 
   private suspend fun ExternalSystemUnlinkedProjectAware.hasBuildFiles(project: Project, externalProjectPath: String): Boolean {
     return readAction {
-      val projectRoot = LocalFileSystem.getInstance().findFileByPath(externalProjectPath)
+      val projectRoot = StandardFileSystems.local().findFileByPath(externalProjectPath)
       projectRoot?.children?.firstOrNull { isBuildFile(project, it) } != null
     }
   }

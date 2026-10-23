@@ -45,14 +45,15 @@ public abstract class CoverageEnabledConfiguration implements JDOMExternalizable
 
   private boolean myIsCoverageEnabled = false;
   private String myRunnerId;
-  private CoverageRunner myCachedRunner;
   private boolean myTrackTestFolders = false;
 
   private boolean myBranchCoverage = false;
   private boolean myTrackPerTestCoverage = false;
   @ApiStatus.Internal
   protected @NonNls String myCoverageFilePath;
+  private @NonNls String myCoverageFilePathOverride;
   private CoverageSuite myCurrentCoverageSuite;
+  private CoverageEngine myEngine;
 
   /**
    *
@@ -78,10 +79,7 @@ public abstract class CoverageEnabledConfiguration implements JDOMExternalizable
 
   @ApiStatus.Internal
   public @Nullable CoverageRunner getCoverageRunner() {
-    if (myCachedRunner == null && myRunnerId != null) {
-      myCachedRunner = CoverageRunner.getInstanceById(myRunnerId);
-    }
-    return myCachedRunner;
+    return myRunnerId == null ? null : CoverageRunner.getInstanceById(myRunnerId);
   }
 
   /**
@@ -90,7 +88,6 @@ public abstract class CoverageEnabledConfiguration implements JDOMExternalizable
    */
   public void setCoverageRunner(@Nullable CoverageRunner coverageRunner) {
     myRunnerId = coverageRunner == null ? null : coverageRunner.getId();
-    myCachedRunner = coverageRunner;
     myCoverageFilePath = null;
   }
 
@@ -179,15 +176,22 @@ public abstract class CoverageEnabledConfiguration implements JDOMExternalizable
   public void coverageRunnerExtensionRemoved(@NotNull CoverageRunner runner) {
     if (runner.getId().equals(myRunnerId)) {
       myConfiguration.putCopyableUserData(COVERAGE_KEY, null);
-      myCachedRunner = null;
     }
   }
 
   public @NonNls @Nullable String getCoverageFilePath() {
+    if (myCoverageFilePathOverride != null) {
+      return myCoverageFilePathOverride;
+    }
     if (myCoverageFilePath == null) {
       myCoverageFilePath = createCoverageFile();
     }
     return myCoverageFilePath;
+  }
+
+  @ApiStatus.Internal
+  public void setCoverageFilePathOverride(@NonNls @Nullable String coverageFilePath) {
+    myCoverageFilePathOverride = coverageFilePath;
   }
 
   @Override
@@ -288,11 +292,17 @@ public abstract class CoverageEnabledConfiguration implements JDOMExternalizable
   }
 
   public static @Nullable CoverageEnabledConfiguration getOrCreateIfApplicable(@NotNull RunConfigurationBase<?> runConfiguration) {
-    var existingConfiguration = getOrNull(runConfiguration);
-    if (existingConfiguration != null) return existingConfiguration;
     var suitableEngine = getSuitableEngine(runConfiguration);
+    var existingConfiguration = getOrNull(runConfiguration);
+    if (existingConfiguration != null
+        && (suitableEngine == null
+            || existingConfiguration.myEngine == null
+            || existingConfiguration.myEngine == suitableEngine)) {
+      return existingConfiguration;
+    }
     if (suitableEngine == null) return null;
     var configuration = suitableEngine.createCoverageEnabledConfiguration(runConfiguration);
+    configuration.myEngine = suitableEngine;
     runConfiguration.putCopyableUserData(COVERAGE_KEY, configuration);
     return configuration;
   }

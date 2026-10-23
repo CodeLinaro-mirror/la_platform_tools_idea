@@ -1,5 +1,5 @@
 // "Create property 'foobs' as constructor parameter" "true"
-// K2_ERROR: No parameter with name 'foobs' found.
+// K2_ERROR: NAMED_PARAMETER_NOT_FOUND
 
 data class Foo(val bar: Int)
 
@@ -10,5 +10,4 @@ fun baz(foo: Foo): Foo {
     )
 }
 
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.quickFixes.createFromUsage.K2CreateParameterFromUsageBuilder$CreateParameterFromUsageAction
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.createFromUsage.createVariable.CreateParameterFromUsageFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.quickFixes.createFromUsage.K2CreateParameterFromUsageBuilder$CreateParameterFromUsageAction

@@ -1,5 +1,5 @@
 // "Import extension function 'Other.defaultFun'" "true"
-// K2_ERROR: Unresolved reference 'defaultFun' on receiver of type 'Other'.
+// K2_ERROR: UNRESOLVED_REFERENCE
 package p
 
 class Other
@@ -18,5 +18,4 @@ fun usage(c: Other) {
     c.<caret>defaultFun()
 }
 
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ImportFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.imprt.ImportQuickFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.imprt.ImportQuickFix

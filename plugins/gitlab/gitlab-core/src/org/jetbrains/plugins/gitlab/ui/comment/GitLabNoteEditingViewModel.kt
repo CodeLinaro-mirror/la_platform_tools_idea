@@ -1,7 +1,7 @@
 // Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.plugins.gitlab.ui.comment
 
-import com.intellij.collaboration.async.cancelAndJoinSilently
+import com.intellij.collaboration.async.cancelAndJoin
 import com.intellij.collaboration.async.mapState
 import com.intellij.collaboration.ui.FocusableViewModel
 import com.intellij.collaboration.ui.codereview.comment.CodeReviewSubmittableTextViewModel
@@ -100,7 +100,7 @@ abstract class AbstractGitLabNoteEditingViewModel(
   parentCs: CoroutineScope,
   initialText: String
 ) : CodeReviewSubmittableTextViewModelBase(project, parentCs, initialText), GitLabNoteEditingViewModel {
-  override suspend fun destroy() = cs.cancelAndJoinSilently()
+  override suspend fun destroy() = cs.cancelAndJoin()
 
   private val _uploadFinishedSignal = Channel<FileUploadResult>(1, BufferOverflow.DROP_OLDEST)
   override val uploadFinishedSignal: Flow<FileUploadResult> = _uploadFinishedSignal.receiveAsFlow()
@@ -275,8 +275,8 @@ internal fun NewGitLabNoteViewModel.submitActionIn(cs: CoroutineScope, actionNam
                                                    project: Project, type: NewGitLabNoteType,
                                                    place: GitLabStatistics.MergeRequestNoteActionPlace): Action =
   submitActionIn(cs, actionName) {
-    submit()
     GitLabStatistics.logMrActionExecuted(project, type.toStatAction(false), place)
+    submit()
   }
 
 internal fun NewGitLabNoteViewModel.submitAsDraftActionIn(cs: CoroutineScope, actionName: @Nls String,
@@ -284,8 +284,8 @@ internal fun NewGitLabNoteViewModel.submitAsDraftActionIn(cs: CoroutineScope, ac
                                                           place: GitLabStatistics.MergeRequestNoteActionPlace): Action? {
   if (!canSubmitAsDraft) return null
   return submitActionIn(cs, actionName) {
-    submitAsDraft()
     GitLabStatistics.logMrActionExecuted(project, type.toStatAction(true), place)
+    submitAsDraft()
   }
 }
 

@@ -2,9 +2,10 @@
 package com.intellij.ide.ui.laf.darcula.ui;
 
 import com.intellij.openapi.ui.ErrorBorderCapable;
+import com.intellij.ui.DrawUtil;
+import com.intellij.ui.paint.PaintUtil;
 import com.intellij.util.ui.JBInsets;
 import com.intellij.util.ui.JBUI;
-import com.intellij.util.ui.MacUIUtil;
 
 import javax.swing.JComponent;
 import javax.swing.JSpinner;
@@ -12,10 +13,8 @@ import javax.swing.border.Border;
 import javax.swing.plaf.UIResource;
 import java.awt.Component;
 import java.awt.Graphics;
-import java.awt.Graphics2D;
 import java.awt.Insets;
 import java.awt.Rectangle;
-import java.awt.RenderingHints;
 import java.awt.geom.Path2D;
 import java.awt.geom.RoundRectangle2D;
 
@@ -35,14 +34,10 @@ public class DarculaSpinnerBorder implements Border, UIResource, ErrorBorderCapa
 
   @Override
   public void paintBorder(Component c, Graphics g, int x, int y, int width, int height) {
-    Graphics2D g2 = (Graphics2D)g.create();
     Rectangle r = new Rectangle(x, y, width, height);
     JBInsets.removeFrom(r, JBUI.insets(1));
-
-    try {
-      g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-      g2.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL,
-                          MacUIUtil.USE_QUARTZ ? RenderingHints.VALUE_STROKE_PURE : RenderingHints.VALUE_STROKE_NORMALIZE);
+    PaintUtil.useCopy(g, g2 -> {
+      DrawUtil.setupRenderingHints(g2);
 
       g2.translate(r.x, r.y);
 
@@ -67,10 +62,7 @@ public class DarculaSpinnerBorder implements Border, UIResource, ErrorBorderCapa
         g2.setColor(getOutlineColor(c.isEnabled(), isFocused(c)));
         g2.fill(border);
       }
-    }
-    finally {
-      g2.dispose();
-    }
+    });
   }
 
   @Override

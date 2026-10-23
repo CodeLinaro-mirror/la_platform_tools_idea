@@ -17,13 +17,15 @@ import com.intellij.psi.SmartPsiElementPointer
 import com.intellij.psi.impl.source.tree.JavaElementType
 import com.intellij.psi.search.searches.ReferencesSearch
 import org.jetbrains.kotlin.KtNodeTypes
-import org.jetbrains.kotlin.analysis.api.analyze
+import org.jetbrains.kotlin.analysis.api.session.analyze
 import org.jetbrains.kotlin.analysis.api.symbols.KaNamedClassSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbolModality
+import org.jetbrains.kotlin.analysis.api.symbols.symbol
 import org.jetbrains.kotlin.config.LanguageFeature
 import org.jetbrains.kotlin.config.LanguageVersionSettings
 import org.jetbrains.kotlin.idea.base.facet.platform.platform
 import org.jetbrains.kotlin.idea.base.projectStructure.languageVersionSettings
+import org.jetbrains.kotlin.idea.base.psi.addMemberDeclaration
 import org.jetbrains.kotlin.idea.base.psi.isEffectivelyActual
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.base.util.module
@@ -47,6 +49,7 @@ import org.jetbrains.kotlin.psi.KtSuperTypeCallEntry
 import org.jetbrains.kotlin.psi.KtSuperTypeListEntry
 import org.jetbrains.kotlin.psi.KtVisitorVoid
 import org.jetbrains.kotlin.psi.createDeclarationByPattern
+import org.jetbrains.kotlin.psi.createExpressionByPattern
 import org.jetbrains.kotlin.psi.psiUtil.containingClass
 import org.jetbrains.kotlin.psi.psiUtil.getParentOfType
 import org.jetbrains.kotlin.psi.psiUtil.isExpectDeclaration
@@ -191,7 +194,7 @@ private class ConvertSealedSubClassToObjectFix : LocalQuickFix {
     private fun KtClass.changeToObject(factory: KtPsiFactory) {
         ensureSuperClassCall(factory)
         secondaryConstructors.toList().forEach { constructor ->
-            constructor.toInitializer(factory)?.let(::addDeclaration)
+            constructor.toInitializer(factory)?.let { addMemberDeclaration(it) }
             constructor.delete()
         }
         primaryConstructor?.delete()
@@ -236,7 +239,10 @@ private class ConvertSealedSubClassToObjectFix : LocalQuickFix {
 
     private fun Map<Language?, List<PsiElement>>.replaceKotlin(klass: KtClass) {
         val kotlinReferences = this[KOTLIN_LANGUAGE] ?: return
-        val singletonCall = KtPsiFactory(klass.project).createExpression(klass.name ?: return)
+        val singletonCall = KtPsiFactory(klass.project).createExpressionByPattern(
+            "$0",
+            klass.nameAsSafeName,
+        )
 
         kotlinReferences.filter { it.node.elementType == KtNodeTypes.CALL_EXPRESSION }
             .forEach { it.replace(singletonCall) }
@@ -292,7 +298,7 @@ private class GenerateIdentityEqualsFix : LocalQuickFix {
                 blockBody("return this === other")
             }.asString()
         )
-        klass.addDeclaration(equalsFunction)
+        klass.addMemberDeclaration(equalsFunction)
 
         val hashCodeFunction = psiFactory.createFunction(
             KtPsiFactory.CallableBuilder(KtPsiFactory.CallableBuilder.Target.FUNCTION).apply {
@@ -303,7 +309,7 @@ private class GenerateIdentityEqualsFix : LocalQuickFix {
                 blockBody("return System.identityHashCode(this)")
             }.asString()
         )
-        klass.addDeclaration(hashCodeFunction)
+        klass.addMemberDeclaration(hashCodeFunction)
     }
 
     override fun getFamilyName(): String = KotlinBundle.message("generate.identity.equals.fix.family.name")

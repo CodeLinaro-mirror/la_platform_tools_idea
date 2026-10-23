@@ -169,16 +169,8 @@ class PyUnusedImportsInspection : PyInspection() {
       }
     }
 
-    private fun ignoreUnresolved(node: PyElement, reference: PsiReference): Boolean {
-      var ignoreUnresolved = false
-      for (extension in PyInspectionExtension.EP_NAME.extensionList) {
-        if (extension.ignoreUnresolvedReference(node, reference, myTypeEvalContext)) {
-          ignoreUnresolved = true
-          break
-        }
-      }
-      return ignoreUnresolved
-    }
+    private fun ignoreUnresolved(node: PyElement, reference: PsiReference): Boolean =
+      PyInspectionExtension.EP_NAME.findFirstSafe { it.ignoreUnresolvedReference(node, reference, myTypeEvalContext) } != null
 
     private fun processReferenceInImportGuard(node: PyElement, guard: PyExceptPart) {
       val importElement = node.parentOfType<PyImportElement>()
@@ -186,7 +178,7 @@ class PyUnusedImportsInspection : PyInspection() {
       val visibleName = importElement.getVisibleName()
       val owner = ScopeUtil.getScopeOwner(importElement)
       if (visibleName == null || owner == null) return
-      val allWrites: List<PsiElement> = ScopeUtil.getElementsOfAccessType(visibleName, owner, ReadWriteInstruction.ACCESS.WRITE)
+      val allWrites = ScopeUtil.getElementsOfAccessType(visibleName, owner, ReadWriteInstruction.ACCESS.WRITE)
       val hasWriteInsideGuard = allWrites.any { guard.isAncestor(it) }
       if (!hasWriteInsideGuard && !shouldSkipMissingWriteInsideGuard(guard, visibleName)) {
         myImportsInsideGuard.add(importElement)
@@ -264,7 +256,7 @@ class PyUnusedImportsInspection : PyInspection() {
     fun highlightUnusedImports() {
       val unused: List<PsiElement> = collectUnusedImportElements()
       for (element in unused) {
-        if (PyInspectionExtension.EP_NAME.extensionList.any { it.ignoreUnused(element, myTypeEvalContext) }) {
+        if (PyInspectionExtension.EP_NAME.findFirstSafe { it.ignoreUnused(element, myTypeEvalContext) } != null) {
           continue
         }
         if (element.getReachabilityForInspection(myTypeEvalContext) != Reachability.REACHABLE) {
@@ -309,7 +301,7 @@ class PyUnusedImportsInspection : PyInspection() {
       // Remove those unsed, that are reported to be skipped by extension points
       val unusedImportToSkip: MutableSet<PyImportedNameDefiner?> = HashSet()
       for (unusedImport in unusedImports) {
-        if (PyInspectionExtension.EP_NAME.extensionList.any { it.ignoreUnusedImports(unusedImport) }) {
+        if (PyInspectionExtension.EP_NAME.findFirstSafe { it.ignoreUnusedImports(unusedImport) } != null) {
           unusedImportToSkip.add(unusedImport)
         }
       }

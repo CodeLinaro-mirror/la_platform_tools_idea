@@ -20,13 +20,11 @@ import com.intellij.ui.components.JBScrollPane;
 import com.intellij.util.ReflectionUtil;
 import com.intellij.util.concurrency.AppExecutorUtil;
 import com.intellij.util.containers.ContainerUtil;
-import com.intellij.util.io.FilePageCacheLockFree;
 import com.intellij.util.text.CharArrayUtil;
 import it.unimi.dsi.fastutil.longs.Long2LongMap;
 import it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
-import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 
@@ -48,6 +46,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 final class ActivityMonitorAction extends DumbAwareAction {
   private static final @NonNls String[] MEANINGLESS_PREFIXES_1 = {"com.intellij.", "com.jetbrains.", "org.jetbrains.", "org.intellij."};
@@ -91,8 +90,6 @@ final class ActivityMonitorAction extends DumbAwareAction {
 
     "com.intellij.openapi.vfs.newvfs.persistent.PersistentFS",
     "com.intellij.openapi.vfs.newvfs.persistent.FSRecords",
-    "com.intellij.util.io.pagecache",
-    FilePageCacheLockFree.class.getName(),
 
     "com.intellij.openapi.roots.impl",
     "javax."
@@ -214,12 +211,12 @@ final class ActivityMonitorAction extends DumbAwareAction {
       private void scheduleUiUpdate(long sinceLastUpdate) {
         List<Pair<String, Long>> times = takeSnapshot();
         String text = " %CPU  Subsystem\n\n" +
-                      StreamEx.of(times)
+                      times.stream()
                         .filter(p -> p.second > 10)
                         .sorted(Comparator.comparing((Pair<String, Long> p) -> p.second).reversed())
                         .limit(8)
-                        .map(p -> String.format("%5.1f  %s", (double) p.second*100 / sinceLastUpdate, p.first))
-                        .joining("\n");
+                        .map(p -> String.format("%5.1f  %s", (double)p.second * 100 / sinceLastUpdate, p.first))
+                        .collect(Collectors.joining("\n"));
         ApplicationManager.getApplication().invokeLater(() -> {
           textArea.setText(text);
           textArea.setCaretPosition(0);
@@ -253,7 +250,6 @@ final class ActivityMonitorAction extends DumbAwareAction {
 
         return times;
       }
-
     }, 0, 20, TimeUnit.MILLISECONDS);
     DialogWrapper dialog = new DialogWrapper(false) {
       {

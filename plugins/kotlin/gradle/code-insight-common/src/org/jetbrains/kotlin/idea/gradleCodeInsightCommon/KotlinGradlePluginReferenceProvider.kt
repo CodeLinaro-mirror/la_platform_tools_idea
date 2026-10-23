@@ -6,12 +6,14 @@ import com.intellij.model.psi.PsiSymbolReference
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiElement
 import com.intellij.psi.util.PsiTreeUtil
-import org.jetbrains.kotlin.analysis.api.analyze
 import org.jetbrains.kotlin.analysis.api.permissions.KaAllowAnalysisOnEdt
 import org.jetbrains.kotlin.analysis.api.permissions.allowAnalysisOnEdt
-import org.jetbrains.kotlin.analysis.api.resolution.singleFunctionCallOrNull
-import org.jetbrains.kotlin.analysis.api.resolution.singleVariableAccessCall
+import org.jetbrains.kotlin.analysis.api.resolution.function
+import org.jetbrains.kotlin.analysis.api.resolution.single
 import org.jetbrains.kotlin.analysis.api.resolution.symbol
+import org.jetbrains.kotlin.analysis.api.resolution.tryResolveCall
+import org.jetbrains.kotlin.analysis.api.resolution.variable
+import org.jetbrains.kotlin.analysis.api.session.analyze
 import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
@@ -27,7 +29,7 @@ private val KOTLIN_PROJECT_SCRIPT_TEMPLATE = FqName("KotlinProjectScriptTemplate
 private val PLUGINS: Name = Name.identifier("plugins")
 
 class KotlinGradlePluginReferenceProvider : AbstractKotlinGradleReferenceProvider() {
-    override fun getImplicitReference(
+    override fun getGradleImplicitReference(
         element: PsiElement,
         offsetInElement: Int
     ): PsiSymbolReference? = when (element) {
@@ -61,14 +63,14 @@ class KotlinGradlePluginReferenceProvider : AbstractKotlinGradleReferenceProvide
     @OptIn(KaAllowAnalysisOnEdt::class)
     private fun getSingleFunctionCallableId(callExpression: KtCallExpression) = allowAnalysisOnEdt {
         analyze(callExpression) {
-            callExpression.resolveToCall()?.singleFunctionCallOrNull()?.symbol?.callableId
+            callExpression.tryResolveCall()?.single?.function?.symbol?.callableId
         }
     }
 
     @OptIn(KaAllowAnalysisOnEdt::class)
-    private fun getSingleVariableCallableId(nameReferenceExpression: KtNameReferenceExpression) = allowAnalysisOnEdt {
+    private fun getSingleVariableCallableId(nameReferenceExpression: KtNameReferenceExpression): CallableId? = allowAnalysisOnEdt {
         analyze(nameReferenceExpression) {
-            nameReferenceExpression.resolveToCall()?.singleVariableAccessCall()?.symbol?.callableId
+            nameReferenceExpression.tryResolveCall()?.single?.variable?.symbol?.callableId
         }
     }
 

@@ -6,11 +6,13 @@ import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.util.concurrency.annotations.RequiresBackgroundThread
 import com.jetbrains.python.run.features.PyRunToolParameters
 import com.jetbrains.python.run.features.PyRunToolProvider
+import java.nio.file.Path
 import org.jetbrains.annotations.ApiStatus
 
 /**
  * To be used by [PythonCommandLineState] only
  */
 @ApiStatus.Internal
-@RequiresBackgroundThread
-fun PyRunToolProvider.getRunToolParametersForJvm(sdk: Sdk): PyRunToolParameters = runBlockingMaybeCancellable { getRunToolParameters(sdk) }
+@RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
+fun PyRunToolProvider.getRunToolParametersForJvm(sdk: Sdk, inlineScriptTarget: Path?): PyRunToolParameters =
+  runBlockingMaybeCancellable { getRunToolParameters(sdk, inlineScriptTarget) }

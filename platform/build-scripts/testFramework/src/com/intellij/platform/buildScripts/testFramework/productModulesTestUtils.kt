@@ -6,8 +6,6 @@ import com.intellij.platform.runtime.product.serialization.RawProductModules
 import com.intellij.platform.runtime.product.serialization.ResourceFileResolver
 import com.intellij.platform.runtime.repository.MalformedRepositoryException
 import com.intellij.platform.runtime.repository.RuntimeModuleId
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
 import org.jetbrains.intellij.build.ModuleOutputProvider
 import java.io.IOException
 import java.io.InputStream
@@ -40,8 +38,7 @@ internal fun createModuleOutputResourceFileResolver(outputProvider: ModuleOutput
 }
 
 private fun readFileContentFromModuleOutput(outputProvider: ModuleOutputProvider, moduleName: String, relativePath: String): ByteArray? {
-  @Suppress("RAW_RUN_BLOCKING")
-  return runBlocking(Dispatchers.IO) {
+  return run {
     outputProvider.readFileContentFromModuleOutput(outputProvider.findRequiredModule(moduleName), relativePath)
   }
 }

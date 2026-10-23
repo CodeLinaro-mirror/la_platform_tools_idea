@@ -5,20 +5,18 @@ import com.intellij.codeInsight.daemon.impl.HighlightInfo
 import com.intellij.codeInspection.LocalInspectionTool
 import com.intellij.ide.actions.QualifiedNameProviderUtil
 import com.intellij.idea.TestFor
-import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.runReadActionBlocking
-import com.intellij.openapi.util.Disposer
-import com.intellij.openapi.util.registry.Registry
 import com.jetbrains.python.PythonFileType
+import com.jetbrains.python.allure.Layers
+import com.jetbrains.python.allure.Subsystems
 import com.jetbrains.python.fixtures.PyCodeInsightTestCase
 import com.jetbrains.python.inspections.unresolvedReference.PyUnresolvedReferencesInspection
 import com.jetbrains.python.psi.PyClass
+import com.jetbrains.python.psi.PyFile
 import com.jetbrains.python.psi.PyFunction
-import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertInstanceOf
 
@@ -31,25 +29,14 @@ import org.junit.jupiter.api.assertInstanceOf
  * @see PyInspectionMessages.CodifiedParam
  */
 @TestFor(classes = [PyInspectionMessages::class], issues = ["PY-90264"])
+@Subsystems.Inspections
+@Layers.Functional
 class PyInspectionTooltipLinkTest : PyCodeInsightTestCase() {
-
-  /** Per-test disposable; resets any registry override the test made (the fixture is shared across the class). */
-  private lateinit var flagDisposable: Disposable
-
-  @BeforeEach
-  fun setUpFlagDisposable() {
-    flagDisposable = Disposer.newDisposable("PyInspectionTooltipLinkTest flag")
-  }
-
-  @AfterEach
-  fun tearDownFlagDisposable() {
-    Disposer.dispose(flagDisposable)
-  }
 
   @Test
   fun `annotated assignment type mismatch has clickable type links`() {
     val info = highlight<PyTypeCheckerInspection>("x: int = [1, 2]", "Expected type")
-    assertEquals("Expected type 'int', got 'list[Literal[1, 2]]' instead", info.description)
+    assertEquals("Expected type 'int', got 'list[int]' instead", info.description)
     // builtins are linked (and resolve) by their qualified name `builtins.<name>` (PY-87879), and keep
     // their highlight color, exactly as Quick Documentation renders them
     assertLink(info, "builtins.int")
@@ -138,6 +125,79 @@ class PyInspectionTooltipLinkTest : PyCodeInsightTestCase() {
     assertTrue("<code>foo</code>" in info.toolTip!!, info.toolTip!!)
   }
 
+  @Test
+  @TestFor(issues = ["PY-90264"])
+  fun `collections abc type is a clickable link`() {
+    val info = highlight<PyTypeCheckerInspection>(
+      """
+      from collections.abc import Iterable
+      def f(value: int): pass
+      def g() -> Iterable[int]: ...
+      f(g())
+      """.trimIndent(),
+      "Expected type"
+    )
+    assertEquals("Expected type 'int', got 'Iterable[int]' instead", info.description)
+    // `Iterable` is re-exported from `collections.abc` but its canonical declaration (and qualified name) is
+    // `typing.Iterable`; the link uses the class's own qualified name, which is navigable, where re-resolving
+    // the bare short name `Iterable` from this file would have failed and left it as plain text.
+    assertLink(info, "typing.Iterable")
+    assertResolves("typing.Iterable")
+  }
+
+  // `Literal` is a `typing` special form (not a class); it is now linked to its declaration by FQN.
+  @Test
+  @TestFor(issues = ["PY-90264"])
+  fun `typing Literal special form is a clickable link`() {
+    val info = highlight<PyTypeCheckerInspection>("x: int = [1, 2]", "Expected type")
+    assertEquals("Expected type 'int', got 'list[int]' instead", info.description)
+    assertLink(info, "builtins.int")
+  }
+
+  // `Any` is a `typing` special form (not a class); it is now linked to its declaration by FQN.
+  @Test
+  @TestFor(issues = ["PY-90264"])
+  fun `typing Any special form is a clickable link`() {
+    val info = highlight<PyTypeCheckerInspection>(
+      """
+      from typing import Any
+      def f(value: int): pass
+      x: list[Any] = []
+      f(x)
+      """.trimIndent(),
+      "Expected type"
+    )
+    assertEquals("Expected type 'int', got 'list[Any]' instead", info.description)
+    assertLink(info, "typing.Any")
+  }
+
+  // a module type renders as its qualified name, which is also a navigable link to the module.
+  @Test
+  @TestFor(issues = ["PY-90264"])
+  fun `module type is a clickable link`() {
+    val info = highlight<PyTypeCheckerInspection>(
+      """
+      import collections
+      a: int = collections
+      """.trimIndent(),
+      "Expected type"
+    )
+    assertEquals("Expected type 'int', got 'collections' instead", info.description)
+    assertLink(info, "collections")
+  }
+
+  // the `#element/collections` link must navigate to the module's own file — the package's `__init__`
+  // (`collections/__init__.py`, or its `.pyi` stub in a typeshed-backed SDK) — not to the package directory.
+  @Test
+  @TestFor(issues = ["PY-90264"])
+  fun `module link resolves to the package init file`() {
+    myFixture.configureByText(PythonFileType.INSTANCE, "import collections\na: int = collections")
+    val target = runReadActionBlocking { QualifiedNameProviderUtil.qualifiedNameToElement("collections", myFixture.project) }
+    val file = assertInstanceOf<PyFile>(target)
+    assertEquals("collections", file.virtualFile.parent.name)
+    assertTrue(file.name == "__init__.py" || file.name == "__init__.pyi", file.name)
+  }
+
   // PY-80221: the type-mismatch breakdown shown below the headline in the tooltip renders its type references
   // as navigable links too, not just the headline. Here `int`/`str` appear only in the nested breakdown
   // ("`str` is not assignable to `int`"), so finding and resolving their links proves the breakdown is enriched.
@@ -155,7 +215,9 @@ class PyInspectionTooltipLinkTest : PyCodeInsightTestCase() {
       """.trimIndent(),
       "Expected type"
     )
-    assertTrue("incompatible with protocol" in info.toolTip!!, info.toolTip!!)
+    // The breakdown renders in prose ("'C' at 'a' is 'str', but 'int' was expected"); "was expected" is a
+    // stable marker that the breakdown landed in the tooltip below the headline.
+    assertTrue("was expected" in info.toolTip!!, info.toolTip!!)
     assertLink(info, "builtins.int")
     assertLink(info, "builtins.str")
     assertResolves("builtins.int")
@@ -167,7 +229,6 @@ class PyInspectionTooltipLinkTest : PyCodeInsightTestCase() {
   @Test
   @TestFor(issues = ["PY-80221"])
   fun `invariant type parameter breakdown links the owner class`() {
-    Registry.get("python.subtypechecks.respect.variance").setValue(true, flagDisposable)
     val info = highlight<PyTypeCheckerInspection>(
       """
       from typing import Generic, TypeVar

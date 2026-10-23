@@ -33,8 +33,12 @@ data class BuildOptions(
   @JvmField val buildDateInSeconds: Long = computeBuildDateInSeconds(),
   @Internal @JvmField val printFreeSpace: Boolean = true,
   @Internal @JvmField val validateImplicitPlatformModule: Boolean = true,
-  @JvmField var skipDependencySetup: Boolean = false,
-  @JvmField var skipCheckOutputOfPluginModules: Boolean = false,
+  /**
+   * If `true`, the plugin builder checks that the `intellij.java.guiForms.rt` output holds no GUI designer runtime class.
+   * The IDE compile setting "Automatically copy form runtime classes" puts them there, so a dev build runs the check, and
+   * a production build does not.
+   */
+  @JvmField var checkOutputOfPluginModules: Boolean = false,
 
   /**
    * If `true`, the build is running in the 'Development mode', i.e., its artifacts aren't supposed to be used in production.
@@ -46,10 +50,27 @@ data class BuildOptions(
   @JvmField var useCompiledClassesFromProjectOutput: Boolean = getBooleanProperty(USE_COMPILED_CLASSES_PROPERTY, isInDevelopmentMode),
 
   /**
+   * If `true`, every non-scrambled content module's own descriptor is inlined into the product descriptor as CDATA
+   * while the platform layout is built.
+   *
+   * The inlined result reaches the distribution through exactly two files, and one assembly owns both: the `META-INF`
+   * descriptor patched into [ProductProperties.applicationInfoModule]'s jar, and the `plugin-classpath.txt` prefix.
+   * Nothing else reads it - not the jar a module lands in, not its module set, not which fragment owns it - so a
+   * fragment that produces neither used to resolve some four hundred descriptors and discard the result. That is not
+   * merely wasted work: reading a descriptor out of a module's jar makes that jar an input of the fragment, which is
+   * how a single content module's source change came to re-run every fragment of the distribution.
+   *
+   * Only a split assembly turns it off, and only for a fragment that owns neither file; `layoutPlatform` fails if such
+   * a fragment turns out to pack the application-info module after all.
+   */
+  @JvmField var embedProductContentModuleDescriptors: Boolean = true,
+
+  /**
    * In addition to production compilation sources, allow various functions to use and traverse test output.
    * It is necessary. e.g., to run tests in a dev-build-provided environment.
    */
   var useTestCompilationOutput: Boolean = getBooleanProperty(USE_TEST_COMPILATION_OUTPUT_PROPERTY, defaultValue = USE_TEST_COMPILATION_OUTPUT_DEFAULT_VALUE),
+  @Internal @JvmField val testCompilationOutputModules: Set<String> = getSetProperty(USE_TEST_COMPILATION_OUTPUT_MODULES_PROPERTY),
 
   @JvmField val cleanOutDir: Boolean = getBooleanProperty(CLEAN_OUTPUT_DIRECTORY_PROPERTY, true),
 
@@ -96,7 +117,30 @@ data class BuildOptions(
 
   @JvmField internal val validateModuleStructure: Boolean = getBooleanProperty(VALIDATE_MODULES_STRUCTURE_PROPERTY),
 
-  @JvmField internal val isUnpackedDist: Boolean = false,
+  /**
+   * If `true`, the assembled distribution is a disposable dev build that is only ever launched - from a run
+   * configuration, from a test lane, from a Bazel output - and never shipped.
+   *
+   * Deliberately *not* [isInDevelopmentMode], which is merely "not on a CI server" and is true for a release-shaped
+   * build on a developer machine. This one is set by [org.jetbrains.intellij.build.dev.copyWithDevBuildOverrides],
+   * the single owner of the dev overrides, so both dev paths - the in-process assembly and the one nested in a real
+   * build - agree on it.
+   *
+   * It decides two things. The build date stamped into `ApplicationInfo.xml`: a dev distribution stamps none, so that
+   * the IDE resolves its build time at startup and no EAP expiration period can run out on it. And the layout callbacks
+   * of a plugin: a dev distribution skips a callback whose `DevPluginLayoutAssetSpec.runsInClassicDev` is false.
+   */
+  @JvmField internal val isDevDistribution: Boolean = false,
+
+  /**
+   * If `false`, [org.jetbrains.intellij.build.impl.satisfiesBundlingRequirements] ignores [PluginBundlingRestrictions.includeInDistribution].
+   *
+   * Two owners turn it off. A packaging-content test needs a report that the release cycle cannot move. A dev assembly has no audience to
+   * protect, so [org.jetbrains.intellij.build.dev.copyWithDevBuildOverrides] turns it off for every one.
+   */
+  @set:TestOnly
+  @Internal
+  var useReleaseCycleRelatedBundlingRestrictions: Boolean = true,
 
   /**
    * If `true`, the project modules will be compiled incrementally.
@@ -127,7 +171,7 @@ data class BuildOptions(
      */
     const val OS_NONE: String = "none"
 
-    /** Build actual searchableOptions.xml file. If skipped, the (possibly outdated) source version of the file will be used. */
+    /** Build the searchable options index of the `Settings` dialog. If the step is skipped, the distribution has no index. */
     const val SEARCHABLE_OPTIONS_INDEX_STEP: String = "search_index"
     const val BROKEN_PLUGINS_LIST_STEP: String = "broken_plugins_list"
     const val PROVIDED_MODULES_LIST_STEP: String = "provided_modules_list"
@@ -247,6 +291,7 @@ data class BuildOptions(
      * It is necessary. e.g., to run tests in a dev-build-provided environment.
      */
     const val USE_TEST_COMPILATION_OUTPUT_PROPERTY: String = "idea.build.pack.test.source.enabled"
+    const val USE_TEST_COMPILATION_OUTPUT_MODULES_PROPERTY: String = "idea.build.pack.test.source.modules"
     const val USE_TEST_COMPILATION_OUTPUT_DEFAULT_VALUE: Boolean = false
 
     /**
@@ -395,6 +440,11 @@ data class BuildOptions(
   var useLocalNSIS: String? = null
 
   /**
+   * When set, overrides [WindowsDistributionCustomizer.useBigNsisInstaller] for all products.
+   */
+  var useNsisBigInstaller: Boolean? = System.getProperty("intellij.build.nsis.big")?.toBooleanStrictOrNull()
+
+  /**
    * When `true`, builds and uses a local version of `jetbraind`.
    */
   var useLocalJetbrainsDaemon: Boolean = getBooleanProperty("intellij.build.local.jetbrainsd", false)
@@ -483,6 +533,12 @@ data class BuildOptions(
   var generateRuntimeModuleRepository: Boolean = getBooleanProperty("intellij.build.generate.runtime.module.repository", true)
 
   /**
+   * If the option is set to `true`, plugins with `plugin.xml` marked with `BUILD_USING_BAZEL_MARKER` in a comment will be built by Bazel
+   */
+  @Internal
+  var buildPluginsByBazel: Boolean = getBooleanProperty("intellij.build.build.plugins.by.bazel", false)
+
+  /**
    * Specifies a prefix to use when looking for an artifact of a [org.jetbrains.intellij.build.JetBrainsRuntimeDistribution] to be bundled with distributions.
    * If `null`, `"jbr_jcef-"` will be used.
    */
@@ -513,17 +569,11 @@ data class BuildOptions(
   var storeGitRevision: Boolean = getBooleanProperty("intellij.build.store.git.revision", true)
 
   /**
-   * Specifies an additional list of compatible plugin names which should not be built, see [org.jetbrains.intellij.build.productLayout.ProductModulesLayout.compatiblePluginsToIgnore]
+   * The additional main modules of the compatible plugins that the build must not build.
+   *
+   * @see org.jetbrains.intellij.build.productLayout.ProductModulesLayout.compatiblePluginsToIgnore
    */
   var compatiblePluginsToIgnore: Set<String> = getSetProperty("intellij.build.compatible.plugins.to.ignore")
-
-  /**
-   * If `false`, [org.jetbrains.intellij.build.impl.projectStructureMapping.buildJarContentReport]
-   * won't be affected by [PluginBundlingRestrictions.includeInDistribution]
-   */
-  @set:TestOnly
-  @Internal
-  var useReleaseCycleRelatedBundlingRestrictionsForContentReport: Boolean = true
 
   @set:TestOnly
   @Internal
@@ -564,6 +614,7 @@ private fun computeInitialBuiltStepsToSkip(isInDevelopmentMode: Boolean): Set<St
   if (isInDevelopmentMode) {
     result.add(BuildOptions.MAC_SIGN_STEP)
     result.add(BuildOptions.MAC_NOTARIZE_STEP)
+    result.add(BuildOptions.WIN_SIGN_STEP)
   }
   // repair utility is unbundled for all IDEs
   result.add(BuildOptions.REPAIR_UTILITY_BUNDLE_STEP)

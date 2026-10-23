@@ -6,9 +6,11 @@ import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.platform.lsp.api.customization.LspFoldingRangeSupport
 import com.intellij.platform.lsp.impl.LspClientImpl
-import com.intellij.platform.lsp.impl.aggregatePerDocumentResults
+import com.intellij.platform.lsp.impl.aggregateToPullResult
 import com.intellij.platform.lsp.impl.features.highlightingCommon.LspHighlightingCache
+import com.intellij.platform.lsp.impl.features.highlightingCommon.LspPullResult
 import com.intellij.platform.lsp.impl.mapFoldingRange
+import com.intellij.platform.lsp.impl.supportsFoldingRange
 import org.eclipse.lsp4j.FoldingRange
 import org.eclipse.lsp4j.FoldingRangeRequestParams
 import org.eclipse.lsp4j.Position
@@ -22,7 +24,7 @@ internal class LspFoldingRangeCache(private val lspClient: LspClientImpl) : LspH
     lspClient.descriptor.lspCustomization.foldingRangeCustomizer is LspFoldingRangeSupport
     && lspClient.supportsFoldingRange(file)
 
-  override suspend fun sendRequest(file: VirtualFile): List<Pair<Range, FoldingRange>>? {
+  override suspend fun sendRequest(file: VirtualFile): LspPullResult<FoldingRange> {
     val perDocument = lspClient.documentMapping.forEachDocumentInFile(file) { lspDocument ->
       val params = FoldingRangeRequestParams(lspDocument.id)
       lspClient.sendRequest { it.textDocumentService.foldingRange(params) }?.map { foldingRange ->
@@ -30,7 +32,7 @@ internal class LspFoldingRangeCache(private val lspClient: LspClientImpl) : LspH
         foldingRangeToLsp4jRange(mapped) to mapped
       }
     }
-    return perDocument.aggregatePerDocumentResults()
+    return perDocument.aggregateToPullResult()
   }
 
   override suspend fun onResponseReceived(file: VirtualFile) {

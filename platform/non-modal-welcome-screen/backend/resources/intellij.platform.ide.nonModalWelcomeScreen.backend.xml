@@ -5,10 +5,17 @@
     <module name="intellij.platform.kernel.backend"/>
     <module name="intellij.platform.core"/>
     <module name="intellij.platform.core.ui"/>
+    <module name="intellij.platform.editor.ui"/>
     <module name="intellij.platform.ide"/>
     <module name="intellij.platform.ide.core"/>
+    <module name="intellij.platform.ide.core.impl"/>
+    <module name="intellij.platform.ide.impl"/>
     <module name="intellij.platform.ide.nonModalWelcomeScreen"/>
+    <module name="intellij.platform.ide.rpc"/>
+    <module name="intellij.platform.lang.impl"/>
+    <module name="intellij.platform.project"/>
     <module name="intellij.platform.rpc.backend"/>
+    <module name="intellij.platform.util.ui"/>
   </dependencies>
   <!-- endregion -->
 
@@ -18,6 +25,11 @@
   </extensionPoints>
 
   <extensions defaultExtensionNs="com.intellij">
-    <platform.rpc.backend.remoteApiProvider implementation="com.intellij.platform.ide.nonModalWelcomeScreen.backend.BackendWelcomeScreenFeatureApiProvider"/>
+    <platform.rpc.backend.remoteApiProvider implementation="com.intellij.platform.ide.nonModalWelcomeScreen.backend.BackendWelcomeScreenFeatureApiProvider"
+                                            apiInterfaces="com.intellij.platform.ide.nonModalWelcomeScreen.rightTab.WelcomeScreenFeatureApi"/>
+    <platform.rpc.backend.remoteApiProvider implementation="com.intellij.platform.ide.nonModalWelcomeScreen.backend.WelcomeScreenLeftPanelRpcProvider"
+                                            apiInterfaces="com.intellij.platform.ide.nonModalWelcomeScreen.leftPanel.WelcomeScreenLeftPanelRpc"/>
+    <platform.rpc.backend.remoteApiProvider implementation="com.intellij.platform.ide.nonModalWelcomeScreen.backend.welcomeFiles.BackendWelcomeFilesApiProvider"
+                                            apiInterfaces="com.intellij.platform.ide.nonModalWelcomeScreen.welcomeFiles.WelcomeFilesApi"/>
   </extensions>
 </idea-plugin>

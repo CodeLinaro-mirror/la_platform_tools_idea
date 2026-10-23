@@ -12,6 +12,7 @@ import com.intellij.openapi.application.impl.ApplicationInfoImpl;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.ModificationTracker;
 import com.intellij.openapi.vfs.CharsetToolkit;
+import com.intellij.util.SlowOperations;
 import com.intellij.util.concurrency.annotations.RequiresBackgroundThread;
 import com.intellij.util.concurrency.annotations.RequiresReadLockAbsence;
 import kotlin.Pair;
@@ -216,10 +217,6 @@ public final class ConsentOptions implements ModificationTracker {
     return getDefaultConsent(STATISTICS_OPTION_ID);
   }
 
-  public @Nullable Consent getDefaultErrorAutoReportConsent() {
-    return getDefaultConsent(EA_AUTO_REPORT_OPTION_ID);
-  }
-
   public static @NotNull Predicate<Consent> condUsageStatsConsent() {
     return consent -> STATISTICS_OPTION_ID.equals(consent.getId());
   }
@@ -259,20 +256,24 @@ public final class ConsentOptions implements ModificationTracker {
 
   /**
    * Warning: For JetBrains products this setting is relevant for release builds only.
-   * Statistics sending for JetBrains EAP builds is managed by a separate flag.
+   * A separate flag manages statistics sent for JetBrains EAP builds.
    */
+  @RequiresReadLockAbsence(generateAssertion = false)
+  @RequiresBackgroundThread(generateAssertion = false)
   public Permission isSendingUsageStatsAllowed() {
     return getPermission(STATISTICS_OPTION_ID);
   }
 
   /**
    * Warning: For JetBrains products this setting is relevant for release builds only.
-   * Statistics sending for JetBrains EAP builds is managed by a separate flag.
+   * A separate flag manages statistics sent for JetBrains EAP builds.
    */
   public boolean setSendingUsageStatsAllowed(boolean allowed) {
     return setPermission(STATISTICS_OPTION_ID, allowed);
   }
 
+  @RequiresReadLockAbsence(generateAssertion = false)
+  @RequiresBackgroundThread(generateAssertion = false)
   public @NotNull Permission getAiDataCollectionPermission() {
     return getPermission(AI_DATA_COLLECTION_OPTION_ID);
   }
@@ -282,11 +283,12 @@ public final class ConsentOptions implements ModificationTracker {
     setPermission(AI_DATA_COLLECTION_OPTION_ID, permitted);
   }
 
-  public void setEAAutoReportAllowed(boolean permitted) {
-    setPermission(EA_AUTO_REPORT_OPTION_ID, permitted);
-  }
-
+  @RequiresReadLockAbsence(generateAssertion = false)
+  @RequiresBackgroundThread(generateAssertion = false)
   private Permission getPermission(String consentId) {
+    // it reads files and Windows Registry, slow IO
+    SlowOperations.assertNonCancelableSlowOperationsAreAllowed();
+
     var confirmedConsent = getConfirmedConsent(consentId);
     return confirmedConsent == null? Permission.UNDEFINED : confirmedConsent.isAccepted()? Permission.YES : Permission.NO;
   }
@@ -364,12 +366,12 @@ public final class ConsentOptions implements ModificationTracker {
   @RequiresReadLockAbsence(generateAssertion = false)
   @RequiresBackgroundThread(generateAssertion = false)
   public @NotNull Pair<List<Consent>, Boolean> getConsents(@NotNull Predicate<? super Consent> filter) {
+    SlowOperations.assertNonCancelableSlowOperationsAreAllowed();
+
     var allDefaults = loadDefaultConsents();
     if (isEAP()) {
       // for EA builds there is a different option for statistics sending management
       allDefaults.remove(STATISTICS_OPTION_ID);
-      // auto reporting exceptions in EAPs is controlled in `ExceptionEAPAutoReportManager`
-      allDefaults.remove(EA_AUTO_REPORT_OPTION_ID);
     }
     else {
       // EAP feedback consent is relevant to EA builds only

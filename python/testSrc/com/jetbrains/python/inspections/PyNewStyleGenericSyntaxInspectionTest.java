@@ -1,9 +1,14 @@
 // Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.inspections;
 
+import com.jetbrains.python.allure.Layers;
+import com.jetbrains.python.allure.Subsystems;
+
 import com.jetbrains.python.fixtures.PyInspectionTestCase;
 import org.jetbrains.annotations.NotNull;
 
+@Subsystems.Inspections
+@Layers.Functional
 public class PyNewStyleGenericSyntaxInspectionTest extends PyInspectionTestCase {
 
   public void testGenericTypeReportedInTypeVarBound() {
@@ -47,10 +52,14 @@ public class PyNewStyleGenericSyntaxInspectionTest extends PyInspectionTestCase 
 
   public void testOldStyleTypeVarReportedInTypeAliasStatement() {
     doTestByText("""
-                   from typing import TypeVar
+                   from typing import Annotated, TypeVar
                    T = TypeVar('T')
                    
                    type m = list[<error descr="Traditional TypeVars are not allowed inside new-style type alias statements">T</error>]
+
+                   OldAnnotated = Annotated[T, "metadata"]
+                   type Specialized = OldAnnotated[int]
+                   type Respecialized[K] = OldAnnotated[K]
                    """);
   }
 

@@ -6,6 +6,8 @@ import com.intellij.execution.CommandLineUtil
 import com.intellij.execution.ExecutionException
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.CapturingProcessHandler
+import com.intellij.ide.trustedProjects.TrustedProjects
+import com.intellij.ide.welcomeScreen.WelcomeUtils
 import com.intellij.idea.AppMode
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
@@ -59,6 +61,7 @@ import org.jetbrains.annotations.VisibleForTesting
 import java.io.IOException
 import java.nio.file.InvalidPathException
 import java.nio.file.Path
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.io.path.copyTo
 import kotlin.io.path.exists
 import kotlin.io.path.writeText
@@ -70,10 +73,17 @@ private val LOG = logger<GpgAgentConfigurator>()
 internal class GpgAgentConfigurator(private val project: Project, private val cs: CoroutineScope) : Disposable {
   private val configurationLock = Mutex()
 
+  @Volatile
+  private var canBeConfiguredCached = false
+
+  private val refreshInProgress = AtomicBoolean(false)
+
   companion object {
     @JvmStatic
     fun isEnabled(project: Project, executable: GitExecutable): Boolean =
       (Registry.`is`("git.commit.gpg.signing.enable.embedded.pinentry", false) || application.isUnitTestMode)
+      && TrustedProjects.isProjectTrusted(project)
+      && !WelcomeUtils.isWelcomeProject(project)
       && (isRemDevOrWsl(executable) || isLocalUnix(executable))
       && signingIsEnabledInAnyRepo(project)
 
@@ -118,15 +128,39 @@ internal class GpgAgentConfigurator(private val project: Project, private val cs
         notificator.proposeCustomPinentryAgentConfiguration()
       }.debounceBatch(100.milliseconds).collect {
         updateExistingPinentryLauncher()
+        requestCanBeConfiguredRefresh()
       }
     }
 
     notificator.proposeCustomPinentryAgentConfiguration()
     updateExistingPinentryLauncher()
+    requestCanBeConfiguredRefresh()
   }
 
-  @RequiresBackgroundThread
-  fun canBeConfigured(project: Project): Boolean {
+  fun canBeConfiguredCached(): Boolean {
+    requestCanBeConfiguredRefresh()
+    return canBeConfiguredCached
+  }
+
+  fun requestCanBeConfiguredRefresh() {
+    if (!refreshInProgress.compareAndSet(false, true)) return
+    cs.launch(Dispatchers.IO) {
+      try {
+        canBeConfiguredCached = canBeConfiguredCalculation()
+      }
+      finally {
+        refreshInProgress.set(false)
+      }
+    }
+  }
+
+  @RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
+  fun canBeConfigured(): Boolean {
+    return canBeConfiguredCalculation()
+  }
+
+  @RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
+  private fun canBeConfiguredCalculation(): Boolean {
     val executable = GitExecutableManager.getInstance().getExecutable(project)
     // Additional condition extending isEnabled check.
     // We want to show the configuration notification in Remote Development mode or in WSL only.
@@ -141,7 +175,7 @@ internal class GpgAgentConfigurator(private val project: Project, private val cs
     return !isPinentryConfigured(gpgAgentPaths, config)
   }
 
-  @RequiresBackgroundThread
+  @RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
   fun isConfigured(): Boolean {
     val executable = GitExecutableManager.getInstance().getExecutable(project)
     val gpgAgentPaths = resolveGpgAgentPaths(executable) ?: return false
@@ -175,6 +209,9 @@ internal class GpgAgentConfigurator(private val project: Project, private val cs
         catch (e: VcsException) {
           project.service<GpgAgentConfigurationNotificator>().notifyConfigurationFailed(GitBundle.message("gpg.pinentry.agent.configuration.exception", e.message))
         }
+        finally {
+          requestCanBeConfiguredRefresh()
+        }
       }
     }
   }
@@ -190,6 +227,9 @@ internal class GpgAgentConfigurator(private val project: Project, private val cs
     existingConfig: GpgAgentConfig?,
     pinentryFallback: String,
   ) {
+    if (!TrustedProjects.isProjectTrusted(project)) {
+      LOG.warn("Cannot configure ${gpgAgentPaths.gpgAgentConf} in safe mode")
+    }
     val gpgAgentConfPath = gpgAgentPaths.gpgAgentConf
     generatePinentryLauncher(gitExecutable, gpgAgentPaths, pinentryFallback)
     var backupCreated = false
@@ -253,6 +293,9 @@ internal class GpgAgentConfigurator(private val project: Project, private val cs
   }
 
   private suspend fun writeAgentConfig(config: GpgAgentConfig) = withContext(Dispatchers.IO) {
+    if (!TrustedProjects.isProjectTrusted(project)) {
+      throw IOException("Cannot change config ${config.path} in safe mode")
+    }
     try {
       config.writeToFile()
     }
@@ -263,6 +306,9 @@ internal class GpgAgentConfigurator(private val project: Project, private val cs
   }
 
   private suspend fun restartAgent(executor: GitExecutable) {
+    if (!TrustedProjects.isProjectTrusted(project)) {
+      throw IOException("Cannot restart Gpg Agent in safe mode")
+    }
     try {
       val output = withContext(Dispatchers.IO) {
         createGpgAgentExecutor(executor).execute("gpg-connect-agent", "reloadagent", "/bye")
@@ -321,7 +367,7 @@ internal class GpgAgentConfigurator(private val project: Project, private val cs
 }
 
 internal interface GpgAgentCommandExecutor {
-  @RequiresBackgroundThread
+  @RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
   fun execute(command: String, vararg params: String): List<String>
 }
 

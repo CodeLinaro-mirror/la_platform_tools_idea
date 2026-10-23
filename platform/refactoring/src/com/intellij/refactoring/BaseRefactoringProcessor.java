@@ -170,7 +170,7 @@ public abstract class BaseRefactoringProcessor implements Runnable {
   private static final Logger LOG = Logger.getInstance(BaseRefactoringProcessor.class);
   private static boolean PREVIEW_IN_TESTS = true;
 
-  protected final Project myProject;
+  protected final @NotNull Project myProject;
   protected final @NotNull SearchScope myRefactoringScope;
 
   private RefactoringTransaction myTransaction;
@@ -641,7 +641,7 @@ public abstract class BaseRefactoringProcessor implements Runnable {
           if (!DumbService.getInstance(myProject).isUsableInCurrentContext(helper)) continue;
 
           Object operation = ReadAction.computeBlocking(() -> {
-            return helper.prepareOperation(writableUsageInfos, ContainerUtil.filter(allElements, e -> e != null));
+            return helper.prepareOperation(writableUsageInfos, ContainerUtil.filter(allElements, e -> e != null), refactoringId);
           });
           preparedData.put(helper, operation);
         }

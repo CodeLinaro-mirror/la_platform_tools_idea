@@ -13,11 +13,13 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.ref.Reference;
 import java.lang.ref.SoftReference;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collections;
@@ -92,6 +94,16 @@ public abstract class ArchiveHandler {
   }
 
   public String @NotNull [] list(@NotNull String relativePath) {
+    //TODO: consider scenario:
+    //      - `entry` is gotten from the 1st generation of `myEntries`
+    //      - GC clears the myEntries/myChildrenEntries
+    //      - getParentChildrenMap() triggers myEntries/myChildrenEntries reloading, but with different EntryInfo keys
+    //        _instances_ (EntryInfo has no equals/hashCode!)
+    //      - `getParentChildrenMap().get(entry)` returns null, even though _there is_ a (logical) record for the `relativePath`,
+    //        just under different-instance EntryInfo
+    //      - method returns an empty array, even though there are children for the `relativePath` in the archive
+    //      The issue(s?) like this caused by combination of a) soft-ref cache that could be cleared any moment, even in the middle
+    //      of any method, and b) EntryInfo without hashCode/identity. IJPL-256842 is an another example
     EntryInfo entry = getEntryInfo(relativePath);
     if (entry == null || !entry.isDirectory) return ArrayUtil.EMPTY_STRING_ARRAY;
 
@@ -192,6 +204,12 @@ public abstract class ArchiveHandler {
           else {
             try {
               map = createEntriesMap();
+            }
+            catch (NoSuchFileException | FileNotFoundException e) {
+              // a missing archive (e.g., an undownloaded sources jar) is an expected state, not a corruption
+              myCorrupted = true;
+              Logger.getInstance(getClass()).warn(e.getClass().getSimpleName() + ": " + getPath());
+              map = Collections.emptyMap();
             }
             catch (Exception e) {
               myCorrupted = true;

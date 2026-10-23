@@ -7,6 +7,7 @@ import com.intellij.find.FindSettings;
 import com.intellij.ide.util.scopeChooser.FrontendScopeChooser;
 import com.intellij.ide.util.scopeChooser.ScopeChooserCombo;
 import com.intellij.ide.util.scopeChooser.ScopeDescriptor;
+import com.intellij.ide.util.scopeChooser.ScopeModelService;
 import com.intellij.ide.util.scopeChooser.ScopesFilterConditionType;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleManager;
@@ -18,8 +19,9 @@ import com.intellij.openapi.util.Condition;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.StandardFileSystems;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.platform.ide.productMode.IdeProductMode;
 import com.intellij.platform.project.module.ModulesStateService;
 import com.intellij.psi.search.SearchScope;
 import com.intellij.ui.dsl.gridLayout.builders.RowBuilder;
@@ -28,6 +30,8 @@ import com.intellij.util.ObjectUtils;
 import com.intellij.util.PlatformUtils;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.EmptyIcon;
+import kotlin.Unit;
+import kotlin.coroutines.Continuation;
 import kotlin.jvm.functions.Function1;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -61,15 +65,17 @@ final class FindPopupScopeUIImpl implements FindPopupScopeUI {
     myFindPopupPanel = panel;
     initComponents();
 
-    boolean fullVersion = !PlatformUtils.isDataGrip();
-    myComponents =
-      fullVersion
-      ? ContainerUtil.ar(new Pair<>(PROJECT, new JLabel()),
-                         new Pair<>(MODULE, shrink(myModuleComboBox)),
-                         new Pair<>(DIRECTORY, myDirectoryChooser),
-                         new Pair<>(SCOPE, shrink(getScopeChooser())))
-      : ContainerUtil.ar(new Pair<>(SCOPE, shrink(getScopeChooser())),
-                         new Pair<>(DIRECTORY, myDirectoryChooser));
+    if (IdeProductMode.isLight()) {
+      myComponents = ContainerUtil.ar(new Pair<>(DIRECTORY, myDirectoryChooser));
+    } else if (PlatformUtils.isDataGrip()) {
+      myComponents = ContainerUtil.ar(new Pair<>(SCOPE, shrink(getScopeChooser())),
+                                      new Pair<>(DIRECTORY, myDirectoryChooser));
+    } else {
+      myComponents = ContainerUtil.ar(new Pair<>(PROJECT, new JLabel()),
+                                      new Pair<>(MODULE, shrink(myModuleComboBox)),
+                                      new Pair<>(DIRECTORY, myDirectoryChooser),
+                                      new Pair<>(SCOPE, shrink(getScopeChooser())));
+    }
   }
 
   public void initComponents() {
@@ -94,11 +100,26 @@ final class FindPopupScopeUIImpl implements FindPopupScopeUI {
   }
 
   private JComponent getScopeChooser() {
-    return FindKey.isEnabled() ? newScopeCombo : myScopeCombo;
+    return FindKey.isEnabled() ? newScopeCombo.getComponent() : myScopeCombo;
   }
 
-  private ComboBox<ScopeDescriptor> getScopeCombo() {
+  private JComboBox<?> getScopeCombo() {
     return FindKey.isEnabled() ? newScopeCombo.getComboBox() : myScopeCombo.getComboBox();
+  }
+
+  @Override
+  public void cancelActivities() {
+    if (FindKey.isEnabled()) {
+      newScopeCombo.cancelActivities();
+    }
+  }
+
+  @Override
+  public @Nullable Object awaitScopeSelection(@NotNull Continuation<? super Unit> $completion) {
+    if (FindKey.isEnabled()) {
+      return newScopeCombo.awaitScopeSelection($completion);
+    }
+    return Unit.INSTANCE;
   }
 
   private void initScopeCombo() {
@@ -109,8 +130,8 @@ final class FindPopupScopeUIImpl implements FindPopupScopeUI {
     };
     String selection = ObjectUtils.coalesce(myHelper.getModel().getCustomScopeName(), FindSettings.getInstance().getDefaultScopeName());
     if (FindKey.isEnabled()) {
-      newScopeCombo = new FrontendScopeChooser(myProject, selection, ScopesFilterConditionType.FIND);
-      Disposer.register(myFindPopupPanel.getDisposable(), newScopeCombo);
+      newScopeCombo = ScopeModelService.getInstance(myProject)
+        .createScopeChooser(myFindPopupPanel.getDisposable(), selection, ScopesFilterConditionType.FIND);
     }
     else {
       myScopeCombo = new ScopeChooserCombo();
@@ -213,7 +234,7 @@ final class FindPopupScopeUIImpl implements FindPopupScopeUI {
   }
 
   @Override
-  public ValidationInfo evaluateValidationInfo(Boolean isDirectoryExists) {
+  public ValidationInfo evaluateValidationInfo(@NotNull Boolean isDirectoryExists) {
     return myDirectoryChooser.getDirectoryValidationInfo(isDirectoryExists);
   }
 
@@ -228,7 +249,7 @@ final class FindPopupScopeUIImpl implements FindPopupScopeUI {
 
     final String dirName = findModel.getDirectoryName();
     if (!StringUtil.isEmptyOrSpaces(dirName)) {
-      VirtualFile dir = LocalFileSystem.getInstance().findFileByPath(dirName);
+      VirtualFile dir = StandardFileSystems.local().findFileByPath(dirName);
       if (dir != null) {
         Module module = ModuleUtilCore.findModuleForFile(dir, myProject);
         if (module != null) {

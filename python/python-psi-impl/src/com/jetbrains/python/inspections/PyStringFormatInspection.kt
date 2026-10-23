@@ -54,12 +54,14 @@ import com.jetbrains.python.psi.PyUtil
 import com.jetbrains.python.psi.impl.PyBuiltinCache
 import com.jetbrains.python.psi.resolve.PyResolveContext
 import com.jetbrains.python.psi.types.PyABCUtil
+import com.jetbrains.python.psi.types.PyAnyType
+import com.jetbrains.python.psi.types.PyCallableArgument
 import com.jetbrains.python.psi.types.PyClassType
 import com.jetbrains.python.psi.types.PyLiteralType
 import com.jetbrains.python.psi.types.PyTupleType
 import com.jetbrains.python.psi.types.PyType
 import com.jetbrains.python.psi.types.PyTypeChecker.match
-import com.jetbrains.python.psi.types.PyTypeParser
+import com.jetbrains.python.psi.types.PyLegacyDocstringTypeParser
 import com.jetbrains.python.psi.types.PyTypeUtil.asUnionSequence
 import com.jetbrains.python.psi.types.PyUnionType
 import com.jetbrains.python.psi.types.TypeEvalContext
@@ -112,7 +114,7 @@ class PyStringFormatInspection : PyInspection() {
           ) {
             checkTypeCompatible(
               problemTarget, builtinCache.strType,
-              PyTypeParser.getTypeByName(problemTarget, s, myTypeEvalContext)
+              PyLegacyDocstringTypeParser.getTypeByName(problemTarget, s, myTypeEvalContext)
             )
             return 1
           }
@@ -196,10 +198,7 @@ class PyStringFormatInspection : PyInspection() {
             return expressions.size
           }
           else {
-            val tupleType = myTypeEvalContext.getType(rightExpression) as PyTupleType?
-            if (tupleType == null) {
-              return null
-            }
+            val tupleType = myTypeEvalContext.getType(rightExpression) as? PyTupleType ?: return null
             matchEntireTupleTypes(problemTarget, tupleType)
             return tupleType.elementCount
           }
@@ -211,7 +210,7 @@ class PyStringFormatInspection : PyInspection() {
           if (s != null) {
             checkTypeCompatible(
               problemTarget, builtinCache.strType,
-              PyTypeParser.getTypeByName(problemTarget, s, myTypeEvalContext)
+              PyLegacyDocstringTypeParser.getTypeByName(problemTarget, s, myTypeEvalContext)
             )
             return 1
           }
@@ -222,8 +221,8 @@ class PyStringFormatInspection : PyInspection() {
       fun matchEntireTupleTypes(rightExpression: PsiElement, rightExpressionType: PyTupleType?) {
         val expectedElementTypes = myFormatSpec.values.map { name ->
           val builtinCache = PyBuiltinCache.getInstance(rightExpression)
-          val expected = PyTypeParser.getTypeByName(rightExpression, name, myTypeEvalContext)
-          if (expected === builtinCache.strType) null
+          val expected = PyLegacyDocstringTypeParser.getTypeByName(rightExpression, name, myTypeEvalContext)
+          if (expected === builtinCache.strType) PyAnyType.unknown
           else expected
         }
         val expectedTupleType = PyTupleType.create(rightExpression, expectedElementTypes)
@@ -329,7 +328,7 @@ class PyStringFormatInspection : PyInspection() {
         problemTarget: PsiElement,
       ) {
         val actual = myTypeEvalContext.getType(expression)
-        val expected = PyTypeParser.getTypeByName(problemTarget, expectedTypeName, myTypeEvalContext)
+        val expected = PyLegacyDocstringTypeParser.getTypeByName(problemTarget, expectedTypeName, myTypeEvalContext)
         if (actual != null) {
           checkTypeCompatible(problemTarget, actual, expected)
         }
@@ -615,7 +614,7 @@ class PyStringFormatInspection : PyInspection() {
         val typedElement = target as? PyTypedElement ?: return
         val type = myFormatSpec[mappingKey]?.joinToString(" or ") ?: return
         val actual = PyUnionType.toNonWeakType(myTypeEvalContext.getType(typedElement)) ?: return
-        val expected = PyTypeParser.getTypeByName(anchor, type) ?: return
+        val expected = PyLegacyDocstringTypeParser.getTypeByName(anchor, type) ?: return
         if (
           actual.asUnionSequence().all { (it as? PyClassType)?.classQName in KNOWN_FORMAT_MINI_LANGUAGE_TYPES }
           && !match(expected, actual, myTypeEvalContext)
@@ -738,7 +737,7 @@ class PyStringFormatInspection : PyInspection() {
       allowedQNames: Set<String>,
     ) {
       val actual = if (node.typeConversion != null) {
-        PyTypeParser.getTypeByName(expression, PyNames.TYPE_STR, myTypeEvalContext)
+        PyLegacyDocstringTypeParser.getTypeByName(expression, PyNames.TYPE_STR, myTypeEvalContext)
       }
       else {
         PyUnionType.toNonWeakType(myTypeEvalContext.getType(expression))
@@ -791,9 +790,11 @@ class PyStringFormatInspection : PyInspection() {
         resolveContext: PyResolveContext,
         evalContext: TypeEvalContext,
       ): Int {
-        val statistics = callExpression.multiResolveCalleeFunction(resolveContext)
+        val statistics = callExpression.multiResolveCallee(resolveContext)
           .stream()
-          .map { it.getCallType(evalContext, callExpression) }
+          .map { callableType ->
+            callableType.getCallType(evalContext, callExpression, callExpression.arguments.map { PyCallableArgument(it) })
+          }
           .collect(
             Collectors.summarizingInt(
               ToIntFunction { callType ->

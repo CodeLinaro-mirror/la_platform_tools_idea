@@ -1,7 +1,14 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.libraries.java.compatibility` start
+content_module_jar(
+    libraries = ["@lib//:libraries-java-compatibility-java-compatibility"],
+    module = ":java-compatibility",
+)
+### auto-generated section `dev intellij.libraries.java.compatibility` end
 
 ### auto-generated section `build intellij.libraries.java.compatibility` start
-
 jvm_library(
     name = "java-compatibility",
     srcs = glob(
@@ -37,6 +44,7 @@ jvm_library(
 exports_files(
     [
         "intellij.libraries.java.compatibility.iml",
+        "resources/intellij.libraries.java.compatibility.xml",
     ],
     visibility = ["//visibility:public"],
 )

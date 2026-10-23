@@ -1,6 +1,6 @@
 // "Add remaining branches" "true"
 // COMPILER_ARGUMENTS: -Xcontext-sensitive-resolution
-// K2_ERROR: 'when' expression must be exhaustive. Add the 'Another', 'null' branches or an 'else' branch.
+// K2_ERROR: NO_ELSE_IN_WHEN
 
 package test
 
@@ -13,4 +13,4 @@ fun test(v: Variant?) = wh<caret>en(v) {
     Variant.Singleton -> "s"
 }
 
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.AddWhenRemainingBranchFixFactories$AddRemainingWhenBranchesQuickFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.AddWhenRemainingBranchFixFactories$AddRemainingWhenBranchesQuickFix

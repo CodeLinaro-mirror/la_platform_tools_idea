@@ -3,9 +3,9 @@ package com.intellij.terminal.tests.reworked
 
 import com.intellij.openapi.application.EDT
 import com.intellij.terminal.tests.reworked.util.TerminalTestUtil
-import com.intellij.terminal.tests.reworked.util.TerminalTestUtil.restore
-import com.intellij.terminal.tests.reworked.util.TerminalTestUtil.update
-import com.intellij.terminal.tests.reworked.util.TerminalTestUtil.updateCursor
+import com.intellij.terminal.tests.reworked.util.assertMatches
+import com.intellij.terminal.tests.reworked.util.outputPattern
+import com.intellij.terminal.tests.reworked.util.updateContent
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.jediterm.terminal.TextStyle
 import kotlinx.coroutines.Dispatchers
@@ -18,6 +18,7 @@ import org.jetbrains.plugins.terminal.block.ui.BlockTerminalColorPalette
 import org.jetbrains.plugins.terminal.session.impl.StyleRange
 import org.jetbrains.plugins.terminal.session.impl.TerminalOutputModelState
 import org.jetbrains.plugins.terminal.view.TerminalContentChangeEvent
+import org.jetbrains.plugins.terminal.view.TerminalCursorOffsetChangeEvent
 import org.jetbrains.plugins.terminal.view.TerminalLineIndex
 import org.jetbrains.plugins.terminal.view.TerminalOffset
 import org.jetbrains.plugins.terminal.view.TerminalOutputModel
@@ -38,114 +39,47 @@ internal class TerminalOutputModelTest : BasePlatformTestCase() {
       123 sdfsdf sdfsdf
       234234234324 dsfsdfsdfsdf
       2342341 adfasfasfa asdsdasd
-      
+
       asdasdas
-      
+
     """.trimIndent()
+    // The cursor stays at the very start since it's never moved in this test.
+    val pattern = outputPattern("<cursor>$text")
 
-    model.update(0, text, emptyList())
+    model.updateContent(0, pattern)
 
-    assertEquals(text, model.document.text)
+    model.assertMatches(pattern)
   }
 
   @Test
   fun `update editor content incrementally with styles`() = runBlocking(Dispatchers.EDT) {
     val model = TerminalTestUtil.createOutputModel()
 
-    val text1 = """
-      first line
-      second line
-    """.trimIndent()
-    val styles1 = listOf(styleRange(0, 5), styleRange(11, 17), styleRange(18, 22))
+    model.updateContent(0, outputPattern("<s1>first</s1> line\n<s2>second</s2> <s3>line</s3>"))
+    model.updateContent(1, outputPattern("<s4>replaced</s4> <s5>second</s5> line\n<s6>third</s6> line"))
 
-    val text2 = """
-      replaced second line
-      third line
-    """.trimIndent()
-    val styles2 = listOf(styleRange(0, 8), styleRange(9, 15), styleRange(21, 26))
-
-    model.update(0, text1, styles1)
-    model.update(1, text2, styles2)
-
-    val expectedText = """
-      first line
-      replaced second line
-      third line
-    """.trimIndent()
-    val expectedHighlightings = listOf(highlighting(0, 5), highlighting(11, 19), highlighting(20, 26), highlighting(32, 37))
-    val expectedHighlightingsSnapshot = TerminalOutputHighlightingsSnapshot(model.document, expectedHighlightings)
-
-    assertEquals(expectedText, model.document.text)
-    assertEquals(expectedHighlightingsSnapshot, model.getHighlightings())
+    model.assertMatches(outputPattern("<cursor><s1>first</s1> line\n<s4>replaced</s4> <s5>second</s5> line\n<s6>third</s6> line"))
   }
 
   @Test
   fun `update editor content incrementally with overflow`() = runBlocking(Dispatchers.EDT) {
     val model = TerminalTestUtil.createOutputModel(maxLength = 16)
 
-    val text1 = """
-      foofoo
-      barbar
-    """.trimIndent()
-    val styles1 = listOf(styleRange(0, 3), styleRange(3, 6), styleRange(7, 10), styleRange(10, 13))
+    model.updateContent(0, outputPattern("<s1>foo</s1><s2>foo</s2>\n<s3>bar</s3><s4>bar</s4>"))
+    model.updateContent(1, outputPattern("<s1>bazbaz</s1>\n<s2>badbad</s2>"))
 
-    val text2 = """
-      bazbaz
-      badbad
-    """.trimIndent()
-    val styles2 = listOf(styleRange(0, 6), styleRange(7, 13))
-
-    model.update(0, text1, styles1)
-    model.update(1, text2, styles2)
-
-    val expectedText = """
-      oo
-      bazbaz
-      badbad
-    """.trimIndent()
-    val expectedHighlightings = listOf(highlighting(3, 9), highlighting(10, 16))
-    val expectedHighlightingsSnapshot = TerminalOutputHighlightingsSnapshot(model.document, expectedHighlightings)
-
-    assertEquals(expectedText, model.document.text)
-    assertEquals(expectedHighlightingsSnapshot, model.getHighlightings())
+    model.assertMatches(outputPattern("<cursor>oo\n<s1>bazbaz</s1>\n<s2>badbad</s2>"))
   }
 
   @Test
   fun `update editor content after overflow`() = runBlocking(Dispatchers.EDT) {
     val model = TerminalTestUtil.createOutputModel(maxLength = 16)
 
-    val text1 = """
-      foofoo
-      barbar
-    """.trimIndent()
-    val styles1 = listOf(styleRange(0, 3), styleRange(3, 6), styleRange(7, 10), styleRange(10, 13))
+    model.updateContent(0, outputPattern("<s1>foo</s1><s2>foo</s2>\n<s3>bar</s3><s4>bar</s4>"))
+    model.updateContent(1, outputPattern("<s1>bazbaz</s1>\n<s2>badbad</s2>"))
+    model.updateContent(2, outputPattern("<s1>fadfad</s1>\n<s2>kadkad</s2>"))
 
-    val text2 = """
-      bazbaz
-      badbad
-    """.trimIndent()
-    val styles2 = listOf(styleRange(0, 6), styleRange(7, 13))
-
-    val text3 = """
-      fadfad
-      kadkad
-    """.trimIndent()
-    val styles3 = listOf(styleRange(0, 6), styleRange(7, 13))
-
-    model.update(0, text1, styles1)
-    model.update(1, text2, styles2)
-    model.update(2, text3, styles3)
-
-    val expectedText = """
-      az
-      fadfad
-      kadkad
-    """.trimIndent()
-    val expectedHighlightings = listOf(highlighting(3, 9), highlighting(10, 16))
-    val expectedHighlightingsSnapshot = TerminalOutputHighlightingsSnapshot(model.document, expectedHighlightings)
-
-    assertEquals(expectedText, model.document.text)
-    assertEquals(expectedHighlightingsSnapshot, model.getHighlightings())
+    model.assertMatches(outputPattern("<cursor>az\n<s1>fadfad</s1>\n<s2>kadkad</s2>"))
   }
 
   @Test
@@ -166,10 +100,10 @@ internal class TerminalOutputModelTest : BasePlatformTestCase() {
       }
     })
 
-    model.update(0, """
+    model.updateContent(0, outputPattern("""
       abcdef
       ghijkl
-    """.trimIndent(), emptyList())
+    """.trimIndent()))
     val firstStartOffset = model.startOffset
 
     assertEquals("""
@@ -177,10 +111,10 @@ internal class TerminalOutputModelTest : BasePlatformTestCase() {
       ghijkl
     """.trimIndent(), model.document.text)
 
-    model.update(1, """
+    model.updateContent(1, outputPattern("""
       mnopqrs
       tuvwxyz
-    """.trimIndent(), emptyList())
+    """.trimIndent()))
     val secondStartOffset = model.startOffset
 
     assertEquals("""
@@ -227,8 +161,8 @@ internal class TerminalOutputModelTest : BasePlatformTestCase() {
         events += event
       }
     })
-    model.update(0, "some long text")
-    model.update(0, "some even longer text")
+    model.updateContent(0, outputPattern("some long text"))
+    model.updateContent(0, outputPattern("some even longer text"))
     assertThat(events.last().offset).isEqualTo(TerminalOffset.of(5))
     assertThat(events.last().oldText.toString()).isEqualTo("long")
     assertThat(events.last().newText.toString()).isEqualTo("even longer")
@@ -243,9 +177,9 @@ internal class TerminalOutputModelTest : BasePlatformTestCase() {
         events += event
       }
     })
-    model.update(0, "some long text")
-    model.update(1, "another line")
-    model.update(1, "another long line")
+    model.updateContent(0, outputPattern("some long text"))
+    model.updateContent(1, outputPattern("another line"))
+    model.updateContent(1, outputPattern("another long line"))
     assertThat(events.last().offset).isEqualTo(TerminalOffset.of(24))
     assertThat(events.last().oldText.toString()).isEqualTo("")
     assertThat(events.last().newText.toString()).isEqualTo("ong l")
@@ -260,9 +194,9 @@ internal class TerminalOutputModelTest : BasePlatformTestCase() {
         events += event
       }
     })
-    model.update(0, "some long text")
-    model.update(1, "another line")
-    model.update(1, "another line, long line")
+    model.updateContent(0, outputPattern("some long text"))
+    model.updateContent(1, outputPattern("another line"))
+    model.updateContent(1, outputPattern("another line, long line"))
     assertThat(events.last().offset).isEqualTo(TerminalOffset.of(27))
     assertThat(events.last().oldText.toString()).isEqualTo("")
     assertThat(events.last().newText.toString()).isEqualTo(", long line")
@@ -277,9 +211,9 @@ internal class TerminalOutputModelTest : BasePlatformTestCase() {
         events += event
       }
     })
-    model.update(0, "some long text")
-    model.update(1, "another line, long line")
-    model.update(1, "another line")
+    model.updateContent(0, outputPattern("some long text"))
+    model.updateContent(1, outputPattern("another line, long line"))
+    model.updateContent(1, outputPattern("another line"))
     assertThat(events.last().offset).isEqualTo(TerminalOffset.of(27))
     assertThat(events.last().oldText.toString()).isEqualTo(", long line")
     assertThat(events.last().newText.toString()).isEqualTo("")
@@ -294,8 +228,8 @@ internal class TerminalOutputModelTest : BasePlatformTestCase() {
         events += event
       }
     })
-    model.update(0, "some long text")
-    model.update(0, "some long text")
+    model.updateContent(0, outputPattern("some long text"))
+    model.updateContent(0, outputPattern("some long text"))
     // no assertion for the offset because it can technically be anywhere
     assertThat(events.last().oldText).isEmpty()
     assertThat(events.last().newText).isEmpty()
@@ -310,8 +244,8 @@ internal class TerminalOutputModelTest : BasePlatformTestCase() {
         events += event
       }
     })
-    model.update(0, "012345")
-    model.update(0, "12x45")
+    model.updateContent(0, outputPattern("012345"))
+    model.updateContent(0, outputPattern("12x45"))
     assertThat(events.last().offset).isEqualTo(TerminalOffset.of(3))
     assertThat(events.last().oldText.toString()).isEqualTo("3")
     assertThat(events.last().newText.toString()).isEqualTo("x")
@@ -321,35 +255,25 @@ internal class TerminalOutputModelTest : BasePlatformTestCase() {
   fun `cursor is on a partially trimmed line`() = runBlocking(Dispatchers.EDT) {
     val model = TerminalTestUtil.createOutputModel(maxLength = 10)
 
-    model.update(0, """
-      abcdef
-      ghijkl
-    """.trimIndent(), emptyList())
-    model.updateCursor(0, 4)
+    model.updateContent(0, outputPattern("abcdef\nghijkl"))
+    model.updateCursorPosition(0, 4)
 
-    assertEquals("""
-      def
-      ghijkl
-    """.trimIndent(), model.document.text)
-    // three characters were trimmed, so the new cursor offset is 1
-    assertEquals(model.startOffset + 1, model.cursorOffset)
+    // three characters were trimmed, so the new (relative) cursor offset is 1
+    val expected = outputPattern("d<cursor>ef\nghijkl")
+    model.assertMatches(expected)
 
     // now check that this specific state can be copied correctly
 
     val state = model.dumpState()
     val newModel = TerminalTestUtil.createOutputModel(maxLength = 10)
-    newModel.restore(state)
+    newModel.restoreFromState(state)
 
-    assertEquals("""
-      def
-      ghijkl
-    """.trimIndent(), newModel.document.text)
-    assertEquals(model.startOffset + 1, newModel.cursorOffset)
+    newModel.assertMatches(expected)
 
     // ...and modified correctly
 
-    newModel.updateCursor(0, 5)
-    assertEquals(model.startOffset + 2, newModel.cursorOffset)
+    newModel.updateCursorPosition(0, 5)
+    newModel.assertMatches(outputPattern("de<cursor>f\nghijkl"))
   }
 
   @Test
@@ -357,20 +281,15 @@ internal class TerminalOutputModelTest : BasePlatformTestCase() {
     val model = TerminalTestUtil.createOutputModel(maxLength = 10)
 
     // Prepare
-    val fillerText = "12345"
     for (lineInd in 0L until 10L) {
-      model.update(lineInd, fillerText, emptyList())
+      model.updateContent(lineInd, outputPattern("12345"))
     }
 
-    // Test
-    model.update(0, "abcde", listOf(styleRange(0, 3), styleRange(3, 5)))
+    // Test: absoluteLineIndex 0 is now far behind the trimmed lines, so this should clear the document first
+    val pattern = outputPattern("<cursor><s1>abc</s1><s2>de</s2>")
+    model.updateContent(0, pattern)
 
-    val expectedText = "abcde"
-    val expectedHighlightings = listOf(highlighting(0, 3), highlighting(3, 5))
-    val expectedHighlightingsSnapshot = TerminalOutputHighlightingsSnapshot(model.document, expectedHighlightings)
-
-    assertEquals(expectedText, model.document.text)
-    assertEquals(expectedHighlightingsSnapshot, model.getHighlightings())
+    model.assertMatches(pattern)
   }
 
   @Test
@@ -378,17 +297,12 @@ internal class TerminalOutputModelTest : BasePlatformTestCase() {
     val model = TerminalTestUtil.createOutputModel()
 
     // Prepare
-    model.update(0, "abcde", listOf(styleRange(0, 3), styleRange(3, 5)))
+    model.updateContent(0, outputPattern("<s1>abc</s1><s2>de</s2>"))
 
     // Test
-    model.updateCursor(0, 8)
+    model.updateCursorPosition(0, 8)
 
-    val expectedText = "abcde   "
-    val expectedHighlightings = listOf(highlighting(0, 3), highlighting(3, 5))
-    val expectedHighlightingsSnapshot = TerminalOutputHighlightingsSnapshot(model.document, expectedHighlightings)
-
-    assertEquals(expectedText, model.document.text)
-    assertEquals(expectedHighlightingsSnapshot, model.getHighlightings())
+    model.assertMatches(outputPattern("<s1>abc</s1><s2>de</s2>   <cursor>"))
   }
 
   @Test
@@ -396,19 +310,14 @@ internal class TerminalOutputModelTest : BasePlatformTestCase() {
     val model = TerminalTestUtil.createOutputModel()
 
     // Prepare
-    model.update(0, "12345", listOf(styleRange(0, 5)))
-    model.update(1, "abcde", listOf(styleRange(0, 3), styleRange(3, 5)))
-    model.update(2, "67890", listOf(styleRange(0, 2), styleRange(2, 5)))
+    model.updateContent(0, outputPattern("<s1>12345</s1>"))
+    model.updateContent(1, outputPattern("<s2>abc</s2><s3>de</s3>"))
+    model.updateContent(2, outputPattern("<s4>67</s4><s5>890</s5>"))
 
     // Test
-    model.updateCursor(1, 8)
+    model.updateCursorPosition(1, 8)
 
-    val expectedText = "12345\nabcde   \n67890"
-    val expectedHighlightings = listOf(highlighting(0, 5), highlighting(6, 9), highlighting(9, 11), highlighting(15, 17), highlighting(17, 20))
-    val expectedHighlightingsSnapshot = TerminalOutputHighlightingsSnapshot(model.document, expectedHighlightings)
-
-    assertEquals(expectedText, model.document.text)
-    assertEquals(expectedHighlightingsSnapshot, model.getHighlightings())
+    model.assertMatches(outputPattern("<s1>12345</s1>\n<s2>abc</s2><s3>de</s3>   <cursor>\n<s4>67</s4><s5>890</s5>"))
   }
 
   @Test
@@ -416,17 +325,12 @@ internal class TerminalOutputModelTest : BasePlatformTestCase() {
     val model = TerminalTestUtil.createOutputModel()
 
     // Prepare
-    model.update(0, "abcde", listOf(styleRange(0, 3), styleRange(3, 5)))
+    model.updateContent(0, outputPattern("<s1>abc</s1><s2>de</s2>"))
 
     // Test
-    model.updateCursor(1, 0)
+    model.updateCursorPosition(1, 0)
 
-    val expectedText = "abcde\n"
-    val expectedHighlightings = listOf(highlighting(0, 3), highlighting(3, 5))
-    val expectedHighlightingsSnapshot = TerminalOutputHighlightingsSnapshot(model.document, expectedHighlightings)
-
-    assertEquals(expectedText, model.document.text)
-    assertEquals(expectedHighlightingsSnapshot, model.getHighlightings())
+    model.assertMatches(outputPattern("<s1>abc</s1><s2>de</s2>\n<cursor>"))
   }
 
   @Test
@@ -437,8 +341,8 @@ internal class TerminalOutputModelTest : BasePlatformTestCase() {
     val line = "a".repeat(9) + "\n"
     val text = line.repeat(10)
     val styles = (0L until 20L).map { styleRange(it * 5L, (it + 1L) * 5L) }
-    model.update(0, text, styles)
-    model.updateCursor(9, 3)
+    model.updateContent(0, text, styles)
+    model.updateCursorPosition(9, 3)
 
     // Test
     val state = model.dumpState()
@@ -448,6 +352,92 @@ internal class TerminalOutputModelTest : BasePlatformTestCase() {
     assertEquals(90L, state.trimmedCharsCount)
     assertEquals(3, state.cursorOffset)
     assertEquals(listOf(styleRange(90, 95), styleRange(95, 100)), state.highlightings)
+  }
+
+  @Test
+  fun `screen top starts at the output start`() = runBlocking(Dispatchers.EDT) {
+    val model = TerminalTestUtil.createOutputModel()
+
+    assertEquals(model.startOffset, model.screenTopOffset)
+  }
+
+  @Test
+  fun `screen top resolves a line and a column to an offset`() = runBlocking(Dispatchers.EDT) {
+    val model = TerminalTestUtil.createOutputModel()
+    model.updateContent(0, outputPattern("first\nsecond\nthird"))
+
+    model.updateScreenTopPosition(1, 3)
+
+    // "first\n" is 6 characters, plus 3 into "second".
+    assertEquals(TerminalOffset.of(9), model.screenTopOffset)
+  }
+
+  @Test
+  fun `screen top clamps a column past the line end instead of padding`() = runBlocking(Dispatchers.EDT) {
+    val model = TerminalTestUtil.createOutputModel()
+    model.updateContent(0, outputPattern("first\nsecond"))
+    val lengthBefore = model.textLength
+
+    model.updateScreenTopPosition(1, 100)
+
+    // The cursor would pad the line with spaces to reach the column. The screen top is only an anchor to
+    // read, so it stops at the line end and leaves the text alone.
+    assertEquals(model.endOffset, model.screenTopOffset)
+    assertEquals(lengthBefore, model.textLength)
+  }
+
+  @Test
+  fun `screen top falls back to the output start when its line is already trimmed`() = runBlocking(Dispatchers.EDT) {
+    val model = TerminalTestUtil.createOutputModel(maxLength = 10)
+
+    // Overflows the 10-character cap, so the early lines are trimmed away.
+    model.updateContent(0, outputPattern("aaaa\nbbbb\ncccc\ndddd"))
+    assertThat(model.firstLineIndex.toAbsolute()).isGreaterThan(0L)
+
+    model.updateScreenTopPosition(0, 0)
+
+    assertEquals(model.startOffset, model.screenTopOffset)
+  }
+
+  @Test
+  fun `screen top stays valid when trimming passes it`(): Unit = runBlocking(Dispatchers.EDT) {
+    val model = TerminalTestUtil.createOutputModel(maxLength = 10)
+    model.updateContent(0, outputPattern("aaaa\nbbbb"))
+    model.updateScreenTopPosition(0, 0)
+    assertEquals(model.startOffset, model.screenTopOffset)
+
+    // More output than the cap: the trim removes the text the screen top pointed at.
+    model.updateContent(2, outputPattern("cccc\ndddd\neeee"))
+
+    assertThat(model.screenTopOffset).isGreaterThanOrEqualTo(model.startOffset)
+    assertThat(model.screenTopOffset).isLessThanOrEqualTo(model.endOffset)
+  }
+
+  @Test
+  fun `screen top is already back in range whenever a drastic shrink fires cursorOffsetChanged`(): Unit = runBlocking(Dispatchers.EDT) {
+    val model = TerminalTestUtil.createOutputModel()
+
+    // A long document with the screen top and the cursor both far into it
+    model.updateContent(0, outputPattern("1\n2\n3\n4\n5\n6\n7\n8\n9\n10<cursor>"))
+    model.updateScreenTopPosition(5, 0)
+
+    var sawOutOfRangeScreenTop = false
+    model.addListener(testRootDisposable, object : TerminalOutputModelListener {
+      override fun cursorOffsetChanged(event: TerminalCursorOffsetChangeEvent) {
+        // Read screenTopOffset the same way a listener legitimately would:
+        // it must already be a valid offset into the model's *current* content, even mid-update.
+        if (model.screenTopOffset < model.startOffset || model.screenTopOffset > model.endOffset) {
+          sawOutOfRangeScreenTop = true
+        }
+      }
+    })
+
+    // Replace everything with a single short line, drastically shrinking the document.
+    // The resulting cursor clamp (ensureCorrectOffsets) fires cursorOffsetChanged before this update's own
+    // explicit screen-top/cursor calls run, so the screen top must already be back in range by then.
+    model.updateContent(0, outputPattern("x<cursor>"))
+
+    assertThat(sawOutOfRangeScreenTop).isFalse()
   }
 
   @Test
@@ -461,14 +451,16 @@ internal class TerminalOutputModelTest : BasePlatformTestCase() {
       trimmedCharsCount = 90,
       firstLineTrimmedCharsCount = 10,
       cursorOffset = 3,
+      screenTopOffset = 1,
       highlightings = listOf(styleRange(90, 95), styleRange(95, 100)),
       osc8Hyperlinks = emptyList(),
     )
 
-    model.restore(state)
+    model.restoreFromState(state)
 
     assertEquals(line, model.document.text)
     assertEquals(model.startOffset + 3, model.cursorOffset)
+    assertEquals(model.startOffset + 1, model.screenTopOffset)
     assertEquals(9L, model.trimmedLinesCount)
     assertEquals(90L, model.trimmedCharsCount)
     assertEquals(10, model.firstLineTrimmedCharsCount)
@@ -486,13 +478,13 @@ internal class TerminalOutputModelTest : BasePlatformTestCase() {
     val line = "a".repeat(9) + "\n"
     val text = line.repeat(10)
     val styles = (0L until 20L).map { styleRange(it * 5L, (it + 1L) * 5L) }
-    sourceModel.update(0, text, styles)
-    sourceModel.updateCursor(9, 3)
+    sourceModel.updateContent(0, text, styles)
+    sourceModel.updateCursorPosition(9, 3)
 
     // Test
     val state = sourceModel.dumpState()
     val newModel = TerminalTestUtil.createOutputModel(maxLength = 10)
-    newModel.restore(state)
+    newModel.restoreFromState(state)
 
     assertEquals(line, newModel.document.text)
     assertEquals(newModel.startOffset + 3, newModel.cursorOffset)

@@ -40,7 +40,6 @@ import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -53,7 +52,6 @@ import java.awt.Dimension
 import javax.swing.JComponent
 import javax.swing.JPanel
 
-@OptIn(ExperimentalCoroutinesApi::class)
 @Internal
 class SePopupHeaderPane(
   private val project: Project?,
@@ -128,6 +126,24 @@ class SePopupHeaderPane(
         updateTabs(old ?: initialConfiguration, new)
       }
     }
+
+    disposeToolbarListenerOnCancellation(coroutineScope)
+  }
+
+  /**
+   * Disposes the toolbar listener together with [coroutineScope].
+   * [removeNotify] does not run for a popup that was never shown, and a popup without a project has no other parent.
+   */
+  @OptIn(AwaitCancellationAndInvoke::class)
+  private fun disposeToolbarListenerOnCancellation(coroutineScope: CoroutineScope) {
+    coroutineScope.awaitCancellationAndInvoke(Dispatchers.UI) {
+      disposeToolbarListener()
+    }
+  }
+
+  private fun disposeToolbarListener() {
+    toolbarListenerDisposable?.let { Disposer.dispose(it) }
+    toolbarListenerDisposable = null
   }
 
   private suspend fun updateTabs(old: Configuration, new: Configuration) = coroutineScope {
@@ -207,8 +223,7 @@ class SePopupHeaderPane(
   }
 
   override fun removeNotify() {
-    toolbarListenerDisposable?.let { Disposer.dispose(it) }
-    toolbarListenerDisposable = null
+    disposeToolbarListener()
     super.removeNotify()
   }
 

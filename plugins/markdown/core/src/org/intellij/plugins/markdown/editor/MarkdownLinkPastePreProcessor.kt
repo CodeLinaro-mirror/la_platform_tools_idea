@@ -39,25 +39,27 @@ internal class MarkdownLinkPastePreProcessor : CopyPastePreProcessor {
     val endElement = contextFile.findElementAt(selectionRange.endOffset - 1) ?: return false
     return sequenceOf(startElement, endElement).any { element ->
       // Markdown PSI can return an embedded HTML element at the requested offset.
-      !element.supportsMarkdown() || element.parents(withSelf = true).any { it.elementType in ignoredLinkPasteContextTypes }
+      !element.supportsMarkdown() || element.parents(withSelf = true).any { it.elementType in ignoredElementTypes }
     }
   }
-}
 
-private val ignoredLinkPasteContextTypes = setOf(
-  MarkdownElementTypes.CODE_FENCE,
-  MarkdownElementTypes.CODE_BLOCK,
-  MarkdownElementTypes.CODE_SPAN,
-  MarkdownElementTypes.HTML_BLOCK,
-  MarkdownElementTypes.LINK_TEXT,
-  MarkdownElementTypes.LINK_DESTINATION,
-  MarkdownElementTypes.LINK_DEFINITION,
-  MarkdownElementTypes.INLINE_LINK,
-  MarkdownElementTypes.FULL_REFERENCE_LINK,
-  MarkdownElementTypes.SHORT_REFERENCE_LINK,
-  MarkdownElementTypes.IMAGE,
-  MarkdownElementTypes.TEST_LINK,
-  MarkdownElementTypes.AUTOLINK,
-  MarkdownElementTypes.FRONT_MATTER_HEADER,
-  MarkdownTokenTypes.GFM_AUTOLINK,
-)
+  companion object {
+    private val ignoredElementTypes = setOf(
+      MarkdownElementTypes.CODE_FENCE,
+      MarkdownElementTypes.CODE_BLOCK,
+      MarkdownElementTypes.CODE_SPAN,
+      MarkdownElementTypes.HTML_BLOCK,
+      MarkdownElementTypes.LINK_TEXT,
+      MarkdownElementTypes.LINK_DESTINATION,
+      MarkdownElementTypes.LINK_DEFINITION,
+      MarkdownElementTypes.INLINE_LINK,
+      MarkdownElementTypes.FULL_REFERENCE_LINK,
+      MarkdownElementTypes.SHORT_REFERENCE_LINK,
+      MarkdownElementTypes.IMAGE,
+      MarkdownElementTypes.TEST_LINK,
+      MarkdownElementTypes.AUTOLINK,
+      MarkdownElementTypes.FRONT_MATTER_HEADER,
+      MarkdownTokenTypes.GFM_AUTOLINK,
+    )
+  }
+}

@@ -1,4 +1,4 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package git4idea.config;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -16,13 +16,14 @@ import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.platform.eel.EelDescriptor;
 import com.intellij.platform.eel.EelOsFamily;
-import com.intellij.platform.eel.annotations.MultiRoutingFileSystemPath;
 import com.intellij.platform.eel.provider.EelNioBridgeServiceKt;
+import com.intellij.platform.util.annotations.paths.NioPath;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.concurrency.AppExecutorUtil;
 import com.intellij.util.concurrency.annotations.RequiresBackgroundThread;
 import com.intellij.util.containers.ContainerUtil;
+import com.intellij.util.system.OS;
 import git4idea.i18n.GitBundle;
 import git4idea.repo.GitConfigurationCache;
 import org.jetbrains.annotations.NonNls;
@@ -104,11 +105,23 @@ public class GitExecutableDetector {
   }
 
   public static @NotNull GitExecutable getGitExecutable(@Nullable Project project, @NotNull String pathToGit) {
-    Path pathToGitParsed = Path.of(pathToGit);
-    var eel = GitEelExecutableDetectionHelper.tryGetEel(project, pathToGitParsed);
+    return getGitExecutable(project, pathToGit, null);
+  }
 
-    if (eel != null && pathToGitParsed.isAbsolute()) {
-      return new GitExecutable.Eel(EelNioBridgeServiceKt.asEelPath(pathToGitParsed), eel);
+  /**
+   * @param gitDirectory a directory that identifies the target machine when {@code pathToGit} is not an
+   * absolute path. Use this for a candidate repository root. For example, probe it before the project opens.
+   * The method does not read the directory. It does not check that the directory holds a Git repository.
+   */
+  public static @NotNull GitExecutable getGitExecutable(@Nullable Project project, @NotNull String pathToGit, @Nullable Path gitDirectory) {
+    Path pathToGitParsed = Path.of(pathToGit);
+    var eel = GitEelExecutableDetectionHelper.tryGetEel(project, pathToGitParsed.isAbsolute() ? pathToGitParsed : gitDirectory);
+
+    if (eel != null) {
+      if (pathToGitParsed.isAbsolute()) {
+        return new GitExecutable.Eel(eel, EelNioBridgeServiceKt.asEelPath(pathToGitParsed));
+      }
+      return new GitExecutable.Eel(eel, pathToGit);
     }
 
     WslPath wslPath = WslPath.parseWindowsUncPath(pathToGit);
@@ -200,7 +213,8 @@ public class GitExecutableDetector {
 
     var eelDescriptor = GitEelExecutableDetectionHelper.tryGetEelDescriptor(project, gitDirectory);
     if (eelDescriptor != null) {
-      final var path = project != null ? project.getBasePath() : gitDirectory != null ? gitDirectory.toString() : null;
+      final var path = project != null && !project.isDefault() ? project.getBasePath() :
+                       gitDirectory != null ? gitDirectory.toString() : null;
       assert path != null;
       detectors.add(new EelBasedDetector(eelDescriptor, path));
       return detectors;
@@ -266,9 +280,9 @@ public class GitExecutableDetector {
 
     @Override
     public void runDetection() {
-      String executableName = SystemInfo.isWindows ? WIN_EXECUTABLE : UNIX_EXECUTABLE;
-      File executableFromEnv = PathEnvironmentVariableUtil.findInPath(executableName, getPathEnv(), null);
-      String path = executableFromEnv != null ? executableFromEnv.getAbsolutePath() : null;
+      var executableName = OS.CURRENT == OS.Windows ? WIN_EXECUTABLE : UNIX_EXECUTABLE;
+      var executableFromEnv = PathEnvironmentVariableUtil.findFirst(executableName, getPathEnv());
+      var path = executableFromEnv != null ? executableFromEnv.toString() : null;
       myEnvExecutable.set(new DetectionResult(path));
     }
   }
@@ -514,14 +528,14 @@ public class GitExecutableDetector {
     return PathEnvironmentVariableUtil.getPathVariableValue();
   }
 
-  private static Path takeGitPathIfWindows(@Nullable Project project, @NotNull @MultiRoutingFileSystemPath String pathString) {
+  private static Path takeGitPathIfWindows(@Nullable Project project, @NotNull @NioPath String pathString) {
     Path path = Path.of(pathString.trim());
     EelOsFamily osFamily = EelNioBridgeServiceKt.asEelPath(path).getDescriptor().getOsFamily();
     if (osFamily != EelOsFamily.Windows) return null;
     return path;
   }
 
-  static @Nullable @MultiRoutingFileSystemPath String patchExecutablePath(@NotNull Project project, @NotNull @MultiRoutingFileSystemPath String pathString) {
+  static @Nullable @NioPath String patchExecutablePath(@NotNull Project project, @NotNull @NioPath String pathString) {
     Path path = Path.of(pathString.trim());
     EelOsFamily osFamily = EelNioBridgeServiceKt.asEelPath(path).getDescriptor().getOsFamily();
     if (osFamily != EelOsFamily.Windows) return null;

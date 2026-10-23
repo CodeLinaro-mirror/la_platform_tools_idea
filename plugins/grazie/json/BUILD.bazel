@@ -1,7 +1,6 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
 ### auto-generated section `build intellij.grazie.json` start
-
 jvm_library(
     name = "json",
     srcs = glob(
@@ -18,12 +17,14 @@ jvm_library(
         ["src/main/resources/**/*"],
     ),
     visibility = ["//visibility:public"],
+    runtime_deps = ["//platform/backend"],
     deps = [
         # do not sort,
         "@lib//:kotlin-stdlib",
         "//plugins/grazie/src:core",
         "//platform/core-api:core",
         "//json/backend",
+        "//json/backend/spellchecker",
         "//platform/util",
         "//platform/util-ex",
     ],
@@ -44,8 +45,10 @@ jvm_library(
         "//plugins/grazie/src:core_test_lib",
         "//platform/core-api:core_test_lib",
         "//json/backend:backend_test_lib",
+        "//json/backend/spellchecker:spellchecker_test_lib",
         "//platform/util:util_test_lib",
         "//platform/util-ex:util-ex_test_lib",
+        "//platform/backend:backend_test_lib",
     ],
 )
 ### auto-generated section `build intellij.grazie.json` end
@@ -54,6 +57,7 @@ jvm_library(
 exports_files(
     [
         "intellij.grazie.json.iml",
+        "src/main/resources/intellij.grazie.json.xml",
     ],
     visibility = ["//visibility:public"],
 )

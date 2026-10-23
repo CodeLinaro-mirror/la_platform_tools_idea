@@ -1,4 +1,4 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInspection.dataFlow;
 
 import com.intellij.codeInsight.daemon.impl.quickfix.UnwrapSwitchLabelFix;
@@ -6,6 +6,9 @@ import com.intellij.codeInsight.options.JavaConfigurationDialogKind;
 import com.intellij.codeInspection.AddAssertNonNullFromTestFrameworksFix;
 import com.intellij.codeInspection.AddAssertNonNullFromTestFrameworksFix.Variant;
 import com.intellij.codeInspection.AddAssertStatementFix;
+import com.intellij.codeInspection.IntroduceVariableAndAssertFix;
+import com.intellij.codeInspection.IntroduceVariableAndReplaceWithTernaryFix;
+import com.intellij.codeInspection.IntroduceVariableAndSurroundWithIfFix;
 import com.intellij.codeInspection.LocalQuickFix;
 import com.intellij.codeInspection.RemoveAssignmentFix;
 import com.intellij.codeInspection.ReplaceComputeWithComputeIfPresentFix;
@@ -19,12 +22,16 @@ import com.intellij.codeInspection.dataFlow.fix.DeleteSwitchLabelFix;
 import com.intellij.codeInspection.dataFlow.fix.FindDfaProblemCauseFix;
 import com.intellij.codeInspection.dataFlow.fix.ReplaceWithBooleanEqualsFix;
 import com.intellij.codeInspection.dataFlow.fix.SurroundWithRequireNonNullFix;
-import com.intellij.codeInspection.nullable.NullableStuffInspection;
+import com.intellij.codeInspection.dataFlow.java.JavaDfaValueFactory;
+import com.intellij.codeInspection.dataFlow.value.DfaValueFactory;
+import com.intellij.codeInspection.dataFlow.value.DfaVariableValue;
+import com.intellij.codeInspection.nullable.NavigateToNullLiteralArguments;
 import com.intellij.codeInspection.options.OptPane;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.pom.java.JavaFeature;
 import com.intellij.psi.PsiAssignmentExpression;
 import com.intellij.psi.PsiCaseLabelElement;
+import com.intellij.psi.PsiClassType;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiExpression;
 import com.intellij.psi.PsiExpressionStatement;
@@ -62,6 +69,7 @@ import static com.intellij.codeInspection.options.OptPane.checkbox;
 import static com.intellij.codeInspection.options.OptPane.pane;
 import static com.intellij.java.JavaBundle.message;
 
+@SuppressWarnings("InspectionDescriptionNotFoundInspection")
 public final class DataFlowInspection extends DataFlowInspectionBase {
   private static final Logger LOG = Logger.getInstance(DataFlowInspection.class);
 
@@ -71,12 +79,12 @@ public final class DataFlowInspection extends DataFlowInspectionBase {
   }
 
   @Override
-  protected @Nullable LocalQuickFix createExplainFix(PsiExpression anchor, TrackingRunner.DfaProblemType problemType) {
+  protected @NotNull LocalQuickFix createExplainFix(PsiExpression anchor, TrackingRunner.DfaProblemType problemType) {
     return new FindDfaProblemCauseFix(IGNORE_ASSERT_STATEMENTS, anchor, problemType);
   }
 
   @Override
-  protected @Nullable LocalQuickFix createUnwrapSwitchLabelFix() {
+  protected @NotNull LocalQuickFix createUnwrapSwitchLabelFix() {
     return new UnwrapSwitchLabelFix();
   }
 
@@ -86,22 +94,114 @@ public final class DataFlowInspection extends DataFlowInspectionBase {
   }
 
   @Override
-  protected @Nullable LocalQuickFix createDeleteLabelFix(PsiCaseLabelElement label) {
+  protected @NotNull LocalQuickFix createDeleteLabelFix(PsiCaseLabelElement label) {
     return LocalQuickFix.from(new DeleteSwitchLabelFix(label, true));
   }
 
   private static boolean isVolatileFieldReference(PsiExpression qualifier) {
-    PsiElement target = qualifier instanceof PsiReferenceExpression ? ((PsiReferenceExpression)qualifier).resolve() : null;
-    return target instanceof PsiField && ((PsiField)target).hasModifierProperty(PsiModifier.VOLATILE);
+    return qualifier instanceof PsiReferenceExpression ref &&
+           ref.resolve() instanceof PsiField field &&
+           field.hasModifierProperty(PsiModifier.VOLATILE);
+  }
+
+  /**
+   * Creates a fix that asserts {@code operand + suffix}.
+   *
+   * @param operand    expression the assertion is about
+   * @param suffix     text to append to the operand to get the assertion condition (e.g., {@code " != null"})
+   * @param precedence precedence the operand text should be parenthesized for
+   * @return a fix that adds the assertion in-place if the operand may be checked as is;
+   * otherwise a fix that extracts the operand into a local variable first; null if no assertion could be added
+   * @see #canCheckAsIs(PsiExpression)
+   */
+  private static @Nullable LocalQuickFix createAssertFix(@NotNull PsiExpression operand, @NotNull String suffix, int precedence) {
+    if (canCheckAsIs(operand)) {
+      return new AddAssertStatementFix(ParenthesesUtils.getText(operand, precedence) + suffix);
+    }
+    return IntroduceVariableAndAssertFix.create(operand, suffix);
+  }
+
+  /**
+   * Creates a fix that asserts that the qualifier is not null using the assertion method of the given test framework.
+   *
+   * @param qualifier expression the assertion is about
+   * @param variant   test framework to take the assertion method from
+   * @return a fix that adds the assertion call in-place if the qualifier may be checked as is;
+   * otherwise a fix that extracts the qualifier into a local variable first; null if no assertion could be added
+   * @see #canCheckAsIs(PsiExpression)
+   */
+  private static @Nullable LocalQuickFix createTestFrameworkAssertFix(@NotNull PsiExpression qualifier, @NotNull Variant variant) {
+    if (canCheckAsIs(qualifier)) {
+      return new AddAssertNonNullFromTestFrameworksFix(qualifier, variant);
+    }
+    return IntroduceVariableAndAssertFix.create(qualifier, variant);
+  }
+
+  /**
+   * Creates a fix that surrounds the statement with an {@code if} that checks {@code operand + suffix}.
+   *
+   * @param operand expression the check is about
+   * @param suffix  text to append to the operand to get the condition (e.g., {@code " != null"})
+   * @return a fix that checks the operand in-place if it may be checked as is;
+   * otherwise a fix that extracts the operand into a local variable first; null if no check could be added
+   * @see #canCheckAsIs(PsiExpression)
+   */
+  private static @Nullable LocalQuickFix createSurroundWithIfFix(@NotNull PsiExpression operand, @NotNull String suffix) {
+    if (canCheckAsIs(operand)) {
+      return SurroundWithIfFix.isAvailable(operand) ? new SurroundWithIfFix(operand, suffix) : null;
+    }
+    return IntroduceVariableAndSurroundWithIfFix.create(operand, suffix);
+  }
+
+  /**
+   * Creates a fix that replaces the dereference of the qualifier with a conditional expression checking it for null.
+   *
+   * @param qualifier  expression the check is about
+   * @param expression expression that dereferences the qualifier
+   * @return a fix that checks the qualifier in-place if it may be checked as is;
+   * otherwise a fix that extracts the qualifier into a local variable first; null if no check could be added
+   * @see #canCheckAsIs(PsiExpression)
+   */
+  private static @Nullable LocalQuickFix createTernaryFix(@NotNull PsiExpression qualifier, @NotNull PsiExpression expression) {
+    if (!ReplaceWithTernaryOperatorFix.isAvailable(qualifier, expression)) return null;
+    if (canCheckAsIs(qualifier)) {
+      return new ReplaceWithTernaryOperatorFix(qualifier);
+    }
+    return IntroduceVariableAndReplaceWithTernaryFix.create(qualifier);
+  }
+
+  /**
+   * A generated check mentions the expression one more time, which is only useful if re-evaluating it has no visible
+   * effect and the analysis knows that both occurrences produce the same value. Otherwise, the expression should be
+   * extracted into a local variable, which is evaluated exactly once and is checked instead of the expression.
+   *
+   * @return true if the expression may be checked in-place
+   */
+  private static boolean canCheckAsIs(@NotNull PsiExpression expression) {
+    return !SideEffectChecker.mayHaveSideEffects(expression) && isTrackedByDfa(expression);
+  }
+
+  /**
+   * @return true if the dataflow analysis represents the expression as a variable, so an assertion about it
+   * is remembered for the subsequent occurrences of the same expression. Note that it's kinda heuristical method,
+   * which may not always work.
+   */
+  private static boolean isTrackedByDfa(@NotNull PsiExpression expression) {
+    // casts to a reference type are transparent for the analysis, see JavaDfaValueFactory#getQualifierOrThisValue
+    PsiExpression stripped = PsiUtil.skipParenthesizedExprDown(expression);
+    while (stripped instanceof PsiTypeCastExpression cast && cast.getType() instanceof PsiClassType) {
+      stripped = PsiUtil.skipParenthesizedExprDown(cast.getOperand());
+    }
+    if (stripped == null) return false;
+    DfaValueFactory factory = new DfaValueFactory(expression.getProject());
+    return JavaDfaValueFactory.getExpressionDfaValue(factory, stripped) instanceof DfaVariableValue;
   }
 
   @Override
-  protected @NotNull List<@NotNull LocalQuickFix> createMethodReferenceNPEFixes(PsiMethodReferenceExpression methodRef, boolean onTheFly) {
+  protected @NotNull List<@NotNull LocalQuickFix> createMethodReferenceNPEFixes(PsiMethodReferenceExpression methodRef) {
     List<LocalQuickFix> fixes = new ArrayList<>();
     ContainerUtil.addIfNotNull(fixes, StreamFilterNotNullFix.makeFix(methodRef));
-    if (onTheFly) {
-      fixes.add(new ReplaceWithTernaryOperatorFix.ReplaceMethodRefWithTernaryOperatorFix());
-    }
+    fixes.add(new ReplaceWithTernaryOperatorFix.ReplaceMethodRefWithTernaryOperatorFix());
     return fixes;
   }
 
@@ -116,27 +216,22 @@ public final class DataFlowInspection extends DataFlowInspectionBase {
   @Override
   protected @NotNull List<@NotNull LocalQuickFix> createCastFixes(PsiTypeCastExpression castExpression,
                                                                   PsiType realType,
-                                                                  boolean onTheFly,
                                                                   boolean alwaysFails) {
     List<LocalQuickFix> fixes = new ArrayList<>();
     PsiExpression operand = castExpression.getOperand();
     PsiTypeElement typeElement = castExpression.getCastType();
     if (typeElement != null && operand != null) {
-      if (!alwaysFails && !SideEffectChecker.mayHaveSideEffects(operand) && CodeBlockSurrounder.canSurround(castExpression)) {
+      if (!alwaysFails && CodeBlockSurrounder.canSurround(castExpression)) {
         String suffix = " instanceof " + typeElement.getText();
-        fixes.add(new AddAssertStatementFix(ParenthesesUtils.getText(operand, PsiPrecedenceUtil.RELATIONAL_PRECEDENCE) + suffix));
-        if (SurroundWithIfFix.isAvailable(operand)) {
-          fixes.add(new SurroundWithIfFix(operand, suffix));
-        }
+        ContainerUtil.addIfNotNull(fixes, createAssertFix(operand, suffix, PsiPrecedenceUtil.RELATIONAL_PRECEDENCE));
+        ContainerUtil.addIfNotNull(fixes, createSurroundWithIfFix(operand, suffix));
       }
       if (realType != null) {
         PsiType operandType = operand.getType();
         if (operandType != null) {
           PsiType type = typeElement.getType();
-          PsiType[] types = {realType};
-          if (realType instanceof PsiIntersectionType) {
-            types = ((PsiIntersectionType)realType).getConjuncts();
-          }
+          PsiType[] types = realType instanceof PsiIntersectionType intersectionType ?
+                            intersectionType.getConjuncts() : new PsiType[]{realType};
           for (PsiType psiType : types) {
             if (!psiType.isAssignableFrom(operandType)) {
               psiType = DfaPsiUtil.tryGenerify(operand, psiType);
@@ -152,7 +247,6 @@ public final class DataFlowInspection extends DataFlowInspectionBase {
   @Override
   protected @NotNull List<@NotNull LocalQuickFix> createNPEFixes(@Nullable PsiExpression qualifier,
                                                                  PsiExpression expression,
-                                                                 boolean onTheFly,
                                                                  boolean alwaysNull) {
     qualifier = PsiUtil.deparenthesizeExpression(qualifier);
 
@@ -165,25 +259,19 @@ public final class DataFlowInspection extends DataFlowInspectionBase {
       if (isVolatileFieldReference(qualifier)) {
         ContainerUtil.addIfNotNull(fixes, createIntroduceVariableFix());
       }
-      else if (!alwaysNull && !SideEffectChecker.mayHaveSideEffects(qualifier)) {
+      else if (!alwaysNull) {
         String suffix = " != null";
 
         Variant testFrameworkFixVariant = AddAssertNonNullFromTestFrameworksFix.isAvailable(expression);
         if (testFrameworkFixVariant != null) {
-          fixes.add(new AddAssertNonNullFromTestFrameworksFix(qualifier, testFrameworkFixVariant));
+          ContainerUtil.addIfNotNull(fixes, createTestFrameworkAssertFix(qualifier, testFrameworkFixVariant));
         }
         else if (PsiUtil.isAvailable(JavaFeature.ASSERTIONS, qualifier) && CodeBlockSurrounder.canSurround(expression)) {
-          String replacement = ParenthesesUtils.getText(qualifier, ParenthesesUtils.EQUALITY_PRECEDENCE) + suffix;
-          fixes.add(new AddAssertStatementFix(replacement));
+          ContainerUtil.addIfNotNull(fixes, createAssertFix(qualifier, suffix, ParenthesesUtils.EQUALITY_PRECEDENCE));
         }
 
-        if (SurroundWithIfFix.isAvailable(qualifier)) {
-          fixes.add(new SurroundWithIfFix(qualifier, suffix));
-        }
-
-        if (onTheFly && ReplaceWithTernaryOperatorFix.isAvailable(qualifier, expression)) {
-          fixes.add(new ReplaceWithTernaryOperatorFix(qualifier));
-        }
+        ContainerUtil.addIfNotNull(fixes, createSurroundWithIfFix(qualifier, suffix));
+        ContainerUtil.addIfNotNull(fixes, createTernaryFix(qualifier, expression));
       }
 
       if (!alwaysNull && PsiUtil.isAvailable(JavaFeature.OBJECTS_CLASS, qualifier)) {
@@ -206,9 +294,7 @@ public final class DataFlowInspection extends DataFlowInspectionBase {
   }
 
   @Override
-  protected @NotNull List<@NotNull LocalQuickFix> createUnboxingNullableFixes(@NotNull PsiExpression qualifier,
-                                                                              PsiElement anchor,
-                                                                              boolean onTheFly) {
+  protected @NotNull List<@NotNull LocalQuickFix> createUnboxingNullableFixes(@NotNull PsiExpression qualifier, PsiElement anchor) {
     List<LocalQuickFix> result = new SmartList<>();
     if (TypeConversionUtil.isBooleanType(qualifier.getType())) {
       result.add(new ReplaceWithBooleanEqualsFix(qualifier));
@@ -228,7 +314,7 @@ public final class DataFlowInspection extends DataFlowInspectionBase {
 
   @Override
   protected LocalQuickFix createNavigateToNullParameterUsagesFix(PsiParameter parameter) {
-    return new NullableStuffInspection.NavigateToNullLiteralArguments(parameter);
+    return new NavigateToNullLiteralArguments(parameter);
   }
 
   @Override
@@ -248,6 +334,8 @@ public final class DataFlowInspection extends DataFlowInspectionBase {
                message("inspection.data.flow.report.match.exception.problem")),
       checkbox("REPORT_UNSOUND_WARNINGS",
                message("inspection.data.flow.report.problems.that.happen.only.on.some.code.paths")),
+      checkbox("REPORT_UNSPECIFIED_PARAMETRIC_NULLNESS",
+               message("inspection.data.flow.report.unspecified.parametric.nullness")),
       JavaConfigurationDialogKind.NULLABILITY_ANNOTATIONS.button()
     );
   }

@@ -79,13 +79,36 @@ abstract class AbstractLayoutCodeProcessor private constructor(
   var infoCollector: LayoutCodeInfoCollector? = null
     private set
 
-  private sealed interface Target {
-    object Project : Target
-    class Module(val module: com.intellij.openapi.module.Module) : Target
-    // todo: BUG! includeSubdirs is unused
-    class Directory(val directory: PsiDirectory, val includeSubdirs: Boolean) : Target
-    class Files(val files: List<PsiFile>) : Target
-    class SingleFile(val psiFile: PsiFile) : Target
+  @ApiStatus.Internal
+  protected sealed interface Target
+  @ApiStatus.Internal
+  protected object ProjectTarget : Target
+  @ApiStatus.Internal
+  protected class ModuleTarget(val module: Module) : Target
+  // todo: BUG! includeSubdirs is unused
+  @ApiStatus.Internal
+  protected class DirectoryTarget(val directory: PsiDirectory, val includeSubdirs: Boolean) : Target
+  @ApiStatus.Internal
+  protected class FilesTarget(val files: List<PsiFile>) : Target
+  @ApiStatus.Internal
+  protected class SingleFileTarget(val psiFile: PsiFile) : Target
+
+  @ApiStatus.Internal
+  protected constructor(
+    project: Project,
+    target: Target,
+    progressText: @NlsContexts.ProgressText String,
+    commandName: @NlsContexts.Command String,
+    postRunnable: Runnable?,
+    processChangedTextOnly: Boolean,
+  ) : this(
+    project,
+    target,
+    progressText,
+    commandName,
+    processChangedTextOnly
+  ) {
+    this.postRunnable = postRunnable
   }
 
   protected constructor(
@@ -95,7 +118,7 @@ abstract class AbstractLayoutCodeProcessor private constructor(
     processChangedTextOnly: Boolean,
   ) : this(
     project,
-    Target.Project,
+    ProjectTarget,
     progressText,
     commandName,
     processChangedTextOnly
@@ -125,7 +148,7 @@ abstract class AbstractLayoutCodeProcessor private constructor(
     processChangedTextOnly: Boolean,
   ) : this(
     project,
-    if (module != null) Target.Module(module) else Target.Project,
+    if (module != null) ModuleTarget(module) else ProjectTarget,
     progressText,
     commandName,
     processChangedTextOnly
@@ -140,7 +163,7 @@ abstract class AbstractLayoutCodeProcessor private constructor(
     processChangedTextOnly: Boolean,
   ) : this(
     project,
-    Target.Directory(directory, includeSubdirs),
+    DirectoryTarget(directory, includeSubdirs),
     progressText,
     commandName,
     processChangedTextOnly
@@ -154,7 +177,7 @@ abstract class AbstractLayoutCodeProcessor private constructor(
     processChangedTextOnly: Boolean,
   ) : this(
     project,
-    Target.SingleFile(psiFile),
+    SingleFileTarget(psiFile),
     progressText,
     commandName,
     processChangedTextOnly
@@ -169,7 +192,7 @@ abstract class AbstractLayoutCodeProcessor private constructor(
     processChangedTextOnly: Boolean,
   ) : this(
     project,
-    Target.Files(files.toList()),
+    FilesTarget(files.toList()),
     progressText,
     commandName,
     processChangedTextOnly
@@ -212,6 +235,8 @@ abstract class AbstractLayoutCodeProcessor private constructor(
   /**
    * Ensures that a given file is ready to reformatting and prepares it if necessary.
    *
+   * Beware: it is not guaranteed to run on a BGT.
+   *
    * @param psiFile                    file to process
    * @param processChangedTextOnly  flag that defines is only the changed text (in terms of VCS change) should be processed
    * @return          task that triggers formatting of the given file. Returns value of that task indicates whether formatting
@@ -251,7 +276,7 @@ abstract class AbstractLayoutCodeProcessor private constructor(
   }
 
   open fun run() {
-    if (target is Target.SingleFile) {
+    if (target is SingleFileTarget) {
       PsiUtilCore.ensureValid(target.psiFile)
       val virtualFile = PsiUtilCore.getVirtualFile(target.psiFile)
       if (virtualFile != null) {
@@ -276,7 +301,7 @@ abstract class AbstractLayoutCodeProcessor private constructor(
   }
 
   fun runBackground() {
-    if (target is Target.SingleFile) {
+    if (target is SingleFileTarget) {
       PsiUtilCore.ensureValid(target.psiFile)
       val virtualFile = PsiUtilCore.getVirtualFile(target.psiFile)
       if (virtualFile != null) {
@@ -297,16 +322,16 @@ abstract class AbstractLayoutCodeProcessor private constructor(
   }
 
   private fun buildFilesIterator(): FileRecursiveIterator {
-    if (target is Target.Files) {
+    if (target is FilesTarget) {
       return FileRecursiveIterator(myProject, target.files)
     }
     if (processChangedTextOnly) {
       return buildChangedFilesIterator()
     }
-    if (target is Target.Directory) {
+    if (target is DirectoryTarget) {
       return FileRecursiveIterator(target.directory)
     }
-    if (target is Target.Module) {
+    if (target is ModuleTarget) {
       return FileRecursiveIterator(target.module)
     }
     return FileRecursiveIterator(myProject)
@@ -323,8 +348,8 @@ abstract class AbstractLayoutCodeProcessor private constructor(
   }
 
   private fun getAllSearchableDirsFromContext(): List<PsiDirectory> = when (target) {
-    is Target.Directory -> listOf(target.directory)
-    is Target.Module -> FileRecursiveIterator.collectModuleDirectories(target.module)
+    is DirectoryTarget -> listOf(target.directory)
+    is ModuleTarget -> FileRecursiveIterator.collectModuleDirectories(target.module)
     else -> FileRecursiveIterator.collectProjectDirectories(myProject)
   }
 
@@ -367,7 +392,7 @@ abstract class AbstractLayoutCodeProcessor private constructor(
 
   @Throws(IncorrectOperationException::class)
   fun runWithoutProgress() {
-    if (target !is Target.SingleFile) {
+    if (target !is SingleFileTarget) {
       return
     }
     val virtualFile = PsiUtilCore.getVirtualFile(target.psiFile)
@@ -423,7 +448,7 @@ abstract class AbstractLayoutCodeProcessor private constructor(
     private val processors = getAllProcessors()
 
     /** @return Presentable file path or `null` if the processing of this file should be skipped */
-    @RequiresReadLock
+    @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
     private fun shouldProcessFile(file: VirtualFile): @NlsSafe String? {
       val psiFile = file.findPsiFileSafely()
 
@@ -470,9 +495,10 @@ abstract class AbstractLayoutCodeProcessor private constructor(
 
         ProgressIndicatorProvider.checkCanceled()
 
+        val stageCommandName = processor.commandName
         withStructuredAsyncDocumentFormattingIfNotEdt {
-          processor.runTask(file, commandName, groupId, processAllFilesAsSingleUndoStep) {
-            AbstractLayoutCodeProcessorWriteInterceptor.getInstance().runFileWrite(writeTask, myProject, commandName);
+          processor.runTask(file, stageCommandName, groupId, processAllFilesAsSingleUndoStep) {
+            AbstractLayoutCodeProcessorWriteInterceptor.getInstance().runFileWrite(writeTask, myProject, stageCommandName)
           }
         }
 
@@ -549,7 +575,7 @@ abstract class AbstractLayoutCodeProcessor private constructor(
     }
   }
 
-  @RequiresReadLock
+  @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
   private fun VirtualFile.findPsiFileSafely(): PsiFile? =
     if (!myProject.isDisposed && isValid) {
       PsiManager.getInstance(myProject).findFile(this)

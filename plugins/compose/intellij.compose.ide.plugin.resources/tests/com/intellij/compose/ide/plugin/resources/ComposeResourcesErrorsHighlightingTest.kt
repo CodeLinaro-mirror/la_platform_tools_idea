@@ -1,29 +1,40 @@
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.compose.ide.plugin.resources
 
 import com.intellij.lang.annotation.HighlightSeverity
 import com.intellij.openapi.application.EDT
+import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.testFramework.common.timeoutRunBlocking
 import kotlinx.coroutines.Dispatchers
-import org.jetbrains.kotlin.test.TestMetadata
-import org.jetbrains.plugins.gradle.tooling.annotation.TargetVersions
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
 
-internal class ComposeResourcesErrorsHighlightingTest : ComposeResourcesTestCase() {
+@ComposeResourcesAllSourceSets
+internal class ComposeResourcesErrorsHighlightingTest : ComposeResourcesCodeInsightTestCase() {
 
-  @TargetVersions(TARGET_GRADLE_VERSION)
   @Test
-  @TestMetadata("ComposeResources")
-  fun `test no errors in source files`() {
-    val files = importProjectFromTestData()
+  fun `test no errors in source files`() = testComposeResourcesProject {
+    assertNoHighlightingErrors(sourceSetKotlinFiles())
+  }
 
-    val kotlinFiles = files.filter {
-      it.extension == "kt" &&
-      it.path.contains(sourceSetName) &&
-      it.isTestableSourceFile()
+  /**
+   * Collects the Kotlin files of the current source set.
+   * The resource resolution needs the canonical file, so this function maps every file through [canonicalProjectFile].
+   */
+  private fun sourceSetKotlinFiles(): List<VirtualFile> {
+    val sourceSetRoot = projectRoot.findFileByRelativePath("composeApp/src/$sourceSetName/kotlin")
+                        ?: error("Cannot find the Kotlin source root of $sourceSetName")
+
+    val kotlinFiles = mutableListOf<VirtualFile>()
+    VfsUtilCore.iterateChildrenRecursively(sourceSetRoot, null) { file ->
+      if (!file.isDirectory && file.extension == "kt" && file.isTestableSourceFile()) {
+        kotlinFiles.add(file)
+      }
+      true
     }
 
-    assertNoHighlightingErrors(kotlinFiles)
+    return kotlinFiles.map { canonicalProjectFile(projectRelativePath(it)) }
   }
 
   private fun assertNoHighlightingErrors(files: List<VirtualFile>) {
@@ -31,9 +42,9 @@ internal class ComposeResourcesErrorsHighlightingTest : ComposeResourcesTestCase
 
     timeoutRunBlocking(context = Dispatchers.EDT) {
       for (file in files) {
-        codeInsightTestFixture.openFileInEditor(file)
+        codeInsightFixture.configureFromExistingVirtualFile(file)
 
-        val errors = codeInsightTestFixture
+        val errors = codeInsightFixture
           .doHighlighting()
           .filter { it.severity == HighlightSeverity.ERROR }
           .mapNotNull { it.description }
@@ -45,10 +56,10 @@ internal class ComposeResourcesErrorsHighlightingTest : ComposeResourcesTestCase
     }
 
     assertTrue(
+      errorsByFileName.isEmpty(),
       errorsByFileName.entries.joinToString("\n\n") { (fileName, errors) ->
         "$fileName:\n${errors.joinToString("\n") { "  - $it" }}"
-      },
-      errorsByFileName.isEmpty()
+      }
     )
   }
 
@@ -57,6 +68,4 @@ internal class ComposeResourcesErrorsHighlightingTest : ComposeResourcesTestCase
     // that don't depend on Android APIs.
     return sourceSetName != ANDROID_MAIN || this.name == "test.$ANDROID_MAIN.kt"
   }
-
-
 }

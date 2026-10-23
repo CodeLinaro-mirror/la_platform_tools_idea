@@ -1,229 +1,297 @@
 package com.intellij.python.processOutput.frontend.ui.components
 
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
-import com.intellij.python.processOutput.common.OutputKindDto
-import com.intellij.python.processOutput.common.OutputLineDto
-import com.intellij.python.processOutput.frontend.InfoTag
-import com.intellij.python.processOutput.frontend.OutputFilter
-import com.intellij.python.processOutput.frontend.OutputTag
+import com.intellij.icons.AllIcons
+import com.intellij.openapi.actionSystem.ActionManager
+import com.intellij.openapi.actionSystem.ActionPlaces
+import com.intellij.openapi.actionSystem.ActionToolbar
+import com.intellij.openapi.actionSystem.ActionUpdateThread
+import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.DefaultActionGroup
+import com.intellij.openapi.application.EDT
+import com.intellij.openapi.project.DumbAwareAction
+import com.intellij.python.processOutput.frontend.LoggedProcess
 import com.intellij.python.processOutput.frontend.ProcessOutputBundle.message
-import com.intellij.python.processOutput.frontend.ProcessOutputController
 import com.intellij.python.processOutput.frontend.ProcessStatus
-import com.intellij.python.processOutput.frontend.formatFull
-import com.intellij.python.processOutput.frontend.ui.Colors
-import com.intellij.python.processOutput.frontend.ui.Icons
-import com.intellij.python.processOutput.frontend.ui.commandString
-import com.intellij.python.processOutput.frontend.ui.shortenedCommandString
+import com.intellij.python.processOutput.frontend.formatCompact
+import com.intellij.python.processOutput.frontend.ui.ProcessOutputUiContext
+import com.intellij.ui.ColorUtil
+import com.intellij.ui.IdeBorderFactory
+import com.intellij.ui.SideBorder
+import com.intellij.ui.components.JBLabel
+import com.intellij.util.ui.AsyncProcessIcon
+import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
+import org.jetbrains.annotations.Nls
+import java.awt.BorderLayout
+import java.awt.Color
+import java.awt.Dimension
+import java.awt.FlowLayout
+import java.awt.GridBagConstraints
+import java.awt.GridBagLayout
+import javax.swing.Box
+import javax.swing.JComponent
+import javax.swing.JPanel
 
-@Composable
-internal fun OutputSection(controller: ProcessOutputController) {
-    val selectedProcess by controller.selectedProcess.collectAsState()
+internal class OutputSection(private val uiContext: ProcessOutputUiContext) {
+  private val statusPrefixLabel: JBLabel = JBLabel()
+  private val statusValueLabel: JBLabel = JBLabel()
+  private val spinner: AsyncProcessIcon = AsyncProcessIcon(uiContext.coroutineScope)
+  private val timePrefixLabel: JBLabel = JBLabel()
+  private val timeValueLabel: JBLabel = JBLabel()
+  private val pidPrefixLabel: JBLabel = JBLabel()
+  private val pidValueLabel: JBLabel = JBLabel()
 
-    Column {
-        Toolbar {
-            Box(modifier = Modifier.weight(1f)) {
-                selectedProcess?.also {
-                    InterText(
-                        text = it.data.shortenedCommandString,
-                        overflow = TextOverflow.Ellipsis,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
+  private val spinnerHolder: JComponent = Box.createHorizontalBox()
+  private val statusSegment: JComponent = Box.createHorizontalBox()
+  private val timeSegment: JComponent = Box.createHorizontalBox()
+  private val pidSegment: JComponent = Box.createHorizontalBox()
+
+  val component: JComponent
+    field = JPanel(BorderLayout())
+
+  init {
+    statusPrefixLabel.minimumSize = Dimension(0, statusPrefixLabel.minimumSize.height)
+    spinner.suspend()
+
+    statusPrefixLabel.foreground = Styling.MUTED_LABEL_COLOR
+
+    statusSegment.add(statusPrefixLabel)
+    statusSegment.add(Box.createHorizontalStrut(Styling.PREFIX_VALUE_GAP))
+    statusSegment.add(statusValueLabel)
+
+    spinnerHolder.add(Box.createHorizontalStrut(Styling.STATUS_SPINNER_GAP))
+    spinnerHolder.add(spinner)
+    spinnerHolder.isVisible = false
+
+    timePrefixLabel.foreground = Styling.MUTED_LABEL_COLOR
+
+    timeSegment.add(Box.createHorizontalStrut(Styling.TITLE_SEGMENT_GAP))
+    timeSegment.add(timePrefixLabel)
+    timeSegment.add(Box.createHorizontalStrut(Styling.PREFIX_VALUE_GAP))
+    timeSegment.add(timeValueLabel)
+    timeSegment.isVisible = false
+
+    pidPrefixLabel.foreground = Styling.MUTED_LABEL_COLOR
+
+    pidSegment.add(Box.createHorizontalStrut(Styling.TITLE_SEGMENT_GAP))
+    pidSegment.add(pidPrefixLabel)
+    pidSegment.add(Box.createHorizontalStrut(Styling.PREFIX_VALUE_GAP))
+    pidSegment.add(pidValueLabel)
+    pidSegment.isVisible = false
+
+    uiContext.coroutineScope.launch(Dispatchers.EDT) {
+      var statusJob: Job? = null
+
+      uiContext.controller.selectedProcess.collect { process ->
+        statusJob?.cancelAndJoin()
+        statusJob = null
+
+        if (process == null) {
+          renderTitle(null, null)
+        }
+        else {
+          statusJob =
+            this@launch.launch(Dispatchers.EDT) {
+              process.status.collect { status ->
+                renderTitle(process, status)
+              }
             }
-
-            FilterActionGroup(
-                tooltipText = message("process.output.viewOptions.tooltip"),
-                state = controller.processOutputUiState.filters,
-                onFilterItemToggled = { filterItem, enabled ->
-                    controller.onOutputFilterItemToggled(filterItem, enabled)
-                },
-                modifier = Modifier.testTag(OutputSectionTestTags.FILTERS_BUTTON),
-                menuModifier = Modifier.testTag(OutputSectionTestTags.FILTERS_MENU),
-            )
-
-            ActionIconButton(
-                modifier = Modifier.testTag(OutputSectionTestTags.COPY_OUTPUT_BUTTON),
-                iconKey = Icons.Keys.Copy,
-                tooltipText = message("process.output.output.buttons.copyOutput"),
-                enabled = selectedProcess != null,
-                onClick = {
-                    selectedProcess?.let {
-                        controller.copyOutputToClipboard(it)
-                    }
-                },
-            )
         }
-
-        if (selectedProcess == null) {
-            EmptyContainerNotice(
-                text = message("process.output.output.blankMessage"),
-                modifier = Modifier.testTag(OutputSectionTestTags.NOT_SELECTED_TEXT),
-            )
-        } else {
-            OutputView(controller)
-        }
+      }
     }
-}
 
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun OutputView(controller: ProcessOutputController) {
-    val isInfoExpanded by controller.processOutputUiState.isInfoExpanded.collectAsState()
-    val isOutputExpanded by controller.processOutputUiState.isOutputExpanded.collectAsState()
-    val selectedProcess by controller.selectedProcess.collectAsState()
-    val verticalScrollState = remember { controller.processOutputUiState.verticalScrollState }
-    val horizontalScrollState = remember { controller.processOutputUiState.horizontalScrollState }
-    val filters = remember { controller.processOutputUiState.filters }
+    component.add(toolbar(), BorderLayout.NORTH)
+    component.add(Console(uiContext).component, BorderLayout.CENTER)
+  }
 
-    selectedProcess?.let { loggedProcess ->
-        val data = loggedProcess.data
-        var lines by remember { mutableStateOf(emptyList<OutputLineDto>()) }
-        val status by loggedProcess.status.collectAsState()
-        val outputLines = remember(lines, filters, status) {
-            buildList {
-                for (line in lines) {
-                    add(ConsoleLine(line.kind.tag, AnnotatedString(line.text)))
-                }
+  private fun renderTitle(process: LoggedProcess?, status: ProcessStatus?) {
+    if (process == null || status == null) {
+      statusPrefixLabel.text = ""
+      statusValueLabel.text = ""
+      spinner.suspend()
+      spinnerHolder.isVisible = false
+      timeSegment.isVisible = false
+      pidSegment.isVisible = false
 
-                when (val status = status) {
-                    ProcessStatus.Running -> {}
-                    is ProcessStatus.Done -> {
-                        val textColor = if (status.exitCode != 0)
-                            Colors.ErrorText
-                        else
-                            Color.Unspecified
-
-                        val exitText = buildAnnotatedString {
-                            withStyle(SpanStyle(color = textColor)) {
-                                append(status.exitCode.toString())
-                                status.additionalMessageToUser?.also { message ->
-                                    append(": ")
-                                    append(message)
-                                }
-                            }
-                        }
-
-                        add(
-                            ConsoleLine(tag = OutputTag.EXIT, text = exitText),
-                        )
-                    }
-                }
-            }
-        }
-        val infoLines = remember(data) {
-            buildList {
-                add(ConsoleLine(InfoTag.STARTED, AnnotatedString(data.startedAt.formatFull())))
-                add(ConsoleLine(InfoTag.COMMAND, AnnotatedString(data.commandString)))
-                data.pid?.also { pid ->
-                    add(ConsoleLine(InfoTag.PID, AnnotatedString(pid.toString())))
-                }
-                data.cwd?.also { cwd ->
-                    add(ConsoleLine(InfoTag.CWD, AnnotatedString(cwd)))
-                }
-                add(ConsoleLine(InfoTag.TARGET, AnnotatedString(data.target)))
-
-                for ((key, value) in data.env.entries) {
-                    add(ConsoleLine(InfoTag.ENV, AnnotatedString("$key=$value")))
-                }
-            }
-        }
-
-        LaunchedEffect(loggedProcess) {
-            snapshotFlow { loggedProcess.lines.toList() }
-                .collect { lines = it }
-        }
-
-        ConsoleContainer(
-            verticalScrollState = verticalScrollState,
-            horizontalScrollState = horizontalScrollState,
-            wrapContent = filters.active.contains(OutputFilter.Item.WRAP_CONTENT),
-        ) {
-            CollapsibleListSection(
-                text = message("process.output.output.sections.info"),
-                modifier = Modifier.testTag(OutputSectionTestTags.INFO_SECTION),
-                isExpanded = isInfoExpanded,
-                onToggle = { controller.toggleProcessInfo() },
-            )
-
-            if (isInfoExpanded) {
-                ConsoleOutput(
-                    lines = infoLines,
-                    formatter = InfoTag.formatter,
-                    inputTestTag = OutputSectionTestTags.INFO_SECTION_CONTENT,
-                    tagTestTag = OutputSectionTestTags.INFO_SECTION_TAG,
-                    copyButtonTestTag = OutputSectionTestTags.INFO_SECTION_COPY_BUTTON,
-                )
-            }
-
-            CollapsibleListSection(
-                text = message("process.output.output.sections.output"),
-                modifier = Modifier.testTag(OutputSectionTestTags.OUTPUT_SECTION),
-                isExpanded = isOutputExpanded,
-                onToggle = { controller.toggleProcessOutput() },
-            )
-
-            if (isOutputExpanded) {
-                ConsoleOutput(
-                    lines = outputLines,
-                    formatter = OutputTag.formatter,
-                    displayTags = filters.active.contains(OutputFilter.Item.SHOW_TAGS),
-                    displayCopyButtons = true,
-                    onCopy = { line, index ->
-                        when (line.tag) {
-                            OutputTag.EXIT ->
-                                controller.copyOutputExitInfoToClipboard(loggedProcess)
-                            OutputTag.OUTPUT, OutputTag.ERROR ->
-                                controller.copyOutputTagAtIndexToClipboard(loggedProcess, index)
-                        }
-                    },
-                    inputTestTag = OutputSectionTestTags.OUTPUT_SECTION_CONTENT,
-                    tagTestTag = OutputSectionTestTags.OUTPUT_SECTION_TAG,
-                    copyButtonTestTag = OutputSectionTestTags.OUTPUT_SECTION_COPY_BUTTON,
-                )
-            }
-        }
+      return
     }
-}
 
-private val OutputKindDto.tag
-    get() =
-        when (this) {
-            OutputKindDto.OUT -> OutputTag.OUTPUT
-            OutputKindDto.ERR -> OutputTag.ERROR
+    when (status) {
+      ProcessStatus.Running -> {
+        setPrefixAndValue(
+          statusPrefixLabel,
+          statusValueLabel,
+          message("process.output.output.header.status.running"),
+        )
+        spinnerHolder.isVisible = true
+        spinner.resume()
+        timeSegment.isVisible = false
+      }
+      is ProcessStatus.Done -> {
+        val exitCodeString = status.exitCode.toString()
+        val (text, color) =
+          if (status.exitCode == 0) {
+            message("process.output.output.header.status.ok", exitCodeString) to Styling.SUCCESS_FOREGROUND
+          }
+          else {
+            message("process.output.output.header.status.error", exitCodeString) to Styling.ERROR_FOREGROUND
+          }
+        val colored = "<font color='#${ColorUtil.toHex(color)}'>$text</font>"
+        val elapsed = (status.exitedAt - process.data.startedAt).formatCompact()
+
+        setPrefixAndValue(
+          statusPrefixLabel,
+          statusValueLabel,
+          message("process.output.output.header.status.done", colored),
+          valueContainsHtml = true,
+        )
+
+        spinner.suspend()
+        spinnerHolder.isVisible = false
+
+        setPrefixAndValue(
+          timePrefixLabel,
+          timeValueLabel,
+          message("process.output.output.header.time", elapsed),
+        )
+        timeSegment.isVisible = true
+      }
+    }
+
+    val pid = process.data.pid
+
+    if (pid != null) {
+      setPrefixAndValue(
+        pidPrefixLabel,
+        pidValueLabel,
+        message("process.output.output.header.pid", pid.toString()),
+      )
+      pidSegment.isVisible = true
+    }
+    else {
+      pidSegment.isVisible = false
+    }
+  }
+
+  @Suppress("HardCodedStringLiteral")
+  private fun setPrefixAndValue(
+    prefixLabel: JBLabel,
+    valueLabel: JBLabel,
+    @Nls message: String,
+    valueContainsHtml: Boolean = false,
+  ) {
+    val colonIndex = message.indexOf(':')
+
+    if (colonIndex < 0) {
+      prefixLabel.text = message
+      valueLabel.text = ""
+      return
+    }
+
+    val prefix = message.substring(0, colonIndex + 1)
+    val value = message.substring(colonIndex + 1).trimStart()
+
+    prefixLabel.text = prefix
+    valueLabel.text = if (valueContainsHtml) "<html>$value</html>" else value
+  }
+
+  private fun toolbar(): JPanel {
+    val panel = JPanel(BorderLayout())
+
+    panel.border = IdeBorderFactory.createBorder(SideBorder.BOTTOM)
+
+    val row = JPanel(FlowLayout(FlowLayout.LEFT, 0, 0))
+
+    row.isOpaque = false
+    row.add(statusSegment)
+    row.add(spinnerHolder)
+    row.add(timeSegment)
+    row.add(pidSegment)
+
+    val titleWrapper = JPanel(GridBagLayout())
+
+    titleWrapper.isOpaque = false
+    titleWrapper.border = JBUI.Borders.empty(0, Styling.TITLE_HORIZONTAL_PADDING)
+    titleWrapper.add(
+      row,
+      GridBagConstraints().apply {
+        gridx = 0
+        gridy = 0
+        anchor = GridBagConstraints.WEST
+        weightx = 1.0
+        fill = GridBagConstraints.NONE
+      },
+    )
+
+    panel.add(titleWrapper, BorderLayout.CENTER)
+    panel.add(actionToolbar().component, BorderLayout.EAST)
+
+    return panel
+  }
+
+  private fun actionToolbar(): ActionToolbar {
+    val actionToolbar =
+      ActionManager
+        .getInstance()
+        .createActionToolbar(
+          ActionPlaces.TOOLWINDOW_CONTENT,
+          actionGroup(),
+          true,
+        )
+
+    actionToolbar.targetComponent = uiContext.rootPanel
+
+    return actionToolbar
+  }
+
+  private fun actionGroup(): DefaultActionGroup {
+    val group = DefaultActionGroup()
+
+    group.add(
+      filterActionGroup(
+        name = message("process.output.output.buttons.displayOptions"),
+        state = uiContext.controller.outputSectionState.filters,
+        onFilterItemToggled = { filterItem, enabled ->
+          uiContext.controller.onOutputFilterItemToggled(filterItem, enabled)
+        }
+      )
+    )
+
+    group.add(
+      object : DumbAwareAction(message("process.output.output.buttons.copyOutput")) {
+        init {
+          templatePresentation.icon = AllIcons.General.Copy
         }
 
-internal object OutputSectionTestTags {
-    const val NOT_SELECTED_TEXT = "ProcessOutput.Output.NotSelectedText"
-    const val INFO_SECTION = "ProcessOutput.Output.InfoSection"
-    const val INFO_SECTION_CONTENT = "ProcessOutput.Output.InfoSectionContent"
-    const val INFO_SECTION_TAG = "ProcessOutput.Output.InfoSection.Tag"
-    const val INFO_SECTION_COPY_BUTTON = "ProcessOutput.Output.InfoSection.CopyButton"
-    const val OUTPUT_SECTION = "ProcessOutput.Output.OutputSection"
-    const val OUTPUT_SECTION_CONTENT = "ProcessOutput.Output.OutputSectionContent"
-    const val OUTPUT_SECTION_TAG = "ProcessOutput.Output.OutputSection.Tag"
-    const val OUTPUT_SECTION_COPY_BUTTON = "ProcessOutput.Output.OutputSection.CopyButton"
-    const val FILTERS_TAGS = "ProcessOutput.Output.FiltersTags"
-    const val FILTERS_WRAP = "ProcessOutput.Output.FiltersWrap"
-    const val FILTERS_BUTTON = "ProcessOutput.Output.FiltersButton"
-    const val FILTERS_MENU = "ProcessOutput.Output.FiltersMenu"
-    const val COPY_OUTPUT_BUTTON = "ProcessOutput.Output.CopyButton"
+        override fun update(e: AnActionEvent) {
+          e.presentation.isEnabled = uiContext.controller.selectedProcess.value != null
+        }
+
+        override fun getActionUpdateThread(): ActionUpdateThread =
+          ActionUpdateThread.BGT
+
+        override fun actionPerformed(e: AnActionEvent) {
+          uiContext.controller.selectedProcess.value?.also {
+            uiContext.controller.copyOutputToClipboard(it)
+          }
+        }
+      }
+    )
+
+    return group
+  }
+
+  private object Styling {
+    const val TITLE_HORIZONTAL_PADDING = 8
+    const val TITLE_SEGMENT_GAP = 16
+    const val STATUS_SPINNER_GAP = 4
+    const val PREFIX_VALUE_GAP = 4
+    val ERROR_FOREGROUND: Color = UIUtil.getErrorForeground()
+    val SUCCESS_FOREGROUND: Color = UIUtil.getLabelSuccessForeground()
+    val MUTED_LABEL_COLOR: Color = ColorUtil.withAlpha(JBUI.CurrentTheme.Label.foreground(), 0.75)
+  }
 }

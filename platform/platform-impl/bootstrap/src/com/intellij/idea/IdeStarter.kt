@@ -1,7 +1,7 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.idea
 
-import com.intellij.accessibility.enableScreenReaderSupportIfNeeded
+import com.intellij.accessibility.AccessibilityUtils
 import com.intellij.diagnostic.EdtLockLoadMonitorService
 import com.intellij.diagnostic.LoadingState
 import com.intellij.diagnostic.PerformanceWatcher
@@ -36,6 +36,7 @@ import com.intellij.openapi.wm.impl.welcomeScreen.WelcomeFrame
 import com.intellij.platform.diagnostic.telemetry.impl.span
 import com.intellij.platform.ide.CoreUiCoroutineScopeHolder
 import com.intellij.platform.ide.diagnostic.startUpPerformanceReporter.FUSProjectHotStartUpMeasurer
+import com.intellij.platform.ide.diagnostic.startUpPerformanceReporter.recordStartupSpan
 import com.intellij.ui.AppUIUtil
 import com.intellij.ui.mac.touchbar.TouchbarSupport
 import com.intellij.util.io.URLUtil.SCHEME_SEPARATOR
@@ -159,14 +160,16 @@ open class IdeStarter : ModernApplicationStarter() {
         return@span true
       }
 
-      FUSProjectHotStartUpMeasurer.reportWelcomeScreenShown()
+      FUSProjectHotStartUpMeasurer.reportWelcomeScreenIsGoingToBeShown()
 
       val customHandler = findNoProjectStateHandler()
       if (customHandler == null) {
         return@span showWelcomeFrame(publisher)
       }
       else {
+        val openingStart = System.nanoTime()
         customHandler()
+        recordStartupSpan("welcome screen project opening", openingStart, System.nanoTime())
         return@span false
       }
     }
@@ -232,12 +235,13 @@ open class IdeStarter : ModernApplicationStarter() {
 
   private suspend fun processUriParameter(uri: String, lifecyclePublisher: AppLifecycleListener) {
     val result = CommandLineProcessor.processProtocolCommand(uri)
-    if (result.exitCode == ProtocolHandler.PLEASE_QUIT) {
+    val exitCode = result.getExitCode()
+    if (exitCode == ProtocolHandler.PLEASE_QUIT) {
       withContext(Dispatchers.EDT) {
         ApplicationManagerEx.getApplicationEx().exit(false, true)
       }
     }
-    else if (result.exitCode != ProtocolHandler.PLEASE_NO_UI) {
+    else if (exitCode != ProtocolHandler.PLEASE_NO_UI) {
       WelcomeFrame.showIfNoProjectOpened(lifecyclePublisher)
     }
   }
@@ -320,6 +324,6 @@ private fun postOpenUiTasks(scope: CoroutineScope) {
   }
 
   scope.launch {
-    enableScreenReaderSupportIfNeeded()
+    AccessibilityUtils.enableScreenReaderSupportIfNeeded()
   }
 }

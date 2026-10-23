@@ -3,7 +3,9 @@ package com.intellij.driver.sdk.ui.components.common
 import com.intellij.driver.sdk.invokeAction
 import com.intellij.driver.sdk.ui.components.common.toolwindows.CommitToolWindowUi
 import com.intellij.driver.sdk.ui.components.common.toolwindows.GitLogToolWindowUi
+import com.intellij.driver.sdk.ui.components.common.toolwindows.GitWorktreesToolWindowUi
 import com.intellij.driver.sdk.ui.components.common.toolwindows.TerminalToolWindowUi
+import com.intellij.driver.sdk.ui.components.common.toolwindows.TodoToolWindowUi
 import com.intellij.driver.sdk.ui.components.common.toolwindows.ToolWindowUiComponent
 import com.intellij.driver.sdk.ui.components.elements.WindowUiComponent
 import com.intellij.driver.sdk.ui.components.elements.fileChooser
@@ -26,6 +28,11 @@ fun IdeaFrameUI.commitToolWindow(action: CommitToolWindowUi.() -> Unit = {}): Co
 
 fun IdeaFrameUI.gitLogToolWindow(action: GitLogToolWindowUi.() -> Unit = {}): GitLogToolWindowUi =
   x(GitLogToolWindowUi::class.java) { and(byAccessibleName("Log Tool Window"), byType(TOOL_WINDOW_ROOT_COMPONENT_CLASS)) }.apply(action)
+
+fun IdeaFrameUI.worktreesToolWindow(action: GitWorktreesToolWindowUi.() -> Unit = {}): GitWorktreesToolWindowUi =
+  x(GitWorktreesToolWindowUi::class.java) {
+    componentWithChild(byType(TOOL_WINDOW_ROOT_COMPONENT_CLASS), byAccessibleName("Worktrees"))
+  }.apply(action)
 
 fun IdeaFrameUI.databaseToolWindow(action: ToolWindowUiComponent.() -> Unit = {}): ToolWindowUiComponent = toolWindow("Database", action)
 
@@ -58,8 +65,8 @@ fun IdeaFrameUI.vcsToolWindow(action: ToolWindowUiComponent.() -> Unit = {}): To
     )
   }.apply(action)
 
-fun IdeaFrameUI.todoToolWindow(action: ToolWindowUiComponent.() -> Unit = {}): ToolWindowUiComponent =
-  x(ToolWindowUiComponent::class.java) { componentWithChild(byType(TOOL_WINDOW_ROOT_COMPONENT_CLASS), byAccessibleName("TODO")) }.apply(action)
+fun IdeaFrameUI.todoToolWindow(action: TodoToolWindowUi.() -> Unit = {}): TodoToolWindowUi =
+  x(TodoToolWindowUi::class.java, "TODO Tool Window") { componentWithChild(byType(TOOL_WINDOW_ROOT_COMPONENT_CLASS), byAccessibleName("TODO")) }.apply(action)
 
 fun IdeaFrameUI.toolWindow(name: String, action: ToolWindowUiComponent.() -> Unit = {}) = x(ToolWindowUiComponent::class.java) { byAccessibleName("$name Tool Window") }.apply(action)
 

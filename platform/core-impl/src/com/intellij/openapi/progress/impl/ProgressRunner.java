@@ -1,9 +1,8 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.progress.impl;
 
 import com.intellij.codeWithMe.ClientId;
 import com.intellij.concurrency.ContextAwareRunnable;
-import com.intellij.concurrency.ExternalIntelliJContextElement;
 import com.intellij.concurrency.ThreadContext;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.AccessToken;
@@ -11,10 +10,12 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.application.ex.ApplicationManagerEx;
 import com.intellij.openapi.application.impl.LaterInvocator;
+import com.intellij.openapi.application.impl.ModalityLockAssociation;
 import com.intellij.openapi.application.impl.ModalityStateEx;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.CeProcessCanceledException;
 import com.intellij.openapi.progress.EmptyProgressIndicator;
+import com.intellij.openapi.progress.LockParallelizationSharingPolicy;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
@@ -30,6 +31,7 @@ import kotlin.Pair;
 import kotlin.Unit;
 import kotlin.coroutines.CoroutineContext;
 import kotlin.coroutines.EmptyCoroutineContext;
+import kotlin.jvm.functions.Function0;
 import kotlinx.coroutines.Job;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.ApiStatus.Obsolete;
@@ -334,51 +336,54 @@ public final class ProgressRunner<R> {
                                                     @NotNull Semaphore modalityEntered,
                                                     @NotNull Function<ProgressIndicator, R> onThreadCallable) {
     final Pair<CoroutineContext, AccessToken> sharedPermit =
-      isModal && isSync && !isFakeModal ? getLockPermitContext(true) : new Pair<>(EmptyCoroutineContext.INSTANCE, AccessToken.EMPTY_ACCESS_TOKEN);
+      isModal && isSync && !isFakeModal ? getLockPermitContext(LockParallelizationSharingPolicy.SHARING_NO_CHECK_TOPMOST_RA) : new Pair<>(EmptyCoroutineContext.INSTANCE, AccessToken.EMPTY_ACCESS_TOKEN);
     CompletableFuture<R> taskFuture = launchTask(onThreadCallable, progressFuture, sharedPermit.getFirst());
     CompletableFuture<R> resultFuture;
 
-    if (isModal) {
-      // Running task with blocking EDT event pumping has the following contract in test mode:
-      //   if a random EDT event processed by blockingPI fails with an exception, the event pumping
-      //   is stopped and the submitted task fails with respective exception.
-      // The task submitted to e.g. POOLED thread might not be able to finish at all because it requires invoke&waits,
-      //   but EDT is broken due an exception. Hence, initial task should be completed exceptionally
-      CompletableFuture<Void> blockingRunFuture = progressFuture.thenAccept(progressIndicator -> {
-        if (progressIndicator instanceof BlockingProgressIndicator) {
-          //noinspection deprecation
-          ((BlockingProgressIndicator)progressIndicator).startBlocking(modalityEntered::up, isFakeModal, taskFuture);
-        }
-        else {
-          Logger.getInstance(ProgressRunner.class).warn("Can't go modal without BlockingProgressIndicator");
-          modalityEntered.up();
-        }
-      });
-      blockingRunFuture.exceptionally(throwable -> {
-        taskFuture.completeExceptionally(throwable);
-        return null;
-      });
-      // `startBlocking` might throw unrelated exceptions execute the submitted task so potential failure should be handled.
-      // Relates to testMode-ish execution: unhandled exceptions on event pumping are `LOG.error`-ed, hence throw exceptions in tests.
-      resultFuture = taskFuture.thenCombine(blockingRunFuture, (r, __) -> r);
-    }
-    else {
-      resultFuture = taskFuture;
-    }
+    try (
+      AccessToken ignore2 = sharedPermit.getSecond();
+      AccessToken ignore1 = associateModalityWithLock(progressFuture, sharedPermit.getFirst())) {
 
-    if (isSync) {
-      // At first here was a blocking resultFuture.get() call,
-      // which lead to deadlocks when `BlockingProgressIndicator.startBlocking` already exited,
-      // and nobody was dispatching EDT events because the current thread (EDT) was blocked on this future,
-      // so instead of blocking, we assert that the future should be done at this point,
-      // otherwise, `startBlocking` should continue pumping the events to give cancelled tasks a chance to complete.
-      if (!resultFuture.isDone()) {
-        throw new IllegalStateException("Result future must be done at this point");
+      if (isModal) {
+        // Running task with blocking EDT event pumping has the following contract in test mode:
+        //   if a random EDT event processed by blockingPI fails with an exception, the event pumping
+        //   is stopped and the submitted task fails with respective exception.
+        // The task submitted to e.g. POOLED thread might not be able to finish at all because it requires invoke&waits,
+        //   but EDT is broken due an exception. Hence, initial task should be completed exceptionally
+        CompletableFuture<Void> blockingRunFuture = progressFuture.thenAccept(progressIndicator -> {
+          if (progressIndicator instanceof BlockingProgressIndicator) {
+            //noinspection deprecation
+            ((BlockingProgressIndicator)progressIndicator).startBlocking(modalityEntered::up, isFakeModal, taskFuture);
+          }
+          else {
+            Logger.getInstance(ProgressRunner.class).warn("Can't go modal without BlockingProgressIndicator");
+            modalityEntered.up();
+          }
+        });
+        blockingRunFuture.exceptionally(throwable -> {
+          taskFuture.completeExceptionally(throwable);
+          return null;
+        });
+        // `startBlocking` might throw unrelated exceptions execute the submitted task so potential failure should be handled.
+        // Relates to testMode-ish execution: unhandled exceptions on event pumping are `LOG.error`-ed, hence throw exceptions in tests.
+        resultFuture = taskFuture.thenCombine(blockingRunFuture, (r, __) -> r);
       }
-      // Shared permit is not needed anymore
-      sharedPermit.getSecond().finish();
+      else {
+        resultFuture = taskFuture;
+      }
+
+      if (isSync) {
+        // At first here was a blocking resultFuture.get() call,
+        // which lead to deadlocks when `BlockingProgressIndicator.startBlocking` already exited,
+        // and nobody was dispatching EDT events because the current thread (EDT) was blocked on this future,
+        // so instead of blocking, we assert that the future should be done at this point,
+        // otherwise, `startBlocking` should continue pumping the events to give cancelled tasks a chance to complete.
+        if (!resultFuture.isDone()) {
+          throw new IllegalStateException("Result future must be done at this point");
+        }
+      }
+      return resultFuture;
     }
-    return resultFuture;
   }
 
   private @NotNull CompletableFuture<R> normalExec(@NotNull CompletableFuture<? extends @NotNull ProgressIndicator> progressFuture,
@@ -403,7 +408,8 @@ public final class ProgressRunner<R> {
     }
 
     final Pair<CoroutineContext, AccessToken> sharedPermit =
-      isModal && isSync ? getLockPermitContext(true) : new Pair<>(EmptyCoroutineContext.INSTANCE, AccessToken.EMPTY_ACCESS_TOKEN);
+      isModal && isSync ? getLockPermitContext(LockParallelizationSharingPolicy.SHARING_NO_CHECK_TOPMOST_RA) : new Pair<>(EmptyCoroutineContext.INSTANCE, AccessToken.EMPTY_ACCESS_TOKEN);
+    AccessToken modalityAssociation = associateModalityWithLock(progressFuture, sharedPermit.getFirst());
     CompletableFuture<R> resultFuture = launchTask(onThreadCallable, progressFuture, sharedPermit.getFirst());
 
     if (isModal) {
@@ -425,9 +431,50 @@ public final class ProgressRunner<R> {
 
     if (isSync) {
       waitForFutureUnlockingThread(resultFuture);
+      modalityAssociation.finish();
       sharedPermit.getSecond().close();
     }
     return resultFuture;
+  }
+
+  /**
+   * Associates the modality state of the progress indicator with the lock element in {@code lockContext}.
+   * See {@link ModalityLockAssociation}.
+   * The progress indicator can become available later, so the association can start after this method returns.
+   */
+  private static @NotNull AccessToken associateModalityWithLock(@NotNull CompletableFuture<? extends @NotNull ProgressIndicator> progressFuture,
+                                                                @NotNull CoroutineContext lockContext) {
+    if (lockContext == EmptyCoroutineContext.INSTANCE) {
+      return AccessToken.EMPTY_ACCESS_TOKEN;
+    }
+    ModalityAssociation association = new ModalityAssociation(lockContext);
+    progressFuture.thenAccept(indicator -> association.associate(indicator.getModalityState()));
+    return association;
+  }
+
+  private static final class ModalityAssociation extends AccessToken {
+    private final @NotNull CoroutineContext myLockContext;
+    private @Nullable AccessToken myCleanup;
+    private boolean myFinished;
+
+    private ModalityAssociation(@NotNull CoroutineContext lockContext) {
+      myLockContext = lockContext;
+    }
+
+    private synchronized void associate(@NotNull ModalityState modality) {
+      if (!myFinished) {
+        myCleanup = ModalityLockAssociation.associate(modality, myLockContext);
+      }
+    }
+
+    @Override
+    public synchronized void finish() {
+      myFinished = true;
+      if (myCleanup != null) {
+        myCleanup.finish();
+        myCleanup = null;
+      }
+    }
   }
 
   private static void waitForFutureUnlockingThread(@NotNull CompletableFuture<?> resultFuture) {
@@ -480,7 +527,6 @@ public final class ProgressRunner<R> {
   ) {
     CompletableFuture<R> resultFuture = new CompletableFuture<>();
     ChildContext childContext = Propagation.createChildContext("ProgressRunner: " + task);
-    CoroutineContext externalContextElements = ThreadContext.currentThreadContext().fold((CoroutineContext)EmptyCoroutineContext.INSTANCE, (acc, elem) -> elem instanceof ExternalIntelliJContextElement ? acc.plus(elem) : acc);
     Job job = childContext.getJob();
     if (job != null) {
       // cancellation of the Job cancels the future
@@ -507,7 +553,7 @@ public final class ProgressRunner<R> {
         try {
           childContext.runInChildContext(() -> {
             CoroutineContext effectiveContext =
-              ThreadContext.currentThreadContext().plus(asContextElement(progressIndicator.getModalityState()).plus(sharedPermit)).plus(externalContextElements);
+              ThreadContext.currentThreadContext().plus(asContextElement(progressIndicator.getModalityState()).plus(sharedPermit));
             ThreadContext.installThreadContext(effectiveContext, true, () -> {
               runnable.run();
               return Unit.INSTANCE;

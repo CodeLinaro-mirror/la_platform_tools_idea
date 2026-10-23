@@ -33,8 +33,10 @@ import com.jetbrains.python.psi.PyPsiFacade
 import com.jetbrains.python.psi.PyQualifiedNameOwner
 import com.jetbrains.python.psi.PyTypeAliasStatement
 import com.jetbrains.python.psi.PyUtil
+import com.jetbrains.python.psi.types.PyClassLikeType
 import com.jetbrains.python.psi.types.PyClassType
-import com.jetbrains.python.psi.types.PyTypeParser
+import com.jetbrains.python.psi.types.PyType
+import com.jetbrains.python.psi.types.PyLegacyDocstringTypeParser
 import com.jetbrains.python.psi.types.PyUnionType
 import com.jetbrains.python.psi.types.TypeEvalContext
 import com.jetbrains.python.psi.types.isNoneType
@@ -43,7 +45,7 @@ import org.jetbrains.annotations.Nls
 object PyDocumentationLink {
 
   /** Prefix understood by `com.intellij.codeInsight.hint.ElementLinkHandler` for navigable tooltip links. */
-  private const val TOOLTIP_ELEMENT_LINK_PREFIX = "#element/"
+  internal const val TOOLTIP_ELEMENT_LINK_PREFIX = "#element/"
 
   private const val LINK_TYPE_CLASS = "#class#"
   private const val LINK_TYPE_PARAM = "#param#"
@@ -78,7 +80,7 @@ object PyDocumentationLink {
    * instead of falling back to plain, unhighlighted text.
    */
   private fun resolveNamedClassType(typeName: String, anchor: PsiElement, context: TypeEvalContext): PyClassType? {
-    return when (val type = PyTypeParser.getTypeByName(anchor, typeName, context)) {
+    return when (val type = PyLegacyDocstringTypeParser.getTypeByName(anchor, typeName, context)) {
       is PyClassType -> type
       is PyUnionType -> type.members.filterIsInstance<PyClassType>().firstOrNull { it.name == typeName }
       else -> null
@@ -96,23 +98,57 @@ object PyDocumentationLink {
    * without a link, so it can still be navigated to visually even if it cannot be resolved from the tooltip.
    */
   @JvmStatic
-  fun toPossibleClassTooltipLink(typeName: @Nls String, anchor: PsiElement, context: TypeEvalContext): HtmlChunk {
-    val type = resolveNamedClassType(typeName, anchor, context)
+  fun toPossibleClassTooltipLink(typeName: @Nls String, anchor: PsiElement, context: TypeEvalContext): HtmlChunk =
+    toTypeTooltipLink(resolveNamedClassType(typeName, anchor, context), typeName)
+
+  /**
+   * Renders [displayName] as a clickable, highlighted type-name chunk for an inspection tooltip — the same
+   * `#element/<fqn>` link and builtin/keyword highlighting as [toPossibleClassTooltipLink], but from an already
+   * resolved [type], so a caller that holds the `PyType` need not re-resolve a name (and is not limited to types
+   * resolvable from an anchor). A non-class type, or a class with no qualified name, renders as highlighted text
+   * without a link.
+   */
+  @JvmStatic
+  fun toTypeTooltipLink(type: PyType?, displayName: @Nls String): HtmlChunk {
+    val pyClass = (type as? PyClassType)?.pyClass
+    val text = pyClass?.qualifiedName?.takeUnless { it.isEmpty() }
+                 ?.let { HtmlChunk.link("$TOOLTIP_ELEMENT_LINK_PREFIX$it", displayName) }
+               ?: HtmlChunk.text(displayName)
     return when {
-      type != null -> {
-        val qualifiedName = type.pyClass.qualifiedName
-        val text = if (!qualifiedName.isNullOrEmpty())
-          HtmlChunk.link("$TOOLTIP_ELEMENT_LINK_PREFIX$qualifiedName", typeName)
-        else
-          HtmlChunk.text(typeName)
-        if (type.isNoneType)
-          styledSpan(text, PyHighlighter.PY_KEYWORD)
-        else
-          styledReference(text, type.pyClass)
-      }
-      else -> HtmlChunk.text(typeName)
+      type.isNoneType -> styledSpan(text, PyHighlighter.PY_KEYWORD)
+      pyClass != null -> styledReference(text, pyClass)
+      else -> text
     }
   }
+
+  /**
+   * Like [toPossibleClassTooltipLink] but builds the link from [type]'s own class identity instead of
+   * re-resolving the displayed [typeName] from [anchor]'s scope. This makes class names that are not imported
+   * into the anchor file — most notably the `collections.abc` ABCs — navigable in tooltips, where name-based
+   * resolution would have failed and rendered them as plain text. Falls back to the name-based
+   * [toPossibleClassTooltipLink] for `None` (so it keeps its keyword styling) and for class-like types without
+   * a usable [PyClass].
+   */
+  @JvmStatic
+  fun toPossibleClassTooltipLink(type: PyClassLikeType, typeName: @Nls String, anchor: PsiElement, context: TypeEvalContext): HtmlChunk {
+    val pyClass = type.asLinkableClass()
+    return if (pyClass != null) styledReference(toQualifiedNameTooltipLink(pyClass.qualifiedName!!, typeName), pyClass)
+    else toPossibleClassTooltipLink(typeName, anchor, context)
+  }
+
+  /**
+   * The [PyClass] to link to directly: the class of a non-`None` class type that carries a qualified name.
+   * `None` is excluded so it keeps its keyword styling via the name-resolution path.
+   */
+  private fun PyClassLikeType.asLinkableClass(): PyClass? {
+    if (this.isNoneType) return null
+    return (this as? PyClassType)?.pyClass?.takeIf { !it.qualifiedName.isNullOrEmpty() }
+  }
+
+  /** Renders [linkText] as a tooltip-navigable link (`#element/<fqn>`). */
+  @JvmStatic
+  fun toQualifiedNameTooltipLink(@NlsSafe qualifiedName: String, linkText: @Nls String): HtmlChunk =
+    HtmlChunk.link("$TOOLTIP_ELEMENT_LINK_PREFIX$qualifiedName", linkText)
 
   @JvmStatic
   fun toClass(pyClass: PyClass, linkText: @Nls String): HtmlChunk {
@@ -185,7 +221,6 @@ object PyDocumentationLink {
       .firstOrNull()
   }
 
-  @JvmStatic
   private fun possibleFunction(qualifiedName: String, element: PsiElement): PyFunction? {
     // TODO a better, more general way to resolve qualified names of function
     val facade = PyPsiFacade.getInstance(element.project)
@@ -204,7 +239,6 @@ object PyDocumentationLink {
       .firstOrNull()
   }
 
-  @JvmStatic
   private fun containingClass(element: PsiElement): PyClass? {
     return when (element) {
       is PyClass -> element
@@ -213,7 +247,6 @@ object PyDocumentationLink {
     }
   }
 
-  @JvmStatic
   private fun parameterPossibleClass(parameter: PsiElement, context: TypeEvalContext): PyClass? {
     if (parameter is PyNamedParameter) {
       val type = context.getType(parameter)
@@ -224,7 +257,6 @@ object PyDocumentationLink {
     return null
   }
 
-  @JvmStatic
   private fun possibleClass(type: String, anchor: PsiElement, context: TypeEvalContext): PyClass? {
     return resolveNamedClassType(type, anchor, context)?.pyClass
   }

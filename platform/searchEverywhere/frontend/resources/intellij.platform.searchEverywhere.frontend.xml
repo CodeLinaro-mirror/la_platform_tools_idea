@@ -3,6 +3,7 @@
   <dependencies>
     <module name="intellij.platform.frontend"/>
     <module name="fleet.rhizomedb"/>
+    <module name="intellij.libraries.jetbrains.annotations"/>
     <module name="intellij.libraries.kotlinx.coroutines.core"/>
     <module name="intellij.platform.analysis"/>
     <module name="intellij.platform.core"/>
@@ -11,22 +12,35 @@
     <module name="intellij.platform.editor.ui"/>
     <module name="intellij.platform.ide.core"/>
     <module name="intellij.platform.ide.impl"/>
+    <module name="intellij.platform.ide.observable"/>
+    <module name="intellij.platform.ide.rpc"/>
     <module name="intellij.platform.indexing"/>
     <module name="intellij.platform.kernel"/>
     <module name="intellij.platform.lang"/>
     <module name="intellij.platform.lang.impl"/>
+    <module name="intellij.platform.project"/>
     <module name="intellij.platform.projectModel"/>
+    <module name="intellij.platform.refactoring"/>
+    <module name="intellij.platform.runtime.product"/>
     <module name="intellij.platform.searchEverywhere"/>
     <module name="intellij.platform.statistics"/>
     <module name="intellij.platform.usageView"/>
     <module name="intellij.platform.usageView.impl"/>
     <module name="intellij.platform.util.coroutines"/>
     <module name="intellij.platform.util.ui"/>
+    <module name="intellij.platform.welcomeScreen"/>
   </dependencies>
   <!-- endregion -->
 
   <actions resource-bundle="messages.searchEverywhereFrontendBundle">
-    <action id="SeNewSearchToggleAction" class="com.intellij.platform.searchEverywhere.frontend.actions.SeNewSearchToggleAction"/>
+    <action id="SeNewSearchToggleAction"
+            class="com.intellij.platform.searchEverywhere.frontend.actions.SeNewSearchToggleAction"
+            internal="true"
+    />
+    <action id="SearchEverywhereComponent"
+            class="com.intellij.platform.searchEverywhere.frontend.toolbar.SearchEverywhereComponentAction"
+            icon="AllIcons.Actions.Search"
+    />
   </actions>
 
   <extensionPoints>

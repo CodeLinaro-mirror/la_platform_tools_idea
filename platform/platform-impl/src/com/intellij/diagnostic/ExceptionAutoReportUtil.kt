@@ -2,21 +2,22 @@
 package com.intellij.diagnostic
 
 import com.intellij.ide.AboutPopupDescriptionProvider
-import com.intellij.ide.gdpr.Consent
 import com.intellij.ide.gdpr.ConsentOptions
 import com.intellij.ide.plugins.PluginManagerCore
+import com.intellij.ide.plugins.PluginUtil
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.idea.AppMode
-import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ex.ApplicationManagerEx
 import com.intellij.openapi.application.impl.ApplicationInfoImpl
 import com.intellij.openapi.diagnostic.ProblematicPluginInfo
 import com.intellij.openapi.diagnostic.thisLogger
+import com.intellij.openapi.extensions.ExtensionNotApplicableException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.startup.ProjectActivity
 import com.intellij.openapi.util.NlsContexts
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.util.registry.RegistryManager
+import com.intellij.util.application
 import com.intellij.util.text.nullize
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -25,7 +26,9 @@ import org.jetbrains.annotations.TestOnly
 
 @ApiStatus.Internal
 object ExceptionAutoReportUtil {
-  private const val EA_AUTO_REPORT_OFFERED_PROPERTY: String = "ea.auto.report.offered"
+  private const val EA_AUTO_REPORT_NOTIFIED_PROPERTY: String = "ea.auto.report.notified"
+  private const val EA_AUTO_REPORT_CONFIGURED_PROPERTY: String = "ea.auto.report.configured"
+
   private const val ENABLED_FOR_DEVELOPMENT = false
   private const val BACKEND_THROWABLE_HEADER_PREFIX = "backend"
   private const val BACKEND_EXCEPTION_CLASS_NAME = "com.jetbrains.rd.platform.diagnostics.BackendException"
@@ -35,12 +38,12 @@ object ExceptionAutoReportUtil {
     get() = !ApplicationInfoImpl.getShadowInstance().isVendorJetBrains || AppMode.isHeadless()
 
   suspend fun isAutoReportVisible(): Boolean {
-    return !autoReportIsForbiddenForProduct && RegistryManager.getInstanceAsync().`is`("ea.auto.report.feature.visible")
+    return !autoReportIsForbiddenForProduct && RegistryManager.getInstanceAsync().`is`("ea.auto.report.allowed")
   }
 
-  private fun isAutoReportVisibleBlocking(): Boolean {
+  fun isAutoReportVisibleBlocking(): Boolean {
     // may be called extremely early before IDE started!
-    return !autoReportIsForbiddenForProduct && Registry.`is`("ea.auto.report.feature.visible", false)
+    return !autoReportIsForbiddenForProduct && Registry.`is`("ea.auto.report.allowed", false)
   }
 
   @JvmStatic
@@ -62,7 +65,7 @@ object ExceptionAutoReportUtil {
     return Registry.stringValue("ea.auto.report.forced.tag", "").nullize()
   }
 
-  internal fun getForcedAutoReportLevel(): ForcedReportLevel {
+  private fun getForcedAutoReportLevel(): ForcedReportLevel {
     return try {
       ForcedReportLevel.valueOf(Registry.stringValue("ea.auto.report.forced", ForcedReportLevel.NONE.name).uppercase())
     }
@@ -78,51 +81,14 @@ object ExceptionAutoReportUtil {
 
   suspend fun isAutoReportAllowedByUser(): Boolean {
     if (isAutoReportForced) return true // set by provisioning
-    if (ConsentOptions.getInstance().isEAP) {
-      return ExceptionEAPAutoReportManager.getInstance().enabledInEAP
+
+    val (consents, needsReconfirm) = withContext(Dispatchers.IO) {
+      ConsentOptions.getInstance().getConsents(ConsentOptions.condEAAutoReportConsent())
     }
-
-    val (consent, needsReconfirm) = getConsentAndNeedsReconfirm()
-    return consent?.isAccepted == true && !needsReconfirm
-  }
-
-  private suspend fun getConsentAndNeedsReconfirm(): Pair<Consent?, Boolean> {
-    return withContext(Dispatchers.IO) {
-      val (consents, needsReconfirm) = ConsentOptions.getInstance().getConsents(ConsentOptions.condEAAutoReportConsent())
-      thisLogger().assertTrue(consents.size <= 1) {
-        "Consent is expected to be bundled; multiple consents: ${consents.joinToString(",")}"
-      }
-      Pair(consents.firstOrNull(), needsReconfirm)
+    thisLogger().assertTrue(consents.size <= 1) {
+      "Consent is expected to be bundled; multiple consents: ${consents.joinToString(",")}"
     }
-  }
-
-  suspend fun shouldOfferEnablingAutoReport(): Boolean {
-    if (!isAutoReportVisible() || ConsentOptions.getInstance().isEAP) return false
-    if (isDevelopmentEnvironment) return false
-    if (isAutoReportForced) return false
-
-    val (consent, needsReconfirm) = getConsentAndNeedsReconfirm()
-    if (consent == null) return false
-    // the feature is already enabled
-    if (consent.isAccepted && !needsReconfirm) return false
-    // the feature was never proposed
-    if (!PropertiesComponent.getInstance().getBoolean(EA_AUTO_REPORT_OFFERED_PROPERTY, false)) return true
-    // ask once for each consent version
-    return !PropertiesComponent.getInstance().getBoolean("$EA_AUTO_REPORT_OFFERED_PROPERTY.${consent.version}", false)
-  }
-
-  suspend fun enablingAutoReportOffered(autoReportEnabled: Boolean) {
-    if (!isAutoReportVisible()) return
-
-    ConsentOptions.getInstance().setEAAutoReportAllowed(autoReportEnabled)
-    ExceptionEAPAutoReportManager.getInstance().enabledInEAP = autoReportEnabled
-
-    val consent = getConsentAndNeedsReconfirm().first
-    if (consent != null) {
-      PropertiesComponent.getInstance().setValue("$EA_AUTO_REPORT_OFFERED_PROPERTY.${consent.version}", true)
-    }
-
-    PropertiesComponent.getInstance().setValue(EA_AUTO_REPORT_OFFERED_PROPERTY, true)
+    return consents.firstOrNull()?.isAccepted == true && !needsReconfirm
   }
 
   /**
@@ -136,6 +102,12 @@ object ExceptionAutoReportUtil {
     val throwable = message.throwable
     if (throwable is JBRCrash) return null
 
+    // a marker of stopped error monitoring, not an actual error; it is handled by the message pool clients themselves
+    if (throwable.isInstance<MessagePool.TooManyErrorsException>()) {
+      thisLogger().debug("Ignoring it as an error monitoring marker: ${getThrowableFqn(throwable)}")
+      return null
+    }
+
     // if level is ALL or NONE, then we report exceptions based on regular rules
     val level = getForcedAutoReportLevel()
     if (level == ForcedReportLevel.FREEZES && !isFreeze(throwable)) {
@@ -143,10 +115,8 @@ object ExceptionAutoReportUtil {
       return null
     }
 
-    val errorMessageClustering = ErrorMessageClustering.getInstance()
-
-    val pluginId = errorMessageClustering.analyzeCause(message)
-    val pluginInfo = errorMessageClustering.createPluginInfo(pluginId)
+    val pluginId = PluginUtil.getInstance().findPluginId(throwable)
+    val pluginInfo = ErrorMessageClustering.getInstance().createPluginInfo(pluginId)
     val submitter = DefaultIdeaErrorLogger.findSubmitterByPluginInfo(throwable, pluginInfo)
     val itnReporter = submitter as? ITNReporter ?: return null
 
@@ -168,14 +138,13 @@ object ExceptionAutoReportUtil {
   private fun isDefaultSubmitter(submitter: ITNReporter): Boolean {
     val cls = submitter.javaClass
     return cls == ITNReporter::class.java
-           || cls.name == $$"com.intellij.rustrover.RustRoverMessagePoolAutoReporter$MyITNReporter"
   }
 
   fun isFreeze(throwable: Throwable): Boolean {
     return throwable.isInstance<Freeze>()
   }
 
-  fun getThrowableFqn(throwable: Throwable): String? {
+  private fun getThrowableFqn(throwable: Throwable): String? {
     if (throwable is RemoteSerializedThrowable) return throwable.classFqn
     return throwable::class.qualifiedName
   }
@@ -190,16 +159,44 @@ object ExceptionAutoReportUtil {
   }
 
   @TestOnly
-  fun createFreezeLogMessage(): LogMessage = LogMessage(Freeze(emptyList()), null, emptyList())
+  fun createFreezeLogMessage(): LogMessage = LogMessage(Freeze(null, null, emptyList()), null, emptyList())
+
+  fun isUserNotifiedOfDataCollection(): Boolean {
+    return PropertiesComponent.getInstance().getInt(EA_AUTO_REPORT_NOTIFIED_PROPERTY, 0) > 0
+  }
+
+  fun recordUserNotifiedOfDataCollection() {
+    val propertiesComponent = PropertiesComponent.getInstance()
+    val counter = propertiesComponent.getInt(EA_AUTO_REPORT_NOTIFIED_PROPERTY, 0) + 1
+    propertiesComponent.setValue(EA_AUTO_REPORT_NOTIFIED_PROPERTY, counter, 0)
+  }
+
+  fun needNotificationOfDataCollection() : Boolean {
+    return PropertiesComponent.getInstance().getInt(EA_AUTO_REPORT_NOTIFIED_PROPERTY, 0) < 3
+  }
+
+  fun recordUserVisitedConfigure() {
+    PropertiesComponent.getInstance().setValue(EA_AUTO_REPORT_CONFIGURED_PROPERTY, true)
+  }
+
+  /**
+   * @return true if user visited Configure... page from notification about data collection
+   */
+  fun isUserVisitedConfigure() : Boolean {
+    return PropertiesComponent.getInstance().getBoolean(EA_AUTO_REPORT_CONFIGURED_PROPERTY, false)
+  }
 }
 
 internal class ReporterIdForEAAutoReporters : AboutPopupDescriptionProvider {
   override fun getDescription(): @NlsContexts.DetailedDescription String? = null
-  override fun getExtendedDescription(): @NlsContexts.DetailedDescription String =
-    DiagnosticBundle.message("about.dialog.text.ea.reporting.id", ITNProxy.DEVICE_ID)
+  override fun getExtendedDescription(): String = DiagnosticBundle.message("about.dialog.text.ea.reporting.id", ITNProxy.DEVICE_ID)
 }
 
 internal class ReporterIdLoggerActivity : ProjectActivity {
+  init {
+    if (application.isHeadlessEnvironment) throw ExtensionNotApplicableException.create()
+  }
+
   override suspend fun execute(project: Project) {
     thisLogger().info(DiagnosticBundle.message("about.dialog.text.ea.reporting.id", ITNProxy.DEVICE_ID))
   }

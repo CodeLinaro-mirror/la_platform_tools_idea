@@ -197,7 +197,7 @@ object PyDefUseUtil {
   }
 
   private fun isCallOnPrefix(callInstr: CallInstruction, varQname: QualifiedName): Boolean {
-    val receiver = callInstr.element.getReceiver(null)
+    val receiver = (callInstr.element.callee as? PyQualifiedExpression)?.qualifier
     if (isPrefixExpression(receiver, varQname)) return true
     for (arg in callInstr.element.arguments) {
       if (isPrefixExpression(arg, varQname)) return true
@@ -296,6 +296,7 @@ object PyDefUseUtil {
     val instructions = controlFlow.instructions
     val instr = ControlFlowUtil.findInstructionNumberByElement(instructions, anchor)
     if (instr < 0) {
+      @Suppress("UNCHECKED_CAST")
       return PyElement.EMPTY_ARRAY as Array<PsiElement?>
     }
     val visited = BooleanArray(instructions.size)

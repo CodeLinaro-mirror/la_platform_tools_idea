@@ -3,13 +3,18 @@ package com.jetbrains.python.sdk.add.v2.venv
 
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.observable.properties.ObservableProperty
-import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.openapi.ui.validation.DialogValidationRequestor
+import com.intellij.python.sdk.backend.PythonInterpreter
 import com.intellij.ui.dsl.builder.Panel
 import com.jetbrains.python.PyBundle.message
 import com.jetbrains.python.errorProcessing.PyResult
 import com.jetbrains.python.newProject.collector.InterpreterStatisticsInfo
 import com.jetbrains.python.sdk.ModuleOrProject
+import com.jetbrains.python.sdk.add.v2.DetectedSelectableInterpreter
+import com.jetbrains.python.sdk.add.v2.ExistingSelectableInterpreter
+import com.jetbrains.python.sdk.add.v2.InstallableSelectableInterpreter
+import com.jetbrains.python.sdk.add.v2.InterpreterWithPath
+import com.jetbrains.python.sdk.add.v2.ManuallyAddedSelectableInterpreter
 import com.jetbrains.python.sdk.add.v2.PathHolder
 import com.jetbrains.python.sdk.add.v2.PythonAddInterpreterModel
 import com.jetbrains.python.sdk.add.v2.PythonExistingEnvironmentConfigurator
@@ -24,7 +29,7 @@ import com.jetbrains.python.statistics.InterpreterCreationMode
 import com.jetbrains.python.statistics.InterpreterType
 import kotlinx.coroutines.CoroutineScope
 
-class PythonExistingEnvironmentSelector<P : PathHolder>(model: PythonAddInterpreterModel<P>, private val module: Module?) :
+internal class PythonExistingEnvironmentSelector<P : PathHolder>(model: PythonAddInterpreterModel<P>, private val module: Module?) :
   PythonExistingEnvironmentConfigurator<P>(model) {
   private lateinit var comboBox: PythonInterpreterComboBox<P>
   override val toolExecutable: ObservableProperty<ValidatedPath.Executable<P>?>? = null
@@ -48,15 +53,22 @@ class PythonExistingEnvironmentSelector<P : PathHolder>(model: PythonAddInterpre
     comboBox.initialize(scope, model.allInterpreters.mapDistinctSortedForExistingEnvironment(module))
   }
 
-  override suspend fun getOrCreateSdk(moduleOrProject: ModuleOrProject): PyResult<Sdk> {
+  override suspend fun getOrCreateSdk(moduleOrProject: ModuleOrProject): PyResult<PythonInterpreter> {
     // todo error handling, nullability issues
-    val sdk = model.state.selectedInterpreter.get()!!.setupSdk(
+    val interpreter: InterpreterWithPath<P> = when (val interpreter = model.state.selectedInterpreter.get()) {
+      is InstallableSelectableInterpreter, null -> throw AssertionError("This code should never be called and it is here due to lack of abstraction")
+      is DetectedSelectableInterpreter,
+      is ExistingSelectableInterpreter,
+      is ManuallyAddedSelectableInterpreter,
+        -> interpreter
+    }
+
+    val pythonInterpreter = interpreter.setupSdk(
       moduleOrProject = moduleOrProject,
       fileSystem = model.fileSystem,
       targetPanelExtension = model.state.targetPanelExtension.get(),
-      isAssociateWithModule = true,
     )
-    return sdk
+    return pythonInterpreter
   }
 
   override fun createStatisticsInfo(target: PythonInterpreterCreationTargets): InterpreterStatisticsInfo {

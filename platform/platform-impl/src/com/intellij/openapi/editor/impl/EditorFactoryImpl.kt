@@ -10,6 +10,7 @@ import com.intellij.openapi.application.ModalityStateListener
 import com.intellij.openapi.application.asContextElement
 import com.intellij.openapi.application.impl.LaterInvocator
 import com.intellij.openapi.components.serviceAsync
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.editor.ClientEditorManager
@@ -25,7 +26,6 @@ import com.intellij.openapi.editor.event.EditorFactoryListener
 import com.intellij.openapi.editor.ex.EditorEx
 import com.intellij.openapi.editor.highlighter.EditorHighlighter
 import com.intellij.openapi.editor.highlighter.EditorHighlighterFactory
-import com.intellij.openapi.editor.impl.ad.isRhizomeAdRebornEnabled
 import com.intellij.openapi.editor.impl.event.EditorEventMulticasterImpl
 import com.intellij.openapi.editor.impl.view.EditorPainter
 import com.intellij.openapi.editor.impl.zombie.Necropolis
@@ -37,9 +37,10 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectCloseListener
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.util.Disposer
-import com.intellij.openapi.util.removeUserData
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.psi.FileThreadingContracts
 import com.intellij.psi.impl.PsiDocumentManagerBase
+import com.intellij.testFramework.LightVirtualFile
 import com.intellij.util.EventDispatcher
 import com.intellij.util.concurrency.annotations.RequiresEdt
 import com.intellij.util.text.CharArrayCharSequence
@@ -51,12 +52,12 @@ import org.jetbrains.annotations.VisibleForTesting
 import java.util.stream.Stream
 import kotlin.streams.asStream
 
-private val EP = ExtensionPointName<EditorFactoryListener>("com.intellij.editorFactoryListener")
-private val LOG = logger<EditorFactoryImpl>()
+private val EP: ExtensionPointName<EditorFactoryListener> = ExtensionPointName<EditorFactoryListener>("com.intellij.editorFactoryListener")
+private val LOG: Logger = logger<EditorFactoryImpl>()
 
 class EditorFactoryImpl(coroutineScope: CoroutineScope?) : EditorFactory() {
-  private val editorEventMulticaster = EditorEventMulticasterImpl()
-  private val editorFactoryEventDispatcher = EventDispatcher.create(EditorFactoryListener::class.java)
+  private val editorEventMulticaster: EditorEventMulticasterImpl = EditorEventMulticasterImpl()
+  private val editorFactoryEventDispatcher: EventDispatcher<EditorFactoryListener?> = EventDispatcher.create(EditorFactoryListener::class.java)
 
   init {
     val connection = ApplicationManager.getApplication().messageBus.simpleConnect()
@@ -217,9 +218,9 @@ class EditorFactoryImpl(coroutineScope: CoroutineScope?) : EditorFactory() {
     highlighter: EditorHighlighter?,
     afterCreation: ((EditorImpl) -> Unit)?,
   ): EditorImpl {
-    hackyPutEditorIdToDocument(document)
     val editor = EditorImpl(document, isViewer, project, kind, file, highlighter)
-    putEditorId(document, editor)
+    editor.putEditorId()
+    markLightFileExposedInEditor(kind, file)
     // must be _before_ event firing
     afterCreation?.invoke(editor)
 
@@ -235,7 +236,7 @@ class EditorFactoryImpl(coroutineScope: CoroutineScope?) : EditorFactory() {
     return editor
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   override fun releaseEditor(editor: Editor) {
     try {
       turnIntoZombiesAndBury(editor)
@@ -310,19 +311,8 @@ private fun collectAllEditors(): Sequence<Editor> {
   return ClientEditorManager.getAllInstances().asSequence().flatMap { it.editorsSequence() }
 }
 
-private fun hackyPutEditorIdToDocument(document: Document) {
-  if (isRhizomeAdRebornEnabled) {
-    if (document.getUserData(KERNEL_EDITOR_ID_KEY) == null) {
-      document.putUserData(KERNEL_EDITOR_ID_KEY, EditorId.create())
-    }
-  }
-}
-
-private fun putEditorId(document: Document, editor: EditorImpl) {
-  if (isRhizomeAdRebornEnabled) {
-    editor.putUserData(KERNEL_EDITOR_ID_KEY, document.removeUserData(KERNEL_EDITOR_ID_KEY))
-  }
-  else {
-    editor.putEditorId()
+private fun markLightFileExposedInEditor(kind: EditorKind, file: VirtualFile?) {
+  if (kind == EditorKind.MAIN_EDITOR && file is LightVirtualFile) {
+    FileThreadingContracts.markLightFileRequiresApplicationLockOnModification(file)
   }
 }

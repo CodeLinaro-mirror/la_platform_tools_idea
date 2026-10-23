@@ -136,6 +136,7 @@ public interface Git {
                             boolean force,
                             boolean detach,
                             boolean withReset,
+                            boolean ignoreOtherWorktrees,
                             GitLineHandlerListener @NotNull ... listeners);
 
   @NotNull
@@ -346,6 +347,20 @@ public interface Git {
   @NotNull
   GitCommandResult deleteWorkingTree(@NotNull GitRepository repository, @NotNull GitWorkingTree tree);
 
+  /**
+   * Use it when you don't have a project or no open project owns the main worktree. Otherwise, use {@link #deleteWorkingTree}.
+   * Runs {@code git worktree remove --force} for {@code tree} without a project.
+   * <p>
+   * The command runs in {@code mainWorktreePath} with the application-level Git executable.
+   * The {@code --force} flag also deletes the uncommitted changes in {@code tree}.
+   *
+   * @param mainWorktreePath the root of the main worktree of the repository that owns {@code tree}
+   * @param tree             the linked worktree to delete
+   * @return the result of the git command
+   */
+  @NotNull
+  GitCommandResult deleteWorkingTreeWithoutProject(@NotNull Path mainWorktreePath, @NotNull GitWorkingTree tree);
+
   @NotNull
   List<GitWorkingTree> listWorktrees(@NotNull GitRepository repository) throws VcsException;
 
@@ -353,7 +368,21 @@ public interface Git {
   GitCommandResult createWorkingTree(@NotNull GitRepository repository,
                                      @NotNull FilePath workingTreePath,
                                      @NotNull GitReference sourceRef,
-                                     @Nullable String newBranchName);
+                                     @Nullable String newBranchName,
+                                     boolean force);
+
   @NotNull
   GitCommandResult pruneWorktrees(@NotNull GitRepository repository);
+
+  @NotNull
+  GitCommandResult lockWorkingTree(@NotNull GitRepository repository, @NotNull GitWorkingTree tree);
+
+  @NotNull
+  GitCommandResult unlockWorkingTree(@NotNull GitRepository repository, @NotNull GitWorkingTree tree);
+
+  @NotNull
+  GitCommandResult runHook(@NotNull GitRepository repository,
+                           @NotNull String hookName,
+                           @NotNull List<String> hookArgs,
+                           @NotNull List<String> stdinLines);
 }

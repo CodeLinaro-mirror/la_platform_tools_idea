@@ -1,7 +1,8 @@
 // Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.kotlin.gradle.idea.importing.multiplatformTests.k2
 
-import com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerImpl
+import com.intellij.codeInsight.daemon.impl.LineMarkersPass.getDisplayedLineMarkers
+import com.intellij.codeInsight.daemon.impl.TestDaemonCodeAnalyzerImpl
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.vfs.findFile
 import com.intellij.psi.PsiDocumentManager
@@ -114,11 +115,12 @@ class KotlinMppRunConfigurationsTest : AbstractKotlinMppGradleImportingTest() {
             runAfterTestExecution {
                 val nativeTestFile = myProjectRoot.findFile("src/nativeTest/kotlin/NativeTest.kt") ?: error("Missing 'NativeTest.kt'")
                 runInEdtAndWait {
+                    TestDaemonCodeAnalyzerImpl(myProject).waitForTermination()
                     codeInsightTestFixture.openFileInEditor(nativeTestFile)
                     codeInsightTestFixture.doHighlighting()
                     val psi = PsiManager.getInstance(myProject).findFile(nativeTestFile) ?: error("Missing 'NativeTest.kt' PsiFile")
                     val document = PsiDocumentManager.getInstance(myProject).getDocument(psi) ?: error("Missing 'NativeTest.kt' Document")
-                    val lineMarkers = DaemonCodeAnalyzerImpl.getLineMarkers(document, myProject)
+                    val lineMarkers = getDisplayedLineMarkers(document, myProject)
 
                     fun assertStateAtText(text: String, icon: Icon) {
                         val lineMarker = lineMarkers.find { marker -> marker.element?.text == text }
@@ -158,11 +160,12 @@ class KotlinMppRunConfigurationsTest : AbstractKotlinMppGradleImportingTest() {
             runAfterTestExecution {
                 val nativeTestFile = myProjectRoot.findFile("src/commonTest/kotlin/CommonTest.kt") ?: error("Missing 'CommonTest.kt'")
                 runInEdtAndWait {
+                    TestDaemonCodeAnalyzerImpl(myProject).waitForTermination()
                     codeInsightTestFixture.openFileInEditor(nativeTestFile)
                     codeInsightTestFixture.doHighlighting()
                     val psi = PsiManager.getInstance(myProject).findFile(nativeTestFile) ?: error("Missing 'CommonTest.kt' PsiFile")
                     val document = PsiDocumentManager.getInstance(myProject).getDocument(psi) ?: error("Missing 'CommonTest.kt' Document")
-                    val lineMarkers = DaemonCodeAnalyzerImpl.getLineMarkers(document, myProject)
+                    val lineMarkers = getDisplayedLineMarkers(document, myProject)
 
                     fun assertStateAtText(text: String, icon: Icon) {
                         val lineMarker = lineMarkers.find { marker -> marker.element?.text == text }

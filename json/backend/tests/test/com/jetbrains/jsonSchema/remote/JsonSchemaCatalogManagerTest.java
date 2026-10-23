@@ -1,11 +1,12 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.jsonSchema.remote;
 
-import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.StandardFileSystems;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.testFramework.PerformanceUnitTest;
 import com.intellij.testFramework.fixtures.BasePlatformTestCase;
 import com.intellij.tools.ide.metrics.benchmark.Benchmark;
+import com.jetbrains.jsonSchema.JsonSchemaCatalogEntry;
 import com.jetbrains.jsonSchema.JsonSchemaHeavyAbstractTest;
 import com.jetbrains.jsonSchema.ide.JsonSchemaService;
 import org.jetbrains.annotations.NotNull;
@@ -55,11 +56,11 @@ public class JsonSchemaCatalogManagerTest extends BasePlatformTestCase {
   @PerformanceUnitTest
   public void testPerformance() {
     VirtualFile file = myFixture.addFileToProject("some/unknown.json", "").getVirtualFile();
-    VirtualFile schemaFile = myCatalogManager.getSchemaFileForFile(file);
-    Assert.assertNull(schemaFile);
+    JsonSchemaCatalogEntry schemaEntry = myCatalogManager.getSchemaCatalogEntryForFile(file);
+    Assert.assertNull(schemaEntry);
     Benchmark.newBenchmark(getTestName(false), () -> {
       for (int i = 0; i < 1000000; i++) {
-        VirtualFile result = myCatalogManager.getSchemaFileForFile(file);
+        JsonSchemaCatalogEntry result = myCatalogManager.getSchemaCatalogEntryForFile(file);
         Assert.assertNull(result);
       }
     }).start();
@@ -67,8 +68,8 @@ public class JsonSchemaCatalogManagerTest extends BasePlatformTestCase {
 
   private void doTest(@NotNull String filePath, @Nullable String expectedSchemaUrl) {
     VirtualFile file = myFixture.addFileToProject(filePath, "").getVirtualFile();
-    VirtualFile schemaFile = myCatalogManager.getSchemaFileForFile(file);
-    String schemaUrl = schemaFile != null ? schemaFile.getUrl() : null;
+    JsonSchemaCatalogEntry entry = myCatalogManager.getSchemaCatalogEntryForFile(file);
+    String schemaUrl = entry != null ? entry.getUrl() : null;
     Assert.assertEquals(expectedSchemaUrl, schemaUrl);
   }
 
@@ -76,7 +77,7 @@ public class JsonSchemaCatalogManagerTest extends BasePlatformTestCase {
   private JsonSchemaCatalogManager configureCatalog() {
     JsonSchemaCatalogManager catalogManager = JsonSchemaService.Impl.get(getProject()).getCatalogManager();
     String path = JsonSchemaHeavyAbstractTest.getJsonSchemaTestDataFilePath("schemaStore/catalog.json");
-    VirtualFile catalogFile = LocalFileSystem.getInstance().findFileByPath(path);
+    VirtualFile catalogFile = StandardFileSystems.local().findFileByPath(path);
     Assert.assertNotNull(catalogFile);
     catalogManager.registerTestSchemaStoreFile(catalogFile, getTestRootDisposable());
     return catalogManager;

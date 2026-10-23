@@ -1,12 +1,32 @@
 <idea-plugin visibility="internal">
+  <!-- region Generated dependencies - run `Generate Product Layouts` to regenerate -->
   <dependencies>
-    <!-- region Generated dependencies - run `Generate Product Layouts` to regenerate -->
+    <module name="intellij.libraries.eclipse.lsp4j"/>
+    <module name="intellij.libraries.eclipse.lsp4j.jsonrpc"/>
+    <module name="intellij.libraries.guava"/>
+    <module name="intellij.platform.analysis"/>
+    <module name="intellij.platform.core"/>
+    <module name="intellij.platform.core.impl"/>
+    <module name="intellij.platform.core.ui"/>
+    <module name="intellij.platform.editor.ui"/>
+    <module name="intellij.platform.ide.core"/>
+    <module name="intellij.platform.ide.impl"/>
+    <module name="intellij.platform.ide.observable"/>
+    <module name="intellij.platform.lang"/>
+    <module name="intellij.platform.lang.impl"/>
+    <module name="intellij.platform.lsp"/>
+    <module name="intellij.platform.lsp.impl"/>
+    <module name="intellij.platform.projectModel"/>
+    <module name="intellij.platform.statistics"/>
+    <module name="intellij.platform.util.ui"/>
     <module name="intellij.python.community.execService"/>
     <module name="intellij.python.community.impl"/>
-    <module name="intellij.python.pytools"/>
-    <module name="intellij.python.pytools.ui"/>
-    <!-- endregion -->
+    <module name="intellij.python.lsp.core.common"/>
+    <module name="intellij.python.pyproject"/>
+    <module name="intellij.python.pytools.backend"/>
+    <module name="intellij.python.pytools.common"/>
   </dependencies>
+  <!-- endregion -->
   <extensionPoints>
     <extensionPoint qualifiedName="com.intellij.python.lsp.typeEngineConfigurable"
                     interface="com.intellij.python.lsp.core.typeEngine.PyTypeEngineProvider"
@@ -18,9 +38,22 @@
   <extensions defaultExtensionNs="com.intellij">
     <python.lsp.typeEngineConfigurable implementation="com.intellij.python.lsp.core.typeEngine.BuiltInPyTypeEngineProvider"/>
 
+    <completion.contributor language="Python"
+                            id="PyLspCompletionContributor"
+                            order="first, after pythonConsoleCompletionBlocking, after comboEditor, before pyClassNameCompletionContributor"
+                            implementationClass="com.intellij.python.lsp.core.completion.PyLspCompletionContributor"/>
+
     <registryKey key="python.lsp.type.engine.notebooks"
-                 defaultValue="false"
+                 defaultValue="true"
                  description="Enable Python LSP-backed type engines in notebooks"/>
+
+    <registryKey key="pycharm.type.engine.multi.module"
+                 defaultValue="true"
+                 restartRequired="true"
+                 description="Offer the external type engine to a project with more than one module"/>
+
+    <search.optionContributor
+        implementation="com.intellij.python.lsp.core.typeEngine.PyTypeEngineSearchableOptionContributor"/>
 
     <statistics.counterUsagesCollector implementationClass="com.intellij.python.lsp.core.typeEngine.PyTypeEngineUsageCollector"/>
     <projectSettings service="com.intellij.python.lsp.core.typeEngine.PyTypeEngineProjectSettings"/>

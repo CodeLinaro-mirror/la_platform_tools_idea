@@ -14,6 +14,7 @@ import com.jetbrains.python.psi.PyKeywordPattern;
 import com.jetbrains.python.psi.PyPattern;
 import com.jetbrains.python.psi.resolve.PyResolveContext;
 import com.jetbrains.python.psi.types.PyClassLikeType;
+import com.jetbrains.python.psi.types.PyAnyType;
 import com.jetbrains.python.psi.types.PyClassType;
 import com.jetbrains.python.psi.types.PyNeverType;
 import com.jetbrains.python.psi.types.PyType;
@@ -55,7 +56,7 @@ public class PyClassPatternImpl extends PyElementImpl implements PyClassPattern,
       final PyType captureType = PyCaptureContext.getCaptureType(this, context);
       return Ref.deref(PyTypeAssertionEvaluator.createAssertionType(captureType, instanceType, true, true, context));
     }
-    return null;
+    return PyAnyType.getUnknown();
   }
 
   @Override
@@ -180,6 +181,6 @@ public class PyClassPatternImpl extends PyElementImpl implements PyClassPattern,
     final PyResolveContext resolveContext = PyResolveContext.defaultContext(context);
     var members = type.findMember(name, resolveContext);
     if (members.isEmpty()) return null;
-    return Ref.create(PyUnionType.union(ContainerUtil.map(members, PyTypeMember::getType)));
+    return Ref.create(PyUnionType.unionOrUnknown(ContainerUtil.map(members, PyTypeMember::getType)));
   }
 }

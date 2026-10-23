@@ -1,6 +1,9 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.platform.buildScripts.testFramework
 
+import com.intellij.platform.buildScripts.concurrency.TaskScope
+import com.intellij.platform.buildScripts.concurrency.taskScope
+import org.jetbrains.intellij.build.BuildLifetime
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.util.io.NioFiles
 import com.intellij.platform.buildScripts.licenses.SoftwareBillOfMaterials
@@ -13,19 +16,13 @@ import io.opentelemetry.api.trace.StatusCode
 import kotlinx.collections.immutable.PersistentList
 import kotlinx.collections.immutable.PersistentSet
 import kotlinx.collections.immutable.persistentSetOf
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
+import java.util.concurrent.CancellationException
 import org.assertj.core.api.SoftAssertions
 import org.jetbrains.intellij.build.BuildContext
 import org.jetbrains.intellij.build.BuildOptions
 import org.jetbrains.intellij.build.OsFamily
 import org.jetbrains.intellij.build.ProductProperties
 import org.jetbrains.intellij.build.ProprietaryBuildTools
-import org.jetbrains.intellij.build.closeKtorClient
 import org.jetbrains.intellij.build.dependencies.TeamCityHelper.isUnderTeamCity
 import org.jetbrains.intellij.build.getDevModeOrTestBuildDateInSeconds
 import org.jetbrains.intellij.build.impl.buildNonBundledPlugins
@@ -49,16 +46,14 @@ import kotlin.io.path.name
 fun createBuildOptionsForTest(
   productProperties: ProductProperties,
   homeDir: Path,
-  skipDependencySetup: Boolean = false,
   testInfo: TestInfo? = null,
 ): BuildOptions {
-  return createBuildOptionsForTest(homeDir = homeDir, outDir = createTestBuildOutDir(productProperties), skipDependencySetup = skipDependencySetup, testInfo = testInfo)
+  return createBuildOptionsForTest(homeDir = homeDir, outDir = createTestBuildOutDir(productProperties), testInfo = testInfo)
 }
 
 fun createBuildOptionsForTest(
   homeDir: Path,
   outDir: Path,
-  skipDependencySetup: Boolean = false,
   testInfo: TestInfo? = null,
 ): BuildOptions {
   val options = BuildOptions(
@@ -69,7 +64,7 @@ fun createBuildOptionsForTest(
     jarCacheDir = homeDir.resolve("out/dev-run/jar-cache"),
     buildDateInSeconds = getDevModeOrTestBuildDateInSeconds(),
   )
-  customizeBuildOptionsForTest(options = options, outDir = outDir, skipDependencySetup = skipDependencySetup, testInfo = testInfo)
+  customizeBuildOptionsForTest(options = options, outDir = outDir, testInfo = testInfo)
   return options
 }
 
@@ -77,8 +72,7 @@ fun createTestBuildOutDir(productProperties: ProductProperties): Path {
   return Files.createTempDirectory("test-build-${productProperties.baseFileName}")
 }
 
-fun customizeBuildOptionsForTest(options: BuildOptions, outDir: Path, skipDependencySetup: Boolean = false, testInfo: TestInfo?) {
-  options.skipDependencySetup = skipDependencySetup
+fun customizeBuildOptionsForTest(options: BuildOptions, outDir: Path, testInfo: TestInfo?) {
   options.isTestBuild = true
   options.buildStepsToSkip += listOf(
     BuildOptions.LIBRARY_URL_CHECK_STEP,
@@ -117,6 +111,8 @@ val packagingContentBuildStepsToSkip: PersistentSet<String> = persistentSetOf(
   BuildOptions.THIRD_PARTY_LIBRARIES_LIST_STEP,
   BuildOptions.LOCALIZE_STEP,
   BuildOptions.VALIDATE_PLUGINS_TO_BE_PUBLISHED,
+  // the test writes no product-info.json and publishes no artifact, and the compatible plugins no longer need the headless IDE start
+  BuildOptions.PROVIDED_MODULES_LIST_STEP,
   "JupyterFrontEndResourcesGenerator",
 )
 
@@ -131,18 +127,19 @@ fun customizeBuildOptionsForPackagingContentTest(
   options.targetOs = targetOs
   options.targetArch = null
   options.buildStepsToSkip += buildStepsToSkip
-  options.useReleaseCycleRelatedBundlingRestrictionsForContentReport = false
+  options.useReleaseCycleRelatedBundlingRestrictions = false
 }
 
-suspend inline fun createBuildContext(
+inline fun createBuildContext(
   homeDir: Path,
   productProperties: ProductProperties,
   buildTools: ProprietaryBuildTools = ProprietaryBuildTools.DUMMY,
+  lifetime: BuildLifetime,
   buildOptionsCustomizer: (BuildOptions) -> Unit = {},
 ): BuildContext {
   val options = createBuildOptionsForTest(productProperties, homeDir)
   buildOptionsCustomizer(options)
-  return createBuildContext(projectHome = homeDir, productProperties = productProperties, proprietaryBuildTools = buildTools, options = options)
+  return createBuildContext(lifetime = lifetime, projectHome = homeDir, productProperties = productProperties, proprietaryBuildTools = buildTools, options = options)
 }
 
 fun runTestBuild(
@@ -150,7 +147,7 @@ fun runTestBuild(
   productProperties: ProductProperties,
   buildTools: ProprietaryBuildTools,
   testInfo: TestInfo,
-  onSuccess: suspend (BuildContext) -> Unit = {},
+  onSuccess: (BuildContext) -> Unit = {},
   buildOptionsCustomizer: (BuildOptions) -> Unit = {},
 ) {
   runTestBuild(
@@ -172,60 +169,66 @@ fun runTestBuild(
   isReproducibilityTestAllowed: Boolean = true,
   checkIntegrityOfEmbeddedFrontend: Boolean = true,
   checkPrivatePluginModulesAreNotPublic: Boolean = true,
-  build: suspend (BuildContext) -> Unit = { buildDistributions(context = it) },
-  onSuccess: suspend (BuildContext) -> Unit = {},
-  buildOptionsCustomizer: (BuildOptions) -> Unit = {}
-): Unit = runBlocking(Dispatchers.Default) {
+  build: (BuildContext) -> Unit = { buildDistributions(context = it) },
+  onSuccess: (BuildContext) -> Unit = {},
+  buildOptionsCustomizer: (BuildOptions) -> Unit = {},
+): Unit = taskScope {
   if (isReproducibilityTestAllowed && BuildArtifactsReproducibilityTest.isEnabled) {
     val reproducibilityTest = BuildArtifactsReproducibilityTest()
     repeat(reproducibilityTest.iterations) { iterationNumber ->
-      launch {
-        doRunTestBuild(
-          context = createBuildContext(
-            projectHome = homeDir,
-            productProperties = productProperties,
-            setupTracer = false,
-            proprietaryBuildTools = buildTools,
-            options = createBuildOptionsForTest(productProperties = productProperties, homeDir = homeDir, testInfo = testInfo).also {
-              buildOptionsCustomizer(it)
-              reproducibilityTest.configure(it)
+      fork("test build iteration $iterationNumber") {
+        BuildLifetime().use { lifetime ->
+          doRunTestBuild(
+            context = createBuildContext(
+              lifetime = lifetime,
+              projectHome = homeDir,
+              productProperties = productProperties,
+              setupTracer = false,
+              proprietaryBuildTools = buildTools,
+              options = createBuildOptionsForTest(productProperties = productProperties, homeDir = homeDir, testInfo = testInfo).also {
+                buildOptionsCustomizer(it)
+                reproducibilityTest.configure(it)
+              },
+            ),
+            traceSpanName = "${testInfo.spanName}#${iterationNumber}",
+            writeTelemetry = false,
+            checkIntegrityOfEmbeddedFrontend = checkIntegrityOfEmbeddedFrontend,
+            checkPrivatePluginModulesAreNotPublic = checkPrivatePluginModulesAreNotPublic,
+            checkThatBundledPluginInFrontendArePresent = checkIntegrityOfEmbeddedFrontend,
+            build = { context ->
+              build(context)
+              onSuccess(context)
+              reproducibilityTest.iterationFinished(iterationNumber, context)
             },
-          ),
-          traceSpanName = "${testInfo.spanName}#${iterationNumber}",
-          writeTelemetry = false,
-          checkIntegrityOfEmbeddedFrontend = checkIntegrityOfEmbeddedFrontend,
-          checkPrivatePluginModulesAreNotPublic = checkPrivatePluginModulesAreNotPublic,
-          checkThatBundledPluginInFrontendArePresent = checkIntegrityOfEmbeddedFrontend,
-          build = { context ->
-            build(context)
-            onSuccess(context)
-            reproducibilityTest.iterationFinished(iterationNumber, context)
-          },
-        )
+          )
+        }
       }
     }
   }
   else {
-    doRunTestBuild(
-      context = createBuildContext(
-        projectHome = homeDir,
-        productProperties = productProperties,
-        setupTracer = false,
-        proprietaryBuildTools = buildTools,
-        options = createBuildOptionsForTest(productProperties = productProperties, homeDir = homeDir, testInfo = testInfo).also { buildOptionsCustomizer(it) },
-        scope = this@runBlocking,
-      ),
-      writeTelemetry = true,
-      checkIntegrityOfEmbeddedFrontend = checkIntegrityOfEmbeddedFrontend,
-      checkThatBundledPluginInFrontendArePresent = checkIntegrityOfEmbeddedFrontend,
-      checkPrivatePluginModulesAreNotPublic = checkPrivatePluginModulesAreNotPublic,
-      traceSpanName = testInfo.spanName,
-      build = { context ->
-        build(context)
-        onSuccess(context)
-      },
-    )
+    BuildLifetime().use { lifetime ->
+      doRunTestBuild(
+        context = createBuildContext(
+          lifetime = lifetime,
+          projectHome = homeDir,
+          productProperties = productProperties,
+          setupTracer = false,
+          proprietaryBuildTools = buildTools,
+          options = createBuildOptionsForTest(productProperties = productProperties, homeDir = homeDir, testInfo = testInfo).also { buildOptionsCustomizer(it) },
+        ),
+        writeTelemetry = true,
+        checkIntegrityOfEmbeddedFrontend = checkIntegrityOfEmbeddedFrontend,
+        checkThatBundledPluginInFrontendArePresent = checkIntegrityOfEmbeddedFrontend,
+        checkPrivatePluginModulesAreNotPublic = checkPrivatePluginModulesAreNotPublic,
+        traceSpanName = testInfo.spanName,
+        build = { context ->
+          build(context)
+          onSuccess(context)
+        },
+      )
+    }
   }
+  join()
 }
 
 fun runNonBundledPluginsBuildTest(
@@ -236,38 +239,42 @@ fun runNonBundledPluginsBuildTest(
   dependencyModules: List<String> = emptyList(),
   buildTools: ProprietaryBuildTools = ProprietaryBuildTools.DUMMY,
   buildOptionsCustomizer: (BuildOptions) -> Unit = {},
-  onSuccess: suspend (BuildContext) -> Unit = {},
-): Unit = runBlocking(Dispatchers.Default) {
-  doRunTestBuild(
-    context = createBuildContext(
-      projectHome = homeDir,
-      productProperties = productProperties,
-      setupTracer = false,
-      proprietaryBuildTools = buildTools,
-      options = createBuildOptionsForTest(productProperties = productProperties, homeDir = homeDir).also {
-        buildOptionsCustomizer(it)
+  onSuccess: (BuildContext) -> Unit = {},
+) {
+  BuildLifetime().use { lifetime ->
+
+    doRunTestBuild(
+      context = createBuildContext(
+        lifetime = lifetime,
+        projectHome = homeDir,
+        productProperties = productProperties,
+        setupTracer = false,
+        proprietaryBuildTools = buildTools,
+        options = createBuildOptionsForTest(productProperties = productProperties, homeDir = homeDir).also {
+          buildOptionsCustomizer(it)
+        },
+      ),
+      traceSpanName = traceSpanName,
+      writeTelemetry = true,
+      checkIntegrityOfEmbeddedFrontend = false,
+      checkThatBundledPluginInFrontendArePresent = false,
+      checkPrivatePluginModulesAreNotPublic = false,
+      build = { context ->
+        buildNonBundledPlugins(mainPluginModules = mainPluginModules, context = context, dependencyModules = dependencyModules)
+        onSuccess(context)
       },
-      scope = this@runBlocking,
-    ),
-    traceSpanName = traceSpanName,
-    writeTelemetry = true,
-    checkIntegrityOfEmbeddedFrontend = false,
-    checkThatBundledPluginInFrontendArePresent = false,
-    checkPrivatePluginModulesAreNotPublic = false,
-    build = { context ->
-      buildNonBundledPlugins(mainPluginModules = mainPluginModules, context = context, dependencyModules = dependencyModules)
-      onSuccess(context)
-    },
-  )
+    )
+
+  }
 }
 
 // FIXME: test reproducibility
-suspend fun runTestBuild(
+fun runTestBuild(
   testInfo: TestInfo,
-  context: suspend () -> BuildContext,
+  context: () -> BuildContext,
   checkThatBundledPluginInFrontendArePresent: Boolean = true,
   checkPrivatePluginModulesAreNotPublic: Boolean = true,
-  build: suspend (BuildContext) -> Unit = { buildDistributions(it) }
+  build: (BuildContext) -> Unit = { buildDistributions(it) },
 ) {
   doRunTestBuild(
     context = context(),
@@ -282,17 +289,19 @@ suspend fun runTestBuild(
 
 private val defaultLogFactory = Logger.getFactory()
 
-internal suspend fun <T> doRunTestBuild(
+internal fun <T> doRunTestBuild(
   context: BuildContext,
+  closeLifetime: Boolean = true,
   traceSpanName: String,
   writeTelemetry: Boolean,
   checkIntegrityOfEmbeddedFrontend: Boolean,
   checkThatBundledPluginInFrontendArePresent: Boolean,
   checkPrivatePluginModulesAreNotPublic: Boolean = true,
-  build: suspend (context: BuildContext) -> T,
+  build: (context: BuildContext) -> T,
 ): T {
   var outDir: Path? = null
   var traceFile: Path? = null
+  var buildFailure: Throwable? = null
   val buildLogsDir = TestLoggerFactory.getTestLogDir().resolve("${context.productProperties.baseFileName}-$traceSpanName")
   Logger.setFactory(TestLoggerFactory::class.java)
   try {
@@ -309,15 +318,16 @@ internal suspend fun <T> doRunTestBuild(
         val result = build(context)
 
         val softly = SoftAssertions()
-        coroutineScope {
+        taskScope {
           if (checkIntegrityOfEmbeddedFrontend && context.generateRuntimeModuleRepository) {
             checkEmbeddedFrontendIntegrity(checkThatBundledPluginInFrontendArePresent = checkThatBundledPluginInFrontendArePresent, softly = softly, context = context)
-              }
+          }
           if (checkPrivatePluginModulesAreNotPublic) {
-            launch {
+            fork("check private plugin modules") {
               checkPrivatePluginModulesAreNotPublic(context, softly)
             }
           }
+          join()
         }
         softly.assertAll()
 
@@ -343,21 +353,40 @@ internal suspend fun <T> doRunTestBuild(
       }
     }
   }
+  catch (failure: Throwable) {
+    buildFailure = failure
+    throw failure
+  }
   finally {
+    var interrupted = Thread.interrupted()
+    var cleanupFailure: Throwable? = null
+    fun clean(action: () -> Unit) {
+      try {
+        action()
+      }
+      catch (failure: Throwable) {
+        val previous = buildFailure ?: cleanupFailure
+        if (previous == null) cleanupFailure = failure else if (previous !== failure) previous.addSuppressed(failure)
+      }
+      finally {
+        interrupted = Thread.interrupted() || interrupted
+      }
+    }
+    if (closeLifetime) clean { context.lifetime.close() }
     // close debug logging to prevent locking of the output directory on Windows
-    context.messages.close()
-
-    closeKtorClient()
+    clean { context.messages.close() }
 
     if (traceFile != null) {
-      TraceManager.shutdown()
+      // the span processor is shared by every test of the JVM, so only the file of this test closes
+      clean { TraceManager.flush() }
+      clean { JaegerJsonSpanExporterManager.closeOutput() }
       println("Performance report is written to $traceFile")
     }
 
     /**
      * Overridden in [org.jetbrains.intellij.build.impl.JpsCompilationRunner.runBuild]
      */
-    Logger.setFactory(defaultLogFactory)
+    clean { Logger.setFactory(defaultLogFactory) }
 
     try {
       outDir?.also(NioFiles::deleteRecursively)
@@ -366,10 +395,12 @@ internal suspend fun <T> doRunTestBuild(
       System.err.println("cannot cleanup $outDir:")
       e.printStackTrace(System.err)
     }
+    if (interrupted) Thread.currentThread().interrupt()
+    cleanupFailure?.let { throw it }
   }
 }
 
-private fun CoroutineScope.checkEmbeddedFrontendIntegrity(
+private fun TaskScope.checkEmbeddedFrontendIntegrity(
   checkThatBundledPluginInFrontendArePresent: Boolean,
   softly: SoftAssertions,
   context: BuildContext,
@@ -379,10 +410,10 @@ private fun CoroutineScope.checkEmbeddedFrontendIntegrity(
   if (checkThatBundledPluginInFrontendArePresent) {
     RuntimeModuleRepositoryChecker.checkBundledPluginsArePresent(productModulesModule = frontendRootModule, context = context, isEmbeddedVariant = true, softly = softly)
   }
-  launch {
+  fork("check embedded frontend integrity") {
     RuntimeModuleRepositoryChecker.checkIntegrityOfEmbeddedFrontend(frontendRootModule, context, softly)
   }
-  launch {
+  fork("check keymap plugins of the embedded frontend") {
     checkKeymapPluginsAreBundledWithFrontend(frontendRootModule, context, softly)
   }
 }
@@ -401,8 +432,10 @@ private fun checkKeymapPluginsAreBundledWithFrontend(
     .toList()
   val keymapPluginsBundledWithMonolith = context.getBundledPluginModules().filter { it.startsWith(keymapPluginModulePrefix) }
   softly.assertThat(keymapPluginsBundledWithFrontend)
-    .describedAs("Frontend variant of ${context.applicationInfo.productNameWithEdition} must bundle the same keymap plugins as the full IDE for consistency. " +
-                 "Change 'bundled-plugins' in 'META-INF/$jetBrainsClientMainModule/product-modules.xml' to fix this.")
+    .describedAs(
+      "Frontend variant of ${context.applicationInfo.productNameWithEdition} must bundle the same keymap plugins as the full IDE for consistency. " +
+      "Change 'bundled-plugins' in 'META-INF/$jetBrainsClientMainModule/product-modules.xml' to fix this."
+    )
     .containsExactlyInAnyOrder(*keymapPluginsBundledWithMonolith.toTypedArray())
 }
 
@@ -416,7 +449,7 @@ private fun copyLogs(context: BuildContext, buildLogsDir: Path) {
         OnErrorResult.SKIP_SUBTREE
       })
     }
-    
+
     val debugLogText = context.messages.getDebugLog()
     if (!debugLogText.isNullOrEmpty()) {
       val targetFile = buildLogsDir.resolve("test-build-debug.log")

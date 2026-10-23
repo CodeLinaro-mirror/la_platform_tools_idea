@@ -13,10 +13,9 @@ import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.vcs.VcsBundle.message
 import com.intellij.openapi.vcs.changes.actions.diff.WrapperCombinedBlockProducer
 import com.intellij.openapi.vcs.changes.ui.ChangesViewContentManager
-import com.intellij.openapi.vcs.changes.ui.ChangesViewContentManager.Companion.LOCAL_CHANGES
-import com.intellij.openapi.vcs.changes.ui.ChangesViewContentManager.Companion.isToolWindowTabVertical
 import com.intellij.openapi.vcs.changes.ui.CommitToolWindowUtil
 import com.intellij.platform.util.coroutines.childScope
+import com.intellij.platform.vcs.impl.shared.changes.UpdatableMultipleChangesDiffRequestProcessor
 import com.intellij.vcs.changes.viewModel.ChangesViewProxy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
@@ -35,17 +34,9 @@ internal class ChangesViewEditorDiffPreview(
     PreviewOnNextDiffAction().registerCustomShortcutSet(targetComponent, this)
 
     cs.launch(Dispatchers.UiWithModelAccess) {
-      changesView.diffRequests.collectLatest { (diffAction, clientId) ->
+      changesView.diffRequests.collectLatest { clientId ->
         withExplicitClientId(clientId) {
-          when (diffAction) {
-            ChangesViewDiffAction.SINGLE_CLICK_DIFF_PREVIEW -> {
-              if (!isSplitterPreviewPresent()) {
-                val opened = openPreview(false)
-                if (!opened) closePreview()
-              }
-            }
-            ChangesViewDiffAction.PERFORM_DIFF -> performDiffAction();
-          }
+          performDiffAction()
         }
       }
     }
@@ -75,12 +66,12 @@ internal class ChangesViewEditorDiffPreview(
 
   @CalledInAny
   override fun getEditorTabName(processor: DiffEditorViewer?): String? {
-    val wrapper = when (processor) {
-      is ChangeViewDiffRequestProcessor -> processor.currentChange
-      is CombinedDiffComponentProcessor -> (processor.currentBlock as? WrapperCombinedBlockProducer)?.wrapper
+    val fileName = when (processor) {
+      is UpdatableMultipleChangesDiffRequestProcessor -> processor.getCurrentChangeName()
+      is CombinedDiffComponentProcessor -> (processor.currentBlock as? WrapperCombinedBlockProducer)?.wrapper?.presentableName
       else -> null
     }
-    return if (wrapper != null) message("commit.editor.diff.preview.title", wrapper.presentableName)
+    return if (fileName != null) message("commit.editor.diff.preview.title", fileName)
     else message("commit.editor.diff.preview.empty.title")
   }
 
@@ -88,9 +79,6 @@ internal class ChangesViewEditorDiffPreview(
     super.dispose()
     cs.cancel()
   }
-
-  private fun isSplitterPreviewPresent() =
-    ChangesViewContentManager.shouldHaveSplitterDiffPreview(project, isToolWindowTabVertical(project, LOCAL_CHANGES))
 
   private inner class PreviewOnNextDiffAction : DumbAwareAction() {
     init {

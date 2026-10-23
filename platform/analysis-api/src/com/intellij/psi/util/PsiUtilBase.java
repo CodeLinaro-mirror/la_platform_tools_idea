@@ -2,7 +2,6 @@
 
 package com.intellij.psi.util;
 
-import com.intellij.codeInsight.multiverse.CodeInsightContext;
 import com.intellij.codeInsight.multiverse.EditorContextManager;
 import com.intellij.lang.ASTNode;
 import com.intellij.lang.Language;
@@ -11,12 +10,12 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Caret;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.ModNavigator;
+import com.intellij.openapi.editor.elf.Elf;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.vfs.VFileProperty;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiBinaryFile;
-import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiFileSystemItem;
@@ -49,7 +48,7 @@ public final class PsiUtilBase extends PsiUtilCore implements PsiEditorUtil {
   public static @Nullable Language getLanguageInEditor(@NotNull Caret caret, final @NotNull Project project) {
     Editor editor = caret.getEditor();
     assertEditorAndProjectConsistent(project, editor);
-    PsiFile file = PsiDocumentManager.getInstance(project).getPsiFile(editor.getDocument());
+    PsiFile file = EditorContextManager.getPsiFileForEditor(editor, project);
 
     if (file == null) {
       return null;
@@ -91,8 +90,7 @@ public final class PsiUtilBase extends PsiUtilCore implements PsiEditorUtil {
   public static @Nullable PsiElement getElementAtCaret(@NotNull Editor editor) {
     Project project = editor.getProject();
     if (project == null) return null;
-    CodeInsightContext context = EditorContextManager.getEditorContext(editor, project);
-    PsiFile file = PsiDocumentManager.getInstance(project).getPsiFile(editor.getDocument(), context);
+    PsiFile file = EditorContextManager.getPsiFileForEditor(editor, project);
     return file == null ? null : file.findElementAt(editor.getCaretModel().getOffset());
   }
 
@@ -103,11 +101,15 @@ public final class PsiUtilBase extends PsiUtilCore implements PsiEditorUtil {
   public static @Nullable PsiFile getPsiFileInEditor(@NotNull Caret caret, final @NotNull Project project) {
     Editor editor = caret.getEditor();
     assertEditorAndProjectConsistent(project, editor);
-    CodeInsightContext context = EditorContextManager.getEditorContext(editor, project);
-    PsiFile psiFile = PsiDocumentManager.getInstance(project).getPsiFile(editor.getDocument(), context);
+    PsiFile psiFile = EditorContextManager.getPsiFileForEditor(editor, project);
     if (psiFile == null) return null;
 
-    ensureValid(psiFile);
+    // PsiUtilCore.ensureValid: throws because PsiFileImpl.isValid returns false
+    // from InternalPsiVersioning.isInsideVersioningButNotLocks() section
+    boolean isEnsureValidSupported = !Elf.getElf().isUnsupportedOperationGuardActive();
+    if (isEnsureValidSupported) {
+      ensureValid(psiFile);
+    }
 
     if (psiFile instanceof PsiFileWithOneLanguage) {
       return psiFile;
@@ -154,6 +156,13 @@ public final class PsiUtilBase extends PsiUtilCore implements PsiEditorUtil {
 
   public static PsiFile getPsiFileAtOffset(@NotNull PsiFile file, final int offset) {
     if (file instanceof PsiFileWithOneLanguage) {
+      return file;
+    }
+
+    if (Elf.getElf().isUnsupportedOperationGuardActive()) {
+      // 1) PsiUtilCore.ensureValid: throws because PsiFileImpl.isValid returns false
+      //    from InternalPsiVersioning.isInsideVersioningButNotLocks() section
+      // 2) element.getContainingFile: throws from LeafPsiElement.invalid
       return file;
     }
 

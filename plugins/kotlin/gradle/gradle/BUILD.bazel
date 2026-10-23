@@ -1,11 +1,27 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library", "resourcegroup")
 load("//build:compiler-options.bzl", "create_kotlinc_options")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.kotlin.gradle.gradle` start
+content_module_jar(module = ":gradle")
+### auto-generated section `dev intellij.kotlin.gradle.gradle` end
 
 ### auto-generated section `build intellij.kotlin.gradle.gradle` start
-
 create_kotlinc_options(
     name = "custom_gradle",
-    opt_in = ["org.jetbrains.kotlin.gradle.ExperimentalGradleToolingApi"],
+    opt_in = [
+        "org.jetbrains.kotlin.psi.KtExperimentalApi",
+        "org.jetbrains.kotlin.psi.KtNonPublicApi",
+        "org.jetbrains.kotlin.psi.KtIdeApi",
+        "org.jetbrains.kotlin.analysis.api.KaExperimentalApi",
+        "org.jetbrains.kotlin.analysis.api.KaIdeApi",
+        "org.jetbrains.kotlin.analysis.api.KaPlatformInterface",
+        "org.jetbrains.kotlin.analysis.api.fir.diagnostics.KaUnstableDiagnosticApi",
+        "org.jetbrains.kotlin.analysis.api.KaNonPublicApi",
+        "org.jetbrains.kotlin.analysis.api.KaContextParameterApi",
+        "org.jetbrains.kotlin.analysis.api.permissions.KaAllowProhibitedAnalyzeFromWriteAction",
+    ],
+    x_context_parameters = True,
 )
 
 resourcegroup(
@@ -39,18 +55,18 @@ jvm_library(
         "@lib//:kotlin-stdlib",
         "//libraries/kotlin/reflect",
         "//libraries/kotlinx/coroutines/core",
-        "@lib//:kotlinc-kotlin-compiler-common",
-        "@lib//:kotlinc-kotlin-scripting-compiler-impl",
-        "@lib//:kotlinc-kotlin-script-runtime",
-        "@lib//:kotlinc-kotlin-scripting-common",
-        "@lib//:kotlinc-kotlin-scripting-jvm",
+        "//libraries/kotlinc/kotlin-compiler-common:libraries-kotlinc-kotlin-compiler-common",
+        "//libraries/kotlinc/kotlin-scripting-compiler-impl:libraries-kotlinc-kotlin-scripting-compiler-impl",
+        "//libraries/kotlinc/kotlin-script-runtime:libraries-kotlinc-kotlin-script-runtime",
+        "//libraries/kotlinc/kotlin-scripting-common:libraries-kotlinc-kotlin-scripting-common",
+        "//libraries/kotlinc/kotlin-scripting-jvm:libraries-kotlinc-kotlin-scripting-jvm",
         "@lib//:kotlinc-kotlin-gradle-statistics",
-        "@lib//:kotlinc-kotlin-jps-common",
-        "@lib//:kotlin-tooling-core",
-        "@lib//:kotlin-gradle-plugin-idea-proto",
-        "@lib//:kotlin-gradle-plugin-idea",
+        "//libraries/kotlinc/kotlin-jps-common:libraries-kotlinc-kotlin-jps-common",
+        "//libraries/kotlin/tooling-core:libraries-kotlin-tooling-core",
+        "//libraries/kotlin/gradle-plugin-idea-proto:libraries-kotlin-gradle-plugin-idea-proto",
+        "//libraries/kotlin/gradle-plugin-idea:libraries-kotlin-gradle-plugin-idea",
         "//libraries/guava",
-        "@lib//:gradle",
+        "//libraries/gradle",
         "//platform/analysis-api:analysis",
         "//platform/core-api:core",
         "//platform/editor-ui-api:editor-ui",
@@ -86,6 +102,7 @@ jvm_library(
         "//platform/util/jdom",
         "//platform/util-ex",
         "//platform/lang-api:lang",
+        "//platform/buildView",
         "//platform/statistics",
     ],
 )
@@ -105,8 +122,18 @@ jvm_library(
         ":gradle",
         "//libraries/kotlin/reflect:reflect_test_lib",
         "//libraries/kotlinx/coroutines/core:core_test_lib",
+        "//libraries/kotlinc/kotlin-compiler-common:libraries-kotlinc-kotlin-compiler-common_test_lib",
+        "//libraries/kotlinc/kotlin-scripting-compiler-impl:libraries-kotlinc-kotlin-scripting-compiler-impl_test_lib",
+        "//libraries/kotlinc/kotlin-script-runtime:libraries-kotlinc-kotlin-script-runtime_test_lib",
+        "//libraries/kotlinc/kotlin-scripting-common:libraries-kotlinc-kotlin-scripting-common_test_lib",
+        "//libraries/kotlinc/kotlin-scripting-jvm:libraries-kotlinc-kotlin-scripting-jvm_test_lib",
         "@lib//:kotlinc-kotlin-compiler-tests",
+        "//libraries/kotlinc/kotlin-jps-common:libraries-kotlinc-kotlin-jps-common_test_lib",
+        "//libraries/kotlin/tooling-core:libraries-kotlin-tooling-core_test_lib",
+        "//libraries/kotlin/gradle-plugin-idea-proto:libraries-kotlin-gradle-plugin-idea-proto_test_lib",
+        "//libraries/kotlin/gradle-plugin-idea:libraries-kotlin-gradle-plugin-idea_test_lib",
         "//libraries/guava:guava_test_lib",
+        "//libraries/gradle:gradle_test_lib",
         "//platform/analysis-api:analysis_test_lib",
         "//platform/core-api:core_test_lib",
         "//platform/editor-ui-api:editor-ui_test_lib",
@@ -142,6 +169,7 @@ jvm_library(
         "//platform/util/jdom:jdom_test_lib",
         "//platform/util-ex:util-ex_test_lib",
         "//platform/lang-api:lang_test_lib",
+        "//platform/buildView:buildView_test_lib",
         "//platform/statistics:statistics_test_lib",
     ],
 )
@@ -151,6 +179,7 @@ jvm_library(
 exports_files(
     [
         "intellij.kotlin.gradle.gradle.iml",
+        "resources/intellij.kotlin.gradle.gradle.xml",
     ],
     visibility = ["//visibility:public"],
 )

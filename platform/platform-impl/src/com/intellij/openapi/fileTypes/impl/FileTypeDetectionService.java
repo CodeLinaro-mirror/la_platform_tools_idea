@@ -108,6 +108,7 @@ public final class FileTypeDetectionService {
   private static final int CHUNK_SIZE = 10;
   private static final int OUR_MAX_FILE_SIZE_TO_LOG = 512;
 
+  private final boolean allowDetectionByContent = getBooleanProperty("com.intellij.openapi.fileTypes.impl.FileTypeDetectionService.allowDetectionByContent", true);
   private final AtomicInteger counterAutoDetect = new AtomicInteger();
   private final AtomicLong elapsedAutoDetect = new AtomicLong();
 
@@ -229,7 +230,7 @@ public final class FileTypeDetectionService {
 
   @NotNull
   FileType getOrDetectFromContent(@NotNull VirtualFile file, byte @Nullable [] content, @Nullable FileType fileTypeByName) {
-    if (!isDetectable(file)) {
+    if (!allowDetectionByContent || !isDetectable(file)) {
       if (fileTypeByName == DetectedByContentFileType.INSTANCE) {
         // allow opening empty file in IDEA's editor
         return DetectedByContentFileType.INSTANCE;
@@ -559,7 +560,7 @@ public final class FileTypeDetectionService {
     boolean saveDetectedSeparators = true;
     if (content == null) {
       Document document = FileDocumentManager.getInstance().getCachedDocument(file);
-      if (document != null) {
+      if (document != null && file.isCharsetSet()) {
         content = document.getText().getBytes(file.getCharset());
         // separators already detected, since the Document is live. Detecting them again would reset them to LF (because document normalizes line separators to \n)
         saveDetectedSeparators = false;
@@ -739,7 +740,8 @@ public final class FileTypeDetectionService {
            null;
   }
 
-  private void reparseLater(@NotNull List<? extends VirtualFile> changed) {
+  @VisibleForTesting
+  public void reparseLater(@NotNull List<? extends VirtualFile> changed) {
     if (Registry.is("filetype.reparse.with.coroutines")) {
       ReparseUtilKt.reparseLaterWithCoroutines(scope, changed);
     }

@@ -8,6 +8,7 @@ import com.jetbrains.python.psi.PyDoubleStarExpression;
 import com.jetbrains.python.psi.PyElementVisitor;
 import com.jetbrains.python.psi.PyExpression;
 import com.jetbrains.python.psi.PyKeyValueExpression;
+import com.jetbrains.python.psi.types.PyAnyType;
 import com.jetbrains.python.psi.types.PyClassType;
 import com.jetbrains.python.psi.types.PyCollectionTypeImpl;
 import com.jetbrains.python.psi.types.PyLiteralType;
@@ -30,7 +31,7 @@ public class PyDictCompExpressionImpl extends PyComprehensionElementImpl impleme
     final var cache = PyBuiltinCache.getInstance(this);
     final var dictionary = cache.getDictType();
     if (dictionary == null) {
-      return null;
+      return PyAnyType.getUnknown();
     }
     // PEP 798: {**d for d in dicts} — key/value types come from the unpacked mapping
     if (resultExpr instanceof PyDoubleStarExpression doubleStarExpression) {
@@ -39,7 +40,7 @@ public class PyDictCompExpressionImpl extends PyComprehensionElementImpl impleme
       final PyExpression mapping = doubleStarExpression.getExpression();
       if (mapping != null &&
           PyTypeUtil.convertToType(context.getType(mapping), "typing.Mapping", doubleStarExpression, context)
-            instanceof PyClassType mappingType && mappingType.isParameterized()) {
+            instanceof PyClassType mappingType) {
         final List<PyType> elementTypes = mappingType.getTypeArguments();
         if (elementTypes.size() == 2) {
           keyType = elementTypes.get(0);
@@ -49,7 +50,7 @@ public class PyDictCompExpressionImpl extends PyComprehensionElementImpl impleme
       return new PyCollectionTypeImpl(dictionary.getPyClass(), false, new SmartList<>(keyType, valueType));
     }
     if (resultExpr instanceof PyKeyValueExpression keyValue) {
-      final var keyType = PyLiteralType.upcastLiteralToClass(keyValue.getKey().getType(context));
+      final PyType keyType = PyLiteralType.upcastLiteralToClass(keyValue.getKey().getType(context));
       PyExpression value = keyValue.getValue();
       final var valueType = value != null ? PyLiteralType.upcastLiteralToClass(value.getType(context)) : null;
       return new PyCollectionTypeImpl(dictionary.getPyClass(), false, new SmartList<>(keyType, valueType));

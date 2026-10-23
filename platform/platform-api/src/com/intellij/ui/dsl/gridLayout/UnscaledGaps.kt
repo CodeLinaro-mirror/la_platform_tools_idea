@@ -1,7 +1,7 @@
 // Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.ui.dsl.gridLayout
 
-import com.intellij.ui.dsl.checkNonNegative
+import com.intellij.ui.dsl.builder.impl.checkNonNegative
 import com.intellij.util.ui.JBEmptyBorder
 import com.intellij.util.ui.JBInsets
 import org.jetbrains.annotations.ApiStatus
@@ -44,6 +44,11 @@ fun Insets.toUnscaledGaps(): UnscaledGaps = JBInsets.unscale(this).let { Unscale
 
 fun UnscaledGaps.toJBEmptyBorder(): JBEmptyBorder {
   return JBEmptyBorder(top, left, bottom, right)
+}
+
+@ApiStatus.Internal
+fun UnscaledGaps.toInsets(): JBInsets {
+  return JBInsets(top, left, bottom, right)
 }
 
 private object EmptyGaps : UnscaledGaps {

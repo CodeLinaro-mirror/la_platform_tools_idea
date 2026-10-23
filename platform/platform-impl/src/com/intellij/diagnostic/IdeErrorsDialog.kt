@@ -31,10 +31,7 @@ import com.intellij.openapi.application.ApplicationNamesInfo
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.asContextElement
-import com.intellij.openapi.components.service
-import com.intellij.openapi.components.serviceAsync
 import com.intellij.openapi.diagnostic.ErrorReportSubmitter
-import com.intellij.openapi.diagnostic.IdeaLoggingEvent
 import com.intellij.openapi.diagnostic.SubmittedReportInfo
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.editor.ex.util.EditorUtil
@@ -43,7 +40,6 @@ import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.openapi.ui.LoadingDecorator
-import com.intellij.openapi.ui.MessageDialogBuilder
 import com.intellij.openapi.ui.OptionAction
 import com.intellij.openapi.util.NlsContexts
 import com.intellij.openapi.util.NlsSafe
@@ -71,10 +67,13 @@ import com.intellij.util.ui.JBInsets
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.SwingHelper
 import com.intellij.util.ui.UIUtil
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jetbrains.annotations.ApiStatus
@@ -139,6 +138,11 @@ open class IdeErrorsDialog @ApiStatus.Internal @JvmOverloads constructor(
   private lateinit var myCredentialLabel: JTextComponent
   private lateinit var myLoadingDecorator: LoadingDecorator
 
+  @Suppress("RAW_SCOPE_CREATION")
+  private val coroutineScope: CoroutineScope = CoroutineScope(SupervisorJob() +
+                                                              CoroutineName("IdeErrorsDialog") +
+                                                              DiagnosticDispatchers.Default)
+
   init {
     title = if (actionLeadToError != null)
       DiagnosticBundle.message("error.list.title.with.action", actionLeadToError)
@@ -158,7 +162,7 @@ open class IdeErrorsDialog @ApiStatus.Internal @JvmOverloads constructor(
   }
 
   private suspend fun loadCredentialsPanel(submitter: ErrorReportSubmitter) {
-    withContext(serviceAsync<ITNProxyCoroutineScopeHolder>().dispatcher) {
+    withContext(DiagnosticDispatchers.Default) {
       val account = submitter.reporterAccount
       if (account != null) {
         withContext(Dispatchers.EDT) {
@@ -175,7 +179,7 @@ open class IdeErrorsDialog @ApiStatus.Internal @JvmOverloads constructor(
   }
 
   private suspend fun loadPrivacyNoticeText(submitter: ErrorReportSubmitter) {
-    withContext(serviceAsync<ITNProxyCoroutineScopeHolder>().dispatcher) {
+    withContext(DiagnosticDispatchers.Default) {
       val notice = submitter.privacyNoticeText
       if (notice != null) {
         withContext(Dispatchers.EDT) {
@@ -380,6 +384,7 @@ open class IdeErrorsDialog @ApiStatus.Internal @JvmOverloads constructor(
   override fun dispose() {
     myMessagePool.removeAdvisor(this)
     myUpdateControlsJob.cancel()
+    coroutineScope.cancel()
     super.dispose()
   }
 
@@ -407,7 +412,7 @@ open class IdeErrorsDialog @ApiStatus.Internal @JvmOverloads constructor(
     }
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private fun updateControls() {
     myLoadingDecorator.startLoading(false)
     myUpdateControlsJob.cancel(null)
@@ -415,7 +420,7 @@ open class IdeErrorsDialog @ApiStatus.Internal @JvmOverloads constructor(
     if (isModal) {
       context += ModalityState.any().asContextElement()
     }
-    myUpdateControlsJob = service<ITNProxyCoroutineScopeHolder>().coroutineScope.launch(context) {
+    myUpdateControlsJob = coroutineScope.launch(context) {
       val cluster = selectedCluster()
       val submitter = cluster?.submitter
       // if there are no messages left, the dialog will be closed automatically, so there is no need to update controls in that case
@@ -458,7 +463,7 @@ open class IdeErrorsDialog @ApiStatus.Internal @JvmOverloads constructor(
     }
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private fun updateLabels(cluster: ErrorMessageCluster): ErrorReportSubmitter? {
     val message = cluster.first
     myCountLabel.text = DiagnosticBundle.message("error.list.message.index.count", myIndex + 1, myMessageClusters.size)
@@ -479,7 +484,7 @@ open class IdeErrorsDialog @ApiStatus.Internal @JvmOverloads constructor(
 
     if (pluginId != null) {
       val name = pluginInfo?.name ?: pluginId.toString()
-      if (pluginInfo != null && (!pluginInfo.isBundled || pluginInfo.allowsBundledUpdate)) {
+      if (pluginInfo != null && (!pluginInfo.isBuiltIn || pluginInfo.allowsBundledUpdate)) {
         info.append(DiagnosticBundle.message("error.list.message.blame.plugin.version", name, pluginInfo.version))
       }
       else {
@@ -524,7 +529,9 @@ open class IdeErrorsDialog @ApiStatus.Internal @JvmOverloads constructor(
         }
       }
       else if (message.submissionInfo.url != null && message.submissionInfo.linkText != null) {
-        info.append(DiagnosticBundle.message("error.list.message.submitted.as.link", message.submissionInfo.url, message.submissionInfo.linkText))
+        info.append(DiagnosticBundle.message("error.list.message.submitted.as.link",
+                                             message.submissionInfo.url,
+                                             message.submissionInfo.linkText))
       }
       else {
         info.append(DiagnosticBundle.message("error.list.message.submitted"))
@@ -537,7 +544,9 @@ open class IdeErrorsDialog @ApiStatus.Internal @JvmOverloads constructor(
     val date = DateFormatUtil.formatPrettyDateTime(cluster.messages[count - 1].date)
     myDetailsLabel.text = DiagnosticBundle.message("error.list.message.info", date, count)
     val submitter = cluster.submitter
-    if (submitter == null && pluginInfo != null && !PluginManagerCore.isDevelopedByJetBrains(pluginInfo.pluginId, pluginInfo.vendor, pluginInfo.organization)) {
+    if (submitter == null && pluginInfo != null && !PluginManagerCore.isDevelopedByJetBrains(pluginInfo.pluginId,
+                                                                                             pluginInfo.vendor,
+                                                                                             pluginInfo.organization)) {
       myForeignPluginWarningLabel.isVisible = true
       val vendor = pluginInfo.vendor
       val vendorUrl =
@@ -599,13 +608,13 @@ open class IdeErrorsDialog @ApiStatus.Internal @JvmOverloads constructor(
     }
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private fun reportMessage(cluster: ErrorMessageCluster, parentComponent: Component): Boolean {
     val submitter = cluster.submitter ?: return false
     val message = cluster.first
     message.isSubmitting = true
 
-    service<ITNProxyCoroutineScopeHolder>().coroutineScope.launch {
+    coroutineScope.launch {
       val notice = submitter.privacyNoticeText
       if (notice != null) {
         val hash = Integer.toHexString(Strings.stringHashCodeIgnoreWhitespaces(notice))
@@ -615,13 +624,13 @@ open class IdeErrorsDialog @ApiStatus.Internal @JvmOverloads constructor(
       }
     }
 
-    val pair = cluster.decouple()
-    if (pair == null) {
+    val event = cluster.toUserLoggingEvent()
+    if (event == null) {
       message.setSubmitted(SubmittedReportInfo(SubmittedReportInfo.SubmissionStatus.FAILED))
       return false
     }
 
-    val events = arrayOf(IdeaLoggingEvent(pair.first, pair.second, message.includedAttachments, cluster.pluginInfo, message))
+    val events = arrayOf(event)
     val accepted = submitter.submit(events, message.additionalInfo, parentComponent) { reportInfo ->
       message.setSubmitted(reportInfo)
       UIUtil.invokeLaterIfNeeded { updateOnSubmit() }
@@ -645,7 +654,8 @@ open class IdeErrorsDialog @ApiStatus.Internal @JvmOverloads constructor(
   }
 
   /* UI components */
-  private inner class BackAction : AnAction(IdeBundle.message("button.previous"), null, AllIcons.Actions.Back), DumbAware, LightEditCompatible {
+  private inner class BackAction : AnAction(IdeBundle.message("button.previous"), null, AllIcons.Actions.Back), DumbAware,
+                                   LightEditCompatible {
     init {
       val action = ActionManager.getInstance().getAction(IdeActions.ACTION_PREVIOUS_TAB)
       if (action != null) {
@@ -667,7 +677,8 @@ open class IdeErrorsDialog @ApiStatus.Internal @JvmOverloads constructor(
     }
   }
 
-  private inner class ForwardAction : AnAction(IdeBundle.message("button.next"), null, AllIcons.Actions.Forward), DumbAware, LightEditCompatible {
+  private inner class ForwardAction : AnAction(IdeBundle.message("button.next"), null, AllIcons.Actions.Forward), DumbAware,
+                                      LightEditCompatible {
     init {
       val action = ActionManager.getInstance().getAction(IdeActions.ACTION_NEXT_TAB)
       if (action != null) {
@@ -689,7 +700,8 @@ open class IdeErrorsDialog @ApiStatus.Internal @JvmOverloads constructor(
     }
   }
 
-  private inner class GoToLastAction : AnAction(IdeBundle.message("button.last"), null, AllIcons.Actions.Play_last), DumbAware, LightEditCompatible {
+  private inner class GoToLastAction : AnAction(IdeBundle.message("button.last"), null, AllIcons.Actions.Play_last), DumbAware,
+                                       LightEditCompatible {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
 
     override fun update(e: AnActionEvent) {
@@ -713,7 +725,8 @@ open class IdeErrorsDialog @ApiStatus.Internal @JvmOverloads constructor(
     }
   }
 
-  private inner class AnalyzeAction(analyze: AnAction) : AbstractAction(ActionsBundle.actionText(ActionManager.getInstance().getId(analyze))) {
+  private inner class AnalyzeAction(analyze: AnAction) :
+    AbstractAction(ActionsBundle.actionText(ActionManager.getInstance().getId(analyze))) {
     private val myAnalyze: AnAction
 
     init {
@@ -827,27 +840,8 @@ open class IdeErrorsDialog @ApiStatus.Internal @JvmOverloads constructor(
 
         updateControls()
 
-        val parentComponent = getParentComponentForReport(true)
-        service<ITNProxyCoroutineScopeHolder>().coroutineScope.launch {
-          val autoReportEnabled = suggestEnablingAutoReportIfApplicable()
-          if (!autoReportEnabled) {
-            if (closeDialog) {
-              withContext(Dispatchers.EDT) { super@IdeErrorsDialog.doOKAction() }
-            }
-            return@launch
-          }
-
-          val reportAllStarted = reportAll(myMessageClusters, parentComponent, true)
-
-          withContext(Dispatchers.EDT) {
-            if (reportAllStarted) {
-              notifySuccessReportAll(true)
-              super@IdeErrorsDialog.doOKAction()
-            }
-            else {
-              updateControls()
-            }
-          }
+        if (closeDialog) {
+          super@IdeErrorsDialog.doOKAction()
         }
       }
     }
@@ -869,32 +863,11 @@ open class IdeErrorsDialog @ApiStatus.Internal @JvmOverloads constructor(
     "Thank you for chipping in. Together, we can achieve anything.",
   )
 
-  private fun notifySuccessReportAll(withAutoReportEnabled: Boolean) {
+  private fun notifySuccessReportAll() {
     val gratitude = if (application.isInternal) gratitudeMessagesInternal.random() else DiagnosticBundle.message("error.report.gratitude")
-    val content = if (withAutoReportEnabled) DiagnosticBundle.message("error.report.with.auto.report.enabled", gratitude) else gratitude
     val title = DiagnosticBundle.message("error.reports.submitted")
-    val notification = Notification("Error Report", title, content, NotificationType.INFORMATION).setImportant(false)
+    val notification = Notification("Error Report", title, gratitude, NotificationType.INFORMATION).setImportant(false)
     notification.notify(myProject)
-  }
-
-  /**
-   *  Returns true if a user enabled an automatic error report on this request
-   */
-  private suspend fun suggestEnablingAutoReportIfApplicable(): Boolean {
-    if (!ExceptionAutoReportUtil.shouldOfferEnablingAutoReport()) return false
-
-    val dialogResult = withContext(Dispatchers.EDT) {
-      MessageDialogBuilder.yesNo(
-        DiagnosticBundle.message("auto.report.suggestion.dialog.title"),
-        DiagnosticBundle.message("auto.report.suggestion.dialog.message"),
-      )
-        .yesText(DiagnosticBundle.message("auto.report.suggestion.dialog.yes.option"))
-        .noText(DiagnosticBundle.message("auto.report.suggestion.dialog.no.option"))
-        .ask(rootPane)
-    }
-
-    ExceptionAutoReportUtil.enablingAutoReportOffered(dialogResult)
-    return dialogResult
   }
 
   private inner class ReportAllAction : AbstractAction(DiagnosticBundle.message("error.report.all.action")) {
@@ -905,12 +878,11 @@ open class IdeErrorsDialog @ApiStatus.Internal @JvmOverloads constructor(
 
         SHOW_NEW_BUILD_DIALOG.set(true)
         val parentComponent = getParentComponentForReport(true)
-        service<ITNProxyCoroutineScopeHolder>().coroutineScope.launch {
+        coroutineScope.launch {
           val reportingStarted = reportAll(myMessageClusters, parentComponent)
           if (reportingStarted) {
             withContext(Dispatchers.EDT) {
-              val autoReportEnabled = suggestEnablingAutoReportIfApplicable()
-              notifySuccessReportAll(autoReportEnabled)
+              notifySuccessReportAll()
               super@IdeErrorsDialog.doOKAction()
             }
           }
@@ -927,13 +899,12 @@ open class IdeErrorsDialog @ApiStatus.Internal @JvmOverloads constructor(
 
         SHOW_NEW_BUILD_DIALOG.set(true)
         val parentComponent = getParentComponentForReport(true)
-        service<ITNProxyCoroutineScopeHolder>().coroutineScope.launch {
+        coroutineScope.launch {
           val reportingStarted = reportAll(myMessageClusters, parentComponent)
           if (reportingStarted) {
             withContext(Dispatchers.EDT) {
               myMessagePool.clearErrors()
-              val autoReportEnabled = suggestEnablingAutoReportIfApplicable()
-              notifySuccessReportAll(autoReportEnabled)
+              notifySuccessReportAll()
               super@IdeErrorsDialog.doOKAction()
             }
           }
@@ -954,16 +925,11 @@ open class IdeErrorsDialog @ApiStatus.Internal @JvmOverloads constructor(
   private suspend fun reportAll(
     messageClusters: List<ErrorMessageCluster>,
     parentComponent: Component,
-    onlyEligibleForAutoReport: Boolean = false,
   ): Boolean {
     var reportingStarted = true
     for (i in messageClusters.indices) {
       val cluster = messageClusters[i]
       if (!cluster.canSubmit) {
-        continue
-      }
-
-      if (onlyEligibleForAutoReport && !ExceptionAutoReportUtil.isAutoReportableException(cluster.first)) {
         continue
       }
 
@@ -1027,7 +993,9 @@ open class IdeErrorsDialog @ApiStatus.Internal @JvmOverloads constructor(
 
     @JvmStatic
     @ApiStatus.ScheduledForRemoval
-    @Deprecated("use {@link PluginUtil#findPluginId} ", ReplaceWith("PluginUtil.getInstance().findPluginId(t)"), level = DeprecationLevel.HIDDEN)
+    @Deprecated("use {@link PluginUtil#findPluginId} ",
+                ReplaceWith("PluginUtil.getInstance().findPluginId(t)"),
+                level = DeprecationLevel.HIDDEN)
     fun findPluginId(t: Throwable): PluginId? = PluginUtil.getInstance().findPluginId(t)
 
     fun hashMessage(message: AbstractMessage): Long {

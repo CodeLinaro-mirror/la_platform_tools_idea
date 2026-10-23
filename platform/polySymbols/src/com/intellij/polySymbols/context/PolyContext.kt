@@ -42,12 +42,11 @@ interface PolyContext {
     val PKG_MANAGER_SYMFONY_BUNDLES: String = "symfony-bundles"
 
     @JvmStatic
-    @RequiresReadLock
     fun get(kind: PolyContextKind, location: VirtualFile, project: Project): PolyContextName? =
       findPolyContext(kind, location, project)
 
     @JvmStatic
-    @RequiresReadLock
+    @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
     fun get(kind: PolyContextKind, location: PsiElement): PolyContextName? =
       findPolyContext(kind, location)
 

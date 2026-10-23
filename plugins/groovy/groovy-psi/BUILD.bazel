@@ -1,7 +1,21 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
-### auto-generated section `build intellij.groovy.psi` start
+### auto-generated section `dev intellij.groovy.psi` start
+filegroup(
+    name = "dev_dist_resources",
+    srcs = glob(
+        ["standardDsls/**"],
+    ),
+    visibility = ["//visibility:public"],
+)
 
+exports_files(
+    ["resources/conf/console.groovy"],
+    visibility = ["//visibility:public"],
+)
+### auto-generated section `dev intellij.groovy.psi` end
+
+### auto-generated section `build intellij.groovy.psi` start
 jvm_library(
     name = "psi",
     srcs = glob(
@@ -18,6 +32,7 @@ jvm_library(
     resource_strip_prefix = "resources",
     resources = glob(
         ["resources/**/*"],
+        exclude = ["resources/**/icon-robots.txt"],
     ),
     visibility = ["//visibility:public"],
     exports = ["//libraries/groovy"],
@@ -129,6 +144,10 @@ jvm_library(
 exports_files(
     [
         "intellij.groovy.psi.iml",
+        "resources/colorSchemes/GroovyDarcula.xml",
+        "resources/colorSchemes/GroovyDefault.xml",
+        "resources/liveTemplates/Groovy.xml",
+        "resources/resources/groovyInjections.xml",
     ],
     visibility = ["//visibility:public"],
 )

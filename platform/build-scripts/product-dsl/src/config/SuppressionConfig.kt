@@ -22,16 +22,6 @@ data class ContentModuleSuppression(
   /** Plugin IDs to suppress from the descriptor's `<depends>` elements */
   @JvmField val suppressPlugins: Set<PluginId> = emptySet(),
   /**
-   * Library names to NOT replace with library modules in the IML file.
-   *
-   * Auto-populated by `--update-suppressions`. Remove entries one-by-one to enable
-   * replacements incrementally.
-   *
-   * Example: `["kotlin-test"]` prevents replacing `kotlin-test` library
-   * with `intellij.libraries.kotlinTest` module in this module's IML.
-   */
-  @JvmField val suppressLibraries: Set<String> = emptySet(),
-  /**
    * Test library names to NOT change scope to TEST in the IML file.
    *
    * Auto-populated by `--update-suppressions`. Remove entries one-by-one to enable
@@ -57,6 +47,25 @@ data class PluginSuppression(
 )
 
 /**
+ * An allowed conflict between embedded copies of one content module name.
+ *
+ * The key is the duplicated content module name, so a new owner of that name stays silent.
+ * A name that is not listed still fails, which is the point of the entry.
+ * Read `docs/validators/content-module-copy-conflict.md` for the rule and for each listed name.
+ */
+@Serializable
+data class ContentModuleCopyConflictException(
+  /**
+   * Why the entry exists, and which plugins own the copies. Free text.
+   *
+   * An entry is one of two kinds, and the text must start with the kind.
+   * `DEBT:` marks a real defect that nobody has fixed yet, and it is expected to go away.
+   * `INTENTIONAL:` marks a duplication that the repository wants, and that entry is permanent.
+   */
+  @JvmField val reason: String = "",
+)
+
+/**
  * Validation exceptions for a content module.
  */
 @Serializable
@@ -75,7 +84,10 @@ data class ValidationException(
  *
  * **Updates:** `--update-suppressions` captures the current XML state into suppressions.json
  * (suppresses missing JPS deps and preserves XML-only deps) and performs no XML writes.
- * When running packaging tests (commitChanges=false), stale entries cause "file out of sync" errors.
+ *
+ * **Stale entries:** a normal run counts an entry that no usage of the run needs, and the summary prints the count.
+ * `--log=stale` names each stale module or plugin entry. Only `--update-suppressions` writes the file, so a stale entry
+ * fails no test and stays until that run removes it.
  */
 @Serializable
 data class SuppressionConfig(
@@ -83,7 +95,7 @@ data class SuppressionConfig(
    * Content module suppressions (unified).
    *
    * Key: Content module name (e.g., "intellij.python.junit5Tests")
-   * Value: All suppressions for this module (modules + plugins)
+   * Value: All suppressions for this module
    */
   @JvmField val contentModules: Map<ContentModuleName, ContentModuleSuppression> = emptyMap(),
 
@@ -104,17 +116,29 @@ data class SuppressionConfig(
   @JvmField val validationExceptions: Map<ContentModuleName, ValidationException> = emptyMap(),
 
   /**
+   * Allowed conflicts between embedded copies of one content module name.
+   *
+   * Key: the duplicated content module name (e.g., "intellij.libraries.flexmark")
+   * Value: why the entry exists, which plugins own the copies, and whether it is debt or intentional
+   *
+   * Suppresses [org.jetbrains.intellij.build.productLayout.model.error.ContentModuleCopyConflictError]
+   * by name, so a new owner of a listed name is silent and a new name still fails.
+   *
+   * The generator copies this map without a change, like [validationExceptions], so an entry survives
+   * regeneration. A stale entry is therefore not reported. Remove a `DEBT:` entry when the copies go away.
+   * Never remove an `INTENTIONAL:` entry, because the generator would then fail on a wanted pattern.
+   */
+  @JvmField val contentModuleCopyConflicts: Map<ContentModuleName, ContentModuleCopyConflictException> = emptyMap(),
+
+  /**
    * Direct error key suppression for pipeline errors.
    *
    * Keys match [org.jetbrains.intellij.build.productLayout.model.error.ValidationError.suppressionKey].
    * Most keys come from [org.jetbrains.intellij.build.productLayout.model.error.UnsuppressedPipelineError.errorKey].
    * Example key: `"nonStandardRoot:intellij.fullLine.yaml"`
    *
-   * **Note:** Stale suppressions (entries in this config that no longer apply) are NOT reported
-   * as errors. They're handled via the file sync pattern: when suppressions become stale,
-   * the generator auto-removes them (`commitChanges=true`) or reports as
-   * [org.jetbrains.intellij.build.productLayout.model.error.FileDiff]
-   * (`commitChanges=false` in packaging tests).
+   * **Note:** A stale key, one that no error of the run produces, is not an error. The summary counts it with the
+   * stale module and plugin entries, and `--log=stale` does not name it. Only `--update-suppressions` removes it.
    */
   @JvmField val suppressedErrors: Set<String> = emptySet(),
 ) {
@@ -128,6 +152,12 @@ data class SuppressionConfig(
     if (errorKey.startsWith(MISSING_PLUGIN_ID_PREFIX)) {
       val pluginName = errorKey.removePrefix(MISSING_PLUGIN_ID_PREFIX)
       if (plugins[ContentModuleName(pluginName)]?.allowMissingPluginId == true) {
+        return true
+      }
+    }
+    if (errorKey.startsWith(CONTENT_MODULE_COPY_CONFLICT_PREFIX)) {
+      val moduleName = errorKey.removePrefix(CONTENT_MODULE_COPY_CONFLICT_PREFIX)
+      if (contentModuleCopyConflicts.containsKey(ContentModuleName(moduleName))) {
         return true
       }
     }
@@ -177,6 +207,7 @@ data class SuppressionConfig(
 
   companion object {
     private const val MISSING_PLUGIN_ID_PREFIX = "missing-plugin-id:"
+    private const val CONTENT_MODULE_COPY_CONFLICT_PREFIX = "contentModuleCopyConflict:"
     private val json = Json {
       prettyPrint = true
       prettyPrintIndent = "  "  // 2-space indent

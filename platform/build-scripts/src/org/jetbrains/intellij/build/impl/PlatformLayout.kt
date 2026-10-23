@@ -3,52 +3,62 @@
 
 package org.jetbrains.intellij.build.impl
 
-import org.jetbrains.annotations.TestOnly
-import org.jetbrains.intellij.build.ModuleOutputProvider
+import kotlinx.collections.immutable.PersistentList
+import kotlinx.collections.immutable.PersistentMap
+import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.persistentMapOf
+import org.jetbrains.annotations.ApiStatus
+import org.jetbrains.intellij.build.BuildContext
+import org.jetbrains.intellij.build.DistFile
+import org.jetbrains.intellij.build.JvmArchitecture
+import org.jetbrains.intellij.build.OsFamily
+import org.jetbrains.intellij.build.dev.DevPluginLayoutAssetSpec
 import org.jetbrains.intellij.build.impl.PlatformJarNames.APP_BACKEND_JAR
-import org.jetbrains.intellij.build.productLayout.LIB_MODULE_PREFIX
-import org.jetbrains.jps.model.java.JpsJavaClasspathKind
-import org.jetbrains.jps.model.java.JpsJavaExtensionService
-import org.jetbrains.jps.model.module.JpsModule
-import org.jetbrains.jps.model.module.JpsModuleReference
+import java.nio.file.Path
+
+/**
+ * How production packaging and a complete dev build place the files of one [PlatformDistFileDeclaration].
+ * The dev distribution does not read this half; its component places the files from the layout asset spec.
+ */
+@ApiStatus.Internal
+sealed interface PlatformDistFilePlacement {
+  /**
+   * The files are registered as [DistFile]s. The cross-platform zip and the mac zip take a dist file from its source,
+   * and the content report lists it.
+   */
+  class RegisteredDistFiles(@JvmField val distFiles: (BuildContext) -> List<DistFile>) : PlatformDistFilePlacement
+
+  /**
+   * The files are copied into the OS-specific distribution directory, like the `bin` files. The cross-platform zip
+   * does not take them, and the mac signing pass covers them through the executable patterns. [copy] gets the
+   * distribution directory and returns the files it wrote.
+   */
+  class OsSpecificFiles(@JvmField val copy: (Path, BuildContext) -> List<Path>) : PlatformDistFilePlacement
+}
+
+/**
+ * The files a downloaded dependency contributes to the distribution for one target platform.
+ *
+ * [layoutAssetSpec] is the data the dev distribution packs from: the archive as a Bazel label, and each archive path
+ * with its distribution destination. [placement] places the same files for production packaging and for a complete
+ * dev build. Both halves describe the same files, so a change to one is a change to the other.
+ */
+@ApiStatus.Internal
+class PlatformDistFileDeclaration(
+  @JvmField val layoutAssetSpec: DevPluginLayoutAssetSpec,
+  @JvmField val placement: PlatformDistFilePlacement,
+)
 
 /**
  * Describes layout of the platform (*.jar files in IDE_HOME/lib directory).
  *
- * By default, it includes all modules specified in [org.jetbrains.intellij.build.productLayout.ProductModulesLayout],
- * all libraries these modules depend on with scope 'Compile' or 'Runtime', and all project libraries from dependencies (with scope 'Compile'
- * or 'Runtime') of plugin modules for plugins which are [org.jetbrains.intellij.build.productLayout.ProductModulesLayout.bundledPluginModules] bundled
- * (or prepared to be [org.jetbrains.intellij.build.productLayout.ProductModulesLayout.pluginModulesToPublish] published) with the product (except
- * project libraries which are explicitly included in layouts of all plugins depending on them by [BaseLayoutSpec.withProjectLibrary]).
+ * It includes all modules specified in [org.jetbrains.intellij.build.productLayout.ProductModulesLayout] and the module libraries they depend on.
+ *
+ * Project libraries are never added implicitly - only the ones declared by [BaseLayoutSpec.withProjectLibrary] are packed.
+ * A project library that a plugin module references is not packed for the plugin; the platform or the plugin layout declares it.
  */
 class PlatformLayout(@JvmField val descriptorCacheContainer: DescriptorCacheContainer = DescriptorCacheContainer()) : BaseLayout() {
-  internal var libAsProductModule: Set<String> = emptySet()
-
-  private val projectLibraryToPolicy: MutableMap<String, ProjectLibraryPackagingPolicy> = HashMap()
   private val productModuleOutputFileOverrides: MutableMap<String, String> = HashMap()
-
-  @get:TestOnly
-  val excludedProjectLibraries: Sequence<String>
-    get() = projectLibraryToPolicy.asSequence().filter { it.value == ProjectLibraryPackagingPolicy.EXCLUDE }.map { it.key }
-
-  internal enum class ProjectLibraryPackagingPolicy {
-    EXCLUDE,
-    ALWAYS_PACK_TO_PLUGIN,
-  }
-
-  fun hasLibrary(name: String, moduleName: String): Boolean {
-    return super.hasLibrary(name) || (!moduleName.startsWith(LIB_MODULE_PREFIX) && libAsProductModule.contains(name))
-  }
-
-  fun isProjectLibraryExcluded(name: String): Boolean = projectLibraryToPolicy.get(name) == ProjectLibraryPackagingPolicy.EXCLUDE
-
-  internal fun alwaysPackToPlugin(names: List<String>) {
-    for (name in names) {
-      projectLibraryToPolicy.put(name, ProjectLibraryPackagingPolicy.ALWAYS_PACK_TO_PLUGIN)
-    }
-  }
-
-  fun isLibraryAlwaysPackedIntoPlugin(name: String): Boolean = projectLibraryToPolicy.get(name) == ProjectLibraryPackagingPolicy.ALWAYS_PACK_TO_PLUGIN
 
   override fun getRelativeJarPath(moduleName: String): String = APP_BACKEND_JAR
 
@@ -72,30 +82,49 @@ class PlatformLayout(@JvmField val descriptorCacheContainer: DescriptorCacheCont
 
   internal fun getProductModuleOutputFile(moduleName: String): String? = productModuleOutputFileOverrides.get(moduleName)
 
-  fun withoutProjectLibrary(libraryName: String) {
-    projectLibraryToPolicy.put(libraryName, ProjectLibraryPackagingPolicy.EXCLUDE)
+  /** The declared dist files per target platform, in declaration order. Keyed by the OS and the architecture. */
+  @ApiStatus.Internal
+  var distFileDeclarations: PersistentMap<Pair<OsFamily, JvmArchitecture>, PersistentList<PlatformDistFileDeclaration>> = persistentMapOf()
+    private set
+
+  /**
+   * Declares the files a downloaded dependency contributes to the distribution on [os] and [arch].
+   *
+   * The plugin counterpart is `PluginLayoutSpec.withGeneratedPlatformResources` with a layout asset spec. The dev
+   * distribution packs the files [layoutAssetSpec] names out of the archive it names. Production packaging and a
+   * complete dev build register the [DistFile]s [distFiles] returns; the build calls it once per declaration.
+   */
+  fun withDistFiles(
+    os: OsFamily,
+    arch: JvmArchitecture,
+    layoutAssetSpec: DevPluginLayoutAssetSpec,
+    distFiles: (BuildContext) -> List<DistFile>,
+  ) {
+    declareDistFiles(os, arch, layoutAssetSpec, PlatformDistFilePlacement.RegisteredDistFiles(distFiles))
   }
 
-  fun collectProjectLibrariesFromIncludedModules(context: ModuleOutputProvider, consumer: (String, JpsModule) -> Unit) {
-    val libsToUnpack = includedProjectLibraries.mapTo(LinkedHashSet(includedProjectLibraries.size)) { it.libraryName }
-    val uniqueGuard = HashSet<String>()
-    for (item in includedModules) {
-      if (item.isProductModule()) {
-        continue
-      }
+  /**
+   * Declares the files a downloaded dependency contributes to the OS-specific distribution directory on [os] and [arch].
+   *
+   * The dev distribution packs the files [layoutAssetSpec] names, as with [withDistFiles]. Production packaging and a
+   * complete dev build call [copy] with the distribution directory where the OS builder copies its `bin` files; [copy]
+   * returns the files it wrote, so the build can set their executable bits and keep them out of a stale-file sweep.
+   */
+  fun withOsSpecificFiles(
+    os: OsFamily,
+    arch: JvmArchitecture,
+    layoutAssetSpec: DevPluginLayoutAssetSpec,
+    copy: (Path, BuildContext) -> List<Path>,
+  ) {
+    declareDistFiles(os, arch, layoutAssetSpec, PlatformDistFilePlacement.OsSpecificFiles(copy))
+  }
 
-      val moduleName = item.moduleName
-      if (!uniqueGuard.add(moduleName)) {
-        continue
-      }
-
-      val module = context.findRequiredModule(moduleName)
-      for (library in JpsJavaExtensionService.dependencies(module).includedIn(JpsJavaClasspathKind.PRODUCTION_RUNTIME).libraries) {
-        val libraryName = library.name
-        if (!libsToUnpack.contains(libraryName) && library.createReference().parentReference !is JpsModuleReference && !isProjectLibraryExcluded(libraryName)) {
-          consumer(libraryName, module)
-        }
-      }
+  private fun declareDistFiles(os: OsFamily, arch: JvmArchitecture, layoutAssetSpec: DevPluginLayoutAssetSpec, placement: PlatformDistFilePlacement) {
+    require(!layoutAssetSpec.omitted && layoutAssetSpec.assets.isNotEmpty()) {
+      "A platform dist file declaration for ${os.osId}/${arch.name} must name its assets"
     }
+    val key = os to arch
+    val declaration = PlatformDistFileDeclaration(layoutAssetSpec, placement)
+    distFileDeclarations = distFileDeclarations.putting(key, (distFileDeclarations.get(key) ?: persistentListOf()).adding(declaration))
   }
 }

@@ -19,6 +19,7 @@ import com.intellij.platform.workspace.jps.entities.ModuleId
 import com.intellij.platform.workspace.jps.entities.ModuleSourceDependency
 import com.intellij.platform.workspace.jps.entities.modifyModuleEntity
 import com.intellij.platform.workspace.storage.WorkspaceEntity
+import com.intellij.platform.workspace.storage.WorkspaceEntityInternalApi
 import com.intellij.platform.workspace.storage.entities
 import com.intellij.platform.workspace.storage.impl.WorkspaceEntityBase
 import com.intellij.platform.workspace.storage.impl.WorkspaceEntityData
@@ -134,6 +135,7 @@ class WorkspaceModelJsonDumpTest {
     ) { "Wrong entity source" }
   }
 
+  @OptIn(WorkspaceEntityInternalApi::class)
   private val WorkspaceEntity.data: WorkspaceEntityData<out WorkspaceEntity>
     get() = (this as WorkspaceEntityBase).getData()
 
@@ -156,7 +158,7 @@ class WorkspaceModelJsonDumpTest {
       project.waitForSmartMode()
       val vfuManager = project.workspaceModel.getVirtualFileUrlManager()
       project.workspaceModel.update {
-        val vfu = vfuManager.getOrCreateFromUrl("file:///tmp")
+        val vfu = vfuManager.storeAndGet("file:///tmp")
         val moduleDependency = ModuleDependency(ModuleId("some_module"), false, DependencyScope.COMPILE, true)
         val libraryEntity = it.addEntity(LibraryEntity(
           "some_library",
@@ -200,7 +202,7 @@ class WorkspaceModelJsonDumpTest {
 
       val vfuManager = project.workspaceModel.getVirtualFileUrlManager()
       project.workspaceModel.update {
-        val urls = listOf("1.txt", "2.kt", "3.cpp").map { name -> vfuManager.getOrCreateFromUrl("file:///someDir/subDir/$name") }
+        val urls = listOf("1.txt", "2.kt", "3.cpp").map { name -> vfuManager.storeAndGet("file:///someDir/subDir/$name") }
         val strings = listOf("a", "a", "b", "c", "b")
         it.addEntity(BaseTestEntity(
           "base",

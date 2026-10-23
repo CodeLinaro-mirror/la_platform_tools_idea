@@ -58,6 +58,11 @@ public abstract class JsFindUsagesFirTestGenerated extends AbstractFindUsagesFir
             runTest("../../idea/tests/testData/findUsages/kotlin/companionObject/namedWithInvoke.0.kt");
         }
 
+        @TestMetadata("namedWithSuperType.0.kt")
+        public void testNamedWithSuperType() throws Exception {
+            runTest("../../idea/tests/testData/findUsages/kotlin/companionObject/namedWithSuperType.0.kt");
+        }
+
         @TestMetadata("simple.0.kt")
         public void testSimple() throws Exception {
             runTest("../../idea/tests/testData/findUsages/kotlin/companionObject/simple.0.kt");
@@ -1028,6 +1033,11 @@ public abstract class JsFindUsagesFirTestGenerated extends AbstractFindUsagesFir
         @TestMetadata("overrides.0.kt")
         public void testOverrides() throws Exception {
             runTest("../../idea/tests/testData/findUsages/kotlin/findFunctionUsages/overrides.0.kt");
+        }
+
+        @TestMetadata("privateInterfaceMemberUsedThroughNonPrivateSubclass.0.kt")
+        public void testPrivateInterfaceMemberUsedThroughNonPrivateSubclass() throws Exception {
+            runTest("../../idea/tests/testData/findUsages/kotlin/findFunctionUsages/privateInterfaceMemberUsedThroughNonPrivateSubclass.0.kt");
         }
 
         @TestMetadata("privateKotlinClass.0.kt")

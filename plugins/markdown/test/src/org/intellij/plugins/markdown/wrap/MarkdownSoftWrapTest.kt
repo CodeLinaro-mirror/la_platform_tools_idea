@@ -1,14 +1,52 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.intellij.plugins.markdown.wrap
 
+import com.intellij.openapi.editor.EditorFactory
+import com.intellij.openapi.editor.event.EditorFactoryEvent
 import com.intellij.testFramework.EditorTestUtil
+import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.intellij.util.SlowOperations
+import org.intellij.plugins.markdown.editor.tables.ui.MarkdownInlayUpdateOnSoftWrapListener
+import org.junit.jupiter.api.assertDoesNotThrow
 
 class MarkdownSoftWrapTest : BasePlatformTestCase() {
   /**
+   * The long token hides the previous space from the ten-character fast path.
+   * This forces the Markdown strategy to reject dots inside the address.
+   */
+  fun `test soft wrap does not break an IPv4 address`() {
+    val address = "192.168.0.1"
+    val text = "word ".repeat(10) + "unbreakable".repeat(2) + "$address more words after the address"
+    myFixture.configureByText("softWrapIpv4.md", text)
+    assertTrue(EditorTestUtil.configureSoftWraps(myFixture.editor, 80))
+
+    val addressStart = text.indexOf(address)
+    val wrapOffsets = myFixture.editor.softWrapModel.getSoftWrapsForRange(0, text.length).map { it.start }
+    assertNotEmpty(wrapOffsets)
+    assertEmpty("soft wrap must not appear inside the IPv4 address: $wrapOffsets",
+                wrapOffsets.filter { it in (addressStart + 1) until (addressStart + address.length) })
+  }
+
+  fun `test listener does not throw or report slow operations on EDT`() {
+    myFixture.configureByText("test.md", "")
+    val listener = MarkdownInlayUpdateOnSoftWrapListener()
+
+    SlowOperations.reportKnownIssues()
+    PlatformTestUtil.withSystemProperty<Nothing>(SlowOperations.FORBID_SLOW_OPS_PROPERTY, "true") {
+      assertDoesNotThrow {
+        SlowOperations.startSection(SlowOperations.FORCE_ASSERT).use {
+          listener.editorCreated(EditorFactoryEvent(EditorFactory.getInstance(), myFixture.editor))
+        }
+      }
+    }
+    assertTrue(SlowOperations.reportKnownIssues().isEmpty())
+  }
+
+  /**
    * The wrap candidate falls inside the link, where wrapping is forbidden, so the strategy has to move
    * the soft wrap before the link start. The link is placed after several blank-line-separated paragraphs to check
-   * that [com.intellij.markdown.frontend.editor.MarkdownLineWrapPositionStrategy] resolves offsets correctly when
+   * that [org.intellij.plugins.markdown.editor.MarkdownLineWrapPositionStrategy] resolves offsets correctly when
    * the line under test does not start at the beginning of the document.
    */
   fun `test soft wrap does not break a link located after the first block`() {

@@ -37,7 +37,7 @@ import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.StandardFileSystems;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.wm.IdeFocusManager;
 import com.intellij.openapi.wm.ToolWindow;
@@ -56,11 +56,11 @@ import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.content.Content;
 import com.intellij.ui.popup.AbstractPopup;
 import com.intellij.util.TimeoutUtil;
+import com.intellij.util.concurrency.annotations.RequiresEdt;
 import com.intellij.util.messages.MessageBusConnection;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
 import com.intellij.xdebugger.impl.frame.XStandaloneVariablesView;
-import com.intellij.xdebugger.impl.ui.tree.nodes.XDebuggerTreeNode;
 import com.jetbrains.python.PyBundle;
 import com.jetbrains.python.console.actions.CommandQueueForPythonConsoleService;
 import com.jetbrains.python.console.actions.CommandQueueListener;
@@ -72,6 +72,7 @@ import com.jetbrains.python.debugger.PyDebugValueDescriptor;
 import com.jetbrains.python.debugger.PyDebuggerEditorsProvider;
 import com.jetbrains.python.debugger.PyStackFrame;
 import com.jetbrains.python.debugger.PyStackFrameInfo;
+import com.jetbrains.python.debugger.PyDebuggerOptionsProvider;
 import com.jetbrains.python.highlighting.PyHighlighter;
 import com.jetbrains.python.psi.LanguageLevel;
 import com.jetbrains.python.psi.impl.PyExpressionCodeFragmentImpl;
@@ -82,7 +83,6 @@ import com.jetbrains.python.testing.PyTestsSharedKt;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.annotations.TestOnly;
 
 import javax.swing.JComponent;
 import javax.swing.SwingUtilities;
@@ -106,6 +106,7 @@ public final class PythonConsoleView extends LanguageConsoleImpl implements Obse
 
   private PythonConsoleExecuteActionHandler myExecuteActionHandler;
   private PyConsoleSourceHighlighter mySourceHighlighter;
+  private boolean myDebugConsole = false;
   private boolean myIsIPythonOutput;
   private final PyHighlighter myPyHighlighter;
   private boolean myHyperlink;
@@ -118,7 +119,8 @@ public final class PythonConsoleView extends LanguageConsoleImpl implements Obse
 
   private final Map<String, Map<String, PyDebugValueDescriptor>> myDescriptorsCache = Maps.newConcurrentMap();
 
-  private final PythonCommandQueuePanel myCommandQueuePanel = new PythonCommandQueuePanel(this);
+  private @Nullable PythonCommandQueuePanel myCommandQueuePanel;
+  private @Nullable ConsoleCommunication myCommandQueueCommunication;
   private JBPopup myCommandQueue;
   private Dimension commandQueueDimension;
   private boolean isShowQueue;
@@ -134,7 +136,7 @@ public final class PythonConsoleView extends LanguageConsoleImpl implements Obse
   /**
    * Context psi file for Python Console Editor. Needs for static code completion.
    */
-  private final PsiFile myHistoryPsiFile = new PyExpressionCodeFragmentImpl(getProject(), "dummy.py", "", true);
+  private final PsiFile myHistoryPsiFile;
 
   public PsiFile getHistoryPsiFile() {
     return myHistoryPsiFile;
@@ -150,34 +152,54 @@ public final class PythonConsoleView extends LanguageConsoleImpl implements Obse
    */
   public PythonConsoleView(final Project project, final String title, final @Nullable Sdk sdk, final boolean testMode) {
     super(createHelper(project, title));
-    if (PsiUtilCore.getPsiFile(project, getVirtualFile()) instanceof PyExpressionCodeFragmentImpl codeFragment) {
-      codeFragment.setContext(myHistoryPsiFile);
-    }
-
-    getConsoleEditor().setFile(getVirtualFile());
-    myTestMode = testMode;
-    isShowVars = PyConsoleOptions.getInstance(project).isShowVariableByDefault();
-    VirtualFile virtualFile = getVirtualFile();
-    PythonLanguageLevelPusher.specifyFileLanguageLevel(virtualFile, PySdkUtil.getLanguageLevelForSdk(sdk));
-    virtualFile.putUserData(CONSOLE_KEY, true);
-    // Mark editor as console one, to prevent autopopup completion if runtime completion is enabled
-    if (PyConsoleOptions.getInstance(getProject()).isRuntimeCodeCompletion()) {
-      getConsoleEditor().putUserData(PythonConsoleAutopopupBlockingHandler.REPL_KEY, new Object());
-    }
-    getHistoryViewer().putUserData(ConsoleViewUtil.EDITOR_IS_CONSOLE_HISTORY_VIEW, true);
-    getHistoryViewer().putUserData(COUNTER_LINE_NUMBER, new HashMap<>());
-    super.setPrompt(null);
-    setUpdateFoldingsEnabled(false);
-    LanguageLevel languageLevel = LanguageLevel.getDefault();
-    if (sdk != null) {
-      final PythonSdkFlavor<?> sdkFlavor = PythonSdkFlavor.getFlavor(sdk);
-      if (sdkFlavor != null) {
-        languageLevel = sdkFlavor.getLanguageLevel(sdk);
+    try {
+      myHistoryPsiFile = new PyExpressionCodeFragmentImpl(project, "dummy.py", "", true);
+      if (PsiUtilCore.getPsiFile(project, getVirtualFile()) instanceof PyExpressionCodeFragmentImpl codeFragment) {
+        codeFragment.setContext(myHistoryPsiFile);
       }
-      mySdkHomePath = sdk.getHomePath();
+
+      getConsoleEditor().setFile(getVirtualFile());
+      myTestMode = testMode;
+      isShowVars = PyConsoleOptions.getInstance(project).isShowVariableByDefault();
+      VirtualFile virtualFile = getVirtualFile();
+      PythonLanguageLevelPusher.specifyFileLanguageLevel(virtualFile, PySdkUtil.getLanguageLevelForSdk(sdk));
+      virtualFile.putUserData(CONSOLE_KEY, true);
+      // Mark editor as console one, to prevent autopopup completion if runtime completion is enabled
+      if (PyConsoleOptions.getInstance(getProject()).isRuntimeCodeCompletion()) {
+        getConsoleEditor().putUserData(PythonConsoleAutopopupBlockingHandler.REPL_KEY, new Object());
+      }
+      getHistoryViewer().putUserData(ConsoleViewUtil.EDITOR_IS_CONSOLE_HISTORY_VIEW, true);
+      getHistoryViewer().putUserData(COUNTER_LINE_NUMBER, new HashMap<>());
+      super.setPrompt(null);
+      setUpdateFoldingsEnabled(false);
+      LanguageLevel languageLevel = LanguageLevel.getDefault();
+      if (sdk != null) {
+        final PythonSdkFlavor<?> sdkFlavor = PythonSdkFlavor.getFlavor(sdk);
+        if (sdkFlavor != null) {
+          languageLevel = sdkFlavor.getLanguageLevel(sdk);
+        }
+        mySdkHomePath = sdk.getHomePath();
+      }
+      myPyHighlighter = new PyHighlighter(languageLevel);
+      addToolwindowPositionListener(project);
     }
-    myPyHighlighter = new PyHighlighter(languageLevel);
-    addToolwindowPositionListener(project);
+    catch (Throwable e) {
+      releaseHalfBuiltConsole(e);
+      throw e;
+    }
+  }
+
+  /**
+   * Releases a console whose constructor did not finish.
+   * The caller sees the first cause, so a failure of the release only adds itself to it.
+   */
+  private void releaseHalfBuiltConsole(@NotNull Throwable cause) {
+    try {
+      Disposer.dispose(this);
+    }
+    catch (Throwable releaseError) {
+      cause.addSuppressed(releaseError);
+    }
   }
 
   public void setCommandQueueTitle(String title) {
@@ -196,7 +218,10 @@ public final class PythonConsoleView extends LanguageConsoleImpl implements Obse
     }
 
     if (communication instanceof PydevConsoleCommunication || communication instanceof PythonDebugConsoleCommunication) {
-      myCommandQueuePanel.setCommunication(communication);
+      myCommandQueueCommunication = communication;
+      if (myCommandQueuePanel != null) {
+        myCommandQueuePanel.setCommunication(communication);
+      }
     }
 
     addCommandQueuePanelListener(communication);
@@ -208,23 +233,29 @@ public final class PythonConsoleView extends LanguageConsoleImpl implements Obse
         @Override
         public void removeCommand(ConsoleCommunication.@NotNull ConsoleCodeFragment command) {
           ApplicationManager.getApplication().invokeLater(() -> {
-            myCommandQueuePanel.removeCommand(command);
+            if (myCommandQueuePanel != null) {
+              myCommandQueuePanel.removeCommand(command);
+            }
           });
         }
 
         @Override
         public void addCommand(ConsoleCommunication.@NotNull ConsoleCodeFragment command) {
-          myCommandQueuePanel.addCommand(command);
+          getOrCreateCommandQueuePanel().addCommand(command);
         }
 
         @Override
         public void removeAll() {
-          myCommandQueuePanel.removeAllCommands();
+          if (myCommandQueuePanel != null) {
+            myCommandQueuePanel.removeAllCommands();
+          }
         }
 
         @Override
         public void disableConsole() {
-          myCommandQueuePanel.removeAllCommands();
+          if (myCommandQueuePanel != null) {
+            myCommandQueuePanel.removeAllCommands();
+          }
           isShowQueue = false;
           restoreQueueWindow(false);
         }
@@ -319,7 +350,7 @@ public final class PythonConsoleView extends LanguageConsoleImpl implements Obse
    */
   private void executeCodeImpl(@Nullable String code) {
     if (code != null) {
-      if (PyConsoleUtil.isCommandQueueEnabled(getProject())) {
+      if (isCommandQueueEnabled()) {
         executeInConsole(code);
       }
       else {
@@ -382,8 +413,38 @@ public final class PythonConsoleView extends LanguageConsoleImpl implements Obse
     }
   }
 
+  /**
+   * Marks this view as the Debug Console one. The Debug Console keeps its own settings, see PY-91913.
+   */
+  @ApiStatus.Internal
+  public void markAsDebugConsole() {
+    myDebugConsole = true;
+  }
+
+  /**
+   * Whether the command queue applies to this console. The Debug Console and the Python Console are configured
+   * separately, and this class serves both.
+   */
+  @ApiStatus.Internal
+  public boolean isCommandQueueEnabled() {
+    return myDebugConsole
+           ? PyDebuggerOptionsProvider.getInstance(getProject()).isDebugConsoleCommandQueueEnabled()
+           : PyConsoleOptions.getInstance(getProject()).isCommandQueueEnabled();
+  }
+
   public void executeStatement(@NotNull String statement, @NotNull Key<?> attributes) {
     print(statement, outputTypeForAttributes(attributes));
+    myExecuteActionHandler.processLine(statement);
+  }
+
+  /**
+   * Executes {@code statement} and shows it with Python syntax highlighting, the way executed input looks.
+   * <p>
+   * Used for the Debug Console start script: it is code, so it should not read as plain system output.
+   */
+  @ApiStatus.Internal
+  public void executeStatementWithHighlighting(@NotNull String statement) {
+    new PyConsoleSourceHighlighter(this, myPyHighlighter).printHighlightedSource(statement);
     myExecuteActionHandler.processLine(statement);
   }
 
@@ -456,7 +517,7 @@ public final class PythonConsoleView extends LanguageConsoleImpl implements Obse
 
   private void printHyperlink(@NotNull String text, @NotNull ConsoleViewContentType contentType) {
     if (!StringUtil.isEmpty(text)) {
-      VirtualFile vFile = LocalFileSystem.getInstance().findFileByPath(text.trim());
+      VirtualFile vFile = StandardFileSystems.local().findFileByPath(text.trim());
 
       if (vFile != null) {
         OpenFileHyperlinkInfo hyperlink = new OpenFileHyperlinkInfo(getProject(), vFile, -1);
@@ -569,6 +630,20 @@ public final class PythonConsoleView extends LanguageConsoleImpl implements Obse
     });
   }
 
+  /**
+   * Builds the command-queue panel the first time something needs it.
+   */
+  @RequiresEdt
+  private @NotNull PythonCommandQueuePanel getOrCreateCommandQueuePanel() {
+    if (myCommandQueuePanel == null) {
+      myCommandQueuePanel = new PythonCommandQueuePanel(this);
+      if (myCommandQueueCommunication != null) {
+        myCommandQueuePanel.setCommunication(myCommandQueueCommunication);
+      }
+    }
+    return myCommandQueuePanel;
+  }
+
   //the main function for drawing the queue
   public void showQueue() {
     JBPopupListener listener = new JBPopupListener() {
@@ -580,7 +655,7 @@ public final class PythonConsoleView extends LanguageConsoleImpl implements Obse
     };
     String commandQueueName = getConsoleDisplayName(getProject());
     myCommandQueue = JBPopupFactory.getInstance()
-      .createComponentPopupBuilder(myCommandQueuePanel, null)
+      .createComponentPopupBuilder(getOrCreateCommandQueuePanel(), null)
       .setMovable(true)
       .setResizable(true)
       .setShowShadow(true)
@@ -701,11 +776,6 @@ public final class PythonConsoleView extends LanguageConsoleImpl implements Obse
     return myRunner;
   }
 
-  @TestOnly
-  public @Nullable XDebuggerTreeNode getDebuggerTreeRootNode() {
-    return mySplitView.getTree().getRoot();
-  }
-
   @Override
   public void dispose() {
     super.dispose();
@@ -718,10 +788,12 @@ public final class PythonConsoleView extends LanguageConsoleImpl implements Obse
       }
     }
 
-    var editor = myCommandQueuePanel.getQueueEditor();
     commandQueueDimension = null;
-    if (!editor.isDisposed()) {
-      EditorFactory.getInstance().releaseEditor(editor);
+    if (myCommandQueuePanel != null) {
+      var editor = myCommandQueuePanel.getQueueEditor();
+      if (!editor.isDisposed()) {
+        EditorFactory.getInstance().releaseEditor(editor);
+      }
     }
   }
 

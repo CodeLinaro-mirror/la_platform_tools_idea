@@ -56,6 +56,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.withContext
+import org.jetbrains.annotations.ApiStatus
 import java.awt.AWTEvent
 import java.awt.Component
 import java.awt.Dimension
@@ -122,7 +123,7 @@ class ActionMenu constructor(
 
     // also triggering initialization of private field "popupMenu" from JMenu with our own JBPopupMenu
     BegMenuItemUI.registerMultiChoiceSupport(getPopupMenu()) { popupMenu ->
-      Utils.updateMenuItems(popupMenu, getDataContext(), this.place, this.presentationFactory)
+      updateMenuItems(popupMenu)
     }
   }
 
@@ -161,6 +162,15 @@ class ActionMenu constructor(
       else SwingUtilities.getAncestorOfClass(IdeFrame::class.java, component)) as? IdeFrame
       frame?.getStatusBar()?.setInfo(if (isIncluded) description else null)
     }
+  }
+  
+  @ApiStatus.Internal
+  fun updateMenuItems() {
+    updateMenuItems(getPopupMenu())
+  }
+
+  private fun updateMenuItems(popupMenu: JPopupMenu) {
+    Utils.updateMenuItems(popupMenu, getDataContext(), this.place, this.presentationFactory)
   }
 
   override fun getPopupMenu(): JPopupMenu {
@@ -613,7 +623,7 @@ private class SubElementSelector(private val owner: ActionMenu) {
   @JvmField
   var stubItem: StubItem? = null
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun ignoreNextSelectionRequest(timeoutMs: Int) {
     shouldIgnoreNextSelectionRequest = true
     shouldIgnoreNextSelectionRequestTimeoutMs = timeoutMs
@@ -625,19 +635,19 @@ private class SubElementSelector(private val owner: ActionMenu) {
     }
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun ignoreNextSelectionRequest() {
     ignoreNextSelectionRequest(-1)
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun cancelIgnoringOfNextSelectionRequest() {
     shouldIgnoreNextSelectionRequest = false
     shouldIgnoreNextSelectionRequestSinceTimestamp = -1
     shouldIgnoreNextSelectionRequestTimeoutMs = -1
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun selectSubElementIfNecessary() {
     val shouldIgnoreThisSelectionRequest = if (shouldIgnoreNextSelectionRequest) {
       if (shouldIgnoreNextSelectionRequestTimeoutMs >= 0) {
@@ -660,7 +670,7 @@ private class SubElementSelector(private val owner: ActionMenu) {
     SwingUtilities.invokeLater { selectFirstEnabledElement(thisRequestId) }
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun cancelNextSelection() {
     ++currentRequestId
   }
@@ -676,7 +686,7 @@ private class SubElementSelector(private val owner: ActionMenu) {
     }
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private fun selectFirstEnabledElement(requestId: Int) {
     if (requestId != currentRequestId) {
       // the request was canceled or a newer request was created

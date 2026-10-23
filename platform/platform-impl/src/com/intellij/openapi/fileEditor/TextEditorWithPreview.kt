@@ -87,6 +87,7 @@ open class TextEditorWithPreview @JvmOverloads constructor(
     myPreview.putUserData(PARENT_SPLIT_EDITOR_KEY, this)
     EventQueue.invokeLater {
       ui.value
+      initialize()
     }
   }
 
@@ -194,6 +195,8 @@ open class TextEditorWithPreview @JvmOverloads constructor(
 
   protected open fun createSplitter(): JBSplitter = OnePixelSplitter()
 
+  protected open fun initialize(): Unit = Unit
+
   override fun getComponent(): JComponent = ui.value.component
 
   protected open val isShowFloatingToolbar: Boolean
@@ -298,7 +301,7 @@ open class TextEditorWithPreview @JvmOverloads constructor(
 
   override fun getState(level: FileEditorStateLevel): FileEditorState {
     return MyFileEditorState(
-      splitLayout = layout,
+      splitLayout = layout.takeUnless { level == FileEditorStateLevel.UNDO },
       firstState = myEditor.getState(level),
       secondState = myPreview.getState(level),
       isVerticalSplit = isVerticalSplit(),

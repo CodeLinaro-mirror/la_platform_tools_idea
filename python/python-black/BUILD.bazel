@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.python.black` start
+content_module_jar(module = ":black")
+### auto-generated section `dev intellij.python.black` end
 
 ### auto-generated section `build intellij.python.black` start
-
 jvm_library(
     name = "black",
     srcs = glob(
@@ -43,10 +47,11 @@ jvm_library(
         "//platform/execution-impl",
         "//platform/vcs-impl",
         "//python/python-exec-service:community-execService",
-        "//python/python-pytools:pytools",
-        "//python/python-pytools-ui:pytools-ui",
+        "//python/python-pytools/backend",
+        "//python/python-pytools/common",
+        "//python/python-black/common",
         "//python/openapi:community",
-        "//python/python-sdk:sdk",
+        "//python/python-sdk/backend",
         "//platform/projectModel-impl",
         "//platform/eel",
     ],
@@ -86,10 +91,11 @@ jvm_library(
         "//platform/execution-impl:execution-impl_test_lib",
         "//platform/vcs-impl:vcs-impl_test_lib",
         "//python/python-exec-service:community-execService_test_lib",
-        "//python/python-pytools:pytools_test_lib",
-        "//python/python-pytools-ui:pytools-ui_test_lib",
+        "//python/python-pytools/backend:backend_test_lib",
+        "//python/python-pytools/common:common_test_lib",
+        "//python/python-black/common:common_test_lib",
         "//python/openapi:community_test_lib",
-        "//python/python-sdk:sdk_test_lib",
+        "//python/python-sdk/backend:backend_test_lib",
         "//platform/projectModel-impl:projectModel-impl_test_lib",
         "//platform/eel:eel_test_lib",
     ],
@@ -100,6 +106,7 @@ jvm_library(
 exports_files(
     [
         "intellij.python.black.iml",
+        "resources/intellij.python.black.xml",
     ],
     visibility = ["//visibility:public"],
 )

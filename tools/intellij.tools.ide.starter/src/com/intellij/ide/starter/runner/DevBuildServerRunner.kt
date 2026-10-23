@@ -9,8 +9,22 @@ import java.nio.file.Path
 interface DevBuildServerRunner {
   fun isDevBuildSupported(): Boolean
 
-  suspend fun readVmOptions(installationDirectory: Path): List<String>
-  suspend fun startDevBuild(ideInfo: IdeInfo): Path
+  /**
+   * Whether the directory [startDevBuild] returns is this runner's to delete.
+   *
+   * A runner that assembles the IDE owns its output; a runner that resolves an already-built distribution does not, and
+   * deleting it would take a build artifact away from the build system that produced it.
+   */
+  val ownsInstallationDirectory: Boolean
+    get() = true
+
+  fun readVmOptions(installationDirectory: Path): List<String>
+
+  /** Returns `null` when the product doesn't declare [command] as a custom command. */
+  fun readCustomCommandJvmArguments(installationDirectory: Path, command: String): List<String>?
+
+  /** Blocks the caller until the distribution is ready. An interrupt stops the wait. */
+  fun startDevBuild(ideInfo: IdeInfo): Path
 
   companion object {
     val instance: DevBuildServerRunner
@@ -20,7 +34,8 @@ interface DevBuildServerRunner {
 
 object NoOpDevBuildServerRunner : DevBuildServerRunner {
   override fun isDevBuildSupported(): Boolean = false
-  override suspend fun readVmOptions(installationDirectory: Path): List<String> = error("Reading VM options isn't supported.")
-  override suspend fun startDevBuild(ideInfo: IdeInfo): Path =
+  override fun readVmOptions(installationDirectory: Path): List<String> = error("Reading VM options isn't supported.")
+  override fun readCustomCommandJvmArguments(installationDirectory: Path, command: String): List<String>? = null
+  override fun startDevBuild(ideInfo: IdeInfo): Path =
     error("Starting dev build isn't supported. Add dependency on intellij.tools.ide.starter.build.server module.")
 }

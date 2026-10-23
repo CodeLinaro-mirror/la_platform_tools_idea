@@ -9,15 +9,14 @@ import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.plugins.github.api.GithubApiRequest
 import org.jetbrains.plugins.github.api.GithubApiRequestExecutor
 import org.jetbrains.plugins.github.api.data.GithubResponsePage
-import org.jetbrains.plugins.github.api.executeSuspend
 import java.io.IOException
-import java.util.function.Predicate
 
 @ApiStatus.Internal
 object GithubApiPagesLoader {
 
   @Throws(IOException::class)
   @JvmStatic
+  @ApiStatus.Obsolete
   fun <T> loadAll(executor: GithubApiRequestExecutor, indicator: ProgressIndicator, pagesRequest: Request<T>): List<T> {
     val result = mutableListOf<T>()
     loadAll(executor, indicator, pagesRequest) { result.addAll(it) }
@@ -30,8 +29,7 @@ object GithubApiPagesLoader {
     batchesFlow(executor, pagesRequest).foldToList()
 
   @Throws(IOException::class)
-  @JvmStatic
-  fun <T> loadAll(executor: GithubApiRequestExecutor,
+  private fun <T> loadAll(executor: GithubApiRequestExecutor,
                   indicator: ProgressIndicator,
                   pagesRequest: Request<T>,
                   pageItemsConsumer: (List<T>) -> Unit) {
@@ -48,24 +46,13 @@ object GithubApiPagesLoader {
   fun <T> batchesFlow(executor: GithubApiRequestExecutor, pagesRequest: Request<T>): Flow<List<T>> = flow {
     var request: GithubApiRequest<GithubResponsePage<T>>? = pagesRequest.initialRequest
     while (request != null) {
-      val page = executor.executeSuspend(request)
+      val page = executor.execute(request)
       emit(page.items)
       request = page.nextLink?.let(pagesRequest.urlRequestProvider)
     }
   }
 
-  @Throws(IOException::class)
-  @JvmStatic
-  fun <T> find(executor: GithubApiRequestExecutor, indicator: ProgressIndicator, pagesRequest: Request<T>, predicate: Predicate<T>): T? {
-    var request: GithubApiRequest<GithubResponsePage<T>>? = pagesRequest.initialRequest
-    while (request != null) {
-      val page = executor.execute(indicator, request)
-      page.items.find { predicate.test(it) }?.let { return it }
-      request = page.nextLink?.let(pagesRequest.urlRequestProvider)
-    }
-    return null
-  }
-
+  @ApiStatus.Obsolete
   @Throws(IOException::class)
   @JvmStatic
   fun <T> load(executor: GithubApiRequestExecutor, indicator: ProgressIndicator, pagesRequest: Request<T>, maximum: Int): List<T> {

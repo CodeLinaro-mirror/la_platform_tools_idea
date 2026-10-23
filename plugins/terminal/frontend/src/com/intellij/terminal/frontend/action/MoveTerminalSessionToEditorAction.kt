@@ -6,7 +6,6 @@ import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.FileEditorManagerKeys
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowContextMenuActionBase
 import com.intellij.terminal.JBTerminalWidget
@@ -15,9 +14,12 @@ import com.intellij.terminal.frontend.editor.TerminalViewVirtualFile
 import com.intellij.terminal.frontend.toolwindow.TerminalToolWindowTab
 import com.intellij.terminal.frontend.toolwindow.TerminalToolWindowTabsManager
 import com.intellij.terminal.frontend.toolwindow.getTerminalTab
+import com.intellij.terminal.frontend.toolwindow.impl.buildPendingTerminalTab
+import com.intellij.terminal.frontend.toolwindow.impl.getPendingTerminalTab
 import com.intellij.terminal.ui.TerminalWidget
 import com.intellij.ui.content.Content
 import com.intellij.util.ui.UIUtil
+import org.jetbrains.plugins.terminal.TerminalEditorTabSupportUtil
 import org.jetbrains.plugins.terminal.TerminalToolWindowManager
 import org.jetbrains.plugins.terminal.ui.TerminalContainer
 import org.jetbrains.plugins.terminal.util.TerminalTitleUtils.buildSettingsAwareTitle
@@ -30,6 +32,7 @@ internal class MoveTerminalSessionToEditorAction : ToolWindowContextMenuActionBa
       return
     }
 
+    content.buildPendingTerminalTab(project)
     val reworkedTerminalTab = content.getTerminalTab()
     val classicTerminal = findClassicTerminal(e, content)
     if (reworkedTerminalTab != null) {
@@ -80,14 +83,14 @@ internal class MoveTerminalSessionToEditorAction : ToolWindowContextMenuActionBa
     if (project == null
         || !TerminalToolWindowManager.isTerminalToolWindow(toolWindow)
         || content == null
-        || Registry.`is`("toolwindow.open.tab.in.editor")) {
+        || !TerminalEditorTabSupportUtil.isOldImplementationEnabled()) {
       e.presentation.isEnabledAndVisible = false
       return
     }
 
     val reworkedTerminalTab = content.getTerminalTab()
     val classicTerminal = findClassicTerminal(e, content)
-    e.presentation.isEnabledAndVisible = reworkedTerminalTab != null || classicTerminal != null
+    e.presentation.isEnabledAndVisible = reworkedTerminalTab != null || content.getPendingTerminalTab() != null || classicTerminal != null
   }
 
   private fun findClassicTerminal(e: AnActionEvent, content: Content): TerminalWidget? {

@@ -1,5 +1,5 @@
 // "Specify super type 'I' explicitly" "true"
-// K2_ERROR: Abstract member cannot be accessed directly.
+// K2_ERROR: ABSTRACT_SUPER_CALL
 
 interface I {
     fun foo(): String = "default"
@@ -12,5 +12,4 @@ abstract class A {
 class B : A(), I {
     override fun foo(): String = super<A>.<caret>foo()
 }
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AbstractSuperCallFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.SpecifySuperTypeExplicitlyFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.SpecifySuperTypeExplicitlyFix

@@ -2,16 +2,13 @@
 package com.intellij.platform.debugger.impl.rpc
 
 import com.intellij.ide.rpc.DocumentPatchVersion
-import com.intellij.ide.rpc.DocumentPatchVersionAccessor
 import com.intellij.ide.rpc.FrontendDocumentId
 import com.intellij.ide.rpc.util.TextRangeDto
 import com.intellij.ide.ui.icons.IconId
 import com.intellij.ide.vfs.VirtualFileId
-import com.intellij.openapi.editor.Document
-import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.NlsSafe
 import com.intellij.platform.project.ProjectId
-import com.intellij.platform.rpc.RemoteApiProviderService
+import com.intellij.platform.rpc.lite.LiteRemoteApiProviderService
 import com.intellij.xdebugger.breakpoints.SuspendPolicy
 import com.intellij.xdebugger.breakpoints.XLineBreakpointVerticalPlacement
 import com.intellij.xdebugger.evaluation.EvaluationMode
@@ -59,20 +56,23 @@ interface XBreakpointApi : RemoteApi<Unit> {
 
   /**
    * Returns `true` on success, `false` if the request should be retried later due to version mismatch.
+   * [highlightRange] is the range the frontend range marker tracks, or `null` for a whole-line marker.
    */
-  suspend fun updatePosition(breakpointId: XBreakpointId, requestId: Long, documentPatchVersion: DocumentPatchVersion?): Boolean
+  suspend fun updatePosition(breakpointId: XBreakpointId, requestId: Long, documentPatchVersion: DocumentPatchVersion?, highlightRange: TextRangeDto?): Boolean
 
   /**
    * Returns `true` on success, `false` if the request should be retried later due to version mismatch.
+   * [highlightRange] is the range the frontend range marker tracks, or `null` for a whole-line marker.
    */
-  suspend fun setLine(breakpointId: XBreakpointId, requestId: Long, line: Int, documentPatchVersion: DocumentPatchVersion?): Boolean
+  suspend fun setLine(breakpointId: XBreakpointId, requestId: Long, line: Int, documentPatchVersion: DocumentPatchVersion?, highlightRange: TextRangeDto?): Boolean
 
   suspend fun createDocument(frontendDocumentId: FrontendDocumentId, breakpointId: XBreakpointId, expression: XExpressionDto, sourcePosition: XSourcePositionDto?, evaluationMode: EvaluationMode): XExpressionDocumentDto?
 
   companion object {
     @JvmStatic
     suspend fun getInstance(): XBreakpointApi {
-      return RemoteApiProviderService.resolve(remoteApiDescriptor<XBreakpointApi>())
+      // TODO: IJPL-252054
+      return LiteRemoteApiProviderService.awaitConnectionAndResolve(remoteApiDescriptor<XBreakpointApi>())
     }
   }
 }
@@ -102,6 +102,7 @@ data class XBreakpointDtoState(
   val isConditionEnabled: Boolean,
   val conditionExpression: XExpressionDto?,
   val enabled: Boolean,
+  val isTemporary: Boolean,
   val suspendPolicy: SuspendPolicy,
   val userDescription: String?,
   val group: String?,
@@ -117,7 +118,6 @@ data class XBreakpointDtoState(
 @ApiStatus.Internal
 @Serializable
 data class XLineBreakpointInfo(
-  val isTemporary: Boolean,
   val line: Int,
   val fileUrl: String,
   val placement: XLineBreakpointVerticalPlacement,
@@ -146,9 +146,3 @@ data class XLineBreakpointTypeInfo(
   val priority: Int,
   val supportsInterLinePlacement: Boolean,
 )
-
-
-@ApiStatus.Internal
-fun Document.patchVersion(project: Project): DocumentPatchVersion? {
-  return DocumentPatchVersionAccessor.getDocumentVersion(this, project)
-}

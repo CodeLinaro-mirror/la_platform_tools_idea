@@ -3,12 +3,16 @@ package com.intellij.python.test.env.conda
 
 import com.intellij.execution.processTools.getResultStdout
 import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.diagnostic.thisLogger
-import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.python.community.execService.Args
 import com.intellij.python.community.execService.BinOnEel
 import com.intellij.python.community.execService.ExecService
 import com.intellij.python.community.execService.execGetStdout
+import com.intellij.python.sdk.backend.PythonInterpreter
+import com.jetbrains.python.project.PyProject
+import com.jetbrains.python.project.project
 import com.intellij.python.test.env.core.CacheKey
 import com.intellij.python.test.env.core.PyEnvDownloadCache
 import com.intellij.python.test.env.core.PyEnvironment
@@ -41,7 +45,7 @@ import kotlin.io.path.pathString
 /**
  * Specification for Conda Python environment with mandatory version pinning.
  * 
- * @property condaVersion Specific Miniconda version (e.g., "py312_24.9.2-0")
+ * @property condaVersion Specific Miniconda version (e.g., "py312_26.7.1-1")
  */
 @ApiStatus.Internal
 class CondaPyEnvironmentSpec(
@@ -60,7 +64,7 @@ class CondaPyEnvironmentSpec(
  * 
  * Example:
  * ```kotlin
- * val env = condaEnvironment("py312_24.9.2-0") {
+ * val env = condaEnvironment("py312_26.7.1-1") {
  *   pythonVersion = "3.11"
  *   libraries {
  *     +"numpy==2.0.2"
@@ -91,6 +95,10 @@ class CondaPyEnvironmentProvider : PyEnvironmentProvider<CondaPyEnvironmentSpec>
 
   private companion object {
     const val MINICONDA_BASE_URL = "https://cache-redirector.jetbrains.com/repo.anaconda.com/miniconda"
+
+    /** The architecture names that the Miniconda installer file names use. */
+    const val ARCH_ARM64 = "arm64"
+    const val ARCH_X86_64 = "x86_64"
   }
 
   override suspend fun setupEnvironment(context: Context, spec: CondaPyEnvironmentSpec): PyEnvironment {
@@ -165,21 +173,35 @@ class CondaPyEnvironmentProvider : PyEnvironmentProvider<CondaPyEnvironmentSpec>
    * Get the platform-specific Miniconda installer name.
    */
   private fun getMinicondaInstallerName(version: String): String {
-    val arch = when {
-      CpuArch.isArm64() -> "arm64"
-      CpuArch.isIntel64() -> "x86_64"
-      else -> "x86"
+    // The conda env tests support arm64 and x86_64 only. Miniconda has no modern 32-bit build.
+    val arch = when (CpuArch.CURRENT) {
+      CpuArch.ARM64 -> ARCH_ARM64
+      CpuArch.X86_64 -> ARCH_X86_64
+      CpuArch.X86, CpuArch.ARM32, CpuArch.OTHER, CpuArch.UNKNOWN ->
+        throw UnsupportedOperationException("Unsupported CPU architecture: ${CpuArch.CURRENT}")
     }
-    
+
     return when (OS.CURRENT) {
       OS.Windows -> "Miniconda3-$version-Windows-$arch.exe"
-      OS.macOS -> "Miniconda3-$version-MacOSX-$arch.sh"
+      OS.macOS -> {
+        // Anaconda stopped the MacOSX-x86_64 builds after py313_25.7.0-2.
+        // A modern pin has no macOS installer for an Intel Mac, so the download would fail with HTTP 404.
+        if (arch != ARCH_ARM64) {
+          throw UnsupportedOperationException(
+            "Miniconda $version has no MacOSX-$arch installer. " +
+            "Anaconda publishes a macOS build for arm64 only, since py313_25.7.0-2. " +
+            "Run the conda env tests on an arm64 Mac, on Linux, or on Windows. " +
+            "PredefinedPyEnvironments in the intellij.python.test.env.common module holds the pinned versions."
+          )
+        }
+        "Miniconda3-$version-MacOSX-$arch.sh"
+      }
       OS.Linux -> {
         // Linux uses aarch64 instead of arm64
         val linuxArch = if (CpuArch.isArm64()) "aarch64" else arch
         "Miniconda3-$version-Linux-$linuxArch.sh"
       }
-      else -> throw UnsupportedOperationException("Unsupported OS: ${OS.CURRENT}")
+      OS.FreeBSD, OS.OHOS, OS.Other -> throw UnsupportedOperationException("Unsupported OS: ${OS.CURRENT}")
     }
   }
 
@@ -250,17 +272,23 @@ class CondaPyEnvironmentProvider : PyEnvironmentProvider<CondaPyEnvironmentSpec>
   }
 
   /**
-   * conda 25 introduced a Terms-of-Service gate on the default Anaconda channels
-   * (`https://repo.anaconda.com/pkgs/main` and `.../pkgs/r`). `conda create -p ... python=...`
-   * fails with `CondaToSNonInteractiveError` until those ToS are accepted.
+   * conda 25 introduced a Terms-of-Service gate on the default Anaconda channels.
+   * `conda create -p ... python=...` fails with `CondaToSNonInteractiveError` until you accept
+   * the ToS of every default channel.
+   * Windows adds `pkgs/msys2` to that set, so the list must hold it too.
    *
    * The `conda tos accept` subcommand is provided by the conda-tos plugin shipped with conda 25;
    * earlier conda releases do not have it. We run the accept commands best-effort: a non-zero
    * exit is logged and ignored so that older conda versions (where the plugin is absent or
-   * unnecessary) keep working.
+   * unnecessary) keep working. The same applies to a channel that the current platform does not
+   * use.
    */
   private suspend fun acceptAnacondaToSBestEffort(logger: Logger, condaExecutable: Path) {
-    val channels = listOf("https://repo.anaconda.com/pkgs/main", "https://repo.anaconda.com/pkgs/r")
+    val channels = listOf(
+      "https://repo.anaconda.com/pkgs/main",
+      "https://repo.anaconda.com/pkgs/r",
+      "https://repo.anaconda.com/pkgs/msys2",
+    )
     val execService = ExecService()
     for (channel in channels) {
       when (val result = execService.execGetStdout(condaExecutable, Args("tos", "accept", "--override-channels", "--channel", channel))) {
@@ -301,12 +329,18 @@ class CondaPyEnvironment(
     }
   }
 
-  override suspend fun prepareSdk(): Sdk {
+  // The conda SDK creation takes no PyProject yet, so a conda interpreter is shared.
+  override suspend fun prepareSdk(pyProject: PyProject): PythonInterpreter = prepareSharedSdk(pyProject.project)
+
+  override suspend fun prepareSharedSdk(project: Project): PythonInterpreter {
     // Save a path to conda because some legacy code might use it instead of a full conda path from additional data
     PyCondaPackageService.onCondaEnvCreated(condaExecutable.pathString)
     return PyCondaEnv(
       envIdentity = PyCondaEnvIdentity.UnnamedEnv(envPath.pathString, isBase = true),
       fullCondaPathOnTarget = condaExecutable.toString(),
-    ).createSdkFromThisEnv(null, emptyList(), envPath).getOrThrow()
+    ).createSdkFromThisEnv(project, null, emptyList(), envPath).getOrThrow()
   }
+
+  // The old fixtures have no project. The SDK table is global, so the default project adds the SDK.
+  override suspend fun prepareSdk(): PythonInterpreter = prepareSharedSdk(ProjectManager.getInstance().defaultProject)
 }

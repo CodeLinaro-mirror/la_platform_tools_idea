@@ -7,11 +7,11 @@ import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.util.text.Strings;
 import com.intellij.openapi.vfs.JarFileSystem;
-import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.StandardFileSystems;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.openapi.vfs.impl.http.HttpVirtualFile;
+import com.intellij.openapi.vfs.VirtualFileManager;
 import com.intellij.util.containers.ContainerUtil;
 import com.jetbrains.jsonSchema.impl.JsonSchemaType;
 import com.jetbrains.jsonSchema.impl.JsonSchemaVersion;
@@ -71,10 +71,6 @@ public class JsonSchemaInfo {
 
       VirtualFile schemaFile = myProvider.getSchemaFile();
       if (schemaFile == null) return "";
-
-      if (schemaFile instanceof HttpVirtualFile) {
-        return schemaFile.getUrl();
-      }
 
       if (schemaFile.getFileSystem() instanceof JarFileSystem) {
         return schemaFile.getUrl();
@@ -157,12 +153,12 @@ public class JsonSchemaInfo {
       return relativePath;
     }
 
-    VirtualFile virtualFile = LocalFileSystem.getInstance().findFileByNioFile(file);
+    VirtualFile virtualFile = VirtualFileManager.getInstance().findFileByNioPath(file);
     if (virtualFile == null) {
       return text;
     }
 
-    VirtualFile projectBaseDir = LocalFileSystem.getInstance().findFileByPath(project.getBasePath());
+    VirtualFile projectBaseDir = StandardFileSystems.local().findFileByPath(project.getBasePath());
     if (projectBaseDir == null) {
       return text;
     }

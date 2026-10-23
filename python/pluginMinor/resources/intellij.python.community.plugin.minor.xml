@@ -8,6 +8,12 @@
     <!-- and compatible with Python -->
     <plugin id="com.intellij.modules.python-core-capable"/>
     <!-- for library facet etc -->
+    <module name="intellij.platform.core"/>
+    <module name="intellij.platform.ide.core"/>
+    <module name="intellij.platform.lang"/>
+    <module name="intellij.platform.lang.core"/>
+    <module name="intellij.platform.lang.impl"/>
+    <module name="intellij.platform.projectModel"/>
     <module name="intellij.python.community.core.impl"/>
     <module name="intellij.python.community.plugin.impl"/>
   </dependencies>

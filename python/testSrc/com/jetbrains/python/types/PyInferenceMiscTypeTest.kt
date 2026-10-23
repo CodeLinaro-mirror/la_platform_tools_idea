@@ -2,9 +2,20 @@
 package com.jetbrains.python.types
 
 import com.intellij.idea.TestFor
-import com.intellij.openapi.util.registry.Registry
+import com.jetbrains.python.allure.Components
+import com.jetbrains.python.allure.Layers
+import com.jetbrains.python.allure.Subsystems
+import com.jetbrains.python.codeInsight.dataflow.scope.impl.ScopeImpl
 import com.jetbrains.python.fixtures.PyCodeInsightTestCase
 import com.jetbrains.python.psi.LanguageLevel
+import com.jetbrains.python.psi.impl.PyAssignmentExpressionImpl
+import com.jetbrains.python.psi.impl.PyBinaryExpressionImpl
+import com.jetbrains.python.psi.impl.PyConditionalExpressionImpl
+import com.jetbrains.python.psi.impl.PyKeywordArgumentImpl
+import com.jetbrains.python.psi.impl.PyReprExpressionImpl
+import com.jetbrains.python.psi.impl.PyTargetExpressionImpl
+import com.jetbrains.python.psi.types.PyTypeChecker
+import com.jetbrains.python.psi.types.PyTypeInferenceCspFactory
 import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
@@ -16,10 +27,10 @@ import org.junit.jupiter.api.Test
  * construction/`__new__`/`__init__`, decorated methods, template strings, `Any`/`Unknown`
  * rendering, structural types, dunder-`__all__`, sentinels, and illegal type-form handling.
  */
+@Subsystems.Typing
+@Components.TypeInference
+@Layers.Functional
 class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
-
-  override val defaultTestOptions =
-    TestOptions(assertRecursionPrevention = false)
 
   @Nested
   inner class ScopeAndConditionFlow {
@@ -33,7 +44,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
 
       expr = foo
       # └ TYPE Literal["foo", 0]
-      """)
+      """.trimIndent())
 
     @Test
     fun `conditional definition in outer scope`() = test("""
@@ -46,7 +57,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       def f():
           expr = foo
       #   └ TYPE Literal["foo", 0]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-21175"])
@@ -58,7 +69,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
               var = 'foo'
           expr = var
       #   └ TYPE Literal["foo"] | Unknown
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-37755"])
@@ -70,7 +81,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
           def nuf():
               nonlocal expr
               expr
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-37755"])
@@ -84,7 +95,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
               nonlocal a
               expr = a
       #       └ TYPE Literal[True]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-37755"])
@@ -101,7 +112,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
               nonlocal a
               expr = a
       #       └ TYPE Literal[True, 5]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-82115"])
@@ -118,7 +129,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
               def inner2():
                   global s
                   s = 1
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-37755"])
@@ -129,7 +140,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       def fun():
           global expr
           expr
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-37755"])
@@ -141,7 +152,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
           def nuf():
               global expr
               expr
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-37755"])
@@ -155,7 +166,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
           def nuf():
               global expr
               expr
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-37755"])
@@ -170,7 +181,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
               global a
               expr = a
       #       └ TYPE Literal[True, 5]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-82115"])
@@ -182,7 +193,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
               global s
               expr = s
       #       └ TYPE Unknown
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-82115"])
@@ -198,12 +209,11 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
               global s
               expr = s
       #       └ TYPE Literal[1]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-18217"])
-    fun `conditional import resolved in outer scope`() = test(
-      """
+    fun `conditional import resolved in outer scope`() = test("""
       if something:
       #  ^^^^^^^^^ ERROR Unresolved reference 'something'
           from m1 import foo
@@ -213,27 +223,25 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       def f():
           expr = foo
       #   └ TYPE str | int
-      """,
+      """.trimIndent(),
       "m1.py" to """
         foo = 'foo'
         ''':type: str'''
-        """,
+        """.trimIndent(),
       "m2.py" to """
         foo = 0
         ''':type: int'''
-        """,
-    )
+        """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-18402"])
-    fun `condition in imported module yields union`() = test(
-      """
+    fun `condition in imported module yields union`() = test("""
       from m1 import foo
 
       def f():
           expr = foo
       #   └ TYPE int | str
-      """,
+      """.trimIndent(),
       "m1.py" to """
         if something:
             foo = 'foo'
@@ -241,25 +249,37 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
         else:
             foo = 0
             ''':type: int'''
-        """,
-    )
+        """.trimIndent())
+
+    @Test
+    @TestFor(classes = [ScopeImpl::class])
+    fun `comprehension variable does not change the module name of the same spelling`() = test("""
+      name = "module"
+      lst = [name for name in range(3)]
+      res = name
+      # └ TYPE Literal["module"] | int FIXME Literal["module"]
+      """.trimIndent())
+
+    @Test
+    @TestFor(classes = [ScopeImpl::class])
+    fun `comprehension variable does not leak into the function scope`() = test("""
+      def func() -> None:
+          lst = [idx for idx in range(3)]
+          print(idx) # ERROR Unresolved reference 'idx'
+      """.trimIndent())
   }
 
   @Nested
   inner class RecursionAndFixedPointLoops {
     @Test
     @TestFor(issues = ["PY-76659"])
-    fun `recursive resolve in while loop`() {
-      if (!Registry.`is`("python.use.better.control.flow.type.inference")) return
-
-      test("""
-        x = 42
-        while x:
-            x = x + 1
-        expr = x
-        #└ TYPE Literal[42] | int
-        """)
-    }
+    fun `recursive resolve in while loop`() = test("""
+      x = 42
+      while x:
+          x = x + 1
+      expr = x
+      #└ TYPE Literal[42] | int
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-76659"])
@@ -274,61 +294,54 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       #       └ TYPE int
           else:
               x = x - 1
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-76659"])
-    fun `class chain fixed point in while loop`() {
-      if (!Registry.`is`("python.use.better.control.flow.type.inference")) return
+    fun `class chain fixed point in while loop`() = test("""
+      class A:
+          def bar(self) -> "B":
+              return B()
+      class B:
+          def bar(self) -> "C":
+              return C()
+      class C:
+          def bar(self) -> "D":
+              return D()
+      class D:
+          def bar(self) -> A:
+              return A()
 
-      test("""
-        class A:
-            def bar() -> "B":
-                return B()
-        class B:
-            def bar() -> "C":
-                return C()
-        class C:
-            def bar() -> "D":
-                return D()
-        class D:
-            def bar() -> A:
-                return A()
+      def foo(b):
+          x = A()
+          while b:
+              x = x.bar()
 
-        def foo(b):
-            x = A()
-            while b:
-                x = x.bar()
-
-            expr = x
-        #   └ TYPE A | B | C | D
-        """)
-    }
+          expr = x
+      #   └ TYPE A | B | C | D
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-76659"])
-    fun `types in loop compute fast`() {
-      if (!Registry.`is`("python.use.better.control.flow.type.inference")) return
+    @TestCaseOptions(assertRecursionPrevention = false)
+    fun `types in loop compute fast`() = test("""
+      def is_empty(x: int, y: int) -> bool:
+          ...
 
-      test("""
-        def is_empty(x: int, y: int) -> bool:
-            ...
+      def drop_grain() -> None:
+          x, y = 500, 0
 
-        def drop_grain() -> None:
-            x, y = 500, 0
-
-            while True:
-                if is_empty(x, y):
-                    x, y = x + 1, y
-                elif is_empty(x, y):
-                    x, y = x, y
-                elif is_empty((expr := x), y):
-        #                      └ TYPE Literal[500] | int
-                    x, y = x, y
-                elif not is_empty(x, y):
-                    break
-        """)
-    }
+          while True:
+              if is_empty(x, y):
+                  x, y = x + 1, y
+              elif is_empty(x, y):
+                  x, y = x, y
+              elif is_empty((expr := x), y):
+      #                      └ TYPE Literal[500] | int
+                  x, y = x, y
+              elif not is_empty(x, y):
+                  break
+      """.trimIndent())
 
     // TODO investigate the inference flakyness
     // The test is disabled because it's flaky: sometimes different types are inferred in the code analysis and user-initiated contexts.
@@ -350,15 +363,16 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       def f():
           return [f()]
       expr = f()
-      #└ TYPE list[Unknown]
-      """)
+      #└ TYPE list[list[Unknown]]
+      """.trimIndent())
 
     @Test
+    @TestCaseOptions(assertRecursionPrevention = false)
     fun `stack overflow prevented on recursive call`() = test("""
       def foo(x): return foo(x)
       expr = foo(1)
       #└ TYPE Unknown
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-73958"])
@@ -373,57 +387,45 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       
       expr = xxx
       #└ TYPE Foo
-      """)
+      """.trimIndent())
   }
 
   @Nested
   inner class Lambdas {
     @Test
     @TestFor(issues = ["PY-28130"])
-    fun `lambda as non-annotated function return value`() = test(
-      defaultTestOptions.copy(assertRecursionPrevention = true),
-      """
+    fun `lambda as non-annotated function return value`() = test("""
       def f():
           return lambda x: x + 1
       expr = f()
       #└ TYPE (x: Unknown) -> UnsafeUnion[int, Unknown]
-      """,
-    )
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-28130"])
-    fun `lambda as non-annotated parameter value`() = test(
-      defaultTestOptions.copy(assertRecursionPrevention = true),
-      """
+    fun `lambda as non-annotated parameter value`() = test("""
       from typing import Callable
 
       def f(fn): ...
 
       f(lambda expr: 42)
       #        └ TYPE Unknown
-      """,
-    )
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-28130"])
-    fun `lambda as non-annotated variable value`() = test(
-      defaultTestOptions.copy(assertRecursionPrevention = true),
-      """
+    fun `lambda as non-annotated variable value`() = test("""
       t = lambda x: x + 1
       expr = t
       #└ TYPE (x: Unknown) -> UnsafeUnion[int, Unknown]
-      """,
-    )
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-28130"])
-    fun `lambda parameter does not endless recursion`() = test(
-      defaultTestOptions.copy(assertRecursionPrevention = true),
-      """
+    fun `lambda parameter does not endless recursion`() = test("""
       _ = lambda expr: expr
       #          └ TYPE Unknown
-      """,
-    )
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-28130"])
@@ -434,7 +436,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
 
       f(lambda expr: expr)
       #        └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-28130"])
@@ -444,7 +446,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       def f() -> Callable[[int], object]:
         return lambda expr: expr
       #                       └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-28130"])
@@ -454,8 +456,8 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       def f[T](t: T, fn: Callable[[T], object]) -> T: ...
 
       f(1, lambda expr: expr)
-      #                     └ TYPE int
-      """)
+      #                     └ TYPE Literal[1]
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-28130"])
@@ -467,7 +469,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
 
       A[int]().f(lambda expr: expr)
       #                         └ TYPE int
-      """)
+      """.trimIndent())
   }
 
   @Nested
@@ -481,7 +483,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
           _ = foo.illegal
           expr = MyClass.foo
       #   └ TYPE str
-      """)
+      """.trimIndent())
 
     @Test
     fun `qualified name resolution prefers self attribute over reassignment`() = test("""
@@ -493,7 +495,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
           self.t = "foo"
           expr = self.t
       #   └ TYPE Literal["foo"]
-      """)
+      """.trimIndent())
 
     @Test
     fun `qualified name resolution uses annotated attribute set in method`() = test("""
@@ -506,7 +508,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       #            ^^^^^ WARNING Expected type 'int', got 'Literal["foo"]' instead
           expr = self.t
       #   └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     fun `qualified name resolution uses annotated attribute set in init`() = test("""
@@ -519,7 +521,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       #            ^^^^^ WARNING Expected type 'int', got 'Literal["foo"]' instead
           expr = self.t
       #   └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-74257"])
@@ -531,23 +533,22 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
 
       expr = f()
       #└ TYPE Unknown
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-89253"])
-    fun `qualified subscription annotation does not use builtin alias workaround`() = test(
-      """
+    fun `qualified subscription annotation does not use builtin alias workaround`() = test("""
       from sample import A
 
       a = A()
       expr = a.b
       #└ TYPE Unknown
-      """,
+      """.trimIndent(),
       "mod.py" to """
         class dict:
             def __class_getitem__(cls, item):
                 return int
-        """,
+        """.trimIndent(),
       "sample.py" to """
         from mod import dict
 
@@ -557,8 +558,20 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
 
         class A(Base):
             b: dict[int, str]
-        """,
-    )
+        """.trimIndent())
+
+    @Test
+    fun `local type resolve`() = test("""
+      def test():
+          class C():
+              def f(self):
+                  return 2
+          c = C()
+          x = c.f()
+          y = x
+          return y + 'foo'
+      #              ^^^^^ WARNING Expected type 'int', got 'Literal["foo"]' instead
+      """.trimIndent())
   }
 
   @Nested
@@ -572,7 +585,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
           def test(self, param):
               expr = param
       #       └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     fun `parameter type inference through one base`() = test("""
@@ -586,7 +599,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
           def test(self, param):
               expr = param
       #       └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     fun `parameter type inference first base wins`() = test("""
@@ -600,7 +613,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
           def test(self, param):
               expr = param
       #       └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     fun `parameter type inference through MRO`() = test("""
@@ -617,7 +630,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
           def test(self, param):
               expr = param
       #       └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     fun `parameter type inference C3 MRO with diamond`() = test("""
@@ -626,6 +639,8 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
 
       class Base2(Base1):
           def test(self, param: int) -> int: pass
+      #           │                     ^^^ WARNING Return type of method 'Base2.test()' does not match return type the base method in class 'Base1'
+      #           ^^^^^^^^^^^^^^^^^^ WARNING Signature of method 'Base2.test()' does not match signature of the base method in class 'Base1'
 
       class Base3(Base1):
           pass
@@ -634,7 +649,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
           def test(self, param):
               expr = param
       #       └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     fun `parameter type inference through unannotated override`() = test("""
@@ -648,7 +663,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
           def test(self, param):
               expr = param
       #       └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     fun `parameter type inference in static methods`() = test("""
@@ -661,7 +676,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
           def test(param, param1):
               expr = param
       #       └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     fun `return type inference in subclass from annotation`() = test("""
@@ -673,7 +688,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
 
       expr = Subclass().test()
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     fun `return type inference through hierarchy from annotation`() = test("""
@@ -688,7 +703,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
 
       expr = Subclass().test()
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-87329"])
@@ -702,7 +717,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
 
       expr = B().foo()
       #└ TYPE A
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-87329"])
@@ -716,7 +731,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
 
       expr = B[int]().foo()
       #└ TYPE A[int]
-      """)
+      """.trimIndent())
   }
 
   @Nested
@@ -731,7 +746,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
 
       expr = C()
       #└ TYPE C
-      """)
+      """.trimIndent())
 
     @Test
     fun `object __new__ result`() = test("""
@@ -739,7 +754,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
           def __new__(cls):
               expr = object.__new__(cls)
       #       └ TYPE Self@C
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-44470"])
@@ -748,12 +763,11 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
           def __new__(cls, *args, **kwargs):
               expr = super().__new__(cls, *args, **kwargs)
               return expr
-      #              └ TYPE dict[Unknown, Unknown] FIXME Self@Subclass
-      """)
+      #              └ TYPE dict FIXME Self@Subclass
+      """.trimIndent())
 
     @Test
-    fun `constructing generic class with not filled generic value`() = test(
-      """
+    fun `constructing generic class with not filled generic value`() = test("""
       from typing import Iterator
       
       class MyIterator(Iterator[int]):
@@ -763,8 +777,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       expr = MyIterator()
       #│     ^^^^^^^^^^^^ WARNING Cannot instantiate abstract class 'MyIterator'
       #└ TYPE MyIterator
-      """,
-    )
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-26992"])
@@ -779,7 +792,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
               pass
       expr = A.B()
       # └ TYPE B
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-26992", "PY-87449"])
@@ -794,7 +807,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
               pass
       expr = A.B.__init__(object.__new__(A.B))
       #└ TYPE None
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-26992"])
@@ -809,31 +822,27 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
               pass
       expr = A.B.__new__(A.B)
       #└ TYPE B
-      """)
+      """.trimIndent())
 
     @Test
+    @TestCaseOptions(languageLevel = LanguageLevel.PYTHON37, assertRecursionPrevention = false)
     @TestFor(issues = ["PY-27913"])
-    fun `dunder class getitem first parameter`() = test(
-      TestOptions(languageLevel = LanguageLevel.PYTHON37, assertRecursionPrevention = false),
-      """
+    fun `dunder class getitem first parameter`() = test("""
       class Foo:
           def __class_getitem__(cls, item):
               expr = cls
       #       └ TYPE Type[Self@Foo]
-      """,
-    )
+      """.trimIndent())
 
     @Test
+    @TestCaseOptions(languageLevel = LanguageLevel.PYTHON36, assertRecursionPrevention = false)
     @TestFor(issues = ["PY-25545"])
-    fun `dunder init subclass first parameter`() = test(
-      TestOptions(languageLevel = LanguageLevel.PYTHON36, assertRecursionPrevention = false),
-      """
+    fun `dunder init subclass first parameter`() = test("""
       class Foo:
           def __init_subclass__(cls):
               expr = cls
       #       └ TYPE Type[Self@Foo]
-      """,
-    )
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-4279"])
@@ -852,11 +861,65 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
               self.x = C1()
               expr = self.x
       #       └ TYPE C1
-      """)
+      """.trimIndent())
+
+    @Test
+    fun `calling union of dataclasses`() = test("""
+      from dataclasses import dataclass
+
+      @dataclass
+      class DC1:
+          x: int = 0
+
+      @dataclass
+      class DC2:
+          y: str = ""
+
+      def f(cls: type[DC1] | type[DC2]):
+          expr = cls()
+      #   └ TYPE DC1 | DC2
+      """.trimIndent())
+
+    @Test
+    fun `class new`() = test("""
+      class C(object):
+          def __new__(cls, name):
+              '''
+              :type name: int
+              '''
+              return super(cls, C).__new__(cls)
+
+      C('10')
+      # ^^^^ WARNING Expected type 'int', got 'Literal["10"]' instead
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-24763"])
+    fun `annotated dunder init in generic class`() = test("""
+      from typing import TypeVar, Iterator
+
+      T = TypeVar('T')
+      class MyIterator(Iterator[T]): # WEAK-WARNING Class MyIterator must implement all abstract methods
+          def __init__(self) -> None:
+              self.other = "other"
+      """.trimIndent())
   }
 
   @Nested
   inner class DecoratedMethodsAndClassDecorators {
+    @Test
+    @TestFor(issues = ["PY-85200"])
+    fun `classmethod is still known when the file has a star import`() = test("""
+      from os.path import *
+
+      class C:
+          @classmethod
+          def make(cls) -> "C": ...
+
+      expr = C.make()
+      #└ TYPE C
+      """.trimIndent())
+
     @Test
     @TestFor(issues = ["PY-51321"])
     fun `class decorated function`() = test("""
@@ -868,7 +931,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
 
       expr = bar
       #└ TYPE A
-      """)
+      """.trimIndent())
 
     @Test
     fun `decorated method on class`() = test("""
@@ -890,7 +953,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
 
       expr = a.f
       #└ TYPE (bool) -> bool
-      """)
+      """.trimIndent())
 
     @Test
     fun `static decorated method converting instance method to class method class call`() = test("""
@@ -909,7 +972,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
 
       expr = A.f
       # └ TYPE (bool) -> bool
-      """)
+      """.trimIndent())
 
     @Test
     fun `static decorated method converting instance method to class method instance call`() = test("""
@@ -928,7 +991,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
 
       expr = A().f
       #└ TYPE (bool) -> bool
-      """)
+      """.trimIndent())
 
     @Test
     fun `class method qualified with class definition`() = test("""
@@ -938,7 +1001,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
               pass
       expr = Foo.make_foo
       #└ TYPE (x: str) -> Foo
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-27143"])
@@ -951,7 +1014,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
           pass
       expr = Derived.cls()
       #└ TYPE type[Derived]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-27143"])
@@ -964,7 +1027,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
           pass
       expr = Derived().cls()
       #└ TYPE type[Derived]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-27143"])
@@ -976,7 +1039,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
           pass
       expr = Derived.cls(Derived())
       #└ TYPE type[Derived]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-27143"])
@@ -988,7 +1051,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
           pass
       expr = Derived().cls()
       #└ TYPE type[Derived]
-      """)
+      """.trimIndent())
 
     @Test
     fun `method replace definition via dunder class qualified with class py3`() = test("""
@@ -999,7 +1062,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
           pass
       expr = Derived.cls(Derived())
       #└ TYPE type[Derived]
-      """)
+      """.trimIndent())
 
     @Test
     fun `method replace definition via dunder class qualified with instance py3`() = test("""
@@ -1010,21 +1073,40 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
           pass
       expr = Derived().cls()
       #└ TYPE type[Derived]
-      """)
+      """.trimIndent())
 
     @Test
     fun `static method qualified with known generics instance`() = test("""
       my_list = [1, 2, 2, 3, 3]
       expr = my_list.count
       #└ TYPE (value: int, /) -> int
-      """)
+      """.trimIndent())
 
     @Test
     fun `static method qualified with unknown generics instance`() = test("""
       my_list = []
       expr = my_list.count
       #└ TYPE (value: Unknown, /) -> int
-      """)
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-91216"])
+    fun `decorated function assigned to a module attribute`() = test("""
+      import m
+
+      expr = m.f
+      # └ TYPE int
+      """.trimIndent(),
+      "m.py" to """
+        def _dec(fun) -> int:
+            return 12
+
+        @_dec
+        def _func():
+            raise NotImplementedError
+
+        f = _func
+        """.trimIndent())
   }
 
   @Nested
@@ -1043,7 +1125,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
 
       expr = test()
       #└ TYPE Literal["str"]
-      """)
+      """.trimIndent())
 
     @Test
     fun `shadowing return inside finally`() = test("""
@@ -1055,7 +1137,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       #       ^^^^^^^^^^^^ ERROR Python version 3.15 does not support 'return' inside 'finally' clause
       expr = f()
       #└ TYPE Literal["foo"]
-      """)
+      """.trimIndent())
 
     @Test
     fun `non-shadowing return inside finally`() = test("""
@@ -1069,7 +1151,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       expr = f()
       #│       └ WARNING Parameter 'p' unfilled
       #└ TYPE Literal["foo", 42]
-      """)
+      """.trimIndent())
 
     @Test
     fun `return inside except else`() = test("""
@@ -1086,7 +1168,43 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       expr = f()
       #│       └ WARNING Parameter 'p' unfilled
       #└ TYPE Literal["foo", True]
-      """)
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-83644"])
+    fun `call of callable attribute returning Never terminates flow`() = test("""
+      from typing import Callable, Never, Protocol
+
+      class _WithException[F, ET](Protocol):
+          __call__: F
+          Exception: ET
+
+      class Failed(BaseException): ...
+
+      fail: _WithException[Callable[[str, bool], Never], type[Failed]]
+
+      def f() -> int:
+          try:
+              return 1
+          except TimeoutError:
+              expr = fail("boom", True)
+      #       └ TYPE Never
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-72253"])
+    fun `call of unannotated always raising function terminates flow`() = test("""
+      def fail():
+          raise ValueError()
+
+      def f(x):
+          if x:
+              return 1
+          fail()
+
+      expr = f(True)
+      #└ TYPE Literal[1]
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-52930"])
@@ -1096,19 +1214,29 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       except* Exception as expr:
       #                    └ TYPE ExceptionGroup
           pass
-      """)
+      """.trimIndent())
 
     @Test
-    fun `except type with python2 comma syntax`() = test(
-      TestOptions(languageLevel = LanguageLevel.PYTHON27, assertRecursionPrevention = false),
-      """
+    @TestCaseOptions(languageLevel = LanguageLevel.PYTHON27, assertRecursionPrevention = false)
+    fun `except type with python2 comma syntax`() = test("""
       try:
           pass
       except ImportError, expr:
       #                   └ TYPE ImportError
           pass
-      """,
-    )
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-78964"])
+    fun `function with try finally`() = test("""
+      def test() -> bool:
+          try:
+              pass
+          finally:
+              pass
+
+          return True
+      """.trimIndent())
   }
 
   @Nested
@@ -1126,7 +1254,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
           else:
               expr = a
       #       └ TYPE str
-      """)
+      """.trimIndent())
 
     @Test
     fun `elif with negated isinstance narrows`() = test("""
@@ -1139,7 +1267,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
          elif not isinstance(a, str):
              expr = a
       #      └ TYPE A
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-5614"])
@@ -1151,7 +1279,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
               if isinstance(self.foo, bool):
                   expr = self.foo
       #           └ TYPE bool
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-5614"])
@@ -1160,7 +1288,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
           if isinstance(x.foo, str):
               expr = x.foo
       #       └ TYPE str
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-5614"])
@@ -1169,7 +1297,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
           if isinstance(x.foo.bar, str):
               expr = x.foo.bar
       #       └ TYPE str
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-5614"])
@@ -1181,7 +1309,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
               if isinstance(self.foo, str):
                   expr = self.foo
       #           └ TYPE str
-      """)
+      """.trimIndent())
   }
 
   @Nested
@@ -1192,7 +1320,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
           x.foo + x.bar()
           expr = x
       #   └ TYPE {foo, bar}
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-20833"])
@@ -1201,7 +1329,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
           a = len(values1)
           expr = values1
       #   └ TYPE {__len__}
-      """)
+      """.trimIndent())
 
     @Test
     fun `no __contains__ in __contains__ argument for structural type`() = test("""
@@ -1211,7 +1339,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
          x[0]
          expr = x
       #  └ TYPE {foo, __getitem__}
-      """)
+      """.trimIndent())
 
     @Test
     fun `only related nested attributes in structural type`() = test("""
@@ -1222,7 +1350,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
           x.foo + g(y)
           expr = x
       #   └ TYPE {foo}
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-85030"])
@@ -1235,7 +1363,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
           return p.lower()
 
       f(42)
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-85030"])
@@ -1252,121 +1380,293 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       def do(arg):
           title = "abc" if arg else 100
           return process(title)
-      """)
-  }
+      """.trimIndent())
 
-  @Nested
-  inner class DocstringTypeForms {
     @Test
-    fun `no resolve to functions in docstring types`() = test("""
+    fun `expected structural type`() = test("""
+      def f(x):
+          return x.foo + x.bar()
+
+      def g(x):
+          return x.lower()
+
+      def test(x):
+          x.foo
+          f(x)
+          g(x)
+
+          z = 'foo'
+          f(z)
+      #     └ WARNING Type 'Literal["foo"]' doesn't have expected attributes 'foo', 'bar'
+          g(z)
+      """.trimIndent())
+
+    @Test
+    fun `actual structural type`() = test("""
+      def f(x):
+          '''
+          :type x: str
+          '''
+          pass
+
+      def g(x):
+          return x.lower()
+
+      def test(x, y):
+          x.upper()
+          f(x)
+          g(x)
+
+          y.foo()
+          f(y)
+          g(y)
+      """.trimIndent())
+
+    @Test
+    fun `structural types for nested calls`() = test("""
+      def f(x):
+          return x.foo + g(x)
+
+      def g(x):
+          return x.bar
+
+      def test():
+          f('string')
+      #     ^^^^^^^^ WARNING Type 'Literal["string"]' doesn't have expected attributes 'foo', 'bar'
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-92230"])
+    @TestCaseOptions(additionalSdkRoots = [SdkRoot("types/unannotatedStubFunction", OrderRootTypeEnum.CLASSES)])
+    fun `structural type through unannotated stub function does not parse the stub`() = test("""
+      import unannotated_stub
+
+      def f(x):
+          x.foo
+          g(x)
+          unannotated_stub.forward(x)
+
+      def g(y):
+          return y.bar
+
+      f('string')
+      # ^^^^^^^^ WARNING Type 'Literal["string"]' doesn't have expected attributes 'foo', 'bar'
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-92230"])
+    fun `structural type through function in another file uses only the origin file`() = test("""
+      from other import g
+
+      def f(x):
+          x.foo
+          g(x)
+
+      f('string')
+      # ^^^^^^^^ WARNING Type 'Literal["string"]' doesn't have expected attribute 'foo'
+      """.trimIndent(),
+      "other.py" to """
+      def g(y):
+          return y.bar
+      """.trimIndent())
+
+    @Test
+    fun `get attribute against structural type`() = test("""
+      def f(x):
+          return x.foo
+
       class C(object):
-          def bar(self):
+          def __getattribute__(self, item):
               pass
 
-      def foo(x):
-          '''
-          :type x: C | C.bar | foo
-          '''
-          expr = x
-      #   └ TYPE C | Unknown
-      """)
+      class D(object):
+          def __getattr__(self, item):
+              pass
+
+      class E(object):
+          pass
+
+      f(C())
+      f(D())
+      f(E())
+      # ^^^ WARNING Type 'E' doesn't have expected attribute 'foo'
+      """.trimIndent())
 
     @Test
-    fun `parameter of function type and return value from docstring`() = test("""
-      def func(f):
-          '''
-          :type f: (unknown) -> str
-          '''
-          return 1
+    @TestFor(issues = ["PY-23429"])
+    fun `matching module against structural type`() = test("""
+      import m1
+      import m2
 
-      expr = func(foo)
-      #│          ^^^ ERROR Unresolved reference 'foo'
-      #└ TYPE Literal[1]
-      """)
+      def foo(use):
+          if use:
+              runner = m1
+          else:
+              runner = m2
+
+          make_barrier(runner)
+
+      def make_barrier(runner):
+          return runner.Barrier(2)
+      """.trimIndent(),
+      "m1.py" to """
+      class Barrier:
+          pass
+      """.trimIndent(),
+      "m2.py" to """
+      class Barrier:
+          pass
+      """.trimIndent())
 
     @Test
-    @TestFor(issues = ["PY-21474"])
-    fun `reassigning optional list with default value from docstring`() = test("""
-      def x(things):
-          '''
-          :type things: None | list[str]
-          '''
-          expr = things if things else []
-      #   └ TYPE list[str] | list[Unknown]
-      """)
+    @TestFor(issues = ["PY-21408"])
+    fun `callable against structural`() = test("""
+      def i_have_special_attributes():
+          pass
+
+      def print_a_callable_name(callable):
+          print(callable.__name__)
+
+      def print_a_callable_doc(callable):
+          print(callable.__doc__)
+
+      def print_a_callable_unknown(callable):
+          print(callable.unknown)
+
+      if __name__ == "__main__":
+          print_a_callable_name(i_have_special_attributes)
+          print_a_callable_doc(i_have_special_attributes)
+          print_a_callable_unknown(i_have_special_attributes)
+      #                            ^^^^^^^^^^^^^^^^^^^^^^^^^ WARNING Expected type '{unknown}', got '() -> None' instead
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-21408"])
+    @TestCaseOptions(languageLevel = LanguageLevel.PYTHON34, assertRecursionPrevention = false)
+    fun `class meta attrs against structural`() = test("""
+      class B1(type):
+          meta_attr = "meta_attr"
+
+      class A1(metaclass=B1):
+          pass
+
+      def print_A1(a):
+          print(a.__name__)
+          print(a.meta_attr)
+
+      def print_unknown(a):
+          print(a.unknown)
+
+      print_A1(A1)
+      print_unknown(A1)
+      #             ^^ WARNING Type 'Type[A1]' doesn't have expected attribute 'unknown'
+
+      class B2(type):
+          def __init__(self, what, bases, dict):
+              self.meta_attr = "meta_attr"
+              super().__init__(what, bases, dict)
+
+      class A2(metaclass=B2):
+          pass
+
+      def print_A2(a):
+          print(a.meta_attr)
+
+      print_A2(A2())
+      print_unknown(A2())
+      #             ^^^^ WARNING Type 'A2' doesn't have expected attribute 'unknown'
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-26163"])
+    fun `typing nt against structural`() = test("""
+      import typing
+
+      def dist(p1):
+          print(p1.x)
+          print(p1.y)
+          return p1
+
+      class TP(typing.NamedTuple):
+          x: int
+          y: int
+
+      dist(TP)
+      dist(TP(1, 2))
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-26163"])
+    fun `definition against structural`() = test("""
+      from typing import ClassVar
+
+      def dist(p1):
+          print(p1.x)
+          print(p1.y)
+          return p1
+
+      class A:
+          x: ClassVar[int]
+          y: ClassVar[str]
+
+      dist(A)
+      dist(A())
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-27231"])
+    fun `structural and none`() = test("""
+      def func11(value):
+          if value is not None and value != 1:
+              pass
+
+      def func12(value):
+          if None is not value and value != 1:
+              pass
+
+      def func21(value):
+          if value is None and value != 1:
+              pass
+
+      def func22(value):
+          if None is value and value != 1:
+              pass
+
+      func11(None)
+      func12(None)
+      func21(None)
+      func22(None)
+
+      def func31(value):
+          if value and None and value * 1:
+              pass
+
+      def func32(value):
+          if value is value and value * 1:
+              pass
+
+      def func33(value):
+          if None is None and value * 1:
+              pass
+
+      def func34(value):
+          a = 2
+          if a is a and value * 1:
+              pass
+
+      func31(None)
+      #      ^^^^ WARNING Type 'None' doesn't have expected attribute '__mul__'
+      func32(None)
+      #      ^^^^ WARNING Type 'None' doesn't have expected attribute '__mul__'
+      func33(None)
+      #      ^^^^ WARNING Type 'None' doesn't have expected attribute '__mul__'
+      func34(None)
+      #      ^^^^ WARNING Type 'None' doesn't have expected attribute '__mul__'
+      """.trimIndent())
   }
 
   @Nested
   inner class BuiltinsAndStdlibSentinels {
-    @Test
-    @TestFor(issues = ["PY-21350"])
-    fun `builtin input`() = test("""
-      expr = input()
-      #└ TYPE str
-      """)
-
-    @Test
-    @TestFor(issues = ["PY-13750"])
-    fun `builtin round int`() = test("""
-      expr = round(1)
-      #└ TYPE int
-      """)
-
-    @Test
-    @TestFor(issues = ["PY-13750"])
-    fun `builtin round int with ndigits`() = test("""
-      expr = round(1, 1)
-      #└ TYPE int
-      """)
-
-    @Test
-    @TestFor(issues = ["PY-13750"])
-    fun `builtin round float`() = test("""
-      expr = round(1.1)
-      #└ TYPE int
-      """)
-
-    @Test
-    @TestFor(issues = ["PY-13750"])
-    fun `builtin round bool`() = test("""
-      expr = round(True)
-      #└ TYPE int
-      """)
-
-    @Test
-    fun `max result`() = test("""
-      expr = max(1, 2, 3)
-      #└ TYPE int
-      """)
-
-    @Test
-    fun `min result`() = test("""
-      expr = min(1, 2, 3)
-      #└ TYPE int
-      """)
-
-    @Test
-    @TestFor(issues = ["PY-21692"])
-    fun `sum result`() = test("""
-      expr = sum([1, 2, 3])
-      #└ TYPE int
-      """)
-
-    @Test
-    @TestFor(issues = ["PY-21083"])
-    fun `float fromhex result`() = test("""
-      expr = float.fromhex("0.5")
-      #└ TYPE float
-      """)
-
-    @Test
-    @TestFor(issues = ["PY-20409"])
-    fun `get from dict with default None value`() = test("""
-      d = {}
-      expr = d.get("abc", None)
-      #└ TYPE Unknown | None
-      """)
-
     @Test
     @TestFor(issues = ["PY-24383"])
     fun `subscription on weak type`() = test("""
@@ -1374,41 +1674,13 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       #     ^^^ ERROR Unresolved reference 'bar'
       expr = foo[0]
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     fun `set literal`() = test("""
       expr = {1, 2, 3}
       #└ TYPE set[int]
-      """)
-
-    @Test
-    fun `open default mode is text`() = test("""
-      expr = open('foo')
-      #└ TYPE TextIOWrapper[_WrappedBuffer]
-      """)
-
-    @Test
-    fun `open binary mode is buffered reader`() = test("""
-      expr = open('foo', 'rb')
-      #└ TYPE BufferedReader[_BufferedReaderStream]
-      """)
-
-    @Test
-    fun `open text mode is text`() = test("""
-      expr = open('foo', 'r')
-      #└ TYPE TextIOWrapper[_WrappedBuffer]
-      """)
-
-    @Test
-    @TestFor(issues = ["PY-35885"])
-    fun `function dunder doc`() = test("""
-      def example():
-          '''Example Docstring'''
-          return 0
-      expr = example.__doc__
-      #└ TYPE str
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-22945"])
@@ -1416,7 +1688,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       from re import compile
       expr = compile("str")
       #└ TYPE Pattern[str]
-      """)
+      """.trimIndent())
   }
 
   @Nested
@@ -1426,63 +1698,55 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
     fun `ellipsis literal is EllipsisType`() = test("""
       expr = ...
       #└ TYPE EllipsisType
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-80436"])
     fun `Ellipsis is EllipsisType`() = test("""
       expr = Ellipsis
       #└ TYPE EllipsisType
-      """)
+      """.trimIndent())
   }
 
   @Nested
   inner class BinaryOrContextManagerMiscInference {
     @Test
+    @TestCaseOptions(assertRecursionPrevention = false)
     @TestFor(issues = ["PY-9662"])
-    fun `binary expression with annotated Any operand left`() = test(
-      TestOptions(enablePyAnyType = false, assertRecursionPrevention = false),
-      """
+    fun `binary expression with annotated Any operand left`() = test("""
       from typing import Any
       x: Any
       expr = x * 2
-      #└ TYPE UnsafeUnion[int, Any]
-      """,
-    )
+      #└ TYPE UnsafeUnion[int, Unknown] FIXME UnsafeUnion[int, Any]
+      """.trimIndent())
 
     @Test
+    @TestCaseOptions(assertRecursionPrevention = false)
     @TestFor(issues = ["PY-9662"])
-    fun `binary expression with annotated Any operand right`() = test(
-      TestOptions(enablePyAnyType = false, assertRecursionPrevention = false),
-      """
+    fun `binary expression with annotated Any operand right`() = test("""
       from typing import Any
       x: Any
       expr = 2 * x
-      #└ TYPE UnsafeUnion[int, Any]
-      """,
-    )
+      #└ TYPE UnsafeUnion[int, Unknown] FIXME UnsafeUnion[int, Any]
+      """.trimIndent())
 
     @Test
+    @TestCaseOptions(languageLevel = LanguageLevel.PYTHON35, assertRecursionPrevention = false)
     @TestFor(issues = ["PY-9662"])
-    fun `binary expression with unknown parameter operand left`() = test(
-      TestOptions(languageLevel = LanguageLevel.PYTHON35, assertRecursionPrevention = false),
-      """
+    fun `binary expression with unknown parameter operand left`() = test("""
       def f(x):
           expr = x * 2
       #   └ TYPE UnsafeUnion[int, Unknown]
-      """,
-    )
+      """.trimIndent())
 
     @Test
+    @TestCaseOptions(languageLevel = LanguageLevel.PYTHON35, assertRecursionPrevention = false)
     @TestFor(issues = ["PY-9662"])
-    fun `binary expression with unknown parameter operand right`() = test(
-      TestOptions(languageLevel = LanguageLevel.PYTHON35, assertRecursionPrevention = false),
-      """
+    fun `binary expression with unknown parameter operand right`() = test("""
       def f(x):
           expr = 2 * x
       #   └ TYPE UnsafeUnion[int, Unknown]
-      """,
-    )
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-83348"])
@@ -1490,7 +1754,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       def foo(x: int | None):
           expr = x or "foo"
       #   └ TYPE int | Literal["foo"]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-83348"])
@@ -1498,7 +1762,54 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       def foo(x: None):
           expr = x or "foo"
       #   └ TYPE Literal["foo"]
-      """)
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-79184"])
+    fun `or with always falsy bool dunder`() = test("""
+      from typing import Literal
+      class A:
+          def __bool__(self) -> Literal[False]: ...
+      expr = A() or 1
+      #└ TYPE Literal[1]
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-79184"])
+    fun `or with always truthy bool dunder`() = test("""
+      from typing import Literal
+      class A:
+          def __bool__(self) -> Literal[True]: ...
+      expr = A() or 1
+      #└ TYPE A
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-79184"])
+    fun `and with always falsy bool dunder`() = test("""
+      from typing import Literal
+      class A:
+          def __bool__(self) -> Literal[False]: ...
+      expr = A() and 1
+      #└ TYPE A
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-79184"])
+    fun `and with always truthy bool dunder`() = test("""
+      from typing import Literal
+      class A:
+          def __bool__(self) -> Literal[True]: ...
+      expr = A() and 1
+      #└ TYPE Literal[1]
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-79184"])
+    fun `or keeps dunder debug on left side`() = test("""
+      expr = __debug__ or 1
+      #└ TYPE bool | Literal[1]
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-51329"])
@@ -1511,33 +1822,18 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
 
       expr = A | str
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-29891"])
-    fun `context manager type from Type ContextManager annotation`() = test(TestOptions(enablePyAnyType = false),"""
+    fun `context manager type from Type ContextManager annotation`() = test("""
       from typing import Type, ContextManager
       def example():
         manager: Type[ContextManager[str]]
         with manager() as m:
               expr = m
       #         └ TYPE str
-      """)
-
-    @Test
-    @TestFor(issues = ["PY-22181"])
-    fun `iteration over iterable with separate iterator`() = test("""
-      class AIter(object):
-          def __next__(self):
-              return 5
-      class A(object):
-          def __iter__(self):
-              return AIter()
-      a = A()
-      for expr in a:
-      #   └ TYPE Literal[5]
-          print(expr)
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-37678"])
@@ -1552,7 +1848,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       foo = Foo(1, 2)
       expr = dc.replace(foo, x=3)
       #└ TYPE Foo
-      """)
+      """.trimIndent())
 
     @Test
     fun `function returns None`() = test("""
@@ -1560,7 +1856,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
           assert p
       expr = foo
       #└ TYPE (p: Unknown) -> None
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-7063"])
@@ -1571,7 +1867,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       #│       │  └ ERROR Unresolved reference 'b'
       #│       └ ERROR Unresolved reference 'a'
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-7063"])
@@ -1579,20 +1875,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       def f(x=None):
           expr = x
       #   └ TYPE Unknown
-      """)
-
-    @Test
-    fun `parameter of function type returns annotated return`() = test("""
-      def func(f):
-          '''
-          :type f: (unknown) -> str
-          '''
-          return 1
-
-      expr = func(foo)
-      #│          ^^^ ERROR Unresolved reference 'foo'
-      #└ TYPE Literal[1]
-      """)
+      """.trimIndent())
 
     @Test
     fun `function return generic callable`() = test("""
@@ -1607,8 +1890,8 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
 
       expr = bar(dunno, 'sd')
       #│         ^^^^^ ERROR Unresolved reference 'dunno'
-      #└ TYPE (Unknown, str, Unknown) -> Unknown
-      """)
+      #└ TYPE (Unknown, str, T3) -> T3
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-24364"])
@@ -1620,86 +1903,54 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
               yield entry
       expr = resort
       #└ TYPE (entries: Unknown) -> Generator[Unknown, Unknown, None]
-      """)
+      """.trimIndent())
 
     @Test
-    fun `return type annotation overrides body`() = test(
-      TestOptions(languageLevel = LanguageLevel.PYTHON311, assertRecursionPrevention = false),
-      """
+    @TestCaseOptions(languageLevel = LanguageLevel.PYTHON311, assertRecursionPrevention = false)
+    fun `return type annotation overrides body`() = test("""
       def foo(x) -> list:
           return x
       expr = foo(None)
       #└ TYPE list[Unknown]
-      """,
-    )
+      """.trimIndent())
 
     @Test
-    fun `type annotation on parameter`() = test(
-      TestOptions(languageLevel = LanguageLevel.PYTHON34, assertRecursionPrevention = false),
-      """
+    @TestCaseOptions(languageLevel = LanguageLevel.PYTHON34, assertRecursionPrevention = false)
+    fun `type annotation on parameter`() = test("""
       def foo(x: str) -> list:
       #                  ^^^^ WARNING Expected type 'List[Unknown]', got 'None' instead
           expr = x
       #   └ TYPE str
-      """,
-    )
-
-    @Test
-    @TestFor(issues = ["PY-26061"])
-    fun `unresolved generic replacement is Any`() = test(
-      TestOptions(languageLevel = LanguageLevel.PYTHON36, assertRecursionPrevention = false),
-      """
-      from typing import TypeVar, Generic
-
-      T = TypeVar('T')
-      V = TypeVar('V')
-
-      class B(Generic[T]):
-          def f(self) -> T:
-              ...
-
-      class C(B[V], Generic[V]):
-          pass
-
-      expr = C().f()
-      #└ TYPE Unknown
-      """,
-    )
+      """.trimIndent())
   }
 
   @Nested
   inner class TemplateStrings {
     @Test
+    @TestCaseOptions(languageLevel = LanguageLevel.PYTHON314, assertRecursionPrevention = false)
     @TestFor(issues = ["PY-79967"])
-    fun `interpolation expression type from template string`() = test(
-      TestOptions(languageLevel = LanguageLevel.PYTHON314, assertRecursionPrevention = false),
-      """
+    fun `interpolation expression type from template string`() = test("""
       name = "John"
       expr = t"Hello, {name}!".interpolations[0].expression
       #└ TYPE str
-      """,
-    )
+      """.trimIndent())
 
     @Test
+    @TestCaseOptions(languageLevel = LanguageLevel.PYTHON313, assertRecursionPrevention = false)
     @TestFor(issues = ["PY-79967"])
-    fun `template string inferred as str before python314`() = test(
-      TestOptions(languageLevel = LanguageLevel.PYTHON313, assertRecursionPrevention = false),
-      """
+    fun `template string inferred as str before python314`() = test("""
       expr = t"template string"
       #│     └ ERROR Python version 3.13 does not support a 'T' prefix
       #└ TYPE str
-      """,
-    )
+      """.trimIndent())
 
     @Test
+    @TestCaseOptions(languageLevel = LanguageLevel.PYTHON314, assertRecursionPrevention = false)
     @TestFor(issues = ["PY-79967"])
-    fun `template string inferred as Template at python314`() = test(
-      TestOptions(languageLevel = LanguageLevel.PYTHON314, assertRecursionPrevention = false),
-      """
+    fun `template string inferred as Template at python314`() = test("""
       expr = t"template string"
       #└ TYPE Template
-      """,
-    )
+      """.trimIndent())
   }
 
   @Nested
@@ -1711,7 +1962,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       def f(expr: Any):
       #     └ TYPE Any
           pass
-      """)
+      """.trimIndent())
 
     @Test
     fun `class parameter annotation`() = test("""
@@ -1720,7 +1971,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       def f(expr: Foo):
       #     └ TYPE Foo
           pass
-      """)
+      """.trimIndent())
 
     @Test
     fun `class return type`() = test("""
@@ -1731,7 +1982,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
 
       expr = f()
       #└ TYPE Foo
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-16353"])
@@ -1745,7 +1996,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
 
       expr = foo()
       #└ TYPE Iterable[int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-41847"])
@@ -1754,7 +2005,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       A = Annotated[int, 'Some constraint']
       expr: A
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-41847"])
@@ -1763,24 +2014,22 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       expr: Annotated[int, 'Some constraint'] = '5'
       #│                                        ^^^ WARNING Expected type 'int', got 'Literal["5"]' instead
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-41847"])
-    fun `typing Annotated alias from another file`() = test(
-      """
+    fun `typing Annotated alias from another file`() = test("""
       from annotated import A
       expr: A = 'str'
       #│        ^^^^^ WARNING Expected type 'int', got 'Literal["str"]' instead
       #└ TYPE int
-      """,
+      """.trimIndent(),
       "annotated.py" to """
         from typing_extensions import Annotated
 
 
         A = Annotated[int, 'Some constraint']
-        """,
-    )
+        """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-82500"])
@@ -1789,7 +2038,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       expr: func()
       #│    ^^^^^^ WARNING Invalid type annotation
       #└ TYPE Unknown
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-29257"])
@@ -1798,7 +2047,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       expr: Alias[str]
       #│          ^^^ WARNING Type alias is not generic or already specialized
       #└ TYPE list[int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-20057"])
@@ -1808,7 +2057,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       def f(x: Type):
           expr = x
       #   └ TYPE type
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-20057"])
@@ -1818,7 +2067,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       def f(x: Type[Any]):
           expr = x
       #   └ TYPE type
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-20057"])
@@ -1830,7 +2079,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       #                             └ ERROR Expression expected
           expr = x
       #   └ TYPE tuple[Unknown, Unknown, Unknown]
-      """)
+      """.trimIndent())
 
     @Test
     fun `illegal annotation targets`() = test("""
@@ -1844,7 +2093,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       #^^^^^^^^^^^^^^^^^^^^^^^^ ERROR A variable annotation cannot be used in assignment with multiple targets
       expr = (w, x, y, z)
       #└ TYPE tuple[Unknown, int, Unknown, Unknown]
-      """)
+      """.trimIndent())
 
     @Test
     fun `local variable annotation`() = test("""
@@ -1853,7 +2102,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       #            ^^^^^^^^^ ERROR Unresolved reference 'undefined'
           expr = x
       #   └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-16412"])
@@ -1865,7 +2114,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
           var = x
           expr = var
       #   └ TYPE Any
-      """)
+      """.trimIndent())
 
     @Test
     fun `local variable annotation ahead of time for target`() = test("""
@@ -1874,7 +2123,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       #        ^^^ ERROR Unresolved reference 'foo'
           expr = x
       #   └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-21864"])
@@ -1884,11 +2133,10 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       #   ^^^ ERROR Unresolved reference 'foo'
       x: str
       x = baz()
-      #│  ^^^ ERROR Unresolved reference 'baz'
-      #\ WARNING Redeclared 'x' defined above without usage
+      #   ^^^ ERROR Unresolved reference 'baz'
       expr = x
       #└ TYPE str
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-21864"])
@@ -1898,7 +2146,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       #      ^^^ ERROR Unresolved reference 'foo'
       expr = x
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-21864"])
@@ -1908,7 +2156,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       #    ^^^ ERROR Unresolved reference 'foo'
           expr = x
       #   └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     fun `unresolved return type not overridden by ancestor annotation`() = test("""
@@ -1921,7 +2169,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
               ...
       expr = Sub().m()
       #└ TYPE Unknown
-      """)
+      """.trimIndent())
   }
 
   @Nested
@@ -1942,7 +2190,20 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
           b: Box2[str]
           expr = y or unbox(b)
       #   └ TYPE T | str
-      """)
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-91009"])
+    fun `generic context manager over union binds enter to each member`() = test("""
+      class CM[T]:
+          def __enter__(self) -> T: ...
+          def __exit__(self, *args): ...
+
+      def foo(cm: CM[int] | CM[str]):
+          with cm as x:
+              expr = x
+      #       └ TYPE int | str
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-59548"])
@@ -1965,12 +2226,11 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       arg: Sub[int]
       expr = f(arg)
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-59548"])
-    fun `generic base class specified through alias in imported file`() = test(
-      """
+    fun `generic base class specified through alias in imported file`() = test("""
       from typing import TypeVar
       from mod import Sub, Super
 
@@ -1982,7 +2242,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       arg: Sub[int]
       expr = f(arg)
       #└ TYPE int
-      """,
+      """.trimIndent(),
       "mod.py" to """
         from typing import Generic, TypeVar
 
@@ -1995,39 +2255,34 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
 
         class Sub(Alias[T]):
             pass
-        """,
-    )
+        """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-61883"])
-    fun `generic class defined in another file with PEP695 syntax`() = test(
-      """
+    fun `generic class defined in another file with PEP695 syntax`() = test("""
       from a import Stack
 
       expr = Stack[int]().pop()
       #└ TYPE int
-      """,
+      """.trimIndent(),
       "a.py" to """
         class Stack[T]:
-            def pop() -> T:
+            def pop(self) -> T:
                 pass
-        """,
-    )
+        """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-61883"])
-    fun `generic function defined in another file with PEP695 syntax`() = test(
-      """
+    fun `generic function defined in another file with PEP695 syntax`() = test("""
       from a import foo
 
       expr = foo(42)
-      #└ TYPE int
-      """,
+      #└ TYPE Literal[42]
+      """.trimIndent(),
       "a.py" to """
         def foo[T](x: T) -> T:
             pass
-        """,
-    )
+        """.trimIndent())
 
     @Test
     fun `generic class type hinted in docstrings`() = test("""
@@ -2045,7 +2300,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       c = User1(10)
       expr = c.get()
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53522"])
@@ -2065,7 +2320,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       #                  ^^^ WARNING Expected type 'ListBox[int]', got 'EllipsisType' instead
       expr = xs.get()
       #└ TYPE list[int]
-      """)
+      """.trimIndent())
 
     @Test
     fun `generic substitution in deep hierarchy`() = test("""
@@ -2092,7 +2347,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
 
       expr = Sub().m()
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-24834"])
@@ -2104,8 +2359,8 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       r: Box[int] | Box[str] = ...
       #                        ^^^ WARNING Expected type 'Box[int] | Box[str]', got 'EllipsisType' instead
       expr = r.get()
-      #└ TYPE int FIXME int | str
-      """)
+      #└ TYPE int | str
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-24834"])
@@ -2122,7 +2377,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       #                          ^^^ WARNING Expected type 'Box1[int] | Box2[str]', got 'EllipsisType' instead
       expr = r.get()
       #└ TYPE int | str
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-24834", "PY-83119"])
@@ -2134,11 +2389,12 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       #                   ^^^ WARNING Expected type 'int | Box[str]', got 'EllipsisType' instead
       expr = r.get()
       #│       ^^^ WEAK-WARNING Member 'int' of 'int | Box[str]' does not have attribute 'get'
-      #└ TYPE str FIXME str | Any
-      """)
+      #└ TYPE str | Unknown
+      """.trimIndent())
 
     @Test
-    fun `weak union type of generic method call receiver`() = test(TestOptions(),"""
+    @TestCaseOptions
+    fun `weak union type of generic method call receiver`() = test("""
       from typing import Any, Generic, TypeVar
 
       T = TypeVar("T")
@@ -2153,108 +2409,97 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       receiver: Any | int | StrBox = ...
       expr = receiver.get()
       #│              ^^^ WEAK-WARNING Member 'int' of 'Any | int | StrBox' does not have attribute 'get'
-      #└ TYPE str
-      """)
+      #└ TYPE str | Unknown
+      """.trimIndent())
   }
 
   @Nested
   inner class TopLevelAnnotationAheadOfTimeAcrossFiles {
     @Test
     @TestFor(issues = ["PY-21864"])
-    fun `top level variable annotation ahead of time in another file for target`() = test(
-      """
+    fun `top level variable annotation ahead of time in another file for target`() = test("""
       from other import x
 
       expr = x
       #└ TYPE int
-      """,
+      """.trimIndent(),
       "other.py" to """
         x: int
         for x in foo():
             expr = x
-        """,
-    )
+        """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-21864"])
-    fun `top level variable annotation ahead of time in another file unpacking target`() = test(
-      """
+    fun `top level variable annotation ahead of time in another file unpacking target`() = test("""
       from other import x
 
       expr = x
       #└ TYPE int
-      """,
+      """.trimIndent(),
       "other.py" to """
         x: int
         x, y = foo()
         expr = x
-        """,
-    )
+        """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-21864"])
-    fun `top level variable annotation ahead of time in another file with target`() = test(
-      """
+    fun `top level variable annotation ahead of time in another file with target`() = test("""
       from other import x
 
       expr = x
       #└ TYPE int
-      """,
+      """.trimIndent(),
       "other.py" to """
         x: int
         with foo() as x:
             expr = x
-        """,
-    )
+        """.trimIndent())
   }
 
   @Nested
   inner class MultiFileResolutionAndDunderAll {
     @Test
-    fun `numpy resolve rater does not increase rate for non-ndarray right operator`() = test(
-      """
+    fun `numpy resolve rater does not increase rate for non-ndarray right operator`() = test("""
       class D1(object):
           pass
       class D2(object):
           pass
       expr = D1() / D2()
       #└ TYPE D1
-      """,
+      """.trimIndent(),
       "aaa.pyi" to """
         class D1(object):
             def __truediv__(self, other) -> "D1": ...
 
         class D2(object):
             def __rtruediv__(self, other) -> "D2": ...
-        """,
-    )
+        """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-35881"])
-    fun `resolve to another file class with builtin name field`() = test(
-      """
+    fun `resolve to another file class with builtin name field`() = test("""
       from foo import Foo
       foo = Foo(0)
       expr = foo.id
       #└ TYPE int
-      """,
+      """.trimIndent(),
       "foo.py" to """
         class Foo:
             def __init__(self, id: int):
                 self.id = id
-        """,
-    )
+        """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-85200"])
-    fun `generic class imported under compound TYPE_CHECKING guard`() = test(
-      """
+    fun `generic class imported under compound TYPE_CHECKING guard`() = test("""
       from multidict import MultiDictProxy
 
       def f(b: MultiDictProxy[int]):
           expr = b
       #   └ TYPE MultiDictProxy[int]
-      """,
+      """.trimIndent(),
       // Mirrors `multidict`, which exposes the pure-Python generic implementation to a type checker
       // and the C extension at runtime via `if TYPE_CHECKING or not USE_EXTENSIONS:`. Unless the compound
       // condition is recognized, both branches stay reachable and `MultiDictProxy` resolves to the union of
@@ -2268,23 +2513,149 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
             from _multidict_py import MultiDictProxy
         else:
             from _multidict import MultiDictProxy
-        """,
+        """.trimIndent(),
       "_compat.py" to """
         import os
 
         USE_EXTENSIONS = not bool(os.environ.get("MULTIDICT_NO_EXTENSIONS"))
-        """,
+        """.trimIndent(),
       "_multidict_py.py" to """
         from typing import Generic, TypeVar
 
         _V = TypeVar("_V")
 
         class MultiDictProxy(Generic[_V]): ...
-        """,
+        """.trimIndent(),
       "_multidict.py" to """
         class MultiDictProxy: ...
-        """,
-    )
+        """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-85200"])
+    fun `compound TYPE_CHECKING guard resolves to the type-checking branch, not to both`() = test("""
+      from widget import Widget
+
+      def f(w: Widget):
+          expr = w.value
+      #   └ TYPE int
+      """.trimIndent(),
+      // The same compound `if TYPE_CHECKING or not USE_EXTENSIONS:` shape as the multidict case above, with
+      // one difference that matters for what the test can observe: the two same-named classes differ in the
+      // type of a member. In the multidict case the union hides behind two identical class names and is only
+      // reachable through the failed `[int]` parametrization; here it is visible directly, because unless the
+      // compound condition is recognized `w.value` comes out as `int | str`.
+      "widget.py" to """
+        from typing import TYPE_CHECKING
+
+        from _compat import USE_EXTENSIONS
+
+        if TYPE_CHECKING or not USE_EXTENSIONS:
+            from _widget_py import Widget
+        else:
+            from _widget_c import Widget
+        """.trimIndent(),
+      "_compat.py" to """
+        import os
+
+        USE_EXTENSIONS = not bool(os.environ.get("WIDGET_NO_EXTENSIONS"))
+        """.trimIndent(),
+      "_widget_py.py" to """
+        class Widget:
+            value: int
+        """.trimIndent(),
+      "_widget_c.py" to """
+        class Widget:
+            value: str
+        """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-85200"])
+    @Disabled("PY-85200: a descriptor reached through an aliased import of a stub-declared class loses the return type of its __get__")
+    fun `descriptor re-exported through a type-checking guard keeps the return type of its __get__`() = test("""
+      from cache_api import cached_property
+
+      class Holder:
+          @cached_property
+          def value(self) -> int:
+              return 1
+
+      def f(h: Holder):
+          expr = h.value
+      #   └ TYPE int
+      """.trimIndent(),
+      // Flattened mirror of `propcache`'s own chain, which is what `yarl.URL.query` is decorated with:
+      //   propcache.api          -> from ._helpers import cached_property
+      //   propcache._helpers     -> if TYPE_CHECKING / elif not NO_EXTENSIONS / else, each branch binding the
+      //                             public name by a module-level assignment from an *aliased* import
+      //   propcache._helpers_py  -> from functools import cached_property
+      // The name at the end of that chain is therefore reached through two chained import aliases plus an
+      // assignment, and unlike `under_cached_property` (a class declared in the leaf module) it is itself only
+      // an alias of a stdlib class. Fixtures here are flat, so packages and relative imports become
+      // absolute imports between top-level modules; the guard shape, the alias hops and the assignments are
+      // kept exactly.
+      "cache_api.py" to """
+        from cache_helpers import cached_property
+
+        __all__ = ("cached_property",)
+        """.trimIndent(),
+      "cache_helpers.py" to """
+        import os
+        from typing import TYPE_CHECKING
+
+        __all__ = ("cached_property",)
+
+        NO_EXTENSIONS = bool(os.environ.get("CACHE_NO_EXTENSIONS"))
+
+        if TYPE_CHECKING:
+            from cache_helpers_py import cached_property as cached_property_py
+
+            cached_property = cached_property_py
+        elif not NO_EXTENSIONS:
+            from cache_helpers_c import cached_property as cached_property_c
+
+            cached_property = cached_property_c
+        else:
+            from cache_helpers_py import cached_property as cached_property_py
+
+            cached_property = cached_property_py
+        """.trimIndent(),
+      "cache_helpers_py.py" to """
+        from functools import cached_property
+
+        __all__ = ("cached_property",)
+        """.trimIndent(),
+      "cache_helpers_c.py" to """
+        class cached_property: ...
+        """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-85200"])
+    @Disabled("PY-85200: a descriptor reached through an aliased import of a stub-declared class loses the return type of its __get__")
+    fun `an aliased re-export of a stub-declared descriptor keeps the return type of its __get__`() = test("""
+      from leaf import cp
+
+      class Holder:
+          @cp
+          def value(self) -> int:
+              return 1
+
+      def f(h: Holder):
+          expr = h.value
+      #   └ TYPE int
+      """.trimIndent(),
+      // The minimal shape behind the case above: one `import ... as ...` hop over a descriptor whose class is
+      // declared in a **stub** (`functools.cached_property`, from typeshed). Neither `TYPE_CHECKING` nor a
+      // compiled extension nor an installed package is needed to lose the type — which is why the ticket's
+      // `propcache` half is not a dual-implementation problem at all.
+      //
+      // The three neighbouring shapes were each run against this build and infer `int` correctly, so the alias
+      // over a stub declaration is what discriminates. Re-check them if this test ever changes:
+      //   - `from functools import cached_property` used directly;
+      //   - re-exported one module on **without** an alias;
+      //   - re-exported one module on **with** an alias, when the descriptor class is declared in a `.py`.
+      "leaf.py" to """
+        from functools import cached_property as cp
+        """.trimIndent())
   }
 
   @Nested
@@ -2301,7 +2672,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
           @classmethod
           def bar(cls) -> Self:
               return cls()
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-50642"])
@@ -2313,10 +2684,11 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
 
       if not typing.TYPE_CHECKING:
           x = 1
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-87575"])
+    @TestCaseOptions(assertRecursionPrevention = false)
     fun `iter defined in metaclass`() = test("""
       from collections.abc import Iterator
       from typing import assert_type
@@ -2338,10 +2710,11 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       assert_type(iter(MyFromStr), Iterator[int])
       assert_type(iter(MyRedefinedIter()), Iterator[bool])
       assert_type(iter(MyFromStr()), Iterator[str])
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-76659"])
+    @TestCaseOptions(assertRecursionPrevention = false)
     fun `types in loop compute fast inspection`() = test("""
       def is_empty(xx: int, yy: int) -> bool:
           ...
@@ -2361,7 +2734,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
               else:
                   data[(x, y)] = 42
                   break
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-80436"])
@@ -2370,14 +2743,13 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       e: EllipsisType
       e = ...
       e = Ellipsis
-      #\ WARNING Redeclared 'e' defined above without usage
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-21083"])
     fun `float fromhex inspection`() = test("""
       float.fromhex("0.5")
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-16146"])
@@ -2389,7 +2761,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
             x2: List['str'],
             x3: List[Any]) -> None:
           pass
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-64124"])
@@ -2412,7 +2784,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
 
 
       f(MyClass())
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-64124"])
@@ -2435,12 +2807,11 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
 
 
       f(MyClass())
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-28957"])
-    fun `dataclasses replace argument checking`() = test(
-      """
+    fun `dataclasses replace argument checking`() = test("""
       from dataclasses import dataclass, field, InitVar, replace
 
 
@@ -2492,17 +2863,122 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
       replace(D(), a=1, b=2)
       #       ^^^ WARNING 'dataclasses.replace' method should be called on dataclass instances
       #       ^^^ WARNING Expected type '_DataclassT ≤: DataclassInstance', got 'D' instead
-      """,
-    )
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-90265"])
+    fun `suppress bad return suppresses only return`() = test("""
+      def g(x: int):
+          pass
+
+      def f() -> int:
+          # noinspection bad-return
+          return 'hello'
+
+      g('a')
+      # ^^^ WARNING Expected type 'int', got 'Literal["a"]' instead
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-90265"])
+    fun `suppress bad argument type does not suppress return`() = test("""
+      def f() -> int:
+          # noinspection bad-argument-type
+          return 'hello'
+      #          ^^^^^^^ WARNING Expected type 'int', got 'Literal["hello"]' instead
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-90265"])
+    fun `suppress py type checker suppresses everything`() = test("""
+      def f() -> int:
+          # noinspection PyTypeChecker
+          return 'hello'
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-90265"])
+    fun `suppress bad return for function scope`() = test("""
+      # noinspection bad-return
+      def f() -> int:
+          return 'hello'
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-90265"])
+    fun `suppress bad return among multiple codes`() = test("""
+      def f() -> int:
+          # noinspection bad-return, bad-argument-type
+          return 'hello'
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-90019"])
+    fun `incomplete aug assignment does not throw`() = test("""
+      def f(n: int):
+          n +=
+      #       └ ERROR Expression expected
+      """.trimIndent())
+
+    @Test
+    @TestFor(classes = [PyTypeChecker::class])
+    fun `classes with the same short name from two modules are not assignable`() = test("""
+      from pkg_a import Foo as FooA
+      from pkg_b import Foo as FooB
+
+      val: FooA = FooB() # WARNING FIXME Expected type 'Foo', got 'Foo' instead
+      """.trimIndent(),
+      "pkg_a.py" to """
+      class Foo:
+          x: int = 0
+      """.trimIndent(),
+      "pkg_b.py" to """
+      class Foo:
+          y: str = ''
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-85653"])
+    fun `type parameter is not assignable to int`() = test("""
+      def func[T](x: T) -> int:
+          return x # WARNING FIXME Expected type 'int', got 'T' instead
+      """.trimIndent())
+
+    @Test
+    @TestFor(classes = [PyTypeChecker::class])
+    fun `user class named Sequence is not a typing Sequence`() = test("""
+      from typing import Sequence as TSeq
+
+      class Sequence:
+          def __getitem__(self, i: int) -> int: ...
+          def __len__(self) -> int: ...
+
+      val: TSeq[int] = Sequence() # WARNING FIXME Expected type 'Sequence[int]', got 'Sequence' instead
+      """.trimIndent())
+
+    @Test
+    @TestFor(classes = [PyTypeChecker::class])
+    fun `bytearray is not assignable to bytes`() = test("""
+      def take(data: bytes) -> None: ...
+
+      take(bytearray(b"x")) # WARNING FIXME Expected type 'bytes', got 'bytearray' instead
+      """.trimIndent())
+
+    @Test
+    @TestFor(classes = [PyTypeChecker::class])
+    fun `list of int from a call is not assignable to list of float`() = test("""
+      def make() -> list[int]: ...
+
+      val: list[float] = make() # WARNING FIXME Expected type 'list[float]', got 'list[int]' instead
+      """.trimIndent())
   }
 
   @Nested
   inner class NewAnyUnknownRendering {
     @Test
+    @TestCaseOptions(enablePyAnyType = false)
     @TestFor(issues = ["PY-81651"])
-    fun `eq with Any without new any`() = test(
-      TestOptions(enablePyAnyType = false),
-      """
+    fun `eq with Any without new any`() = test("""
       from typing import Any
 
       class A:
@@ -2511,11 +2987,11 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
 
       expr = A() == 1
       #└ TYPE UnsafeUnion[Any, bool]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-81651"])
-    fun `eq with new any`() = test("""
+    fun `eq with`() = test("""
       from typing import Any
 
       class A:
@@ -2524,33 +3000,27 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
 
       expr = A() == 1
       # └ TYPE Any
-      """,
-    )
+      """.trimIndent())
 
     @Test
-    fun `new any unknown reference`() = test(
-      TestOptions(assertRecursionPrevention = false),
-      """
+    @TestCaseOptions(assertRecursionPrevention = false)
+    fun `unknown reference`() = test("""
       expr = x
       #│     └ ERROR Unresolved reference 'x'
       #└ TYPE Unknown
-      """,
-    )
+      """.trimIndent())
 
     @Test
-    fun `new any unknown list`() = test(
-      TestOptions(assertRecursionPrevention = false),
-      """
+    @TestCaseOptions(assertRecursionPrevention = false)
+    fun `unknown list`() = test("""
       expr = [x]
       #│      └ ERROR Unresolved reference 'x'
       #└ TYPE list[Unknown]
-      """,
-    )
+      """.trimIndent())
 
     @Test
-    fun `new any unknown generator`() = test(
-      TestOptions(assertRecursionPrevention = false),
-      """
+    @TestCaseOptions(assertRecursionPrevention = false)
+    fun `unknown generator`() = test("""
       def f():
         a = yield x
       #           └ ERROR Unresolved reference 'x'
@@ -2558,53 +3028,41 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
 
       expr = f()
       #└ TYPE Generator[Unknown, Unknown, Unknown]
-      """,
-    )
+      """.trimIndent())
 
     @Test
-    fun `new any generic identity over unknown list`() = test(
-      TestOptions(assertRecursionPrevention = false),
-      """
+    @TestCaseOptions(assertRecursionPrevention = false)
+    fun `generic identity over unknown list`() = test("""
       def f[T](t: T) -> T: ...
 
       expr = f([x])
       #│        └ ERROR Unresolved reference 'x'
       #└ TYPE list[Unknown]
-      """,
-    )
+      """.trimIndent())
 
     @Test
-    fun `new any generic element extraction over unknown list`() = test(
-      TestOptions(enablePyAnyType = true),
-      """
+    fun `generic element extraction over unknown list`() = test("""
       def f[T](t: list[T]) -> T: ...
 
       expr = f([x])
       #│        └ ERROR Unresolved reference 'x'
       #└ TYPE Unknown
-      """,
-    )
+      """.trimIndent())
 
     @Test
-    fun `plain Any with new any`() = test(
-      TestOptions(enablePyAnyType = true),
-      """
+    fun `plain Any`() = test("""
       from typing import Any
 
       expr: Any
       #└ TYPE Any
-      """,
-    )
+      """.trimIndent())
 
     @Test
-    fun `simple unknown with new any`() = test(
-      TestOptions(enablePyAnyType = true),
-      """
+    fun `simple unknown`() = test("""
       expr = asdf
       #│     ^^^^ ERROR Unresolved reference 'asdf'
       #└ TYPE Unknown
-      """,
-    )
+      """.trimIndent())
   }
 
   @Test
@@ -2619,38 +3077,17 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
 
     x = C()
     f1(x.f())
-    """)
+    """.trimIndent())
 
   @Test
-  @TestFor(issues = ["PY-14222"])
-  fun `recursive self attribute assignment does not break inference`() = test("""
-    class C:
-        def f(self, x):
-            self.foo = x
-            self.foo = {'foo': self.foo}
-            return self.foo['foo'] + 10
-    """)
-
-  @Test
-  @TestFor(issues = ["PY-78964"])
-  fun `return type is checked through try-finally`() = test("""
-    def test() -> bool:
-        try:
-            pass
-        finally:
-            pass
-
-        return True
-    """)
-
-  @Test
+  @TestCaseOptions(assertRecursionPrevention = false)
   fun `NoneType and type of None`() = test("""
     from types import NoneType
 
     x: NoneType = None
     y: type[NoneType] = type(None)
     z: type[None] = NoneType
-    """)
+    """.trimIndent())
 
   @Test
   @TestFor(issues = ["PY-27551"])
@@ -2660,7 +3097,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
     class Test:
         def __init__(self) -> NoReturn:
             raise Exception()
-    """)
+    """.trimIndent())
 
   @Test
   fun `dunder init annotated as non none`() = test("""
@@ -2672,20 +3109,7 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
     class B:
         def __init__(self, foo: str) -> int: # WARNING __init__ should return None
             pass
-    """)
-
-  @Test
-  @TestFor(issues = ["PY-7179"])
-  fun `identity decorated function keeps its type in operations`() = test("""
-    def decorator(f):
-        return f
-
-    @decorator
-    def foo():
-        return 'foo'
-
-    print(foo + 3) # WARNING Expected type 'int', got '() -> Literal["foo"]' instead
-    """)
+    """.trimIndent())
 
   @Test
   @TestFor(issues = ["PY-29704"])
@@ -2703,12 +3127,80 @@ class PyInferenceMiscTypeTest : PyCodeInsightTestCase() {
 
         def bar(self):
             self.foo(self.get_int())
-    """)
+    """.trimIndent())
 
   @Test
   @TestFor(issues = ["PY-16066"])
   fun `function return type list of list mismatch`() = test("""
     def a(x: list[int]) -> list[str]:
         return [x] # WARNING Expected type 'list[str]', got 'list[list[int]]' instead
-    """)
+    """.trimIndent())
+
+  @Nested
+  inner class IncompleteCode {
+    @Test
+    @TestFor(classes = [PyKeywordArgumentImpl::class])
+    fun `keyword argument without a value`() = test("""
+      def f(x: int, y: int = 0) -> None: ...
+
+      f(1, y=)
+      #    │ └ ERROR Expression expected
+      #    └ TYPE Unknown
+      """.trimIndent())
+
+    @Test
+    @TestFor(classes = [PyConditionalExpressionImpl::class])
+    fun `conditional expression without an else part`() = test("""
+      def f(a: int):
+          expr = a if a
+      #            │   └ ERROR 'else' expected
+      #            └ TYPE Unknown
+      """.trimIndent())
+
+    @Test
+    @TestFor(classes = [PyBinaryExpressionImpl::class])
+    fun `or without a right operand`() = test("""
+      def f(a: int):
+          expr = a or
+      #            │ └ ERROR Expression expected
+      #            └ TYPE int | Unknown
+      """.trimIndent())
+
+    @Test
+    @TestFor(classes = [PyReprExpressionImpl::class])
+    fun `backtick repr expression`() = test("""
+      a = 1
+      expr = `a`
+      #      ^^^ ERROR Python version 3.15 does not support backquotes, use repr() instead
+      #      └ TYPE Unknown
+      """.trimIndent())
+
+    @Test
+    @TestFor(classes = [PyTargetExpressionImpl::class])
+    fun `assignment expression without a value`() = test("""
+      def f():
+          if root :=
+      #      │      └ ERROR Expression expected
+      #      └ TYPE Unknown
+              pass
+      """.trimIndent())
+
+    @Test
+    @TestFor(classes = [PyAssignmentExpressionImpl::class])
+    fun `assignment expression without a name target`() = test("""
+      def f(w):
+          expr = (w[0] := 1)
+      #          │    └ ERROR Identifier expected
+      #          └ TYPE Unknown
+      """.trimIndent())
+
+    @Test
+    @TestFor(classes = [PyTypeInferenceCspFactory::class])
+    fun `list literal with an unclosed parenthesis`() = test("""
+      expr = [1, (]
+      #│          │└ ERROR ')' expected
+      #│          └ ERROR Unexpected expression syntax
+      #└ TYPE list[int | Unknown]
+      """.trimIndent())
+  }
 }

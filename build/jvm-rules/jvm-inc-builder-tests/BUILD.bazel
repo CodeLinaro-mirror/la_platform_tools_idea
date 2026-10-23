@@ -34,6 +34,7 @@ java_test(
         "-Djvm-inc-builder.bazel.executable=$(rlocationpath @test_bazel_tool//:bazel)",
         "-Djvm-inc-builder.module.bazel.txt=$(rlocationpath :testData/MODULE.bazel.txt)",
         "-Djvm-inc-builder.rules.jvm.zip=$(rlocationpath //:rules_jvm_zip)",
+        "-Djvm-inc-builder.tmh.test-data=$(rlocationpath :testData/threadingModelHelper/Simple.java)",
     ] + ADD_OPENS_JVM_FLAGS,
     test_class = "com.intellij.tools.build.bazel.AllTests",
     runtime_deps = [
@@ -72,9 +73,12 @@ kt_jvm_library(
         "//:asm-all_import",
         "//:junit4",
         "//:kotlin-metadata-jvm_import",
+        "//:protobuf-java_import",
         "//dependency-graph",
         "//jps-builders-6:build-javac-rt",
         "//jvm-inc-builder:jvm-inc-builder-lib",
+        "//jvm-inc-builder:kotlin-compiler-for-bazel",
+        "//worker-framework",
         "@bazel_tools//tools/java/runfiles",
     ],
 )

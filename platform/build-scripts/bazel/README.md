@@ -243,7 +243,12 @@ java_import(
 )
 ```
 
-### Phase 7: Output & Cleanup
+### Phase 7: Plugin Distribution Generation
+
+For each module containing a `plugin.xml` marked with a special comment generate a call of `ij_plugin` rule with `content_modules` argument
+populated from the content modules registered in `plugin.xml`.
+
+### Phase 8: Output & Cleanup
 
 1. Save all BUILD.bazel files atomically (temp file + move)
 2. Verify HTTP file checksums match MODULE.bazel
@@ -273,7 +278,9 @@ java_import(
 
 ### Test Friend Modules
 
-Test modules get special `associates` attribute for internal access:
+The `TestModuleProperties` component of the test module `.iml` is the input. The generator writes the
+production module into the `associates` attribute, which gives the test access to the `internal`
+declarations. The `module-dependencies` skill holds the rule for a module author.
 
 ```python
 jvm_library(
@@ -339,16 +346,25 @@ The generator searches for marker files to find project roots:
 
 | File | Description |
 |------|-------------|
-| `BUILD.bazel` | Per-module target definitions (next to module content) |
+| `BUILD.bazel` | Per-module target definitions (next to module content): the `build`, `iml`, `test` and `maven libs` sections |
 | `lib/MODULE.bazel` | `http_file` rules for Maven dependencies with SHA256 |
 | `lib/BUILD.bazel` | `jvm_import` and `java_import` library targets |
-| `build/bazel-targets.json` | Module→JAR mapping for IDE integration |
+| `build/bazel-targets.json` | The JPS index: module labels and jars, `imlTargets`, `projectLibraries`, `pluginDistributionTargets` |
 | `build/bazel-generated-file-list.txt` | List of generated files for cleanup |
+
+The generator states the JPS model and nothing more. It reads no table under `community/build/`, it derives no
+dev-distribution jar, and it emits no `content_module_jar`, `dev_dist_plugin` or `dev_dist_plugin_jar` call. The
+`dev <module>` section of a `BUILD.bazel` belongs to `plugin-model-tool`
+(`bazel run //platform/buildScripts:plugin-model-tool`). That tool runs after the generator and reads the JPS index
+for its labels. The generator keeps the load symbols that section names and never rewrites or removes it.
 
 ### bazel-targets.json Structure
 
+The file is the JPS index. It carries no dev-distribution fact.
+
 ```json
 {
+  "imlTargets": ["//.ownership:intellij.codeowners.config.iml"],
   "modules": {
     "intellij.platform.core": {
       "productionTargets": ["@community//platform/core:core"],
@@ -364,6 +380,13 @@ The generator searches for marker files to find project roots:
       "target": "@lib//:annotations",
       "jars": ["external/..."],
       "sourceJars": ["external/..."]
+    }
+  },
+  "pluginDistributionTargets": {
+    //one entry per plugin enrolled in `ij_plugin`: the target and its project-relative output directory, and nothing else
+    "intellij.plugin": {
+      "target": "@community//plugin:plugin_plugin",
+      "distributionDirectory": "out/bazel-out/jvm-fastbuild/bin/plugin/plugin_plugin"
     }
   }
 }

@@ -1,4 +1,4 @@
-// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.junit5.framework.showcase
 
 import com.intellij.psi.PsiFile
@@ -8,6 +8,8 @@ import com.intellij.python.junit5Tests.framework.metaInfo.TestClassInfo
 import com.intellij.python.junit5Tests.framework.metaInfo.TestMetaInfo
 import com.intellij.testFramework.TestDataPath
 import com.intellij.testFramework.fixtures.CodeInsightTestFixture
+import com.jetbrains.python.allure.Layers
+import com.jetbrains.python.allure.Subsystems
 import com.jetbrains.python.inspections.PyTypeCheckerInspection
 import com.jetbrains.python.junit5.framework.annotations.InjectCodeInsightTestFixture
 import com.jetbrains.python.junit5.framework.annotations.InspectionTest
@@ -30,6 +32,8 @@ import org.junit.jupiter.params.provider.ValueSource
 @TestDataPath("\$CONTENT_ROOT/../testData/junit5/showcase/PyTypeCheckerInspection")
 @PyCodeInsightTestApplication
 @InspectionTest(PyTypeCheckerInspection::class)
+@Subsystems.CodeInsight
+@Layers.Functional
 class PyJUnit5CodeInsightExampleTest {
 
   /**

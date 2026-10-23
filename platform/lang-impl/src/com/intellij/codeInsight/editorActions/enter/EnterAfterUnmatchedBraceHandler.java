@@ -49,6 +49,7 @@ public class EnterAfterUnmatchedBraceHandler implements EnterHandlerDelegate {
 
     int maxRBraceCount = getMaxRBraceCount(file, editor, caretOffset);
     if (maxRBraceCount > 0) {
+      EnterBetweenBracesFinalHandler.saveInjectedIndentState(file, editor.getDocument(), caretOffset, dataContext);
       insertRBraces(file, editor,
                     caretOffset,
                     getRBraceOffset(file, editor, caretOffset),
@@ -205,10 +206,17 @@ public class EnterAfterUnmatchedBraceHandler implements EnterHandlerDelegate {
                                                  String generatedRBraces) {
     Project project = file.getProject();
     long stamp = document.getModificationStamp();
+    // EnterBetweenBracesFinalHandler.InjectedIndentPostProcessor indents an injected fragment that the formatter cannot format.
+    boolean formattable = EnterBetweenBracesFinalHandler.isFormattableInjectedFragment(file, document, caretOffset);
     boolean closingBraceIndentAdjusted;
     try {
       PsiDocumentManager.getInstance(project).commitDocument(document);
-      CodeStyleManager.getInstance(project).adjustLineIndent(file, new TextRange(caretOffset, rBracesInsertOffset + 2));
+      if (formattable) {
+        // Two line feeds are inserted before formatting: one before the generated braces and one at the caret.
+        // The range must end immediately before the generated braces, so both insertions shift its end by one.
+        int endOffsetBeforeGeneratedBraces = rBracesInsertOffset + 2;
+        CodeStyleManager.getInstance(project).adjustLineIndent(file, new TextRange(caretOffset, endOffsetBeforeGeneratedBraces));
+      }
     }
     catch (IncorrectOperationException e) {
       LOG.error(e);

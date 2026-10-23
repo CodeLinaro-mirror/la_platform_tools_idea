@@ -1,6 +1,6 @@
 // "Replace with safe (?.) call" "true"
 // WITH_STDLIB
-// K2_ERROR: Reference has a nullable type '(() -> Int)?'. Use explicit '?.invoke' to make a function-like call instead.
+// K2_ERROR: UNSAFE_IMPLICIT_INVOKE_CALL
 
 fun bar() {
     val fff: (() -> Int)? = { 1 }
@@ -8,4 +8,3 @@ fun bar() {
     i = fff<caret>()
 }
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ReplaceInfixOrOperatorCallFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ReplaceInfixOrOperatorCallFix

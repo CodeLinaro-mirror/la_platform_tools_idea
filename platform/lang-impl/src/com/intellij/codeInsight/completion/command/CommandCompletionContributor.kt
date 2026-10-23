@@ -8,7 +8,7 @@ import com.intellij.codeInsight.completion.CompletionType
 import com.intellij.codeInsight.completion.command.configuration.ApplicationCommandCompletionService
 import com.intellij.codeInsight.completion.group.GroupedCompletionContributor
 import com.intellij.openapi.components.service
-import com.intellij.openapi.diagnostic.rethrowControlFlowException
+import com.intellij.diagnostic.rethrowControlFlowException
 import com.intellij.openapi.project.DumbAware
 import com.intellij.patterns.PlatformPatterns
 import org.jetbrains.annotations.Nls
@@ -28,9 +28,9 @@ internal class CommandCompletionContributor : CompletionContributor(), DumbAware
         isNonWritten = !parameters.originalFile.isWritable,
         offset = parameters.editor.caretModel.offset,
         editor = parameters.editor
-      ) ?: return false
+      )
 
-      return !(commandType is InvocationCommandType.FullSuffix && factory.supportFiltersWithDoublePrefix())
+      return commandType != null
     }
     catch (e: Throwable) {
       rethrowControlFlowException(e)

@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.inline.completion
 
 import com.intellij.codeInsight.inline.completion.editor.InlineCompletionEditorType
@@ -27,6 +27,7 @@ import com.intellij.openapi.application.WriteIntentReadAction
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.diagnostic.trace
 import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.editor.EditorThreading
 import com.intellij.openapi.editor.ScrollType
 import com.intellij.openapi.observable.util.whenDisposed
 import com.intellij.openapi.progress.coroutineToIndicator
@@ -81,7 +82,9 @@ abstract class InlineCompletionHandler @ApiStatus.Internal constructor(
     EventDispatcher.create(InlineCompletionInvalidationListener::class.java)
 
   init {
-    addEventListener(InlineCompletionUsageTracker.Listener()) // todo remove
+    if (InlineCompletionEditorType.get(editor) != InlineCompletionEditorType.TERMINAL) {
+      addEventListener(InlineCompletionUsageTracker.Listener()) // todo remove
+    }
 
     val logsListener = InlineCompletionLogsListener(editor)
     addEventListener(logsListener)
@@ -130,7 +133,7 @@ abstract class InlineCompletionHandler @ApiStatus.Internal constructor(
   @ScheduledForRemoval
   fun invoke(event: InlineCompletionEvent.DirectCall): Unit = invokeEvent(event)
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun invokeEvent(event: InlineCompletionEvent) {
     ThreadingAssertions.assertEventDispatchThread()
 
@@ -171,8 +174,8 @@ abstract class InlineCompletionHandler @ApiStatus.Internal constructor(
     }
   }
 
-  @RequiresEdt
-  @RequiresWriteLock
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
+  @RequiresWriteLock(generateAssertion = false /* IJPL-115548 */)
   fun insert() {
     ThreadingAssertions.assertEventDispatchThread()
     ThreadingAssertions.assertWriteAccess()
@@ -213,7 +216,7 @@ abstract class InlineCompletionHandler @ApiStatus.Internal constructor(
     afterInsert(actualProviderId)
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun hide(context: InlineCompletionContext, finishType: FinishType = FinishType.OTHER) {
     ThreadingAssertions.assertEventDispatchThread()
     val currentSession = InlineCompletionSession.getOrNull(editor)
@@ -298,7 +301,7 @@ abstract class InlineCompletionHandler @ApiStatus.Internal constructor(
     }
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private fun complete(
     isActive: Boolean,
     cause: Throwable?,
@@ -322,14 +325,14 @@ abstract class InlineCompletionHandler @ApiStatus.Internal constructor(
    * **This API is highly experimental**.
    */
   @ApiStatus.Experimental
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun <T> withIgnoringDocumentChanges(block: () -> T): T {
     return typingSessionTracker.withIgnoringDocumentChanges(block)
   }
 
   @ApiStatus.Experimental
   @ApiStatus.Internal
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun setIgnoringDocumentChanges(value: Boolean) {
     typingSessionTracker.ignoreDocumentChanges = value
   }
@@ -343,7 +346,7 @@ abstract class InlineCompletionHandler @ApiStatus.Internal constructor(
    * Therefore, with this method, any caret movement will update the expected offset of the inline completion.
    */
   @ApiStatus.Experimental
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   internal fun <T> withIgnoringCaretMovement(block: () -> T): T {
     return typingSessionTracker.withIgnoringCaretMovement(block)
   }
@@ -401,14 +404,14 @@ abstract class InlineCompletionHandler @ApiStatus.Internal constructor(
     return isEnabled(event)
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private fun InlineCompletionContext.renderElement(element: InlineCompletionElement, startOffset: Int) {
     val presentable = element.toPresentable()
     presentable.render(editor, endOffset() ?: startOffset)
     state.addElement(presentable)
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private fun getVariantsComputer(
     variants: List<InlineCompletionVariant>,
     context: InlineCompletionContext,
@@ -488,7 +491,7 @@ abstract class InlineCompletionHandler @ApiStatus.Internal constructor(
     }
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   @ApiStatus.Internal
   protected fun InlineCompletionSession.guardCaretModifications() {
     val listener = object : InlineSessionWiseCaretListener() {
@@ -511,15 +514,15 @@ abstract class InlineCompletionHandler @ApiStatus.Internal constructor(
     editor.caretModel.addCaretListener(listener, this)
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private fun traceBlocking(event: InlineCompletionEventType) {
     ThreadingAssertions.assertEventDispatchThread()
-    WriteIntentReadAction.run {
+    EditorThreading.runWritable { // triggered on caret move
       eventListeners.getMulticaster().on(event)
     }
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private suspend fun trace(event: InlineCompletionEventType) {
     coroutineToIndicator { traceBlocking(event) }
   }
@@ -527,7 +530,7 @@ abstract class InlineCompletionHandler @ApiStatus.Internal constructor(
   // Utils for inheritors
   // -----------------------------------
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   @ApiStatus.Internal
   protected fun switchAndInvokeRequest(request: InlineCompletionRequest, newSession: InlineCompletionSession) {
     ThreadingAssertions.assertEventDispatchThread()

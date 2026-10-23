@@ -7,9 +7,9 @@ import com.intellij.grazie.detection.toAvailableLang
 import com.intellij.grazie.ide.ui.components.utils.html
 import com.intellij.grazie.jlanguage.Lang
 import com.intellij.grazie.jlanguage.LangTool
-import com.intellij.grazie.text.ExternalTextChecker
 import com.intellij.grazie.text.Rule
 import com.intellij.grazie.text.RuleGroup
+import com.intellij.grazie.text.TextChecker
 import com.intellij.grazie.text.TextContent
 import com.intellij.grazie.text.TextProblem
 import com.intellij.grazie.utils.TextStyleDomain
@@ -19,6 +19,7 @@ import com.intellij.grazie.utils.trimToNull
 import com.intellij.openapi.application.runReadAction
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.ProgressManager
+import com.intellij.openapi.progress.util.runWithCheckCanceled
 import com.intellij.openapi.util.ClassLoaderUtil.computeWithClassLoader
 import com.intellij.openapi.util.NlsSafe
 import com.intellij.openapi.util.Predicates
@@ -26,8 +27,6 @@ import com.intellij.openapi.util.TextRange
 import com.intellij.openapi.vcs.ui.CommitMessage
 import com.intellij.util.ExceptionUtil
 import com.intellij.util.containers.Interner
-import com.intellij.util.io.computeDetached
-import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.html.p
 import kotlinx.html.style
@@ -44,7 +43,7 @@ import java.util.function.Predicate
 import kotlin.coroutines.cancellation.CancellationException
 
 
-open class LanguageToolChecker : ExternalTextChecker() {
+open class LanguageToolChecker : TextChecker() {
   @ApiStatus.Internal
   class TestChecker : LanguageToolChecker()
 
@@ -54,11 +53,10 @@ open class LanguageToolChecker : ExternalTextChecker() {
     return grammarRules(LangTool.getTool(lang, TextStyleDomain.Other), lang)
   }
 
-  @OptIn(DelicateCoroutinesApi::class)
-  override suspend fun checkExternally(context: ProofreadingContext): List<Problem> {
+  override fun check(context: ProofreadingContext): List<Problem> {
     if (!context.hasLanguage()) return emptyList()
     val domain = context.text.getTextDomain()
-    return computeDetached(Dispatchers.Default) {
+    return runWithCheckCanceled(Dispatchers.Default) {
       try {
         computeWithClassLoader<List<Problem>, Throwable>(GraziePlugin.classLoader) {
           collectLanguageToolProblems(context.text, context.language.toAvailableLang(), domain)
@@ -90,6 +88,7 @@ open class LanguageToolChecker : ExternalTextChecker() {
       .map { Problem(it, lang, extracted, this is TestChecker) }
       .filterNot { isGitCherryPickedFrom(it.match, extracted) }
       .filterNot { isKnownLTBug(it.match, extracted) }
+      .filterNot { isWordSplitOnCallTarget(it.match, extracted) }
       .filterNot {
         val range = when {
           it.fitsGroup(RuleGroup.CASING) -> includeSentenceBounds(extracted, it.patternRange)
@@ -201,7 +200,9 @@ private val an_vs_a_exclusions = mapOf(
   "an" to listOf(
     Regex("xlsx", RegexOption.IGNORE_CASE),
     Regex("mp3", RegexOption.IGNORE_CASE),
-    Regex("url", RegexOption.IGNORE_CASE)
+    Regex("url", RegexOption.IGNORE_CASE),
+    Regex("sms", RegexOption.IGNORE_CASE),
+    Regex("(8|1[18](\\D|(\\d{3}|\\d{6}|\\d{9})[$\\D])).+", RegexOption.IGNORE_CASE)
   ),
   "a" to listOf(
     Regex("uint.*", RegexOption.IGNORE_CASE),
@@ -296,6 +297,16 @@ private val RuleMatch.messageSanitized
       .replace("<suggestion>", replacement)
       .replace("</suggestion>", replacement)
   }
+
+private fun isWordSplitOnCallTarget(match: RuleMatch, text: TextContent): Boolean {
+  val token = text.subSequence(match.fromPos, match.toPos).toString()
+  val replacements = match.suggestedReplacements
+  return replacements.isNotEmpty() &&
+         replacements.all { it.filterNot(Char::isWhitespace) == token } &&
+         callArgumentListPattern.matchAt(text, match.toPos) != null
+}
+
+private val callArgumentListPattern = Regex("""\(\s*(\w+\s*(,\s*\w+\s*)*)?\)""")
 
 private fun isPartOfQuotedLiteralText(match: RuleMatch, text: TextContent): Boolean {
   return quotedLiteralPattern.findAll(text.toString())

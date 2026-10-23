@@ -5,13 +5,14 @@ import com.intellij.ide.IdeEventQueue;
 import com.intellij.ide.ui.laf.darcula.ui.DarculaButtonUI;
 import com.intellij.openapi.ui.ComboBox;
 import com.intellij.ui.ComponentUtil;
+import com.intellij.ui.DrawUtil;
 import com.intellij.ui.Gray;
 import com.intellij.ui.JBColor;
+import com.intellij.ui.paint.PaintUtil;
 import com.intellij.ui.scale.JBUIScale;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.JBValue;
-import com.intellij.util.ui.MacUIUtil;
 import com.intellij.util.ui.UIUtil;
 import com.intellij.util.ui.table.JBTableRowEditor;
 import org.jetbrains.annotations.NotNull;
@@ -33,7 +34,6 @@ import java.awt.Dimension;
 import java.awt.Graphics2D;
 import java.awt.Insets;
 import java.awt.Rectangle;
-import java.awt.RenderingHints;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -162,9 +162,7 @@ public final class DarculaUIUtil {
     float f = UIUtil.isRetina(g) ? 0.5f : 1.0f;
     float lw = UIUtil.isUnderDefaultMacTheme() ? JBUIScale.scale(f) : LW.getFloat();
 
-    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-    g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL,
-                       MacUIUtil.USE_QUARTZ ? RenderingHints.VALUE_STROKE_PURE : RenderingHints.VALUE_STROKE_NORMALIZE);
+    DrawUtil.setupRenderingHints(g);
 
     float outerArc = arc > 0 ? arc + bw - JBUIScale.scale(2f) : bw;
     float rightOuterArc = symmetric ? outerArc : JBUIScale.scale(6f);
@@ -219,12 +217,9 @@ public final class DarculaUIUtil {
     return -1;
   }
 
-  public static void paintCellEditorBorder(Graphics2D g2, Component c, Rectangle r, boolean hasFocus) {
-    g2 = (Graphics2D)g2.create();
-    try {
-      g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-      g2.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL,
-                          MacUIUtil.USE_QUARTZ ? RenderingHints.VALUE_STROKE_PURE : RenderingHints.VALUE_STROKE_NORMALIZE);
+  public static void paintCellEditorBorder(Graphics2D g, Component c, Rectangle r, boolean hasFocus) {
+    PaintUtil.useCopy(g, g2 -> {
+      DrawUtil.setupRenderingHints(g2);
 
       float bw = CELL_EDITOR_BW.getFloat();
 
@@ -238,10 +233,7 @@ public final class DarculaUIUtil {
         outline.setGraphicsColor(g2, true);
         g2.fill(border);
       }
-    }
-    finally {
-      g2.dispose();
-    }
+    });
   }
 
   public static final class MouseHoverPropertyTrigger extends MouseAdapter {

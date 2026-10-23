@@ -3,8 +3,8 @@ package org.jetbrains.kotlin.idea.k2.codeinsight.imports
 
 import com.intellij.openapi.progress.ProgressManager
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.analyze
-import org.jetbrains.kotlin.analysis.api.components.importableFqName
+import org.jetbrains.kotlin.analysis.api.session.analyze
+import org.jetbrains.kotlin.analysis.api.symbols.importableFqName
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassSymbol
 import org.jetbrains.kotlin.config.ApiVersion
 import org.jetbrains.kotlin.idea.base.projectStructure.languageVersionSettings
@@ -173,7 +173,7 @@ internal class OptimizedImportsBuilder(
             // TODO check if new and old scopes contain different symbols for names set
             fileWithReplacedImports.analyze {
                 for (originalReference in references) {
-                    val alternativeReference = referencesMap.findReferenceInCopy(originalReference)
+                    val alternativeReference = referencesMap.findReferenceInCopy(originalReference) ?: continue
 
                     val originalSymbols = analyze(file) {
                         // We use the original file to analyze the original reference, because if it is a dangling file,

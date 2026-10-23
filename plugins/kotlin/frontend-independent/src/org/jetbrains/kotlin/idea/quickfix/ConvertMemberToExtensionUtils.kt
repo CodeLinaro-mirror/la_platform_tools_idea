@@ -12,7 +12,9 @@ import com.intellij.psi.search.searches.ReferencesSearch
 import com.intellij.util.SmartList
 import org.jetbrains.kotlin.asJava.toLightMethods
 import org.jetbrains.kotlin.idea.base.codeInsight.ShortenReferencesFacility
+import org.jetbrains.kotlin.idea.base.psi.addModifierKeyword
 import org.jetbrains.kotlin.idea.base.psi.getReturnTypeReference
+import org.jetbrains.kotlin.idea.base.psi.setCallableReceiverTypeReference
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.core.TemplateKind
 import org.jetbrains.kotlin.idea.core.getFunctionBodyTextFromTemplate
@@ -20,6 +22,7 @@ import org.jetbrains.kotlin.idea.references.KtReference
 import org.jetbrains.kotlin.idea.search.ExpectActualUtils.withExpectedActuals
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.name.FqName
+import org.jetbrains.kotlin.name.render
 import org.jetbrains.kotlin.psi.KtCallableDeclaration
 import org.jetbrains.kotlin.psi.KtClassBody
 import org.jetbrains.kotlin.psi.KtClassOrObject
@@ -39,7 +42,6 @@ import org.jetbrains.kotlin.psi.psiUtil.isExpectDeclaration
 import org.jetbrains.kotlin.psi.psiUtil.parents
 import org.jetbrains.kotlin.psi.psiUtil.visibilityModifier
 import org.jetbrains.kotlin.psi.psiUtil.visibilityModifierType
-import org.jetbrains.kotlin.psi.typeRefHelpers.setReceiverTypeReference
 import org.jetbrains.kotlin.types.Variance
 import org.jetbrains.kotlin.util.match
 import org.jetbrains.kotlin.utils.addIfNotNull
@@ -67,7 +69,7 @@ fun convertMemberToExtensionAndPrepareBodySelection(
     val (extension, bodyTypeToSelect) = processSingleDeclaration(element, allowExpected, addImport)
     if (classVisibility != null && extension.visibilityModifier() == null) {
         runWriteAction {
-            extension.addModifier(classVisibility)
+            extension.addModifierKeyword(classVisibility)
         }
     }
 
@@ -133,7 +135,7 @@ private fun processSingleDeclaration(
         extension.modifierList?.getModifier(KtTokens.FINAL_KEYWORD)?.delete()
 
         if (isEffectivelyExpected && !extension.hasExpectModifier()) {
-            extension.addModifier(KtTokens.EXPECT_KEYWORD)
+            extension.addModifierKeyword(KtTokens.EXPECT_KEYWORD)
         }
 
         var bodyTypeToSelect = BodySelectionType.NOTHING
@@ -241,14 +243,14 @@ private fun KtTypeParameter.textWithoutVariance(): String {
 
 private fun KtCallableDeclaration.setReceiverType(klass: KtClassOrObject) {
     val className = buildString {
-        append(klass.name)
+        append(klass.nameAsSafeName.render())
         if (klass.typeParameters.isNotEmpty()) {
             append(klass.typeParameters.joinToString(", ", "<", ">") {
-                it.name ?: ""
+                it.nameIdentifier?.text ?: ""
             })
         }
     }
     val typeReference = KtPsiFactory.contextual(this@setReceiverType).createType(className)
-    val receiverReference = setReceiverTypeReference(typeReference) ?: return
+    val receiverReference = setCallableReceiverTypeReference(typeReference) ?: return
     ShortenReferencesFacility.getInstance().shorten(receiverReference)
 }

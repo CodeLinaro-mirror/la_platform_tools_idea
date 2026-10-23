@@ -26,9 +26,11 @@ import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiLanguageInjectionHost
 import com.intellij.psi.PsiVariable
 import com.intellij.psi.codeStyle.CodeStyleManager
+import com.intellij.psi.impl.ResolveScopeManager
 import com.intellij.psi.injection.Injectable
 import com.intellij.psi.util.parentOfType
 import com.intellij.testFramework.UsefulTestCase
+import com.intellij.testFramework.assertNothingLogged
 import com.intellij.testFramework.fixtures.DefaultLightProjectDescriptor
 import com.intellij.testFramework.fixtures.InjectionTestFixture
 import com.intellij.testFramework.fixtures.JavaCodeInsightFixtureTestCase
@@ -615,6 +617,29 @@ class JavaInjectedFileChangesHandlerTest : JavaCodeInsightFixtureTestCase() {
     }
   }
 
+  fun `test resolve scope of fragment-editor file copy`() {
+    with(myFixture) {
+      configureByText("classA.java", """
+          import org.intellij.lang.annotations.Language;
+
+          class A {
+            @Language("JSON")
+            String a = "{\"field\"<caret>: 1}";
+          }
+      """.trimIndent())
+
+      val quickEditHandler = QuickEditAction().invokeImpl(project, injectionTestFixture.topLevelEditor, injectionTestFixture.topLevelFile)
+      // completion works on a copy of the fragment file, which has no context and whose virtual and PSI originals diverge
+      val fragmentFileCopy = quickEditHandler.newFile.copy() as PsiFile
+      val leaf = fragmentFileCopy.findElementAt(fragmentFileCopy.text.indexOf("field"))!!
+
+      assertNothingLogged {
+        val scope = ResolveScopeManager.getElementResolveScope(leaf)
+        assertTrue(scope.contains(fragmentFileCopy.viewProvider.virtualFile))
+      }
+    }
+  }
+
   fun `test delete-commit-delete`() {
     with(myFixture) {
 
@@ -1011,14 +1036,14 @@ class JavaInjectedFileChangesHandlerTest : JavaCodeInsightFixtureTestCase() {
       val injectedFile = injectionTestFixture.getAllInjections().single().second
       val injectedViewProvider = injectedFile.viewProvider
       assertEquals("SingleRootInjectedFileViewProvider", injectedViewProvider.javaClass.simpleName)
-      assertTrue(injectedViewProvider.isPhysical)
+      assertTrue(injectedViewProvider.correspondsToRealFile())
 
       val copy = injectedFile.copy() as PsiFile
       val copyViewProvider = copy.viewProvider
 
       assertEquals("SingleRootInjectedFileViewProvider", copyViewProvider.javaClass.simpleName)
       assertEquals(injectedFile.text, copy.text)
-      assertFalse(copyViewProvider.isPhysical)
+      assertFalse(copyViewProvider.correspondsToRealFile())
     }
   }
 

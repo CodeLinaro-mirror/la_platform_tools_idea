@@ -2,9 +2,11 @@
   <!-- region Generated dependencies - run `Generate Product Layouts` to regenerate -->
   <dependencies>
     <module name="fleet.rhizomedb"/>
+    <module name="intellij.libraries.jetbrains.annotations"/>
     <module name="intellij.libraries.kotlinx.serialization.core"/>
     <module name="intellij.libraries.kotlinx.serialization.json"/>
     <module name="intellij.platform.analysis"/>
+    <module name="intellij.platform.concurrency"/>
     <module name="intellij.platform.core"/>
     <module name="intellij.platform.core.impl"/>
     <module name="intellij.platform.core.ui"/>
@@ -19,14 +21,17 @@
     <module name="intellij.platform.lang"/>
     <module name="intellij.platform.lang.core"/>
     <module name="intellij.platform.lang.impl"/>
+    <module name="intellij.platform.project"/>
     <module name="intellij.platform.projectModel"/>
+    <module name="intellij.platform.rpc"/>
+    <module name="intellij.platform.util.coroutines"/>
     <module name="intellij.platform.util.diff"/>
     <module name="intellij.platform.util.ui"/>
   </dependencies>
   <!-- endregion -->
+  <resource-bundle>messages.BookmarkBundle</resource-bundle>
   <extensions defaultExtensionNs="com.intellij">
-    <projectService serviceImplementation="com.intellij.ide.bookmarks.BookmarkManager" open="true"/>
-    <projectService serviceInterface="com.intellij.ide.bookmark.BookmarksManager" open="true"
+    <projectService serviceInterface="com.intellij.ide.bookmark.BookmarksManager"
                     serviceImplementation="com.intellij.ide.bookmark.BookmarksManagerImpl"/>
     <bookmarkProvider implementation="com.intellij.ide.favoritesTreeView.AbstractUrlBookmarkProvider" order="first"/>
     <bookmarkProvider implementation="com.intellij.ide.bookmark.providers.LineBookmarkProvider" order="last"/>

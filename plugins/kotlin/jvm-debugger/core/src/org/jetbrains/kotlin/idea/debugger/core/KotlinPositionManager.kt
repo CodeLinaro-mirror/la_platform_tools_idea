@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 // The package directive doesn't match the file location to prevent API breakage
 package org.jetbrains.kotlin.idea.debugger
@@ -25,10 +25,12 @@ import com.intellij.debugger.jdi.VirtualMachineProxyImpl
 import com.intellij.debugger.requests.ClassPrepareRequestor
 import com.intellij.debugger.ui.breakpoints.Breakpoint
 import com.intellij.debugger.ui.impl.watch.StackFrameDescriptorImpl
+import com.intellij.diagnostic.rethrowControlFlowException
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.application.readAction
 import com.intellij.openapi.application.runReadAction
 import com.intellij.openapi.application.smartReadAction
+import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.fileTypes.FileType
 import com.intellij.openapi.progress.runBlockingMaybeCancellable
 import com.intellij.openapi.project.DumbService
@@ -73,12 +75,15 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import org.jetbrains.kotlin.analysis.api.resolution.successfulFunctionCallOrNull
-import org.jetbrains.kotlin.analysis.api.resolution.symbol
+import org.jetbrains.kotlin.analysis.api.components.resolveToSymbol
+import org.jetbrains.kotlin.analysis.api.expressions.functionType
+import org.jetbrains.kotlin.analysis.api.resolution.resolveSuccessfulCall
+import org.jetbrains.kotlin.analysis.api.resolution.resolveSuccessfulSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaNamedFunctionSymbol
 import org.jetbrains.kotlin.analysis.api.types.KaFunctionType
+import org.jetbrains.kotlin.analysis.api.types.KaStandardTypeClassIds
 import org.jetbrains.kotlin.analysis.api.types.KaUsualClassType
-import org.jetbrains.kotlin.analysis.decompiler.psi.file.KtClsFile
+import org.jetbrains.kotlin.analysis.api.types.classId
 import org.jetbrains.kotlin.codegen.inline.KOTLIN_STRATA_NAME
 import org.jetbrains.kotlin.fileClasses.JvmFileClassUtil
 import org.jetbrains.kotlin.idea.KotlinFileType
@@ -130,6 +135,7 @@ import org.jetbrains.kotlin.idea.debugger.core.isInsideInlineArgument
 import org.jetbrains.kotlin.idea.debugger.core.isInsideProjectWithCompose
 import org.jetbrains.kotlin.idea.debugger.core.stackFrame.InlineStackTraceCalculator
 import org.jetbrains.kotlin.idea.debugger.core.stackFrame.KotlinStackFrame
+import org.jetbrains.kotlin.idea.references.mainReference
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.load.java.JvmAbi
 import org.jetbrains.kotlin.name.FqName
@@ -156,6 +162,8 @@ import org.jetbrains.kotlin.resolve.jvm.JvmClassName
 import org.jetbrains.kotlin.utils.addToStdlib.ifNotEmpty
 import java.util.concurrent.CompletableFuture
 import kotlin.coroutines.resume
+
+private val LOG = logger<KotlinPositionManager>()
 
 class KotlinPositionManager(private val debugProcess: DebugProcess) : MultiRequestPositionManager, PositionManagerWithMultipleStackFrames,
                                                                       PositionManagerAsync {
@@ -227,7 +235,7 @@ class KotlinPositionManager(private val debugProcess: DebugProcess) : MultiReque
                     if (defaultPsiFile != null) {
                         return readAction { SourcePosition.createFromLine(defaultPsiFile, 0) }
                     }
-                } catch (e: AbsentInformationException) {
+                } catch (_: AbsentInformationException) {
                     // ignored
                 }
             }
@@ -413,11 +421,36 @@ class KotlinPositionManager(private val debugProcess: DebugProcess) : MultiReque
         if (allReferenceExpressions.isEmpty()) return null
         val (inlinedReference, notInlined) = allReferenceExpressions.separateInlinedAndNonInlinedElements(location)
         if (inlinedReference != null) return inlinedReference
+        val adapterMethodName = location.safeMethod()?.takeIf { it.isPrivate && it.isStatic }?.name()
         return readAction {
             notInlined.firstOrNull {
-                it.calculatedClassNameMatches(currentLocationClassName, false)
+                it.calculatedClassNameMatches(currentLocationClassName, false) ||
+                        adapterMethodName != null && it.matchesIndyCallableReference(adapterMethodName, currentLocationClassName)
             }
         }
+    }
+
+    /**
+     * Matches an indy adapter named '<enclosing functions>$<referenced function>[$<index>]' in the enclosing class.
+     * The enclosing function names are joined with '$'.
+     * These are source names, even when `@JvmName` changes the JVM method names.
+     */
+    private fun KtCallableReferenceExpression.matchesIndyCallableReference(methodName: String, className: String): Boolean {
+        val containingFunction = getContainingMethod() as? KtNamedFunction ?: return false
+        if (!containingFunction.calculatedClassNameMatches(className, false)) return false
+        val enclosingNames = generateSequence(containingFunction) {
+            if (it.isLocal) it.getContainingMethod() as? KtNamedFunction else null
+        }.toList().asReversed().map { it.name ?: return false }
+        val enclosingName = enclosingNames.joinToString("$")
+        if (!methodName.startsWith("$enclosingName\$")) return false
+
+        val targetName = runDumbAnalyze(this, fallback = null) {
+            (callableReference.mainReference.resolveToSymbol() as? KaNamedFunctionSymbol)?.name?.asString()
+        } ?: return false
+        val adapterName = "$enclosingName\$$targetName"
+        if (methodName == adapterName) return true
+        if (!methodName.startsWith("$adapterName\$")) return false
+        return methodName.substring(adapterName.length + 1).toIntOrNull() != null
     }
 
     private suspend fun getLambdaOrFunOnLineIfInside(location: Location, file: KtFile, lineNumber: Int): KtFunction? {
@@ -447,8 +480,15 @@ class KotlinPositionManager(private val debugProcess: DebugProcess) : MultiReque
         val notInlined = mutableListOf<T>()
         var innermostInlinedElement: T? = null
         for (expression in this) {
-            val isCrossinline = dumbAnalyze(expression, fallback = false) {
-                getInlineArgumentSymbol(expression)?.isCrossinline
+            val isCrossinline = try {
+                dumbAnalyze(expression, fallback = false) {
+                    getInlineArgumentSymbol(expression)?.isCrossinline
+                }
+            } catch (e: Throwable) {
+                rethrowControlFlowException(e)
+                // one broken analysis must not drop the source position of the whole line
+                LOG.warn("Cannot resolve the inline argument of a lambda, treated as not inlined: ${readAction { expression.containingFile.name }}", e)
+                null
             }
             if (isCrossinline != null && (!isCrossinline || isInlinedArgument(expression, location))) {
                 if (isInsideInlineArgument(expression, location)) {
@@ -508,8 +548,7 @@ class KotlinPositionManager(private val debugProcess: DebugProcess) : MultiReque
     private fun KtFunction.getLambdaCallMethod(): KtCallExpression? = parentOfType<KtCallExpression>()
 
     private fun KtCallExpression.getBytecodeMethodName(): String? = runDumbAnalyze(this, fallback = null) f@{
-        val resolvedCall = resolveToCall()?.successfulFunctionCallOrNull() ?: return@f null
-        val symbol = resolvedCall.partiallyAppliedSymbol.symbol as? KaNamedFunctionSymbol ?: return@f null
+        val symbol = this.resolveSuccessfulSymbol() as? KaNamedFunctionSymbol ?: return@f null
         getByteCodeMethodName(symbol)
     }
 
@@ -579,7 +618,7 @@ class KotlinPositionManager(private val debugProcess: DebugProcess) : MultiReque
         }
         val isUnitReturnType = runDumbAnalyze(function, fallback = false) {
             val functionalType = function.functionType
-            (functionalType as? KaFunctionType)?.returnType?.isUnitType == true
+            (functionalType as? KaFunctionType)?.returnType?.classId == KaStandardTypeClassIds.UNIT
         }
         if (!isUnitReturnType) {
             // We always must specify return explicitly
@@ -617,7 +656,7 @@ class KotlinPositionManager(private val debugProcess: DebugProcess) : MultiReque
             } else {
                 defaultInternalName(location)
             }
-        } catch (e: AbsentInformationException) {
+        } catch (_: AbsentInformationException) {
             defaultInternalName(location)
         }
 
@@ -658,7 +697,7 @@ class KotlinPositionManager(private val debugProcess: DebugProcess) : MultiReque
 
         if (psiFile is ClsFileImpl) {
             val decompiledPsiFile = runReadAction { psiFile.decompiledPsiFile }
-            if (decompiledPsiFile is KtClsFile && runReadAction { sourcePosition.line } == -1) {
+            if (decompiledPsiFile is KtFile && decompiledPsiFile.isCompiled && runReadAction { sourcePosition.line } == -1) {
                 val className = JvmFileClassUtil.getFileClassInternalName(decompiledPsiFile)
                 val vmProxy = VirtualMachineProxy.getCurrent()
                 return vmProxy.classesByName(className)
@@ -668,7 +707,7 @@ class KotlinPositionManager(private val debugProcess: DebugProcess) : MultiReque
         throw NoDataException.INSTANCE
     }
 
-    @RequiresReadLock
+    @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
     private fun getCandidates(sourcePosition: SourcePosition): List<ClassNameProvider.ClassNameCandidateInfo> =
         ClassNameProvider().getCandidatesInfo(sourcePosition)
 
@@ -699,7 +738,7 @@ class KotlinPositionManager(private val debugProcess: DebugProcess) : MultiReque
         return futures.mapNotNull { it.get() }
     }
 
-    @RequiresReadLockAbsence
+    @RequiresReadLockAbsence(generateAssertion = false /* IJPL-115548 */)
     private fun findTargetClasses(candidates: List<ReferenceType>, sourcePosition: SourcePosition): List<ReferenceType> =
         wrapIncompatibleThreadStateException {
             val matchingCandidates = candidates
@@ -734,7 +773,7 @@ class KotlinPositionManager(private val debugProcess: DebugProcess) : MultiReque
             }
 
             return locations.filter { it.sourceName(KOTLIN_STRATA_NAME) == position.file.name }
-        } catch (e: AbsentInformationException) {
+        } catch (_: AbsentInformationException) {
             throw NoDataException.INSTANCE
         }
     }
@@ -796,7 +835,7 @@ class KotlinPositionManager(private val debugProcess: DebugProcess) : MultiReque
         }
     }
 
-    @RequiresReadLock
+    @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
     private fun getKotlinClassPrepareRequests(requestor: ClassPrepareRequestor, position: SourcePosition): List<PrepareRequest> {
         val refinedPosition = when (requestor) {
             is SourcePositionRefiner -> requestor.refineSourcePosition(position)
@@ -866,7 +905,7 @@ private fun hasInlinedLinesToAsync(
 private fun fallbackHasInlinedLinesTo(referenceType: ReferenceType, line: Int, sourceCandidatesInternalName: List<String>): Boolean {
     val locations = try {
         DebuggerUtilsAsync.locationsOfLineSync(referenceType, KOTLIN_STRATA_NAME, null, line)
-    } catch (e: AbsentInformationException) {
+    } catch (_: AbsentInformationException) {
         emptyList()
     }
     return locations.any { location ->
@@ -1008,9 +1047,9 @@ private suspend fun KtFunction.isSamLambda(): Boolean {
 
     return dumbAnalyze(this, fallback = false) f@{
         val parentCall = KtPsiUtil.getParentCallIfPresent(this@isSamLambda) as? KtCallExpression ?: return@f false
-        val call = parentCall.resolveToCall()?.successfulFunctionCallOrNull() ?: return@f false
+        val call = parentCall.resolveSuccessfulCall() ?: return@f false
         val valueArgument = parentCall.getContainingValueArgument(this@isSamLambda) ?: return@f false
-        val argument = call.argumentMapping[valueArgument.getArgumentExpression()]?.symbol ?: return@f false
+        val argument = call.valueArgumentMapping[valueArgument.getArgumentExpression()]?.symbol ?: return@f false
         argument.returnType is KaUsualClassType
     }
 }

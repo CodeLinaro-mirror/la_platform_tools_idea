@@ -1,6 +1,6 @@
 // "Lift assignment out of 'try' expression" "true"
 // WITH_STDLIB
-// K2_ERROR: 'val' cannot be reassigned.
+// K2_ERROR: VAL_REASSIGNMENT
 
 fun foo() {
     val x: Int
@@ -10,5 +10,4 @@ fun foo() {
         <caret>x = 2
     }
 }
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.LiftAssignmentOutOfTryFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.LiftAssignmentOutOfTryFixFactory$LiftAssignmentOutOfTryFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.LiftAssignmentOutOfTryFixFactory$LiftAssignmentOutOfTryFix

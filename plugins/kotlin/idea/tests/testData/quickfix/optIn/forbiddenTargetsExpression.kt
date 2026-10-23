@@ -1,10 +1,9 @@
 // "Remove forbidden opt-in annotation targets" "true"
-// K2_ERROR: Expression annotations with retention other than SOURCE are prohibited.
-// K2_ERROR: Opt-in requirement marker annotation cannot be used on the following code elements: expression.
+// K2_ERROR: OPT_IN_MARKER_WITH_WRONG_TARGET
+// K2_ERROR: RESTRICTED_RETENTION_FOR_EXPRESSION_ANNOTATION_ERROR
 
 @RequiresOptIn
 @Target(<caret>AnnotationTarget.CLASS, AnnotationTarget.EXPRESSION, AnnotationTarget.FUNCTION)
 annotation class SomeOptInAnnotation
 
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.RemoveWrongOptInAnnotationTargetFix
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.RemoveWrongOptInAnnotationTargetFix

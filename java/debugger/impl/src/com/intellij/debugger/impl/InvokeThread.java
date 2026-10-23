@@ -1,6 +1,8 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.debugger.impl;
 
+import com.intellij.concurrency.ContextAwareRunnable;
+import com.intellij.concurrency.ThreadContext;
 import com.intellij.debugger.engine.DebuggerManagerThreadImpl;
 import com.intellij.debugger.engine.events.DebuggerCommandImpl;
 import com.intellij.openapi.application.ApplicationManager;
@@ -10,8 +12,14 @@ import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.util.ConcurrencyUtil;
+import com.intellij.util.concurrency.BlockingJob;
 import com.intellij.util.indexing.DumbModeAccessType;
 import com.sun.jdi.VMDisconnectedException;
+import kotlin.Unit;
+import kotlin.coroutines.CoroutineContext;
+import kotlinx.coroutines.CompletableJob;
+import kotlinx.coroutines.Job;
+import kotlinx.coroutines.SupervisorKt;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Async;
 import org.jetbrains.annotations.NotNull;
@@ -30,14 +38,16 @@ public abstract class InvokeThread<E extends PrioritizedTask> {
   private static final ThreadLocal<WorkerThreadRequest<?>> ourWorkerRequest = new ThreadLocal<>();
   private static final AtomicInteger ourWorkerCounter = new AtomicInteger(1);
 
-  public static final class WorkerThreadRequest<E extends PrioritizedTask> implements Runnable {
+  public static final class WorkerThreadRequest<E extends PrioritizedTask> implements ContextAwareRunnable {
     private final InvokeThread<E> myOwner;
+    private final CompletableJob myWorkerJob;
     private final ProgressIndicator myProgressIndicator = new EmptyProgressIndicator();
     private volatile Future<?> myRequestFuture;
     private final int myId = ourWorkerCounter.getAndIncrement();
 
-    WorkerThreadRequest(InvokeThread<E> owner) {
+    WorkerThreadRequest(InvokeThread<E> owner, @NotNull Job workJob) {
       myOwner = owner;
+      myWorkerJob = SupervisorKt.SupervisorJob(workJob);
     }
 
     @Override
@@ -53,14 +63,22 @@ public abstract class InvokeThread<E extends PrioritizedTask> {
       }
       ourWorkerRequest.set(this);
       try {
-        ConcurrencyUtil.runUnderThreadName("DebuggerManagerThread", () -> {
-          myOwner.run(this);
+        ThreadContext.installThreadContext(workerContext(), true, () -> {
+          ConcurrencyUtil.runUnderThreadName("DebuggerManagerThread", () -> {
+            myOwner.run(this);
+          });
+          return Unit.INSTANCE;
         });
       }
       finally {
         ourWorkerRequest.remove();
+        myWorkerJob.complete();
         boolean b = Thread.interrupted(); // reset interrupted status to return into pool
       }
+    }
+
+    private @NotNull CoroutineContext workerContext() {
+      return ambientContextWithoutJobs().plus(new BlockingJob(myWorkerJob));
     }
 
     public void requestStop() {
@@ -122,15 +140,24 @@ public abstract class InvokeThread<E extends PrioritizedTask> {
   }
 
   protected final EventQueue<E> myEvents;
+  private final Job myWorkJob;
 
   private WorkerThreadRequest<E> myCurrentRequest = null;
 
-  public InvokeThread() {
+  /**
+   * Creates a manager with the process job shared by all workers. The owner completes this job after final disposal.
+   * The subclass starts the first worker after its initialization.
+   */
+  protected InvokeThread(@NotNull Job workJob) {
+    myWorkJob = workJob;
     myEvents = new EventQueue<>(PrioritizedTask.Priority.values().length);
-    startNewWorkerThread();
   }
 
   protected abstract void processEvent(@NotNull E e);
+
+  private static @NotNull CoroutineContext ambientContextWithoutJobs() {
+    return ThreadContext.currentThreadContext().minusKey(Job.Key).minusKey(BlockingJob.Companion);
+  }
 
   protected void startNewWorkerThread() {
     // myCurrentRequest has to be updated atomically with calling setRequestFuture
@@ -138,13 +165,17 @@ public abstract class InvokeThread<E extends PrioritizedTask> {
     synchronized (this) {
       assertCurrentThreadIsActive();
 
-      final WorkerThreadRequest<E> workerRequest = new WorkerThreadRequest<>(this);
+      final WorkerThreadRequest<E> workerRequest = new WorkerThreadRequest<>(this, myWorkJob);
       WorkerThreadRequest<E> oldRequest = myCurrentRequest; // just for logging
       myCurrentRequest = workerRequest;
       if (LOG.isDebugEnabled()) {
         LOG.debug("Started new worker thread request " + workerRequest + ", was " + oldRequest);
       }
-      workerRequest.setRequestFuture(ApplicationManager.getApplication().executeOnPooledThread(workerRequest));
+      // the executor captures the submitter context for the worker's whole lifetime; keep the jobs out of it
+      ThreadContext.installThreadContext(ambientContextWithoutJobs(), true, () -> {
+        workerRequest.setRequestFuture(ApplicationManager.getApplication().executeOnPooledThread(workerRequest));
+        return Unit.INSTANCE;
+      });
     }
   }
 

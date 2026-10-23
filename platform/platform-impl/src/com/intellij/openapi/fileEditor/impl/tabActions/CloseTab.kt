@@ -14,9 +14,10 @@ import com.intellij.openapi.actionSystem.IdeActions
 import com.intellij.openapi.fileEditor.impl.EditorWindow
 import com.intellij.openapi.keymap.KeymapUtil
 import com.intellij.openapi.project.DumbAware
-import com.intellij.openapi.util.Pair
 import com.intellij.openapi.ui.ShadowAction
 import com.intellij.openapi.ui.popup.util.PopupUtil
+import com.intellij.openapi.util.Key
+import com.intellij.openapi.util.Pair
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.util.text.TextWithMnemonic
@@ -25,16 +26,17 @@ import com.intellij.ui.BadgeDotProvider
 import com.intellij.ui.BadgeIcon
 import com.intellij.ui.ComponentUtil
 import com.intellij.ui.ExperimentalUI
+import com.intellij.ui.paint.useCopy
 import com.intellij.ui.scale.JBUIScale
 import com.intellij.ui.tabs.impl.JBEditorTabs
 import com.intellij.ui.tabs.impl.MorePopupAware
 import com.intellij.ui.tabs.impl.TabLabel
 import com.intellij.util.BitUtil
 import com.intellij.util.ui.JBUI
+import org.jetbrains.annotations.ApiStatus
 import java.awt.Color
 import java.awt.Component
 import java.awt.Graphics
-import java.awt.Graphics2D
 import java.awt.RenderingHints
 import java.awt.event.InputEvent
 import java.awt.event.MouseEvent
@@ -42,7 +44,15 @@ import java.awt.geom.Ellipse2D
 import javax.swing.Icon
 import javax.swing.JComponent
 
-internal class CloseTab(
+/**
+ * Makes every tab of the file show the modified marker instead of the close button.
+ * Put `true` in the user data of the [VirtualFile]. The tabs show the change on the next update of the tab actions.
+ */
+@ApiStatus.Internal
+val ALWAYS_SHOW_MODIFIED_MARKER: Key<Boolean> = Key.create("editor.tab.always.show.modified.marker")
+
+@ApiStatus.Internal
+class CloseTab(
   component: JComponent,
   private val file: VirtualFile,
   private val editorWindow: EditorWindow,
@@ -82,7 +92,9 @@ internal class CloseTab(
 
   private fun isPinned() = editorWindow.isFilePinned(file)
 
-  private fun isModified() = UISettings.getInstance().markModifiedTabsWithAsterisk && editorWindow.getComposite(file)?.isModified == true
+  private fun isAlwaysModified() = file.getUserData(ALWAYS_SHOW_MODIFIED_MARKER) == true
+
+  private fun isModified() = isAlwaysModified() || UISettings.getInstance().markModifiedTabsWithAsterisk && editorWindow.getComposite(file)?.isModified == true
 
   /**
    * Whether to restrict the user to close the tab or not.
@@ -135,6 +147,9 @@ internal class CloseTab(
   }
 
   fun getIcon(isHovered: Boolean): Icon {
+    if (isAlwaysModified()) {
+      return AllIcons.General.Modified
+    }
     val pinned = isPinned()
     return if (!ExperimentalUI.isNewUI()) {
       when {
@@ -180,16 +195,16 @@ private class DotIcon(private val color: Color) : Icon {
      get() = JBUIScale.scale(6.0f)
 
    override fun paintIcon(c: Component?, g: Graphics, x: Int, y: Int) {
-     val g2d = g.create() as Graphics2D
-     g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+     g.useCopy { g2d ->
+       g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
 
-     val curInset = inset
-     val curDiameter = diameter
-     val circle = Ellipse2D.Float(x + curInset, y + curInset, curDiameter, curDiameter)
+       val curInset = inset
+       val curDiameter = diameter
+       val circle = Ellipse2D.Float(x + curInset, y + curInset, curDiameter, curDiameter)
 
-     g2d.color = color
-     g2d.fill(circle)
-     g2d.dispose()
+       g2d.color = color
+       g2d.fill(circle)
+     }
    }
  }
 

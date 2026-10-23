@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.tasks.java` start
+content_module_jar(module = ":java")
+### auto-generated section `dev intellij.tasks.java` end
 
 ### auto-generated section `build intellij.tasks.java` start
-
 jvm_library(
     name = "java",
     srcs = glob(
@@ -13,6 +17,10 @@ jvm_library(
         allow_empty = True,
     ),
     module_name = "intellij.tasks.java",
+    resource_strip_prefix = "resources",
+    resources = glob(
+        ["resources/**/*"],
+    ),
     visibility = ["//visibility:public"],
     deps = [
         # do not sort,
@@ -57,6 +65,7 @@ jvm_library(
 exports_files(
     [
         "intellij.tasks.java.iml",
+        "resources/intellij.tasks.java.xml",
     ],
     visibility = ["//visibility:public"],
 )

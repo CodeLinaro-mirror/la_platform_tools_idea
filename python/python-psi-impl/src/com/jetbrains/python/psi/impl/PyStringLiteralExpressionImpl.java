@@ -31,6 +31,7 @@ import com.jetbrains.python.psi.PyStringLiteralCoreUtil;
 import com.jetbrains.python.psi.PyStringLiteralExpression;
 import com.jetbrains.python.psi.PyStringLiteralUtil;
 import com.jetbrains.python.psi.PyUtil;
+import com.jetbrains.python.psi.types.PyAnyType;
 import com.jetbrains.python.psi.types.PyClassType;
 import com.jetbrains.python.psi.types.PyLiteralType;
 import com.jetbrains.python.psi.types.PyType;
@@ -114,6 +115,12 @@ public class PyStringLiteralExpressionImpl extends PyElementImpl
 
   @Override
   public PyType getType(@NotNull TypeEvalContext context, @NotNull TypeEvalContext.Key key) {
+    final PyType type = getBuiltinOrLiteralType();
+    // The type is null only when the project has no builtins.
+    return type != null ? type : PyAnyType.getUnknown();
+  }
+
+  private @Nullable PyType getBuiltinOrLiteralType() {
     final PyFile file = PyUtil.as(FileContextUtil.getContextFile(this), PyFile.class);
     final PyBuiltinCache builtinCache = PyBuiltinCache.getInstance(file == null ? this : file);
     final LanguageLevel languageLevel = file == null ? LanguageLevel.forElement(this) : file.getLanguageLevel();
@@ -124,7 +131,7 @@ public class PyStringLiteralExpressionImpl extends PyElementImpl
         String prefix = PyStringLiteralCoreUtil.getPrefix(firstNode.getText());
         if (PyStringLiteralUtil.isTemplatePrefix(prefix)) {
           if (languageLevel.isOlderThan(LanguageLevel.PYTHON314)) {
-            return PyBuiltinCache.getInstance(this).getStrType();
+            return builtinCache.getStrType();
           }
           PyClassType templateClassType = getTemplateClassType();
           if (templateClassType != null) {

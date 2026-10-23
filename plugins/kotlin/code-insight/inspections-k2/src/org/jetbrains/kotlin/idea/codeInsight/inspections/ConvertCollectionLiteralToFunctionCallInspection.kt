@@ -9,16 +9,17 @@ import com.intellij.modcommand.ModPsiUpdater
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiFile
-import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.components.KaDiagnosticCheckerFilter
+import org.jetbrains.kotlin.analysis.api.diagnostics.diagnostics
+import org.jetbrains.kotlin.analysis.api.resolution.resolveSuccessfulSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.importableFqName
 import org.jetbrains.kotlin.config.LanguageFeature
 import org.jetbrains.kotlin.idea.base.projectStructure.languageVersionSettings
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
+import org.jetbrains.kotlin.idea.codeInsight.inspections.utils.LITERAL_TO_FUNCTION_CANDIDATES
 import org.jetbrains.kotlin.idea.codeinsight.api.applicable.inspections.KotlinApplicableInspectionBase
 import org.jetbrains.kotlin.idea.codeinsight.api.applicable.inspections.KotlinModCommandQuickFix
 import org.jetbrains.kotlin.idea.codeinsight.api.applicators.ApplicabilityRange
-import org.jetbrains.kotlin.idea.codeInsight.inspections.utils.LITERAL_TO_FUNCTION_CANDIDATES
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.KtAnnotationEntry
 import org.jetbrains.kotlin.psi.KtCollectionLiteralExpression
@@ -47,10 +48,10 @@ internal class ConvertCollectionLiteralToFunctionCallInspection :
     override fun isApplicableByPsi(element: KtCollectionLiteralExpression): Boolean =
         element.getParentOfType<KtAnnotationEntry>(strict = true) == null
 
-    @OptIn(KaExperimentalApi::class)
-    override fun KaSession.prepareContext(element: KtCollectionLiteralExpression): Context? {
-        if (element.directDiagnostics(filter = KaDiagnosticCheckerFilter.ONLY_COMMON_CHECKERS).isNotEmpty()) return null
-        val resolvedSymbol = element.resolveSymbol() ?: return null
+    context(session: KaSession)
+    override fun prepareContext(element: KtCollectionLiteralExpression): Context? {
+        if (element.diagnostics().directOnly(true).any()) return null
+        val resolvedSymbol = element.resolveSuccessfulSymbol() ?: return null
         if (!LITERAL_TO_FUNCTION_CANDIDATES.contains(resolvedSymbol.importableFqName)) return null
         return Context(resolvedSymbol.name)
     }

@@ -1,5 +1,5 @@
 // "Replace with safe (?.) call" "true"
-// K2_ERROR: Only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type 'A?'.
+// K2_ERROR: UNSAFE_CALL
 class A(var s: String? = null)
 
 fun foo(a: A?) {
@@ -7,4 +7,3 @@ fun foo(a: A?) {
 }
 
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ReplaceWithSafeCallFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ReplaceWithSafeCallFix

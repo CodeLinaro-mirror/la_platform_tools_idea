@@ -2,9 +2,12 @@
 package com.intellij.platform.eel.tcp
 
 import com.intellij.openapi.diagnostic.logger
+import com.intellij.platform.eel.EelDescriptorWithInteractiveDeployment
+import com.intellij.platform.eel.EelMachineWithConnectionState
 import com.intellij.platform.eel.EelOsFamily
-import com.intellij.platform.eel.annotations.MultiRoutingFileSystemPath
+import com.intellij.platform.util.annotations.paths.NioPath
 import com.intellij.platform.eel.nioFs.impl.MultiRoutingFileSystemBackend
+import com.intellij.platform.eel.provider.getResolvedEelMachine
 import com.intellij.platform.eel.provider.utils.WindowsPathUtils
 import com.intellij.platform.ijent.community.impl.ijentFailSafeFileSystemApi
 import com.intellij.platform.ijent.community.impl.nio.IjentNioFileSystemProvider
@@ -51,7 +54,19 @@ class TcpEelMrfsBackend(private val scope: CoroutineScope) : MultiRoutingFileSys
     val ijentDefaultProvider = IjentNioFileSystemProvider.getInstance()
 
     try {
-      val ijentFs = ijentFailSafeFileSystemApi(scope, descriptor, checkIsIjentInitialized = null)
+      // Deployment of most TCP machines needs no user interaction, and the tunnel works with this
+      // process's EDT blocked since IJPL-247956, so awaiting it from inside fsBlocking is slow but safe
+      // (IJPL-245001). A descriptor whose deployment may prompt reports the exception itself through
+      // [com.intellij.platform.eel.EelDescriptorWithInteractiveDeployment], the default of the fail-safe api.
+      // Both answers stay live checks, because a delegating descriptor can change its target.
+      val ijentFs = ijentFailSafeFileSystemApi(
+        scope,
+        descriptor,
+        checkIsIjentInitialized = if (descriptor is EelDescriptorWithInteractiveDeployment) {
+          { (descriptor.getResolvedEelMachine() as? EelMachineWithConnectionState)?.isConnected == true }
+        }
+        else null,
+      )
       ijentDefaultProvider.newFileSystem(ijentUri, IjentNioFileSystemProvider.newFileSystemMap(ijentFs))
     }
     catch (_: FileSystemAlreadyExistsException) {
@@ -67,7 +82,7 @@ class TcpEelMrfsBackend(private val scope: CoroutineScope) : MultiRoutingFileSys
     ).getFileSystem(ijentUri)
   }
 
-  override fun getCustomRoots(): Collection<@MultiRoutingFileSystemPath String> {
+  override fun getCustomRoots(): Collection<@NioPath String> {
     // No I/O - called from read actions; querying ijent.rootDirectories would deploy IJent and block (IJPL-245202).
     // For Windows we synthesize per-drive roots A..Z (VFS equality match with per-drive Path.of(p).getRoot())
     // and append any UNC roots discovered lazily via compute() (see [seenUncRoots]).

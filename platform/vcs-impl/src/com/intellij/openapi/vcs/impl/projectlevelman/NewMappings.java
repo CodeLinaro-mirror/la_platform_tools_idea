@@ -3,6 +3,7 @@ package com.intellij.openapi.vcs.impl.projectlevelman;
 
 import com.intellij.filename.UniqueNameBuilder;
 import com.intellij.ide.trustedProjects.TrustedProjects;
+import com.intellij.ide.welcomeScreen.WelcomeUtils;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ReadAction;
@@ -31,9 +32,10 @@ import com.intellij.openapi.vcs.impl.ProjectLevelVcsManagerImpl;
 import com.intellij.openapi.vcs.ui.VcsBalloonProblemNotifier;
 import com.intellij.openapi.vcs.util.paths.FilePathMapping;
 import com.intellij.openapi.vcs.util.paths.VirtualFileMapping;
-import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.StandardFileSystems;
 import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.vfs.VirtualFileSystem;
 import com.intellij.openapi.vfs.pointers.VirtualFilePointer;
 import com.intellij.openapi.vfs.pointers.VirtualFilePointerListener;
 import com.intellij.openapi.vfs.pointers.VirtualFilePointerManager;
@@ -64,6 +66,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+
+import static com.intellij.ide.impl.ProjectUtil.isRealProject;
 
 /**
  * A project-level holder of VCS mappings
@@ -149,7 +153,7 @@ public final class NewMappings implements Disposable {
   private void updateActiveVcses(boolean forceFireEvent) {
     if (!myActivated) return;
     if (myProject.isDisposed()) return;
-    if (!TrustedProjects.isProjectTrusted(myProject)) return;
+    if (!TrustedProjects.isProjectTrusted(myProject) || WelcomeUtils.isWelcomeProject(myProject)) return;
 
     List<VcsDirectoryMapping> mappings = myMappings;
     Set<AbstractVcs> newVcses = ContainerUtil.map2SetNotNull(myMappings, this::getMappingsVcs);
@@ -406,7 +410,7 @@ public final class NewMappings implements Disposable {
 
     List<String> oldMappings = VcsDirectoryMappingCache.getInstance(myProject).getMappings(defaultMapping.getVcs());
     return ContainerUtil.mapNotNull(oldMappings, path -> {
-      VirtualFile root = LocalFileSystem.getInstance().findFileByPath(path);
+      VirtualFile root = StandardFileSystems.local().findFileByPath(path);
       return root != null ? new MappedRoot(vcs, defaultMapping, root) : null;
     });
   }
@@ -417,7 +421,7 @@ public final class NewMappings implements Disposable {
     Map<VirtualFile, MappedRoot> mappedRoots = new HashMap<>();
     Disposable pointerDisposable = Disposer.newDisposable();
 
-    if (!TrustedProjects.isProjectTrusted(myProject) || myProject.isDefault()) {
+    if (!TrustedProjects.isProjectTrusted(myProject) || !isRealProject(myProject)) {
       return new Mappings(Collections.emptyList(), pointerDisposable);
     }
 
@@ -489,7 +493,7 @@ public final class NewMappings implements Disposable {
     return ReadAction.computeBlocking(() -> {
       VirtualFilePointerManager.getInstance().create(VfsUtilCore.pathToUrl(rootPath), pointerDisposable, myFilePointerListener);
 
-      VirtualFile vcsRoot = LocalFileSystem.getInstance().findFileByPath(rootPath);
+      VirtualFile vcsRoot = StandardFileSystems.local().findFileByPath(rootPath);
       if (vcsRoot == null || !vcsRoot.isDirectory()) {
         return null;
       }
@@ -709,7 +713,7 @@ public final class NewMappings implements Disposable {
   }
 
   public void cleanupMappings() {
-    LocalFileSystem lfs = LocalFileSystem.getInstance();
+    VirtualFileSystem lfs = StandardFileSystems.local();
 
     List<VcsDirectoryMapping> oldMappings = new ArrayList<>(getDirectoryMappings());
 

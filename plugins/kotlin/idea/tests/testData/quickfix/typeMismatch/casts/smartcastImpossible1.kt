@@ -1,5 +1,5 @@
 // "Cast expression 'a' to 'Foo'" "true"
-// K2_ERROR: Smart cast to 'Foo' is impossible, because 'a' is a property that has an open or custom getter.
+// K2_ERROR: SMARTCAST_IMPOSSIBLE
 
 interface Foo {
     operator fun plus(x: Any) : Foo
@@ -16,5 +16,4 @@ fun MyClass.foo(): Any {
     return 42
 }
 
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.CastExpressionFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.CastExpressionFixFactories$CastExpressionModCommandAction
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.CastExpressionFixFactories$CastExpressionModCommandAction

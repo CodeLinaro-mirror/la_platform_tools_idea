@@ -14,6 +14,9 @@ object CoroutinesIds {
     object Job {
         val ID: ClassId = ClassId(PACKAGE, Name.identifier("Job"))
 
+        /** The `Job()` function, which makes a new [ID]. It is a function and not a constructor. */
+        val factory: CallableId = CallableId(PACKAGE, ID.shortClassName)
+
         val join: CallableId = CallableId(ID, Name.identifier("join"))
         
         object Key {
@@ -21,8 +24,19 @@ object CoroutinesIds {
         }
     }
     
+    /** The `SupervisorJob()` function. It makes a new [Job.ID] and has no type of the same name. */
+    val supervisorJobFactory: CallableId = CallableId(PACKAGE, Name.identifier("SupervisorJob"))
+
     object NonCancellable {
         val ID: ClassId = ClassId(PACKAGE, Name.identifier("NonCancellable"))
+    }
+
+    /**
+     * Note: This is the typealias in the coroutines API (not stdlib).
+     * It should be preferred for imports.
+     */
+    object CancellationException {
+        val ID: ClassId = ClassId(PACKAGE, Name.identifier("CancellationException"))
     }
 
     val joinAll: CallableId = CallableId(PACKAGE, Name.identifier("joinAll"))
@@ -32,13 +46,26 @@ object CoroutinesIds {
         val await: CallableId = CallableId(ID, Name.identifier("await"))
     }
 
+    object CompletableDeferred {
+        val ID: ClassId = ClassId(PACKAGE, Name.identifier("CompletableDeferred"))
+
+        /** The `CompletableDeferred()` function, which makes a new [ID]. */
+        val factory: CallableId = CallableId(PACKAGE, ID.shortClassName)
+    }
+
     val awaitAll: CallableId = CallableId(PACKAGE, Name.identifier("awaitAll"))
 
     object CoroutineScope {
         val ID: ClassId = ClassId(PACKAGE, Name.identifier("CoroutineScope"))
 
+        /** The `CoroutineScope()` function, which makes a new [ID]. */
+        val factory: CallableId = CallableId(PACKAGE, ID.shortClassName)
+
         val coroutineContext: CallableId = CallableId(ID, Name.identifier("coroutineContext"))
     }
+
+    /** The `MainScope()` function. It makes a new [CoroutineScope.ID] and has no type of the same name. */
+    val mainScopeFactory: CallableId = CallableId(PACKAGE, Name.identifier("MainScope"))
 
     object Selects {
         val PACKAGE: FqName = FqName("kotlinx.coroutines.selects")
@@ -56,6 +83,13 @@ object CoroutinesIds {
         val PACKAGE: FqName = FqName("kotlinx.coroutines.channels")
 
         val produce: CallableId = CallableId(PACKAGE, Name.identifier("produce"))
+
+        object Channel {
+            val ID: ClassId = ClassId(PACKAGE, Name.identifier("Channel"))
+
+            /** The `Channel()` function, which makes a new [ID]. */
+            val factory: CallableId = CallableId(PACKAGE, ID.shortClassName)
+        }
     }
 
     object Flows {
@@ -63,6 +97,20 @@ object CoroutinesIds {
 
         object Flow {
             val ID: ClassId = ClassId(PACKAGE, Name.identifier("Flow"))
+        }
+
+        object MutableStateFlow {
+            val ID: ClassId = ClassId(PACKAGE, Name.identifier("MutableStateFlow"))
+
+            /** The `MutableStateFlow()` function, which makes a new [ID]. */
+            val factory: CallableId = CallableId(PACKAGE, ID.shortClassName)
+        }
+
+        object MutableSharedFlow {
+            val ID: ClassId = ClassId(PACKAGE, Name.identifier("MutableSharedFlow"))
+
+            /** The `MutableSharedFlow()` function, which makes a new [ID]. */
+            val factory: CallableId = CallableId(PACKAGE, ID.shortClassName)
         }
 
         val count: CallableId = CallableId(PACKAGE, Name.identifier("count"))
@@ -79,13 +127,32 @@ object CoroutinesIds {
         val map: CallableId = CallableId(PACKAGE, Name.identifier("map"))
         val mapNotNull: CallableId = CallableId(PACKAGE, Name.identifier("mapNotNull"))
     }
-    
+
+    object Sync {
+        val PACKAGE: FqName = FqName("kotlinx.coroutines.sync")
+
+        object Mutex {
+            val ID: ClassId = ClassId(PACKAGE, Name.identifier("Mutex"))
+
+            /** The `Mutex()` function, which makes a new [ID]. */
+            val factory: CallableId = CallableId(PACKAGE, ID.shortClassName)
+        }
+
+        object Semaphore {
+            val ID: ClassId = ClassId(PACKAGE, Name.identifier("Semaphore"))
+
+            /** The `Semaphore()` function, which makes a new [ID]. */
+            val factory: CallableId = CallableId(PACKAGE, ID.shortClassName)
+        }
+    }
+
     object CoroutineDispatcher {
         val ID: ClassId = ClassId(PACKAGE, Name.identifier("CoroutineDispatcher"))
     }
 
     val currentCoroutineContext: CallableId = CallableId(PACKAGE, Name.identifier("currentCoroutineContext"))
     val suspendCancellableCoroutine: CallableId = CallableId(PACKAGE, Name.identifier("suspendCancellableCoroutine"))
+    val ensureActive: CallableId = CallableId(PACKAGE, Name.identifier("ensureActive"))
     
     val withContext: CallableId = CallableId(PACKAGE, Name.identifier("withContext"))
     
@@ -103,7 +170,18 @@ object CoroutinesIds {
 
     object Stdlib {
         val PACKAGE: FqName = FqName("kotlin.coroutines")
-        
+
+        object Cancellation {
+            val PACKAGE: FqName = FqName("kotlin.coroutines.cancellation")
+
+            /**
+             * Note: This is the typealias contained in the stdlib, available without the coroutines library.
+             */
+            object CancellationException {
+                val ID: ClassId = ClassId(PACKAGE, Name.identifier("CancellationException"))
+            }
+        }
+
         object CoroutineContext {
             val ID: ClassId = ClassId(PACKAGE, Name.identifier("CoroutineContext"))
             

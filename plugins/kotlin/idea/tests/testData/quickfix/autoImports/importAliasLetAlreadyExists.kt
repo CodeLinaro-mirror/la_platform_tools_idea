@@ -1,5 +1,7 @@
 // "Import extension function 'let'" "true"
 // WITH_STDLIB
+// K2_ERROR: UNRESOLVED_REFERENCE
+// K2_ERROR: UNRESOLVED_REFERENCE
 
 import kotlin.let as let1
 
@@ -8,5 +10,4 @@ fun main() {
         println(it)
     }
 }
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ImportFix
 // IGNORE_K2

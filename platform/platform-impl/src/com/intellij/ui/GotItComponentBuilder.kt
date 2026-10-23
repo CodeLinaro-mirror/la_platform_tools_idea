@@ -30,6 +30,7 @@ import com.intellij.ui.components.labels.LinkListener
 import com.intellij.ui.icons.CachedImageIcon
 import com.intellij.ui.paint.LinePainter2D
 import com.intellij.ui.paint.RectanglePainter2D
+import com.intellij.ui.paint.useCopy
 import com.intellij.ui.scale.JBUIScale
 import com.intellij.ui.svg.SvgAttributePatcher
 import com.intellij.util.SVGLoader
@@ -47,7 +48,6 @@ import java.awt.Container
 import java.awt.Dimension
 import java.awt.Font
 import java.awt.Graphics
-import java.awt.Graphics2D
 import java.awt.GridBagConstraints
 import java.awt.GridBagLayout
 import java.awt.Insets
@@ -200,11 +200,11 @@ class GotItComponentBuilder(textSupplier: GotItTextBuilder.() -> @Nls String) {
   }
 
   /**
-   * Add optional step number on the left of the header or description.
-   * The step will be rendered with one zero predecessor if step number is lower than 10.
-   * For example: 01, 02, 10, 12.
+   * Add an optional step number on the left of the header or description.
+   * The step will be rendered with one zero predecessor if the step number is lower than 10.
+   * For example, 01, 02, 10, 12.
    * The step number should be in the range [1, 99].
-   * Is not compatible with icon.
+   * Is not compatible with [withIcon].
    */
   fun withStepNumber(step: Int): GotItComponentBuilder {
     if (icon != null) {
@@ -218,15 +218,20 @@ class GotItComponentBuilder(textSupplier: GotItTextBuilder.() -> @Nls String) {
   }
 
   /**
-   * Add optional step number on the left of the header or description.
-   * Is not compatible with icon.
+   * Add an optional step text on the left of the header or description.
+   * Is not compatible with [withIcon].
    */
-  fun withStepNumber(text: @NlsSafe String): GotItComponentBuilder {
+  fun withStepText(text: @NlsSafe String): GotItComponentBuilder {
     if (icon != null) {
       throw IllegalStateException("Icon and step number can not be showed both at once. Choose one of them.")
     }
     this.stepText = text
     return this
+  }
+
+  @Deprecated("Use withStepText instead", ReplaceWith("withStepText(text)"))
+  fun withStepNumber(text: @NlsSafe String): GotItComponentBuilder {
+    return withStepText(text)
   }
 
   /**
@@ -457,8 +462,7 @@ class GotItComponentBuilder(textSupplier: GotItTextBuilder.() -> @Nls String) {
 
       component.border = object : Border {
         override fun paintBorder(c: Component?, g: Graphics, x: Int, y: Int, width: Int, height: Int) {
-          val g2d = g.create() as Graphics2D
-          try {
+          g.useCopy { g2d ->
             val arc = JBUI.CurrentTheme.GotItTooltip.CORNER_RADIUS.get().toDouble()
             val rect = Rectangle(0, 0, width, height)
             val roundedRect = RoundRectangle2D.Double(borderSize / 2.0, borderSize / 2.0,
@@ -478,9 +482,6 @@ class GotItComponentBuilder(textSupplier: GotItTextBuilder.() -> @Nls String) {
               RectanglePainter2D.DRAW.paint(g2d, 0.0, 0.0, width.toDouble(), height.toDouble(), arc,
                                             LinePainter2D.StrokeType.CENTERED, borderSize.toDouble(), RenderingHints.VALUE_ANTIALIAS_ON)
             }
-          }
-          finally {
-            g2d.dispose()
           }
         }
 
@@ -888,8 +889,7 @@ class ShortcutExtension : ExtendableHTMLViewFactory.Extension {
 
       val borderColor = borderColor
       val backgroundColor = background
-      val g2d = g.create() as Graphics2D
-      try {
+      g.useCopy { g2d ->
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
         for (rect in rectangles ?: emptyList()) {
           g2d.color = backgroundColor
@@ -899,9 +899,6 @@ class ShortcutExtension : ExtendableHTMLViewFactory.Extension {
             g2d.draw(rect)
           }
         }
-      }
-      finally {
-        g2d.dispose()
       }
 
       // It is a hack to not paint background in the super.paint()
@@ -1015,9 +1012,8 @@ private class InlineCodeExtension : ExtendableHTMLViewFactory.Extension {
       get() = JBUIScale.scale(DEFAULT_ARC)
 
     override fun paint(g: Graphics, a: Shape) {
-      val g2d = g.create() as Graphics2D
       val backgroundColor = background
-      try {
+      g.useCopy { g2d ->
         val baseRect = a.bounds2D
         val horIndent = horizontalIndent
         val vertIndent = verticalIndent
@@ -1033,9 +1029,6 @@ private class InlineCodeExtension : ExtendableHTMLViewFactory.Extension {
           g2d.color = borderBg
           g2d.draw(rect)
         }
-      }
-      finally {
-        g2d.dispose()
       }
 
       // It is a hack to not paint background in the super.paint()

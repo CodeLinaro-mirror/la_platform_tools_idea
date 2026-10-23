@@ -2,24 +2,19 @@
 package com.intellij.xdebugger.impl.breakpoints
 
 import com.intellij.openapi.editor.Editor
-import com.intellij.openapi.editor.markup.GutterIconRenderer
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.Pair
 import com.intellij.openapi.util.TextRange
-import com.intellij.openapi.util.component1
-import com.intellij.openapi.util.component2
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.platform.debugger.impl.ui.XDebuggerEntityConverter
 import com.intellij.xdebugger.XDebuggerManager
 import com.intellij.xdebugger.XDebuggerUtil
 import com.intellij.xdebugger.XSourcePosition
-import com.intellij.xdebugger.breakpoints.XBreakpoint
 import com.intellij.xdebugger.breakpoints.BreakpointFileProhibitionPolicy
+import com.intellij.xdebugger.breakpoints.XBreakpoint
 import com.intellij.xdebugger.breakpoints.XBreakpointProperties
 import com.intellij.xdebugger.breakpoints.XBreakpointType
 import com.intellij.xdebugger.breakpoints.XLineBreakpoint
 import com.intellij.xdebugger.breakpoints.XLineBreakpointType
-import one.util.streamex.StreamEx
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.Nls
 import org.jetbrains.annotations.NonNls
@@ -71,21 +66,8 @@ object XBreakpointUtil {
 
   @ApiStatus.Internal
   @JvmStatic
-  fun breakpointTypes(): StreamEx<XBreakpointType<*, *>> =
-    StreamEx.of(XBreakpointType.EXTENSION_POINT_NAME.extensionList)
-
-  @ApiStatus.Obsolete
-  @JvmStatic
-  fun findSelectedBreakpoint(project: Project, editor: Editor): Pair<GutterIconRenderer?, XBreakpoint<*>?> {
-    val pair = XBreakpointUIUtil.findSelectedBreakpointProxy(project, editor)
-    val (renderer, breakpoint) = pair
-    if (breakpoint == null) return Pair.create(null, null)
-    val monolithBreakpoint = XDebuggerEntityConverter.getBreakpoint(breakpoint.id)
-    if (monolithBreakpoint != null) {
-      return Pair.create(renderer, monolithBreakpoint)
-    }
-    return Pair.create(null, null)
-  }
+  fun breakpointTypes(): List<XBreakpointType<*, *>> =
+    XBreakpointType.EXTENSION_POINT_NAME.extensionList
 
   /**
    * Toggle line breakpoint with editor support:
@@ -121,7 +103,7 @@ object XBreakpointUtil {
     moveCaret: Boolean,
     canRemove: Boolean,
   ): Promise<XLineBreakpoint<*>?> {
-    return XBreakpointUIUtil.toggleLineBreakpointProxy(project,
+    return XBreakpointUIUtil.toggleLineBreakpointAsync(project,
                                                        position,
                                                        selectVariantByPositionColumn,
                                                        editor,

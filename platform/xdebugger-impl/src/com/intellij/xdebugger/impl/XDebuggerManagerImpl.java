@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.xdebugger.impl;
 
 import com.intellij.codeInsight.hint.LineTooltipRenderer;
@@ -57,7 +57,6 @@ import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.messages.SimpleMessageBusConnection;
 import com.intellij.util.ui.UIUtil;
 import com.intellij.xdebugger.DapMode;
-import com.intellij.xdebugger.SplitDebuggerMode;
 import com.intellij.xdebugger.XDebugProcess;
 import com.intellij.xdebugger.XDebugProcessStarter;
 import com.intellij.xdebugger.XDebugSession;
@@ -77,7 +76,6 @@ import kotlinx.coroutines.CoroutineScope;
 import kotlinx.coroutines.flow.MutableStateFlow;
 import kotlinx.coroutines.flow.StateFlow;
 import kotlinx.coroutines.flow.StateFlowKt;
-import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
@@ -122,7 +120,7 @@ public final class XDebuggerManagerImpl extends XDebuggerManager implements Pers
     myBreakpointManager = new XBreakpointManagerImpl(project, this, messageBusConnection, coroutineScope);
     XDebuggerWatchesManagerImpl.getInstance(project);
 
-    if (!SplitDebuggerMode.isSplitDebugger() || AppMode.isRemoteDevHost()) {
+    if (AppMode.isRemoteDevHost()) {
       startContentSelectionListening(messageBusConnection);
     }
     if (!DapMode.isDap()) {
@@ -227,7 +225,10 @@ public final class XDebuggerManagerImpl extends XDebuggerManager implements Pers
         session.showSessionTab();
       }
       ProcessHandler handler = session.getDebugProcess().getProcessHandler();
-      handler.startNotify();
+      // a debug process may notify the handler itself during its console setup
+      if (!handler.isStartNotified()) {
+        handler.startNotify();
+      }
       return new XSessionStartedResultImpl(session, session.getMockRunContentDescriptorIfInitialized());
     }
     else {
@@ -346,7 +347,6 @@ public final class XDebuggerManagerImpl extends XDebuggerManager implements Pers
   }
 
   private void onActiveSessionChanged(@Nullable XDebugSession previousSession, @Nullable XDebugSession currentSession) {
-    myBreakpointManager.getLineBreakpointManager().queueAllBreakpointsUpdate();
     if (!myProject.isDisposed()) {
       myProject.getMessageBus().syncPublisher(TOPIC).currentSessionChanged(previousSession, currentSession);
       if (currentSession != null && previousSession != null) {
@@ -371,7 +371,11 @@ public final class XDebuggerManagerImpl extends XDebuggerManager implements Pers
   @Override
   public @NotNull <T extends XDebugProcess> List<? extends T> getDebugProcesses(Class<T> processClass) {
     synchronized (mySessions) {
-      return StreamEx.of(mySessions.values()).map(XDebugSessionImpl::getDebugProcess).select(processClass).toList();
+      return mySessions.values().stream()
+        .map(XDebugSessionImpl::getDebugProcess)
+        .filter(processClass::isInstance)
+        .map(processClass::cast)
+        .toList();
     }
   }
 

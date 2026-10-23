@@ -25,7 +25,7 @@ class MoveEntitiesBetweenStoragesTest {
   @Test
   fun `move entity`() {
     val snapshot = createEmptyBuilder().also {
-      it addEntity SampleEntity(false, "to copy", ArrayList(), HashMap(), VirtualFileUrlManagerImpl().getOrCreateFromUrl("file:///tmp"),
+      it addEntity SampleEntity(false, "to copy", ArrayList(), HashMap(), VirtualFileUrlManagerImpl().storeAndGet("file:///tmp"),
                                 SampleEntitySource("test"))
     }.toSnapshot()
 

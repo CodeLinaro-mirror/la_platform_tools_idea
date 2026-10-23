@@ -1,6 +1,6 @@
 // "Convert expression to 'Int'" "true"
 // WITH_STDLIB
-// K2_ERROR: Argument type mismatch: actual type is 'Long', but 'Int' was expected.
+// K2_ERROR: ARGUMENT_TYPE_MISMATCH
 fun foo() {
     bar("1".toLong()<caret>)
 }
@@ -8,4 +8,3 @@ fun foo() {
 fun bar(l: Int) {
 }
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.NumberConversionFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.NumberConversionFix

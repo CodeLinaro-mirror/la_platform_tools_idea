@@ -2,11 +2,14 @@
 package com.intellij.platform.ijent.spi
 
 import com.intellij.platform.eel.EelPlatform
+import com.intellij.platform.eel.EelUnavailableException
 import com.intellij.platform.ijent.IjentExecFileProvider
 import com.intellij.platform.ijent.IjentSession
-import com.intellij.platform.ijent.IjentUnavailableException
+import com.intellij.platform.ijent.spi.IjentDeployingStrategy.Companion.deployEvents
+import com.intellij.platform.ijent.spi.IjentDeployingStrategy.DeployEvent
 import com.intellij.platform.ijent.spi.IjentSessionProcessMediator.ProcessExitPolicy
 import com.intellij.platform.ijent.spi.IjentSessionProcessMediator.ProcessExitPolicy.CHECK_CODE
+import kotlinx.coroutines.CompletableDeferred
 import java.nio.file.Path
 
 /**
@@ -72,7 +75,7 @@ abstract class IjentControlledEnvironmentDeployingStrategy : IjentDeployingStrat
   /**
    * Validates if a process exit code indicates normal termination.
    *
-   * Called when [ProcessExitPolicy] is [CHECK_CODE] to determine if termination should raise [IjentUnavailableException].
+   * Called when [ProcessExitPolicy] is [CHECK_CODE] to determine if termination should raise [EelUnavailableException].
    * By default, only exit code 0 is considered normal.
    *
    * Common case in containerized environments: when stopping container, all processes receive SIGKILL (137).
@@ -86,18 +89,39 @@ abstract class IjentControlledEnvironmentDeployingStrategy : IjentDeployingStrat
    */
   open suspend fun isExpectedProcessExit(exitCode: Int): Boolean = exitCode == 0
 
-  override suspend fun createIjentSession(provider: IjentSessionProvider): IjentSession.Posix =
+  /** See [IjentConnectionContext.noShutdownOnDisconnect]: whether closing the session terminates IJent in-band. */
+  protected open val noShutdownOnDisconnect: Boolean get() = false
+
+  /** See [IjentConnectionContext.remoteTerminationSettled]; exposed so a deployer's own teardown can await it. */
+  protected val remoteTerminationSettled: CompletableDeferred<Unit> = CompletableDeferred()
+
+  override suspend fun createIjentSession(provider: IjentSessionProvider): IjentSession =
+    createIjentSessionForPlatform(provider, ::getTargetPlatform) { }
+
+  protected suspend fun createIjentSessionForPlatform(
+    provider: IjentSessionProvider,
+    getPlatform: suspend () -> EelPlatform,
+    onSessionConnected: (IjentSession) -> Unit,
+  ): IjentSession =
     try {
-      val targetPlatform = getTargetPlatform()
-      val connectionStrategy = getConnectionStrategy()
+      val targetPlatform = getPlatform()
+      deployEvents.emit(DeployEvent.DEPLOY_STARTED)
       val remotePathToBinary = copyFile(ijentExecFileProvider.getIjentBinary(targetPlatform))
       val mediator = createProcess(remotePathToBinary)
+      val connectionStrategy = getConnectionStrategy()
+      deployEvents.emit(DeployEvent.DEPLOY_FINISHED)
 
-      provider.connect(IjentConnectionContext(
+      deployEvents.emit(DeployEvent.CONNECT_STARTED)
+      val ijentSession = provider.connect(IjentConnectionContext(
         mediator = mediator,
         targetPlatform = targetPlatform,
         connectionStrategy = connectionStrategy,
-      )) as IjentSession.Posix
+        noShutdownOnDisconnect = noShutdownOnDisconnect,
+        remoteTerminationSettled = remoteTerminationSettled,
+      ))
+      deployEvents.emit(DeployEvent.CONNECT_FINISHED)
+      onSessionConnected(ijentSession)
+      ijentSession
     }
     finally {
       close()

@@ -1,6 +1,7 @@
 package com.intellij.platform.ide.nonModalWelcomeScreen.actions
 
-import com.intellij.ide.projectView.impl.ProjectViewImpl
+import com.intellij.ide.actions.WelcomeSaveFileAction
+import com.intellij.ide.welcomeScreen.WelcomeUtils
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -9,7 +10,10 @@ import com.intellij.openapi.actionSystem.ex.ActionRuntimeRegistrar
 import com.intellij.openapi.actionSystem.impl.ActionConfigurationCustomizer
 import com.intellij.openapi.actionSystem.remoting.ActionRemoteBehavior
 import com.intellij.openapi.actionSystem.remoting.ActionRemoteBehaviorSpecification
-import com.intellij.openapi.project.DumbAwareAction import com.intellij.platform.ide.nonModalWelcomeScreen.leftPanel.WelcomeScreenLeftPanel
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.project.DumbAwareAction
+import com.intellij.openapi.project.Project
+import com.intellij.platform.ide.nonModalWelcomeScreen.leftPanel.WELCOME_SCREEN_IS_SHOWN
 import com.intellij.platform.ide.nonModalWelcomeScreen.leftPanel.WelcomeScreenLeftTabActionNew
 import com.intellij.util.PlatformUtils
 import org.intellij.lang.annotations.Language
@@ -17,11 +21,11 @@ import org.intellij.lang.annotations.Language
 internal class WelcomeScreenAwareActionsCustomizer : ActionConfigurationCustomizer, ActionConfigurationCustomizer.LightCustomizeStrategy {
   override suspend fun customize(actionRegistrar: ActionRuntimeRegistrar) {
     actionRegistrar.run {
-      replaceExistingAction("CloseProject") { WelcomeScreenAwareCloseProjectAction() }
-      replaceExistingAction("CloseAllProjects") { WelcomeScreenAwareCloseAllProjectsAction() }
       replaceExistingAction("RenameProject") { hideActionOnWelcomeScreen(it) }
-      replaceExistingAction("NewDir") { hideActionOnWelcomeScreen(it) }
-      replaceExistingAction("NewFile") { WelcomeScreenProxyAction(it, CreateEmptyFileAction()) }
+      if (!ApplicationManager.getApplication().isUnitTestMode) {
+        replaceExistingAction("SaveAll") { WelcomeFileProxyAction(it) }
+        replaceExistingAction("SaveDocument") { WelcomeFileProxyAction(it) }
+      }
       if (!PlatformUtils.isPyCharm() && !PlatformUtils.isDataGrip()) {
         replaceExistingAction("NewElement") { WelcomeScreenProxyAction(it, WelcomeScreenLeftTabActionNew(), false) }
       }
@@ -31,6 +35,16 @@ internal class WelcomeScreenAwareActionsCustomizer : ActionConfigurationCustomiz
       replaceExistingAction("ExpandRecursively") { hideActionOnWelcomeScreen(it) }
       replaceExistingAction("ExpandAll") { hideActionOnWelcomeScreen(it) }
       replaceExistingAction("CollapseAll") { hideActionOnWelcomeScreen(it) }
+    }
+  }
+}
+
+internal class WelcomeProjectNewActionsCustomizer : ActionConfigurationCustomizer, ActionConfigurationCustomizer.LightCustomizeStrategy {
+  override suspend fun customize(actionRegistrar: ActionRuntimeRegistrar) {
+    actionRegistrar.run {
+      replaceExistingAction("NewDir") { WelcomeProjectHiddenAction(it) }
+      replaceExistingAction("NewFile") { WelcomeProjectHiddenAction(it) }
+      replaceExistingAction("NewScratchFile") { WelcomeProjectHiddenAction(it) }
     }
   }
 }
@@ -64,7 +78,7 @@ internal class WelcomeScreenHiddenActionWithRemoteSpec<T>(val actionWithSpec: T)
 internal open class WelcomeScreenHiddenAction(action: AnAction) : AnActionWrapper(action) {
   override fun update(e: AnActionEvent) {
     val project = e.project
-    if (project != null && ProjectViewImpl.getInstance(project).currentViewId == WelcomeScreenLeftPanel.ID) {
+    if (project != null && e.getData(WELCOME_SCREEN_IS_SHOWN) == true) {
       e.presentation.isEnabledAndVisible = false
       return
     }
@@ -72,14 +86,25 @@ internal open class WelcomeScreenHiddenAction(action: AnAction) : AnActionWrappe
   }
 }
 
-internal class WelcomeScreenProxyAction(
+internal class WelcomeProjectHiddenAction(action: AnAction) : AnActionWrapper(action) {
+  override fun update(e: AnActionEvent) {
+    val project = e.project
+    if (project != null && WelcomeUtils.isWelcomeProject(project)) {
+      e.presentation.isEnabledAndVisible = false
+      return
+    }
+    super.update(e)
+  }
+}
+
+internal open class WelcomeScreenProxyAction(
   val action: AnAction,
   val welcomeScreenBehaviour: AnAction,
-  private val isVisible: Boolean = true
+  private val isVisible: Boolean = true,
 ) : DumbAwareAction(action.templatePresentation.text) {
   override fun actionPerformed(e: AnActionEvent) {
     val project = e.project
-    if (project != null && ProjectViewImpl.getInstance(project).currentViewId == WelcomeScreenLeftPanel.ID) {
+    if (project != null && isWelcomeAction(project, e)) {
       welcomeScreenBehaviour.actionPerformed(e)
       return
     }
@@ -88,7 +113,7 @@ internal class WelcomeScreenProxyAction(
 
   override fun update(e: AnActionEvent) {
     val project = e.project
-    if (project != null && ProjectViewImpl.getInstance(project).currentViewId == WelcomeScreenLeftPanel.ID) {
+    if (project != null && isWelcomeAction(project, e)) {
       e.presentation.isVisible = isVisible
       welcomeScreenBehaviour.update(e)
       return
@@ -96,7 +121,15 @@ internal class WelcomeScreenProxyAction(
     action.update(e)
   }
 
+  protected open fun isWelcomeAction(project: Project, e: AnActionEvent): Boolean = e.getData(WELCOME_SCREEN_IS_SHOWN) == true
+
   override fun getActionUpdateThread(): ActionUpdateThread {
     return action.actionUpdateThread
+  }
+}
+
+internal class WelcomeFileProxyAction(action: AnAction) : WelcomeScreenProxyAction(action, WelcomeSaveFileAction()) {
+  override fun isWelcomeAction(project: Project, e: AnActionEvent): Boolean {
+    return WelcomeUtils.isWelcomeProject(project) && (welcomeScreenBehaviour as WelcomeSaveFileAction).isWelcomeFile(project, e)
   }
 }

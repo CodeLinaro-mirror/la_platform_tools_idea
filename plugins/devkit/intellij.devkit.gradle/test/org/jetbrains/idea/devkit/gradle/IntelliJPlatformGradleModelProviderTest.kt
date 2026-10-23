@@ -2,8 +2,15 @@
 package org.jetbrains.idea.devkit.gradle
 
 import com.intellij.devkit.gradle.tooling.IntelliJPlatformGradleModel
+import com.intellij.openapi.externalSystem.model.DataNode
+import com.intellij.openapi.externalSystem.model.ProjectKeys
+import com.intellij.openapi.externalSystem.model.internal.InternalExternalProjectInfo
+import com.intellij.openapi.externalSystem.model.project.ModuleData
+import com.intellij.openapi.externalSystem.model.project.ProjectData
+import com.intellij.openapi.externalSystem.service.project.manage.ExternalProjectsManagerImpl
 import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase
 import com.intellij.testFramework.replaceService
+import org.jetbrains.plugins.gradle.util.GradleConstants
 import java.nio.file.Files
 
 internal class IntelliJPlatformGradleModelProviderTest : LightJavaCodeInsightFixtureTestCase() {
@@ -48,6 +55,33 @@ internal class IntelliJPlatformGradleModelProviderTest : LightJavaCodeInsightFix
     assertNull(provider.getModel(file))
   }
 
+  fun testUsesCachedExternalProjectDataBeforeCurrentSync() {
+    val file = myFixture.addFileToProject("project/build.gradle.kts", "")
+    val projectPath = file.virtualFile.parent.path
+    val data = gradleData("2026.1")
+    val projectNode = DataNode(
+      ProjectKeys.PROJECT,
+      ProjectData(GradleConstants.SYSTEM_ID, "project", projectPath, projectPath),
+      null,
+    )
+    val moduleNode = projectNode.createChild(
+      ProjectKeys.MODULE,
+      ModuleData("project", GradleConstants.SYSTEM_ID, "", "project", projectPath, projectPath),
+    )
+    moduleNode.createChild(IntelliJPlatformGradleData.KEY, data)
+    val externalProjectsManager = ExternalProjectsManagerImpl.getInstance(project)
+    externalProjectsManager.updateExternalProjectData(
+      InternalExternalProjectInfo(GradleConstants.SYSTEM_ID, projectPath, projectNode),
+    )
+
+    try {
+      assertEquals(data, provider.getModel(file))
+    }
+    finally {
+      externalProjectsManager.forgetExternalProjectData(GradleConstants.SYSTEM_ID, projectPath)
+    }
+  }
+
   fun testImportsDataProducedByModelFetch() {
     val file = myFixture.addFileToProject("project/build.gradle.kts", "")
     val projectPath = file.virtualFile.parent.path
@@ -55,16 +89,82 @@ internal class IntelliJPlatformGradleModelProviderTest : LightJavaCodeInsightFix
     try {
       Files.writeString(releasesFile, "IU\t2026.1\tRELEASE\n")
       val model = object : IntelliJPlatformGradleModel {
-        override val dependencyHelperProductCodes = mapOf("intellijIdea" to "IU")
-        override val productReleasesFile = releasesFile.toString()
+        override fun getDependencyHelperProductCodes() = mapOf("intellijIdea" to "IU")
+        override fun getProductReleasesFile() = releasesFile.toString()
+        override fun getBundledPluginsFile(): String? = null
+        override fun getBundledModulesFile(): String? = null
+        override fun getCurrentPluginVersion() = "2.14.0"
+        override fun getLatestPluginVersion() = "2.19.0"
       }
 
       assertEquals(1, provider.importProjectModels(projectPath, mapOf(projectPath to model)))
 
-      assertEquals(gradleData("2026.1"), provider.getModel(file))
+      assertEquals(
+        gradleData("2026.1").copy(
+          currentPluginVersion = "2.14.0",
+          latestPluginVersion = "2.19.0",
+        ),
+        provider.getModel(file),
+      )
     }
     finally {
       Files.deleteIfExists(releasesFile)
+    }
+  }
+
+  fun testImportsDataWithoutProductReleases() {
+    val file = myFixture.addFileToProject("project/build.gradle.kts", "")
+    val projectPath = file.virtualFile.parent.path
+    val model = object : IntelliJPlatformGradleModel {
+      override fun getDependencyHelperProductCodes() = emptyMap<String, String>()
+      override fun getProductReleasesFile(): String? = null
+      override fun getBundledPluginsFile(): String? = null
+      override fun getBundledModulesFile(): String? = null
+      override fun getCurrentPluginVersion() = "2.17.0"
+      override fun getLatestPluginVersion() = "2.20.0"
+    }
+
+    assertEquals(1, provider.importProjectModels(projectPath, mapOf(projectPath to model)))
+
+    assertEquals(
+      IntelliJPlatformGradleData(
+        currentPluginVersion = "2.17.0",
+        latestPluginVersion = "2.20.0",
+      ),
+      provider.getModel(file),
+    )
+  }
+
+  fun testImportsBundledPluginsAndModulesData() {
+    val file = myFixture.addFileToProject("project/build.gradle.kts", "")
+    val projectPath = file.virtualFile.parent.path
+    val pluginsFile = Files.createTempFile("bundled-plugins", ".txt")
+    val modulesFile = Files.createTempFile("bundled-modules", ".txt")
+    try {
+      Files.writeString(pluginsFile, "com.intellij.java\tJava\n")
+      Files.writeString(modulesFile, "intellij.platform.vcs.impl\tVCS Implementation\n")
+      val model = object : IntelliJPlatformGradleModel {
+        override fun getDependencyHelperProductCodes() = emptyMap<String, String>()
+        override fun getProductReleasesFile(): String? = null
+        override fun getBundledPluginsFile() = pluginsFile.toString()
+        override fun getBundledModulesFile() = modulesFile.toString()
+        override fun getCurrentPluginVersion() = "0.0.0"
+        override fun getLatestPluginVersion() = "0.0.0"
+      }
+
+      assertEquals(1, provider.importProjectModels(projectPath, mapOf(projectPath to model)))
+
+      assertEquals(
+        IntelliJPlatformGradleData(
+          bundledPlugins = listOf(IntelliJPlatformBundledArtifact("com.intellij.java", "Java")),
+          bundledModules = listOf(IntelliJPlatformBundledArtifact("intellij.platform.vcs.impl", "VCS Implementation")),
+        ),
+        provider.getModel(file),
+      )
+    }
+    finally {
+      Files.deleteIfExists(pluginsFile)
+      Files.deleteIfExists(modulesFile)
     }
   }
 

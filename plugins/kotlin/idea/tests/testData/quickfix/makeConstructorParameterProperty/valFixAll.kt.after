@@ -1,6 +1,6 @@
 // "Apply all 'Make constructor parameter a property' fixes in file" "true"
-// K2_ERROR: Unresolved reference 'bar'.
-// K2_ERROR: Unresolved reference 'foo'.
+// K2_ERROR: UNRESOLVED_REFERENCE
+// K2_ERROR: UNRESOLVED_REFERENCE
 
 class A(private val foo: String) {
     fun bar() {
@@ -14,4 +14,4 @@ class B(private val bar: String) {
     }
 }
 
-// FUS_K2_QUICKFIX_NAME: com.intellij.codeInsight.daemon.impl.actions.FixAllHighlightingProblems
+// FUS_QUICKFIX_NAME: com.intellij.codeInsight.daemon.impl.actions.FixAllHighlightingProblems

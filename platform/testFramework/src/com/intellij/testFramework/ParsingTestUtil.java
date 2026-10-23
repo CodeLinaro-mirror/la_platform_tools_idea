@@ -2,11 +2,15 @@
 package com.intellij.testFramework;
 
 import com.intellij.lang.ASTNode;
+import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.util.Couple;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.PsiDocumentManager;
+import com.intellij.psi.PsiElement;
+import com.intellij.psi.PsiElementVisitor;
 import com.intellij.psi.PsiErrorElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiRecursiveElementVisitor;
@@ -62,6 +66,18 @@ public final class ParsingTestUtil {
   }
 
   /**
+   * Visits all PSI elements of {@code file}, so that the parser builds the full tree.
+   */
+  public static void ensureParsed(@NotNull PsiFile file) {
+    file.accept(new PsiElementVisitor() {
+      @Override
+      public void visitElement(@NotNull PsiElement element) {
+        element.acceptChildren(this);
+      }
+    });
+  }
+
+  /**
    * @return string with all subtrees of the {@code psiFile} serialized with spaces and without ranges
    */
   public static @NotNull String psiFileToString(@NotNull PsiFile psiFile) {
@@ -104,14 +120,20 @@ public final class ParsingTestUtil {
       TextRange changedRange =
         ChangedPsiRangeUtil.getChangedPsiRange(subTreeFile, Objects.requireNonNull(subTreeFile.getTreeElement()), newFileText);
       TestCase.assertNotNull("No changes found", changedRange);
-      Couple<ASTNode> reparseableRoots = BlockSupportImpl.findReparseableNodeAndReparseIt(subTreeFile, subTree.getNode(), changedRange, newFileText);
+      Couple<ASTNode> reparseableRoots = ReadAction.computeBlocking(
+        () -> BlockSupportImpl.findReparseableNodeAndReparseIt(subTreeFile, subTree.getNode(), changedRange, newFileText)
+      );
       result.append("Subtree: ").append(subTree.getLanguage()).append(NL_SEPARATOR_NL);
       serializeReparseableRoots(reparseableRoots, result, newFileText);
       result.append(NL_SEPARATOR_NL);
     }
 
-    WriteAction.run(() -> fileDocument.setText(newFileText));
-    psiDocumentManager.commitDocument(fileDocument);
+    ApplicationManager.getApplication().invokeAndWait(() -> {
+      WriteAction.run(() -> {
+        fileDocument.setText(newFileText);
+        psiDocumentManager.commitDocument(fileDocument);
+      });
+    });
     var psiBeforeCommit = psiFileToString(psiFile);
     WriteCommandAction.runWriteCommandAction(project, () -> {
       fileDocument.setText("");

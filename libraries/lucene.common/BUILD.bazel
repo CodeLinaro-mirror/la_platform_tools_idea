@@ -1,7 +1,18 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.libraries.lucene.common` start
+content_module_jar(
+    libraries = [
+        # do not sort,
+        "@lib//:libraries-lucene-common-lucene-analysis-common",
+        "@lib//:libraries-lucene-common-lucene-core",
+    ],
+    module = ":lucene.common",
+)
+### auto-generated section `dev intellij.libraries.lucene.common` end
 
 ### auto-generated section `build intellij.libraries.lucene.common` start
-
 jvm_library(
     name = "lucene.common",
     srcs = glob(
@@ -16,13 +27,13 @@ jvm_library(
     visibility = ["//visibility:public"],
     exports = [
         # do not sort,
-        "@lib//:lucene-analysis-common",
-        "@lib//:lucene-core",
+        "@lib//:libraries-lucene-common-lucene-analysis-common",
+        "@lib//:libraries-lucene-common-lucene-core",
     ],
     runtime_deps = [
         # do not sort,
-        "@lib//:lucene-analysis-common",
-        "@lib//:lucene-core",
+        "@lib//:libraries-lucene-common-lucene-analysis-common",
+        "@lib//:libraries-lucene-common-lucene-core",
     ],
 )
 
@@ -37,8 +48,8 @@ jvm_library(
     visibility = ["//visibility:public"],
     exports = [
         # do not sort,
-        "@lib//:lucene-analysis-common",
-        "@lib//:lucene-core",
+        "@lib//:libraries-lucene-common-lucene-analysis-common",
+        "@lib//:libraries-lucene-common-lucene-core",
     ],
     runtime_deps = [":lucene.common"],
 )
@@ -48,6 +59,7 @@ jvm_library(
 exports_files(
     [
         "intellij.libraries.lucene.common.iml",
+        "resources/intellij.libraries.lucene.common.xml",
     ],
     visibility = ["//visibility:public"],
 )

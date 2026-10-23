@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.kotlin.idea.codeInsight.inspections
 
 import com.intellij.codeInspection.ProblemsHolder
@@ -6,10 +6,16 @@ import com.intellij.codeInspection.util.InspectionMessage
 import com.intellij.codeInspection.util.IntentionFamilyName
 import com.intellij.modcommand.ModPsiUpdater
 import com.intellij.openapi.project.Project
-import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaSession
+import org.jetbrains.kotlin.analysis.api.renderer.render
 import org.jetbrains.kotlin.analysis.api.symbols.KaDeclarationSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.symbol
+import org.jetbrains.kotlin.analysis.api.types.expandedSymbol
+import org.jetbrains.kotlin.analysis.api.types.isMarkedNullable
 import org.jetbrains.kotlin.analysis.api.types.symbol
+import org.jetbrains.kotlin.analysis.api.types.type
+import org.jetbrains.kotlin.analysis.api.types.withNullability
+import org.jetbrains.kotlin.idea.base.psi.setCallableTypeReference
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.codeinsight.api.applicable.inspections.KotlinApplicableInspectionBase
 import org.jetbrains.kotlin.idea.codeinsight.api.applicable.inspections.KotlinModCommandQuickFix
@@ -42,8 +48,8 @@ internal class SelfReferenceConstructorParameterInspection :
         context: Context,
     ): @InspectionMessage String = KotlinBundle.message("constructor.has.non.null.self.reference.parameter")
 
-    @OptIn(KaExperimentalApi::class)
-    override fun KaSession.prepareContext(element: KtPrimaryConstructor): Context? {
+    context(session: KaSession)
+    override fun prepareContext(element: KtPrimaryConstructor): Context? {
         val parameterList = element.valueParameterList ?: return null
         val containingClass = parameterList.containingClass() ?: return null
         val classSymbol = containingClass.symbol
@@ -79,12 +85,13 @@ internal class SelfReferenceConstructorParameterInspection :
         ) {
 
             val parameter = element.valueParameterList?.parameters[context.parameterIndex] ?: return
-            parameter.typeReference = KtPsiFactory(project).createType(context.nullableType)
+            parameter.setCallableTypeReference(KtPsiFactory(project).createType(context.nullableType))
         }
     }
 }
 
-private fun KaSession.isSelfReferenceParameter(
+context(session: KaSession)
+private fun isSelfReferenceParameter(
     parameter: KtParameter,
     classSymbol: KaDeclarationSymbol,
 ): Boolean = parameter.typeReference?.type?.symbol == classSymbol

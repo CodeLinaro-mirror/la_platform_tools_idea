@@ -3,13 +3,13 @@
 
 package org.jetbrains.intellij.build.productLayout.discovery
 
+import com.intellij.platform.buildScripts.licenses.LibraryLicense
 import com.intellij.platform.pluginGraph.ContentModuleName
+import com.intellij.platform.pluginGraph.PluginId
 import com.intellij.platform.pluginGraph.TargetName
 import com.intellij.platform.pluginSystem.parser.impl.elements.ModuleLoadingRuleValue
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import org.jetbrains.intellij.build.ModuleOutputProvider
+import org.jetbrains.intellij.build.productLayout.ModuleActivation
 import org.jetbrains.intellij.build.productLayout.ProductModulesContentSpec
 import org.jetbrains.intellij.build.productLayout.debug
 import org.jetbrains.intellij.build.productLayout.generateProductXml
@@ -19,6 +19,7 @@ import org.jetbrains.intellij.build.productLayout.pipeline.GenerationPipeline
 import org.jetbrains.intellij.build.productLayout.stats.GenerationStats
 import org.jetbrains.intellij.build.productLayout.stats.ProductGenerationResult
 import org.jetbrains.intellij.build.productLayout.util.FileUpdateStrategy
+import org.jetbrains.intellij.build.mapConcurrent
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -40,8 +41,9 @@ data class ModuleSetGenerationConfig(
   @JvmField val outputProvider: ModuleOutputProvider,
   /**
    * Map of product name to set of plugins that are compatible with (installable) but not bundled in that product.
-   * Loaded from packaging test YAMLs (nonBundled field).
+   * Derived from product declarations and source descriptors.
    * Used to track plugin compatibility for error message formatting.
+   * This map does not assign descriptor ownership. Existing generated regions remain managed.
    */
   @JvmField val nonBundledPlugins: Map<String, Set<TargetName>> = emptyMap(),
   /**
@@ -50,6 +52,21 @@ data class ModuleSetGenerationConfig(
    */
   @JvmField val knownPlugins: Set<TargetName> = emptySet(),
   /**
+   * Maps a plugin ID to the restricted modules that the plugin can activate.
+   * The activation applies in each product configuration that loads the plugin.
+   * The `restrictedModuleActivationValidation` rule reads it.
+   */
+  @JvmField val pluginModuleActivations: Map<PluginId, ModuleActivation> = emptyMap(),
+  /**
+   * The main modules of the plugins that a product leaves out of its build, even when the plugin is compatible with it.
+   * `ProductModulesLayout.compatiblePluginsToIgnore` of each discovered product holds them.
+   *
+   * The build leaves such a plugin out of the pipeline, so [nonBundledPlugins] holds it for no product. The graph
+   * still needs the plugin, because the generator owns the dependency region of its descriptors, and a development
+   * run loads the plugin.
+   */
+  @JvmField val ignoredCompatiblePlugins: Set<TargetName> = emptySet(),
+  /**
    * Map of product name to set of test plugin names for that product.
    * Test plugins have plugin.xml in test resources and provide test framework modules.
    * Used for: (1) content extraction with onlyProductionSources=false, (2) test dep validation.
@@ -57,10 +74,16 @@ data class ModuleSetGenerationConfig(
   @JvmField val testPluginsByProduct: Map<String, Set<TargetName>> = emptyMap(),
 
   /**
-   * When true, scan module sources for test plugin descriptors and plugin-content.yaml
-   * to enrich the PluginGraph in analysis-only flows.
+   * When true, scan module sources for test plugin descriptors, and seed [contentPluginPopulation], to enrich the
+   * PluginGraph in analysis-only flows.
    */
   @JvmField val includeTestPluginDescriptorsFromSources: Boolean = false,
+  /**
+   * The plugin main modules the dev distribution states content for. `derivePluginPopulation` of the build scripts
+   * derives the set from the product model and the platform table. The caller passes the result, because this module
+   * cannot read the build scripts. A name this project does not hold is a name nothing matches.
+   */
+  @JvmField val contentPluginPopulation: Set<String> = emptySet(),
 
   /** Xi:include paths to skip during plugin content extraction (e.g., paths from external libraries like Kotlin compiler) */
   @JvmField val skipXIncludePaths: Set<String> = emptySet(),
@@ -79,6 +102,17 @@ data class ModuleSetGenerationConfig(
    */
   @JvmField val testingLibraries: Set<String> = emptySet(),
   /**
+   * The library license entries the license validation rule checks against.
+   * An empty list turns that rule off.
+   */
+  @JvmField val libraryLicenses: List<LibraryLicense> = emptyList(),
+  /**
+   * The license entries the community license validation rule checks against.
+   * Pass the community list alone here. The ultimate superset holds the community list, so it hides a misplaced entry.
+   * An empty list turns that rule off.
+   */
+  @JvmField val communityLibraryLicenses: List<LibraryLicense> = emptyList(),
+  /**
    * Modules allowed having specific testing libraries in production scope.
    * Maps module name to the set of testing library names it's allowed to have.
    * More precise than a blanket allowlist - each module can only have the specific libraries it needs.
@@ -90,13 +124,6 @@ data class ModuleSetGenerationConfig(
    * (e.g., bundled via withProjectLibrary or other mechanisms not visible to the validator).
    */
   @JvmField val pluginAllowedMissingDependencies: Map<ContentModuleName, Set<ContentModuleName>> = emptyMap(),
-
-  /**
-   * Map from project library name to the library module that exports it.
-   * Built from JPS library modules (e.g., intellij.libraries.*) and used to map project
-   * library dependencies to module targets.
-   */
-  @JvmField val projectLibraryToModuleMap: Map<String, String> = emptyMap(),
 
   /**
    * Path to the suppressions.json file.
@@ -130,7 +157,7 @@ data class ModuleSetGenerationConfig(
  * @param outputProvider Module output provider for resolving module dependencies
  * @return Result containing generation statistics
  */
-internal suspend fun generateAllProductXmlFiles(
+internal fun generateAllProductXmlFiles(
   discoveredProducts: List<DiscoveredProduct>,
   testProductSpecs: List<Pair<String, ProductModulesContentSpec>> = emptyList(),
   projectRoot: Path,
@@ -139,7 +166,7 @@ internal suspend fun generateAllProductXmlFiles(
 ): ProductGenerationResult {
   // Convert test product specs to DiscoveredProduct instances
   val testProducts = testProductSpecs.mapNotNull { (name, spec) ->
-    val xmlPath = "ultimate/platform-ultimate/testResources/META-INF/${name}Plugin.xml"
+    val xmlPath = "ultimate/platform-ultimate/testFramework/resources/META-INF/${name}Plugin.xml"
     val xmlFile = projectRoot.resolve(xmlPath)
     if (Files.notExists(xmlFile)) {
       return@mapNotNull null
@@ -148,7 +175,7 @@ internal suspend fun generateAllProductXmlFiles(
     DiscoveredProduct(
       name = name,
       config = ProductConfiguration(
-        className = "test-product",
+        className = TEST_PRODUCT_CLASS_NAME,
         modules = emptyList(),
         pluginXmlPath = xmlPath,
       ),
@@ -160,19 +187,18 @@ internal suspend fun generateAllProductXmlFiles(
 
   val allProducts = discoveredProducts + testProducts
 
-  val productResults = coroutineScope {
-    allProducts.map { discovered ->
-      async {
+  val productResults = allProducts.mapConcurrent { discovered ->
+      run {
         // Skip products without pluginXmlPath or spec configured
-        val pluginXmlRelativePath = discovered.pluginXmlPath ?: return@async null
-        val spec = discovered.spec ?: return@async null
+        val pluginXmlRelativePath = discovered.pluginXmlPath ?: return@mapConcurrent null
+        val spec = discovered.spec ?: return@mapConcurrent null
 
         val pluginXmlPath = projectRoot.resolve(pluginXmlRelativePath)
 
         // Extract ProductProperties class name for the source comment.
         // Use the declaring class of `getProductContentDescriptor` method.
         val productPropertiesClass = when (val props = discovered.properties) {
-          null -> "test-product"
+          null -> TEST_PRODUCT_CLASS_NAME
           else -> (props.javaClass.methods.firstOrNull { it.name == "getProductContentDescriptor" }?.declaringClass
                    ?: props.javaClass).name
         }
@@ -187,8 +213,7 @@ internal suspend fun generateAllProductXmlFiles(
           strategy = strategy,
         )
       }
-    }.awaitAll().filterNotNull()
-  }
+    }.filterNotNull()
 
   return ProductGenerationResult(productResults)
 }
@@ -217,7 +242,7 @@ data class GenerationResult(
  * @param commitChanges If true, commits writes to disk when validation passes. If false, returns diffs without writing.
  * @return Result containing validation errors and diffs
  */
-suspend fun generateAllModuleSetsWithProducts(
+fun generateAllModuleSetsWithProducts(
   config: ModuleSetGenerationConfig,
   commitChanges: Boolean = true,
   updateSuppressions: Boolean = false,

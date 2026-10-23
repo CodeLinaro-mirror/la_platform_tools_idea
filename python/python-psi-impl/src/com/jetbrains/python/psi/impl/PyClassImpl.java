@@ -1,7 +1,6 @@
 // Copyright 2000-2017 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python.psi.impl;
 
-import com.google.common.collect.ImmutableMap;
 import com.intellij.codeInsight.completion.CompletionUtilCoreImpl;
 import com.intellij.lang.ASTNode;
 import com.intellij.navigation.ItemPresentation;
@@ -42,7 +41,6 @@ import com.jetbrains.python.PythonDialectsTokenSetProvider;
 import com.jetbrains.python.ast.PyAstFunction.Modifier;
 import com.jetbrains.python.ast.impl.PyUtilCore;
 import com.jetbrains.python.codeInsight.PyDataclassParameters;
-import com.jetbrains.python.codeInsight.stdlib.PyDataclassTypeProvider;
 import com.jetbrains.python.codeInsight.controlflow.ControlFlowCache;
 import com.jetbrains.python.codeInsight.controlflow.ScopeOwner;
 import com.jetbrains.python.codeInsight.dataflow.scope.ScopeUtil;
@@ -87,25 +85,22 @@ import com.jetbrains.python.psi.impl.stubs.PyVersionSpecificStubBaseKt;
 import com.jetbrains.python.psi.resolve.PyResolveContext;
 import com.jetbrains.python.psi.resolve.PyResolveUtil;
 import com.jetbrains.python.psi.resolve.QualifiedNameFinder;
+import com.jetbrains.python.psi.resolve.RatedResolveResult;
 import com.jetbrains.python.psi.stubs.PropertyStubStorage;
 import com.jetbrains.python.psi.stubs.PyClassStub;
 import com.jetbrains.python.psi.stubs.PyFunctionStub;
 import com.jetbrains.python.psi.stubs.PyTargetExpressionStub;
 import com.jetbrains.python.psi.types.PyAnyType;
-import com.jetbrains.python.psi.types.PyCallableParameter;
 import com.jetbrains.python.psi.types.PyClassLikeType;
 import com.jetbrains.python.psi.types.PyClassType;
 import com.jetbrains.python.psi.types.PyClassTypeImpl;
+import com.jetbrains.python.psi.types.PyTypeUtil;
 import com.jetbrains.python.psi.types.PyType;
 import com.jetbrains.python.psi.types.TypeEvalContext;
-import com.jetbrains.python.pyi.PyiFile;
 import com.jetbrains.python.pyi.PyiUtil;
 import com.jetbrains.python.toolbox.Maybe;
-import kotlin.jvm.functions.Function1;
-import kotlin.jvm.functions.Function2;
 import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.ApiStatus;
-import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -128,6 +123,7 @@ import java.util.stream.Collectors;
 
 import static com.intellij.openapi.util.text.StringUtil.join;
 import static com.intellij.openapi.util.text.StringUtil.notNullize;
+import static com.jetbrains.python.codeInsight.PyDataclassesKt.getDataclassInitVars;
 import static com.jetbrains.python.codeInsight.PyDataclassesKt.parseDataclassParameters;
 import static com.jetbrains.python.psi.PyUtil.as;
 import static com.jetbrains.python.psi.impl.PyDeprecationUtilKt.extractDeprecationMessageFromDecorator;
@@ -376,7 +372,7 @@ public class PyClassImpl extends PyBaseElementImpl<PyClassStub> implements PyCla
     PyDataclassParameters dcParams = parseDataclassParameters(cls, context);
     if (dcParams != null && dcParams.getSlots()) {
       List<String> result = new ArrayList<>();
-      var initVars = PyDataclassTypeProvider.Helper.getInitVars(cls, dcParams, context);
+      var initVars = getDataclassInitVars(cls, dcParams, context);
       var initVarTargets = initVars == null ? emptySet() : ContainerUtil.map2Set(initVars, iv -> iv.getTargetExpression());
       var attributes = cls.getClassAttributes();
 
@@ -526,30 +522,38 @@ public class PyClassImpl extends PyBaseElementImpl<PyClassStub> implements PyCla
     cache.put(type, Ref.create());
     List<PyClassLikeType> result = null;
     try {
-      final List<PyClassLikeType> bases = moveTypingGenericToTheEnd(removeNotNullDuplicates(type.getSuperClassTypes(context)));
-      final List<List<PyClassLikeType>> lines = new ArrayList<>();
+      final List<PyClassLikeType> bases = removeNotNullDuplicates(type.getSuperClassTypes(context));
+      final List<List<PyClassLikeType>> baseClassMROs = new ArrayList<>(bases.size());
       for (PyClassLikeType base : bases) {
-        if (base != null) {
+        if (base == null) {
+          baseClassMROs.add(Collections.emptyList());
+        }
+        else if (base.isDefinition()) {
+          baseClassMROs.add(mroLinearize(base, true, context, cache));
+        }
+        else {
           // Don't include ancestors of a metaclass instance
-          final List<PyClassLikeType> baseClassMRO;
-          if (base.isDefinition()) {
-            baseClassMRO = mroLinearize(base, true, context, cache);
-          }
-          else {
-            List<PyClassLikeType> metaclassInstanceMro = new ArrayList<>();
-            metaclassInstanceMro.add(base);
-            if (base instanceof PyClassType) {
-              final PyClassImpl pyClass = as(((PyClassType)base).getPyClass(), PyClassImpl.class);
-              if (pyClass != null) {
-                ContainerUtil.addIfNotNull(metaclassInstanceMro, pyClass.getImplicitSuper());
-              }
+          List<PyClassLikeType> metaclassInstanceMro = new ArrayList<>();
+          metaclassInstanceMro.add(base);
+          if (base instanceof PyClassType) {
+            final PyClassImpl pyClass = as(((PyClassType)base).getPyClass(), PyClassImpl.class);
+            if (pyClass != null) {
+              ContainerUtil.addIfNotNull(metaclassInstanceMro, pyClass.getImplicitSuper());
             }
-            baseClassMRO = metaclassInstanceMro;
           }
-          if (!baseClassMRO.isEmpty()) {
-            // mroMerge() updates passed MRO lists internally
-            lines.add(new LinkedList<>(baseClassMRO));
-          }
+          baseClassMROs.add(metaclassInstanceMro);
+        }
+      }
+      final int skippedGenericPos = findTypingGenericSkippedInMRO(bases, baseClassMROs);
+      if (skippedGenericPos >= 0) {
+        bases.remove(skippedGenericPos);
+        baseClassMROs.remove(skippedGenericPos);
+      }
+      final List<List<PyClassLikeType>> lines = new ArrayList<>();
+      for (List<PyClassLikeType> baseClassMRO : baseClassMROs) {
+        if (!baseClassMRO.isEmpty()) {
+          // mroMerge() updates passed MRO lists internally
+          lines.add(new LinkedList<>(baseClassMRO));
         }
       }
       if (!bases.isEmpty()) {
@@ -567,18 +571,26 @@ public class PyClassImpl extends PyBaseElementImpl<PyClassStub> implements PyCla
     return result;
   }
 
-  private static @NotNull List<PyClassLikeType> moveTypingGenericToTheEnd(@NotNull List<PyClassLikeType> bases) {
-    int genericPos = ContainerUtil.indexOf(bases,
-                                           base -> base instanceof PyCustomType customType &&
-                                                   PyTypingTypeProvider.GENERIC.equals(customType.getClassQName()));
-    if (genericPos >= 0) {
-      List<PyClassLikeType> reorderedBases = new ArrayList<>(bases.size());
-      reorderedBases.addAll(bases.subList(0, genericPos));
-      reorderedBases.addAll(bases.subList(genericPos + 1, bases.size()));
-      reorderedBases.add(bases.get(genericPos));
-      return reorderedBases;
+  /**
+   * Returns the position of {@code typing.Generic} in {@code bases} when the MRO of a later base also contains it, or -1.
+   * At runtime, {@code __mro_entries__} of {@code typing.Generic[...]} removes this entry
+   * when a later base is a parameterized generic class.
+   * Otherwise, {@code typing.Generic} keeps its position.
+   */
+  private static int findTypingGenericSkippedInMRO(@NotNull List<PyClassLikeType> bases,
+                                                   @NotNull List<List<PyClassLikeType>> baseClassMROs) {
+    int genericPos = ContainerUtil.indexOf(bases, PyClassImpl::isTypingGeneric);
+    if (genericPos < 0) return -1;
+    for (int i = genericPos + 1; i < bases.size(); i++) {
+      if (ContainerUtil.exists(baseClassMROs.get(i), PyClassImpl::isTypingGeneric)) {
+        return genericPos;
+      }
     }
-    return bases;
+    return -1;
+  }
+
+  private static boolean isTypingGeneric(@Nullable PyClassLikeType type) {
+    return type instanceof PyCustomType customType && PyTypingTypeProvider.GENERIC.equals(customType.getClassQName());
   }
 
   private static @NotNull <T> List<T> removeNotNullDuplicates(@NotNull List<T> list) {
@@ -1048,33 +1060,27 @@ public class PyClassImpl extends PyBaseElementImpl<PyClassStub> implements PyCla
     }
 
     @Override
-    public @Nullable PyType getType(@Nullable PyExpression receiver, @NotNull TypeEvalContext context) {
+    public @Nullable PyType getType(@NotNull PyClassType receiverType, @NotNull TypeEvalContext context) {
       if (mySite instanceof PyTargetExpressionImpl) {
         final PyType targetDocStringType = ((PyTargetExpressionImpl)mySite).getTypeFromDocString();
         if (targetDocStringType != null) {
           return targetDocStringType;
         }
       }
-      final PyCallable callable = myGetter.valueOrNull();
+      if (!myGetter.isDefined()) {
+        return PyAnyType.getAny();
+      }
+      final PyCallable callable = myGetter.value();
       if (callable != null) {
         // Ignore return types of non stub-based elements if we are not allowed to use AST
         if (!(callable instanceof StubBasedPsiElement) && !context.maySwitchToAST(callable)) {
-          return null;
+          return PyAnyType.getAny();
         }
-        return callable.getCallType(receiver, null, buildArgumentsToParametersMap(receiver, callable, context), context);
+        RatedResolveResult resolvedCallable = new RatedResolveResult(RatedResolveResult.RATE_NORMAL, callable);
+        final PyType getterType = PyTypeUtil.getTypeOfBoundMember(receiverType, List.of(resolvedCallable), context);
+        return PyCallExpressionHelper.getCallType(getterType, List.of(), context);
       }
-      return null;
-    }
-
-    private static @NotNull Map<PyExpression, PyCallableParameter> buildArgumentsToParametersMap(@Nullable PyExpression receiver,
-                                                                                                 @NotNull PyCallable callable,
-                                                                                                 @NotNull TypeEvalContext context) {
-      if (receiver == null) return Collections.emptyMap();
-
-      final PyCallableParameter firstParameter = ContainerUtil.getFirstItem(callable.getParameters(context));
-      if (firstParameter == null || !firstParameter.isSelf()) return Collections.emptyMap();
-
-      return ImmutableMap.of(receiver, firstParameter);
+      return PyAnyType.getUnknown();
     }
 
     @Override

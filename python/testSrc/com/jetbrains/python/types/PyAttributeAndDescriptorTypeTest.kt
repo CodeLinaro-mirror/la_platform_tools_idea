@@ -2,8 +2,10 @@
 package com.jetbrains.python.types
 
 import com.intellij.idea.TestFor
+import com.jetbrains.python.allure.Components
+import com.jetbrains.python.allure.Layers
+import com.jetbrains.python.allure.Subsystems
 import com.jetbrains.python.fixtures.PyCodeInsightTestCase
-import com.jetbrains.python.psi.impl.PyClassImpl
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 
@@ -14,20 +16,33 @@ import org.junit.jupiter.api.Test
  * `ClassVar`, `Final` type inference, `__slots__` typing, lazy/conditional attribute init,
  * attribute reassignment, and `Self`-returning properties/methods.
  */
+@Subsystems.Typing
+@Components.TypeInference
+@Layers.Functional
 class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
-
-  override val defaultTestOptions =
-    TestOptions(assertRecursionPrevention = false)
 
   @Nested
   inner class PropertyTypeInference {
+    @Test
+    @TestFor(issues = ["PY-85200"])
+    fun `property is still known when the file has a star import`() = test("""
+      from os.path import *
+
+      class C:
+          @property
+          def x(self) -> int: ...
+
+      expr = C().x
+      #└ TYPE int
+      """.trimIndent())
+
     @Test
     fun `property attribute accessed on class`() = test("""
       class C:
           x = property(lambda self: 'foo', None, None)
       expr = C.x
       # └ TYPE property
-      """)
+      """.trimIndent())
 
     @Test
     fun `property attribute accessed on instance`() = test("""
@@ -36,7 +51,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
       c = C()
       expr = c.x
       #└ TYPE Literal["foo"]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-9605"])
@@ -49,13 +64,11 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
       c = C()
       expr = c.foo
       # └ TYPE () -> Literal[0]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-76219"])
     fun `property type accessed via bounded type parameter`() = test("""
-      from typing_extensions import reveal_type
-
       class K:
           _text: str
           @property
@@ -65,12 +78,11 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
       def bar[T:K](k : T):
           expr = k.text
       #   └ TYPE str
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-13159"])
-    fun `abstractproperty result type`() = test(
-      """
+    fun `abstractproperty result type`() = test("""
       import abc
       class D(abc.ABC):
           @abc.abstractproperty
@@ -79,12 +91,10 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
       def f(d: D):
         expr = d.foo
       # └ TYPE Literal["foo"]
-      """,
-    )
+      """.trimIndent())
 
     @Test
-    fun `abstractproperty result type imported with from`() = test(
-      """
+    fun `abstractproperty result type imported with from`() = test("""
       from abc import abstractproperty, ABC
       class D(ABC):
           @abstractproperty
@@ -93,8 +103,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
       def f(d: D):
         expr = d.foo
       # └ TYPE Literal["foo"]
-      """,
-    )
+      """.trimIndent())
 
     @Test
     fun `property returning callable is called`() = test("""
@@ -107,7 +116,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
               return self.iterate
       expr = Foo().foo()
       #└ TYPE Iterator[int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-43122"])
@@ -130,18 +139,17 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
       b = B(a)
       expr = b.b_attr
       #└ TYPE str
-      """)
+      """.trimIndent())
 
     @Test
-    fun `attribute initialized from property of imported class`() = test(
-      """
+    fun `attribute initialized from property of imported class`() = test("""
       from mod import A, B
 
       a = A()
       b = B(a)
       expr = b.b_attr
       #└ TYPE str
-      """,
+      """.trimIndent(),
       "mod.py" to """
         class A:
             def __init__(self) -> None:
@@ -155,12 +163,10 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
         class B:
             def __init__(self, a: A) -> None:
                 self.b_attr = a.a_property
-        """,
-    )
+        """.trimIndent())
 
     @Test
-    fun `imported property whose result is unknown`() = test(
-      """
+    fun `imported property whose result is unknown`() = test("""
       from temporary import get_class
       class Example:
           def __init__(self):
@@ -169,7 +175,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
           @property
           def ins_class(self):
               return get_class()
-      """,
+      """.trimIndent(),
       "temporary.py" to "def get_class():\n    return str",
     )
 
@@ -181,7 +187,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
               return "42"
 
           serial_number = property(_get_serial_number)
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-88967"])
@@ -202,7 +208,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
       expr2 = C().prop
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-88967"])
@@ -219,7 +225,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
       
       expr1 = C().prop
       # └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-88967"])
@@ -232,7 +238,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
       expr = C.member
       # └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-88967"])
@@ -246,7 +252,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
       expr = A.attr
       # └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-88967"])
@@ -260,7 +266,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
       expr = A.attr
       # └ TYPE property
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-88967"])
@@ -274,7 +280,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
       expr = A().attr
       # └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-88967"])
@@ -291,7 +297,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
       expr2 = A().attr
       #└ TYPE str
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-88967"])
@@ -306,7 +312,23 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
       expr = A.attr
       # └ TYPE property
-      """)
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-6803"])
+    fun `property and factory function`() = test("""
+      class C(object):
+          @property
+          def foo(self):
+              return 'bar'
+
+      def f():
+          return C()
+
+      def test():
+          f().foo + 1
+      #             └ WARNING No overload of '__add__' matches the arguments. Argument types: (Literal[1]). Expected one of: (value: LiteralString), (value: str)
+      """.trimIndent())
   }
 
   @Nested
@@ -321,60 +343,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
               self.foo = 3
               expr = self.foo
       #       └ TYPE Literal[3]
-      """)
-
-    @Test
-    @TestFor(issues = ["PY-6584"])
-    fun `class attribute type from class docstring via class`() = test("""
-      class C(object):
-          '''
-          :type foo: int
-          '''
-          foo = None
-
-      expr = C.foo
-      #└ TYPE int
-      """)
-
-    @Test
-    @TestFor(issues = ["PY-6584"])
-    fun `class attribute type from class docstring via instance`() = test("""
-      class C(object):
-          '''
-          :type foo: int
-          '''
-          foo = None
-
-      expr = C().foo
-      #└ TYPE int
-      """)
-
-    @Test
-    @TestFor(issues = ["PY-6584"])
-    fun `instance attribute type from class docstring`() = test("""
-      class C(object):
-          '''
-          :type foo: int
-          '''
-          def __init__(self, bar):
-              self.foo = bar
-
-      def f(x):
-          expr = C(x).foo
-      #   └ TYPE int
-      """)
-
-    @Test
-    @TestFor(issues = ["PY-8953"])
-    fun `self type from method docstring`() = test("""
-      class C(object):
-          def foo(self):
-              '''
-              :type self: int
-              '''
-              expr = self
-      #       └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-28052"])
@@ -388,7 +357,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
       expr = MyClass().arbitrary
       #└ TYPE Any
-      """)
+      """.trimIndent())
 
     @Test
     fun `class attribute annotation with explicit Any survives reassignment`() = test("""
@@ -401,22 +370,20 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
               self.attr = x
               expr = self.attr
       #       └ TYPE Any
-      """)
+      """.trimIndent())
 
     @Test
-    fun `class attribute annotated ahead of time in another file`() = test(
-      """
+    fun `class attribute annotated ahead of time in another file`() = test("""
       from other import C
 
       expr = C().attr
       # └ TYPE int
-      """,
+      """.trimIndent(),
       "other.py" to """
         class C:
             attr: int
             attr, _ = None, None
-        """,
-    )
+        """.trimIndent())
 
     @Test
     fun `instance attribute annotation accessed on instance`() = test("""
@@ -425,7 +392,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
       expr = C().attr
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-24729"])
@@ -438,7 +405,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
       expr = C().attr
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-24729"])
@@ -452,25 +419,23 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
           def m(self):
               expr = self.attr
       #       └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-24729"])
-    fun `annotated instance attribute in other file`() = test(
-      """
+    fun `annotated instance attribute in other file`() = test("""
       from other import C
 
       expr = C().attr
       #└ TYPE int
-      """,
+      """.trimIndent(),
       "other.py" to """
         class C:
             attr: int
 
             def __init__(self):
                 self.attr = 'foo'
-        """,
-    )
+        """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-79480"])
@@ -489,7 +454,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
           def some_method(self):
               expr = self._some_var
       #       └ TYPE str | None
-      """)
+      """.trimIndent())
 
     @Test
     fun `inherited attribute with type annotation in parent`() = test("""
@@ -506,7 +471,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
           def some_method(self):
               expr = self._some_var
       #       └ TYPE str | None
-      """)
+      """.trimIndent())
 
     @Test
     fun `inherited attribute with type annotation in child`() = test("""
@@ -524,7 +489,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
           def some_method(self):
               expr = self._some_var
       #       └ TYPE str | None
-      """)
+      """.trimIndent())
 
     @Test
     fun `explicit None attribute annotation`() = test("""
@@ -534,7 +499,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
       def f(a: A):
           expr = a.x
       #   └ TYPE None
-      """)
+      """.trimIndent())
 
     @Test
     fun `qualified attribute type not confused with same name parameter`() = test("""
@@ -544,17 +509,16 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
           def doit(self, x: str):
               expr = self.x and x
       #       └ TYPE int | str
-      """)
+      """.trimIndent())
 
     @Test
-    fun `builtin generic alias in stubbed class attribute annotation does not resolve to inherited method`() = test(
-      """
+    fun `builtin generic alias in stubbed class attribute annotation does not resolve to inherited method`() = test("""
       from sample import A
 
       a = A()
       expr = a.b
       #└ TYPE dict[int, str]
-      """,
+      """.trimIndent(),
       "sample.py" to """
         class Base:
             def dict(self):
@@ -562,8 +526,93 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
         class A(Base):
             b: dict[int, str] = {}
-        """,
+        """.trimIndent())
+
+    @Test
+    fun `missing attribute in intersection member`() = test("""
+      class A:
+          ...
+
+      class B:
+          attr: int = 1
+
+      def f(p: B):
+          if isinstance(p, A):
+              expr = p.attr
+      #       └ TYPE int
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-7340"])
+    fun `field with none in stub`() = test(
+      """
+      from m1 import C
+
+      def f(x):
+          '''
+          :type x: int
+          '''
+          pass
+
+      def test():
+          f(C.foo)
+      """.trimIndent(),
+      "m1.py" to """
+      class C(object):
+          foo = None
+      """.trimIndent(),
     )
+
+    @Test
+    @TestFor(issues = ["PY-14222"])
+    fun `recursive dict attribute`() = test("""
+      class C:
+          def f(self, x):
+              self.foo = x
+              self.foo = {'foo': self.foo}
+              return self.foo['foo'] + 10
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-26354"])
+    @TestCaseOptions(additionalSdkRoots = [SdkRoot("packages", OrderRootTypeEnum.CLASSES)], assertRecursionPrevention = false)
+    fun `initializing attrs`() = test("""
+      import attr
+      import typing
+
+      @attr.s
+      class Weak1:
+          x = attr.ib()
+          y = attr.ib(default=0)
+          z = attr.ib(default=attr.Factory(list))
+
+      Weak1(1, "str", 2)
+      #        │      └ WARNING Expected type 'list', got 'Literal[2]' instead
+      #        ^^^^^ WARNING Expected type 'int', got 'Literal["str"]' instead
+
+
+      @attr.s
+      class Weak2:
+          x = attr.ib()
+
+          @x.default
+          def __init_x__(self):
+              return 1
+
+      Weak2("str")
+
+
+      @attr.s
+      class Strong:
+          x = attr.ib(type=int)
+          y = attr.ib(default=0, type=int)
+          z = attr.ib(default=attr.Factory(list), type=typing.List[int])
+
+      Strong(1, "str", ["str"])
+      #         │      ^^^^^^^ WARNING Expected type 'list[int]', got 'list[Literal["str"]]' instead
+      #         ^^^^^ WARNING Expected type 'int', got 'Literal["str"]' instead
+      """.trimIndent())
+
   }
 
   @Nested
@@ -576,7 +625,41 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
       expr = MyClass().attr
       #└ TYPE MyClass
-      """)
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-90894"])
+    fun `dunder getattr generic return type`() = test("""
+      class Box[T]:
+          def __getattr__(self, item) -> T:
+              raise NotImplementedError
+
+      def foo(box: Box[int]):
+          expr = box.whatever
+      #   └ TYPE int
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-90894"])
+    fun `dunder getattr overloaded by literal name`() = test("""
+      from typing import Literal, overload
+
+      class C:
+          @overload
+          def __getattr__(self, item: Literal["foo"]) -> int: ...
+          @overload
+          def __getattr__(self, item: Literal["bar"]) -> str: ...
+          def __getattr__(self, item):
+              raise NotImplementedError
+
+      def f(c: C):
+          foo = c.foo
+      #   └ TYPE int
+          bar = c.bar
+      #   └ TYPE str
+          baz = c.baz
+      #   └ TYPE UnsafeUnion[int, str]
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-85595"])
@@ -593,92 +676,73 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
       def foo(obj: MyClass):
           expr = obj.attr
       #   └ TYPE Any
-      """)
-  }
-
-  @Nested
-  inner class ClassVarTyping {
-    @Test
-    fun `ClassVar type resolved from annotation`() = test("""
-      from typing import ClassVar
-      class A:
-          x: ClassVar[int] = 1
-      expr = A.x
-      #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
-    fun `ClassVar type resolved from type comment`() = test("""
-      from typing import ClassVar
-      class A:
-          x = 1  # type: ClassVar[int]
-      expr = A.x
-      #└ TYPE int
-      """)
-  }
+    fun `dunder getattr not called for access via class`() = test("""
+      class MyClass:
+          def __getattr__(self, item) -> int: ...
 
-  @Nested
-  inner class FinalTypeInference {
-    @Test
-    fun `Final with explicit type and value`() = test("""
-      from typing_extensions import Final
-      expr: Final[int] = undefined # ERROR Unresolved reference 'undefined'
-      #└ TYPE int
-      """)
+      expr = MyClass.attr
+      #└ TYPE Unknown
+      """.trimIndent())
 
     @Test
-    fun `Final without type infers literal of value`() = test("""
-      from typing_extensions import Final
-      expr: Final = 5
-      #└ TYPE Literal[5]
-      """)
+    @TestFor(issues = ["PY-28017"])
+    fun `module with get attr`() = test("""
+      import mymod
 
-    @Test
-    fun `Final with explicit type only`() = test("""
-      from typing_extensions import Final
-      expr: Final[int] # WARNING 'Final' name should be initialized with a value
-      #└ TYPE int
-      """)
+      def foo(mod):
+          return mod.myfunc
 
-    @Test
-    fun `Final without type infers list type from value`() = test("""
-      from typing_extensions import Final
-      expr: Final = [1, 2]
-      #└ TYPE list[int]
-      """)
+      print(foo(mymod)())
+      """.trimIndent(),
+      "mymod.py" to """
+      def myhiddenfunc():
+          return "ok"
 
-    @Test
-    fun `Final with explicit type in type comment`() = test("""
-      from typing_extensions import Final
-      expr = undefined  # type: Final[int]
-      #│     ^^^^^^^^^ ERROR Unresolved reference 'undefined'
-      #└ TYPE int
-      """)
-
-    @Test
-    fun `Final without type in type comment infers literal`() = test("""
-      from typing_extensions import Final
-      expr = 5  # type: Final
-      #└ TYPE Literal[5]
-      """)
+      def __getattr__(name):
+          if name == "myfunc":
+              return myhiddenfunc
+          raise AttributeError
+      """.trimIndent())
   }
 
   @Nested
   inner class DunderSlotsTyping {
     @Test
-    @TestFor(issues = ["PY-83206"])
-    fun `empty slots are not disjoint`() = test("""
-      class A:
-          __slots__ = []
+    @TestFor(issues = ["PY-22222", "PY-29233"])
+    fun `pass class with dunder slots to method that uses slotted attribute`() = test("""
+      class A(object):
+          __slots__ = 'x', 'y'
 
-      class B:
-          __slots__ = []
 
-      def foo(x: A) -> None:
-          if isinstance(x, B):
-              expr = x
-      #       └ TYPE A & B
-      """)
+      class B(object):
+          __slots__ = ['x']
+
+      class C(B):
+          pass
+
+      class D(object):
+          pass
+
+      class E(D):
+          __slots__ = ['x']
+
+
+      class F:
+          __slots__ = ['x']
+
+
+      def copy_values(a):
+          print(a.x)
+
+      copy_values(A())
+      copy_values(C())
+      copy_values(E())
+      copy_values(D())
+      #           ^^^ WARNING Type 'D' doesn't have expected attribute 'x'
+      """.trimIndent())
   }
 
   @Nested
@@ -694,7 +758,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
                   self.attr = 42
               expr = self.attr
       #       └ TYPE UnsafeUnion[None, Unknown] | Literal[42]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-21175"])
@@ -705,7 +769,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
               g().x = 'foo'
           expr = x
       #   └ TYPE Literal[42]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-40882"])
@@ -731,7 +795,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
       expr = B().b
       # └ TYPE int
-      """)
+      """.trimIndent())
   }
 
   @Nested
@@ -747,9 +811,10 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
       child = Child()
       expr = child.me
       # └ TYPE Child
-      """)
+      """.trimIndent())
 
     @Test
+    @TestFor(issues = ["PY-33663"])
     fun `annotated self return property`() = test("""
       from typing import TypeVar
 
@@ -762,9 +827,10 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
       expr = A().foo
       #└ TYPE A
-      """)
+      """.trimIndent())
 
     @Test
+    @TestFor(issues = ["PY-26643"])
     fun `method returning self in generator`() = test("""
       class A:
           def foo(self):
@@ -774,7 +840,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
           pass
       expr = B().foo()
       #└ TYPE Generator[B, Unknown, B]
-      """)
+      """.trimIndent())
 
     @Test
     fun `method returning self in union`() = test("""
@@ -788,7 +854,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
           pass
       expr = B().foo(abc) # ERROR Unresolved reference 'abc'
       #└ TYPE B | Literal[1]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-27143"])
@@ -801,7 +867,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
           pass
       expr = Derived.instance()
       #└ TYPE Derived
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-27143"])
@@ -814,7 +880,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
           pass
       expr = Derived().instance()
       #└ TYPE Derived
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-27143"])
@@ -826,7 +892,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
           pass
       expr = Derived.instance(Derived())
       #└ TYPE Derived
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-27143"])
@@ -838,7 +904,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
           pass
       expr = Derived().instance()
       #└ TYPE Derived
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-30861"])
@@ -846,132 +912,24 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
       from collections import defaultdict
       data = defaultdict(dict)
       expr = data['name']
-      #└ TYPE dict[Unknown, Unknown]
-      """)
+      #└ TYPE dict
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-53104"])
-    fun `method returning typing Self resolves to subclass`() = test("""
-      from typing import Self
-
-      class A:
-          def foo(self) -> Self:
-              ...
-      class B(A):
-          pass
-      expr = B().foo()
-      #└ TYPE B
-      """)
-
-    @Test
-    @TestFor(issues = ["PY-53104"])
-    fun `method returning list of typing Self`() = test("""
-      from typing import Self
-
-      class A:
-          def foo(self) -> list[Self]:
-              ...
-      class B(A):
-          pass
-      expr = B().foo()
-      #└ TYPE list[B]
-      """)
-
-    @Test
-    @TestFor(issues = ["PY-53104"])
-    fun `classmethod returning typing Self`() = test("""
-      from typing import Self
-
-
-      class Shape:
-          @classmethod
-          def from_config(cls, config: dict[str, float]) -> Self:
-              return cls(config["scale"]) # WARNING Unexpected argument
-
-
-      class Circle(Shape):
-          pass
-
-
-      expr = Circle.from_config({})
-      #└ TYPE Circle
-      """)
-
-    @Test
-    @TestFor(issues = ["PY-53104"])
-    fun `classmethod returning typing Self in nested class`() = test("""
-      from typing import Self
-
-
-      class OuterClass:
-          class Shape:
-              @classmethod
-              def from_config(cls, config: dict[str, float]) -> Self:
-                  return cls(config["scale"]) # WARNING Unexpected argument
-
-          class Circle(Shape):
-              pass
-
-
-      expr = OuterClass.Circle.from_config({})
-      #└ TYPE Circle
-      """)
-
-    @Test
-    @TestFor(issues = ["PY-53104"])
-    fun `method returning typing Self defined in imported file`() = test(
-      """
+    fun `method returning typing Self defined in imported file`() = test("""
       from other import Clazz
       clz = Clazz()
       expr = clz.foo()
       #└ TYPE Clazz
-      """,
+      """.trimIndent(),
       "other.py" to """
         from typing import Self
 
         class Clazz:
             def foo(self) -> Self:
                 return self
-        """,
-    )
-
-    @Test
-    @TestFor(issues = ["PY-53104"])
-    fun `method returning typing Self on receiver of union type`() = test(
-      """
-      from typing import Self
-
-
-      class C:
-          def method(self) -> Self:
-              return self
-
-
-      if bool():
-          x = 42
-      else:
-          x = C()
-
-      expr = x.method()
-      #│       ^^^^^^ WEAK-WARNING Member 'Literal[42]' of 'Literal[42] | C' does not have attribute 'method'
-      #└ TYPE C
-      """,
-    )
-
-    @Test
-    @TestFor(issues = ["PY-80622"])
-    fun `augmented assignment with iadd returning typing Self`() = test("""
-      from typing import Self
-
-      class MutableContainer:
-          def __iadd__(self, other: int) -> Self:
-              return self
-
-      m = MutableContainer()
-      m += 1
-      expr = m
-      #└ TYPE MutableContainer
-      """)
+        """.trimIndent())
   }
 
   @Nested
@@ -989,7 +947,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
       expr = C().method()
       #└ TYPE C
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-24990"])
@@ -1007,7 +965,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
       expr = D().method()
       #└ TYPE D
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-24990"])
@@ -1023,7 +981,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
       expr = C.factory()
       #└ TYPE C
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-24990"])
@@ -1042,7 +1000,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
       expr = D.factory()
       #└ TYPE D
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-24990"])
@@ -1061,7 +1019,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
       expr = D().factory()
       #└ TYPE D
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-24990"])
@@ -1082,7 +1040,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
       expr = (A() or B()).method()
       #└ TYPE A | B
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-24990"])
@@ -1101,7 +1059,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
       expr = (A or A()).factory()
       #└ TYPE A
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-24990"])
@@ -1119,7 +1077,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
       expr = C.method(D())
       #└ TYPE D
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-24990"])
@@ -1135,7 +1093,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
       expr = C().method()
       #└ TYPE C
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-24990"])
@@ -1154,7 +1112,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
       expr = D().method()
       #└ TYPE D
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-24990"])
@@ -1171,7 +1129,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
       expr = C.factory()
       #└ TYPE C
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-24990"])
@@ -1191,7 +1149,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
       expr = D.factory()
       #└ TYPE D
-      """)
+      """.trimIndent())
   }
 
   @Nested
@@ -1213,7 +1171,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
               test = self.member
               expr = test
       #       └ TYPE list
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-63737"])
@@ -1232,7 +1190,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
               return 42
       expr = Foo().bar
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-63737"])
@@ -1245,7 +1203,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
           bar: CachedSlotProperty[Foo, int]
       expr = Foo().bar
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-63737"])
@@ -1272,7 +1230,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
       c = C()
       expr = c.x
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-63737"])
@@ -1301,7 +1259,120 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
       c = C()
       expr = c.x
       #└ TYPE int
-      """)
+      """.trimIndent())
+
+    /** The shape of `propcache._helpers_py`: a module re-exports `functools.cached_property` under the same name. */
+    @Test
+    @TestFor(issues = ["PY-85200"])
+    fun `cached_property re-exported by another module is still a property`() = test("""
+      from propcache_helpers import cached_property
+
+      class C:
+          @cached_property
+          def x(self) -> int: ...
+
+      expr = C().x
+      #└ TYPE int
+      """.trimIndent(),
+      "propcache_helpers.py" to "from functools import cached_property")
+
+    /** The same re-export, one level deeper, because a package facade re-exports from a leaf module. */
+    @Test
+    @TestFor(issues = ["PY-85200"])
+    fun `cached_property re-exported twice is still a property`() = test("""
+      from propcache_api import cached_property
+
+      class C:
+          @cached_property
+          def x(self) -> int: ...
+
+      expr = C().x
+      #└ TYPE int
+      """.trimIndent(),
+      "propcache_helpers.py" to "from functools import cached_property",
+      "propcache_api.py" to "from propcache_helpers import cached_property")
+
+    @Test
+    @TestFor(issues = ["PY-85200"])
+    fun `descriptor imported under the name cached_property is not a property`() = test("""
+      from propcache_api import under_cached_property as cached_property
+
+      class C:
+          _cache: dict[str, object]
+          @cached_property
+          def x(self) -> int: ...
+
+      expr = C().x
+      #└ TYPE int
+      """.trimIndent(),
+      "propcache_api.py" to DESCRIPTOR_MODULE)
+
+    @Test
+    @TestFor(issues = ["PY-85200"])
+    fun `descriptor imported by a relative import is not a property`() = test("""
+      from .propcache_api import cached_property
+
+      class C:
+          _cache: dict[str, object]
+          @cached_property
+          def x(self) -> int: ...
+
+      expr = C().x
+      #└ TYPE int
+      """.trimIndent(),
+      "propcache_api.py" to (DESCRIPTOR_MODULE + "\n\ncached_property = under_cached_property\n"))
+
+    @Test
+    @TestFor(issues = ["PY-85200"])
+    fun `descriptor class named cached_property is not a property`() = test("""
+      from typing import Any, Callable, Mapping, Protocol, Self, overload
+
+      class _CacheImpl[Cache: Mapping[str, Any]](Protocol):
+          _cache: Cache
+
+      class cached_property[T]:
+          def __init__(self, wrapped: Callable[[Any], T]): ...
+          @overload
+          def __get__(self, inst: None, owner: type[object] | None = None) -> Self: ...
+          @overload
+          def __get__(self, inst: _CacheImpl[Any], owner: type[object] | None = None) -> T: ...
+          def __get__(self, inst: _CacheImpl[Any] | None, owner: type[object] | None = None) -> T | Self: ...
+
+      class C:
+          _cache: dict[str, Any]
+          @cached_property
+          def x(self) -> int: ...
+
+      expr = C().x
+      #└ TYPE int
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-85200"])
+    fun `descriptor aliased to the name cached_property is not a property`() = test("""
+      from typing import Any, Callable, Mapping, Protocol, Self, overload
+
+      class _CacheImpl[Cache: Mapping[str, Any]](Protocol):
+          _cache: Cache
+
+      class under_cached_property[T]:
+          def __init__(self, wrapped: Callable[[Any], T]): ...
+          @overload
+          def __get__(self, inst: None, owner: type[object] | None = None) -> Self: ...
+          @overload
+          def __get__(self, inst: _CacheImpl[Any], owner: type[object] | None = None) -> T: ...
+          def __get__(self, inst: _CacheImpl[Any] | None, owner: type[object] | None = None) -> T | Self: ...
+
+      cached_property = under_cached_property
+
+      class C:
+          _cache: dict[str, Any]
+          @cached_property
+          def x(self) -> int: ...
+
+      expr = C().x
+      #└ TYPE int
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-63737"])
@@ -1327,7 +1398,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
       expr = C.x
       #└ TYPE base[int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-63737"])
@@ -1354,7 +1425,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
       c = C()
       expr = c.x
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-26184"])
@@ -1372,7 +1443,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
               test = self.member
               expr = test
       #       └ TYPE list
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-26184"])
@@ -1391,7 +1462,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
               test = self.member
               expr = test
       #       └ TYPE list
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-26184"])
@@ -1414,7 +1485,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
       foo = Foo()
       expr = foo.x
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-26184"])
@@ -1435,8 +1506,8 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
           x = MyDescriptor[int]()
 
       expr = Foo().x
-      #└ TYPE Unknown
-      """)
+      #└ TYPE UnsafeUnion[int, str | int]
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-26184"])
@@ -1459,7 +1530,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
       foo = Foo()
       expr = foo.x
       #└ TYPE Any
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-26184"])
@@ -1481,7 +1552,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
       expr = Foo.x
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-26184"])
@@ -1503,7 +1574,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
       expr = Foo.x
       #└ TYPE Any
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-26184"])
@@ -1525,7 +1596,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
       expr = Foo.x
       #└ TYPE None
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-26184"])
@@ -1546,18 +1617,17 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
               test = self.member
               expr = test
       #       └ TYPE str
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-26184"])
-    fun `generic descriptor defined with type annotation in external file access via instance`() = test(
-      """
+    fun `generic descriptor defined with type annotation in external file access via instance`() = test("""
       from a import Test
 
       test = Test()
       expr = test.member
       #└ TYPE str
-      """,
+      """.trimIndent(),
       "a.py" to """
         from typing import Optional, Any, overload, Union
 
@@ -1573,8 +1643,28 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
         class Test():
             member: MyDescriptor[int]
-        """,
-    )
+        """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-11977"])
+    @TestCaseOptions(assertRecursionPrevention = false)
+    fun `metaclass instance members provided and no type check warning when pass into method use this members`() = test("""
+      def expecting(p):
+          print(p.meta_inst_lvl)
+          print(p.meta_cls_lvl)
+
+      class MyMeta(type):
+          meta_cls_lvl = 10
+
+          def __init__(cls, what, bases, dict):
+              super().__init__(what, bases, dict)
+              cls.meta_inst_lvl = 20
+
+      class MyClass(metaclass=MyMeta):
+          pass
+
+      expecting(MyClass)  # check that there is no warnings
+      """.trimIndent())
   }
 
   @Nested
@@ -1602,7 +1692,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
               self.attr: int = 42
 
       InstanceAnnotationAndAssignment().attr = "foo" # WARNING Expected type 'int', got 'Literal["foo"]' instead
-      """)
+      """.trimIndent())
 
     @Test
     fun `class attribute default value type is checked`() = test("""
@@ -1616,7 +1706,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
           annotated: int
           annotated = "string" # WARNING Expected type 'int', got 'Literal["string"]' instead
-      """)
+      """.trimIndent())
 
     @Test
     fun `assigned value matches with dunder set of attribute used in constructor`() = test("""
@@ -1633,9 +1723,10 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
       x = Test("foo")
       x.member = 42 # WARNING Expected type 'str' (from '__set__'), got 'Literal[42]' instead
-      """)
+      """.trimIndent())
 
     @Test
+    @TestCaseOptions(assertRecursionPrevention = false)
     fun `generic instance variable access via class is ambiguous`() = test("""
       from typing import Self
 
@@ -1661,7 +1752,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
       A.attr1
       A.attr2
       A.attr3
-      """)
+      """.trimIndent())
 
     @Test
     fun `generic instance variable access via class is ambiguous with nested generic`() = test("""
@@ -1674,7 +1765,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
       Node[int].m # WARNING Access to generic instance variables via class is ambiguous
       Node.m # WARNING Access to generic instance variables via class is ambiguous
       Node.m # WARNING Access to generic instance variables via class is ambiguous
-      """)
+      """.trimIndent())
 
     @Test
     fun `access to attribute of generic class with default is not ambiguous`() = test("""
@@ -1685,7 +1776,28 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
       Test1.attr
       Test2.attr # WARNING Access to generic instance variables via class is ambiguous
-      """)
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-92890"])
+    fun `access to attribute of generic class with ParamSpec with ellipsis default is not ambiguous`() = test("""
+      from typing import Generic, ParamSpec
+
+      P1 = ParamSpec("P1", default=...)
+
+      class Inner[**P]: ...
+
+      class Test1[**P = ...]:
+          attr: Inner[P]
+      class Test2(Generic[P1]):
+          attr: Inner[P1]
+      class Test3[**P]:
+          attr: Inner[P]
+
+      Test1.attr
+      Test2.attr
+      Test3.attr # WARNING Access to generic instance variables via class is ambiguous
+      """.trimIndent())
 
     @Test
     fun `generic attribute assignment is checked`() = test("""
@@ -1693,20 +1805,8 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
           attr: list[T]
 
       c: C[int]
-      c.attr = ["foo"] # WARNING Expected type 'list[int]', got 'list[Literal["foo"]]' instead
-      """)
-
-    @Test
-    @TestFor(issues = ["PY-85974"])
-    fun `self attribute assignment`() = test("""
-      from typing import Self
-
-      class Node:
-          next: Self | None
-
-      c: Node
-      c.next = Node()
-      """)
+      c.attr = ["foo"] # WARNING FIXME Expected type 'list[int]', got 'list[Literal["foo"]]' instead # PY-91385
+      """.trimIndent())
 
     @Test
     fun `augmented assignment to generic attribute`() = test("""
@@ -1728,7 +1828,7 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
       a: A[C]
       a.attr += 1 # WARNING Expected type 'C' for augmented assignment, got 'int' from operation instead
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-6426"])
@@ -1750,7 +1850,138 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
       a.attr += 1
       a.attr += "s" # WARNING Expected type 'int', got 'Literal["s"]' instead
       a.attr += C() # WARNING Expected type 'int' (from '__set__'), got 'str' instead
-      """)
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-91904"])
+    fun `parameter shadows a module level submodule of the same name`() {
+      addPackageWithSubmoduleShadowedByParameter()
+      test("""
+        from pkg import Updates
+
+        def a(u: Updates):
+            expr = u.updates
+        #          ^^^^^^^^^ TYPE list[Update]
+            expr2 = u.updates[0]
+        #           ^^^^^^^^^^^^ TYPE Update
+        """.trimIndent())
+    }
+
+    @Test
+    @TestFor(issues = ["PY-91904"])
+    fun `module level submodule stays reachable through its package`() {
+      addPackageWithSubmoduleShadowedByParameter()
+      myFixture.addFileToProject("mod.py", """
+        from pkg import updates
+
+        class Updates2:
+            updates = updates
+      """.trimIndent())
+      test("""
+        from mod import Updates2
+
+        def f(x: Updates2):
+            expr = x.updates.State(1)
+        #          ^^^^^^^^^^^^^^^^^^ TYPE State
+        """.trimIndent())
+    }
+
+    /**
+     * Mirrors `telethon/tl/types/__init__.py`, which imports a submodule named `updates` and also declares
+     * `Updates.__init__(self, updates: List['TypeUpdate'])` assigning `self.updates = updates`.
+     */
+    private fun addPackageWithSubmoduleShadowedByParameter() {
+      myFixture.addFileToProject("pkg/updates.py", """
+        class State:
+            def __init__(self, pts: int):
+                self.pts = pts
+      """.trimIndent())
+      myFixture.addFileToProject("pkg/__init__.py", """
+        from typing import List
+        from . import updates
+
+        class Update:
+            def __init__(self, pts: int):
+                self.pts = pts
+
+        class Updates:
+            def __init__(self, updates: List['Update']):
+                self.updates = updates
+      """.trimIndent())
+    }
+  }
+
+  @Nested
+  inner class DescriptorInUnionType {
+    @Test
+    @TestFor(issues = ["PY-86411"])
+    fun `get applied per member when declared type is union of descriptor and other types`() = test("""
+      from typing import Any
+
+      class MyDescriptor:
+          def __get__(self, instance: Any, owner: Any) -> str: ...
+
+      class Test:
+          desc: MyDescriptor | int | Any
+          def foo(self):
+              expr = self.desc
+      #       └ TYPE str | int | Any
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-86411"])
+    fun `get applied to descriptor member leaving plain member untouched`() = test("""
+      from typing import Any
+
+      class MyDescriptor:
+          def __get__(self, instance: Any, owner: Any) -> str: ...
+
+      class Test:
+          desc: MyDescriptor | int
+          def foo(self):
+              expr = self.desc
+      #       └ TYPE str | int
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-86411"])
+    fun `generic descriptor member in union binds its type parameter`() = test("""
+      from typing import Any
+
+      class MyDescriptor[T]:
+          def __get__(self, instance: Any, owner: Any) -> T: ...
+
+      class Test:
+          desc: MyDescriptor[bytes] | int
+          def foo(self):
+              expr = self.desc
+      #       └ TYPE bytes | int
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-86411"])
+    fun `union without descriptor member is unchanged`() = test("""
+      class Test:
+          desc: str | int
+          def foo(self):
+              expr = self.desc
+      #       └ TYPE str | int
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-86411"])
+    fun `set expected value type is union of descriptor set value and plain member`() = test("""
+      class MyDescriptor:
+          def __set__(self, obj: object, value: str): ...
+
+      class Test:
+          member: MyDescriptor | int
+
+      t = Test()
+      t.member = "foo"
+      t.member = 42
+      t.member = 1.5 # WARNING Expected type 'str | int' (from '__set__'), got 'float' instead
+      """.trimIndent())
   }
 
   @Test
@@ -1764,10 +1995,186 @@ class PyAttributeAndDescriptorTypeTest : PyCodeInsightTestCase() {
 
     def test():
         f(C.foo)
-    """,
+    """.trimIndent(),
     "m1.py" to """
       class C:
           foo = None
-      """,
+      """.trimIndent())
+
+  @Test
+  fun `classmethod created via reassignment`() = test(
+    """
+    class A:
+        def foo(cls) -> int:
+            return 1
+
+        foo = classmethod(foo)
+
+    foo = A().foo
+    #└ TYPE () -> int
+    expr = foo()
+    #└ TYPE int
+    """
   )
+
+  @Test
+  @TestFor(issues = ["PY-19412", "PY-90808"])
+  fun `classmethod created via reassignment in another module`() = test(
+    """
+    from a import Spam
+
+    expr = Spam.spam()
+    #└ TYPE int
+    """.trimIndent(),
+    "a.py" to """
+      class Spam:
+          def spam(cls) -> int:
+              return 1
+
+          eggs = False
+          spam = classmethod(spam)
+      """.trimIndent())
+
+  @Test
+  fun `__get__ not called when attribute value is a class`() = test("""
+      class Descriptor:
+          def __get__(self, instance, owner) -> int: ...
+
+      class C:
+          attr = Descriptor
+
+      expr = C().attr
+      #└ TYPE type[Descriptor]
+      """.trimIndent())
+
+  @Test
+  fun `metaclass __get__ called when attribute value is a class`() = test("""
+      class Meta(type):
+          def __get__(self, instance, owner) -> int: ...
+
+      class Descriptor(metaclass=Meta): ...
+
+      class C:
+          attr = Descriptor
+
+      expr = C().attr
+      #└ TYPE int
+      """.trimIndent())
+
+  /** A descriptor with one `__get__` overload for the class and one for an instance, in a `.pyi` stub. */
+  @Nested
+  inner class OverloadedDunderGetInStub {
+    @Test
+    @TestFor(issues = ["PY-24183"])
+    fun `instance read of a ClassVar descriptor uses the instance overload`() = test(
+      """
+      from sig import Widget
+
+      w = Widget()
+      x = w.class_var
+      #   ^^^^^^^^^^^ TYPE Bound
+      w.class_var.connect()
+      """.trimIndent(),
+      "sig.pyi" to SIGNAL_STUB,
+    )
+
+    @Test
+    @TestFor(issues = ["PY-24183"])
+    fun `instance read of an annotated descriptor uses the instance overload`() = test(
+      """
+      from sig import Widget
+
+      w = Widget()
+      x = w.declared
+      #   ^^^^^^^^^^ TYPE Bound
+      """.trimIndent(),
+      "sig.pyi" to SIGNAL_STUB,
+    )
+
+    @Test
+    @TestFor(issues = ["PY-24183"])
+    fun `instance read of an assigned descriptor uses the instance overload`() = test(
+      """
+      from sig import Widget
+
+      w = Widget()
+      x = w.assigned
+      #   ^^^^^^^^^^ TYPE Bound
+      """.trimIndent(),
+      "sig.pyi" to SIGNAL_STUB,
+    )
+
+    @Test
+    @TestFor(issues = ["PY-24183"])
+    fun `class read of a ClassVar descriptor uses the class overload`() = test(
+      """
+      from sig import Widget
+
+      x = Widget.class_var
+      #   ^^^^^^^^^^^^^^^^ TYPE Signal
+      """.trimIndent(),
+      "sig.pyi" to SIGNAL_STUB,
+    )
+
+    /**
+     * In the PyQt5 stubs, `class QPaintDevice(PyQt5.sipsimplewrapper)` names a base class that does not exist, so each
+     * `QWidget` has an unresolved ancestor. An unresolved base does not change which overload applies.
+     */
+    @Test
+    @TestFor(issues = ["PY-24183"])
+    fun `instance read on a class with an unresolved base uses the instance overload`() = test(
+      """
+      from sig import Widget, PaintDevice
+
+      class Button(Widget, PaintDevice):
+          pass
+
+      def f(b: Button):
+          x = b.class_var
+      #       ^^^^^^^^^^^ TYPE Signal FIXME Bound
+          b.class_var.connect()
+      #               ^^^^^^^ WARNING Unresolved attribute reference 'connect' for class 'Signal' FIXME
+      """.trimIndent(),
+      "sig.pyi" to SIGNAL_STUB,
+    )
+  }
+
+  companion object {
+    /** The shape of `QAbstractButton.clicked` in the PyQt5 stubs. */
+    private val SIGNAL_STUB = """
+      import typing
+
+      class Bound:
+          def connect(self) -> None: ...
+
+      class Signal:
+          @typing.overload
+          def __get__(self, instance: None, owner: typing.Type['Widget']) -> 'Signal': ...
+          @typing.overload
+          def __get__(self, instance: 'Widget', owner: typing.Type['Widget']) -> Bound: ...
+
+      class Widget:
+          class_var: typing.ClassVar[Signal]
+          declared: Signal
+          assigned = ...  # type: Signal
+
+      class PaintDevice(missing_module.MissingBase): ...
+      """.trimIndent()
+
+    /** A descriptor in the shape of `propcache.api.under_cached_property`. */
+    private val DESCRIPTOR_MODULE = """
+      from typing import Any, Callable, Mapping, Protocol, Self, overload
+
+      class _CacheImpl[Cache: Mapping[str, Any]](Protocol):
+          _cache: Cache
+
+      class under_cached_property[T]:
+          def __init__(self, wrapped: Callable[[Any], T]): ...
+          @overload
+          def __get__(self, inst: None, owner: type[object] | None = None) -> Self: ...
+          @overload
+          def __get__(self, inst: _CacheImpl[Any], owner: type[object] | None = None) -> T: ...
+          def __get__(self, inst: _CacheImpl[Any] | None, owner: type[object] | None = None) -> T | Self: ...
+      """.trimIndent()
+  }
 }

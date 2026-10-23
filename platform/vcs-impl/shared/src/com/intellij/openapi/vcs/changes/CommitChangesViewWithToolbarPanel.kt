@@ -13,9 +13,7 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.components.serviceAsync
 import com.intellij.openapi.progress.checkCanceled
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.vcs.FilePath
-import com.intellij.openapi.vcs.VcsConfiguration
 import com.intellij.openapi.vcs.changes.ChangesViewModifier.ChangesViewModifierListener
 import com.intellij.openapi.vcs.changes.ui.ChangesListView
 import com.intellij.openapi.vcs.changes.ui.ChangesTree
@@ -25,7 +23,7 @@ import com.intellij.openapi.vcs.changes.ui.selectedDiffableNode
 import com.intellij.platform.diagnostic.telemetry.TelemetryManager
 import com.intellij.platform.diagnostic.telemetry.helpers.use
 import com.intellij.platform.ide.navigation.NavigationOptions
-import com.intellij.platform.ide.navigation.NavigationService
+import com.intellij.platform.ide.navigation.requestNavigate
 import com.intellij.platform.vcs.impl.shared.SingleTaskRunner
 import com.intellij.platform.vcs.impl.shared.changes.ChangeListsViewModel
 import com.intellij.platform.vcs.impl.shared.changes.ChangesViewDataKeys
@@ -35,7 +33,6 @@ import com.intellij.platform.vcs.impl.shared.commit.CommitToolWindowViewModel
 import com.intellij.platform.vcs.impl.shared.commit.EditedCommitPresentation
 import com.intellij.platform.vcs.impl.shared.telemetry.ChangesView
 import com.intellij.platform.vcs.impl.shared.telemetry.VcsScope
-import com.intellij.ui.ClickListener
 import com.intellij.ui.ExpandableItemsHandler
 import com.intellij.util.EditSourceOnDoubleClickHandler
 import com.intellij.util.Processor
@@ -85,9 +82,9 @@ abstract class CommitChangesViewWithToolbarPanel(
   }
 
   private val inputHandler = ChangesViewInputHandler(cs, changesView)
-  val diffRequests: SharedFlow<Pair<ChangesViewDiffAction, ClientId>> = inputHandler.diffRequests
+  val diffRequests: SharedFlow<ClientId> = inputHandler.diffRequests
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   open fun initPanel() {
     inputHandler.installListeners()
 
@@ -137,7 +134,7 @@ abstract class CommitChangesViewWithToolbarPanel(
     scheduleRefresh(withDelay = false, callback = callback)
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun setGrouping(groupingKey: String) {
     changesView.groupingSupport.setGroupingKeysOrSkip(setOf(groupingKey))
     scheduleRefreshNow()
@@ -158,7 +155,7 @@ abstract class CommitChangesViewWithToolbarPanel(
     }
   }
 
-  @RequiresBackgroundThread
+  @RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
   private suspend fun refreshView() {
     if (!cs.isActive || !project.isInitialized || application.isUnitTestMode) return
     val (modelData, model) = TRACER.spanBuilder(ChangesView.ChangesViewRefreshBackground.name).use {
@@ -178,6 +175,7 @@ abstract class CommitChangesViewWithToolbarPanel(
     withContext(Dispatchers.EDT) {
       TRACER.spanBuilder(ChangesView.ChangesViewRefreshEdt.getName()).use {
         changesView.updateTreeModel(model, ChangesViewTreeStateStrategy())
+        onTreeModelUpdated()
         checkCanceled()
         synchronizeInclusion(modelData.changeLists, modelData.unversionedFiles)
       }
@@ -195,9 +193,16 @@ abstract class CommitChangesViewWithToolbarPanel(
   abstract fun synchronizeInclusion(changeLists: List<LocalChangeList>, unversionedFiles: List<FilePath>)
 
   /**
+   * Called right after the tree model was replaced.
+   */
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
+  protected open fun onTreeModelUpdated() {
+  }
+
+  /**
    * Immediately reset changes view and request refresh when NON_MODAL modality allows (i.e. after a plugin was unloaded or a dialog closed)
    */
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun resetViewImmediatelyAndRefreshLater() {
     changesView.setModel(TreeModelBuilder.buildEmpty())
     changesView.setPaintBusy(true)
@@ -226,10 +231,10 @@ private class ChangesViewInputHandler(
   private val cs: CoroutineScope,
   private val changesView: ChangesListView,
 ) {
-  val diffRequests: MutableSharedFlow<Pair<ChangesViewDiffAction, ClientId>> =
+  val diffRequests: MutableSharedFlow<ClientId> =
     MutableSharedFlow(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun installListeners() {
     changesView.doubleClickHandler = Processor { e: MouseEvent ->
       if (EditSourceOnDoubleClickHandler.isToggleEvent(changesView, e)) return@Processor false
@@ -238,24 +243,18 @@ private class ChangesViewInputHandler(
     changesView.enterKeyHandler = Processor {
       handleEnterOrDoubleClick(requestFocus = false)
     }
-
-    SingleClickDiffPreviewHandler(changesView) {
-      diffRequests.tryEmit(ChangesViewDiffAction.SINGLE_CLICK_DIFF_PREVIEW to ClientId.current)
-    }.install()
   }
 
   private fun handleEnterOrDoubleClick(requestFocus: Boolean): Boolean {
     if (!performHoverAction()) {
       val diffPreviewOnDoubleClickOrEnter = changesView.project.service<CommitToolWindowViewModel>().diffPreviewOnDoubleClickOrEnter
       if (diffPreviewOnDoubleClickOrEnter && changesView.selectedDiffableNode != null) {
-        diffRequests.tryEmit(ChangesViewDiffAction.PERFORM_DIFF to ClientId.current)
+        diffRequests.tryEmit(ClientId.current)
       }
       else {
         val dataContext = DataManager.getInstance().getDataContext(changesView)
-        cs.launch {
-          val parameters = NavigationOptions.defaultOptions().requestFocus(requestFocus)
-          NavigationService.getInstance(changesView.project).navigate(dataContext, parameters)
-        }
+        val parameters = NavigationOptions.defaultOptions().requestFocus(requestFocus)
+        requestNavigate(changesView.project, dataContext, parameters, cs)
       }
     }
     return true
@@ -269,26 +268,5 @@ private class ChangesViewInputHandler(
       if (extension.handleDoubleClick(selected)) return true
     }
     return false
-  }
-
-  private class SingleClickDiffPreviewHandler(
-    private val changesView: ChangesListView,
-    private val previewDiff: () -> Unit,
-  ) : ClickListener() {
-    fun install() {
-      installOn(changesView)
-    }
-
-    override fun onClick(event: MouseEvent, clickCount: Int): Boolean {
-      val showDiff = clickCount == 1 &&
-                     event.button == MouseEvent.BUTTON1 &&
-                     Registry.get("show.diff.preview.as.editor.tab.with.single.click").asBoolean() &&
-                     VcsConfiguration.getInstance(changesView.project).LOCAL_CHANGES_DETAILS_PREVIEW_SHOWN &&
-                     !EditSourceOnDoubleClickHandler.isToggleEvent(changesView, event)
-      if (showDiff) {
-        previewDiff()
-      }
-      return showDiff
-    }
   }
 }

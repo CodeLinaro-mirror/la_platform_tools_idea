@@ -1,5 +1,5 @@
 // "Add else branch" "true"
-// K2_ERROR: 'when' expression must be exhaustive. Add the 'G', 'B' branches or an 'else' branch.
+// K2_ERROR: NO_ELSE_IN_WHEN
 enum class Color { R, G, B }
 fun use(c: Color) {
     <caret>when (c) {
@@ -10,4 +10,3 @@ fun use(c: Color) {
 fun red() {}
 
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AddWhenElseBranchFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AddWhenElseBranchFix

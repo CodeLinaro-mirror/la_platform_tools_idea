@@ -146,7 +146,7 @@ class PluginDependencyGraphTest {
       linkPluginMainTarget("plugin.b")
     }
 
-    val graphDeps = collectPluginGraphDeps(graph = graph, allRealProductNames = emptySet())
+    val graphDeps = collectPluginGraphDeps(graph = graph)
       .single { it.pluginContentModuleName == ContentModuleName("plugin.a") }
 
     assertThat(graphDeps.jpsPluginDependencies).containsExactly(PluginId("com.b"))
@@ -170,7 +170,7 @@ class PluginDependencyGraphTest {
       linkPluginMainTarget("plugin.b")
     }
 
-    val graphDeps = collectPluginGraphDeps(graph = graph, allRealProductNames = emptySet())
+    val graphDeps = collectPluginGraphDeps(graph = graph)
       .single { it.pluginContentModuleName == ContentModuleName("plugin.a") }
 
     val filtered = filterPluginDependencies(
@@ -236,6 +236,33 @@ class PluginDependencyGraphTest {
   }
 
   @Test
+  fun `declaresAlias adds the hop from the alias node to the declaring plugin`() {
+    val graph = buildGraph(
+      TargetName("plugin.a") to pluginInfo(
+        pluginId = "com.a",
+        pluginDependencies = setOf(PluginId("alias.c")),
+      ),
+      TargetName("plugin.c") to pluginInfo(
+        pluginId = "com.c",
+        pluginAliases = listOf(PluginId("alias.c")),
+      ),
+    )
+
+    graph.query {
+      val pluginC = requireNotNull(plugin("plugin.c"))
+      val aliasNodes = mutableListOf<String>()
+      pluginC.declaresAlias { alias -> aliasNodes.add(alias.name().value) }
+      assertThat(aliasNodes).containsExactly("alias.c")
+
+      // the dependency of plugin.a lands on the alias node, so the reverse edge names plugin.c
+      val aliasNode = requireNotNull(plugin("alias.c"))
+      val declaringPlugins = mutableListOf<String>()
+      aliasNode.aliasDeclaredByPlugin { declaring -> declaringPlugins.add(declaring.name().value) }
+      assertThat(declaringPlugins).containsExactly("plugin.c")
+    }
+  }
+
+  @Test
   fun `pluginsById distinguishes alias nodes from placeholders`() {
     val builder = PluginGraphBuilder()
     val aliasId = PluginId("alias.c")
@@ -283,7 +310,7 @@ class PluginDependencyGraphTest {
       val builder = PluginGraphBuilder()
       builder.addTarget(targetModule)
       builder.registerReferencedPlugins(object : PluginContentProvider {
-        override suspend fun getOrExtract(pluginModule: TargetName): PluginContentInfo? {
+        override fun getOrExtract(pluginModule: TargetName): PluginContentInfo? {
           return if (pluginModule == targetModule) info else null
         }
       })
@@ -317,11 +344,47 @@ class PluginDependencyGraphTest {
   }
 
   @Test
-  fun `module set wrapper flag survives extraction merge`() {
+  fun `contentModuleWithNamespace finds a namespaced copy and a private copy`() {
+    runBlocking(Dispatchers.Default) {
+      val shared = PluginModuleId("plugin.b.shared", PluginModuleId.DEFAULT_NAMESPACE)
+      val private = PluginModuleId("plugin.b.private", null)
+      val targetModule = TargetName("plugin.b")
+      val info = pluginInfo(
+        pluginId = "com.b",
+        contentModules = listOf(
+          ContentModuleInfo(moduleId = shared, loadingMode = ModuleLoadingRuleValue.REQUIRED),
+          ContentModuleInfo(moduleId = private, loadingMode = ModuleLoadingRuleValue.EMBEDDED),
+        ),
+        source = PluginSource.DISCOVERED,
+      )
+
+      val builder = PluginGraphBuilder()
+      builder.addTarget(targetModule)
+      builder.registerReferencedPlugins(object : PluginContentProvider {
+        override fun getOrExtract(pluginModule: TargetName): PluginContentInfo? {
+          return if (pluginModule == targetModule) info else null
+        }
+      })
+
+      builder.build().query {
+        // the builder indexes this node under its own kind, so a lookup against the by-name index finds nothing
+        val sharedNode = requireNotNull(contentModuleWithNamespace(shared))
+        assertThat(sharedNode.moduleId()).isEqualTo(shared)
+
+        val privateNode = requireNotNull(contentModuleWithNamespace(private))
+        assertThat(privateNode.moduleId()).isEqualTo(private)
+
+        assertThat(contentModuleWithNamespace(PluginModuleId("plugin.b.absent", null))).isNull()
+      }
+    }
+  }
+
+  @Test
+  fun `seeded plugin node survives extraction merge`() {
     runBlocking(Dispatchers.Default) {
       val pluginModule = TargetName("intellij.platform.recentFiles.plugin")
       val info = pluginInfo(
-        pluginId = "intellij.recentFiles.plugin",
+        pluginId = "com.intellij.recentFiles",
         contentModules = listOf(
           ContentModuleInfo(
             moduleId = PluginModuleId("intellij.platform.recentFiles.frontend", PluginModuleId.DEFAULT_NAMESPACE),
@@ -334,8 +397,7 @@ class PluginDependencyGraphTest {
       builder.addPlugin(
         name = pluginModule,
         isTest = false,
-        pluginId = PluginId("intellij.recentFiles.plugin"),
-        isModuleSetWrapper = true,
+        pluginId = PluginId("com.intellij.recentFiles"),
       )
       builder.addPluginWithContent(pluginModule, info, emptySet())
 
@@ -343,12 +405,25 @@ class PluginDependencyGraphTest {
 
       graph.query {
         val plugin = requireNotNull(plugin(pluginModule.value))
+        assertThat(plugin.pluginId).isEqualTo(PluginId("com.intellij.recentFiles"))
         assertThat(plugin.isModuleSetWrapper).isTrue()
 
         val contentNames = mutableListOf<String>()
         plugin.containsContent { module, _ -> contentNames.add(module.name().value) }
         assertThat(contentNames).containsExactly("intellij.platform.recentFiles.frontend")
       }
+    }
+  }
+
+  @Test
+  fun `tasks and test runner are build-declared module set wrappers`() {
+    val builder = PluginGraphBuilder()
+    builder.addPlugin(TargetName("intellij.platform.tasks.plugin"), isTest = false)
+    builder.addPlugin(TargetName("intellij.platform.testRunner.plugin"), isTest = false)
+
+    builder.build().query {
+      assertThat(requireNotNull(plugin("intellij.platform.tasks.plugin")).isModuleSetWrapper).isTrue()
+      assertThat(requireNotNull(plugin("intellij.platform.testRunner.plugin")).isModuleSetWrapper).isTrue()
     }
   }
 
@@ -373,7 +448,7 @@ class PluginDependencyGraphTest {
       val builder = PluginGraphBuilder()
       builder.addTarget(discoveredModule)
       val discoveredInfos = builder.registerReferencedPlugins(object : PluginContentProvider {
-        override suspend fun getOrExtract(pluginModule: TargetName): PluginContentInfo? {
+        override fun getOrExtract(pluginModule: TargetName): PluginContentInfo? {
           return if (pluginModule == discoveredModule) discoveredInfo else null
         }
       })

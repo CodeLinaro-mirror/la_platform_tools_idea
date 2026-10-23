@@ -19,8 +19,8 @@ import com.intellij.testFramework.junit5.TestApplication
 import com.intellij.testFramework.rules.ProjectModelExtension
 import com.intellij.testFramework.rules.TempDirectoryExtension
 import com.intellij.testFramework.workspaceModel.update
+import com.intellij.util.indexing.roots.IndexableEntityProviderMethods
 import com.intellij.util.indexing.roots.IndexableFilesIterator
-import com.intellij.util.indexing.roots.ModuleFilesIteratorImpl
 import com.intellij.util.indexing.testEntities.NonIndexableKindFileSetTestContributor
 import com.intellij.util.indexing.testEntities.NonIndexableTestEntity
 import com.intellij.workspaceModel.core.fileIndex.impl.WorkspaceFileIndexImpl
@@ -104,7 +104,7 @@ internal class ModuleFilesIteratorImplTest {
   }
 
   private fun moduleFilesIterator(): IndexableFilesIterator =
-    ModuleFilesIteratorImpl(module, moduleRoot, true, true)
+    IndexableEntityProviderMethods.createModuleContentIterators(module, moduleRoot, true).single()
 
   private fun relativePaths(files: Collection<VirtualFile>): Set<String> {
     return files.mapTo(linkedSetOf()) { file ->

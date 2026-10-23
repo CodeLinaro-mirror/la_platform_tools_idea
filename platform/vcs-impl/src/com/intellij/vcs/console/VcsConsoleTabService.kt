@@ -2,22 +2,27 @@
 package com.intellij.vcs.console
 
 import com.intellij.execution.ui.ConsoleViewContentType
-import com.intellij.openapi.Disposable
+import com.intellij.ide.impl.ProjectUtil.isRealProject
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.DefaultActionGroup
-import com.intellij.openapi.application.ModalityState
-import com.intellij.openapi.application.runInEdt
+import com.intellij.openapi.application.UiWithModelAccess
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.SimpleToolWindowPanel
-import com.intellij.openapi.util.Disposer
-import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.vcs.VcsBundle
 import com.intellij.openapi.vcs.VcsConsoleLine
 import com.intellij.openapi.vcs.changes.ui.ChangesViewContentManager
-import com.intellij.ui.content.Content
 import com.intellij.ui.content.impl.ContentImpl
+import com.intellij.util.cancelOnDispose
 import com.intellij.util.concurrency.annotations.RequiresEdt
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.launch
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.CalledInAny
 import org.jetbrains.annotations.Nls
@@ -35,19 +40,16 @@ interface VcsConsoleTabService {
   @CalledInAny
   fun addMessage(line: VcsConsoleLine?)
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun isConsoleVisible(): Boolean
 
-  @RequiresEdt
+  @CalledInAny
   fun isConsoleEmpty(): Boolean
 
   @CalledInAny
   fun hadMessages(): Boolean
 
-  @RequiresEdt
-  fun showConsoleTab(selectContent: Boolean, onShown: Runnable?)
-
-  @RequiresEdt
+  @CalledInAny
   fun showConsoleTabAndScrollToTheEnd()
 }
 
@@ -61,43 +63,51 @@ class MockVcsConsoleTabService : VcsConsoleTabService {
   override fun addMessage(line: VcsConsoleLine?) {
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   override fun isConsoleVisible(): Boolean {
     return false
   }
 
-  @RequiresEdt
+  @CalledInAny
   override fun isConsoleEmpty(): Boolean {
     return true
   }
 
+  @CalledInAny
   override fun hadMessages(): Boolean {
     return false
   }
 
-  @RequiresEdt
-  override fun showConsoleTab(selectContent: Boolean, onShown: Runnable?) {
-  }
-
-  @RequiresEdt
+  @CalledInAny
   override fun showConsoleTabAndScrollToTheEnd() {
   }
 }
 
-internal class VcsConsoleTabServiceImpl(val project: Project) : VcsConsoleTabService, Disposable {
+/**
+ * Maximum number of messages that are kept until the console view is created.
+ * The oldest messages are dropped on overflow, as the console itself does with its cycle buffer.
+ */
+private const val MAX_PENDING_LINES = 1000
+
+internal class VcsConsoleTabServiceImpl(
+  private val project: Project,
+  private val cs: CoroutineScope,
+) : VcsConsoleTabService {
   companion object {
     @JvmStatic
     fun getInstance(project: Project): VcsConsoleTabService = project.service()
   }
 
-  private var hadMessages: Boolean = false
+  private val showConsoleSignal = MutableSharedFlow<ShowConsoleSignal>(replay = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+  private val pendingMessages = MutableSharedFlow<VcsConsoleLine>(replay = MAX_PENDING_LINES, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
-  private val consoleView: VcsConsoleView = VcsConsoleView(project)
-
-  override fun dispose() {
-    Disposer.dispose(consoleView)
+  init {
+    cs.launch(Dispatchers.UiWithModelAccess) {
+      showConsoleSignal.collect {
+        showConsoleTab(it.focusLatest)
+      }
+    }
   }
-
 
   @CalledInAny
   override fun addMessage(message: @Nls String?, contentType: ConsoleViewContentType) {
@@ -107,39 +117,35 @@ internal class VcsConsoleTabServiceImpl(val project: Project) : VcsConsoleTabSer
   @CalledInAny
   override fun addMessage(line: VcsConsoleLine?) {
     if (line == null) return
-    if (project.isDisposed || project.isDefault) return
+    if (project.isDisposed || !isRealProject(project)) return
 
-    line.print(consoleView)
-    hadMessages = true
-
-    if (Registry.`is`("vcs.showConsole")) {
-      runInEdt(ModalityState.nonModal()) {
-        showConsoleTab(false, null)
-      }
-    }
+    pendingMessages.tryEmit(line)
+    showConsoleSignal.tryEmit(ShowConsoleSignal(focusLatest = false))
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   override fun isConsoleVisible(): Boolean {
-    if (project.isDisposed || project.isDefault) return false
+    if (project.isDisposed || !isRealProject(project)) return false
 
     val toolWindow = ChangesViewContentManager.getToolWindowFor(project, ChangesViewContentManager.CONSOLE) ?: return false
     val contentManager = toolWindow.contentManagerIfCreated ?: return false
-    return contentManager.getContent(consoleView.component) != null
-  }
-
-  @RequiresEdt
-  override fun isConsoleEmpty(): Boolean {
-    if (project.isDisposed || project.isDefault) return true
-    return consoleView.contentSize == 0
+    val content = contentManager.findContent(ChangesViewContentManager.CONSOLE) ?: return false
+    return contentManager.isSelected(content) && content.component.isShowing
   }
 
   @CalledInAny
-  override fun hadMessages(): Boolean = hadMessages
+  override fun isConsoleEmpty(): Boolean {
+    if (project.isDisposed || !isRealProject(project)) return true
 
-  @RequiresEdt
-  override fun showConsoleTab(selectContent: Boolean, onShown: Runnable?) {
-    if (project.isDisposed || project.isDefault) return
+    return pendingMessages.replayCache.isEmpty()
+  }
+
+  @CalledInAny
+  override fun hadMessages(): Boolean = pendingMessages.replayCache.isNotEmpty()
+
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
+  private fun showConsoleTab(selectContent: Boolean) {
+    if (project.isDisposed || !isRealProject(project)) return
 
     val contentTab = ChangesViewContentManager.getInstance(project).findContent(ChangesViewContentManager.CONSOLE)
     if (contentTab == null) {
@@ -148,18 +154,19 @@ internal class VcsConsoleTabServiceImpl(val project: Project) : VcsConsoleTabSer
 
     if (selectContent) {
       ChangesViewContentManager.getInstance(project).selectContent(ChangesViewContentManager.CONSOLE)
-      ChangesViewContentManager.getToolWindowFor(project, ChangesViewContentManager.CONSOLE)?.activate(onShown)
+      ChangesViewContentManager.getToolWindowFor(project, ChangesViewContentManager.CONSOLE)?.activate(null)
     }
   }
 
-  @RequiresEdt
+  @CalledInAny
   override fun showConsoleTabAndScrollToTheEnd() {
-    showConsoleTab(true) {
-      consoleView.requestScrollingToEnd()
-    }
+    showConsoleSignal.tryEmit(ShowConsoleSignal(focusLatest = true))
   }
 
-  private fun createConsoleContentTab(): Content {
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
+  private fun createConsoleContentTab() {
+    val consoleView = getOrCreateConsoleView()
+
     val panel = SimpleToolWindowPanel(false, true)
     panel.setContent(consoleView.component)
 
@@ -174,9 +181,35 @@ internal class VcsConsoleTabServiceImpl(val project: Project) : VcsConsoleTabSer
     contentTab.tabName = ChangesViewContentManager.CONSOLE //NON-NLS
     contentTab.putUserData(ChangesViewContentManager.ORDER_WEIGHT_KEY,
                            ChangesViewContentManager.TabOrderWeight.CONSOLE.weight)
+    contentTab.setDisposer(consoleView)
 
     ChangesViewContentManager.getInstance(project).addContent(contentTab)
+  }
 
-    return contentTab
+  @OptIn(ExperimentalCoroutinesApi::class)
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
+  private fun getOrCreateConsoleView(): VcsConsoleView {
+    val view = VcsConsoleView(project) {
+      pendingMessages.resetReplayCache()
+    }
+
+    cs.launch(Dispatchers.UiWithModelAccess + CoroutineName("VCS console printer")) {
+      pendingMessages.collect {
+        it.print(view)
+      }
+    }.cancelOnDispose(view)
+
+    cs.launch(Dispatchers.UiWithModelAccess + CoroutineName("VCS console scroller")) {
+      showConsoleSignal.filter { it.focusLatest }.collect {
+        view.requestScrollingToEnd()
+      }
+    }.cancelOnDispose(view)
+
+    return view
   }
 }
+
+/**
+ * @param focusLatest - select the tab and show the latest shown lines
+ */
+private data class ShowConsoleSignal(val focusLatest: Boolean)

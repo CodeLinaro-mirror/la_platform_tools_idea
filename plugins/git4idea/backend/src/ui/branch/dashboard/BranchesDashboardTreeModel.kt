@@ -121,7 +121,7 @@ abstract class BranchesDashboardTreeModelBase(
   override var showOnlyMy: Boolean by observable(false) { _, old, new -> if (old != new) updateBranchesIsMyState() }
 
   var rootsToFilter: Set<VirtualFile>? by observable(null) { _, old, new ->
-    if (new != null && old != null && old != new) {
+    if (new != null && old != new) {
       updateBranchesTree()
     }
   }
@@ -195,7 +195,7 @@ abstract class BranchesDashboardTreeModelBase(
 
   protected abstract fun refreshTree()
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   protected fun updateBranchesTree() {
     val forceReload = groupingConfig[GroupingKey.GROUPING_BY_REPOSITORY] == true
     val changed = reloadBranches(forceReload)

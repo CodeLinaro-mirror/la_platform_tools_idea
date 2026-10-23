@@ -4,7 +4,6 @@ package org.jetbrains.intellij.build.impl
 import com.intellij.platform.bazel.runfiles.BazelRunfiles
 import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.api.common.Attributes
-import kotlinx.coroutines.Dispatchers
 import org.jetbrains.intellij.build.BuildOptions
 import org.jetbrains.intellij.build.CompilationContext
 import org.jetbrains.intellij.build.impl.logging.jps.withJpsLogging
@@ -50,27 +49,27 @@ internal class JpsCompilationRunner(private val context: CompilationContext) {
     setSystemPropertyIfUndefined(DependencyResolvingBuilder.RESOLUTION_RETRY_BACKOFF_LIMIT_MS_PROPERTY, TimeUnit.MINUTES.toMillis(15).toString())
   }
 
-  suspend fun buildModules(modules: List<JpsModule>, canceledStatus: CanceledStatus = CanceledStatus.NULL) {
+  fun buildModules(modules: List<JpsModule>, canceledStatus: CanceledStatus = CanceledStatus.NULL) {
     throw NotImplementedError("JPS compilation was broken on purpose, for details see MRI-3677")
   }
 
-  suspend fun resolveProjectDependencies() {
+  fun resolveProjectDependencies() {
     runBuild()
   }
 
-  suspend fun buildModuleTests(module: JpsModule, canceledStatus: CanceledStatus = CanceledStatus.NULL) {
+  fun buildModuleTests(module: JpsModule, canceledStatus: CanceledStatus = CanceledStatus.NULL) {
     throw NotImplementedError("JPS compilation was broken on purpose, for details see MRI-3677")
   }
 
-  suspend fun buildAll(canceledStatus: CanceledStatus = CanceledStatus.NULL) {
+  fun buildAll(canceledStatus: CanceledStatus = CanceledStatus.NULL) {
     throw NotImplementedError("JPS compilation was broken on purpose, for details see MRI-3677")
   }
 
-  suspend fun buildProduction(canceledStatus: CanceledStatus = CanceledStatus.NULL) {
+  fun buildProduction(canceledStatus: CanceledStatus = CanceledStatus.NULL) {
     throw NotImplementedError("JPS compilation was broken on purpose, for details see MRI-3677")
   }
 
-  private suspend fun runBuild() = context.withCompilationLock {
+  private fun runBuild() = context.withCompilationLock {
     val mavenLibrariesDownloading = context.options.mavenLibrariesDownloadLocation != null
 
     require(!BazelRunfiles.isRunningFromBazel || mavenLibrariesDownloading) {
@@ -99,7 +98,7 @@ internal class JpsCompilationRunner(private val context: CompilationContext) {
       .setAttribute("modules", "")
       .setAttribute("incremental", context.options.incrementalCompilation)
       .setAttribute("cacheDir", compilationData.dataStorageRoot.toString())
-      .use(Dispatchers.IO) { span ->
+      .use { span ->
         withJpsLogging(context, span) { messageHandler ->
           Standalone.runBuild(
             { context.projectModel },

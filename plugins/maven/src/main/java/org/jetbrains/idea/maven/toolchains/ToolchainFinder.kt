@@ -5,6 +5,7 @@ import org.jdom.Element
 import org.jetbrains.idea.maven.importing.MavenImportUtil.findCompilerPlugin
 import org.jetbrains.idea.maven.importing.MavenImportUtil.findToolchainPlugin
 import org.jetbrains.idea.maven.importing.MavenImportUtil.isCompileExecution
+import org.jetbrains.idea.maven.importing.MavenImportUtil.isDisabledExecution
 import org.jetbrains.idea.maven.importing.MavenImportUtil.isTestCompileExecution
 import org.jetbrains.idea.maven.model.MavenPlugin
 import org.jetbrains.idea.maven.project.MavenProject
@@ -15,7 +16,7 @@ class ToolchainFinder {
   fun allToolchainRequirements(mavenProject: MavenProject): Set<ToolchainRequirement> {
     val compilerPlugin = mavenProject.findCompilerPlugin()
     val result = HashSet<ToolchainRequirement>()
-    compilerPlugin?.executions
+    compilerPlugin?.enabledExecutions
       ?.mapNotNull { getToolchain(it) }?.let { result.addAll(it) }
     fromToolchainPluginConfiguration(mavenProject)?.let { result.add(it) }
     fromToolchainSelectGoal(mavenProject)?.let { result.add(it) }
@@ -56,15 +57,20 @@ class ToolchainFinder {
   }
 
 
+  /** The executions that Maven runs. A disabled execution asks for no toolchain. */
+  private val MavenPlugin.enabledExecutions: List<MavenPlugin.Execution>
+    get() = executions.filter { !isDisabledExecution(it) }
+
   private fun fromCompilePlugin(mavenProject: MavenProject, predicate: (MavenPlugin.Execution) -> Boolean): ToolchainRequirement? {
     val compilerPlugin = mavenProject.findCompilerPlugin()
-    return compilerPlugin?.executions
+    return compilerPlugin?.enabledExecutions
       ?.filter(predicate)
       ?.firstNotNullOfOrNull { getToolchain(it) }
   }
 
   private fun fromToolchainPluginConfiguration(mavenProject: MavenProject): ToolchainRequirement? {
     val toolchainPlugin = mavenProject.findToolchainPlugin() ?: return null
+    if (toolchainPlugin.enabledExecutions.none { it.goals.contains(TOOLCHAIN_GOAL) }) return null
     val toolchains = toolchainPlugin.configurationElement?.getChild("toolchains") ?: return null
     val jdkToolchain = toolchains.getChild("jdk") ?: return null
     return fromToolchainConfig(jdkToolchain)
@@ -72,11 +78,34 @@ class ToolchainFinder {
 
   private fun fromToolchainSelectGoal(mavenProject: MavenProject): ToolchainRequirement? {
     val toolchainPlugin = mavenProject.findToolchainPlugin() ?: return null
-    val execution = toolchainPlugin.executions.firstOrNull {
-      it.goals.contains("select-jdk-toolchain")
+    val execution = toolchainPlugin.enabledExecutions.firstOrNull {
+      it.goals.contains(SELECT_JDK_TOOLCHAIN_GOAL)
     } ?: return null
-    val config = execution.configurationElement ?: return null
-    return fromToolchainConfig(config)
+    val builder = ToolchainRequirement.Builder(ToolchainRequirement.JDK_TYPE)
+      .useImporterJdkIfMatches(canUseImporterJdkIfMatches(mavenProject, execution))
+      .discoverJdks(canDiscoverJdks(mavenProject, execution))
+    var hasRequirements = false
+    for (parameter in SELECT_JDK_TOOLCHAIN_PARAMETERS) {
+      val value = readParameter(mavenProject, execution, parameter.xmlName, parameter.propertyName)
+      if (value != null) {
+        builder.set(parameter.requirementName, value)
+        hasRequirements = true
+      }
+    }
+    if (!hasRequirements) return null
+    return builder.build()
+  }
+
+  /** A blank configuration value counts as absent, so the documented user property still applies. */
+  private fun readParameter(
+    mavenProject: MavenProject,
+    execution: MavenPlugin.Execution,
+    xmlName: String,
+    propertyName: String,
+  ): String? {
+    val configured = execution.configurationElement?.getChildTextTrim(xmlName)
+    if (!configured.isNullOrBlank()) return configured
+    return mavenProject.properties.getProperty(propertyName)?.trim()?.takeIf { it.isNotBlank() }
   }
 
 
@@ -88,5 +117,38 @@ class ToolchainFinder {
 
     return builder.build()
   }
-}
 
+  private fun canUseImporterJdkIfMatches(mavenProject: MavenProject, execution: MavenPlugin.Execution): Boolean {
+    val mode = readParameter(mavenProject, execution, USE_JDK_PARAMETER, TOOLCHAIN_JDK_MODE_PROPERTY)
+    return mode == null || mode.equals(USE_JDK_IF_MATCH, ignoreCase = true)
+  }
+
+  private fun canDiscoverJdks(mavenProject: MavenProject, execution: MavenPlugin.Execution): Boolean {
+    val discoverToolchains = readParameter(mavenProject, execution, DISCOVER_TOOLCHAINS_PARAMETER, TOOLCHAIN_JDK_DISCOVER_PROPERTY)
+    return !discoverToolchains.equals("false", ignoreCase = true)
+  }
+
+  private data class SelectJdkToolchainParameter(
+    val xmlName: String,
+    val propertyName: String,
+    val requirementName: String,
+  )
+
+  private companion object {
+    const val TOOLCHAIN_GOAL = "toolchain"
+    const val SELECT_JDK_TOOLCHAIN_GOAL = "select-jdk-toolchain"
+    const val USE_JDK_PARAMETER = "useJdk"
+    const val USE_JDK_IF_MATCH = "IfMatch"
+    const val DISCOVER_TOOLCHAINS_PARAMETER = "discoverToolchains"
+    const val TOOLCHAIN_JDK_MODE_PROPERTY = "toolchain.jdk.mode"
+    const val TOOLCHAIN_JDK_DISCOVER_PROPERTY = "toolchain.jdk.discover"
+
+    val SELECT_JDK_TOOLCHAIN_PARAMETERS = listOf(
+      SelectJdkToolchainParameter("version", "toolchain.jdk.version", "version"),
+      SelectJdkToolchainParameter("vendor", "toolchain.jdk.vendor", "vendor"),
+      SelectJdkToolchainParameter("runtimeName", "toolchain.jdk.runtime.name", "runtime.name"),
+      SelectJdkToolchainParameter("runtimeVersion", "toolchain.jdk.runtime.version", "runtime.version"),
+      SelectJdkToolchainParameter("env", "toolchain.jdk.env", "env"),
+    )
+  }
+}

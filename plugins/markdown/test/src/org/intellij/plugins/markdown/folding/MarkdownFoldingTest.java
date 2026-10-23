@@ -101,7 +101,8 @@ public class MarkdownFoldingTest extends BasePlatformTestCase {
     doTest();
   }
 
-  public void testLinkDestinationsInsideTableAreNotFolded() {
+  /** IJPL-162519: visual table alignment supports folded link destinations. */
+  public void testLinkDestinationsInsideTableAreFolded() {
     myFixture.configureByText("table.md", """
       [Regular link](https://jetbrains.com/path)
 
@@ -113,8 +114,8 @@ public class MarkdownFoldingTest extends BasePlatformTestCase {
 
     String foldingDescription = ((CodeInsightTestFixtureImpl)myFixture).getFoldingDescription(false, false);
     assertTrue(foldingDescription, foldingDescription.contains("[Regular link](<fold text='...'>https://jetbrains.com/path</fold>)"));
-    assertFalse(foldingDescription, foldingDescription.contains("[http://localhost](<fold text='...'>http://localhost/variable-length-link</fold>)"));
-    assertFalse(foldingDescription, foldingDescription.contains("[http://localhost](<fold text='...'>http://localhost/variable</fold>)"));
+    assertTrue(foldingDescription, foldingDescription.contains("[http://localhost](<fold text='...'>http://localhost/variable-length-link</fold>)"));
+    assertTrue(foldingDescription, foldingDescription.contains("[http://localhost](<fold text='...'>http://localhost/variable</fold>)"));
   }
 
   public void testTableOfContents() {
@@ -123,6 +124,35 @@ public class MarkdownFoldingTest extends BasePlatformTestCase {
 
   public void testFrontMatter() {
     doTest();
+  }
+
+  public void testFrontMatterIsNotFoldedWhenAPolicyForbidsIt() {
+    MarkdownFrontMatterFoldingPolicy.EP_NAME.getPoint().registerExtension(_ -> false, getTestRootDisposable());
+    myFixture.configureByText("notes.md", "---\nSome front matter\n---\n\nText");
+
+    String foldingDescription = ((CodeInsightTestFixtureImpl)myFixture).getFoldingDescription(false, false);
+    assertFalse(foldingDescription, foldingDescription.contains("<fold"));
+  }
+
+  public void testFrontMatterIsNotFoldedWhenOneOfSeveralPoliciesForbidsIt() {
+    var point = MarkdownFrontMatterFoldingPolicy.EP_NAME.getPoint();
+    point.registerExtension(_ -> true, getTestRootDisposable());
+    point.registerExtension(_ -> false, getTestRootDisposable());
+    point.registerExtension(_ -> true, getTestRootDisposable());
+    myFixture.configureByText("notes.md", "---\nSome front matter\n---\n\nText");
+
+    String foldingDescription = ((CodeInsightTestFixtureImpl)myFixture).getFoldingDescription(false, false);
+    assertFalse(foldingDescription, foldingDescription.contains("<fold"));
+  }
+
+  public void testFrontMatterIsFoldedWhenEveryPolicyAllowsIt() {
+    var point = MarkdownFrontMatterFoldingPolicy.EP_NAME.getPoint();
+    point.registerExtension(_ -> true, getTestRootDisposable());
+    point.registerExtension(_ -> true, getTestRootDisposable());
+    myFixture.configureByText("notes.md", "---\nSome front matter\n---\n\nText");
+
+    String foldingDescription = ((CodeInsightTestFixtureImpl)myFixture).getFoldingDescription(false, false);
+    assertTrue(foldingDescription, foldingDescription.contains("<fold"));
   }
 
   private void doTest() {

@@ -2,18 +2,16 @@
 package org.jetbrains.kotlin.idea.codeInsight.inspections
 
 import com.intellij.codeInspection.LocalQuickFix
-import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.analyze
 import org.jetbrains.kotlin.analysis.api.base.KaConstantValue
-import org.jetbrains.kotlin.analysis.api.components.KaDiagnosticCheckerFilter
-import org.jetbrains.kotlin.analysis.api.components.diagnostics
-import org.jetbrains.kotlin.analysis.api.components.evaluate
-import org.jetbrains.kotlin.analysis.api.components.isMarkedNullable
-import org.jetbrains.kotlin.analysis.api.components.isPrimitive
-import org.jetbrains.kotlin.analysis.api.components.isStringType
-import org.jetbrains.kotlin.analysis.api.components.returnType
+import org.jetbrains.kotlin.analysis.api.diagnostics.diagnostics
+import org.jetbrains.kotlin.analysis.api.evaluation.evaluate
+import org.jetbrains.kotlin.analysis.api.expressions.returnType
 import org.jetbrains.kotlin.analysis.api.fir.diagnostics.KaFirDiagnostic
+import org.jetbrains.kotlin.analysis.api.session.analyze
+import org.jetbrains.kotlin.analysis.api.types.KaStandardTypeClassIds
+import org.jetbrains.kotlin.analysis.api.types.classId
+import org.jetbrains.kotlin.analysis.api.types.isMarkedNullable
 import org.jetbrains.kotlin.idea.codeinsight.utils.JVM_FIELD_CLASS_ID
 import org.jetbrains.kotlin.idea.codeinsight.utils.checkMayBeConstantByFields
 import org.jetbrains.kotlin.idea.codeinsights.impl.base.asQuickFix
@@ -22,6 +20,7 @@ import org.jetbrains.kotlin.idea.codeinsights.impl.base.inspections.matchStatus
 import org.jetbrains.kotlin.idea.quickfix.AddConstModifierFix
 import org.jetbrains.kotlin.idea.util.findAnnotation
 import org.jetbrains.kotlin.name.ClassId
+import org.jetbrains.kotlin.name.StandardClassIds
 import org.jetbrains.kotlin.psi.KtExpression
 import org.jetbrains.kotlin.psi.KtProperty
 
@@ -60,18 +59,26 @@ internal class MayBeConstantInspection : MayBeConstantInspectionBase() {
     private fun KtProperty.hasNonNullablePrimitiveOrStringType(): Boolean {
         val type = this.returnType
         if (type.isMarkedNullable) return false
-        return type.isPrimitive || type.isStringType
+        return type.classId in supportedTypes
     }
 
     context(_: KaSession)
-    private fun KtExpression.getConstantValue(): KaConstantValue? {
-        return evaluate()
-    }
+    private fun KtExpression.getConstantValue(): KaConstantValue? =
+        evaluate()
 
-    @OptIn(KaExperimentalApi::class)
     context(_: KaSession)
-    private fun KtExpression.usesNonConstValAsConstant(): Boolean {
-        val diagnostics = diagnostics(KaDiagnosticCheckerFilter.ONLY_COMMON_CHECKERS)
-        return diagnostics.find { it is KaFirDiagnostic.NonConstValUsedInConstantExpression } != null
-    }
+    private fun KtExpression.usesNonConstValAsConstant(): Boolean =
+        diagnostics().directOnly(true).find {
+            it is KaFirDiagnostic.NonConstValUsedInConstantExpression
+        } != null
 }
+
+private val supportedTypes: Set<ClassId> =
+    buildSet {
+        addAll(KaStandardTypeClassIds.PRIMITIVES)
+        add(KaStandardTypeClassIds.STRING)
+        add(StandardClassIds.UByte)
+        add(StandardClassIds.UShort)
+        add(StandardClassIds.UInt)
+        add(StandardClassIds.ULong)
+    }

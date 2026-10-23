@@ -1,6 +1,6 @@
 // "Opt in for 'A' in containing file 'appendFileAnnotationToAnnotationList.kt'" "true"
 // WITH_STDLIB
-// K2_ERROR: This declaration needs opt-in. Its usage must be marked with '@p.A' or '@OptIn(p.A::class)'
+// K2_ERROR: OPT_IN_USAGE_ERROR
 
 @file:[
     JvmName("Foo")
@@ -24,4 +24,3 @@ fun g() {
 }
 
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.UseOptInFileAnnotationFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.UseOptInFileAnnotationFix

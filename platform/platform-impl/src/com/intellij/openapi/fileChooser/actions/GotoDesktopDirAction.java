@@ -3,24 +3,26 @@ package com.intellij.openapi.fileChooser.actions;
 
 import com.intellij.execution.configurations.GeneralCommandLine;
 import com.intellij.execution.configurations.PathEnvironmentVariableUtil;
+import com.intellij.execution.process.ProcessIOExecutorService;
 import com.intellij.execution.util.ExecUtil;
 import com.intellij.ide.lightEdit.LightEditCompatible;
-import com.intellij.jna.JnaLoader;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.fileChooser.FileChooserPanel;
 import com.intellij.openapi.fileChooser.FileSystemTree;
 import com.intellij.openapi.util.NullableLazyValue;
-import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.DiskQueryRelay;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.vfs.VirtualFileManager;
 import com.intellij.ui.mac.foundation.Foundation;
+import com.intellij.util.SlowOperations;
 import com.intellij.util.SystemProperties;
+import com.intellij.util.concurrency.annotations.RequiresBackgroundThread;
+import com.intellij.util.concurrency.annotations.RequiresReadLockAbsence;
 import com.intellij.util.system.OS;
-import com.sun.jna.platform.win32.Shell32;
-import com.sun.jna.platform.win32.ShlObj;
-import com.sun.jna.platform.win32.WinDef;
-import com.sun.jna.platform.win32.WinError;
+import com.intellij.util.system.WindowsShell;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -29,14 +31,33 @@ import java.nio.file.Path;
 import static com.intellij.openapi.util.NullableLazyValue.lazyNullable;
 
 final class GotoDesktopDirAction extends FileChooserAction implements LightEditCompatible {
-  private final NullableLazyValue<Path> myDesktopPath = lazyNullable(() -> {
+
+  private final Object NO_ARGS = new Object();
+
+  private static @Nullable Path findDesktopDirectoryPath() {
     var path = getDesktopDirectory();
     return Files.isDirectory(path) ? path : null;
+  }
+
+  private final DiskQueryRelay<Object, Path> myDirectoryPathComputation = new DiskQueryRelay<>(
+    (ignored) -> findDesktopDirectoryPath(),
+    ProcessIOExecutorService.INSTANCE
+  );
+
+  private final DiskQueryRelay<Object, VirtualFile> myVfsDirectoryComputation = new DiskQueryRelay<>(
+    (ignored) -> {
+      var path = findDesktopDirectoryPath();
+      return path != null ? VirtualFileManager.getInstance().findFileByNioPath(path) : null;
+    },
+    ProcessIOExecutorService.INSTANCE
+  );
+
+  private final NullableLazyValue<Path> myDesktopPath = lazyNullable(() -> {
+    return myDirectoryPathComputation.accessDiskWithCheckCanceled(NO_ARGS);
   });
 
   private final NullableLazyValue<VirtualFile> myDesktopDirectory = lazyNullable(() -> {
-    var path = myDesktopPath.getValue();
-    return path != null ? LocalFileSystem.getInstance().findFileByNioFile(path) : null;
+    return myVfsDirectoryComputation.accessDiskWithCheckCanceled(NO_ARGS);
   });
 
   @Override
@@ -67,17 +88,18 @@ final class GotoDesktopDirAction extends FileChooserAction implements LightEditC
     }
   }
 
+  @RequiresBackgroundThread
+  @RequiresReadLockAbsence
   static Path getDesktopDirectory() {
-    if (OS.CURRENT == OS.Windows && JnaLoader.isLoaded()) {
-      var path = new char[WinDef.MAX_PATH];
-      var res = Shell32.INSTANCE.SHGetFolderPath(null, ShlObj.CSIDL_DESKTOP, null, ShlObj.SHGFP_TYPE_CURRENT, path);
-      if (WinError.S_OK.equals(res)) {
-        var len = 0;
-        while (len < path.length && path[len] != 0) len++;
-        return Path.of(new String(path, 0, len));
+    SlowOperations.assertNonCancelableSlowOperationsAreAllowed();
+
+    if (OS.CURRENT == OS.Windows) {
+      var path = WindowsShell.knownFolderPath(WindowsShell.FOLDERID_DESKTOP);
+      if (path != null) {
+        return Path.of(path);
       }
     }
-    else if (OS.CURRENT == OS.macOS && JnaLoader.isLoaded()) {
+    else if (OS.CURRENT == OS.macOS && Foundation.isAvailable()) {
       var manager = Foundation.invoke(Foundation.getObjcClass("NSFileManager"), "defaultManager");
       var selector = "URLForDirectory:inDomain:appropriateForURL:create:error:";
       var url = Foundation.invoke(manager, selector, 12 /*NSDesktopDirectory*/, 1 /*NSUserDomainMask*/, null, false, null);

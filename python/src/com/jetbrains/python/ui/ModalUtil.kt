@@ -7,13 +7,13 @@ import com.intellij.platform.ide.progress.runWithModalProgressBlocking
 import com.intellij.util.concurrency.annotations.RequiresBlockingContext
 import com.intellij.util.concurrency.annotations.RequiresEdt
 import com.intellij.util.ui.EDT
-import com.jetbrains.python.sdk.impl.PySdkBundle
+import com.intellij.python.sdk.backend.PySdkBundle
 import kotlinx.coroutines.runBlocking
 
 /**
  * Runs [code] in background under the modal dialog
  */
-@RequiresEdt
+@RequiresEdt(generateAssertion = false /* IJPL-115548 */)
 @RequiresBlockingContext
 internal fun <T> pyModalBlocking(modalTaskOwner: ModalTaskOwner = ModalTaskOwner.guess(), code: suspend () -> T): T =
   runWithModalProgressBlocking(modalTaskOwner, PySdkBundle.message("python.sdk.run.wait"), TaskCancellation.nonCancellable()) {

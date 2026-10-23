@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.java.xml.dom.impl` start
+content_module_jar(module = ":xml.dom.impl")
+### auto-generated section `dev intellij.java.xml.dom.impl` end
 
 ### auto-generated section `build intellij.java.xml.dom.impl` start
-
 jvm_library(
     name = "xml.dom.impl",
     srcs = glob(
@@ -18,6 +22,7 @@ jvm_library(
         ["resources/**/*"],
     ),
     visibility = ["//visibility:public"],
+    runtime_deps = ["//java/java-backend:backend"],
     deps = [
         # do not sort,
         "//platform/analysis-api:analysis",
@@ -40,7 +45,6 @@ jvm_library(
         "//java/java-indexing-api:indexing",
         "//java/java-indexing-impl:indexing-impl",
         "//java/java-psi-api:psi",
-        "//java/jsp-spi",
         "//xml/impl",
         "//xml/dom-impl",
         "//xml/xml-psi-api:psi",
@@ -73,13 +77,13 @@ jvm_library(
         "//platform/util:util_test_lib",
         "//platform/util:util-ui_test_lib",
         "//java/openapi:java_test_lib",
+        "//java/java-backend:backend_test_lib",
         "//java/java-frontback-psi-api:frontback-psi_test_lib",
         "//java/java-impl:impl_test_lib",
         "//java/java-frontback-impl:frontback-impl_test_lib",
         "//java/java-indexing-api:indexing_test_lib",
         "//java/java-indexing-impl:indexing-impl_test_lib",
         "//java/java-psi-api:psi_test_lib",
-        "//java/jsp-spi:jsp-spi_test_lib",
         "//xml/impl:impl_test_lib",
         "//xml/dom-impl:dom-impl_test_lib",
         "//xml/xml-psi-api:psi_test_lib",
@@ -91,6 +95,8 @@ jvm_library(
 exports_files(
     [
         "intellij.java.xml.dom.impl.iml",
+        "resources/intellij.java.xml.dom.impl.analyzer.xml",
+        "resources/intellij.java.xml.dom.impl.xml",
     ],
     visibility = ["//visibility:public"],
 )

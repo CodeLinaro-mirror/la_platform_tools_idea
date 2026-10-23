@@ -19,21 +19,23 @@ import com.jetbrains.python.psi.PyNamedParameter
 import com.jetbrains.python.psi.PyQualifiedNameOwner
 import com.jetbrains.python.psi.PyReferenceExpression
 import com.jetbrains.python.psi.PyStringLiteralExpression
+import com.jetbrains.python.psi.PySubscriptionExpression
 import com.jetbrains.python.psi.PyTargetExpression
+import com.jetbrains.python.psi.PyTupleExpression
 import com.jetbrains.python.psi.PyTypeAliasStatement
+import com.jetbrains.python.psi.PyTypeDeclarationStatement
 import com.jetbrains.python.psi.PyTypeParameter
 import com.jetbrains.python.psi.PyTypedElement
 import com.jetbrains.python.psi.PyUtil
-import com.jetbrains.python.psi.types.PyInferredVarianceJudgment.findTypeVariable
-import com.jetbrains.python.psi.types.PyInferredVarianceJudgment.functionIgnoresVariance
-import com.jetbrains.python.psi.types.PyInferredVarianceJudgment.getDeclaredOrInferredVariance
-import com.jetbrains.python.psi.types.PyInferredVarianceJudgment.getInferredVariance
-import com.jetbrains.python.psi.types.PyTypeParameterType.Variance
-import com.jetbrains.python.psi.types.PyTypeParameterType.Variance.BIVARIANT
-import com.jetbrains.python.psi.types.PyTypeParameterType.Variance.CONTRAVARIANT
-import com.jetbrains.python.psi.types.PyTypeParameterType.Variance.COVARIANT
-import com.jetbrains.python.psi.types.PyTypeParameterType.Variance.INFER_VARIANCE
-import com.jetbrains.python.psi.types.PyTypeParameterType.Variance.INVARIANT
+import com.jetbrains.python.psi.types.PyInferredVarianceJudgment.VarianceInferenceKind.DECLARED_AND_INFERRED
+import com.jetbrains.python.psi.types.PyInferredVarianceJudgment.VarianceInferenceKind.FUNCTION_RETURN_ONLY
+import com.jetbrains.python.psi.types.PyInferredVarianceJudgment.VarianceInferenceKind.INFERRED_ONLY
+import com.jetbrains.python.psi.types.PyVariance.BIVARIANT
+import com.jetbrains.python.psi.types.PyVariance.CONTRAVARIANT
+import com.jetbrains.python.psi.types.PyVariance.COVARIANT
+import com.jetbrains.python.psi.types.PyVariance.INFER_VARIANCE
+import com.jetbrains.python.psi.types.PyVariance.INVARIANT
+import com.jetbrains.python.psi.types.PyVarianceIntermediateResult.RECURSIVE
 import org.jetbrains.annotations.ApiStatus
 
 
@@ -61,9 +63,9 @@ object PyInferredVarianceJudgment {
    * It calls [findTypeVariable] first and passes the resulting type parameter type to [getDeclaredOrInferredVariance].
    */
   @JvmStatic
-  fun getDeclaredOrInferredVariance(element: PyTypedElement?, context: TypeEvalContext): Variance? {
+  fun getDeclaredOrInferredVariance(element: PyTypedElement?, context: TypeEvalContext): PyVariance? {
     val typeParameterType = findTypeVariable(element, context) ?: return null
-    return guardedGetDeclaredOrInferredVariance(typeParameterType, true, context)
+    return guardedGetDeclaredOrInferredVarianceOrInvariant(typeParameterType, DECLARED_AND_INFERRED, context)
   }
 
   /**
@@ -71,9 +73,9 @@ object PyInferredVarianceJudgment {
    * It calls [findTypeVariable] first and passes the resulting type parameter type to [getInferredVariance].
    */
   @JvmStatic
-  fun getInferredVariance(element: PyTypedElement?, context: TypeEvalContext): Variance? {
+  fun getInferredVariance(element: PyTypedElement?, context: TypeEvalContext): PyVariance? {
     val typeVarType = findTypeVariable(element, context) ?: return null
-    return guardedGetDeclaredOrInferredVariance(typeVarType, false, context)
+    return guardedGetDeclaredOrInferredVarianceOrInvariant(typeVarType, INFERRED_ONLY, context)
   }
 
   /** Returns the type parameter type if the given element is a type parameter or a reference to a type parameter */
@@ -94,24 +96,73 @@ object PyInferredVarianceJudgment {
    * Returns either the declared variance if it is declared explicitly, or infers the variance of the given type parameter from its usages.
    */
   @JvmStatic
-  fun getDeclaredOrInferredVariance(typeParameterType: PyTypeParameterType, context: TypeEvalContext): Variance {
-    return guardedGetDeclaredOrInferredVariance(typeParameterType, true, context)
+  fun getDeclaredOrInferredVariance(typeParameterType: PyTypeParameterType, context: TypeEvalContext): PyVariance {
+    return guardedGetDeclaredOrInferredVarianceOrInvariant(typeParameterType, DECLARED_AND_INFERRED, context)
   }
 
   /** Returns the inferred the variance of the given type parameter from its usages */
   @JvmStatic
-  fun getInferredVariance(typeParameterType: PyTypeParameterType, context: TypeEvalContext): Variance {
-    return guardedGetDeclaredOrInferredVariance(typeParameterType, false, context)
+  fun getInferredVariance(typeParameterType: PyTypeParameterType, context: TypeEvalContext): PyVariance {
+    return guardedGetDeclaredOrInferredVarianceOrInvariant(typeParameterType, INFERRED_ONLY, context)
+  }
+
+  /**
+   * Returns either the declared variance if it is declared explicitly, or infers the variance of the given type parameter from its usages.
+   * Returns [RECURSIVE] iff the given parameter type's variance depends on itself.
+   *
+   * @see [RECURSIVE]
+   */
+  @JvmStatic
+  fun getIntermediateVariance(typeParameterType: PyTypeParameterType, context: TypeEvalContext): PyVarianceIntermediateResult {
+    return guardedGetDeclaredOrInferredVariance(typeParameterType, DECLARED_AND_INFERRED, context)
+  }
+
+  /**
+   * Returns the variance of the given type parameter from its usages in the return-type of a function.
+   *
+   * Respects effective scope owner of function:
+   * ```
+   * def f[F]() -> Callable[[F], F]: ...
+   * ```
+   *
+   * Usually, the scope owner would be function `f`. However, since `F` is not used/bound in the arguments of `f` nor via its default
+   * type (it has none), `F` is still open. Since `F` is used only in the returned callable type of `f`, its effective scope owner is
+   * that returned function.
+   *
+   * @see [UsageCollector.collectInFunctionReturn]
+   */
+  @JvmStatic
+  fun getFunctionReturnVariance(typeParameterType: PyTypeParameterType, context: TypeEvalContext): PyVarianceIntermediateResult {
+    return guardedGetDeclaredOrInferredVariance(typeParameterType, FUNCTION_RETURN_ONLY, context)
+  }
+
+  private enum class VarianceInferenceKind {
+    DECLARED_AND_INFERRED,
+    INFERRED_ONLY,
+    FUNCTION_RETURN_ONLY,
+  }
+
+  private fun guardedGetDeclaredOrInferredVarianceOrInvariant(
+    typeParameterType: PyTypeParameterType,
+    inferenceKind: VarianceInferenceKind,
+    context: TypeEvalContext,
+  ): PyVariance {
+    val result = guardedGetDeclaredOrInferredVariance(typeParameterType, inferenceKind, context)
+    return when (result) {
+      is RECURSIVE -> INVARIANT
+      is PyVariance -> result
+    }
   }
 
   private fun guardedGetDeclaredOrInferredVariance(
     typeParameterType: PyTypeParameterType,
-    checkDeclaredVariance: Boolean,
+    inferenceKind: VarianceInferenceKind,
     context: TypeEvalContext,
-  ): Variance {
+  ): PyVarianceIntermediateResult {
     val scopeOwner = typeParameterType.scopeOwner
-    if (scopeOwner is PyFunction) return INVARIANT
-    if (checkDeclaredVariance && typeParameterType.variance != INFER_VARIANCE) return typeParameterType.variance
+    if (inferenceKind != FUNCTION_RETURN_ONLY && scopeOwner is PyFunction) return INVARIANT // inferred/declared variance assumes invariance
+    if (inferenceKind == FUNCTION_RETURN_ONLY && scopeOwner !is PyFunction) return INVARIANT // inference kind works only with functions
+    if (inferenceKind == DECLARED_AND_INFERRED && typeParameterType.variance != INFER_VARIANCE) return typeParameterType.variance
     if (scopeOwner == null) return INVARIANT
 
     val cachedVariance = context.getVarianceCache()[typeParameterType]
@@ -124,21 +175,21 @@ object PyInferredVarianceJudgment {
     try {
       val tvId = TypeVariableId(typeParameterType.name, scopeOwner)
       val result = recursionGuard.doPreventingRecursion(tvId, true) {
-        val actualResult = doGetInferredVariance(tvId, context)
+        val actualResult = doGetInferredVariance(tvId, inferenceKind, context)
         context.getVarianceCache()[typeParameterType] = actualResult
         actualResult
-      } ?: BIVARIANT
+      } ?: RECURSIVE
 
       return result
     }
     catch (_: StackOverflowPreventedException) {
       // this is supposed to happen in recursive situations and a safe exit. No need to bother tests.
-      return BIVARIANT
+      return RECURSIVE
     }
 
   }
 
-  private fun doGetInferredVariance(tvId: TypeVariableId, context: TypeEvalContext): Variance {
+  private fun doGetInferredVariance(tvId: TypeVariableId, inferenceKind: VarianceInferenceKind, context: TypeEvalContext): PyVariance {
     val collector = UsageCollector(tvId, context)
     when (tvId.scopeOwner) {
       is PyClass -> collector.collectInClass(tvId.scopeOwner)
@@ -146,6 +197,7 @@ object PyInferredVarianceJudgment {
         val typeExpression = tvId.scopeOwner.typeExpression ?: return INVARIANT
         collector.collectReferencesInTypeExpr(typeExpression)
       }
+      is PyFunction if (inferenceKind == FUNCTION_RETURN_ONLY) -> collector.collectInFunctionReturn(tvId.scopeOwner)
       else -> return INVARIANT
     }
 
@@ -167,7 +219,7 @@ object PyInferredVarianceJudgment {
     val tvId: TypeVariableId,
     val context: TypeEvalContext,
   ) {
-    val usages = mutableSetOf<Variance>()
+    val usages = mutableSetOf<PyVariance>()
 
     fun collectInClass(clazz: PyClass) {
       val classType = context.getType(clazz)
@@ -186,6 +238,35 @@ object PyInferredVarianceJudgment {
       collectInBaseClasses(clazz)
     }
 
+    fun collectInFunctionReturn(function: PyFunction) {
+      if (effectiveScopeOwnerIsReturnedCallable(function)) {
+        // TODO: Aliases and quoted type annotations
+        val returnedCallableExpression = PyTypingTypeProvider.getAnnotationValue(function, context) as? PySubscriptionExpression
+        val callableTupleExpression = returnedCallableExpression?.indexExpression as? PyTupleExpression
+        val callableReturnExpression = callableTupleExpression?.elements?.getOrNull(1)
+        if (callableReturnExpression != null) {
+          collectReferencesInTypeExpr(callableReturnExpression)
+        }
+      }
+      else {
+        collectReferencesInAnnotation(function)
+      }
+      if (usages.isEmpty()) {
+        // happens when the return type is not annotated
+        usages.add(INVARIANT)
+      }
+    }
+
+    /** This clears the [usages] field when done. */
+    private fun effectiveScopeOwnerIsReturnedCallable(function: PyFunction): Boolean {
+      val retType = function.getReturnType(context)
+      if (retType !is PyCallableType) return false
+      collectInFunctionArguments(function) // fills usages if type parameter is used in arguments
+      val notUsedInArguments = usages.isEmpty()
+      usages.clear()
+      return notUsedInArguments
+    }
+
     private fun collectInBaseClasses(clazz: PyClass) {
       for (superClassExpr in PyTypingTypeProvider.getSuperClassExpressions(clazz)) {
         collectReferencesInTypeExpr(superClassExpr)
@@ -201,7 +282,10 @@ object PyInferredVarianceJudgment {
       collectAnnotatedInstanceAttributesInInit(function)
       if (functionDoesNotAffectVarianceInference(function)) return
       collectReferencesInAnnotation(function)
+      collectInFunctionArguments(function)
+    }
 
+    private fun collectInFunctionArguments(function: PyFunction) {
       for (parameter in function.parameterList.parameters) {
         if (parameter.isSelf) continue
         if (parameter !is PyNamedParameter) continue
@@ -211,11 +295,16 @@ object PyInferredVarianceJudgment {
 
     private fun collectAnnotatedInstanceAttributesInInit(function: PyFunction) {
       if (function.name != PyNames.INIT) return
-      val tgtExprs = if (function.stub == null)
-        function.statementList.childrenOfType<PyAssignmentStatement>().flatMap { it.targets.toList() }
-          .filterIsInstance<PyTargetExpression>()
-      else // use stub if available to avoid un-stubbing
+      val tgtExprs = if (function.stub == null) {
+        val tgtExprsFromDeclarations = function.statementList.childrenOfType<PyTypeDeclarationStatement>().map { it.target }
+        val tgtExprsFromAssignments = function.statementList.childrenOfType<PyAssignmentStatement>().flatMap { it.targets.toList() }
+        val allTgtExprs = tgtExprsFromDeclarations + tgtExprsFromAssignments
+        allTgtExprs.filterIsInstance<PyTargetExpression>()
+      }
+      else {
+        // use stub if available to avoid un-stubbing
         PsiTreeUtil.getStubChildrenOfTypeAsList(function, PyTargetExpression::class.java)
+      }
 
       for (tgtExpr in tgtExprs) {
         if (attributeDoesNotAffectVarianceInference(tgtExpr)) continue
@@ -244,13 +333,14 @@ object PyInferredVarianceJudgment {
         val refType = PyTypingTypeProvider.getType(element, context)
         val typeParamType = refType?.get() as? PyTypeParameterType
         if (typeParamType == null) {
-          if (element.qualifier != null) {
-            collectReferencesInTypeExpr(element.qualifier!!)
+          val qualifier = element.qualifier
+          if (qualifier != null) {
+            collectReferencesInTypeExpr(qualifier)
           }
           return
         }
         if (typeParamType.name == tvId.name && typeParamType.scopeOwner == tvId.scopeOwner) {
-          val exprVariance = PyExpectedVarianceJudgment.getExpectedVariance(element, context) ?: return
+          val exprVariance = PyExpectedVarianceJudgment.getExpectedVariance(element, context).toPyVariance() ?: return
           usages.add(exprVariance)
         }
       }
@@ -268,17 +358,6 @@ object PyInferredVarianceJudgment {
   }
 
   private data class TypeVariableId(val name: String, val scopeOwner: PyQualifiedNameOwner)
-
-  fun combineVariance(outer: Variance, inner: Variance): Variance {
-    return when {
-      outer == INVARIANT || inner == INVARIANT -> INVARIANT
-      outer == INFER_VARIANCE || inner == INFER_VARIANCE -> INVARIANT
-      outer == BIVARIANT -> inner
-      inner == BIVARIANT -> outer
-      outer == inner -> COVARIANT
-      else -> CONTRAVARIANT
-    }
-  }
 
   /**
    * Returns true iff

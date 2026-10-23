@@ -28,7 +28,12 @@ import com.intellij.refactoring.util.CanonicalTypes
 import com.intellij.refactoring.util.CommonRefactoringUtil
 import com.intellij.testFramework.LightProjectDescriptor
 import com.intellij.util.VisibilityUtil
+import org.jetbrains.kotlin.analysis.api.javaInterop.asPsiMethods
+import org.jetbrains.kotlin.analysis.api.permissions.KaAllowAnalysisOnEdt
+import org.jetbrains.kotlin.analysis.api.permissions.allowAnalysisOnEdt
+import org.jetbrains.kotlin.analysis.api.session.analyze
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbolVisibility
+import org.jetbrains.kotlin.analysis.api.symbols.symbol
 import org.jetbrains.kotlin.asJava.getRepresentativeLightMethod
 import org.jetbrains.kotlin.asJava.toLightMethods
 import org.jetbrains.kotlin.idea.base.test.InTextDirectivesUtils
@@ -40,7 +45,7 @@ import org.jetbrains.kotlin.idea.refactoring.changeSignature.KotlinValVar
 import org.jetbrains.kotlin.idea.stubindex.KotlinTopLevelFunctionFqnNameIndex
 import org.jetbrains.kotlin.idea.test.Diagnostic
 import org.jetbrains.kotlin.idea.test.DirectiveBasedActionUtils
-import org.jetbrains.kotlin.idea.test.IDEA_TEST_DATA_DIR
+import org.jetbrains.kotlin.idea.base.test.KotlinRoot
 import org.jetbrains.kotlin.idea.test.KotlinLightCodeInsightFixtureTestCase
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils
 import org.jetbrains.kotlin.idea.test.KotlinWithJdkAndRuntimeLightProjectDescriptor
@@ -117,7 +122,7 @@ abstract class BaseKotlinChangeSignatureTest<C: KotlinModifiableChangeInfo<P>, P
     }
 
     override val testDataDirectory: File
-        get() = IDEA_TEST_DATA_DIR.resolve("refactoring/changeSignature")
+        get() = KotlinRoot.DIR.resolve("refactorings/kotlin.refactorings.tests.k2/testData/changeSignature")
 
     override fun getProjectDescriptor(): LightProjectDescriptor = KotlinWithJdkAndRuntimeLightProjectDescriptor.getInstance()
 
@@ -953,6 +958,8 @@ public @interface NotNull {
 
     fun testConvertParameterToReceiverForMemberConflict() = doTestConflict { receiverParameterInfo = newParameters[0] }
 
+    fun testConvertParameterToReceiverForMemberDispatchReceiver() = doTest { receiverParameterInfo = newParameters[0] }
+
     fun testConvertReceiverToParameterForMember1() = doTest { receiverParameterInfo = null }
 
     fun testAddNewReceiver() = doTestAndIgnoreConflicts {
@@ -1101,6 +1108,12 @@ public @interface NotNull {
     fun testOverrideInAnonymousObjectWithTypeParameters() = doTest { newName = "bar" }
 
     fun testRenameFunction() = doTest { newName = "after" }
+
+    fun testRenameExplicitContextArgument() = doTest { newParameters[0].name = "s" }
+
+    fun testRenameExplicitContextArgument2() = doTest { newParameters[0].name = "s" }
+
+    fun testRenameExplicitContextArgument3() = doTest { newParameters[1].name = "str" }
 
     //--------------------reorder----------------------------
 
@@ -1605,6 +1618,7 @@ public @interface NotNull {
         newParameters[0].setType(PsiTypes.intType())
     }
 
+    @OptIn(KaAllowAnalysisOnEdt::class)
     fun testJavaParameterPropagation() = doJavaTest {
         newParameters.add(ParameterInfoImpl(-1, "n", PsiTypes.intType(), "1"))
         newParameters.add(ParameterInfoImpl(-1, "s", stringPsiType, "\"abc\""))
@@ -1614,7 +1628,12 @@ public @interface NotNull {
         parameterPropagationTargets.add(methodBar)
 
         val functionTest = KotlinTopLevelFunctionFqnNameIndex.get("test", project, project.allScope()).first()
-        parameterPropagationTargets.add(functionTest.getRepresentativeLightMethod()!!)
+        // FIXME: KTIJ-40145
+        allowAnalysisOnEdt {
+            analyze(functionTest) {
+                parameterPropagationTargets.add(functionTest.symbol.asPsiMethods().first())
+            }
+        }
     }
 
 

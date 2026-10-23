@@ -2,22 +2,13 @@
 package com.intellij.platform.buildScripts.testFramework.pluginModel
 
 import com.intellij.platform.buildScripts.testFramework.distributionContent.ParsedContentReport
-import com.intellij.platform.distributionContent.testFramework.FileEntry
-import com.intellij.platform.distributionContent.testFramework.PluginContentReport
-import com.intellij.platform.distributionContent.testFramework.deserializeContentData
-import com.intellij.platform.pluginSystem.testFramework.MissingModuleSetDescriptorException
-import com.intellij.platform.pluginSystem.testFramework.buildStalePackagingDataMessage
-import com.intellij.platform.pluginSystem.testFramework.resolveModuleSet
-import kotlinx.coroutines.Dispatchers
+import com.intellij.platform.distributionContent.FileEntry
+import com.intellij.platform.distributionContent.PluginContentReport
 import org.jetbrains.intellij.build.ModuleOutputProvider
+import org.jetbrains.intellij.build.PLUGIN_XML_RELATIVE_PATH
 import org.jetbrains.intellij.build.mapConcurrent
-import org.jetbrains.jps.model.JpsProject
-import org.jetbrains.jps.model.java.JpsJavaExtensionService
 import org.jetbrains.jps.model.module.JpsModule
-import org.jetbrains.jps.util.JpsPathUtil
 import java.nio.file.Path
-import kotlin.io.path.exists
-import kotlin.io.path.readText
 
 /**
  * Provides information about layout of plugins for [PluginDependenciesValidator].
@@ -26,6 +17,7 @@ interface PluginLayoutProvider {
   fun loadCorePluginLayout(): PluginLayoutDescription
   fun loadMainModulesOfBundledPlugins(): List<String>
   fun loadPluginLayout(mainModule: JpsModule): PluginLayoutDescription?
+  fun findModuleLibraryRoots(moduleName: String): List<Path> = emptyList()
   val messageDescribingHowToUpdateLayoutData: String
 }
 
@@ -39,30 +31,13 @@ data class PluginLayoutDescription(
    * Names of JPS modules which are included in the classpath of the main plugin module.
    */
   val jpsModulesInClasspath: Set<String>,
+  /**
+   * Resolved roots of libraries which are included in the classpath of the main plugin module.
+   */
+  val libraryRootsInClasspath: List<Path> = emptyList(),
 )
 
-/**
- * Creates a description of plugins using data from product and plugins' content.yaml files.
- */
-fun createLayoutProviderByContentYamlFiles(
-  contentYamlPath: Path,
-  projectHome: Path,
-  mainModuleOfCorePlugin: String,
-  corePluginDescriptorPath: String,
-  nameOfTestWhichGeneratesFiles: String,
-  project: JpsProject,
-): PluginLayoutProvider {
-  return YamlFileBasedPluginLayoutProvider(
-    contentYamlPath = contentYamlPath,
-    mainModuleOfCorePlugin = mainModuleOfCorePlugin,
-    corePluginDescriptorPath = corePluginDescriptorPath,
-    nameOfTestWhichGeneratesFiles = nameOfTestWhichGeneratesFiles,
-    project = project,
-    projectHome = projectHome,
-  )
-}
-
-suspend fun createLayoutProviderByContentReport(
+fun createLayoutProviderByContentReport(
   content: ParsedContentReport,
   mainModuleOfCorePlugin: String,
   corePluginDescriptorPath: String,
@@ -72,11 +47,12 @@ suspend fun createLayoutProviderByContentReport(
     content = content,
     mainModuleOfCorePlugin = mainModuleOfCorePlugin,
     corePluginDescriptorPath = corePluginDescriptorPath,
+    outputProvider = outputProvider,
     mainModulesWithPluginDescriptor = collectMainModulesWithPluginDescriptor(content = content, outputProvider = outputProvider),
   )
 }
 
-private suspend fun collectMainModulesWithPluginDescriptor(
+private fun collectMainModulesWithPluginDescriptor(
   content: ParsedContentReport,
   outputProvider: ModuleOutputProvider,
 ): Set<String> {
@@ -85,11 +61,11 @@ private suspend fun collectMainModulesWithPluginDescriptor(
     mainModules.add(item.mainModule)
   }
 
-  return mainModules.mapConcurrent(workerDispatcher = Dispatchers.IO) { mainModule ->
+  return mainModules.mapConcurrent { mainModule ->
     val module = outputProvider.findModule(mainModule) ?: return@mapConcurrent null
     val descriptorContent = outputProvider.readFileContentFromModuleOutput(
       module = module,
-      relativePath = "META-INF/plugin.xml",
+      relativePath = PLUGIN_XML_RELATIVE_PATH,
       forTests = false,
     )
     mainModule.takeIf { descriptorContent != null }
@@ -100,8 +76,16 @@ private class ContentReportBasedPluginLayoutProvider(
   private val content: ParsedContentReport,
   private val mainModuleOfCorePlugin: String,
   private val corePluginDescriptorPath: String,
+  private val outputProvider: ModuleOutputProvider,
   private val mainModulesWithPluginDescriptor: Set<String>,
 ) : PluginLayoutProvider {
+  override fun findModuleLibraryRoots(moduleName: String): List<Path> {
+    val module = outputProvider.findModule(moduleName) ?: return emptyList()
+    return module.libraryCollection.libraries.flatMap { library ->
+      outputProvider.findLibraryRoots(library.name, moduleLibraryModuleName = moduleName)
+    }
+  }
+
   private val mainModulesOfBundledPlugins by lazy {
     content.bundled.mapTo(LinkedHashSet()) { it.mainModule }
   }
@@ -133,7 +117,8 @@ private class ContentReportBasedPluginLayoutProvider(
       mainModuleName = mainModuleOfCorePlugin,
       pluginDescriptorPath = corePluginDescriptorPath,
       mainLibDir = "dist.all/lib",
-      jarsToIgnore = setOf("dist.all/lib/testFramework.jar")
+      jarsToIgnore = setOf("dist.all/lib/testFramework.jar"),
+      libraryRootResolver = outputProvider::findLibraryRoots,
     )
   }
 
@@ -143,14 +128,13 @@ private class ContentReportBasedPluginLayoutProvider(
 
   override fun loadPluginLayout(mainModule: JpsModule): PluginLayoutDescription? {
     val pluginContent = mainModuleToPluginContent[mainModule.name] ?: return null
-    val pluginDescriptorPath = "META-INF/plugin.xml"
     if (mainModule.name !in mainModulesWithPluginDescriptor) {
       throw PluginModuleConfigurationError(
         pluginModelModuleName = mainModule.name,
         errorMessage = """
-                '$pluginDescriptorPath' file is not found in production output of module '${mainModule.name}'.
+                '$PLUGIN_XML_RELATIVE_PATH' file is not found in production output of module '${mainModule.name}'.
                 The module is present in the content report; if it is not the main module of a plugin anymore,
-                update the product layout to avoid confusion. 
+                update the product layout to avoid confusion.
               """.trimIndent(),
       )
     }
@@ -158,9 +142,10 @@ private class ContentReportBasedPluginLayoutProvider(
     return toPluginLayoutDescription(
       entries = pluginContent.content,
       mainModuleName = mainModule.name,
-      pluginDescriptorPath = pluginDescriptorPath,
+      pluginDescriptorPath = PLUGIN_XML_RELATIVE_PATH,
       mainLibDir = "lib",
-      jarsToIgnore = emptySet()
+      jarsToIgnore = emptySet(),
+      libraryRootResolver = outputProvider::findLibraryRoots,
     )
   }
 
@@ -169,149 +154,43 @@ private class ContentReportBasedPluginLayoutProvider(
             "so content snapshots are checked by the same test."
 }
 
-private class YamlFileBasedPluginLayoutProvider(
-  private val contentYamlPath: Path,
-  private val mainModuleOfCorePlugin: String,
-  private val corePluginDescriptorPath: String,
-  private val nameOfTestWhichGeneratesFiles: String,
-  private val project: JpsProject,
-  private val projectHome: Path,
-) : PluginLayoutProvider {
-  private val contentData by lazy {
-    deserializeContentData(contentYamlPath.readText())
-  }
-  private val mainModulesOfBundledPlugins by lazy {
-    contentData.asSequence().flatMap { it.bundled }.mapTo(LinkedHashSet()) { it.mainModule }
-  }
-  private val mainModulesOfNonBundledPlugins by lazy {
-    contentData.asSequence().flatMap { it.nonBundled }.mapTo(LinkedHashSet()) { it.mainModule }
-  }
-
-  private val mergedContentDataForEmbeddedModules by lazy {
-    loadMergedDataForEmbeddedModules()
-  }
-
-  private fun loadMergedDataForEmbeddedModules(): List<FileEntry> {
-    val baseEntries = contentData.toMutableList()
-
-    // Collect productModules and productEmbeddedModules separately, expanding module sets
-    val productModuleNames: List<String>
-    val productEmbeddedModuleNames: List<String>
-    try {
-      productModuleNames = contentData
-        .asSequence()
-        .flatMap { it.productModules }
-        .flatMap { moduleName -> resolveModuleSet(moduleName, embeddedOnly = true, projectHome) }
-        .distinct()
-        .toList()
-
-      productEmbeddedModuleNames = contentData
-        .asSequence()
-        .flatMap { it.productEmbeddedModules }
-        .flatMap { moduleName -> resolveModuleSet(moduleName, embeddedOnly = true, projectHome) }
-        .distinct()
-        .toList()
-    }
-    catch (e: MissingModuleSetDescriptorException) {
-      throw PluginModuleConfigurationError(
-        pluginModelModuleName = mainModuleOfCorePlugin,
-        errorMessage = e.buildStalePackagingDataMessage(
-          contentYamlPath = contentYamlPath,
-          projectRoot = projectHome,
-          generatorTestName = nameOfTestWhichGeneratesFiles,
-        ),
-      )
-    }
-
-    for (moduleName in (productModuleNames + productEmbeddedModuleNames)) {
-      loadAndMergeModuleContent(moduleName, baseEntries)
-    }
-
-    return baseEntries
-  }
-
-  private fun loadAndMergeModuleContent(moduleName: String, baseEntries: MutableList<FileEntry>) {
-    val module = project.findModuleByName(moduleName) ?: return
-    val contentRootUrl = module.contentRootsList.urls.firstOrNull() ?: return
-    val moduleContentPath = JpsPathUtil.urlToNioPath(contentRootUrl).resolve("module-content.yaml")
-
-    if (!moduleContentPath.exists()) {
-      return
-    }
-
-    val moduleEntries = deserializeContentData(moduleContentPath.readText())
-
-    // replace <file> placeholder with actual jar path
-    for (entry in moduleEntries) {
-      if (entry.name == "<file>") {
-        baseEntries.add(entry.copy(name = "dist.all/lib/$moduleName.jar"))
-      }
-      else {
-        baseEntries.add(entry)
-      }
-    }
-  }
-
-  override fun loadCorePluginLayout(): PluginLayoutDescription {
-    return toPluginLayoutDescription(
-      entries = mergedContentDataForEmbeddedModules,
-      mainModuleName = mainModuleOfCorePlugin,
-      pluginDescriptorPath = corePluginDescriptorPath,
-      mainLibDir = "dist.all/lib",
-      jarsToIgnore = setOf("dist.all/lib/testFramework.jar")
-    )
-  }
-
-  override fun loadMainModulesOfBundledPlugins(): List<String> {
-    return mainModulesOfBundledPlugins.toList()
-  }
-
-  override fun loadPluginLayout(mainModule: JpsModule): PluginLayoutDescription? {
-    if (mainModule.name !in mainModulesOfBundledPlugins && mainModule.name !in mainModulesOfNonBundledPlugins) {
-      return null
-    }
-    val contentRootUrl = mainModule.contentRootsList.urls.firstOrNull() ?: return null
-    val pluginContentPath = "plugin-content.yaml"
-    val contentDataPath = JpsPathUtil.urlToNioPath(contentRootUrl).resolve(pluginContentPath)
-    if (!contentDataPath.exists()) return null
-    val pluginDescriptorPath = "META-INF/plugin.xml"
-    if (JpsJavaExtensionService.getInstance().findSourceFileInProductionRoots(mainModule, pluginDescriptorPath) == null) {
-      throw PluginModuleConfigurationError(
-        pluginModelModuleName = mainModule.name,
-        errorMessage = """
-                '$pluginDescriptorPath' file is not found in source and resource roots of module '"${mainModule.name}', but '$pluginContentPath' is present in it.
-                If '${mainModule.name}' is not the main module of a plugin anymore, delete '$pluginContentPath' to avoid confusion. 
-              """.trimIndent(),
-      )
-    }
-
-    val contentData = deserializeContentData(contentDataPath.readText())
-    return toPluginLayoutDescription(
-      entries = contentData,
-      mainModuleName = mainModule.name,
-      pluginDescriptorPath = pluginDescriptorPath,
-      mainLibDir = "lib",
-      jarsToIgnore = emptySet()
-    )
-  }
-
-  override val messageDescribingHowToUpdateLayoutData: String
-    get() = "Note that the test uses the data from *content.yaml files, so if you changed the layouts, run '$nameOfTestWhichGeneratesFiles' to make sure that they are up-to-date."
-}
-
 internal fun toPluginLayoutDescription(
   entries: List<FileEntry>,
   mainModuleName: String,
   pluginDescriptorPath: String,
   mainLibDir: String,
   jarsToIgnore: Set<String>,
+  libraryRootResolver: (libraryName: String, moduleLibraryModuleName: String?) -> List<Path> = { _, _ -> emptyList() },
 ): PluginLayoutDescription {
+  val libEntries = entries
+    .asSequence()
+    .filter { it.name.substringBeforeLast('/', "") == mainLibDir && it.name !in jarsToIgnore }
+    .toList()
+  val projectLibraries = libEntries
+    .asSequence()
+    .flatMap { entry ->
+      val projectLibraryNames = entry.projectLibraries.asSequence().map { it.name }
+      val fileProjectLibraryName = listOfNotNull(entry.library.takeIf { entry.module == null }).asSequence()
+      projectLibraryNames + fileProjectLibraryName
+    }
+    .toCollection(LinkedHashSet())
+  val moduleLibraries = libEntries
+    .asSequence()
+    .flatMap { entry ->
+      val mergedLibraries = (entry.modules + entry.contentModules).asSequence()
+        .flatMap { module -> module.libraries.keys.asSequence().map { it to module.name } }
+      val fileLibrary = entry.library?.let { library -> entry.module?.let { module -> library to module } }
+      mergedLibraries + listOfNotNull(fileLibrary).asSequence()
+    }
+    .filterNot { (library, _) -> library.endsWith(".jar") }
+    .toCollection(LinkedHashSet())
+
   return PluginLayoutDescription(
     mainJpsModule = mainModuleName,
     pluginDescriptorPath = pluginDescriptorPath,
-    jpsModulesInClasspath = entries
-      .asSequence()
-      .filter { it.name.substringBeforeLast('/', "") == mainLibDir && it.name !in jarsToIgnore }
-      .flatMapTo(LinkedHashSet()) { entry -> entry.modules.map { it.name } }
+    jpsModulesInClasspath = libEntries
+      .flatMapTo(LinkedHashSet()) { entry -> entry.modules.map { it.name } },
+    libraryRootsInClasspath = projectLibraries.flatMap { libraryRootResolver(it, null) } +
+                              moduleLibraries.flatMap { (libraryName, moduleName) -> libraryRootResolver(libraryName, moduleName) },
   )
 }

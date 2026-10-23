@@ -1,5 +1,5 @@
 // "Make 'A' 'abstract'" "true"
-// K2_ERROR: Class 'A' is not abstract and does not implement abstract member:<br>fun foo(): Unit
+// K2_ERROR: ABSTRACT_MEMBER_NOT_IMPLEMENTED
 interface I {
     fun foo()
 }
@@ -7,4 +7,3 @@ interface I {
 <caret>class A : I {
 }
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AddModifierFixMpp
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AddModifierFixMpp

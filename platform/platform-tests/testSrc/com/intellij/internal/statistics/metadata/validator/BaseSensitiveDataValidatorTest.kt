@@ -1,6 +1,7 @@
 // Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.internal.statistics.metadata.validator
 
+import com.intellij.internal.statistic.StatisticsServiceScope
 import com.intellij.internal.statistic.eventLog.EventLogBuild
 import com.intellij.internal.statistic.eventLog.EventLogGroup
 import com.intellij.internal.statistic.eventLog.FeatureUsageData
@@ -27,6 +28,7 @@ import com.jetbrains.fus.reporting.RegionCode
 import com.jetbrains.fus.reporting.RemoteConfig
 import com.jetbrains.fus.reporting.defaults.DefaultMetadataStorage
 import com.jetbrains.fus.reporting.defaults.NoOpLoggerFactory
+import com.jetbrains.fus.reporting.model.config.v4.ConfigurationReleaseFilter
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.assertTrue
@@ -59,7 +61,11 @@ abstract class BaseSensitiveDataValidatorTest  : UsefulTestCase() {
 
   private fun singleFileFileStorage(content: String): FileStorage = object : FileStorage {
     override fun exists(path: String): Boolean = true
+    override fun list(path: String): List<String> = emptyList()
+    override fun delete(path: String) = Unit
     override fun openFileHandle(path: String, mode: FileStorageMode): FileHandle = object : FileHandle {
+      override val name: String
+        get() = path
       override fun exists(): Boolean = true
       override fun length(): Long = content.length.toLong()
       override fun read(index: Int): Byte = content[index].code.toByte()
@@ -82,7 +88,12 @@ abstract class BaseSensitiveDataValidatorTest  : UsefulTestCase() {
       )
     }.flatten()
     .toMap()
+
     override fun exists(path: String): Boolean = if (path.isEmpty()) true else fileHandles.containsKey(path)
+
+    override fun list(path: String): List<String> = fileHandles.keys.toList()
+
+    override fun delete(path: String) = Unit
 
     override fun openFileHandle(path: String, mode: FileStorageMode): FileHandle = fileHandles[path]!!.openFileHandle(path, mode)
 
@@ -108,16 +119,22 @@ abstract class BaseSensitiveDataValidatorTest  : UsefulTestCase() {
       override fun post(url: String, data: String): HttpResponse = HttpResponse(200, "")
     }
 
-    val messageBus = MessageBus()
+    val messageBus = MessageBus(StatisticsServiceScope.getScope())
 
     val remoteConfig = object : RemoteConfig {
       override fun getDictionaryUrl(): String = ""
       override fun getMetadataUrl(): String = ""
       override fun getSendUrl(): String = ""
       override fun provideOptions(): Map<String, String> = emptyMap()
+      override suspend fun update(): Boolean = true
+      override suspend fun scheduleUpdate() = Unit
+      override fun isUnreachable(): Boolean = false
+      override fun provideReleaseFilters(): List<ConfigurationReleaseFilter> = emptyList()
+      override fun provideReleaseFilters(releaseType: String?): List<ConfigurationReleaseFilter> = emptyList()
     }
 
     val fusConfig = FusClientConfig(
+      "IntelliJ",
       "TEST",
       "TEST",
       RECORDER_ID,
@@ -145,8 +162,8 @@ abstract class BaseSensitiveDataValidatorTest  : UsefulTestCase() {
       excludedFields = FeatureUsageData.platformDataKeys
     )
 
-    val fusComponents = FusComponentProvider.FusComponents(metadataStorage, messageBus, remoteConfig)
-    return fusComponents
+    // The validator only needs the metadata storage; the FusClient handle is irrelevant for validation tests.
+    return FusComponentProvider.FusComponents(metadataStorage)
   }
 
   internal fun newValidator(content: String, customBuild: String? = null): TestSensitiveDataValidator {

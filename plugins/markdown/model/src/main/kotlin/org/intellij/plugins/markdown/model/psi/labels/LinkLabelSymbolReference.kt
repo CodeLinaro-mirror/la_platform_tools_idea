@@ -10,7 +10,6 @@ import com.intellij.psi.PsiFile
 import org.intellij.plugins.markdown.lang.psi.MarkdownRecursiveElementVisitor
 import org.intellij.plugins.markdown.lang.psi.impl.MarkdownLinkLabel
 import org.intellij.plugins.markdown.model.psi.MarkdownPsiSymbolReferenceBase
-import org.intellij.plugins.markdown.model.psi.labels.LinkLabelSymbol.Companion.isDeclaration
 
 internal class LinkLabelSymbolReference(
   element: PsiElement,
@@ -18,11 +17,8 @@ internal class LinkLabelSymbolReference(
   private val text: String,
 ): MarkdownPsiSymbolReferenceBase(element, rangeInElement), PsiCompletableReference {
   override fun resolveReference(): Collection<Symbol> {
-    val file = element.containingFile
-    val declarations = file.collectLinkLabels().asSequence().filter { it.isDeclaration }
-    val matchingDeclarations = declarations.filter { it.text == text }
-    val symbols = matchingDeclarations.mapNotNull { LinkLabelSymbol.createPointer(it)?.dereference() }
-    return symbols.toList()
+    val definition = LinkDefinitions.get(element.containingFile).find(text) ?: return emptyList()
+    return listOfNotNull(LinkLabelSymbol.createPointer(definition.linkLabel).dereference())
   }
 
   override fun getCompletionVariants(): Collection<LookupElement> {

@@ -1,6 +1,9 @@
 // Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python;
 
+import com.jetbrains.python.allure.Layers;
+import com.jetbrains.python.allure.Subsystems;
+
 import com.intellij.openapi.util.Couple;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.containers.ContainerUtil;
@@ -29,6 +32,8 @@ import java.util.regex.Pattern;
 
 import static com.jetbrains.python.psi.types.PyTypeParameterMapping.Option.MAP_UNMATCHED_EXPECTED_TYPES_TO_ANY;
 
+@Subsystems.CodeInsight
+@Layers.Functional
 public final class PyTypeParameterMappingTest extends PyTestCase {
   private static final Pattern TYPE_VAR_NAME = Pattern.compile("(?<!\\*)[A-Z_][A-Z0-9_]*\\b");
   private static final Pattern TYPE_VAR_TUPLE_NAME = Pattern.compile("(?<!\\*)\\*[A-Z_][A-Z0-9_]*s\\b");
@@ -173,15 +178,15 @@ public final class PyTypeParameterMappingTest extends PyTestCase {
   public void testSingleUnmatchedExpectedTypeIsMappedToAny() {
     doTestShapeMapping("int, T", "int", """
       int -> int
-      T -> Any
+      T -> Unknown
       """, MAP_UNMATCHED_EXPECTED_TYPES_TO_ANY);
   }
 
   public void testTwoUnmatchedExpectedTypeAreMappedToAny() {
     doTestShapeMapping("int, T1, T2", "int", """
       int -> int
-      T1 -> Any
-      T2 -> Any
+      T1 -> Unknown
+      T2 -> Unknown
       """, MAP_UNMATCHED_EXPECTED_TYPES_TO_ANY);
   }
 

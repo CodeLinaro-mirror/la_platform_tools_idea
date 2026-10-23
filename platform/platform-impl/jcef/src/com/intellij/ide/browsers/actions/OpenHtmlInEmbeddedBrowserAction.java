@@ -8,6 +8,7 @@ import com.intellij.ide.browsers.WebBrowserManager;
 import com.intellij.ide.browsers.WebBrowserService;
 import com.intellij.ide.browsers.WebBrowserUrlProvider;
 import com.intellij.ide.browsers.WebBrowserXmlService;
+import com.intellij.ide.trustedProjects.TrustedProjects;
 import com.intellij.openapi.actionSystem.ActionPlaces;
 import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnActionEvent;
@@ -30,6 +31,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.awt.event.ActionEvent;
 import java.util.Collection;
+import java.util.List;
 
 import static com.intellij.ide.browsers.OpenInBrowserRequestKt.createOpenInBrowserRequest;
 
@@ -59,12 +61,7 @@ public final class OpenHtmlInEmbeddedBrowserAction extends DumbAwareAction {
         BaseOpenInBrowserActionKt.chooseUrl(urls).onSuccess((url) -> {
           WebPreviewVirtualFile file = new WebPreviewVirtualFile(virtualFile, url);
           if (!FileEditorManager.getInstance(project).isFileOpen(file)) {
-            OpenInRightSplitAction.Companion.openInRightSplit(
-              project,
-              file,
-              null,
-              false
-            );
+            OpenInRightSplitAction.openInRightSplit(project, List.of(file), false);
           }
           else {
             FileEditorManagerEx.getInstanceEx(project).openFile(file, null, new FileEditorOpenOptions().withReuseOpen());
@@ -79,10 +76,15 @@ public final class OpenHtmlInEmbeddedBrowserAction extends DumbAwareAction {
 
   @Override
   public void update(@NotNull AnActionEvent e) {
-    OpenInBrowserRequest request = BaseOpenInBrowserAction.Handler.doUpdate(e);
     Project project = e.getProject();
+    if (project == null || !TrustedProjects.isProjectTrusted(project)) {
+      e.getPresentation().setEnabledAndVisible(false);
+      return;
+    }
+
+    OpenInBrowserRequest request = BaseOpenInBrowserAction.Handler.doUpdate(e);
     PsiFile psiFile = e.getData(CommonDataKeys.PSI_FILE);
-    boolean enabled = JBCefApp.isSupported() && project != null && psiFile != null && request != null && psiFile.getVirtualFile() != null;
+    boolean enabled = JBCefApp.isSupported() && psiFile != null && request != null && psiFile.getVirtualFile() != null;
     e.getPresentation().setEnabledAndVisible(enabled);
     if (!enabled) return;
 

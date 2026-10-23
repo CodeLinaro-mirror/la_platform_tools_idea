@@ -6,7 +6,7 @@ import com.intellij.core.CoreBundle
 import com.intellij.diagnostic.LoadingState
 import com.intellij.ide.IdeBundle
 import com.intellij.ide.plugins.marketplace.MarketplacePluginDownloadService
-import com.intellij.ide.plugins.marketplace.PluginSignatureChecker
+import com.intellij.ide.plugins.marketplace.PluginSignatureVerifier
 import com.intellij.ide.plugins.marketplace.statistics.PluginManagerUsageCollector
 import com.intellij.ide.plugins.marketplace.statistics.enums.InstallationSourceEnum
 import com.intellij.ide.plugins.newui.PluginManagerSession
@@ -27,7 +27,7 @@ import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ex.MessagesEx
-import com.intellij.openapi.updateSettings.impl.PluginUpdateSourceId
+import com.intellij.openapi.updateSettings.impl.PluginUpdateSource
 import com.intellij.openapi.util.Pair
 import com.intellij.openapi.util.ThrowableComputable
 import com.intellij.openapi.util.io.NioFiles
@@ -62,6 +62,14 @@ object PluginInstaller {
 
   @JvmField
   internal val ourLock: Any = Any()
+
+  @ApiStatus.Internal
+  @JvmStatic
+  fun verifyPluginSignatureIfRequired(
+    descriptor: IdeaPluginDescriptor,
+    pluginFile: Path,
+    isMarketplace: Boolean,
+  ): Boolean = PluginSignatureVerifier.verifyIfRequired(descriptor, pluginFile, isMarketplace, false)
 
   /**
    * @return true if restart is needed
@@ -111,31 +119,21 @@ object PluginInstaller {
   @ApiStatus.Internal
   @JvmStatic
   fun unloadDynamicPlugin(
-    parentComponent: JComponent?,
     pluginDescriptor: PluginMainDescriptor,
-    isUpdate: Boolean,
   ): Boolean {
-    val options = DynamicPlugins.UnloadPluginOptions().withDisable(false).withWaitForClassloaderUnload(true).withUpdate(isUpdate)
-    return if (parentComponent != null) {
-      DynamicPlugins.unloadPluginWithProgress(null, parentComponent, pluginDescriptor, options)
-    }
-    else {
-      DynamicPlugins.unloadPlugin(pluginDescriptor, options)
-    }
+    return DynamicPlugins.unloadPlugin(pluginDescriptor)
   }
 
   @ApiStatus.Internal
   @JvmStatic
   fun uninstallDynamicPlugin(
-    parentComponent: JComponent?,
     pluginDescriptor: PluginMainDescriptor,
-    isUpdate: Boolean,
   ): Boolean {
     if (pluginDescriptor.isBundled()) {
       throw IllegalArgumentException("Plugin is bundled: " + pluginDescriptor.getPluginId())
     }
 
-    var uninstalledWithoutRestart = !pluginDescriptor.isEnabled() || unloadDynamicPlugin(parentComponent, pluginDescriptor, isUpdate)
+    var uninstalledWithoutRestart = !pluginDescriptor.isEnabled() || unloadDynamicPlugin(pluginDescriptor)
     if (uninstalledWithoutRestart) {
       try {
         LOG.debug("Deleting dynamic plugin from disk: " + pluginDescriptor.getPluginPath())
@@ -167,7 +165,19 @@ object PluginInstaller {
     newPluginPath: Path,
     oldPluginPath: Path?,
   ) {
-    installAfterRestart(newDescriptor, newPluginPath, oldPluginPath, !keepArchive())
+    installAfterRestartAndKeepIfNecessary(newDescriptor, newPluginPath, oldPluginPath, null)
+  }
+
+  @ApiStatus.Internal
+  @JvmStatic
+  @Throws(IOException::class)
+  fun installAfterRestartAndKeepIfNecessary(
+    newDescriptor: IdeaPluginDescriptor,
+    newPluginPath: Path,
+    oldPluginPath: Path?,
+    replacedPluginArchive: Path?,
+  ) {
+    installAfterRestart(newDescriptor, newPluginPath, oldPluginPath, !keepArchive(), replacedPluginArchive)
   }
 
   @ApiStatus.Internal
@@ -179,14 +189,34 @@ object PluginInstaller {
     existingPlugin: Path?,
     deleteSourceFile: Boolean,
   ) {
+    installAfterRestart(descriptor, sourceFile, existingPlugin, deleteSourceFile, null)
+  }
+
+  private fun installAfterRestart(
+    descriptor: IdeaPluginDescriptor,
+    sourceFile: Path,
+    existingPlugin: Path?,
+    deleteSourceFile: Boolean,
+    replacedPluginArchive: Path?,
+  ) {
     LOG.debug("Scheduling installation of plugin $descriptor after restart")
     val commands = ArrayList<ActionCommand>()
+
+    val pluginsPath = getPluginsPath()
+    if (replacedPluginArchive != null) {
+      val replacedTarget = if (replacedPluginArchive.fileName.toString().endsWith(".jar")) {
+        pluginsPath.resolve(replacedPluginArchive.fileName)
+      }
+      else {
+        pluginsPath.resolve(rootEntryName(replacedPluginArchive))
+      }
+      commands.add(DeleteCommand(replacedTarget))
+    }
 
     if (existingPlugin != null) {
       commands.add(DeleteCommand(existingPlugin))
     }
 
-    val pluginsPath = getPluginsPath()
     if (sourceFile.fileName.toString().endsWith(".jar")) {
       commands.add(CopyCommand(sourceFile, pluginsPath.resolve(sourceFile.fileName)))
     }
@@ -268,7 +298,7 @@ object PluginInstaller {
 
   @ApiStatus.Internal
   @JvmStatic
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun installFromDisk(
     model: InstalledPluginsTableModel,
     pluginEnabler: PluginEnabler,
@@ -276,7 +306,7 @@ object PluginInstaller {
     project: Project?,
     parent: JComponent?,
     callback: Consumer<in PluginInstallCallbackData>,
-    pluginUpdateSourceCallback: BiConsumer<PluginId, PluginUpdateSourceId>,
+    pluginUpdateSourceCallback: BiConsumer<PluginId, PluginUpdateSource>,
   ) {
     try {
       val pluginDescriptor = ProgressManager.getInstance().runProcessWithProgressSynchronously(
@@ -310,7 +340,8 @@ object PluginInstaller {
         return
       }
 
-      val error = PluginManagerCore.checkBuildNumberCompatibility(pluginDescriptor, PluginManagerCore.buildNumber)
+      val error = PluginCompatibilityUtils.checkBuildNumberCompatibility(pluginDescriptor, PluginManagerCore.buildNumber)
+        ?.convertToUIError(pluginDescriptor)
       if (error != null) {
         MessagesEx.showErrorDialog(parent, error.detailedMessage, CommonBundle.getErrorTitle())
         return
@@ -333,7 +364,7 @@ object PluginInstaller {
       val previousVersion = installedPlugin?.getVersion()
       PluginManagerUsageCollector.pluginInstallationStarted(pluginDescriptor, InstallationSourceEnum.FROM_DISK, previousVersion)
 
-      if (!PluginSignatureChecker.verifyIfRequired(pluginDescriptor, file, false, true)) {
+      if (!PluginSignatureVerifier.verifyIfRequired(pluginDescriptor, file, false, true)) {
         return
       }
 
@@ -423,14 +454,12 @@ object PluginInstaller {
           callback.accept(callbackData)
         }
       }
-      for ((pluginId, pluginUpdateSourceId) in operation.dependentPluginUpdateSourceIds) {
+      for ((pluginId, pluginUpdateSourceId) in operation.dependentPluginUpdateSources) {
         pluginUpdateSourceCallback.accept(pluginId, pluginUpdateSourceId)
       }
 
       if (file.toString().endsWith(".zip") && keepArchive()) {
-        val tempFile = MarketplacePluginDownloadService.getPluginTempFile()
-        Files.copy(file, tempFile, StandardCopyOption.REPLACE_EXISTING)
-        MarketplacePluginDownloadService.renameFileToZipRoot(tempFile)
+        MarketplacePluginDownloadService().storeArchive(file)
       }
     }
     catch (ex: IOException) {
@@ -441,7 +470,7 @@ object PluginInstaller {
 
   @ApiStatus.Internal
   @JvmStatic
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun installAndLoadDynamicPlugin(file: Path, descriptor: IdeaPluginDescriptorImpl): Boolean {
     return installAndLoadDynamicPlugin(file, null, descriptor)
   }
@@ -451,7 +480,7 @@ object PluginInstaller {
    */
   @ApiStatus.Internal
   @JvmStatic
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun installAndLoadDynamicPlugin(
     file: Path,
     parent: JComponent?,
@@ -490,7 +519,7 @@ object PluginInstaller {
       if (!wasInstalledBefore) {
         // FIXME can't drop the disabled flag first because it's implementation filters ids against the current plugin set;
         //  so load first, then enable
-        targetDescriptor.isMarkedForLoading = true
+        // TODO the problem from the FIXME should be gone already with the new dynamic plugins support
         val result = DynamicPlugins.loadPlugin(targetDescriptor)
         PluginEnabler.HEADLESS.enable(setOf(targetDescriptor))
         return result
@@ -534,7 +563,7 @@ object PluginInstaller {
 
   @ApiStatus.Internal
   @JvmStatic
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun installPluginFromCallbackData(callbackData: PluginInstallCallbackData) {
     val descriptor = callbackData.pluginDescriptor
     val file = callbackData.file

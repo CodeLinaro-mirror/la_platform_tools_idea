@@ -14,8 +14,6 @@ import com.intellij.tools.ide.util.common.logError
 import com.intellij.tools.ide.util.common.logOutput
 import com.intellij.util.system.LowLevelLocalMachineAccess
 import com.intellij.util.system.OS
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import org.kodein.di.direct
 import org.kodein.di.instance
 import java.nio.file.Files
@@ -60,12 +58,12 @@ object JBRResolver {
     return JBRVersion(majorVersion, buildNumber)
   }
 
-  suspend fun downloadAndUnpackJbrFromBuildIfNeeded(jbrFullVersion: String): Path {
+  fun downloadAndUnpackJbrFromBuildIfNeeded(jbrFullVersion: String): Path {
     localJbrPathOverride()?.let { return it }
     return catchAll { downloadAndUnpackJbrIfNeeded(getJBRVersionFromBuild(jbrFullVersion)) } ?: throw JBRDownloadException(jbrFullVersion)
   }
 
-  suspend fun downloadAndUnpackJbrFromSourcesIfNeeded(jbrFullVersion: String): Path {
+  fun downloadAndUnpackJbrFromSourcesIfNeeded(jbrFullVersion: String): Path {
     localJbrPathOverride()?.let { return it }
     return catchAll { downloadAndUnpackJbrIfNeeded(getJBRVersionFromSources(jbrFullVersion)) } ?: throw JBRDownloadException(jbrFullVersion)
   }
@@ -121,8 +119,15 @@ object JBRResolver {
     }
   }
 
+  /**
+   * The archive file name [downloadAndUnpackJbrIfNeeded] hands to [JBRDownloader]. Public so tests
+   * that pre-provision the build-dependencies download cache can pin the same name.
+   */
+  fun jbrArchiveFileName(majorVersion: String, buildNumber: String, os: String, arch: String): String =
+    "jbrsdk_jcef-$majorVersion-$os-$arch-b$buildNumber.tar.gz"
+
   @OptIn(LowLevelLocalMachineAccess::class)
-  suspend fun downloadAndUnpackJbrIfNeeded(jbrVersion: JBRVersion): Path = computeWithSpan("download and unpack JBR") {
+  fun downloadAndUnpackJbrIfNeeded(jbrVersion: JBRVersion): Path = computeWithSpan("download and unpack JBR") {
     val (majorVersion, buildNumber) = listOf(jbrVersion.majorVersion, jbrVersion.buildNumber)
 
     var os = when (OS.CURRENT) {
@@ -141,10 +146,8 @@ object JBRResolver {
       false -> "x64"
     }
 
-    val jbrFileName = "jbrsdk_jcef-$majorVersion-$os-$arch-b$buildNumber.tar.gz"
-    val appHome = withContext(Dispatchers.IO) {
-      di.direct.instance<JBRDownloader>().downloadJbr(jbrFileName)
-    }
+    val jbrFileName = jbrArchiveFileName(majorVersion, buildNumber, os, arch)
+    val appHome = di.direct.instance<JBRDownloader>().downloadJbr(jbrFileName)
     return if (OS.CURRENT == OS.macOS && !ConfigurationStorage.useDockerContainer()) appHome.resolve("Contents/Home") else appHome
   }
 

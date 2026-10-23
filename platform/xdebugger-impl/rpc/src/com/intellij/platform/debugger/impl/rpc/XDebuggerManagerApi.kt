@@ -1,11 +1,12 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.platform.debugger.impl.rpc
 
+import com.intellij.execution.RunContentDescriptorIdImpl
 import com.intellij.openapi.editor.impl.EditorId
 import com.intellij.platform.project.ProjectId
 import com.intellij.platform.rpc.Id
-import com.intellij.platform.rpc.RemoteApiProviderService
 import com.intellij.platform.rpc.UID
+import com.intellij.platform.rpc.lite.LiteRemoteApiProviderService
 import fleet.rpc.RemoteApi
 import fleet.rpc.Rpc
 import fleet.rpc.core.RpcFlow
@@ -26,12 +27,13 @@ interface XDebuggerManagerApi : RemoteApi<Unit> {
 
   suspend fun sessionTabSelected(projectId: ProjectId, sessionId: XDebugSessionId?)
 
-  suspend fun sessionTabClosed(sessionId: XDebugSessionId)
+  suspend fun sessionTabClosed(descriptorId: RunContentDescriptorIdImpl)
 
   companion object {
     @JvmStatic
     suspend fun getInstance(): XDebuggerManagerApi {
-      return RemoteApiProviderService.resolve(remoteApiDescriptor<XDebuggerManagerApi>())
+      // TODO: IJPL-252054
+      return LiteRemoteApiProviderService.awaitConnectionAndResolve(remoteApiDescriptor<XDebuggerManagerApi>())
     }
   }
 }
@@ -111,12 +113,14 @@ sealed interface XDebuggerSessionEvent {
     override val state: XDebugSessionState,
   ) : EventWithState
 
+  /** [executionStack] is the stack that holds [stackFrame]; the backend can select a thread other than the stopped one. */
   @Serializable
   class StackFrameChanged(
     override val state: XDebugSessionState,
     val sourcePositionDto: XSourcePositionDto?,
     val topSourcePositionDto: XSourcePositionDto?,
     val isTopFrame: Boolean,
+    val executionStack: XExecutionStackDto?,
     val stackFrame: XStackFrameDto?,
   ) : EventWithState
 
@@ -147,5 +151,6 @@ data class SuspendData(
 @Serializable
 data class XDebugSessionsList(
   val list: List<XDebugSessionDto>,
+  val currentSessionId: XDebugSessionId?,
   val eventFlow: RpcFlow<XDebuggerManagerSessionEvent>,
 )

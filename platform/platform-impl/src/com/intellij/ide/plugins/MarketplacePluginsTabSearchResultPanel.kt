@@ -11,6 +11,7 @@ import com.intellij.ide.plugins.marketplace.statistics.PluginManagerUsageCollect
 import com.intellij.ide.plugins.marketplace.statistics.PluginManagerUsageCollector.updateAndGetSearchIndex
 import com.intellij.ide.plugins.newui.LinkComponent
 import com.intellij.ide.plugins.newui.PluginModelAsyncOperationsExecutor
+import com.intellij.ide.plugins.newui.PluginModelFacade
 import com.intellij.ide.plugins.newui.PluginUiModel
 import com.intellij.ide.plugins.newui.PluginsGroup
 import com.intellij.ide.plugins.newui.PluginsGroupComponent
@@ -40,7 +41,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.jetbrains.annotations.ApiStatus
 import java.awt.Component
 import java.awt.Graphics
 import java.awt.Point
@@ -51,8 +51,8 @@ import javax.accessibility.AccessibleContext
 import javax.accessibility.AccessibleRole
 import javax.swing.Icon
 import javax.swing.SwingConstants
+import kotlin.time.TimeSource
 
-@ApiStatus.Internal
 internal class MarketplacePluginsTabSearchResultPanel(
   coroutineScope: CoroutineScope,
   marketplaceController: SearchUpDownPopupController,
@@ -61,6 +61,7 @@ internal class MarketplacePluginsTabSearchResultPanel(
   private val mySelectionListener: Consumer<in PluginsGroupComponent?>,
   private val myMarketplaceSortByGroup: DefaultActionGroup,
   private val myMarketplacePanelSupplier: Supplier<PluginsGroupComponentWithProgress?>,
+  private val myPluginModelFacade: PluginModelFacade,
 ) : SearchResultPanel(coroutineScope, marketplaceController, panel, true) {
   private val myMarketplaceSortByAction: LinkComponent
 
@@ -178,8 +179,12 @@ internal class MarketplacePluginsTabSearchResultPanel(
         updateSearchPanel(result, result.getModels())
       }
       else {
+        val requestStart = TimeSource.Monotonic.markNow()
         PluginModelAsyncOperationsExecutor
           .performMarketplaceSearch(parser.urlQuery).let { searchResult ->
+            tracker.measure(PluginManagerUiMetric.SEARCH_MARKETPLACE_REQUEST, requestStart)
+            if (searchResult.error != null) tracker.logEvent(PluginManagerUiEvent.SEARCH_MARKETPLACE_ERROR)
+            if (searchResult.pluginModels.isEmpty()) tracker.logEvent(PluginManagerUiEvent.SEARCH_MARKETPLACE_EMPTY)
             applySearchResult(
               result, searchResult, customRepositoriesMap,
               parser, searchIndex
@@ -275,6 +280,7 @@ internal class MarketplacePluginsTabSearchResultPanel(
     val ids = result.getModels().mapTo(LinkedHashSet()) { it.pluginId }
     result.getPreloadedModel().setInstalledPlugins(getInstance().findInstalledPluginsSync(ids))
     result.getPreloadedModel().setPluginInstallationStates(getInstance().getInstallationStatesSync())
+    result.getPreloadedModel().setPluginUpdateSources(myPluginModelFacade.getPendingPluginUpdateSourcesSync(ids.toList()))
     PluginManagerUsageCollector.performMarketplaceSearch(
       getActiveProject(), parser, result.getModels(),
       searchIndex, pluginToScore

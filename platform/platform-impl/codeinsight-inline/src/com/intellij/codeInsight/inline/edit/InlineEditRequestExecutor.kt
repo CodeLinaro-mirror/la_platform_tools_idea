@@ -5,6 +5,7 @@ import com.intellij.codeInsight.inline.completion.exception.InlineCompletionTest
 import com.intellij.codeWithMe.ClientId
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.diagnostic.debug
+import com.intellij.diagnostic.rethrowControlFlowException
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.progress.checkCanceled
 import com.intellij.platform.util.coroutines.childScope
@@ -26,7 +27,6 @@ import kotlinx.coroutines.plus
 import org.jetbrains.annotations.ApiStatus
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
-import kotlin.coroutines.cancellation.CancellationException
 
 @JvmInline
 @ApiStatus.Internal
@@ -42,10 +42,10 @@ value class InlineEditRequestJob(private val job: Job) : Disposable {
 @ApiStatus.Internal
 sealed interface InlineEditRequestExecutor : Disposable {
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun switchRequest(onJobCreated: (InlineEditRequestJob) -> Unit, newRequest: suspend CoroutineScope.() -> Unit)
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun cancelActiveRequest()
 
   suspend fun awaitActiveRequest()
@@ -103,7 +103,7 @@ private class InlineEditRequestExecutorImpl(parentScope: CoroutineScope) : Inlin
     }
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   override fun switchRequest(onJobCreated: (InlineEditRequestJob) -> Unit, newRequest: suspend CoroutineScope.() -> Unit) {
     ThreadingAssertions.assertEventDispatchThread()
     if (checkNotCancelled()) {
@@ -161,9 +161,7 @@ private class InlineEditRequestExecutorImpl(parentScope: CoroutineScope) : Inlin
   }
 
   private fun ignoreExpectedTestExceptionsHandler(): CoroutineExceptionHandler = CoroutineExceptionHandler { _, throwable ->
-    if (throwable is CancellationException) {
-      throw throwable
-    }
+    rethrowControlFlowException(throwable)
     if (InlineCompletionTestExceptions.isExpectedTestException(throwable)) {
       LOG.debug(throwable) { "Caught EXPECTED test exception." }
     }

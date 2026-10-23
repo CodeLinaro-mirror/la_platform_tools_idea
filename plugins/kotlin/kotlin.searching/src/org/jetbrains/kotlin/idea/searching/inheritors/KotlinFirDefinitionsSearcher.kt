@@ -13,7 +13,6 @@ import com.intellij.psi.search.searches.FunctionalExpressionSearch
 import com.intellij.util.Processor
 import com.intellij.util.QueryExecutor
 import org.jetbrains.kotlin.asJava.elements.KtLightMethod
-import org.jetbrains.kotlin.asJava.toFakeLightClass
 import org.jetbrains.kotlin.asJava.toLightClass
 import org.jetbrains.kotlin.asJava.unwrapped
 import org.jetbrains.kotlin.idea.findUsages.KotlinFindUsagesSupport
@@ -33,6 +32,7 @@ import org.jetbrains.kotlin.psi.KtPsiUtil
 import org.jetbrains.kotlin.psi.KtSecondaryConstructor
 import org.jetbrains.kotlin.psi.psiUtil.contains
 import org.jetbrains.kotlin.psi.psiUtil.isExpectDeclaration
+import org.jetbrains.kotlin.util.asFakePsiClass
 
 class KotlinFirDefinitionsSearcher : QueryExecutor<PsiElement, DefinitionsScopedSearch.SearchParameters> {
     override fun execute(queryParameters: DefinitionsScopedSearch.SearchParameters, consumer: Processor<in PsiElement>): Boolean {
@@ -129,11 +129,11 @@ private fun processClassImplementations(klass: KtClassOrObject, searchScope: Sea
         return processLightClassLocalImplementations(klass, searchScope, consumer)
     }
 
-    if (!KotlinFindUsagesSupport.searchInheritors(klass, searchScope).all { consumer.process(it) }) {
+    if (!klass.processAllInheritors(consumer, searchScope)) {
         return false
     }
 
-    val lightClass = runReadAction { (klass.toLightClass() ?: klass.toFakeLightClass()).takeIf { LambdaUtil.isFunctionalClass(it) }}
+    val lightClass = runReadAction { (klass.toLightClass() ?: klass.asFakePsiClass()).takeIf { LambdaUtil.isFunctionalClass(it) }}
     if (lightClass != null) {
         return FunctionalExpressionSearch.search(lightClass).asIterable().all { consumer.process(it) }
     }
@@ -150,7 +150,7 @@ private fun processLightClassLocalImplementations(
         val virtualFiles = searchScope.scope.mapTo(HashSet()) { it.containingFile.virtualFile }
         GlobalSearchScope.filesScope(ktClass.project, virtualFiles)
     }
-    return ktClass.findAllInheritors(globalScope).all { candidate ->
+    return ktClass.processAllInheritors( { candidate ->
         val candidateOrigin = candidate.unwrapped ?: candidate
         val inScope = runReadAction { candidateOrigin in searchScope }
         if (inScope) {
@@ -158,7 +158,7 @@ private fun processLightClassLocalImplementations(
         } else {
             true
         }
-    }
+    }, globalScope)
 }
 
 private fun processFunctionImplementations(
@@ -166,7 +166,7 @@ private fun processFunctionImplementations(
     scope: SearchScope,
     consumer: Processor<PsiElement>,
 ): Boolean {
-    if (!function.findAllOverridings(scope).all { consumer.process(it) }) return false
+    if (!function.processAllOverridings(consumer, scope)) return false
 
     val method = runReadAction { function.toPossiblyFakeLightMethods().firstOrNull() } ?: return true
     return FunctionalExpressionSearch.search(method, scope).forEach(consumer)
@@ -176,8 +176,8 @@ private fun processPropertyImplementations(
     declaration: KtCallableDeclaration,
     scope: SearchScope,
     consumer: Processor<PsiElement>
-): Boolean = declaration.findAllOverridings(scope).all { implementation ->
-    if (isDelegated(implementation)) return@all true
+): Boolean = declaration.processAllOverridings(Processor processor@{ implementation ->
+    if (isDelegated(implementation)) return@processor true
 
     val elementToProcess = runReadAction {
         when (val mirrorElement = (implementation as? KtLightMethod)?.kotlinOrigin) {
@@ -188,10 +188,9 @@ private fun processPropertyImplementations(
     }
 
     consumer.process(elementToProcess)
-}
+}, scope)
 
 private fun processActualDeclarations(declaration: KtDeclaration, consumer: Processor<PsiElement>): Boolean = runReadAction {
     if (!declaration.isExpectDeclaration()) true
     else declaration.actualsForExpect().all(consumer::process)
 }
-

@@ -4,8 +4,15 @@
 <!-- Note: Files are kept under VCS to support running products without dev mode (deprecated) -->
 <idea-plugin>
   <content namespace="jetbrains">
+    <!-- region nested: libraries.lsp4j -->
+    <module name="intellij.libraries.eclipse.lsp4j" loading="embedded"/>
+    <module name="intellij.libraries.eclipse.lsp4j.jsonrpc" loading="embedded"/>
+    <!-- endregion -->
+
+    <!-- region direct modules -->
     <module name="intellij.platform.lsp" loading="embedded"/>
     <module name="intellij.platform.lsp.impl" loading="embedded"/>
     <module name="intellij.platform.lsp.impl.structureView"/>
+    <!-- endregion -->
   </content>
 </idea-plugin>

@@ -10,9 +10,14 @@
     <module name="intellij.platform.kernel.backend"/>
     <module name="intellij.platform.lang"/>
     <module name="intellij.platform.lang.impl"/>
+    <module name="intellij.platform.project"/>
+    <module name="intellij.platform.rpc.backend"/>
   </dependencies>
   <!-- endregion -->
   <extensions defaultExtensionNs="com.intellij">
-    <platform.rpc.backend.remoteApiProvider implementation="com.intellij.platform.bookmarks.backend.BookmarksServiceProvider"/>
+    <platform.rpc.backend.remoteApiProvider implementation="com.intellij.platform.bookmarks.backend.BookmarksServiceProvider"
+                                            apiInterfaces="com.intellij.platform.bookmarks.rpc.BookmarksApi"/>
+
+    <projectService serviceImplementation="com.intellij.ide.bookmarks.BookmarkManager"/>
   </extensions>
 </idea-plugin>

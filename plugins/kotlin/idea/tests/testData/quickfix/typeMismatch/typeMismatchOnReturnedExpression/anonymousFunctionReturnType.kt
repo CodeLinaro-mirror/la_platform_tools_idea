@@ -1,10 +1,9 @@
 // "Specify 'SomeType' return type for enclosing function" "true"
-// K2_ERROR: Return type mismatch: expected 'Unit', actual 'SomeType'.
-// K2_ERROR: Return type mismatch: expected 'Unit', actual 'SomeType'.
+// K2_ERROR: RETURN_TYPE_MISMATCH
+// K2_ERROR: RETURN_TYPE_MISMATCH
 package test
 
 class SomeType
 
 val anonymous = fun(param: SomeType) { return <caret>param }
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ChangeCallableReturnTypeFix$ForEnclosing
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeTypeQuickFixFactories$UpdateTypeQuickFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeTypeQuickFixFactories$UpdateTypeQuickFix

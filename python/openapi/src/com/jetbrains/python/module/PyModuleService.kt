@@ -7,6 +7,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.util.Consumer
 import com.intellij.util.concurrency.annotations.RequiresWriteLock
+import com.jetbrains.python.PyInternalExecApi
 import org.jetbrains.annotations.ApiStatus
 
 @ApiStatus.Internal
@@ -36,10 +37,11 @@ interface PyModuleService {
   fun isPythonModule(module: Module): Boolean
 
   /**
-   * Do not use it directly, use `Module.pythonSdk = ` instead
+   * Do not use it directly. Use `PyProject.setPythonInterpreter`.
    */
   @ApiStatus.Internal
-  @RequiresWriteLock
+  @RequiresWriteLock(generateAssertion = false /* IJPL-115548 */)
+  @PyInternalExecApi
   fun setPythonSdk(module: Module, sdk: Sdk?)
 
   companion object {

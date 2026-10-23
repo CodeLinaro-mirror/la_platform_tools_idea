@@ -79,7 +79,7 @@ internal class FrontendCommitChangesViewWithToolbarPanel(
         ChangesViewDiffApi.getInstance().notifySelectionUpdated(project.projectId(), it)
       }
     }
-    changesView.addSelectionListener({ diffableSelectionHelper.tryUpdateSelection() }, cs.asDisposable())
+    changesView.addSelectionListener({ diffableSelectionHelper.updateSelection() }, cs.asDisposable())
   }
 
   override fun getModelData(): ModelData {
@@ -97,6 +97,12 @@ internal class FrontendCommitChangesViewWithToolbarPanel(
     }
   }
 
+  override fun onTreeModelUpdated() {
+    // The file counter values depend on the model, not only on the selection, so they have to be recalculated even if
+    // the same change is still selected.
+    diffableSelectionHelper.updateSelectionAfterModelChange()
+  }
+
   private suspend fun subscribeToBackendEvents() {
     durable {
       ChangesViewApi.getInstance().getBackendChangesViewEvents(project.projectId()).collect { event ->
@@ -111,8 +117,8 @@ internal class FrontendCommitChangesViewWithToolbarPanel(
   }
 
   private suspend fun forwardDiffActionsToBackend() {
-    diffRequests.collectLatest { (action, _) ->
-      ChangesViewDiffApi.getInstance().performDiffAction(project.projectId(), action)
+    diffRequests.collectLatest {
+      ChangesViewDiffApi.getInstance().performDiffAction(project.projectId())
     }
   }
 
@@ -122,24 +128,35 @@ internal class FrontendCommitChangesViewWithToolbarPanel(
       is BackendChangesViewEvent.InclusionChanged -> inclusionModel.applyBackendState(event.inclusionState)
       is BackendChangesViewEvent.RefreshRequested -> scheduleRefresh(event.withDelay, event.refreshCounter)
       is BackendChangesViewEvent.SelectPath -> withContext(Dispatchers.UiWithModelAccess) {
-        selectPath(event.path)
+        val selected = selectPath(event.path)
+        if (!selected) {
+          diffableSelectionHelper.updateSelection()
+          val selection = diffableSelectionHelper.diffableSelection.value
+          ChangesViewDiffApi.getInstance().notifySelectionUpdated(project.projectId(), selection)
+        }
       }
     }
   }
 
   @VisibleForTesting
-  @RequiresEdt
-  fun selectPath(path: ChangesTreePath) {
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
+  fun selectPath(path: ChangesTreePath): Boolean {
+    // Navigating inside an explicit selection of 2+ files must not collapse it to a single node: only the previewed
+    // file changes, as in monolith mode.
+    if (diffableSelectionHelper.moveWithinExplicitSelection(path)) return true
+
     if (path.changeId == null) {
+      if (!changesView.containsFile(path.filePath.filePath)) return false
       changesView.selectFile(path.filePath.filePath)
+      return true
     }
-    else {
-      val node = VcsTreeModelData.all(changesView).iterateNodes().find { node ->
-        val userObject = node.userObject
-        userObject is Change && path.matchesChange(userObject)
-      }
-      TreeUtil.selectNode(changesView, node)
-    }
+
+    val node = VcsTreeModelData.all(changesView).iterateNodes().find { node ->
+      val userObject = node.userObject
+      userObject is Change && path.matchesChange(userObject)
+    } ?: return false
+    TreeUtil.selectNode(changesView, node)
+    return true
   }
 
   private fun ChangesTreePath.matchesChange(change: Change): Boolean =
@@ -161,4 +178,3 @@ internal class FrontendCommitChangesViewWithToolbarPanel(
     }
   }
 }
-

@@ -1,7 +1,6 @@
 // "Remove 'const' modifier" "true"
-// K2_ERROR: Const 'val' is only allowed on top level, in named objects, in companion objects or companion blocks.
+// K2_ERROR: CONST_VAL_NOT_TOP_LEVEL_OR_OBJECT
 class Foo {
     <caret>const val s = "s"
 }
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.RemoveModifierFixBase
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.RemoveModifierFixBase

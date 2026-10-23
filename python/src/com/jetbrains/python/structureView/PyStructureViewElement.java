@@ -17,6 +17,7 @@ import com.jetbrains.python.psi.PyElementVisitor;
 import com.jetbrains.python.psi.PyFile;
 import com.jetbrains.python.psi.PyFunction;
 import com.jetbrains.python.psi.PyTargetExpression;
+import com.jetbrains.python.psi.PyTypeAliasStatement;
 import com.jetbrains.python.psi.icons.PythonPsiApiIcons;
 import com.jetbrains.python.psi.impl.PyPsiUtils;
 import com.jetbrains.python.psi.types.TypeEvalContext;
@@ -128,7 +129,7 @@ public class PyStructureViewElement implements StructureViewTreeElement {
 
     final Collection<StructureViewTreeElement> children = new ArrayList<>();
     for (PyElement e : getElementChildren(element)) {
-      children.add(createChild(e, getElementVisibility(e), false, elementIsField(e)));
+      children.add(createChild(e, getElementVisibility(e), myInherited, elementIsField(e)));
     }
     PyPsiUtils.assertValid(element);
     if (element instanceof PyClass) {
@@ -220,7 +221,7 @@ public class PyStructureViewElement implements StructureViewTreeElement {
   }
 
   protected boolean isWorthyItem(@Nullable PsiElement element, @Nullable PsiElement parent) {
-    if (element instanceof PyClass || element instanceof PyFunction) {
+    if (element instanceof PyClass || element instanceof PyFunction || element instanceof PyTypeAliasStatement) {
       return true;
     }
     if (!(parent instanceof PyClass) && (element instanceof PyTargetExpression) && !((PyTargetExpression)element).isQualified()) {

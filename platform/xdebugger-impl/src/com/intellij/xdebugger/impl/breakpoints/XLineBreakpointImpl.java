@@ -1,24 +1,20 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.xdebugger.impl.breakpoints;
 
-import com.intellij.openapi.editor.RangeMarker;
-import com.intellij.openapi.editor.markup.GutterDraggableObject;
 import com.intellij.openapi.editor.markup.RangeHighlighter;
 import com.intellij.openapi.project.ProjectUtil;
+import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileManager;
-import com.intellij.xdebugger.SplitDebuggerMode;
 import com.intellij.xdebugger.XDebuggerUtil;
 import com.intellij.xdebugger.XSourcePosition;
 import com.intellij.xdebugger.breakpoints.XBreakpointProperties;
 import com.intellij.xdebugger.breakpoints.XLineBreakpoint;
-import com.intellij.xdebugger.breakpoints.XLineBreakpointVerticalPlacement;
 import com.intellij.xdebugger.breakpoints.XLineBreakpointType;
-import com.intellij.xdebugger.impl.proxy.MonolithBreakpointManagerKt;
-import com.intellij.xdebugger.impl.proxy.MonolithBreakpointProxyKt;
+import com.intellij.xdebugger.breakpoints.XLineBreakpointVerticalPlacement;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -29,9 +25,6 @@ import java.io.File;
 public final class XLineBreakpointImpl<P extends XBreakpointProperties> extends XBreakpointBase<XLineBreakpoint<P>, P, LineBreakpointState>
   implements XLineBreakpoint<P> {
 
-  // for monolith compatibility only
-  private final XBreakpointVisualRepresentation myVisualRepresentation;
-
   private final XLineBreakpointType<P> myType;
   private volatile XSourcePosition mySourcePosition;
 
@@ -40,10 +33,6 @@ public final class XLineBreakpointImpl<P extends XBreakpointProperties> extends 
                              final @Nullable P properties, LineBreakpointState state) {
     super(type, breakpointManager, properties, state);
     myType = type;
-    myVisualRepresentation = new XBreakpointVisualRepresentation(getCoroutineScope(),
-                                                                 MonolithBreakpointProxyKt.asProxy(this),
-                                                                 !SplitDebuggerMode.isSplitDebugger(),
-                                                                 MonolithBreakpointManagerKt.asProxy(breakpointManager));
   }
 
   /**
@@ -51,7 +40,6 @@ public final class XLineBreakpointImpl<P extends XBreakpointProperties> extends 
    */
   @Deprecated
   public void updateUI() {
-    myVisualRepresentation.updateUI();
   }
 
   public @Nullable VirtualFile getFile() {
@@ -101,8 +89,12 @@ public final class XLineBreakpointImpl<P extends XBreakpointProperties> extends 
     return new File(VfsUtilCore.urlToPath(getFileUrl())).getName();
   }
 
+  /**
+   * @deprecated This method always returns null, since the backend's breakpoint doesn't have a highlighter.
+   */
+  @Deprecated
   public @Nullable RangeHighlighter getHighlighter() {
-    return myVisualRepresentation.getHighlighter();
+    return null;
   }
 
   @Override
@@ -124,20 +116,33 @@ public final class XLineBreakpointImpl<P extends XBreakpointProperties> extends 
     return super.isValid();
   }
 
+  /**
+   * @deprecated This method does nothing, since the backend's breakpoint doesn't have a range marker used in the update position.
+   */
+  @Deprecated
   public void updatePosition() {
-    RangeMarker highlighter = myVisualRepresentation.getRangeMarker();
-    if (highlighter != null && highlighter.isValid()) {
-      resetSourcePosition(); // reset the source position even if the line number has not changed, as the offset may be cached inside
-      setLine(-1, highlighter.getDocument().getLineNumber(highlighter.getStartOffset()), false);
-    }
   }
-
 
   void resetSourcePosition() {
     resetSourcePosition(-1);
   }
 
   public void resetSourcePosition(long requestId) {
+    resetSourcePosition(requestId, null);
+  }
+
+  /**
+   * Drops the cached source position after a document edit.
+   * The frontend sends the range its marker tracks with the position request.
+   * The type sees the range in {@link XLineBreakpointType#highlightRangeMoved} before the change event fires.
+   *
+   * @param requestId      the frontend request id, or {@code -1} for a local call
+   * @param highlightRange the range the frontend marker tracks, or {@code null} when no marker exists
+   */
+  public void resetSourcePosition(long requestId, @Nullable TextRange highlightRange) {
+    if (highlightRange != null) {
+      myType.highlightRangeMoved(this, highlightRange);
+    }
     mySourcePosition = null;
     if (getBreakpointManager().getRequestCounter().setRequestCompleted(getBreakpointId(), requestId)) {
       fireBreakpointChanged();
@@ -150,12 +155,8 @@ public final class XLineBreakpointImpl<P extends XBreakpointProperties> extends 
 
   public void setFileUrl(long requestId, String newUrl) {
     updateStateIfNeededAndNotify(requestId, newUrl, this::getFileUrl, (url) -> {
-      var oldFile = getFile();
       myState.setFileUrl(url);
       resetSourcePosition();
-      myVisualRepresentation.removeHighlighter();
-      myVisualRepresentation.redrawInlineInlays(oldFile, getLine());
-      myVisualRepresentation.redrawInlineInlays(getFile(), getLine());
     });
   }
 
@@ -167,58 +168,42 @@ public final class XLineBreakpointImpl<P extends XBreakpointProperties> extends 
   public void setPlacement(long requestId, @NotNull XLineBreakpointVerticalPlacement placement) {
     updateStateIfNeededAndNotify(requestId, placement, this::getPlacement, (newPlacement) -> {
       myState.setPlacement(newPlacement);
-      myVisualRepresentation.removeHighlighter();
-      myVisualRepresentation.redrawInlineInlays(getFile(), getLine());
     });
   }
 
   @ApiStatus.Internal
   public void setLine(final int line) {
-    setLine(-1, line, true);
+    setLine(-1, line);
   }
 
   public void setLine(long requestId, int line) {
-    setLine(requestId, line, true);
+    setLine(requestId, line, null);
   }
 
-  private void setLine(long requestId, final int line, boolean visualLineMightBeChanged) {
-
+  /**
+   * Moves the breakpoint to {@code line} after a document edit.
+   * The frontend sends the range its marker tracks with the set-line request.
+   * The type sees the range in {@link XLineBreakpointType#highlightRangeMoved} before the change event fires.
+   *
+   * @param requestId      the frontend request id, or {@code -1} for a local call
+   * @param line           the new zero-based line
+   * @param highlightRange the range the frontend marker tracks, or {@code null} when no marker exists
+   */
+  public void setLine(long requestId, int line, @Nullable TextRange highlightRange) {
+    if (highlightRange != null) {
+      myType.highlightRangeMoved(this, highlightRange);
+    }
     updateStateIfNeededAndNotify(requestId, line, this::getLine, (l) -> {
-      var oldLine = getLine();
       myState.setLine(line);
       resetSourcePosition();
-
-      if (visualLineMightBeChanged) {
-        myVisualRepresentation.removeHighlighter();
-      }
-
-      // We try to redraw inlays every time,
-      // due to lack of synchronization between inlay redrawing and breakpoint changes.
-      myVisualRepresentation.redrawInlineInlays(getFile(), oldLine);
-      myVisualRepresentation.redrawInlineInlays(getFile(), line);
     });
   }
 
+  /**
+   * @deprecated This method does nothing, since the backend's breakpoint doesn't have a UI.
+   */
+  @Deprecated
   public void doUpdateUI(Runnable callOnUpdate) {
-    myVisualRepresentation.doUpdateUI(callOnUpdate);
-  }
-
-  public @NotNull GutterDraggableObject createBreakpointDraggableObject() {
-    return myVisualRepresentation.createBreakpointDraggableObject();
-  }
-
-  @Override
-  public boolean isTemporary() {
-    return withStateLock(() -> myState.isTemporary());
-  }
-
-  @Override
-  public void setTemporary(boolean temporary) {
-    setTemporary(-1, temporary);
-  }
-
-  public void setTemporary(long requestId, boolean temporary) {
-    updateStateIfNeededAndNotify(requestId, temporary, this::isTemporary, myState::setTemporary);
   }
 
   @Override

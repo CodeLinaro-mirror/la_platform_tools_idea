@@ -1,5 +1,5 @@
 // "Convert expression to 'Char'" "true"
-// K2_ERROR: Argument type mismatch: actual type is 'Byte', but 'Char' was expected.
+// K2_ERROR: ARGUMENT_TYPE_MISMATCH
 fun char(x: Char) {}
 
 fun test(b: Byte) {
@@ -7,4 +7,3 @@ fun test(b: Byte) {
 }
 
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.NumberConversionFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.NumberConversionFix

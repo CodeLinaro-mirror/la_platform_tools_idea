@@ -1,6 +1,8 @@
 package com.intellij.python.processOutput.common
 
 import com.intellij.openapi.components.Service
+import com.intellij.openapi.util.NlsContexts
+import com.intellij.openapi.util.NlsSafe
 import com.intellij.platform.rpc.topics.ApplicationRemoteTopic
 import com.intellij.platform.rpc.topics.ApplicationRemoteTopicListener
 import com.intellij.platform.rpc.topics.sendToClient
@@ -14,6 +16,7 @@ import kotlinx.coroutines.flow.shareIn
 import kotlinx.serialization.Serializable
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.Nls
+import java.util.UUID
 import kotlin.time.Instant
 
 @ApiStatus.Internal
@@ -26,7 +29,7 @@ enum class TraceContextKind {
 @ApiStatus.Internal
 @Serializable
 @JvmInline
-value class TraceContextUuid(val uuid: String)
+value class TraceContextUuid(val value: String)
 
 @ApiStatus.Internal
 @Serializable
@@ -53,6 +56,10 @@ enum class ProcessWeightDto {
   HEAVY
 }
 
+@JvmInline
+@Serializable
+value class ProcessId(val value: Int)
+
 @ApiStatus.Internal
 @Serializable
 data class LoggedProcessDto(
@@ -65,7 +72,7 @@ data class LoggedProcessDto(
   val args: List<String>,
   val env: Map<String, String>,
   val target: String,
-  val id: Int,
+  val id: ProcessId,
 )
 
 @ApiStatus.Internal
@@ -84,29 +91,89 @@ data class OutputLineDto(
 
 @ApiStatus.Internal
 @Serializable
+data class ExecErrorDto(
+  val message: @NlsSafe String,
+  val command: String,
+  val reason: ExecErrorReasonDto,
+  val loggedProcessId: ProcessId? = null,
+  val additionalMessageToUser: @NlsContexts.DialogTitle String? = null,
+)
+
+@ApiStatus.Internal
+@Serializable
+sealed interface ExecErrorReasonDto {
+  @Serializable
+  data class CantStart(val cantExecProcessError: String) : ExecErrorReasonDto
+
+  @Serializable
+  data class UnexpectedTermination(val stdout: String, val stderr: String, val exitCode: Int) : ExecErrorReasonDto
+
+  @Serializable
+  data object Timeout : ExecErrorReasonDto
+}
+
+@ApiStatus.Internal
+@Serializable
 sealed interface ProcessOutputEventDto {
   @Serializable
   data class NewProcess(val loggedProcess: LoggedProcessDto, val traceHierarchy: List<TraceContextDto>) : ProcessOutputEventDto
 
   @Serializable
-  data class NewOutputLine(val processId: Int, val outputLine: OutputLineDto) : ProcessOutputEventDto
+  data class NewOutputLine(val processId: ProcessId, val outputLine: OutputLineDto) : ProcessOutputEventDto
 
   @Serializable
-  data class ProcessExit(val processId: Int, val exitedAt: Instant, val exitValue: Int) : ProcessOutputEventDto
+  data class ProcessExit(val processId: ProcessId, val exitedAt: Instant, val exitValue: Int) : ProcessOutputEventDto
 
   @Serializable
-  class ReceivedQuery<TResponse : QueryResponsePayload> internal constructor(
-    val query: ProcessOutputQuery<TResponse>,
-  ) : ProcessOutputEventDto
+  data class ExecError(val execErrorDto: ExecErrorDto) : ProcessOutputEventDto
+
+  @Serializable
+  data class OpenToolWindowByTraceUuid(val uuid: TraceContextUuid, val openIfNotFound: Boolean) : ProcessOutputEventDto
 }
 
-@ApiStatus.Internal
-val PROCESS_OUTPUT_TOPIC: ApplicationRemoteTopic<ProcessOutputEventDto> =
+private val PROCESS_OUTPUT_TOPIC: ApplicationRemoteTopic<ProcessOutputEventDto> =
   ApplicationRemoteTopic("PythonProcessOutputTopic", ProcessOutputEventDto.serializer())
 
 @ApiStatus.Internal
-fun sendProcessOutputTopicEvent(event: ProcessOutputEventDto) {
-  PROCESS_OUTPUT_TOPIC.sendToClient(event)
+interface ProcessOutputTopicSender {
+  fun sendNewProcessEvent(loggedProcessDto: LoggedProcessDto, traceHierarchy: List<TraceContextDto>)
+  fun sendNewOutputLineEvent(processId: ProcessId, outputLine: OutputLineDto)
+  fun sendProcessExitEvent(processId: ProcessId, exitedAt: Instant, exitValue: Int)
+  fun sendExecErrorEvent(execErrorDto: ExecErrorDto)
+  fun sendOpenToolWindowByTraceUuidEvent(uuid: UUID, openIfNotFound: Boolean = false)
+  fun sendOpenToolWindowByTraceUuidEvent(uuid: String, openIfNotFound: Boolean = false)
+}
+
+@ApiStatus.Internal
+object ProcessOutputTopic : ProcessOutputTopicSender {
+  override fun sendNewProcessEvent(loggedProcessDto: LoggedProcessDto, traceHierarchy: List<TraceContextDto>) {
+    PROCESS_OUTPUT_TOPIC.sendToClient(ProcessOutputEventDto.NewProcess(loggedProcessDto, traceHierarchy))
+  }
+
+  override fun sendNewOutputLineEvent(processId: ProcessId, outputLine: OutputLineDto) {
+    PROCESS_OUTPUT_TOPIC.sendToClient(ProcessOutputEventDto.NewOutputLine(processId, outputLine))
+  }
+
+  override fun sendProcessExitEvent(processId: ProcessId, exitedAt: Instant, exitValue: Int) {
+    PROCESS_OUTPUT_TOPIC.sendToClient(ProcessOutputEventDto.ProcessExit(processId, exitedAt, exitValue))
+  }
+
+  override fun sendExecErrorEvent(execErrorDto: ExecErrorDto) {
+    PROCESS_OUTPUT_TOPIC.sendToClient(ProcessOutputEventDto.ExecError(execErrorDto))
+  }
+
+  override fun sendOpenToolWindowByTraceUuidEvent(uuid: UUID, openIfNotFound: Boolean) {
+    sendOpenToolWindowByTraceUuidEvent(uuid.toString(), openIfNotFound)
+  }
+
+  override fun sendOpenToolWindowByTraceUuidEvent(uuid: String, openIfNotFound: Boolean) {
+    PROCESS_OUTPUT_TOPIC.sendToClient(
+      ProcessOutputEventDto.OpenToolWindowByTraceUuid(
+        TraceContextUuid(uuid),
+        openIfNotFound,
+      )
+    )
+  }
 }
 
 internal class ProcessOutputTopicListener : ApplicationRemoteTopicListener<ProcessOutputEventDto> {
@@ -120,7 +187,13 @@ internal class ProcessOutputTopicListener : ApplicationRemoteTopicListener<Proce
 private val eventsChannel = Channel<ProcessOutputEventDto>(capacity = UNLIMITED)
 
 @ApiStatus.Internal
+interface FrontendTopicListener {
+  val events: Flow<ProcessOutputEventDto>
+}
+
+@ApiStatus.Internal
 @Service
-class FrontendTopicService(internal val coroutineScope: CoroutineScope) {
-  val events: Flow<ProcessOutputEventDto> = eventsChannel.receiveAsFlow().shareIn(coroutineScope, SharingStarted.Eagerly)
+class FrontendTopicService(coroutineScope: CoroutineScope) : FrontendTopicListener {
+  override val events: Flow<ProcessOutputEventDto> =
+    eventsChannel.receiveAsFlow().shareIn(coroutineScope, SharingStarted.Eagerly)
 }

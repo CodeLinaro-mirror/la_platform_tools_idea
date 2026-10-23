@@ -5,12 +5,12 @@ import com.intellij.concurrency.ThreadContextAwareReentrantLock
 import com.intellij.diagnostic.StartUpMeasurer
 import com.intellij.diagnostic.ThreadDumper
 import com.intellij.diagnostic.dumpCoroutines
+import com.intellij.diagnostic.rethrowControlFlowException
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.application.backgroundWriteAction
 import com.intellij.openapi.components.serviceIfCreated
-import com.intellij.openapi.diagnostic.ControlFlowException
 import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.diagnostic.thisLogger
@@ -18,8 +18,6 @@ import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.openapi.progress.checkCanceled
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.ModificationTracker
-import com.intellij.openapi.util.io.FileAttributes
-import com.intellij.openapi.util.io.FileSystemUtil
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.platform.backend.workspace.BridgeInitializer
 import com.intellij.platform.backend.workspace.BuilderSnapshot
@@ -45,7 +43,6 @@ import com.intellij.platform.workspace.storage.query.CollectionQuery
 import com.intellij.platform.workspace.storage.query.StorageQuery
 import com.intellij.platform.workspace.storage.toBuilder
 import com.intellij.platform.workspace.storage.url.VirtualFileUrlManager
-import com.intellij.project.ProjectStoreOwner
 import com.intellij.serviceContainer.AlreadyDisposedException
 import com.intellij.util.concurrency.ThreadingAssertions
 import com.intellij.util.messages.impl.MessageBusImpl
@@ -74,9 +71,6 @@ import kotlin.system.measureTimeMillis
 import kotlin.time.Duration.Companion.minutes
 
 private val EP_NAME: ExtensionPointName<BridgeInitializer> = ExtensionPointName("com.intellij.workspace.bridgeInitializer")
-
-@ApiStatus.Internal
-var logSilentUpdates: Boolean = true
 
 @ApiStatus.Internal
 open class WorkspaceModelImpl : WorkspaceModelInternal {
@@ -122,19 +116,33 @@ open class WorkspaceModelImpl : WorkspaceModelInternal {
   private val updateModelSilentMethodName = WorkspaceModelImpl::updateProjectModelSilent.name
   private val onChangedMethodName = WorkspaceModelImpl::onChanged.name
 
-  constructor(project: Project, cs: CoroutineScope, storage: ImmutableEntityStorage, virtualFileUrlManager: VirtualFileUrlManager) {
+  /**
+   * Takes a ready [VersionedEntityStorageImpl] instead of building one.
+   *
+   * The cache behind [VersionedEntityStorage.cachedValue] belongs to the [VersionedEntityStorageImpl] instance,
+   * so a caller that builds a new [WorkspaceModelImpl] for each read of one immutable storage loses that cache
+   * every time. Such a caller builds the storage itself and gives every instance the same
+   * [com.intellij.platform.workspace.storage.impl.ValuesCache]. The JetBrains language server does this.
+   */
+  @ApiStatus.Internal
+  constructor(
+    project: Project,
+    cs: CoroutineScope,
+    entityStorage: VersionedEntityStorageImpl,
+    virtualFileUrlManager: VirtualFileUrlManager,
+  ) {
     this.project = project
     this.coroutineScope = cs
     this.virtualFileManager = virtualFileUrlManager
-    entityStorage = VersionedEntityStorageImpl(storage)
-    unloadedEntitiesStorage = VersionedEntityStorageImpl(ImmutableEntityStorage.empty())
+    this.entityStorage = entityStorage
+    this.unloadedEntitiesStorage = VersionedEntityStorageImpl(ImmutableEntityStorage.empty())
     this.loadedFromCache = true
   }
 
   constructor(project: Project, cs: CoroutineScope) {
     this.project = project
     this.coroutineScope = cs
-    this.virtualFileManager = IdeVirtualFileUrlManagerImpl(isProjectCaseSensitive(project))
+    this.virtualFileManager = IdeVirtualFileUrlManagerImpl()
     log.debug { "Loading workspace model" }
     val start = Milliseconds.now()
 
@@ -355,9 +363,7 @@ open class WorkspaceModelImpl : WorkspaceModelInternal {
       updatesCounter.incrementAndGet()
     }
 
-    if (logSilentUpdates) {
-      log.info("Project model updated silently to version ${entityStorage.pointer.version} in $generalTime ms: $description (project=${project.name}, locationHash=${project.locationHash})")
-    }
+    log.debug("Project model updated silently to version ${entityStorage.pointer.version} in $generalTime ms: $description (project=${project.name}, locationHash=${project.locationHash})")
   }
 
   /**
@@ -627,7 +633,8 @@ open class WorkspaceModelImpl : WorkspaceModelInternal {
     }
     catch (e: Throwable) {
       if (e is AlreadyDisposedException) throw e
-      if (e is ControlFlowException) throw e // Control flow exceptions should never be logger, only rethrown. Related: IJPL-155938
+      rethrowControlFlowException(e) // Control flow exceptions should never be logger, only rethrown. Related: IJPL-155938
+
       val message = "Exception at Workspace Model event handling"
       if (userWarningLoggingLevel) {
         log.warn(message, e)
@@ -722,13 +729,4 @@ open class WorkspaceModelImpl : WorkspaceModelInternal {
       setupOpenTelemetryReporting(workspaceModelMetrics.meter)
     }
   }
-}
-
-private fun isProjectCaseSensitive(project: Project): Boolean {
-  if (project !is ProjectStoreOwner) {
-    return false
-  }
-
-  val historicalProjectBasePath = project.componentStore.storeDescriptor.historicalProjectBasePath
-  return FileSystemUtil.readParentCaseSensitivity(historicalProjectBasePath) == FileAttributes.CaseSensitivity.SENSITIVE
 }

@@ -1,6 +1,6 @@
 // "Wrap element with 'setOf()' call" "true"
 // WITH_STDLIB
-// K2_ERROR: Argument type mismatch: actual type is 'String', but 'Set<String>' was expected.
+// K2_ERROR: ARGUMENT_TYPE_MISMATCH
 
 fun foo(a: String) {
     bar(a<caret>)
@@ -9,4 +9,3 @@ fun foo(a: String) {
 fun bar(a: Set<String>) {}
 
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.WrapWithCollectionLiteralCallFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.WrapWithCollectionLiteralCallFix

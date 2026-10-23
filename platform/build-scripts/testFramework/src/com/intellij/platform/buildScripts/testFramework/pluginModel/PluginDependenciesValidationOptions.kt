@@ -1,6 +1,11 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.platform.buildScripts.testFramework.pluginModel
 
+import com.intellij.ide.plugins.ContentModuleDescriptor
+import com.intellij.ide.plugins.DependsSubDescriptor
+import com.intellij.ide.plugins.IdeaPluginDescriptorImpl
+import com.intellij.ide.plugins.PluginMainDescriptor
+import com.intellij.ide.plugins.shortLogDescription
 import com.intellij.openapi.extensions.PluginId
 
 /**
@@ -32,11 +37,6 @@ data class PluginDependenciesValidationOptions(
   val missingRuntimeDeps: List<MissingRuntimeDep> = emptyList(),
 
   /**
-   * Relative paths to XML files which are located in libraries and included in plugin descriptors via `<xi:include>`.
-   */
-  val pathsIncludedFromLibrariesViaXiInclude: Set<String> = emptySet(),
-
-  /**
    * Specifies the minimum number of modules which should be checked by the validator.
    * This is used to ensure that the validator won't stop checking many modules due to some mistake in the validation code.
    */
@@ -64,7 +64,32 @@ data class PluginDependenciesValidationOptions(
    */
   val pluginsToIgnore: Set<String> = emptySet(),
 
-  )
+  /**
+   * Names the content modules that the product must load.
+   * The validator reports such a module when the plugin set leaves it out because one of its own dependencies is absent.
+   * A module excluded after an excluded plugin, or after an excluded module in this set, is reported at that plugin or module.
+   * A module excluded after an excluded module outside this set is reported at itself.
+   * Any other content module may stay out silently, which is the normal fate of an optional content module.
+   */
+  val contentModulesThatMustLoad: (contentModuleName: String) -> Boolean = { false },
+
+  /**
+   * Names the content modules whose own exclusion the validator accepts as the root of an exclusion chain.
+   * A module from [contentModulesThatMustLoad] that is excluded after such a root is not reported.
+   * Use it for a root that the product supplies at runtime in a way the static plugin model does not see.
+   */
+  val toleratedExclusionRoots: Set<String> = emptySet(),
+
+  /**
+   * Checks that each used extension point is declared in the same runtime dependency tree.
+   */
+  val checkExtensionPointDependencies: Boolean = true,
+
+  /**
+   * Please don't add new suppressions without a good reason
+   */
+  val extensionPointDependencyViolationsToIgnore: Set<ExtensionPointDependencyViolation> = emptySet(),
+)
 
 /**
  * Defines a variant of a plugin with a custom value of system property used in `includeUnless`/`includeIf` directives.
@@ -101,3 +126,26 @@ data class MissingRuntimeDep(
   val moduleIds: List<String> = emptyList(),
   val issueId: String,
 )
+
+/**
+ * @param moduleName the name of the JPS module that contains a descriptor with a violation
+ * @param extensionPointName fully-qualified name of the extension point
+ */
+data class ExtensionPointDependencyViolation(
+  val moduleName: String,
+  val extensionPointName: String,
+) {
+  constructor(
+    descriptor: IdeaPluginDescriptorImpl,
+    extensionPointName: String,
+  ) : this(
+    when (descriptor) {
+      is PluginMainDescriptor -> descriptor.pluginId.idString
+      is ContentModuleDescriptor -> descriptor.moduleId.name
+      is DependsSubDescriptor -> descriptor.shortLogDescription
+    },
+    extensionPointName,
+  )
+
+  override fun toString(): String = """ExtensionPointDependencyViolation("$moduleName", "$extensionPointName")""" // for easy copy-paste
+}

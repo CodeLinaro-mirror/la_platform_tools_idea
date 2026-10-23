@@ -78,9 +78,7 @@ internal class GitLabPushNotificationCustomizer(private val project: Project) : 
     remoteBranch: GitRemoteBranch,
     projectMapping: GitLabProjectMapping,
   ): List<AnAction> {
-    val accountManager = serviceAsync<GitLabAccountManager>()
-    val credentials = accountManager.findCredentials(account) ?: return emptyList()
-    val api = serviceAsync<GitLabApiManager>().getClient(account.server, credentials.accessToken)
+    val api = serviceAsync<GitLabApiManager>().getClient(account)
 
     if (!canCreateReview(api, projectFullPath, remoteBranch)) {
       return emptyList()
@@ -132,7 +130,7 @@ internal class GitLabPushNotificationCustomizer(private val project: Project) : 
 
   private suspend fun getRepositoryInfo(api: GitLabApi, projectFullPath: GitLabProjectPath) =
     try {
-      api.graphQL.findProject(projectFullPath).body()?.repository
+      api.graphQL.findProject(projectFullPath)?.repository
     }
     catch (ce: CancellationException) {
       throw ce
@@ -154,7 +152,7 @@ internal class GitLabPushNotificationCustomizer(private val project: Project) : 
 
     return withContext(Dispatchers.IO) {
       try {
-        val mrs = api.graphQL.findMergeRequestsByBranch(targetProjectPath, GitLabMergeRequestState.OPENED, remoteBranchName).body()!!.nodes
+        val mrs = api.graphQL.findMergeRequestsByBranch(targetProjectPath, GitLabMergeRequestState.OPENED, listOf(remoteBranchName))!!.nodes
         mrs.filter { it.targetProject.fullPath == targetProjectPath.fullPath() && it.sourceProject?.fullPath == targetProjectPath.fullPath() }
       }
       catch (ce: CancellationException) {

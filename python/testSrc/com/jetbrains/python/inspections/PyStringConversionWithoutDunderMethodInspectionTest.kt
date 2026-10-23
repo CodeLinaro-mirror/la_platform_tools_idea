@@ -1,11 +1,16 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.inspections
 
+import com.jetbrains.python.allure.Layers
+import com.jetbrains.python.allure.Subsystems
+
 import com.intellij.idea.TestFor
 import com.jetbrains.python.PyPsiBundle
 import com.jetbrains.python.PythonFileType
 import com.jetbrains.python.fixtures.PyInspectionTestCase
 
+@Subsystems.Inspections
+@Layers.Functional
 class PyStringConversionWithoutDunderMethodInspectionTest : PyInspectionTestCase() {
 
   override fun getInspectionClass() = PyStringConversionWithoutDunderMethodInspection::class.java
@@ -15,7 +20,7 @@ class PyStringConversionWithoutDunderMethodInspectionTest : PyInspectionTestCase
   """.trimIndent())
 
   fun `test generator`() = doTestByText("""
-    f"{<weak_warning descr="Type 'Generator[int, Any, None]' doesn't define '__str__', '__repr__', or '__format__', so the result might not be useful">(_ for _ in range(10))</weak_warning>}"
+    f"{<weak_warning descr="Type 'Generator[int, Unknown, None]' doesn't define '__str__', '__repr__', or '__format__', so the result might not be useful">(_ for _ in range(10))</weak_warning>}"
   """.trimIndent())
 
   fun `test function`() = doTestByText("""

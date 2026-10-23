@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.plugins.gradle.execution.test.producer
 
 import com.intellij.execution.RunManager
@@ -112,6 +112,22 @@ abstract class GradleTestRunConfigurationProducerTestCase : GradleRunConfigurati
 
   protected fun GradleTestRunConfigurationProducer.createTemplateConfiguration(): GradleRunConfiguration {
     return configurationFactory.createTemplateConfiguration(myProject) as GradleRunConfiguration
+  }
+
+  /**
+   * Runs [action] with [scriptParameters] defined in the Gradle run configuration template.
+   */
+  protected fun <R> withTemplateScriptParameters(scriptParameters: String, action: () -> R): R {
+    val factory = GradleExternalTaskConfigurationType.getInstance().factory
+    val template = RunManager.getInstance(myProject).getConfigurationTemplate(factory).configuration as GradleRunConfiguration
+    val originalScriptParameters = template.settings.scriptParameters
+    template.settings.scriptParameters = scriptParameters
+    try {
+      return action()
+    }
+    finally {
+      template.settings.scriptParameters = originalScriptParameters
+    }
   }
 
   protected fun createAndAddRunConfiguration(commandLine: String, vmOptions: String? = null): GradleRunConfiguration {
@@ -337,6 +353,8 @@ abstract class GradleTestRunConfigurationProducerTestCase : GradleRunConfigurati
     }
     directory
   }
+
+  override fun assumeGradleVersion() {}
 
   companion object {
     /**

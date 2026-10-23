@@ -26,11 +26,14 @@ import org.jetbrains.kotlin.jps.model.JpsKotlinFacetModuleExtension
 import java.nio.file.Path
 import java.util.IdentityHashMap
 import java.util.TreeMap
+import java.util.TreeSet
 import java.util.logging.Level
 import java.util.logging.Logger
 import kotlin.io.path.exists
 import kotlin.io.path.extension
 import kotlin.io.path.invariantSeparatorsPathString
+import kotlin.io.path.isDirectory
+import kotlin.io.path.isRegularFile
 import kotlin.io.path.readText
 import kotlin.io.path.relativeTo
 import kotlin.io.path.walk
@@ -42,6 +45,8 @@ internal class ModuleList(
   @JvmField val community: List<ModuleDescriptor>,
   @JvmField val ultimate: List<ModuleDescriptor>,
   @JvmField val skipped: List<ModuleDescriptor>,
+  /** Mapping from module to data of `plugin.xml` file in its resources for plugins that should be built by `ij_plugin` rule */
+  @JvmField val moduleToPluginXmlContentData: Map<ModuleDescriptor, PluginXmlContentData>,
 ) {
   @JvmField val allModules = community + ultimate + skipped
   val skippedModules = skipped.map { it.module.name }
@@ -54,6 +59,16 @@ internal class ModuleList(
 
   @JvmField val deps = IdentityHashMap<ModuleDescriptor, ModuleDeps>()
   @JvmField val testDeps = IdentityHashMap<ModuleDescriptor, ModuleDeps>()
+
+  /**
+   * Names of plugin descriptor modules and content modules included in `ij_plugin` rule
+   */
+  val modulesIncludedInIjPluginRule: Set<String> by lazy {
+    moduleToPluginXmlContentData.entries.flatMapTo(HashSet()) {
+      sequenceOf(it.key.module.name) + it.value.contentModuleNames
+    }
+  }
+
 }
 
 internal data class CustomModuleDescription(
@@ -94,6 +109,23 @@ internal val DEFAULT_CUSTOM_MODULES: Map<String, CustomModuleDescription> = list
                           resources = listOf("@rules_jvm//jps-builders-6:build-javac-rt_resources"),
                           sources = listOf("@rules_jvm//jps-builders-6:build-javac-rt_sources")),
 ).associateBy { it.moduleName }
+
+/**
+ * The modules whose jar holds a gzip member of each `.xml` entry of their provided module libraries, see
+ * `gzip_resources.bzl`. A provided library stays off the runtime class path, and no packer merges it.
+ */
+internal val GZIP_RESOURCE_MODULES: Set<String> = setOf("intellij.database.dialects.minicat")
+
+/**
+ * The resource jars that join the module jar besides the resource roots of the module. A tree outside the module
+ * package joins the jar through a hand-written `resourcegroup` in the package of the tree.
+ */
+internal val EXTERNAL_RESOURCE_JARS: Map<String, List<String>> = listOf("ja", "ko", "zh").associate { language ->
+  "intellij.localization.$language" to listOf(
+    "//:localization_${language}_inspections_intentions",
+    "//:localization_${language}_properties",
+  )
+}
 
 internal enum class SnapshotLibraryMode {
   WRITE_TO_REPO,
@@ -385,7 +417,7 @@ internal class BazelBuildFileGenerator(
     return internedLib
   }
 
-  fun computeModuleList(m2Repo: Path): ModuleList {
+  fun computeModuleList(m2Repo: Path, skipGenerationOfPluginTargets: Boolean): ModuleList {
     val community = ArrayList<ModuleDescriptor>()
     val ultimate = ArrayList<ModuleDescriptor>()
     val skippedModules = ArrayList<ModuleDescriptor>()
@@ -416,8 +448,14 @@ internal class BazelBuildFileGenerator(
     ultimate.sortBy { it.module.name }
     skippedModules.sortBy { it.module.name }
 
-    val result = ModuleList(community = community, ultimate = ultimate, skipped = skippedModules)
-    for (module in (community + ultimate)) {
+    val allModules = community + ultimate
+    val result = ModuleList(
+      community = community,
+      ultimate = ultimate,
+      skipped = skippedModules,
+      moduleToPluginXmlContentData = if (!skipGenerationOfPluginTargets) computePluginXmlContentData(allModules) else emptyMap(),
+    )
+    for (module in allModules) {
       val hasSources = module.sources.isNotEmpty()
       result.deps.put(module, generateDeps(m2Repo = m2Repo, module = module, hasSources = hasSources, isTest = false, context = this))
 
@@ -428,9 +466,21 @@ internal class BazelBuildFileGenerator(
     return result
   }
 
+  private fun computePluginXmlContentData(modules: List<ModuleDescriptor>): Map<ModuleDescriptor, PluginXmlContentData> {
+    val result = IdentityHashMap<ModuleDescriptor, PluginXmlContentData>()
+    for (module in modules) {
+      val pluginXmlContentData = module.resources.firstNotNullOfOrNull { descriptor -> parsePluginXmlContent(descriptor) }
+      if (pluginXmlContentData != null) {
+        result[module] = pluginXmlContentData
+      }
+    }
+    return result
+  }
+
   data class ModuleGenerationResult(
     val moduleBuildFiles: Map<Path, BazelFileUpdater>,
     val moduleTargets: List<ModuleTargets>,
+    val generatedBuildFileDirs: Set<Path>,
   )
 
   private fun validateCustomModules(list: ModuleList) {
@@ -442,41 +492,55 @@ internal class BazelBuildFileGenerator(
     }
   }
 
-  fun generateModuleTargets(list: ModuleList, isCommunity: Boolean): List<ModuleTargets> {
+  fun generateModuleTargets(list: ModuleList, manuallyWrittenAttributes: ManuallyWrittenAttributes, isCommunity: Boolean): List<ModuleTargets> {
     validateCustomModules(list)
 
     val targetsPerModule = mutableListOf<ModuleTargets>()
     for (module in (if (isCommunity) list.community else list.ultimate)) {
       if (generated.putIfAbsent(module, true) == null) {
         val buildTargetsBazel = BuildFile()
-        targetsPerModule.add(buildTargetsBazel.generateBuildTargets(module, list))
+        targetsPerModule.add(buildTargetsBazel.generateBuildTargets(module, list, manuallyWrittenAttributes))
       }
     }
     return targetsPerModule
   }
 
-  fun generateModuleBuildFiles(list: ModuleList, isCommunity: Boolean): ModuleGenerationResult {
+  fun generateModuleBuildFiles(
+    list: ModuleList,
+    bazelFilesLoader: BazelFilesLoader,
+    manuallyWrittenAttributes: ManuallyWrittenAttributes,
+    isCommunity: Boolean,
+  ): ModuleGenerationResult {
     validateCustomModules(list)
     val targetsPerModule = mutableListOf<ModuleTargets>()
     val fileToUpdater = LinkedHashMap<Path, BazelFileUpdater>()
     // bazel build file -> (bzlFile (for import) -> already imported symbols)
     val existingLoads = mutableMapOf<Path, MutableMap<String, MutableSet<String>>>()
+
+    fun getOrCreateFileUpdater(module: ModuleDescriptor): BazelFileUpdater {
+      val fileUpdater = fileToUpdater.computeIfAbsent(module.bazelBuildFileDir) {
+        val fileUpdater = BazelFileUpdater(module.bazelBuildFile, bazelFilesLoader.getBuildFileContent(module.bazelBuildFile))
+        fileUpdater.removeSections("build")
+        fileUpdater.removeSections("iml ")
+        fileUpdater.removeSections("test")
+        fileUpdater.removeSections("maven libs of ")
+        
+        fileUpdater
+      }
+      return fileUpdater
+    }
+
     for (module in (if (isCommunity) list.community else list.ultimate)) {
       if (generated.putIfAbsent(module, true) == null) {
-        val fileUpdater = fileToUpdater.computeIfAbsent(module.bazelBuildFileDir) {
-          val fileUpdater = BazelFileUpdater(module.bazelBuildFileDir.resolve("BUILD.bazel"))
-          fileUpdater.removeSections("build")
-          fileUpdater.removeSections("iml ")
-          fileUpdater.removeSections("test")
-          fileUpdater.removeSections("maven libs of ")
-          fileUpdater
-        }
-
+        val fileUpdater = getOrCreateFileUpdater(module)
         val buildTargetsBazel = BuildFile()
-        val moduleBuildTargets = buildTargetsBazel.generateBuildTargets(module, list)
+        val moduleBuildTargets = buildTargetsBazel.generateBuildTargets(module, list, manuallyWrittenAttributes)
+        val buildSectionName = "build ${module.module.name}"
+        val buildSectionSkipped = fileUpdater.isSectionSkipped(buildSectionName)
 
         val imlTargetsBazel = BuildFile()
         imlTargetsBazel.exportFile(module.imlFile.relativeTo(module.bazelBuildFileDir).invariantSeparatorsPathString)
+        exportDescriptorFiles(module = module, buildFile = imlTargetsBazel, alreadyExported = fileUpdater.handWrittenExportedFiles())
 
         val testTargetsBazel = BuildFile()
         testTargetsBazel.generateTestTargets(module, list)
@@ -492,26 +556,45 @@ internal class BazelBuildFileGenerator(
           }
         }
 
-        val buildSectionName = "build ${module.module.name}"
-        if (!fileUpdater.isSectionSkipped(buildSectionName)) {
-          fileUpdater.insertAutoGeneratedSection(sectionName = buildSectionName, autoGeneratedContent = buildTargetsBazel.render())
+        if (!buildSectionSkipped) {
           collectLoadStatements(buildTargetsBazel.loadStatements)
+          fileUpdater.insertAutoGeneratedSection(
+            sectionName = buildSectionName,
+            autoGeneratedContent = buildTargetsBazel.render(existingLoads = existingLoadSymbols),
+          )
         }
 
         fileUpdater.insertAutoGeneratedSection(sectionName = "iml ${module.module.name}", autoGeneratedContent = imlTargetsBazel.render())
 
+        // `plugin-model-tool` writes the `dev ${module.module.name}` section, and this run never touches it.
+
         val testSectionName = "test ${module.module.name}"
         if (!fileUpdater.isSectionSkipped(testSectionName)) {
-          fileUpdater.insertAutoGeneratedSection(sectionName = testSectionName, autoGeneratedContent = testTargetsBazel.render())
-          collectLoadStatements(buildTargetsBazel.loadStatements)
+          collectLoadStatements(testTargetsBazel.loadStatements)
+          fileUpdater.insertAutoGeneratedSection(
+            sectionName = testSectionName,
+            autoGeneratedContent = testTargetsBazel.render(existingLoads = existingLoadSymbols),
+          )
         }
         fileUpdater.appendLoadSymbols(existingLoadSymbols)
+      }
+    }
+
+    val generatedBuildFileDirs = fileToUpdater.keys.toSet()
+    for (module in list.skipped.filter { it.isCommunity == isCommunity }) {
+      fileToUpdater.computeIfAbsent(module.bazelBuildFileDir) {
+        val buildFile = it.resolve("BUILD.bazel")
+        check(buildFile.isRegularFile()) {
+          "Missing original BUILD.bazel owner for skipped module ${module.module.name}: $buildFile"
+        }
+        BazelFileUpdater(buildFile)
       }
     }
 
     return ModuleGenerationResult(
       moduleBuildFiles = fileToUpdater.mapValues { it.value },
       moduleTargets = targetsPerModule,
+      generatedBuildFileDirs = generatedBuildFileDirs,
     )
   }
 
@@ -521,22 +604,23 @@ internal class BazelBuildFileGenerator(
     }
   }
 
-  fun getBazelDependencyLabel(module: ModuleDescriptor, dependent: ModuleDescriptor): String {
+  fun getBazelDependencyLabel(module: ModuleDescriptor, dependent: ModuleDescriptor, targetNameSuffix: String = ""): String {
     val customModule = customModules[module.module.name]
-    if (customModule != null) {
+    if (customModule != null && targetNameSuffix.isEmpty()) {
       return customModule.dependencyLabel
     }
 
     val dependentIsCommunity = dependent.isCommunity
+    val targetName = module.targetName + targetNameSuffix
     if (!dependentIsCommunity && module.isCommunity) {
       require(module.isCommunity)
 
       val path = checkAndGetRelativePath(communityRoot, module.bazelBuildFileDir).invariantSeparatorsPathString
-      return if (path.substringAfterLast('/') == module.targetName) {
+      return if (path.substringAfterLast('/') == targetName) {
         "@community//$path"
       }
       else {
-        "@community//$path:${module.targetName}"
+        "@community//$path:$targetName"
       }
     }
 
@@ -581,8 +665,7 @@ internal class BazelBuildFileGenerator(
       else -> "@community//$relativeToCommunityPath"
     }
 
-    val bazelName = module.targetName
-    val result = path + (if (module.bazelBuildFileDir.fileName.toString() == bazelName) "" else ":${bazelName}")
+    val result = path + (if (module.bazelBuildFileDir.fileName.toString() == targetName) "" else ":$targetName")
     return result
   }
 
@@ -592,6 +675,12 @@ internal class BazelBuildFileGenerator(
     val productionJars: List<String>,
     val testTargets: List<String>,
     val testJars: List<String>,
+    val pluginDistributionTarget: PluginDistributionTarget?,
+  )
+
+  internal data class PluginDistributionTarget(
+    @JvmField val target: String,
+    @JvmField val distributionDirectory: String,
   )
 
   private fun BuildFile.generateTestTargets(moduleDescriptor: ModuleDescriptor, moduleList: ModuleList) {
@@ -614,7 +703,7 @@ internal class BazelBuildFileGenerator(
     }
   }
 
-  private fun BuildFile.generateBuildTargets(moduleDescriptor: ModuleDescriptor, moduleList: ModuleList): ModuleTargets {
+  private fun BuildFile.generateBuildTargets(moduleDescriptor: ModuleDescriptor, moduleList: ModuleList, manuallyWrittenAttributes: ManuallyWrittenAttributes): ModuleTargets {
     val module = moduleDescriptor.module
     val customModule = customModules[moduleDescriptor.module.name]
     val jvmTarget = getLanguageLevel(module)
@@ -671,7 +760,28 @@ internal class BazelBuildFileGenerator(
       resourceJarTargets.add(BazelLabel(label = codegenTargetName, module = null))
     }
 
-    target("jvm_library") {
+    if (module.name in GZIP_RESOURCE_MODULES) {
+      val provided = deps?.providedModuleLibraries.orEmpty()
+      require(provided.isNotEmpty()) { "Module ${module.name} gzips its provided module libraries, but it has none" }
+      val gzipTargetName = "${moduleDescriptor.targetName}_gzip_resources"
+      load("@community//platform/build-scripts/bazel-rules:gzip_resources.bzl", "gzip_resources")
+      target("gzip_resources") {
+        option("name", gzipTargetName)
+        option("srcs", provided.unsorted())
+      }
+      resourceJarTargets.add(BazelLabel(label = gzipTargetName, module = null))
+    }
+
+    val useIjPluginModule = shouldUseIjPluginModuleFunction(moduleDescriptor, moduleList, manuallyWrittenAttributes)
+    val moduleTargetType: String
+    if (useIjPluginModule) {
+      load("@community//platform/build-scripts/bazel-rules:ij_plugin_module.bzl", "ij_plugin_module")
+      moduleTargetType = "ij_plugin_module"
+    }
+    else {
+      moduleTargetType = "jvm_library"
+    }
+    target(moduleTargetType) {
       option("name", moduleDescriptor.targetName)
       productionCompileTargets.add(moduleDescriptor.targetAsLabel)
       productionCompileJars.add(moduleDescriptor.targetAsLabel)
@@ -696,6 +806,9 @@ internal class BazelBuildFileGenerator(
       else if (module.name == "intellij.libraries.compose.runtime.desktop") {
         option("exported_compiler_plugins", listOf("@lib//:compose-plugin"))
       }
+      else if (module.name == "fleet.compose.dependencies") {
+        option("exported_compiler_plugins", listOf("@lib//:compose-plugin"))
+      }
 
       if (deps != null) {
         if (deps.associates.isNotEmpty()) {
@@ -713,17 +826,24 @@ internal class BazelBuildFileGenerator(
 
       option("module_name", module.name)
 
+      insertManuallyWrittenAttributes(manuallyWrittenAttributes.getManuallyWrittenAttributes(moduleDescriptor, NON_CLASSPATH_DATA_ATTRIBUTE))
+
+      if (useIjPluginModule && deps != null && deps.packedDeps.isNotEmpty()) {
+        option("packed_deps", deps.packedDeps.unsorted())
+      }
+
       if (deps != null && deps.plugins.isNotEmpty()) {
         option("plugins", deps.plugins.sorted())
       }
 
       if (customModule == null) {
-        if (resourceJarTargets.isNotEmpty()) {
-          option("resource_jars", resourceJarTargets.map { ":${it.label}" })
+        val resourceJars = resourceJarTargets.map { ":${it.label}" } + EXTERNAL_RESOURCE_JARS.get(module.name).orEmpty()
+        if (resourceJars.isNotEmpty()) {
+          option("resource_jars", resourceJars)
         }
         if (directResources != null) {
           option("resource_strip_prefix", directResources.stripPrefix)
-          option("resources", glob(directResources.fileGlobs, exclude = directResources.excludes, allowEmpty = directResources.excludes.isNotEmpty()))
+          option("resources", glob(directResources.fileGlobs, exclude = directResources.excludes, allowEmpty = directResources.allowEmpty))
         }
       }
       else if (customModule.resources.isNotEmpty()) {
@@ -774,7 +894,7 @@ internal class BazelBuildFileGenerator(
 
       if (directTestResources != null) {
         option("resource_strip_prefix", directTestResources.stripPrefix)
-        option("resources", glob(directTestResources.fileGlobs, exclude = directTestResources.excludes, allowEmpty = directTestResources.excludes.isNotEmpty()))
+        option("resources", glob(directTestResources.fileGlobs, exclude = directTestResources.excludes, allowEmpty = directTestResources.allowEmpty))
       }
 
       visibility(arrayOf("//visibility:public"))
@@ -801,7 +921,7 @@ internal class BazelBuildFileGenerator(
       else -> "//${bazelModuleRelativePath}"
     }
 
-    val jarOutputDirectory = when {
+    val outputDirectory = when {
       customModule != null -> customModule.outputDirectory
       moduleDescriptor.isCommunity -> "out/bazel-out/jvm-fastbuild/bin/external/community+/$bazelModuleRelativePath"
       else -> "out/bazel-out/jvm-fastbuild/bin/$bazelModuleRelativePath"
@@ -815,7 +935,32 @@ internal class BazelBuildFileGenerator(
       // like @community//plugins/env-files-support:dotenv-go_resources
       jarName.label.startsWith("@community//") ->
         "out/bazel-out/jvm-fastbuild/bin/external/community+/${jarName.label.substringAfter("@community//").replace(':', '/')}.jar"
-      else -> "$jarOutputDirectory/${jarName.label}.jar"
+      else -> "$outputDirectory/${jarName.label}.jar"
+    }
+
+    val pluginDescriptorContentData = moduleList.moduleToPluginXmlContentData[moduleDescriptor]
+    val pluginDistributionTarget = pluginDescriptorContentData?.let {
+      load("@community//platform/build-scripts/bazel-rules:ij_plugin.bzl", "ij_plugin")
+      target("ij_plugin") {
+        option("name", moduleDescriptor.targetName + "_plugin")
+        option("descriptor_module", ":${moduleDescriptor.targetName}${getPluginModuleTargetNameSuffix(moduleDescriptor, moduleList, manuallyWrittenAttributes)}")
+        if (pluginDescriptorContentData.contentModuleNames.isNotEmpty()) {
+          val contentModuleLabels = pluginDescriptorContentData.contentModuleNames.map {
+            val contentModuleDescriptor = moduleList.getModuleDescriptor(it)
+            val contentModuleTargetNameSuffix = getPluginModuleTargetNameSuffix(contentModuleDescriptor, moduleList, manuallyWrittenAttributes)
+            getBazelDependencyLabel(contentModuleDescriptor, moduleDescriptor, targetNameSuffix = contentModuleTargetNameSuffix)
+          }
+          option("content_modules", contentModuleLabels.unsorted())
+        }
+        // the distribution is consumed from other packages: by the build scripts building this plugin by Bazel,
+        // and by the test comparing the result with the build scripts' own output
+        visibility(arrayOf("//visibility:public"))
+      }
+      val label = BazelLabel(moduleDescriptor.targetName + "_plugin", moduleDescriptor)
+      PluginDistributionTarget(
+        target = addPackagePrefix(label),
+        distributionDirectory = "$outputDirectory/${generateNameForPluginDirectory(moduleDescriptor.module.name)}",
+      )
     }
 
     return ModuleTargets(
@@ -824,7 +969,24 @@ internal class BazelBuildFileGenerator(
       productionJars = productionCompileJars.map { getJarLocation(it) } + customModule?.additionalProductionJars.orEmpty(),
       testTargets = testCompileTargets.map { addPackagePrefix(it) },
       testJars = testCompileTargets.map { getJarLocation(it) },
+      pluginDistributionTarget = pluginDistributionTarget,
     )
+  }
+
+  /**
+   * Determines whether `ij_plugin_module` rule should be used for the given module or the default `jvm_library` rule is enough.
+   * Currently, `ij_plugin_module` is used if and only if `packed_deps` attribute (that is generated automatically) or `non_classpath_data` (that is written manually) is present.
+   */
+  private fun shouldUseIjPluginModuleFunction(
+    moduleDescriptor: ModuleDescriptor,
+    moduleList: ModuleList,
+    manuallyWrittenAttributes: ManuallyWrittenAttributes,
+  ): Boolean {
+    if (manuallyWrittenAttributes.getManuallyWrittenAttributes(moduleDescriptor, NON_CLASSPATH_DATA_ATTRIBUTE).isNotEmpty()) {
+      return true
+    }
+    val deps = moduleList.deps[moduleDescriptor]
+    return moduleDescriptor.module.name in moduleList.modulesIncludedInIjPluginRule && deps != null && deps.packedDeps.isNotEmpty()
   }
 
   private fun ModuleDescriptor.isFleetModule(): Boolean {
@@ -864,6 +1026,7 @@ internal class BazelBuildFileGenerator(
     val fileGlobs: List<String>,
     val stripPrefix: String,
     val excludes: List<String>,
+    val allowEmpty: Boolean,
   )
 
   private data class GenerateResourcesResult(
@@ -916,7 +1079,7 @@ internal class BazelBuildFileGenerator(
         val name = "${module.targetName}$targetNameSuffix" + (if (i == 0) "" else "_$i")
         target("resourcegroup") {
           option("name", name)
-          option("srcs", glob(resource.files, exclude = resource.excludes, allowEmpty = resource.excludes.isNotEmpty()))
+          option("srcs", glob(resource.files, exclude = resource.excludes, allowEmpty = resource.allowEmpty))
           if (resource.baseDirectory.isNotEmpty()) {
             option("strip_prefix", resource.baseDirectory)
           }
@@ -934,6 +1097,7 @@ internal class BazelBuildFileGenerator(
         fileGlobs = directResources.files,
         stripPrefix = directResources.baseDirectory,
         excludes = directResources.excludes,
+        allowEmpty = directResources.allowEmpty,
       ),
       resourceJarsTargets = resourceJarsTargets
     )
@@ -975,6 +1139,15 @@ internal class BazelBuildFileGenerator(
       LanguageLevel.JDK_25 -> "25"
       else -> error("Unsupported language level: $languageLevel for module ${module.name}")
     }
+  }
+
+  private fun getPluginModuleTargetNameSuffix(
+    module: ModuleDescriptor,
+    moduleList: ModuleList,
+    manuallyWrittenAttributes: ManuallyWrittenAttributes
+  ): String {
+    //follows the logic in `ij_plugin_module` function in ij_plugin_module.bzl
+    return if (shouldUseIjPluginModuleFunction(module, moduleList, manuallyWrittenAttributes)) "_plugin_module" else ""
   }
 
   private fun jpsModuleNameToBazelBuildName(module: JpsModule, baseBuildDir: Path, communityRoot: Path, ultimateRoot: Path?): @NlsSafe String {
@@ -1085,17 +1258,50 @@ private fun computeResources(
     .filter { it.rootType == type }
     .map { root ->
       val prefix = resolveRelativeToBazelBuildFileDirectory(root.path, contentRoots, bazelBuildDir, module = module).invariantSeparatorsPathString
+      val globPrefix = if (prefix.isEmpty()) "" else "$prefix/"
       val excludes = compileExcludesForRoot(packageExcludes = packageExcludes, rootPrefix = prefix)
+      val iconRobots = if (type == JavaResourceRootType.RESOURCE) scanIconRobots(root.path) else IconRobotsScan.NONE
       val relativeOutputPath = (root.properties as JavaResourceRootProperties).relativeOutputPath
       ResourceDescriptor(
         baseDirectory = prefix,
-        files = listOf("${if (prefix.isEmpty()) "" else "$prefix/"}**/*"),
+        files = listOf("$globPrefix**/*"),
         relativeOutputPath = relativeOutputPath,
         root = root.path,
-        excludes = excludes,
+        excludes = if (iconRobots == IconRobotsScan.NONE) excludes else excludes + "$globPrefix**/$ICON_ROBOTS_FILE_NAME",
+        allowEmpty = excludes.isNotEmpty() || iconRobots == IconRobotsScan.ONLY,
       )
     }
     .toList()
+}
+
+/**
+ * The icon-class generator reads `icon-robots.txt`. No jar ships it, so the resource glob leaves it out.
+ * The converter adds the exclude only to a production resource root that holds such a file.
+ */
+private const val ICON_ROBOTS_FILE_NAME = "icon-robots.txt"
+
+private enum class IconRobotsScan { NONE, MIXED, ONLY }
+
+/** Walks the resource root once and tells if it holds an `icon-robots.txt` file, and if it holds other files too. */
+private fun scanIconRobots(root: Path): IconRobotsScan {
+  if (!root.isDirectory()) {
+    return IconRobotsScan.NONE
+  }
+
+  var iconRobots = false
+  var otherFile = false
+  for (file in root.walk()) {
+    if (file.fileName.toString() == ICON_ROBOTS_FILE_NAME) {
+      iconRobots = true
+    }
+    else {
+      otherFile = true
+    }
+    if (iconRobots && otherFile) {
+      return IconRobotsScan.MIXED
+    }
+  }
+  return if (iconRobots) IconRobotsScan.ONLY else IconRobotsScan.NONE
 }
 
 private fun compileExcludesForRoot(packageExcludes: List<String>, rootPrefix: String): List<String> {
@@ -1182,6 +1388,18 @@ private fun computeKotlincOptions(buildFile: BuildFile, module: ModuleDescriptor
       options.put("progressive", false)
     }
   }
+  // warn: allWarningsAsErrors (-Werror). Default warn = "off" comes from create_kotlinc_options.
+  handleArgument(K2JVMCompilerArguments::allWarningsAsErrors) {
+    if (it) {
+      options.put("warn", "error")
+    }
+  }
+  //x_warning_level: -Xwarning-level=DIAGNOSTIC:severity per-diagnostic overrides (e.g. DEPRECATION:warning).
+  handleArgument(K2JVMCompilerArguments::warningLevels) { warningLevels ->
+    if (!warningLevels.isNullOrEmpty()) {
+      options.put("x_warning_level", warningLevels.asList())
+    }
+  }
   //x_allow_kotlin_package
   handleArgument(K2JVMCompilerArguments::allowKotlinPackage) {
     if (it) {
@@ -1196,6 +1414,12 @@ private fun computeKotlincOptions(buildFile: BuildFile, module: ModuleDescriptor
   handleArgument(K2JVMCompilerArguments::allowUnstableDependencies) {
     if (it) {
       options.put("x_allow_unstable_dependencies", true)
+    }
+  }
+  //x_compiler_plugin_order: -Xcompiler-plugin-order=<pluginId1>><pluginId2> execution order constraints.
+  handleArgument(K2JVMCompilerArguments::pluginOrderConstraints) { pluginOrderConstraints ->
+    if (pluginOrderConstraints.isNotEmpty()) {
+      options.put("x_compiler_plugin_order", pluginOrderConstraints.asList())
     }
   }
   //x_consistent_data_class_copy_visibility
@@ -1290,6 +1514,14 @@ private fun computeKotlincOptions(buildFile: BuildFile, module: ModuleDescriptor
   if (mergedCompilerArguments.errors?.unknownExtraFlags?.contains("-Xwasm-attach-js-exception") == true) {
     options.put("x_wasm_attach_js_exception", true)
   }
+  //x_wasm_generate_closed_world_multimodule
+  if (mergedCompilerArguments.errors?.unknownExtraFlags?.contains("-Xwasm-generate-closed-world-multimodule") == true) {
+    options.put("x_wasm_generate_closed_world_multimodule", true)
+  }
+  //x_wasm_kclass_fqn
+  if (mergedCompilerArguments.errors?.unknownExtraFlags?.contains("-Xwasm-kclass-fqn") == true) {
+    options.put("x_wasm_kclass_fqn", true)
+  }
   //x_when_guards
   handleArgument(K2JVMCompilerArguments::whenGuards) {
     if (it) {
@@ -1310,9 +1542,11 @@ private fun computeKotlincOptions(buildFile: BuildFile, module: ModuleDescriptor
   checkNoUnhandledKotlincOptions(
     module.module,
     mergedCompilerArguments,
-    handledArguments = handledArguments + setOf("jvmTarget", "pluginClasspaths"),
+    // manuallyConfiguredFeatures is the raw form of -XXLanguage:; the parser also folds it into internalArguments,
+    // which is what the x_x_language handling above reads.
+    handledArguments = handledArguments + setOf("jvmTarget", "pluginClasspaths", "manuallyConfiguredFeatures"),
     allowedInternalArguments = allowedInternalXXLanguage,
-    allowedUnknownExtraFlags = setOf("-Xallow-result-return-type", "-Xstrict-java-nullability-assertions", "-Xwasm-attach-js-exception", "-Xwasm-kclass-fqn"),
+    allowedUnknownExtraFlags = setOf("-Xallow-result-return-type", "-Xstrict-java-nullability-assertions", "-Xwasm-attach-js-exception", "-Xwasm-generate-closed-world-multimodule", "-Xwasm-kclass-fqn"),
   )
 
   if (options.isEmpty()) {
@@ -1341,7 +1575,7 @@ private fun checkNoUnhandledKotlincOptions(module: JpsModule, mergedCompilerArgu
     .filterNot { it.name in handledArguments }
     .forEach {
       val defaultValue = it.getter.call(K2JVMCompilerArguments())
-      if (it.getter.call(mergedCompilerArguments) != defaultValue) {
+      if (!isSameArgumentValue(it.getter.call(mergedCompilerArguments), defaultValue)) {
         error("module '${module.name}' has compiler argument which is not supported: ${it.name}")
       }
     }
@@ -1358,11 +1592,18 @@ private fun checkNoUnhandledKotlincOptions(module: JpsModule, mergedCompilerArgu
   mergedCompilerArguments.errors?.unknownExtraFlags.orEmpty().filterNot { it in allowedUnknownExtraFlags }.forEach {
     error("module '${module.name}' has unknown compiler extra flag: $it")
   }
-  mergedCompilerArguments.errors?.argumentWithoutValue?.let {
+  mergedCompilerArguments.errors?.argumentsWithoutValue.orEmpty().forEach {
     error("module '${module.name}' has compiler argument without value: $it")
   }
-  mergedCompilerArguments.errors?.booleanArgumentWithValue?.let {
+  mergedCompilerArguments.errors?.booleanArgumentsWithIncorrectValue.orEmpty().forEach {
     error("module '${module.name}' has compiler boolean argument with value: $it")
+  }
+  // Arguments that toggle a language feature are reported separately from the two buckets above.
+  mergedCompilerArguments.errors?.booleanLangFeatureArgumentsWithValue.orEmpty().forEach {
+    error("module '${module.name}' has compiler boolean language feature argument with value: $it")
+  }
+  mergedCompilerArguments.errors?.stringLangFeatureArgumentsWithIncorrectValue.orEmpty().forEach { (argument, allowedValues) ->
+    error("module '${module.name}' has compiler language feature argument with an unsupported value: $argument (allowed: ${allowedValues.joinToString()})")
   }
   mergedCompilerArguments.errors?.argfileErrors.orEmpty().forEach {
     error("module '${module.name}' has compiler argfile error: $it")
@@ -1370,6 +1611,12 @@ private fun checkNoUnhandledKotlincOptions(module: JpsModule, mergedCompilerArgu
   mergedCompilerArguments.errors?.internalArgumentsParsingProblems.orEmpty().forEach {
     error("module '${module.name}' has compiler internal arguments parsing problem: $it")
   }
+}
+
+// Array-valued kotlinc arguments default to a fresh `emptyArray()`, so `==` (reference equality for arrays)
+// would report every unset array argument as customized.
+private fun isSameArgumentValue(value: Any?, defaultValue: Any?): Boolean {
+  return if (value is Array<*> && defaultValue is Array<*>) value.contentEquals(defaultValue) else value == defaultValue
 }
 
 private val addExportsRegex = Regex("""--add-exports\s+([^=]+)=\S+""")
@@ -1498,4 +1745,61 @@ internal fun computePackageRelativeExcludes(
   }.sortedBy { compileExcludeSortKey(it) }
 }
 
+/** Uses the same logic as `ij_plugin` rule */
+private fun generateNameForPluginDirectory(moduleName: String): String = moduleName.removePrefix("intellij.").replace('.', '-')
+
 private fun compileExcludeSortKey(pattern: String): String = pattern.lowercase().replace('/', '{')
+
+/**
+ * Exports every XML under this module's production resource roots: content module descriptors,
+ * `META-INF/plugin.xml`, and the fragments those `xi:include`.
+ *
+ * The whole tree, not the root and its `META-INF/`. A reference beginning with `/` is taken verbatim
+ * (`LoadPathUtil.toLoadPath`), so a descriptor can name any path in the module,
+ * and a predicate that assumes two directories leaves those unexported, which is an analysis error
+ * the moment the plan names one.
+ *
+ * Deliberately a superset. An `exports_files` entry costs nothing - only what `build/dev_dist_plan.bzl` and the
+ * convention probe name is materialized into the project model tree - and keeping the two rules independent is what
+ * makes them unable to disagree: this side only has to be wide enough.
+ */
+private fun exportDescriptorFiles(module: ModuleDescriptor, buildFile: BuildFile, alreadyExported: Set<String>) {
+  val exported = TreeSet<String>()
+  for (resource in module.resources) {
+    if (!resource.root.isDirectory()) {
+      continue
+    }
+
+    for (file in resource.root.walk()) {
+      if (file.extension != "xml" || !file.isRegularFile()) {
+        continue
+      }
+
+      val relative = file.relativeTo(module.bazelBuildFileDir).invariantSeparatorsPathString
+      // A resource root above the module's own Bazel package. `getModuleDescriptor` walks the package up until every
+      // content root is under it, so a `customModules` override is the one way to reach this: it names a package of
+      // its own, and `@community//build` is no ancestor of `community/jps/dependency-graph`. `../` is not a label, so
+      // such a descriptor stays on the module-output read it uses today.
+      //
+      // An ultimate module whose resources live in the community tree is not this case, and the entry this writes for
+      // it is inert. The walk drags the package up to the ultimate root, `community` is a `.bazelignore` entry of that
+      // root, and Bazel therefore leaves the subtree out of the main repository's execroot symlink farm:
+      // `//:community/<path>` analyses, and an action that declares it gets a symlink to nothing. The label an action
+      // can read is `@community//<package>:<path>`, which only the community package can export - see
+      // `containingBazelPackageLabel` in `devDistPluginDescriptorPlan.kt`.
+      if (relative.startsWith("../")) {
+        continue
+      }
+
+      // Exporting a file twice in one package is an analysis error, so a hand-written `exports_files` wins - it
+      // is there to give that one file a narrower visibility than `//visibility:public`.
+      if (!alreadyExported.contains(relative)) {
+        exported.add(relative)
+      }
+    }
+  }
+
+  for (path in exported) {
+    buildFile.exportFile(path)
+  }
+}

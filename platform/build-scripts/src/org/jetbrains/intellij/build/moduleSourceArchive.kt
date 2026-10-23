@@ -9,8 +9,6 @@ import com.intellij.util.io.Decompressor
 import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.trace.Span
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import org.jetbrains.idea.maven.aether.ArtifactKind
 import org.jetbrains.idea.maven.aether.ArtifactRepositoryManager
 import org.jetbrains.idea.maven.aether.ProgressConsumer
@@ -41,19 +39,16 @@ import kotlin.io.path.walk
  * Builds archive containing production source roots of the project modules. If `includeLibraries` is `true`, the produced
  * archive also includes sources of project-level libraries on which platform API modules from `modules` list depend on.
  */
-suspend fun zipSourcesOfModules(modules: List<String>, targetFile: Path, includeLibraries: Boolean, context: BuildContext) {
+fun zipSourcesOfModules(modules: List<String>, targetFile: Path, includeLibraries: Boolean, context: BuildContext) {
   context.executeStep(
     spanBuilder("build module sources archives")
       .setAttribute("path", context.paths.buildOutputDir.toString())
       .setAttribute(AttributeKey.stringArrayKey("modules"), modules),
     BuildOptions.SOURCES_ARCHIVE_STEP
-  ) {
-    withContext(Dispatchers.IO) {
-      Files.createDirectories(targetFile.parent)
-      Files.deleteIfExists(targetFile)
-    }
+  ) { span ->
+    Files.createDirectories(targetFile.parent)
+    Files.deleteIfExists(targetFile)
     val includedLibraries = LinkedHashSet<JpsLibrary>()
-    val span = Span.current()
     val outputProvider = context.outputProvider
     if (includeLibraries) {
       val debugMapping = mutableListOf<String>()
@@ -77,9 +72,7 @@ suspend fun zipSourcesOfModules(modules: List<String>, targetFile: Path, include
         .filter { library -> library.getPaths(JpsOrderRootType.SOURCES).any { Files.notExists(it) } }
         .toList()
       if (!librariesWithMissingSources.isEmpty()) {
-        withContext(Dispatchers.IO) {
-          downloadMissingLibrarySources(librariesWithMissingSources, context)
-        }
+        downloadMissingLibrarySources(librariesWithMissingSources, context)
       }
     }
 
@@ -161,7 +154,7 @@ private fun isSourceFile(path: String): Boolean {
          path.endsWith(".form")
 }
 
-private suspend fun downloadMissingLibrarySources(
+private fun downloadMissingLibrarySources(
   librariesWithMissingSources: List<JpsTypedLibrary<JpsSimpleElement<JpsMavenRepositoryLibraryDescriptor>>>,
   context: CompilationContext,
 ) {

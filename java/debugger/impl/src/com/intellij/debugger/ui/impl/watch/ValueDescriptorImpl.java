@@ -74,6 +74,8 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
 public abstract class ValueDescriptorImpl extends NodeDescriptorImpl implements ValueDescriptor {
@@ -94,6 +96,7 @@ public abstract class ValueDescriptorImpl extends NodeDescriptorImpl implements 
   private String myValueText;
   private String myCompactValueText;
   private boolean myFullValue = false;
+  private final AtomicInteger myPendingLabelUpdates = new AtomicInteger();
 
   private @Nullable Icon myValueIcon;
   private @Nullable Icon myInlayIcon;
@@ -301,24 +304,7 @@ public abstract class ValueDescriptorImpl extends NodeDescriptorImpl implements 
     getRenderer(debugProcess)
       .thenAccept(renderer -> calcRepresentation(context, labelListener, debugProcess, renderer))
       .exceptionally(throwable -> {
-        throwable = DebuggerUtilsAsync.unwrap(throwable);
-        if (throwable instanceof EvaluateException) {
-          setValueLabelFailed((EvaluateException)throwable);
-        }
-        else {
-          String message;
-          if (throwable instanceof CancellationException) {
-            message = JavaDebuggerBundle.message("error.context.has.changed");
-          }
-          else if (throwable instanceof VMDisconnectedException || throwable instanceof RejectedExecutionException) {
-            message = JavaDebuggerBundle.message("error.vm.disconnected");
-          }
-          else {
-            message = JavaDebuggerBundle.message("internal.debugger.error");
-            LOG.error(new Throwable(throwable));
-          }
-          setValueLabelFailed(new EvaluateException(message));
-        }
+        setValueLabelFailed(this, throwable);
         labelListener.labelChanged();
         return null;
       });
@@ -361,12 +347,12 @@ public abstract class ValueDescriptorImpl extends NodeDescriptorImpl implements 
     }
 
     //set label id
-    if (isShowIdLabel() && renderer instanceof NodeRendererImpl) {
-      setIdLabel(((NodeRendererImpl)renderer).calcIdLabel(this, debugProcess, labelListener));
+    if (isShowIdLabel() && renderer instanceof NodeRendererImpl renderer1) {
+      setIdLabel(renderer1.calcIdLabel(this, debugProcess, labelListener));
     }
 
     if (valueException == null) {
-      long start = renderer instanceof NodeRendererImpl && ((NodeRendererImpl)renderer).hasOverhead() ? System.currentTimeMillis() : 0;
+      long start = renderer instanceof NodeRendererImpl nodeRenderer && nodeRenderer.hasOverhead() ? System.currentTimeMillis() : 0;
       try {
         setValueLabel(renderer.calcLabel(this, context, labelListener));
       }
@@ -443,6 +429,40 @@ public abstract class ValueDescriptorImpl extends NodeDescriptorImpl implements 
     myValueText = myFullValue ? label : DebuggerUtilsEx.truncateString(label);
   }
 
+  /**
+   * @return true if a renderer still computes a part of the label
+   */
+  @ApiStatus.Internal
+  public boolean hasPendingLabelUpdate() {
+    return myPendingLabelUpdates.get() > 0;
+  }
+
+  /**
+   * The label stays temporary until the update reports the result.
+   *
+   * @return the listener that the update must call one time when it finishes
+   */
+  @ApiStatus.Internal
+  public @NotNull DescriptorLabelListener startLabelUpdate(@NotNull DescriptorLabelListener delegate) {
+    myPendingLabelUpdates.incrementAndGet();
+    AtomicBoolean finished = new AtomicBoolean();
+    return () -> {
+      if (finished.compareAndSet(false, true)) {
+        myPendingLabelUpdates.decrementAndGet();
+      }
+      delegate.labelChanged();
+    };
+  }
+
+  /**
+   * A renderer gets the {@link ValueDescriptor} interface, so it needs this form of {@link #startLabelUpdate}.
+   */
+  @ApiStatus.Internal
+  public static @NotNull DescriptorLabelListener startLabelUpdate(@NotNull ValueDescriptor descriptor,
+                                                                  @NotNull DescriptorLabelListener delegate) {
+    return descriptor instanceof ValueDescriptorImpl impl ? impl.startLabelUpdate(delegate) : delegate;
+  }
+
   public void setCompactValueLabel(String label) {
     myCompactValueText = label;
   }
@@ -456,6 +476,27 @@ public abstract class ValueDescriptorImpl extends NodeDescriptorImpl implements 
     final String label = setFailed(e);
     setValueLabel(label);
     return label;
+  }
+
+  @ApiStatus.Internal
+  public static @NotNull String setValueLabelFailed(@NotNull ValueDescriptor descriptor, @NotNull Throwable throwable) {
+    throwable = DebuggerUtilsAsync.unwrap(throwable);
+    if (throwable instanceof EvaluateException evaluateException) {
+      return descriptor.setValueLabelFailed(evaluateException);
+    }
+
+    String message;
+    if (throwable instanceof CancellationException) {
+      message = JavaDebuggerBundle.message("error.context.has.changed");
+    }
+    else if (throwable instanceof VMDisconnectedException || throwable instanceof RejectedExecutionException) {
+      message = JavaDebuggerBundle.message("error.vm.disconnected");
+    }
+    else {
+      message = JavaDebuggerBundle.message("internal.debugger.error");
+      LOG.error(new Throwable(throwable));
+    }
+    return descriptor.setValueLabelFailed(new EvaluateException(message));
   }
 
   @Override
@@ -508,8 +549,8 @@ public abstract class ValueDescriptorImpl extends NodeDescriptorImpl implements 
 
   public Renderer getLastLabelRenderer() {
     Renderer lastRenderer = getLastRenderer();
-    if (lastRenderer instanceof CompoundReferenceRenderer) {
-      lastRenderer = ((CompoundReferenceRenderer)lastRenderer).getLabelRenderer();
+    if (lastRenderer instanceof CompoundReferenceRenderer renderer) {
+      lastRenderer = renderer.getLabelRenderer();
     }
     return lastRenderer;
   }
@@ -656,10 +697,6 @@ public abstract class ValueDescriptorImpl extends NodeDescriptorImpl implements 
     public Project getProject() {
       return value.getProject();
     }
-
-    @Override
-    public void setRenderer(NodeRenderer renderer) {
-    }
   }
 
   //returns expression that evaluates descriptor value
@@ -675,10 +712,10 @@ public abstract class ValueDescriptorImpl extends NodeDescriptorImpl implements 
 
   public static @Nullable String calcIdLabel(ValueDescriptor descriptor, @NotNull DescriptorLabelListener labelListener) {
     Value value = descriptor.getValue();
-    if (!(value instanceof ObjectReference)) {
+    if (!(value instanceof ObjectReference reference)) {
       return null;
     }
-    return calcIdLabel((ObjectReference)value, descriptor, labelListener);
+    return calcIdLabel(reference, descriptor, labelListener);
   }
 
   private static @Nullable String calcIdLabel(ObjectReference objRef,
@@ -709,23 +746,23 @@ public abstract class ValueDescriptorImpl extends NodeDescriptorImpl implements 
       //buf.append('}');
     }
 
-    if (objRef instanceof ArrayReference) {
+    if (objRef instanceof ArrayReference reference) {
       int idx = buf.indexOf("[");
       if (idx >= 0) {
         if (labelListener == null || descriptor == null) {
-          buf.insert(idx + 1, ((ArrayReference)objRef).length());
+          buf.insert(idx + 1, reference.length());
         }
         else {
-          CompletableFuture<String> asyncId = DebuggerUtilsAsync.length((ArrayReference)objRef)
+          CompletableFuture<String> asyncId = DebuggerUtilsAsync.length(reference)
             .thenApply(length -> buf.insert(idx + 1, length).toString());
           if (asyncId.isDone()) {
             return asyncId.join();
           }
           else {
-            asyncId.thenAccept(res -> {
-              descriptor.setIdLabel(res);
-              labelListener.labelChanged();
-            });
+            DescriptorLabelListener updateListener = startLabelUpdate(descriptor, labelListener);
+            asyncId
+              .thenAccept(descriptor::setIdLabel)
+              .whenComplete((_, _) -> updateListener.labelChanged());
           }
         }
       }
@@ -737,7 +774,7 @@ public abstract class ValueDescriptorImpl extends NodeDescriptorImpl implements 
   private static boolean isEnumConstant(final ObjectReference objRef) {
     try {
       Type type = objRef.type();
-      return type instanceof ClassType && ((ClassType)type).isEnum();
+      return type instanceof ClassType classType && classType.isEnum();
     }
     catch (ObjectCollectedException ignored) {
     }

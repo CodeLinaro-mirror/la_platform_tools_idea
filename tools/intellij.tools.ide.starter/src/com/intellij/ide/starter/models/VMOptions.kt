@@ -6,6 +6,8 @@ import com.intellij.ide.starter.runner.targets.TargetResolver
 import com.intellij.ide.starter.runner.targets.isWsl
 import com.intellij.ide.starter.utils.FileSystem.cleanPathFromSlashes
 import com.intellij.ide.starter.utils.JvmUtils
+import com.intellij.ide.starter.utils.ReportingPathUtils.checkCrashLogDirectoryLength
+import com.intellij.ide.starter.utils.ReportingPathUtils.checkPathLength
 import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.diagnostic.LogLevel
 import com.intellij.openapi.vfs.impl.wsl.WslConstants.WSLENV
@@ -186,6 +188,8 @@ data class VMOptions(
 
   fun enableVerboseOpenTelemetry(): Unit = addSystemProperty("idea.diagnostic.opentelemetry.verbose", true)
 
+  fun enableFocusRequestsLog(): Unit = configureLoggers(LogLevel.TRACE, "jb.focus.requests")
+
   /**
    * [categories] - Could be packages, classes ...
    */
@@ -310,11 +314,14 @@ data class VMOptions(
   }
 
   fun withJvmCrashLogDirectory(directory: Path) {
-    addLine("-XX:ErrorFile=${directory.toAbsolutePath().resolve("java_error_in_idea_%p.log")}", "-XX:ErrorFile=")
+    val absoluteDirectory = checkCrashLogDirectoryLength(directory.toAbsolutePath())
+    addLine("-XX:ErrorFile=${absoluteDirectory.resolve("java_error_in_idea_%p.log")}", "-XX:ErrorFile=")
   }
 
   fun withHeapDumpOnOutOfMemoryDirectory(directory: Path) {
-    addLine("-XX:HeapDumpPath=${directory.toAbsolutePath().resolve("heap-dump.hprof")}", "-XX:HeapDumpPath=")
+    val heapDumpPath = directory.toAbsolutePath().resolve("heap-dump.hprof")
+    checkPathLength(heapDumpPath)
+    addLine("-XX:HeapDumpPath=$heapDumpPath", "-XX:HeapDumpPath=")
   }
 
   fun withXmx(sizeMb: Int): Unit = addLine("-Xmx" + sizeMb + "m", "-Xmx")
@@ -433,7 +440,6 @@ data class VMOptions(
 
   fun enforceSplash() {
     addLine("-Dsplash=true")
-    addLine("-Didea.show.splash.longer=true")
   }
 
   @Suppress("SpellCheckingInspection")

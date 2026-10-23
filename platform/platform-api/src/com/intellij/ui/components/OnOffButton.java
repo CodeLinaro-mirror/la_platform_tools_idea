@@ -8,6 +8,7 @@ import com.intellij.ui.JBColor;
 import com.intellij.ui.scale.JBUIScale;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -41,24 +42,40 @@ public class OnOffButton extends JToggleButton {
   private @NotNull Insets myIpad = JBUI.insets(3);
 
   public OnOffButton() {
-    setBorder(null);
+    setBorder(JBUI.Borders.empty());
     setOpaque(false);
   }
 
+  /**
+   * @deprecated This method is no longer supported
+   */
+  @ApiStatus.Internal
+  @Deprecated(forRemoval = true)
   public @NlsContexts.Button String getOnText() {
     return myOnText;
   }
 
-  @SuppressWarnings("unused")
+  /**
+   * @deprecated This method is no longer supported
+   */
+  @Deprecated(forRemoval = true)
   public void setOnText(@NlsContexts.Button String onText) {
     myOnText = onText;
   }
 
+  /**
+   * @deprecated This method is no longer supported
+   */
+  @ApiStatus.Internal
+  @Deprecated(forRemoval = true)
   public @NlsContexts.Button String getOffText() {
     return myOffText;
   }
 
-  @SuppressWarnings("unused")
+  /**
+   * @deprecated This method is no longer supported
+   */
+  @Deprecated(forRemoval = true)
   public void setOffText(@NlsContexts.Button String offText) {
     myOffText = offText;
   }
@@ -82,6 +99,7 @@ public class OnOffButton extends JToggleButton {
    *
    * @param ipad insets
    */
+  @ApiStatus.Internal
   public void setIpad(@NotNull Insets ipad) {
     myIpad = ipad;
   }
@@ -89,6 +107,7 @@ public class OnOffButton extends JToggleButton {
   /**
    * @return internal paddings of the component
    */
+  @ApiStatus.Internal
   public @NotNull Insets getIpad() {
     return myIpad;
   }

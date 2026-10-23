@@ -1,8 +1,8 @@
 // "Use '_' to declare an anonymous context parameter" "true"
 // COMPILER_ARGUMENTS: -Xcontext-parameters
-// K2_ERROR: Context parameters must be named. Use '_' to declare an anonymous context parameter.
+// K2_ERROR: CONTEXT_PARAMETER_WITHOUT_NAME
 
 context(<caret>String)
 fun foo() = Unit
 
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ContextParameterWithoutNameFixFactory$AddUnderscoreToContextParameterFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ContextParameterWithoutNameFixFactory$AddUnderscoreToContextParameterFix

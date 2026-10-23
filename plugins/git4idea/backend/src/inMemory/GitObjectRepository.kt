@@ -11,6 +11,7 @@ import git4idea.commands.GitCommand
 import git4idea.commands.GitHandlerInputProcessorUtil
 import git4idea.commands.GitLineHandler
 import git4idea.commands.GitObjectType
+import git4idea.config.GitConfigUtil
 import git4idea.config.gpg.isGpgSignEnabledCached
 import git4idea.inMemory.objects.GitObject
 import git4idea.inMemory.objects.Oid
@@ -30,6 +31,8 @@ internal class GitObjectRepository(val repository: GitRepository) {
   }
 
   private val objectCache: MutableMap<Oid, GitObject> = HashMap()
+
+  private val oidByteSize = repository.fullHashLength / 2
 
   val emptyTree by lazy { createTree(emptyMap()) }
 
@@ -110,7 +113,7 @@ internal class GitObjectRepository(val repository: GitRepository) {
    * All dependent objects should be already persisted to the Git repository
    * Creates commit in Git and returns its OID but doesn't construct it in memory
    */
-  @RequiresBackgroundThread
+  @RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
   fun commitTree(
     treeOid: Oid,
     parentsOids: List<Oid>,
@@ -176,7 +179,7 @@ internal class GitObjectRepository(val repository: GitRepository) {
    * Computes the OID that Git would assign to the corresponding object.
    * Does not persist the object to the repository
    */
-  @RequiresBackgroundThread
+  @RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
   fun fetchOid(type: GitObjectType, body: ByteArray): Oid {
     val handler = GitLineHandler(repository.project, repository.root, GitCommand.HASH_OBJECT).apply {
       setSilent(true)
@@ -189,7 +192,7 @@ internal class GitObjectRepository(val repository: GitRepository) {
     return Oid.fromHex(hash)
   }
 
-  @RequiresBackgroundThread
+  @RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
   fun persistObject(obj: GitObject) {
     if (obj.persisted) return
 
@@ -223,14 +226,14 @@ internal class GitObjectRepository(val repository: GitRepository) {
   /**
    * Object should be persisted to the repository
    */
-  @RequiresBackgroundThread
+  @RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
   private fun fetchObjectType(oid: Oid): GitObjectType {
     val type = Git.getInstance().getObjectTypeEnum(repository, oid.hex())
     require(type != null) { "Unknown git object type" }
     return type
   }
 
-  @RequiresBackgroundThread
+  @RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
   private fun loadObjectFromDisk(oid: Oid, type: GitObjectType? = null): GitObject {
     try {
       val type = type ?: fetchObjectType(oid)
@@ -257,7 +260,7 @@ internal class GitObjectRepository(val repository: GitRepository) {
         }
         GitObjectType.TREE -> {
           LOG.debug("Parsing tree object: $oid")
-          val entries = GitObject.Tree.parseBody(body)
+          val entries = GitObject.Tree.parseBody(body, oidByteSize)
           createTree(body, oid, entries)
         }
         GitObjectType.BLOB -> {
@@ -281,7 +284,7 @@ internal class GitObjectRepository(val repository: GitRepository) {
   /**
    * Trees should be persisted on disk
    */
-  @RequiresBackgroundThread
+  @RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
   internal fun GitObjectRepository.mergeTrees(ours: GitObject.Tree, theirs: GitObject.Tree, base: GitObject.Tree): GitObject.Tree {
     val handler = GitLineHandler(repository.project, repository.root, GitCommand.MERGE_TREE).apply {
       setSilent(true)

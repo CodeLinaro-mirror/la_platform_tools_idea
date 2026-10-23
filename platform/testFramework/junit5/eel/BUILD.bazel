@@ -1,8 +1,16 @@
 load("@community//build:tests-options.bzl", "jps_test")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
-### auto-generated section `build intellij.platform.testFramework.junit5.eel` start
+jps_test(
+    name = "testFramework-junit5-eel-tests_test",
+    timeout = "moderate",
+    jvm_flags = ["-Djava.nio.file.spi.DefaultFileSystemProvider=com.intellij.platform.core.nio.fs.MultiRoutingFileSystemProvider"],
+    tags = ["community-aggregator"],
+    runtime_deps = [":testFramework-junit5-eel-tests_test_lib"],
+)
+### skip generation section `test intellij.platform.testFramework.junit5.eel.tests`
 
+### auto-generated section `build intellij.platform.testFramework.junit5.eel` start
 jvm_library(
     name = "eel",
     srcs = glob(
@@ -17,11 +25,11 @@ jvm_library(
     visibility = ["//visibility:public"],
     deps = [
         # do not sort,
-        "//libraries/junit5-jupiter",
-        "@lib//:jetbrains-annotations",
+        "//libraries/junit6-jupiter",
+        "//libraries/jetbrains/annotations",
         "@lib//:kotlin-stdlib",
         "//libraries/kotlinx/coroutines/core",
-        "//libraries/junit5",
+        "//libraries/junit6",
         "//platform/core-api:core",
         "//platform/core-nio-fs",
         "//platform/eel-impl",
@@ -36,6 +44,7 @@ jvm_library(
         "//platform/projectModel-api:projectModel",
         "//platform/eel-nioFs-impl",
         "//platform/eel-impl-base",
+        "//platform/util/annotations",
     ],
 )
 
@@ -51,13 +60,10 @@ jvm_library(
     runtime_deps = [
         # do not sort,
         ":eel",
-        "//libraries/junit5-jupiter:junit5-jupiter_test_lib",
+        "//libraries/junit6-jupiter:junit6-jupiter_test_lib",
+        "//libraries/jetbrains/annotations:annotations_test_lib",
         "//libraries/kotlinx/coroutines/core:core_test_lib",
-        "//libraries/junit5-params",
-        "//libraries/junit5-params:junit5-params_test_lib",
-        "//libraries/junit5:junit5_test_lib",
-        "//libraries/junit5-pioneer",
-        "//libraries/junit5-pioneer:junit5-pioneer_test_lib",
+        "//libraries/junit6:junit6_test_lib",
         "//platform/core-api:core_test_lib",
         "//platform/core-nio-fs:core-nio-fs_test_lib",
         "//platform/eel-impl:eel-impl_test_lib",
@@ -69,11 +75,10 @@ jvm_library(
         "//platform/util:util_test_lib",
         "//platform/util/coroutines:coroutines_test_lib",
         "//platform/util-ex:util-ex_test_lib",
-        "//platform/execution",
-        "//platform/execution:execution_test_lib",
         "//platform/projectModel-api:projectModel_test_lib",
         "//platform/eel-nioFs-impl:eel-nioFs-impl_test_lib",
         "//platform/eel-impl-base:eel-impl-base_test_lib",
+        "//platform/util/annotations:annotations_test_lib",
     ],
 )
 ### auto-generated section `build intellij.platform.testFramework.junit5.eel` end
@@ -88,7 +93,6 @@ exports_files(
 ### auto-generated section `iml intellij.platform.testFramework.junit5.eel` end
 
 ### auto-generated section `build intellij.platform.testFramework.junit5.eel.tests` start
-
 jvm_library(
     name = "testFramework-junit5-eel-tests",
     srcs = glob(
@@ -128,16 +132,17 @@ jvm_library(
     ],
     deps = [
         # do not sort,
-        "//libraries/junit5-jupiter",
-        "//libraries/junit5-jupiter:junit5-jupiter_test_lib",
-        "@lib//:jetbrains-annotations",
+        "//libraries/junit6-jupiter",
+        "//libraries/junit6-jupiter:junit6-jupiter_test_lib",
+        "//libraries/jetbrains/annotations",
+        "//libraries/jetbrains/annotations:annotations_test_lib",
         "@lib//:kotlin-stdlib",
         "//libraries/kotlinx/coroutines/core",
         "//libraries/kotlinx/coroutines/core:core_test_lib",
-        "//libraries/junit5-params",
-        "//libraries/junit5-params:junit5-params_test_lib",
-        "//libraries/junit5",
-        "//libraries/junit5:junit5_test_lib",
+        "//libraries/junit6-params",
+        "//libraries/junit6-params:junit6-params_test_lib",
+        "//libraries/junit6",
+        "//libraries/junit6:junit6_test_lib",
         "//libraries/junit5-pioneer",
         "//libraries/junit5-pioneer:junit5-pioneer_test_lib",
         "//platform/core-api:core",
@@ -180,11 +185,3 @@ exports_files(
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.platform.testFramework.junit5.eel.tests` end
-
-### auto-generated section `test intellij.platform.testFramework.junit5.eel.tests` start
-
-jps_test(
-    name = "testFramework-junit5-eel-tests_test",
-    runtime_deps = [":testFramework-junit5-eel-tests_test_lib"],
-)
-### auto-generated section `test intellij.platform.testFramework.junit5.eel.tests` end

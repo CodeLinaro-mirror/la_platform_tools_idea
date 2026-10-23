@@ -1,6 +1,6 @@
 // "Replace with array call" "true"
 // LANGUAGE_VERSION: 1.2
-// K2_ERROR: Argument type mismatch: actual type is 'String', but 'Array<out String>' was expected.
+// K2_ERROR: ARGUMENT_TYPE_MISMATCH
 
 annotation class Some(vararg val strings: String)
 
@@ -8,4 +8,3 @@ annotation class Some(vararg val strings: String)
 class My
 
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ReplaceWithArrayCallInAnnotationFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ReplaceWithArrayCallInAnnotationFix

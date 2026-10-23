@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.platform.vcs.log.impl.bookmarks` start
+content_module_jar(module = ":bookmarks")
+### auto-generated section `dev intellij.platform.vcs.log.impl.bookmarks` end
 
 ### auto-generated section `build intellij.platform.vcs.log.impl.bookmarks` start
-
 jvm_library(
     name = "bookmarks",
     srcs = glob(
@@ -75,6 +79,7 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.vcs.log.impl.bookmarks.iml",
+        "resources/intellij.platform.vcs.log.impl.bookmarks.xml",
     ],
     visibility = ["//visibility:public"],
 )

@@ -1,12 +1,14 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.python.community.impl.poetry.backend
 
-import com.intellij.python.community.impl.poetry.backend.PyPoetryBundle.message
-import com.intellij.python.community.impl.poetry.common.icons.PythonCommunityImplPoetryCommonIcons
-import com.intellij.python.pytools.PyTool
+import com.intellij.execution.Platform
+import com.intellij.python.pytools.backend.PackageManagerPyTool
+import com.intellij.python.pytools.backend.PyTool
+import com.intellij.python.pytools.backend.ToolCommandSpec
+import com.intellij.python.pytools.backend.ToolSearchPath
+import com.intellij.python.pytools.backend.pyExecutableSpec
 import com.jetbrains.python.packaging.PyPackageName
 import org.jetbrains.annotations.ApiStatus
-import javax.swing.Icon
 
 /**
  * [Poetry](https://python-poetry.org/) — a tool for Python dependency management and packaging. It
@@ -14,11 +16,12 @@ import javax.swing.Icon
  * installs, manages the project's virtual environment, and builds and publishes packages.
  */
 @ApiStatus.Internal
-class PoetryPyTool : PyTool {
-  override val presentableName: String = "Poetry"
+class PoetryPyTool : PackageManagerPyTool {
   override val packageName: PyPackageName = PyPackageName.from("poetry")
-  override val description: String get() = message("python.poetry.tool.description")
-  override val icon: Icon get() = PythonCommunityImplPoetryCommonIcons.Poetry
+  override val toolCommandSpec: ToolCommandSpec
+    get() = pyExecutableSpec(fusId, listOf(
+      ToolSearchPath.RelativePathFromHome(listOf(".poetry", ".bin"), Platform.WINDOWS),
+    ))
 
   @Suppress("CompanionObjectInExtension")
   companion object {

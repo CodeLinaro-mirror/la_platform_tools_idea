@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.properties.copyright` start
+content_module_jar(module = ":copyright")
+### auto-generated section `dev intellij.properties.copyright` end
 
 ### auto-generated section `build intellij.properties.copyright` start
-
 jvm_library(
     name = "copyright",
     srcs = glob(
@@ -14,6 +18,7 @@ jvm_library(
         ["resources/**/*"],
     ),
     visibility = ["//visibility:public"],
+    runtime_deps = ["//plugins/copyright"],
 )
 
 jvm_library(
@@ -25,7 +30,11 @@ jvm_library(
     ),
     module_name = "intellij.properties.copyright",
     visibility = ["//visibility:public"],
-    runtime_deps = [":copyright"],
+    runtime_deps = [
+        # do not sort,
+        ":copyright",
+        "//plugins/copyright:copyright_test_lib",
+    ],
 )
 ### auto-generated section `build intellij.properties.copyright` end
 
@@ -33,6 +42,7 @@ jvm_library(
 exports_files(
     [
         "intellij.properties.copyright.iml",
+        "resources/intellij.properties.copyright.xml",
     ],
     visibility = ["//visibility:public"],
 )

@@ -1,9 +1,22 @@
 load("@community//build:tests-options.bzl", "jps_test")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 load("//build:compiler-options.bzl", "create_kotlinc_options")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+jps_test(
+    name = "completion-tests_test",
+    timeout = "moderate",
+    sandbox = True,
+    tags = ["community-aggregator"],
+    runtime_deps = [":completion-tests_test_lib"],
+)
+### skip generation section `test intellij.gradle.completion.tests`
+
+### auto-generated section `dev intellij.gradle.completion` start
+content_module_jar(module = ":completion")
+### auto-generated section `dev intellij.gradle.completion` end
 
 ### auto-generated section `build intellij.gradle.completion` start
-
 create_kotlinc_options(
     name = "custom_completion",
     opt_in = [
@@ -45,7 +58,6 @@ jvm_library(
         "//platform/util/concurrency",
         "//libraries/kotlinx/coroutines/core",
         "//libraries/io",
-        "//libraries/ktor/client",
         "//platform/eel",
         "//platform/external-system-api:externalSystem",
         "//platform/analysis-api:analysis",
@@ -82,13 +94,10 @@ jvm_library(
         "//platform/core-impl:core-impl_test_lib",
         "//platform/lang-api:lang_test_lib",
         "//platform/platform-impl:ide-impl_test_lib",
-        "//platform/testFramework",
-        "//platform/testFramework:testFramework_test_lib",
         "//platform/util-ex:util-ex_test_lib",
         "//platform/util/concurrency:concurrency_test_lib",
         "//libraries/kotlinx/coroutines/core:core_test_lib",
         "//libraries/io:io_test_lib",
-        "//libraries/ktor/client:client_test_lib",
         "//platform/eel:eel_test_lib",
         "//platform/external-system-api:externalSystem_test_lib",
         "//platform/analysis-api:analysis_test_lib",
@@ -109,13 +118,13 @@ jvm_library(
 exports_files(
     [
         "intellij.gradle.completion.iml",
+        "resources/intellij.gradle.completion.xml",
     ],
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.gradle.completion` end
 
 ### auto-generated section `build intellij.gradle.completion.tests` start
-
 create_kotlinc_options(
     name = "custom_completion-tests",
     opt_in = [
@@ -163,8 +172,6 @@ jvm_library(
         "//plugins/gradle:gradle_test_lib",
         "//platform/projectModel-api:projectModel",
         "//platform/projectModel-api:projectModel_test_lib",
-        "//plugins/repository-search/common",
-        "//plugins/repository-search/common:common_test_lib",
         "//platform/core-api:core",
         "//platform/core-api:core_test_lib",
         "//platform/platform-api:ide",
@@ -187,8 +194,6 @@ jvm_library(
         "//libraries/kotlinx/coroutines/core:core_test_lib",
         "//libraries/io",
         "//libraries/io:io_test_lib",
-        "//libraries/ktor/client",
-        "//libraries/ktor/client:client_test_lib",
         "//platform/eel",
         "//platform/eel:eel_test_lib",
         "//platform/external-system-api:externalSystem",
@@ -205,10 +210,10 @@ jvm_library(
         "//platform/util/text-matching:text-matching_test_lib",
         "//plugins/repository-search/completion",
         "//plugins/repository-search/completion:completion_test_lib",
-        "//libraries/junit5",
-        "//libraries/junit5:junit5_test_lib",
-        "//libraries/junit5-params",
-        "//libraries/junit5-params:junit5-params_test_lib",
+        "//libraries/junit6",
+        "//libraries/junit6:junit6_test_lib",
+        "//libraries/junit6-params",
+        "//libraries/junit6-params:junit6-params_test_lib",
     ],
 )
 ### auto-generated section `build intellij.gradle.completion.tests` end
@@ -221,11 +226,3 @@ exports_files(
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.gradle.completion.tests` end
-
-### auto-generated section `test intellij.gradle.completion.tests` start
-
-jps_test(
-    name = "completion-tests_test",
-    runtime_deps = [":completion-tests_test_lib"],
-)
-### auto-generated section `test intellij.gradle.completion.tests` end

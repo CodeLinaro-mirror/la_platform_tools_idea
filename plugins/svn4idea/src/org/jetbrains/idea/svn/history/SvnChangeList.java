@@ -3,6 +3,7 @@
 package org.jetbrains.idea.svn.history;
 
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vcs.AbstractVcs;
@@ -16,7 +17,7 @@ import com.intellij.openapi.vcs.changes.ExternallyRenamedChange;
 import com.intellij.openapi.vcs.history.VcsRevisionNumber;
 import com.intellij.openapi.vcs.versionBrowser.CommittedChangeList;
 import com.intellij.openapi.vcs.versionBrowser.VcsRevisionNumberAware;
-import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.StandardFileSystems;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.util.ConstantFunction;
 import com.intellij.util.NotNullFunction;
@@ -53,6 +54,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 
+import static com.intellij.ide.impl.ProjectUtil.isRealProject;
 import static org.jetbrains.idea.svn.SvnUtil.createUrl;
 import static org.jetbrains.idea.svn.SvnUtil.getRelativeUrl;
 import static org.jetbrains.idea.svn.SvnUtil.parseUrl;
@@ -301,7 +303,8 @@ public class SvnChangeList implements CommittedChangeList, VcsRevisionNumberAwar
   }
 
   private @Nullable FilePath getLocalPath(@NotNull String path, final NotNullFunction<File, Boolean> detector) {
-    if (myVcs.getProject().isDefault()) return null;
+    Project project = myVcs.getProject();
+    if (!isRealProject(project)) return null;
 
     Url absoluteUrl = parseUrl(myRepositoryRoot + path, false);
     final RootUrlInfo rootForUrl = myVcs.getSvnFileUrlMapping().getWcRootForUrl(absoluteUrl);
@@ -310,7 +313,7 @@ public class SvnChangeList implements CommittedChangeList, VcsRevisionNumberAwar
     if (rootForUrl != null) {
       String relativePath = getRelativeUrl(rootForUrl.getUrl(), absoluteUrl);
       File file = new File(rootForUrl.getPath(), relativePath);
-      VirtualFile virtualFile = LocalFileSystem.getInstance().findFileByIoFile(file);
+      VirtualFile virtualFile = StandardFileSystems.local().findFileByPath(file.getAbsolutePath());
       result = virtualFile != null ? VcsUtil.getFilePath(virtualFile) : VcsUtil.getFilePath(file, detector.fun(file).booleanValue());
     }
 

@@ -3,31 +3,25 @@
 
 package org.jetbrains.intellij.build.productLayout.discovery
 
+import com.intellij.platform.buildScripts.concurrency.SharedCache
 import com.intellij.platform.pluginGraph.ContentModuleName
 import com.intellij.platform.pluginGraph.PluginId
 import com.intellij.platform.pluginGraph.PluginModuleId
 import com.intellij.platform.pluginSystem.parser.impl.elements.ContentModuleElement
 import com.intellij.platform.pluginSystem.parser.impl.elements.ModuleLoadingRuleValue
 import com.intellij.platform.pluginSystem.parser.impl.parseContentAndXIncludes
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.withContext
+import org.jetbrains.intellij.build.DescriptorDependencyWalk
 import org.jetbrains.intellij.build.ModuleOutputProvider
 import org.jetbrains.intellij.build.PLUGIN_XML_RELATIVE_PATH
-import org.jetbrains.intellij.build.findFileInModuleDependenciesRecursive
-import org.jetbrains.intellij.build.findFileInModuleLibraryDependencies
-import org.jetbrains.intellij.build.findFileInModuleSources
+import org.jetbrains.intellij.build.mapConcurrent
 import org.jetbrains.intellij.build.productLayout.ModuleSet
 import org.jetbrains.intellij.build.productLayout.contentName
 import org.jetbrains.intellij.build.productLayout.model.ErrorSink
 import org.jetbrains.intellij.build.productLayout.model.error.XIncludeResolutionError
-import org.jetbrains.intellij.build.productLayout.util.AsyncCache
+import org.jetbrains.intellij.build.resolveDescriptor
 import org.jetbrains.jps.model.module.JpsModule
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.concurrent.ConcurrentHashMap
 
 private sealed interface XIncludeResult {
   @JvmInline
@@ -51,17 +45,20 @@ internal enum class PluginSource {
   /** DSL-defined test plugin, content computed from TestPluginSpec */
   DSL_TEST,
 
-  /** Discovered on-demand during dependency resolution */
+  /** Discovered for compatibility or dependency resolution, without a declaration that assigns descriptor ownership. */
   DISCOVERED,
 }
 
 /**
  * Content module with its loading mode.
  * Consolidates module id and loading into a single structure.
+ *
+ * @param requiredIfAvailable The `required-if-available` target. The module is required when the product mode keeps the target.
  */
 internal data class ContentModuleInfo(
   @JvmField val moduleId: PluginModuleId,
   @JvmField val loadingMode: ModuleLoadingRuleValue?,
+  val requiredIfAvailable: ContentModuleName? = null,
 )
 
 /**
@@ -180,10 +177,10 @@ internal fun extractLegacyDepends(content: String): List<LegacyDepends> {
  *               should use [computePluginContentFromDslSpec] instead of this function.
  * @param errorSink Sink for emitting xi:include resolution errors
  */
-internal suspend fun extractPluginContent(
+internal fun extractPluginContent(
   pluginName: String,
   outputProvider: ModuleOutputProvider,
-  xIncludeCache: AsyncCache<String, ByteArray?>,
+  xIncludeCache: SharedCache<String, ByteArray?>,
   skipXIncludePaths: Set<String> = emptySet(),
   prefixFilter: (moduleName: String) -> String? = { null },
   onlyProductionSources: Boolean = true,
@@ -199,13 +196,13 @@ internal suspend fun extractPluginContent(
     content = pluginXmlOverride.pluginXmlContent
   }
   else {
-    pluginXmlPath = findFileInModuleSources(module = jpsModule, relativePath = PLUGIN_XML_RELATIVE_PATH, onlyProductionSources = onlyProductionSources) ?: return null
-    content = withContext(Dispatchers.IO) { Files.readString(pluginXmlPath) }
+    pluginXmlPath = outputProvider.findFileInModuleSources(module = jpsModule, relativePath = PLUGIN_XML_RELATIVE_PATH, onlyProductionSources = onlyProductionSources) ?: return null
+    content = Files.readString(pluginXmlPath)
   }
 
   val prefix = prefixFilter(pluginName)
 
-  val xIncludeResolver: suspend (String) -> ByteArray? = resolver@{ path ->
+  val xIncludeResolver: (String) -> ByteArray? = resolver@{ path ->
     // Use cache which handles deduplication. The loader returns null on failure,
     // which we then convert to an error. Failures are cached as null to avoid retrying.
     val data = xIncludeCache.getOrPut(path) {
@@ -213,12 +210,14 @@ internal suspend fun extractPluginContent(
         is XIncludeResult.Success -> result.data
         is XIncludeResult.Failure -> {
           // Emit error immediately to errorSink
-          errorSink.emit(XIncludeResolutionError(
-            context = "Plugin content extraction",
-            pluginName = pluginName,
-            xIncludePath = result.path,
-            debugInfo = result.debugInfo,
-          ))
+          errorSink.emit(
+            XIncludeResolutionError(
+              context = "Plugin content extraction",
+              pluginName = pluginName,
+              xIncludePath = result.path,
+              debugInfo = result.debugInfo,
+            )
+          )
           null
         }
       }
@@ -239,7 +238,11 @@ internal suspend fun extractPluginContent(
     pluginXmlContent = content,
     pluginId = extractPluginId(content),
     contentModules = extractedContent.contentModules.map {
-      ContentModuleInfo(moduleId = PluginModuleId(it.name, it.namespace), loadingMode = it.loadingRule)
+      ContentModuleInfo(
+        moduleId = PluginModuleId(it.name, it.namespace),
+        loadingMode = it.loadingRule,
+        requiredIfAvailable = it.requiredIfAvailable?.let(::ContentModuleName),
+      )
     },
 
     moduleDependencies = extractedContent.moduleDependencies,
@@ -266,16 +269,16 @@ private class ExtractedContent(
 )
 
 /**
- * Extracts content modules and module dependencies from XML using BFS traversal with suspend xi:include resolution.
+ * Extracts content modules and module dependencies from XML using BFS traversal with concurrent xi:include resolution.
  * Resolves all `xi:includes` at each level concurrently for optimal I/O performance.
  *
  * Tracks deps per-file (main file + xi:includes) via [FileDepInfo] to support proper detection
  * of existing deps in xi:included files.
  */
-private suspend fun extractContentModules(
+private fun extractContentModules(
   input: ByteArray,
   skipXIncludePaths: Set<String>,
-  xIncludeResolver: suspend (path: String) -> ByteArray?,
+  xIncludeResolver: (path: String) -> ByteArray?,
 ): ExtractedContent {
   val allContent = ArrayList<ContentModuleElement>()
   val allModuleDependencies = LinkedHashSet<ContentModuleName>()
@@ -326,13 +329,11 @@ private suspend fun extractContentModules(
     }
 
     // Resolve all new paths concurrently (errors are collected, not thrown)
-    pending = coroutineScope {
-      newPaths.map { path ->
-        async {
-          xIncludeResolver(path)?.let { path to it }
-        }
-      }.awaitAll().filterNotNull()
-    }
+    // `mapConcurrent` bounds the fan-out. An unresolved path sweeps the output archive of each module of
+    // the project, so one coroutine per path oversubscribes the dispatcher.
+    pending = newPaths.mapConcurrent { path ->
+      xIncludeResolver(path)?.let { path to it }
+    }.filterNotNull()
   }
 
   return ExtractedContent(
@@ -346,35 +347,20 @@ private suspend fun extractContentModules(
   )
 }
 
-private suspend fun resolveXInclude(
+private fun resolveXInclude(
   path: String,
   jpsModule: JpsModule,
   outputProvider: ModuleOutputProvider,
   prefix: String?,
 ): XIncludeResult {
-  outputProvider.readFileContentFromModuleOutput(module = jpsModule, relativePath = path)?.let {
-    return XIncludeResult.Success(it)
-  }
-
-  val processedModules = ConcurrentHashMap.newKeySet<String>()
-  processedModules.add(jpsModule.name)
-
-  findFileInModuleDependenciesRecursive(
+  val data = resolveDescriptor(
     module = jpsModule,
-    relativePath = path,
-    provider = outputProvider,
-    processedModules = processedModules,
-    moduleNamePrefix = prefix,
-  )?.let {
-    return XIncludeResult.Success(it)
-  }
-
-  findFileInModuleLibraryDependencies(jpsModule, path, outputProvider)?.let {
-    return XIncludeResult.Success(it)
-  }
-
-  outputProvider.findFileInAnyModuleOutput(path, prefix, processedModules)?.let {
-    return XIncludeResult.Success(it)
+    path = path,
+    outputProvider = outputProvider,
+    walk = DescriptorDependencyWalk(includePrefix = prefix),
+  )
+  if (data != null) {
+    return XIncludeResult.Success(data)
   }
 
   return XIncludeResult.Failure(

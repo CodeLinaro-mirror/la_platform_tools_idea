@@ -1,12 +1,17 @@
 load("@community//build:tests-options.bzl", "jps_test")
 load("@rules_jvm//:jvm.bzl", "jvm_library", "jvm_provided_library", "resourcegroup")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.gradle` start
+content_module_jar(module = ":gradle")
+### auto-generated section `dev intellij.gradle` end
 
 ### auto-generated section `build intellij.gradle` start
-
 resourcegroup(
     name = "gradle_resources",
     srcs = glob(
         ["resources/**/*"],
+        exclude = ["resources/**/icon-robots.txt"],
     ),
     strip_prefix = "resources",
 )
@@ -47,7 +52,7 @@ jvm_library(
         "//plugins/gradle/tooling-extension-api:toolingExtension",
         "@lib//:slf4j-api",
         "@lib//:slf4j-jdk14",
-        "@lib//:gradle",
+        "//libraries/gradle",
     ],
     deps = [
         # do not sort,
@@ -68,6 +73,8 @@ jvm_library(
         "//platform/lang-api:lang",
         "//platform/lang-core",
         "//platform/lang-impl",
+        "//platform/buildView",
+        "//platform/refactoring",
         "//platform/projectModel-api:projectModel",
         "//platform/projectModel-impl",
         "//platform/smRunner",
@@ -76,7 +83,7 @@ jvm_library(
         "@lib//:slf4j-jdk14",
         "//platform/ide-core-impl",
         "//platform/ide-core",
-        "@lib//:gradle",
+        "//libraries/gradle",
         "//libraries/gson",
         "//platform/object-serializer:objectSerializer-annotations",
         "//libraries/ion",
@@ -102,13 +109,16 @@ jvm_library(
         "//platform/platform-impl/ui",
         "//platform/progress/shared:ide-progress",
         "//platform/eel-provider",
+        "//platform/util/annotations",
         "//platform/ijent",
         "//platform/core-api:core",
         "//libraries/guava",
         "//platform/util/coroutines",
         "//platform/execution",
+        "//platform/consoleView",
         "//platform/forms_rt:java-guiForms-rt",
         "//libraries/jspecify",
+        "//libraries/jna",
         "//platform/util/text-matching",
         "//platform/util:util-ui",
         "//platform/util-ex",
@@ -137,7 +147,8 @@ jvm_library(
         "//plugins/gradle/tooling-extension-api:toolingExtension_test_lib",
         "@lib//:slf4j-api",
         "@lib//:slf4j-jdk14",
-        "@lib//:gradle",
+        "//libraries/gradle",
+        "//libraries/gradle:gradle_test_lib",
     ],
     runtime_deps = [
         # do not sort,
@@ -159,12 +170,15 @@ jvm_library(
         "//platform/lang-api:lang_test_lib",
         "//platform/lang-core:lang-core_test_lib",
         "//platform/lang-impl:lang-impl_test_lib",
+        "//platform/buildView:buildView_test_lib",
+        "//platform/refactoring:refactoring_test_lib",
         "//platform/projectModel-api:projectModel_test_lib",
         "//platform/projectModel-impl:projectModel-impl_test_lib",
         "//platform/smRunner:smRunner_test_lib",
         "//platform/util/progress:progress_test_lib",
         "//platform/ide-core-impl:ide-core-impl_test_lib",
         "//platform/ide-core:ide-core_test_lib",
+        "//libraries/gradle:gradle_test_lib",
         "//libraries/gson:gson_test_lib",
         "//platform/object-serializer:objectSerializer-annotations_test_lib",
         "//libraries/ion:ion_test_lib",
@@ -190,13 +204,16 @@ jvm_library(
         "//platform/platform-impl/ui:ui_test_lib",
         "//platform/progress/shared:ide-progress_test_lib",
         "//platform/eel-provider:eel-provider_test_lib",
+        "//platform/util/annotations:annotations_test_lib",
         "//platform/ijent:ijent_test_lib",
         "//platform/core-api:core_test_lib",
         "//libraries/guava:guava_test_lib",
         "//platform/util/coroutines:coroutines_test_lib",
         "//platform/execution:execution_test_lib",
+        "//platform/consoleView:consoleView_test_lib",
         "//platform/forms_rt:java-guiForms-rt_test_lib",
         "//libraries/jspecify:jspecify_test_lib",
+        "//libraries/jna:jna_test_lib",
         "//platform/util/text-matching:text-matching_test_lib",
         "//platform/util:util-ui_test_lib",
         "//platform/util-ex:util-ex_test_lib",
@@ -213,13 +230,13 @@ jvm_library(
 exports_files(
     [
         "intellij.gradle.iml",
+        "plugin-resources/intellij.gradle.xml",
     ],
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.gradle` end
 
 ### auto-generated section `build intellij.gradle.common` start
-
 jvm_library(
     name = "gradle-common",
     srcs = glob(
@@ -264,7 +281,6 @@ exports_files(
 ### auto-generated section `iml intellij.gradle.common` end
 
 ### auto-generated section `build intellij.gradle.tests` start
-
 jvm_library(
     name = "gradle-tests",
     srcs = glob(
@@ -333,10 +349,14 @@ jvm_library(
         "@lib//:jmock-legacy",
         "//libraries/mockito",
         "//libraries/mockito:mockito_test_lib",
-        "@lib//:mockito-kotlin",
-        "@lib//:junit4",
+        "//libraries/mockito-kotlin",
+        "//libraries/mockito-kotlin:mockito-kotlin_test_lib",
+        "//libraries/junit4",
+        "//libraries/junit4:junit4_test_lib",
         "//plugins/gradle",
         "//plugins/gradle:gradle_test_lib",
+        "//libraries/jna",
+        "//libraries/jna:jna_test_lib",
         "//plugins/gradle:gradle-common",
         "//plugins/gradle:gradle-common_test_lib",
         "//plugins/gradle/plugin",
@@ -355,6 +375,8 @@ jvm_library(
         "//platform/external-system-api/dependency-updater:dependency-updater_test_lib",
         "//platform/external-system-impl:externalSystem-impl",
         "//platform/external-system-impl:externalSystem-impl_test_lib",
+        "//platform/buildView",
+        "//platform/buildView:buildView_test_lib",
         "//platform/observable",
         "//platform/platform-util-io:ide-util-io",
         "//platform/ide-core",
@@ -370,6 +392,8 @@ jvm_library(
         "//jps/model-api:model_test_lib",
         "//platform/lang-core",
         "//platform/lang-core:lang-core_test_lib",
+        "//platform/refactoring",
+        "//platform/refactoring:refactoring_test_lib",
         "//platform/projectModel-api:projectModel",
         "//platform/projectModel-api:projectModel_test_lib",
         "//platform/testFramework",
@@ -416,8 +440,6 @@ jvm_library(
         "//platform/workspace/jps:jps_test_lib",
         "//platform/workspace/storage",
         "//platform/workspace/storage:storage_test_lib",
-        "//tools/intellij.tools.ide.metrics.benchmark:ide-metrics-benchmark",
-        "//tools/intellij.tools.ide.metrics.benchmark:ide-metrics-benchmark_test_lib",
         "//platform/backend/observation",
         "//platform/backend/observation:observation_test_lib",
         "//platform/xdebugger-api:debugger",
@@ -430,6 +452,8 @@ jvm_library(
         "//libraries/guava:guava_test_lib",
         "//platform/execution",
         "//platform/execution:execution_test_lib",
+        "//platform/consoleView",
+        "//platform/consoleView:consoleView_test_lib",
         "//java/java-syntax:syntax",
         "//java/java-syntax:syntax_test_lib",
         "//platform/eel",
@@ -454,16 +478,14 @@ jvm_library(
         "//platform/util/concurrency:concurrency_test_lib",
         "//platform/testRunner",
         "//platform/testRunner:testRunner_test_lib",
-        "//plugins/groovy:groovy-tests",
-        "//plugins/groovy:groovy-tests_test_lib",
+        "//plugins/groovy/testFramework",
+        "//plugins/groovy/testFramework:testFramework_test_lib",
         "//platform/statistics",
         "//platform/statistics:statistics_test_lib",
-        "//libraries/junit4",
-        "//libraries/junit4:junit4_test_lib",
-        "//libraries/junit5",
-        "//libraries/junit5:junit5_test_lib",
-        "//libraries/junit5-params",
-        "//libraries/junit5-params:junit5-params_test_lib",
+        "//libraries/junit6",
+        "//libraries/junit6:junit6_test_lib",
+        "//libraries/junit6-params",
+        "//libraries/junit6-params:junit6-params_test_lib",
     ],
 )
 ### auto-generated section `build intellij.gradle.tests` end
@@ -478,7 +500,6 @@ exports_files(
 ### auto-generated section `iml intellij.gradle.tests` end
 
 ### auto-generated section `test intellij.gradle.tests` start
-
 jps_test(
     name = "gradle-tests_test",
     runtime_deps = [":gradle-tests_test_lib"],
@@ -486,7 +507,6 @@ jps_test(
 ### auto-generated section `test intellij.gradle.tests` end
 
 ### auto-generated section `build intellij.gradle.tests.main` start
-
 jvm_library(
     name = "gradle-tests-main",
     srcs = glob(
@@ -515,12 +535,18 @@ jvm_library(
         ":gradle-tests-main",
         "//platform/bootstrap/coroutine",
         "//platform/bootstrap/coroutine:coroutine_test_lib",
+        "//plugins/gradle/backend:backend-tests",
+        "//plugins/gradle/backend:backend-tests_test_lib",
         "//plugins/gradle/java:java-tests",
         "//plugins/gradle/java:java-tests_test_lib",
         "//plugins/gradle/java/toml/tests",
         "//plugins/gradle/java/toml/tests:tests_test_lib",
+        "//plugins/gradle/java/coverage/tests",
+        "//plugins/gradle/java/coverage/tests:tests_test_lib",
         "//plugins/gradle/jps-plugin:jps-tests",
         "//plugins/gradle/jps-plugin:jps-tests_test_lib",
+        "//plugins/gradle/properties:properties-tests",
+        "//plugins/gradle/properties:properties-tests_test_lib",
         "//plugins/gradle:gradle-tests",
         "//plugins/gradle:gradle-tests_test_lib",
         "//plugins/gradle/tooling-extension-impl:toolingExtension-tests",
@@ -533,6 +559,12 @@ jvm_library(
         "//plugins/gradle/completion/toml:gradle-completion-toml-tests_test_lib",
         "//plugins/gradle/tooling-proxy:toolingProxy-tests",
         "//plugins/gradle/tooling-proxy:toolingProxy-tests_test_lib",
+        "//plugins/gradle/codeInsight/groovy/backend/tests.integration",
+        "//plugins/gradle/codeInsight/groovy/backend/tests.integration:tests.integration_test_lib",
+        "//plugins/gradle/codeInsight/properties/backend/tests.integration",
+        "//plugins/gradle/codeInsight/properties/backend/tests.integration:tests.integration_test_lib",
+        "//plugins/gradle/codeInsight/toml/backend/tests.integration",
+        "//plugins/gradle/codeInsight/toml/backend/tests.integration:tests.integration_test_lib",
     ],
 )
 ### auto-generated section `build intellij.gradle.tests.main` end

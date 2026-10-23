@@ -1,6 +1,28 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//build:compiler-options.bzl", "create_kotlinc_options")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.kotlin.compilerReferenceIndex` start
+content_module_jar(module = ":compiler-reference-index")
+### auto-generated section `dev intellij.kotlin.compilerReferenceIndex` end
 
 ### auto-generated section `build intellij.kotlin.compilerReferenceIndex` start
+create_kotlinc_options(
+    name = "custom_compiler-reference-index",
+    opt_in = [
+        "org.jetbrains.kotlin.psi.KtExperimentalApi",
+        "org.jetbrains.kotlin.psi.KtNonPublicApi",
+        "org.jetbrains.kotlin.psi.KtIdeApi",
+        "org.jetbrains.kotlin.analysis.api.KaExperimentalApi",
+        "org.jetbrains.kotlin.analysis.api.KaIdeApi",
+        "org.jetbrains.kotlin.analysis.api.KaPlatformInterface",
+        "org.jetbrains.kotlin.analysis.api.fir.diagnostics.KaUnstableDiagnosticApi",
+        "org.jetbrains.kotlin.analysis.api.KaNonPublicApi",
+        "org.jetbrains.kotlin.analysis.api.KaContextParameterApi",
+        "org.jetbrains.kotlin.analysis.api.permissions.KaAllowProhibitedAnalyzeFromWriteAction",
+    ],
+    x_context_parameters = True,
+)
 
 jvm_library(
     name = "compiler-reference-index",
@@ -12,6 +34,7 @@ jvm_library(
         ],
         allow_empty = True,
     ),
+    kotlinc_opts = ":custom_compiler-reference-index",
     module_name = "intellij.kotlin.compilerReferenceIndex",
     resource_strip_prefix = "resources",
     resources = glob(
@@ -26,9 +49,11 @@ jvm_library(
     deps = [
         # do not sort,
         "@lib//:kotlin-stdlib",
-        "@lib//:jetbrains-annotations",
-        "@lib//:kotlinc-kotlin-compiler-common",
-        "@lib//:kotlinc-kotlin-jps-common",
+        "//libraries/jetbrains/annotations",
+        "//libraries/kotlinc/kotlin-compiler-common:libraries-kotlinc-kotlin-compiler-common",
+        "//libraries/kotlinc/analysis-api:libraries-kotlinc-analysis-api",
+        "//libraries/kotlinc/symbol-light-classes:libraries-kotlinc-symbol-light-classes",
+        "//libraries/kotlinc/kotlin-jps-common:libraries-kotlinc-kotlin-jps-common",
         "@lib//:kotlinc-kotlin-build-tools-api",
         "//platform/analysis-api:analysis",
         "//platform/core-api:core",
@@ -64,11 +89,17 @@ jvm_library(
         [],
         allow_empty = True,
     ),
+    kotlinc_opts = ":custom_compiler-reference-index",
     module_name = "intellij.kotlin.compilerReferenceIndex",
     visibility = ["//visibility:public"],
     runtime_deps = [
         # do not sort,
         ":compiler-reference-index",
+        "//libraries/jetbrains/annotations:annotations_test_lib",
+        "//libraries/kotlinc/kotlin-compiler-common:libraries-kotlinc-kotlin-compiler-common_test_lib",
+        "//libraries/kotlinc/analysis-api:libraries-kotlinc-analysis-api_test_lib",
+        "//libraries/kotlinc/symbol-light-classes:libraries-kotlinc-symbol-light-classes_test_lib",
+        "//libraries/kotlinc/kotlin-jps-common:libraries-kotlinc-kotlin-jps-common_test_lib",
         "//platform/analysis-api:analysis_test_lib",
         "//platform/core-api:core_test_lib",
         "//platform/editor-ui-api:editor-ui_test_lib",
@@ -101,6 +132,7 @@ jvm_library(
 exports_files(
     [
         "intellij.kotlin.compilerReferenceIndex.iml",
+        "resources/intellij.kotlin.compilerReferenceIndex.xml",
     ],
     visibility = ["//visibility:public"],
 )

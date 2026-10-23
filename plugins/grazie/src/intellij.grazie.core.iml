@@ -33,7 +33,7 @@
     <orderEntry type="module" module-name="intellij.libraries.miglayout.swing" />
     <orderEntry type="module" module-name="intellij.libraries.kotlinx.coroutines.core" />
     <orderEntry type="module" module-name="intellij.libraries.kotlinx.serialization.json" />
-    <orderEntry type="library" scope="RUNTIME" name="jna" level="project" />
+    <orderEntry type="module" module-name="intellij.libraries.jna" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.libraries.guava" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.platform.ide" />
     <orderEntry type="module-library" exported="">
@@ -256,19 +256,19 @@
     </orderEntry>
     <orderEntry type="module-library" exported="">
       <library name="ai.grazie.nlp.common.jvm" type="repository">
-        <properties include-transitive-deps="false" maven-id="ai.grazie.nlp:nlp-common-jvm:0.9.2">
+        <properties include-transitive-deps="false" maven-id="ai.grazie.nlp:nlp-common-jvm:0.9.8">
           <verification>
-            <artifact url="file://$MAVEN_REPOSITORY$/ai/grazie/nlp/nlp-common-jvm/0.9.2/nlp-common-jvm-0.9.2.jar">
+            <artifact url="file://$MAVEN_REPOSITORY$/ai/grazie/nlp/nlp-common-jvm/0.9.8/nlp-common-jvm-0.9.8.jar">
               <sha256sum>81c136c9aed0e9be274920371c519b8e0e7a8c1cdfe7bf11a01fbbbbd0631ec2</sha256sum>
             </artifact>
           </verification>
         </properties>
         <CLASSES>
-          <root url="jar://$MAVEN_REPOSITORY$/ai/grazie/nlp/nlp-common-jvm/0.9.2/nlp-common-jvm-0.9.2.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/ai/grazie/nlp/nlp-common-jvm/0.9.8/nlp-common-jvm-0.9.8.jar!/" />
         </CLASSES>
         <JAVADOC />
         <SOURCES>
-          <root url="jar://$MAVEN_REPOSITORY$/ai/grazie/nlp/nlp-common-jvm/0.9.2/nlp-common-jvm-0.9.2-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/ai/grazie/nlp/nlp-common-jvm/0.9.8/nlp-common-jvm-0.9.8-sources.jar!/" />
         </SOURCES>
       </library>
     </orderEntry>
@@ -340,30 +340,30 @@
         </SOURCES>
       </library>
     </orderEntry>
-    <orderEntry type="module-library">
+    <orderEntry type="module-library" exported="">
       <library name="ai.grazie.gec.util" type="repository">
-        <properties include-transitive-deps="false" maven-id="ai.grazie.gec:gec-util:0.9.2">
+        <properties include-transitive-deps="false" maven-id="ai.grazie.gec:gec-util:0.9.8">
           <verification>
-            <artifact url="file://$MAVEN_REPOSITORY$/ai/grazie/gec/gec-util/0.9.2/gec-util-0.9.2.jar">
-              <sha256sum>f10519c0285c371ac0dcdd984a050d85409920281ee4fa0610f5a5f282e48608</sha256sum>
+            <artifact url="file://$MAVEN_REPOSITORY$/ai/grazie/gec/gec-util/0.9.8/gec-util-0.9.8.jar">
+              <sha256sum>f8fb06de864aa329aab665b4b02a63c0f1209e16866ddb1fdd6c304b86847bf8</sha256sum>
             </artifact>
           </verification>
         </properties>
         <CLASSES>
-          <root url="jar://$MAVEN_REPOSITORY$/ai/grazie/gec/gec-util/0.9.2/gec-util-0.9.2.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/ai/grazie/gec/gec-util/0.9.8/gec-util-0.9.8.jar!/" />
         </CLASSES>
         <JAVADOC />
         <SOURCES>
-          <root url="jar://$MAVEN_REPOSITORY$/ai/grazie/gec/gec-util/0.9.2/gec-util-0.9.2-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/ai/grazie/gec/gec-util/0.9.8/gec-util-0.9.8-sources.jar!/" />
         </SOURCES>
       </library>
     </orderEntry>
     <orderEntry type="module-library" exported="">
       <library name="org.jetbrains.intellij.deps.languagetool:languagetool-core" type="repository">
-        <properties maven-id="org.jetbrains.intellij.deps.languagetool:languagetool-core:6.8.27">
+        <properties maven-id="org.jetbrains.intellij.deps.languagetool:languagetool-core:6.8.28">
           <verification>
-            <artifact url="file://$MAVEN_REPOSITORY$/org/jetbrains/intellij/deps/languagetool/languagetool-core/6.8.27/languagetool-core-6.8.27.jar">
-              <sha256sum>be8f6f4295da4601a3855f950f223218ca9cbaa7c95525def5d0851503df1a53</sha256sum>
+            <artifact url="file://$MAVEN_REPOSITORY$/org/jetbrains/intellij/deps/languagetool/languagetool-core/6.8.28/languagetool-core-6.8.28.jar">
+              <sha256sum>81c270c14516aebd4d7865f86771c721fa4ba0b3dbb359eae0e9854e5c4c8c9d</sha256sum>
             </artifact>
             <artifact url="file://$MAVEN_REPOSITORY$/edu/washington/cs/knowitall/openregex/1.1.1/openregex-1.1.1.jar">
               <sha256sum>33021c9cca70c6292d53ff7dac5d1832d422e986aba52ec998532a5f47f921f8</sha256sum>
@@ -413,22 +413,22 @@
           </exclude>
         </properties>
         <CLASSES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/intellij/deps/languagetool/languagetool-core/6.8.27/languagetool-core-6.8.27.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/intellij/deps/languagetool/languagetool-core/6.8.28/languagetool-core-6.8.28.jar!/" />
           <root url="jar://$MAVEN_REPOSITORY$/edu/washington/cs/knowitall/openregex/1.1.1/openregex-1.1.1.jar!/" />
         </CLASSES>
         <JAVADOC />
         <SOURCES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/intellij/deps/languagetool/languagetool-core/6.8.27/languagetool-core-6.8.27-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/intellij/deps/languagetool/languagetool-core/6.8.28/languagetool-core-6.8.28-sources.jar!/" />
           <root url="jar://$MAVEN_REPOSITORY$/edu/washington/cs/knowitall/openregex/1.1.1/openregex-1.1.1-sources.jar!/" />
         </SOURCES>
       </library>
     </orderEntry>
     <orderEntry type="module-library">
       <library name="org.jetbrains.intellij.deps.languagetool:language-en" type="repository">
-        <properties maven-id="org.jetbrains.intellij.deps.languagetool:language-en:6.8.27">
+        <properties maven-id="org.jetbrains.intellij.deps.languagetool:language-en:6.8.28">
           <verification>
-            <artifact url="file://$MAVEN_REPOSITORY$/org/jetbrains/intellij/deps/languagetool/language-en/6.8.27/language-en-6.8.27.jar">
-              <sha256sum>44a80fe4bd3869c9341c7356ccfcf98731f8dbcb3b310203982562bc8898869a</sha256sum>
+            <artifact url="file://$MAVEN_REPOSITORY$/org/jetbrains/intellij/deps/languagetool/language-en/6.8.28/language-en-6.8.28.jar">
+              <sha256sum>e8ee4376a6702b823d509c0d4090cdf828d94c15ab433fb99a36e13f515f4113</sha256sum>
             </artifact>
             <artifact url="file://$MAVEN_REPOSITORY$/org/languagetool/english-pos-dict/0.6/english-pos-dict-0.6.jar">
               <sha256sum>2a3e96b49854e5275f8eb7a1bb5b3b85b82f687fed272f3043882ccc0b1634b1</sha256sum>
@@ -443,12 +443,12 @@
           </exclude>
         </properties>
         <CLASSES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/intellij/deps/languagetool/language-en/6.8.27/language-en-6.8.27.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/intellij/deps/languagetool/language-en/6.8.28/language-en-6.8.28.jar!/" />
           <root url="jar://$MAVEN_REPOSITORY$/org/languagetool/english-pos-dict/0.6/english-pos-dict-0.6.jar!/" />
         </CLASSES>
         <JAVADOC />
         <SOURCES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/intellij/deps/languagetool/language-en/6.8.27/language-en-6.8.27-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/intellij/deps/languagetool/language-en/6.8.28/language-en-6.8.28-sources.jar!/" />
         </SOURCES>
       </library>
     </orderEntry>
@@ -561,7 +561,7 @@
       </library>
     </orderEntry>
     <orderEntry type="module" module-name="intellij.platform.statistics" />
-    <orderEntry type="library" scope="RUNTIME" name="jetbrains-annotations" level="project" />
+    <orderEntry type="module" module-name="intellij.libraries.jetbrains.annotations" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.libraries.fastutil" />
     <orderEntry type="module" module-name="intellij.platform.util.classLoader" />
     <orderEntry type="module-library">
@@ -620,8 +620,7 @@
     </orderEntry>
     <orderEntry type="module" module-name="intellij.libraries.javax.activation" />
     <orderEntry type="module" module-name="intellij.libraries.javax.annotation" />
-    <orderEntry type="library" name="jaxb-api" level="project" />
-    <orderEntry type="library" name="jaxb-runtime" level="project" />
+    <orderEntry type="module" module-name="intellij.libraries.jaxb" />
     <orderEntry type="module-library">
       <library name="com.hankcs:aho-corasick-double-array-trie" type="repository">
         <properties include-transitive-deps="false" maven-id="com.hankcs:aho-corasick-double-array-trie:1.2.3">
@@ -684,7 +683,7 @@
     <orderEntry type="module" module-name="intellij.libraries.kotlinx.serialization.core" />
     <orderEntry type="module" module-name="intellij.libraries.lucene.common" />
     <orderEntry type="module" module-name="intellij.libraries.ai.grazie.spell.gec.engine.local" />
-    <orderEntry type="library" exported="" name="ai.grazie.rule.engine" level="project" />
+    <orderEntry type="module" module-name="intellij.libraries.ai.grazie.rule.engine" exported="" />
     <orderEntry type="module-library" exported="">
       <library name="ai.grazie.model.ner.jvm" type="repository">
         <properties include-transitive-deps="false" maven-id="ai.grazie.model:model-ner-jvm:0.8.256">
@@ -693,6 +692,9 @@
               <sha256sum>1ebcfdb5c2bb052c1590d3952a50e89146fdd9ae39aa343c1b94a59009edb6b6</sha256sum>
             </artifact>
           </verification>
+          <exclude>
+            <dependency maven-id="cloud.jetbrains.sdk.ml:jbai-ner-api" />
+          </exclude>
         </properties>
         <CLASSES>
           <root url="jar://$MAVEN_REPOSITORY$/ai/grazie/model/model-ner-jvm/0.8.256/model-ner-jvm-0.8.256.jar!/" />
@@ -700,6 +702,42 @@
         <JAVADOC />
         <SOURCES>
           <root url="jar://$MAVEN_REPOSITORY$/ai/grazie/model/model-ner-jvm/0.8.256/model-ner-jvm-0.8.256-sources.jar!/" />
+        </SOURCES>
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library" exported="">
+      <library name="cloud.jetbrains.sdk.ml.jbai.tree.api" type="repository">
+        <properties include-transitive-deps="false" maven-id="cloud.jetbrains.sdk.ml:jbai-tree-api:2.1.0">
+          <verification>
+            <artifact url="file://$MAVEN_REPOSITORY$/cloud/jetbrains/sdk/ml/jbai-tree-api/2.1.0/jbai-tree-api-2.1.0.jar">
+              <sha256sum>adba2a2580f4af64bc97e625b9e60fd0dc533482c97ea39ba8feffc4f77de265</sha256sum>
+            </artifact>
+          </verification>
+        </properties>
+        <CLASSES>
+          <root url="jar://$MAVEN_REPOSITORY$/cloud/jetbrains/sdk/ml/jbai-tree-api/2.1.0/jbai-tree-api-2.1.0.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES>
+          <root url="jar://$MAVEN_REPOSITORY$/cloud/jetbrains/sdk/ml/jbai-tree-api/2.1.0/jbai-tree-api-2.1.0-sources.jar!/" />
+        </SOURCES>
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library" exported="">
+      <library name="cloud.jetbrains.sdk.ml.jbai.ner.api" type="repository">
+        <properties include-transitive-deps="false" maven-id="cloud.jetbrains.sdk.ml:jbai-ner-api:0.2.0">
+          <verification>
+            <artifact url="file://$MAVEN_REPOSITORY$/cloud/jetbrains/sdk/ml/jbai-ner-api/0.2.0/jbai-ner-api-0.2.0.jar">
+              <sha256sum>417a88f8556aaea06feda768cf18ca420f49ec6499065c40874f893e7ab88216</sha256sum>
+            </artifact>
+          </verification>
+        </properties>
+        <CLASSES>
+          <root url="jar://$MAVEN_REPOSITORY$/cloud/jetbrains/sdk/ml/jbai-ner-api/0.2.0/jbai-ner-api-0.2.0.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES>
+          <root url="jar://$MAVEN_REPOSITORY$/cloud/jetbrains/sdk/ml/jbai-ner-api/0.2.0/jbai-ner-api-0.2.0-sources.jar!/" />
         </SOURCES>
       </library>
     </orderEntry>
@@ -719,6 +757,8 @@
     <orderEntry type="module" module-name="intellij.platform.ide.core.impl" />
     <orderEntry type="module" module-name="intellij.platform.ide.core" />
     <orderEntry type="module" module-name="intellij.platform.ide.progress" />
-    <orderEntry type="library" name="io.github.oshai.kotlin.logging.jvm" level="project" />
+    <orderEntry type="module" module-name="intellij.libraries.kotlin.logging" />
+    <orderEntry type="module" module-name="intellij.platform.credentialStore" />
+    <orderEntry type="module" module-name="intellij.libraries.jackson.dataformat.yaml" scope="RUNTIME" />
   </component>
 </module>

@@ -1,7 +1,6 @@
 // Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.plugins.gitlab.mergerequest.data
 
-import com.intellij.collaboration.api.page.ApiPageUtil
 import com.intellij.collaboration.async.BatchesLoader
 import com.intellij.collaboration.util.CodeReviewDomainEntity
 import com.intellij.openapi.components.serviceAsync
@@ -40,7 +39,6 @@ import org.jetbrains.plugins.gitlab.api.request.createAllWorkItemsFlow
 import org.jetbrains.plugins.gitlab.api.request.getProjectNamespace
 import org.jetbrains.plugins.gitlab.api.request.getProjectSearchUsers
 import org.jetbrains.plugins.gitlab.api.request.getProjectUsers
-import org.jetbrains.plugins.gitlab.api.request.getProjectUsersURI
 import org.jetbrains.plugins.gitlab.api.request.searchGroups
 import org.jetbrains.plugins.gitlab.data.GitLabProjectDetails
 import org.jetbrains.plugins.gitlab.mergerequest.api.dto.GitLabMergeRequestDTO
@@ -121,7 +119,6 @@ internal class GitLabProjectImpl(
   private val glMetadata: GitLabServerMetadata?,
   private val details: GitLabProjectDetails,
   private val currentUser: GitLabUserDTO,
-  private val tokenRefreshFlow: Flow<Unit>,
   override val projectCoordinates: GitLabProjectCoordinates,
   override val gitRemote: GitRemoteUrlCoordinates,
 ) : GitLabProject {
@@ -142,7 +139,7 @@ internal class GitLabProjectImpl(
 
   override val mergeRequests: GitLabProjectMergeRequestsStore by lazy {
     CachingGitLabProjectMergeRequestsStore(project, cs, api, glMetadata, currentUser,
-                                           tokenRefreshFlow, projectCoordinates, projectId, gitRemote)
+                                           projectCoordinates, projectId, gitRemote)
   }
 
   private val labelsLoader by lazy {
@@ -154,9 +151,7 @@ internal class GitLabProjectImpl(
   }
 
   private val membersLoader by lazy {
-    BatchesLoader(cs, ApiPageUtil.createPagesFlowByLinkHeader(api.rest.getProjectUsersURI(projectId)) {
-      api.rest.getProjectUsers(it)
-    }.map { response -> response.body().map(GitLabUserDTO::fromRestDTO) })
+    BatchesLoader(cs, api.rest.getProjectUsers(projectId).map { users -> users.map(GitLabUserDTO::fromRestDTO) })
   }
 
   override suspend fun getEmojis(): List<GitLabReaction> = emojisRequest.await()
@@ -221,10 +216,10 @@ internal class GitLabProjectImpl(
         labelTitles,
         squashBeforeMerge,
         removeSourceBranch
-      ).body().iid
+      ).iid
       val attempts = GitLabRegistry.getRequestPollingAttempts()
       repeat(attempts) {
-        val data = api.graphQL.loadMergeRequest(projectCoordinates.projectPath, iid).body()
+        val data = api.graphQL.loadMergeRequest(projectCoordinates.projectPath, iid)
         if (data?.diffRefs != null) {
           return@async data
         }
@@ -241,38 +236,38 @@ internal class GitLabProjectImpl(
   }
 
   override suspend fun uploadFile(path: Path): String {
+    GitLabStatistics.logFileUploadActionExecuted(project)
     val uploadRestDTO = cs.async(Dispatchers.IO) {
       val filename = path.fileName.toString()
       val mimeType = Files.probeContentType(path) ?: "application/octet-stream"
       Files.newInputStream(path).use {
-        api.rest.markdownUploadFile(projectId, filename, mimeType, it).body()
+        api.rest.markdownUploadFile(projectId, filename, mimeType, it)
       }
     }.await()
-    GitLabStatistics.logFileUploadActionExecuted(project)
     return uploadRestDTO.markdown
   }
 
   override suspend fun uploadImage(image: BufferedImage): String {
+    GitLabStatistics.logFileUploadActionExecuted(project)
     val uploadRestDTO = cs.async(Dispatchers.IO) {
       val byteArray = ByteArrayOutputStream().use { outputStream ->
         ImageIO.write(image, "PNG", outputStream)
         outputStream.toByteArray()
       }
       ByteArrayInputStream(byteArray).use {
-        api.rest.markdownUploadFile(projectId, "image.png", "image/png", it).body()
+        api.rest.markdownUploadFile(projectId, "image.png", "image/png", it)
       }
     }.await()
-    GitLabStatistics.logFileUploadActionExecuted(project)
     return uploadRestDTO.markdown
   }
 
   override suspend fun searchProjectUsers(searchString: String): List<GitLabUserDTO> {
     return cs.async(Dispatchers.IO) {
       if (searchString.isEmpty() || searchString.length < MIN_SEARCH_STRING_LENGTH) {
-        api.rest.getProjectUsers(api.rest.getProjectUsersURI(projectId)).body() ?: emptyList()
+        api.rest.getProjectUsers(projectId).firstOrNull() ?: emptyList()
       }
       else {
-        api.rest.getProjectSearchUsers(projectId, searchString).body() ?: emptyList()
+        api.rest.getProjectSearchUsers(projectId, searchString)
       }
     }.await().map { fromRestDTO(it) }
   }
@@ -280,10 +275,10 @@ internal class GitLabProjectImpl(
   override suspend fun searchGroups(searchString: String): List<GitLabGroupRestDTO> {
     return cs.async(Dispatchers.IO) {
       if (searchString.isEmpty() || searchString.length < MIN_SEARCH_STRING_LENGTH) {
-        api.rest.searchGroups().body() ?: emptyList()
+        api.rest.searchGroups()
       }
       else {
-        api.rest.searchGroups(searchString).body() ?: emptyList()
+        api.rest.searchGroups(searchString)
       }
     }.await()
   }
@@ -293,11 +288,8 @@ internal class GitLabProjectImpl(
   }
 
   private suspend fun getAllowsMultipleAssigneesPropertyFromNamespacePlan() = try {
-    api.rest.getProjectNamespace(projectCoordinates.projectPath.owner).body()?.plan?.let {
+    api.rest.getProjectNamespace(projectCoordinates.projectPath.owner).plan.let {
       it != GitLabPlan.FREE
-    } ?: run {
-      LOG.warn("Failed to find namespace for project ${projectCoordinates.projectPath.fullPath()}")
-      null
     }
   }
   catch (ce: CancellationException) {

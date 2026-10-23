@@ -39,6 +39,8 @@ import java.util.concurrent.atomic.AtomicLong
  * a huge margin, the O(2^depth) original blows past it.
  * Assertions use this deterministic counter and run against every composite kind.
  */
+@Subsystems.Typing
+@Components.TypeInference
 @Layers.Functional
 @TestFor(issues = ["PY-90901", "PY-89956"],
          classes = [PyCompositeTypeBase::class, PyUnionType::class, PyUnsafeUnionType::class, PyIntersectionType::class, PyClassTypeImpl::class])
@@ -47,9 +49,9 @@ class PyCompositeTypeEqualityPerformanceTest : PyCodeInsightTestCase() {
   private val counter = AtomicLong()
 
   private val composites: List<Pair<String, (List<PyType?>) -> PyType>> = listOf(
-    "PyUnionType" to { members -> PyUnionType.union(members)!! },
+    "PyUnionType" to { members -> PyUnionType.unionOrUnknown(members)!! },
     "PyUnsafeUnionType" to { members -> PyUnsafeUnionType.unsafeUnion(members)!! },
-    "PyIntersectionType" to { members -> PyIntersectionType.intersection(members)!! },
+    "PyIntersectionType" to { members -> PyIntersectionType.intersectionOrTop(members)!! },
   )
 
   /** Leaf type with stable identity; counts every `hashCode`/`equals` it receives. */
@@ -149,8 +151,8 @@ class PyCompositeTypeEqualityPerformanceTest : PyCodeInsightTestCase() {
   fun `composites of different kinds are never equal`() {
     val a = CountingLeaf("A")
     val b = CountingLeaf("B")
-    val union = PyUnionType.union(listOf(a, b))!!
-    val intersection = PyIntersectionType.intersection(listOf(a, b))!!
+    val union = PyUnionType.unionOrUnknown(listOf(a, b))!!
+    val intersection = PyIntersectionType.intersectionOrTop(listOf(a, b))!!
     // Same member set -> identical hashCode, so this also checks the exact-class gate precedes the fast path.
     assertEquals(union.hashCode(), intersection.hashCode())
     assertNotEquals(union, intersection)

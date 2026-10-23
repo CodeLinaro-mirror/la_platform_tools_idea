@@ -1,7 +1,28 @@
+load("@jps_dynamic_deps_community//:targets.bzl", "dev_dist_plugin")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
-### auto-generated section `build intellij.gradle.java.plugin` start
+### auto-generated section `dev intellij.gradle.java.plugin` start
+dev_dist_plugin(
+    content_modules = [
+        # do not sort,
+        "intellij.gradle.java",
+        "intellij.gradle.java.maven",
+        "intellij.gradle.analysis",
+        "intellij.gradle.dependencyUpdater",
+        "intellij.gradle.java.performance",
+        "intellij.gradle.java.toml",
+        "intellij.gradle.java.groovy",
+        "intellij.gradle.java.groovy.toml",
+        "intellij.gradle.java.groovy.ml",
+        "intellij.gradle.java.coverage",
+        "intellij.gradle.java.properties",
+        "intellij.gradle.jps",
+    ],
+    main_module = "intellij.gradle.java.plugin",
+)
+### auto-generated section `dev intellij.gradle.java.plugin` end
 
+### auto-generated section `build intellij.gradle.java.plugin` start
 jvm_library(
     name = "plugin",
     srcs = glob(
@@ -33,6 +54,7 @@ jvm_library(
 exports_files(
     [
         "intellij.gradle.java.plugin.iml",
+        "resources/META-INF/plugin.xml",
     ],
     visibility = ["//visibility:public"],
 )

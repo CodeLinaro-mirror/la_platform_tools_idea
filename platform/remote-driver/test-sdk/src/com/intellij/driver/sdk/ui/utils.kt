@@ -4,6 +4,7 @@ import com.intellij.driver.client.Driver
 import com.intellij.driver.client.Remote
 import com.intellij.driver.client.impl.RefWrapper
 import com.intellij.driver.client.service
+import com.intellij.driver.client.utility
 import com.intellij.driver.model.OnDispatcher
 import com.intellij.driver.model.RdTarget
 import com.intellij.driver.sdk.Project
@@ -11,6 +12,7 @@ import com.intellij.driver.sdk.invokeAction
 import com.intellij.driver.sdk.ui.components.UiComponent
 import com.intellij.driver.sdk.ui.remote.Component
 import com.intellij.driver.sdk.ui.remote.REMOTE_ROBOT_MODULE_ID
+import com.intellij.driver.sdk.ui.remote.Window
 import com.intellij.driver.sdk.waitFor
 import com.intellij.openapi.diagnostic.fileLogger
 import java.awt.Point
@@ -41,6 +43,8 @@ fun UiComponent.pasteText(text: String) {
 @Remote(value = "com.intellij.ide.impl.ProjectUtil")
 interface ProjectUtil {
   fun focusProjectWindow(project: Project?, stealFocusIfAppInactive: Boolean)
+
+  fun openOrImport(path: String, projectToClose: Project?, forceOpenInNewFrame: Boolean): Project?
 }
 
 @Remote("com.intellij.ide.IdeEventQueue")
@@ -59,6 +63,16 @@ val UiComponent.boundsOnScreen
   get() = component.let { c ->
     val locationOnScreen = c.getLocationOnScreen()
     Rectangle(locationOnScreen.x, locationOnScreen.y, c.width, c.height)
+  }
+
+val UiComponent.boundsInWindow
+  get() = component.let { c ->
+    val utils = driver.utility<ComponentUtil>()
+    c.getBounds().apply {
+      location = utils.convertPoint(c, Point(0, 0), checkNotNull(utils.getWindow(c)) {
+        "No window for component $c"
+      })
+    }
   }
 
 val UiComponent.accessibleName: String? get() = component.getAccessibleContext()?.getAccessibleName()
@@ -109,11 +123,13 @@ fun Driver.getSystemClipboard(): ClipboardRef = utility(ToolkitRef::class)
   .getSystemClipboard()
 
 
-fun Driver.syncVfs() {
+fun Driver.syncVfs(rdTarget: RdTarget = RdTarget.BACKEND) {
   withWriteAction {
-    service<VirtualFileManagerRemote>().syncRefresh()
+    service<VirtualFileManagerRemote>(rdTarget).syncRefresh()
   }
 }
+
+val Driver.isWayland get() = utility<StartupUiUtil>().isWaylandToolkit()
 
 @Remote("org.assertj.swing.driver.CellRendererReader")
 interface CellRendererReader
@@ -140,7 +156,18 @@ interface ClipboardOwnerRef
 interface StringSelectionRef
 
 
-@Remote("com.intellij.openapi.vfs.VirtualFileManager", rdTarget = RdTarget.BACKEND)
+@Remote("com.intellij.openapi.vfs.VirtualFileManager")
 private interface VirtualFileManagerRemote {
   fun syncRefresh()
+}
+
+@Remote("com.intellij.util.ui.StartupUiUtil")
+private interface StartupUiUtil {
+  fun isWaylandToolkit(): Boolean
+}
+
+@Remote("com.intellij.ui.ComponentUtil")
+private interface ComponentUtil {
+  fun convertPoint(source: Component, point: Point, destination: Component): Point
+  fun getWindow(component: Component): Window?
 }

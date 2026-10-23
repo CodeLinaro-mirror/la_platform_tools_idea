@@ -22,6 +22,7 @@ import com.intellij.openapi.vfs.StandardFileSystems
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.util.PathUtil
 import com.intellij.util.io.URLUtil
+import com.intellij.util.system.LowLevelLocalMachineAccess
 import com.intellij.util.system.OS
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +36,7 @@ import java.net.URI
 import java.nio.file.Path
 
 @ApiStatus.Internal
+@OptIn(LowLevelLocalMachineAccess::class)
 open class BrowserLauncherAppless : BrowserLauncher() {
   companion object {
     private val LOG = logger<BrowserLauncherAppless>()
@@ -52,39 +54,34 @@ open class BrowserLauncherAppless : BrowserLauncher() {
       browse(url, browser = null, project = null)
     }
     else {
-      val file = java.io.File(url)
-      if (isDesktopActionSupported(Desktop.Action.OPEN)) {
-        if (!file.exists()) {
-          showError(IdeBundle.message("error.file.does.not.exist", file.path), project = null)
-          return
-        }
-        openWithDesktopApi(url, file)
-      }
-      else {
-        browse(file)
-      }
+      browse(Path.of(url))
     }
-  }
-
-  private fun openWithDesktopApi(url: String, file: java.io.File) {
-    getScope(null).launch {
-      try {
-        LOG.debug { "trying Desktop#open on [${url}]" }
-        Desktop.getDesktop().open(file)
-      }
-      catch (e: IOException) {
-        LOG.warn("[$url]", e)
-        browse(file)
-      }
-    }
-  }
-
-  @Suppress("UsagesOfObsoleteApi", "IO_FILE_USAGE")
-  override fun browse(file: java.io.File) {
-    browse(file.toPath())
   }
 
   override fun browse(file: Path) {
+    if (isDesktopActionSupported(Desktop.Action.OPEN)) {
+      openWithDesktopApi(file)
+    }
+    else {
+      open(file)
+    }
+  }
+
+  private fun openWithDesktopApi(file: Path) {
+    getScope(null).launch {
+      try {
+        LOG.debug { "trying Desktop#open on [${file}]" }
+        @Suppress("IO_FILE_USAGE")
+        Desktop.getDesktop().open(file.toFile())
+      }
+      catch (e: IOException) {
+        LOG.warn("[$file]", e)
+        open(file)
+      }
+    }
+  }
+
+  private fun open(file: Path) {
     browse(file.toAbsolutePath().toUri().toString(), browser = null, project = null)
   }
 

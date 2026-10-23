@@ -8,6 +8,7 @@ import com.intellij.notification.NotificationType;
 import com.intellij.notification.Notifications;
 import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnActionEvent;
+import com.intellij.openapi.actionSystem.remoting.ActionRemoteBehaviorSpecification;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.editor.ScrollType;
 import com.intellij.openapi.fileEditor.FileEditor;
@@ -15,10 +16,11 @@ import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.fileEditor.TextEditor;
 import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.vfs.VirtualFileManager;
 import com.intellij.platform.ide.bootstrap.StartupUtil;
+import com.intellij.platform.ide.productMode.IdeProductMode;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
@@ -26,7 +28,10 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
 @ApiStatus.Internal
-public class OpenLogAction extends DumbAwareAction {
+public class OpenLogAction
+  extends DumbAwareAction
+  implements ActionRemoteBehaviorSpecification.Duplicated {
+
   @Override
   public @NotNull ActionUpdateThread getActionUpdateThread() {
     return ActionUpdateThread.BGT;
@@ -42,14 +47,17 @@ public class OpenLogAction extends DumbAwareAction {
     Project project = e.getProject();
     if (project == null) return;
 
-    openLogInEditor(project);
+    openLogInEditor(project, e);
   }
 
-  public static void openLogInEditor(@NotNull Project project) {
-    VirtualFile file = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(LoggerFactory.getLogFilePath());
+  public static void openLogInEditor(@NotNull Project project, @NotNull AnActionEvent event) {
+    VirtualFile file = VirtualFileManager.getInstance().refreshAndFindFileByNioPath(LoggerFactory.getLogFilePath());
     if (file != null) {
       VfsUtil.markDirtyAndRefresh(true, false, false, file);
       final FileEditor[] editors = FileEditorManager.getInstance(project).openFile(file, true);
+      if (editors.length > 0 && IdeProductMode.isFrontend()) {
+        ClientLogFileBackendMirrorBinder.bindToBackendMirror(event, project, file);
+      }
       if (editors.length > 0 && editors[0] instanceof TextEditor te) {
         scrollToLastIDEStart(te);
       }

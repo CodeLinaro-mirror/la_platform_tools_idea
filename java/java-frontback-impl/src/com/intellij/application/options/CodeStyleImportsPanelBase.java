@@ -1,4 +1,4 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.application.options;
 
 import com.intellij.psi.codeStyle.CodeStyleSettings;
@@ -8,6 +8,7 @@ import com.intellij.psi.codeStyle.PackageEntryTable;
 import com.intellij.ui.TableUtil;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.table.JBTable;
+import com.intellij.util.ui.JBUI;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.JCheckBox;
@@ -23,7 +24,8 @@ public abstract class CodeStyleImportsPanelBase extends JPanel {
   protected final ImportLayoutPanel myImportLayoutPanel;
 
   public CodeStyleImportsPanelBase() {
-    myImportLayoutPanel = new ImportLayoutPanel(isShowLayoutOnDemandImportFromSamePackageFirstCheckbox(), isSupportModule()) {
+    myImportLayoutPanel =
+      new ImportLayoutPanel(isShowLayoutOnDemandImportFromSamePackageFirstCheckbox(), isShowKeepBlankLinesBetweenImportsCheckbox()) {
       @Override
       public void refresh() {
         refreshTable(myPackageTable, myPackageList);
@@ -32,11 +34,12 @@ public abstract class CodeStyleImportsPanelBase extends JPanel {
     };
 
     myPackageTable = ImportLayoutPanel.createTableForPackageEntries(myPackageList, myImportLayoutPanel);
-
     kotlinUI = createKotlinUI(PackagePanel.createPackagesPanel(myPackageTable, myPackageList), myImportLayoutPanel);
 
     setLayout(new BorderLayout());
-    add(new JBScrollPane(kotlinUI.panel), BorderLayout.CENTER);
+    JBScrollPane scrollPane = new JBScrollPane(kotlinUI.panel);
+    scrollPane.setBorder(JBUI.Borders.empty());
+    add(scrollPane, BorderLayout.CENTER);
   }
 
   public abstract void reset(CodeStyleSettings settings);
@@ -51,7 +54,7 @@ public abstract class CodeStyleImportsPanelBase extends JPanel {
     return result;
   }
 
-  private void refreshTable(final JBTable table, final PackageEntryTable packageTable) {
+  private void refreshTable(JBTable table, PackageEntryTable packageTable) {
     AbstractTableModel model = (AbstractTableModel)table.getModel();
     table.createDefaultColumnsFromModel();
     model.fireTableDataChanged();
@@ -142,7 +145,7 @@ public abstract class CodeStyleImportsPanelBase extends JPanel {
     return false;
   }
 
-  protected boolean isSupportModule() {
+  protected boolean isShowKeepBlankLinesBetweenImportsCheckbox() {
     return false;
   }
 }

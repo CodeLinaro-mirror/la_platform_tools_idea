@@ -23,8 +23,9 @@ import java.util.Set;
 
 public final class FileCopyPasteUtil {
   private static final Logger LOG = Logger.getInstance(FileCopyPasteUtil.class);
-  private static final DataFlavor[] FLAVORS =
-    {DataFlavor.javaFileListFlavor, LinuxDragAndDropSupport.uriListFlavor, LinuxDragAndDropSupport.gnomeFileListFlavor};
+  private static final DataFlavor[] FLAVORS = ContainerUtil.filter(new DataFlavor[]{
+    DataFlavor.javaFileListFlavor, LinuxDragAndDropSupport.uriListFlavor, LinuxDragAndDropSupport.gnomeFileListFlavor
+  }, flavor -> flavor != null).toArray(new DataFlavor[0]);
 
   private FileCopyPasteUtil() { }
 
@@ -106,6 +107,16 @@ public final class FileCopyPasteUtil {
     else {
       result = null;
     }
+    return result == null ? List.of() : result;
+  }
+
+  /**
+   * Returns the dragged files as NIO paths, or an empty list when the source reports none.
+   *
+   * @see PathFlavorProvider
+   */
+  public static @NotNull List<Path> getPathListFromAttachedObject(Object attached) {
+    List<Path> result = attached instanceof PathFlavorProvider provider ? provider.asPathList() : null;
     return result == null ? List.of() : result;
   }
 

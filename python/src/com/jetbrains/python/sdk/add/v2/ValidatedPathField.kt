@@ -1,9 +1,7 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.sdk.add.v2
 
-import com.intellij.execution.target.BrowsableTargetEnvironmentType
 import com.intellij.execution.target.TargetBrowserHints
-import com.intellij.execution.target.getTargetType
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CustomShortcutSet
@@ -17,7 +15,6 @@ import com.intellij.openapi.observable.util.not
 import com.intellij.openapi.observable.util.or
 import com.intellij.openapi.observable.util.transform
 import com.intellij.openapi.project.DumbAwareAction
-import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.ui.TextComponentAccessor
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.openapi.ui.ValidationInfo
@@ -66,7 +63,7 @@ import javax.swing.event.DocumentEvent
 import kotlin.concurrent.atomics.AtomicBoolean
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
-interface PathValidator<T, P : PathHolder, VP : ValidatedPath<T, P>> {
+internal interface PathValidator<T, P : PathHolder, VP : ValidatedPath<T, P>> {
   /**
    * [backProperty] should only be used in [PathValidator] and its inheritors
    */
@@ -80,18 +77,16 @@ interface PathValidator<T, P : PathHolder, VP : ValidatedPath<T, P>> {
   }
 
   val isValidationSuccessful: ObservableProperty<Boolean>
-    get() = backProperty.transform { it?.validationResult?.successOrNull != null }
+    get() = backProperty.transform { it?.successOrNull != null }
 }
 
 private interface ValidationStatusExtension
 
-private class ValidationSuccessExtension<T>(val validationInfo: T) : ExtendableTextComponent.Extension, ValidationStatusExtension {
+
+private class ValidationSuccessExtension(private val validationInfo: @Nls String?) : ExtendableTextComponent.Extension, ValidationStatusExtension {
   override fun getIcon(hovered: Boolean): Icon = AllIcons.General.GreenCheckmark
   override fun getTooltip(): @NlsContexts.Tooltip String? {
-    val tooltip = when (validationInfo) {
-      is Unit -> null
-      else -> validationInfo.toString().takeIf { it.isNotEmpty() }
-    }
+    val tooltip = validationInfo.takeIf { it.isNullOrBlank() }
     return tooltip
   }
 }
@@ -120,6 +115,13 @@ internal class ValidatedPathField<T, P : PathHolder, VP : ValidatedPath<T, P>>(
    * Editor Mode means the user changed the value and the value wasn't delivered from upstream.
    */
   private val editorMode = AtomicBoolean(false)
+
+  /**
+   * `true` once the value came from the user (a browse via [fieldAccessor] or typing), as opposed to an
+   * autodetected fill (which writes [text] directly and leaves [editorMode] untouched). Used to persist
+   * a tool executable path only when the user explicitly chose it.
+   */
+  val isUserEdited: Boolean get() = editorMode.load()
 
   private val validationAction = object : DumbAwareAction(AllIcons.Gutter.SuggestedRefactoringBulb) {
     fun doValidate() {
@@ -173,8 +175,9 @@ internal class ValidatedPathField<T, P : PathHolder, VP : ValidatedPath<T, P>>(
         return@afterChange
       }
 
-      if (validatedPath.pathHolder != null) {
-        text = validatedPath.pathHolder.toString()
+      val pathHolder = validatedPath.pathHolder.successOrNull
+      if (pathHolder != null) {
+        text = pathHolder.toStringForUI()
       }
       else {
         text = ""
@@ -197,11 +200,10 @@ internal class ValidatedPathField<T, P : PathHolder, VP : ValidatedPath<T, P>>(
           editorMode.store(false)
           isEnabled = canBeEdited
 
-          pathValidator.backProperty.get()?.validationResult?.let { validationResult ->
-            validationResult
-              .onSuccess {
-                addExtension(ValidationSuccessExtension(it))
-              }
+          pathValidator.backProperty.get()?.let {
+            it.userReadableValidationResult.onSuccess {message->
+              addExtension(ValidationSuccessExtension(message))
+            }
           }
         }
       }
@@ -231,7 +233,7 @@ internal class ValidatedPathField<T, P : PathHolder, VP : ValidatedPath<T, P>>(
         .map {
           if (it == null) return@map null
 
-          if (!editorMode.load() && (pathValidator.backProperty.get()?.pathHolder?.toString() ?: "") != it) {
+          if (!editorMode.load() && (pathValidator.backProperty.get()?.pathHolder?.successOrNull?.toStringForUI() ?: "") != it) {
             editorMode.store(true)
             pathValidator.markDirty()
           }
@@ -258,7 +260,6 @@ internal class ValidatedPathField<T, P : PathHolder, VP : ValidatedPath<T, P>>(
     if (SystemInfo.isMac) {
       descriptor.isForcedToUseIdeaFileChooser = true
     }
-
     return descriptor
   }
 
@@ -266,29 +267,11 @@ internal class ValidatedPathField<T, P : PathHolder, VP : ValidatedPath<T, P>>(
   private fun createBrowseFolderListener(browseFolderDialogTitle: @Nls String, isFileSelectionMode: Boolean): ActionListener? {
     val descriptor = getFileChooserDescriptor(browseFolderDialogTitle, isFileSelectionMode)
     val targetBrowserHints = TargetBrowserHints(showLocalFsInBrowser = true, descriptor)
-    val targetEnvironmentConfiguration = (fileSystem as? TargetFileSystem)?.targetEnvironmentConfiguration
-
-    val listener = if (targetEnvironmentConfiguration == null) {
-      BrowseFolderActionListener(this, null, descriptor, fieldAccessor)
-    }
-    else {
-      val targetType = targetEnvironmentConfiguration.getTargetType()
-      if (targetType is BrowsableTargetEnvironmentType) {
-        targetType.createBrowser(
-          ProjectManager.getInstance().defaultProject,
-          browseFolderDialogTitle,
-          fieldAccessor,
-          this.textField,
-          { targetEnvironmentConfiguration },
-          targetBrowserHints
-        )
-      }
-      else {
-        null
-      }
-    }
-
-    return listener
+   return fileSystem.createBrowseFolderListener(textField = this,
+                                                descriptor = descriptor,
+                                                fieldAccessor = fieldAccessor,
+                                                targetHints=targetBrowserHints,
+                                                title=browseFolderDialogTitle)
   }
 }
 
@@ -304,10 +287,11 @@ private fun <T, P : PathHolder, V : ValidatedPath<T, P>> Panel.missingToolRow(
   validatedPathField: ValidatedPathField<T, P, V>,
   visiblePredicate: ObservableProperty<Boolean>,
 ): JPanel {
-  val selectExecutableLink = if (fileSystem.isBrowsable && fileSystem.toolPathCanBePersisted) ActionLink(message("sdk.create.custom.select.executable.link")) {
-    validatedPathField.button.doClick()
-  }
-  else null
+  val selectExecutableLink =
+    if (fileSystem.isBrowsable && fileSystem.toolPathCanBePersisted) ActionLink(message("sdk.create.custom.select.executable.link")) {
+      validatedPathField.button.doClick()
+    }
+    else null
 
   lateinit var tooltip: JPanel
   row("") {
@@ -404,7 +388,7 @@ internal fun <T, P : PathHolder, VP : ValidatedPath<T, P>> Panel.validatablePath
 
         if (isVenvOverridden) return@validationOnInput null
 
-        val pyErrorMessage = pathValidator.backProperty.get()?.validationResult?.errorOrNull?.message
+        val pyErrorMessage = pathValidator.backProperty.get()?.errorOrNull?.message
 
         when {
           pyErrorMessage != null -> {

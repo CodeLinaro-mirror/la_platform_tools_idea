@@ -3,10 +3,10 @@ package org.jetbrains.plugins.terminal
 
 import com.intellij.platform.eel.EelDescriptor
 import com.intellij.platform.eel.EelOsFamily
-import com.intellij.platform.eel.annotations.MultiRoutingFileSystemPath
 import com.intellij.platform.eel.isWindows
 import com.intellij.platform.eel.path.EelPath
 import com.intellij.platform.eel.provider.asNioPath
+import com.intellij.platform.util.annotations.paths.NioPath
 import com.intellij.terminal.ui.TerminalWidget
 import com.intellij.util.containers.CollectionFactory
 import com.jediterm.core.util.TermSize
@@ -21,7 +21,7 @@ import java.nio.file.Path
 import kotlin.io.path.pathString
 
 class ShellStartupOptions private constructor(builder: Builder) {
-  val workingDirectory: @MultiRoutingFileSystemPath String? = builder.workingDirectory
+  val workingDirectory: @NioPath String? = builder.workingDirectory
   private val finalWorkingDirectoryEelPath: EelPath? = builder.getFinalWorkingDirectoryEelPath()
   val shellCommand: List<String>? = builder.shellCommand
   @ApiStatus.Internal
@@ -32,6 +32,8 @@ class ShellStartupOptions private constructor(builder: Builder) {
   val widget: TerminalWidget? = builder.widget
   val shellIntegration: ShellIntegration? = builder.shellIntegration
   val envVariables: Map<String, String> = builder.envVariables
+  @ApiStatus.Internal
+  val emulatorType: TerminalEmulatorType? = builder.emulatorType
   internal val startupMoment: TerminalStartupMoment? = builder.startupMoment
 
   @get:ApiStatus.Internal
@@ -56,7 +58,8 @@ class ShellStartupOptions private constructor(builder: Builder) {
       widget,
       shellIntegration,
       envVariables,
-      startupMoment
+      startupMoment,
+      this@ShellStartupOptions.emulatorType,
     )
   }
 
@@ -68,7 +71,8 @@ class ShellStartupOptions private constructor(builder: Builder) {
            ", shellIntegration=$shellIntegration" +
            ", envVariables=$envVariables" +
            ", processType=$processType" +
-           ", widget=${widget != null}"
+           ", widget=${widget != null}" +
+           ", emulatorType=$emulatorType"
   }
 
   @ApiStatus.Internal
@@ -82,7 +86,7 @@ class ShellStartupOptions private constructor(builder: Builder) {
   }
 
   class Builder internal constructor(
-    private var workingDirectoryField: @MultiRoutingFileSystemPath String?,
+    private var workingDirectoryField: @NioPath String?,
     private var finalWorkingDirectoryEelPath: EelPath?,
     var shellCommand: List<String>?,
     var initialShellCommand: InitialShellCommand?,
@@ -93,9 +97,11 @@ class ShellStartupOptions private constructor(builder: Builder) {
     var shellIntegration: ShellIntegration? = null,
     var envVariables: Map<String, String> = emptyMap(),
     internal var startupMoment: TerminalStartupMoment? = null,
+    @get:ApiStatus.Internal
+    var emulatorType: TerminalEmulatorType? = null,
   ) {
 
-    var workingDirectory: @MultiRoutingFileSystemPath String?
+    var workingDirectory: @NioPath String?
       get() = workingDirectoryField
       set(value) {
         if (finalWorkingDirectoryEelPath != null) {
@@ -116,16 +122,22 @@ class ShellStartupOptions private constructor(builder: Builder) {
 
     constructor() : this(null, null, null, null, TerminalProcessType.SHELL, null, null, null)
 
-    fun workingDirectory(workingDirectory: @MultiRoutingFileSystemPath String?) = also { this.workingDirectory = workingDirectory }
+    fun workingDirectory(workingDirectory: @NioPath String?) = also { this.workingDirectory = workingDirectory }
     fun shellCommand(shellCommand: List<String>?) = also { this.shellCommand = shellCommand }
     fun envVariables(envs: Map<String, String>) = also { this.envVariables = envs }
     fun processType(processType: TerminalProcessType) = also { this.processType = processType }
-    fun commandHistoryFileProvider(commandHistoryFileProvider: (() -> Path?)?) = also { this.commandHistoryFileProvider = commandHistoryFileProvider }
+    fun commandHistoryFileProvider(commandHistoryFileProvider: (() -> Path?)?) =
+      also { this.commandHistoryFileProvider = commandHistoryFileProvider }
+
     fun initialTermSize(initialTermSize: TermSize?) = also { this.initialTermSize = initialTermSize }
     fun widget(widget: TerminalWidget?) = also { this.widget = widget }
     fun shellIntegration(shellIntegration: ShellIntegration?) = also { this.shellIntegration = shellIntegration }
+
     @JvmName("startupMoment")
     internal fun startupMoment(startupMoment: TerminalStartupMoment?) = also { this.startupMoment = startupMoment }
+
+    @ApiStatus.Internal
+    fun emulatorType(emulatorType: TerminalEmulatorType?): Builder = also { this.emulatorType = emulatorType }
 
     fun modify(modifier: (Builder) -> Unit): Builder = also {
       modifier(this)
@@ -138,7 +150,7 @@ class ShellStartupOptions private constructor(builder: Builder) {
 }
 
 @JvmOverloads
-fun shellStartupOptions(workingDirectory: @MultiRoutingFileSystemPath String?, modifier: ((ShellStartupOptions.Builder) -> Unit)? = null): ShellStartupOptions {
+fun shellStartupOptions(workingDirectory: @NioPath String?, modifier: ((ShellStartupOptions.Builder) -> Unit)? = null): ShellStartupOptions {
   return ShellStartupOptions.Builder().workingDirectory(workingDirectory).modify(modifier ?: {}).build()
 }
 

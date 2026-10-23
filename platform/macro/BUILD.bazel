@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.platform.macro` start
+content_module_jar(module = ":macro")
+### auto-generated section `dev intellij.platform.macro` end
 
 ### auto-generated section `build intellij.platform.macro` start
-
 jvm_library(
     name = "macro",
     srcs = glob(
@@ -25,7 +29,6 @@ jvm_library(
         "//platform/editor-ui-api:editor-ui",
         "//jps/model-api:model",
         "//platform/projectModel-api:projectModel",
-        "//platform/execution",
         "//platform/lang-core",
         "//platform/util:util-ui",
         "//jps/model-serialization",
@@ -56,7 +59,6 @@ jvm_library(
         "//platform/editor-ui-api:editor-ui_test_lib",
         "//jps/model-api:model_test_lib",
         "//platform/projectModel-api:projectModel_test_lib",
-        "//platform/execution:execution_test_lib",
         "//platform/lang-core:lang-core_test_lib",
         "//platform/util:util-ui_test_lib",
         "//jps/model-serialization:model-serialization_test_lib",
@@ -75,6 +77,7 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.macro.iml",
+        "resources/intellij.platform.macro.xml",
     ],
     visibility = ["//visibility:public"],
 )

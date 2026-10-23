@@ -29,15 +29,16 @@ val MAVEN_ARTIFACTS_ADDITIONAL_MODULES: PersistentList<String> = persistentListO
   "intellij.space.java.jps",
 ) + JewelMavenArtifacts.STANDALONE.keys
 
-internal suspend fun createCommunityBuildContext(
+internal fun createCommunityBuildContext(
   options: BuildOptions,
-  projectHome: Path = COMMUNITY_ROOT.communityRoot,
+  projectHome: Path = COMMUNITY_ROOT.communityRoot, lifetime: BuildLifetime,
 ): BuildContext {
   return createBuildContext(
     projectHome = projectHome,
     productProperties = IdeaCommunityProperties(COMMUNITY_ROOT.communityRoot),
     setupTracer = true,
     options = options,
+    lifetime = lifetime,
   )
 }
 
@@ -59,16 +60,18 @@ open class IdeaCommunityProperties(private val communityHomeDir: Path) : JetBrai
     )
 
     productLayout.bundledPluginModules = IDEA_BUNDLED_PLUGINS + sequenceOf(
+      "intellij.idea.customization.plugin",
       "intellij.javaFX.community"
     )
 
     productLayout.prepareCustomPluginRepositoryForPublishedPlugins = false
     productLayout.buildAllCompatiblePlugins = true
-    productLayout.pluginLayouts = CommunityRepositoryModules.COMMUNITY_REPOSITORY_PLUGINS + persistentListOf(
-      JavaPluginLayout.javaPlugin(),
-      CommunityRepositoryModules.groovyPlugin(),
-      CommunityRepositoryModules.androidPlugin(allPlatforms = true),
-    )
+    productLayout.pluginLayouts = lazy {
+      getCommunityRepositoryPlugins() + persistentListOf(
+        JavaPluginLayout.javaPlugin(),
+        groovyPlugin()
+      ) + androidPlugin()
+    }
 
     productLayout.skipUnresolvedContentModules = true
 
@@ -93,6 +96,9 @@ open class IdeaCommunityProperties(private val communityHomeDir: Path) : JetBrai
         JewelMavenArtifacts.isPublishedJewelModule(module) -> JewelMavenArtifacts.patchDependencies(module, dependencies)
         else -> dependencies
       }
+    }
+    mavenArtifacts.inlineModuleDependency = { module, dependency ->
+      JewelMavenArtifacts.isPublishedJewelModule(module) && JewelMavenArtifacts.isInlinedLibraryModule(dependency)
     }
     mavenArtifacts.addPomMetadata = { module, model ->
       when {
@@ -124,7 +130,7 @@ open class IdeaCommunityProperties(private val communityHomeDir: Path) : JetBrai
     include(intellijCommunityBaseFragment(platformPrefix))
   }
 
-  override suspend fun copyAdditionalFiles(targetDir: Path, context: BuildContext) {
+  override fun copyAdditionalFiles(targetDir: Path, context: BuildContext) {
     super.copyAdditionalFiles(targetDir, context)
 
     copyFileToDir(context.paths.communityHomeDir.resolve("LICENSE.txt"), targetDir)
@@ -138,7 +144,7 @@ open class IdeaCommunityProperties(private val communityHomeDir: Path) : JetBrai
     bundleExternalPlugins(context, targetDir)
   }
 
-  protected open suspend fun bundleExternalPlugins(context: BuildContext, targetDirectory: Path) {}
+  protected open fun bundleExternalPlugins(context: BuildContext, targetDirectory: Path) {}
 
   override fun createWindowsCustomizer(projectHome: Path): WindowsDistributionCustomizer = ideaCommunityWindowsCustomizer(communityHomeDir)
 
@@ -165,7 +171,7 @@ open class AndroidStudioProperties(communityHomeDir: Path) : IdeaCommunityProper
     productLayout.productImplementationModules += "intellij.idea.android.customization"
 
     val defaultBundledPlugins = IDEA_BUNDLED_PLUGINS
-      .removing("intellij.mcpserver")
+      .removing("intellij.mcpserver.plugin")
       .removing("intellij.featuresTrainer")
 
     productLayout.bundledPluginModules = defaultBundledPlugins + persistentListOf(
@@ -205,32 +211,46 @@ fun intellijCommunityBaseFragment(platformPrefix: String? = null): ProductModule
   }
 
   include(CommunityProductFragments.javaIdeBaseFragment())
-  deprecatedInclude("intellij.idea.community.customization", "META-INF/tips-intellij-idea-community.xml")
 
   module("intellij.platform.coverage")
   module("intellij.platform.coverage.agent")
   module("intellij.xml.xmlbeans")
+  module("intellij.libraries.log4j.to.slf4j")
+  module("intellij.libraries.xmlbeans")
   module("intellij.platform.ide.newUiOnboarding")
   module("intellij.platform.ide.newUsersOnboarding")
   module("intellij.ide.startup.importSettings")
+  // the sqlite JDBC driver `importSettings` needs; private, so plugins bundle their own copy of it
+  privateModule("intellij.libraries.sqlite")
+  // Load-bearing product defaults stay core-time.
+  // The com.intellij.idea.customization plugin holds only additive rows.
   module("intellij.platform.customization.min")
   module("intellij.idea.customization.base")
-  module("intellij.idea.customization.backend")
-  module("intellij.platform.tips")
+  if (platformPrefix == "AndroidStudio") {
+    // Android Studio's bundled plugin set is managed externally, so this module stays in its core
+    module("intellij.idea.customization.backend")
+  }
 
   if (System.getProperty("idea.platform.prefix") == "AndroidStudio") {
     module("intellij.idea.android.customization")
   }
 
   moduleSet(CommunityModuleSets.ideCommon())
+  // the bundled Compose plugin needs the Compose runtime
+  moduleSet(CommunityModuleSets.composeRuntime())
+  moduleSet(CommunityModuleSets.platformResourceDefaults())
   moduleSet(CommunityModuleSets.rdCommon())
 
-  deprecatedInclude("intellij.idea.community.customization", "META-INF/community-customization.xml")
+  embeddedModule("intellij.idea.community.ide.customization")
+
+  module("intellij.platform.ide.nonModalWelcomeScreen")
+  module("intellij.platform.ide.nonModalWelcomeScreen.frontend")
+  module("intellij.platform.ide.nonModalWelcomeScreen.backend")
 }
 
 inline fun ideaCommunityWindowsCustomizer(
   projectHome: Path,
-  configure: WindowsCustomizerBuilder.() -> Unit = {}
+  configure: WindowsCustomizerBuilder.() -> Unit = {},
 ): WindowsDistributionCustomizer = windowsCustomizer(projectHome) {
   fileAssociations = listOf("java", "gradle", "groovy", "kt", "kts", "pom")
 
@@ -246,7 +266,7 @@ inline fun ideaCommunityWindowsCustomizer(
 
 inline fun ideaCommunityMacCustomizer(
   projectHome: Path,
-  configure: MacCustomizerBuilder.() -> Unit = {}
+  configure: MacCustomizerBuilder.() -> Unit = {},
 ): MacDistributionCustomizer = macCustomizer(projectHome) {
   urlSchemes = listOf("idea")
   associateIpr = true
@@ -265,7 +285,7 @@ inline fun ideaCommunityMacCustomizer(
 
 inline fun ideaCommunityLinuxCustomizer(
   projectHome: Path,
-  configure: LinuxCustomizerBuilder.() -> Unit = {}
+  configure: LinuxCustomizerBuilder.() -> Unit = {},
 ): LinuxDistributionCustomizer = linuxCustomizer(projectHome) {
 
   rootDirectoryName { _, _ -> "idea-oss" }

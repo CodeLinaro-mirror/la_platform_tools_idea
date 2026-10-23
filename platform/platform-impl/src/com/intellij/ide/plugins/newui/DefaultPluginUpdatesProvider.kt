@@ -11,6 +11,7 @@ import com.intellij.openapi.diagnostic.getOrHandleException
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.updateSettings.impl.PluginUpdateHandler
+import com.intellij.openapi.updateSettings.impl.PluginUpdateSourceService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -23,7 +24,6 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 import org.jetbrains.annotations.ApiStatus
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.milliseconds
@@ -59,10 +59,21 @@ class DefaultPluginUpdatesProvider(private val coroutineScope: CoroutineScope) :
           coroutineScope.launch { update() }
           return
         }
-        coroutineScope.launch { dropFromLastPluginUpdates(pluginDescriptors.map { it.getPluginId() }.toSet()) }
+        coroutineScope.launch {
+          updateMutex.withLock {
+            val updates = lastPluginUpdates ?: return@withLock
+            val updated = updates.withDisabledPlugins(pluginDescriptors.map { it.pluginId }.toSet())
+            if (updated !== updates) {
+              lastPluginUpdates = updated
+              emitUpdates(updated)
+            }
+          }
+        }
       }
     })
-
+    PluginUpdateSourceService.addPluginUpdateSourceFilteringRegistryListener(coroutineScope) {
+      coroutineScope.launch { update() }
+    }
     collectUpdateRequests()
   }
 
@@ -123,4 +134,20 @@ class DefaultPluginUpdatesProvider(private val coroutineScope: CoroutineScope) :
   private fun List<PluginDto>.markLocalIfUnset(): List<PluginDto> = onEach {
     if (it.source == null) it.source = PluginSource.LOCAL
   }
+}
+
+internal fun PluginUpdatesEvent.withDisabledPlugins(pluginIds: Set<PluginId>): PluginUpdatesEvent {
+  val (disabled, enabled) = enabledUpdates.partition { it.pluginId in pluginIds }
+  if (disabled.isEmpty()) return this
+  val disabledUpdatesById = LinkedHashMap<PluginId, PluginDto>()
+  for (update in disabledUpdates + disabled) {
+    val existing = disabledUpdatesById.putIfAbsent(update.pluginId, update)
+    if (existing != null) {
+      existing.source = existing.source.addSource(update.source)
+    }
+  }
+  return copy(
+    enabledUpdates = enabled,
+    disabledUpdates = disabledUpdatesById.values.toList(),
+  )
 }

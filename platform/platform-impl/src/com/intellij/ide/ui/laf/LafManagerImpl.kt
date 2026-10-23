@@ -22,6 +22,7 @@ import com.intellij.ide.ui.UISettingsUtils
 import com.intellij.ide.ui.UIThemeProvider
 import com.intellij.ide.ui.laf.SystemDarkThemeDetector.Companion.createParametrizedDetector
 import com.intellij.ide.ui.laf.darcula.DarculaLaf
+import com.intellij.ide.ui.laf.darcula.ui.installNewUiOnOffButtonUI
 import com.intellij.ide.ui.laf.intellij.IdeaPopupMenuUI
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.actionSystem.ActionManager
@@ -79,6 +80,7 @@ import com.intellij.ui.ExperimentalUI
 import com.intellij.ui.JBColor
 import com.intellij.ui.ScreenUtil
 import com.intellij.ui.WindowRoundedCornersManager
+import com.intellij.ui.components.Badge
 import com.intellij.ui.dsl.listCellRenderer.listCellRenderer
 import com.intellij.ui.icons.getDisabledIcon
 import com.intellij.ui.mac.MacFullScreenControlsManager
@@ -87,10 +89,13 @@ import com.intellij.ui.scale.JBUIScale.getFontScale
 import com.intellij.ui.scale.JBUIScale.scale
 import com.intellij.ui.scale.JBUIScale.scaleFontSize
 import com.intellij.ui.scale.JBUIScale.setUserScaleFactor
+import com.intellij.ui.scale.ScaleContext
+import com.intellij.ui.scale.ScaleType
 import com.intellij.ui.svg.setSelectionColorPatcherProvider
 import com.intellij.util.EventDispatcher
 import com.intellij.util.FontUtil
 import com.intellij.util.IJSwingUtilities
+import com.intellij.util.IconUtil
 import com.intellij.util.PlatformUtils
 import com.intellij.util.SVGLoader.colorPatcherProvider
 import com.intellij.util.concurrency.SynchronizedClearableLazy
@@ -579,7 +584,7 @@ class LafManagerImpl(private val coroutineScope: CoroutineScope) : LafManager(),
           val theme = group.items.find { info -> info.id == value.themeId}
           if (theme != null) {
             if (theme.isRestartRequired()) {
-              icon(AllIcons.General.Beta)
+              icon(Badge.beta)
               if (!welcomeMode && value.themeId != currentTheme?.id && group.items.find { info -> info.id == currentTheme?.id} == null) {
                 icon(getDisabledIcon(AllIcons.Actions.Restart, null))
                 toolTipText = IdeBundle.message("ide.restart.required.comment")
@@ -821,7 +826,10 @@ class LafManagerImpl(private val coroutineScope: CoroutineScope) : LafManager(),
     if (ExperimentalUI.isNewUI()) {
       applyDensityOnUpdateUi(uiDefaults)
       applyAltColors(uiDefaults)
+      installNewUiOnOffButtonUI(uiDefaults)
     }
+    
+    patchLoadingImageIcons(uiDefaults)
 
     // should be called last because this method modifies uiDefault values
     patchHiDPI(uiDefaults)
@@ -1078,7 +1086,7 @@ class LafManagerImpl(private val coroutineScope: CoroutineScope) : LafManager(),
       if (settings == null) {
         ShowSettingsUtil.getInstance().showSettingsDialog(ProjectManager.getInstance().defaultProject,
                                                           PluginManagerConfigurable::class.java) { c: PluginManagerConfigurable ->
-          c.enableSearch(themeTag)
+          c.navigateToMarketplace(themeTag)
         }
       }
       else {
@@ -1283,9 +1291,8 @@ private class OurPopupFactory(private val delegate: PopupFactory) : PopupFactory
         DialogWrapper.cleanupWindowListeners(window)
       }
     })
-    if ((IdeaPopupMenuUI.isUnderPopup(contents) || (SystemInfoRt.isWindows || IdeaPopupMenuUI.isUnderMainMenu(contents)))
-        && WindowRoundedCornersManager.isAvailable()) {
-      if ((SystemInfoRt.isMac && StartupUiUtil.isDarkTheme) || SystemInfoRt.isWindows) {
+    if (contents is JPopupMenu && IdeaPopupMenuUI.isRoundBorder()) {
+      if ((SystemInfoRt.isMac && StartupUiUtil.isDarkTheme) || SystemInfoRt.isWindows || StartupUiUtil.isWaylandToolkit()) {
         WindowRoundedCornersManager.setRoundedCorners(window, JBUI.CurrentTheme.Popup.borderColor(true))
       }
       else {
@@ -1315,6 +1322,15 @@ private fun getFont(yosemite: String, size: Int, style: Int): FontUIResource {
 
 private fun installLinuxFonts(defaults: UIDefaults) {
   defaults.put("MenuItem.acceleratorFont", defaults.get("MenuItem.font"))
+}
+
+private fun patchLoadingImageIcons(uiDefaults: UIDefaults) {
+  // See javax.swing.text.html.ImageView.
+  // The default Swing implementations use java.awt.MediaTracker, which can cause freezes.
+  // So we replace them with anything that "looks like a missing image."
+  val loadingImageIcon = IconUtil.scale(AllIcons.FileTypes.Image, ScaleContext.create(ScaleType.OBJ_SCALE.of(2.5)))
+  uiDefaults["html.pendingImage"] = loadingImageIcon
+  uiDefaults["html.missingImage"] = loadingImageIcon
 }
 
 private fun patchHiDPI(defaults: UIDefaults) {

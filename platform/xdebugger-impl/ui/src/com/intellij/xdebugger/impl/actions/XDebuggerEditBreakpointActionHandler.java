@@ -18,8 +18,17 @@ import java.awt.Point;
 @ApiStatus.Internal
 public class XDebuggerEditBreakpointActionHandler extends EditBreakpointActionHandler {
   @Override
+  protected void doShowPopup(Project project,
+                             JComponent component,
+                             Point whereToShow,
+                             XBreakpointProxy breakpoint,
+                             @NotNull PreferredFocusOwner preferredFocusOwner) {
+    DebuggerUIUtil.showXBreakpointEditorBalloon(project, whereToShow, component, false, false, breakpoint, preferredFocusOwner);
+  }
+
+  @Override
   protected void doShowPopup(Project project, JComponent component, Point whereToShow, XBreakpointProxy breakpoint) {
-    DebuggerUIUtil.showXBreakpointEditorBalloon(project, whereToShow, component, false, breakpoint);
+    doShowPopup(project, component, whereToShow, breakpoint, PreferredFocusOwner.DEFAULT);
   }
 
   @Override
@@ -27,7 +36,7 @@ public class XDebuggerEditBreakpointActionHandler extends EditBreakpointActionHa
     DataContext dataContext = event.getDataContext();
     Editor editor = CommonDataKeys.EDITOR.getData(dataContext);
     if (editor == null) return false;
-    var pair = XBreakpointUIUtil.findSelectedBreakpointProxy(project, editor, getSelectedBreakpointPlacement());
-    return pair.first != null;
+    var breakpoint = XBreakpointUIUtil.findSelectedBreakpoint(project, editor, getSelectedBreakpointPlacement());
+    return breakpoint != null;
   }
 }

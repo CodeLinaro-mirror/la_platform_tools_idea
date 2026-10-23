@@ -33,6 +33,17 @@ open class LspCustomization {
   open val goToTypeDefinitionCustomizer: LspGoToTypeDefinitionCustomizer = LspGoToTypeDefinitionSupport()
 
   /**
+   * Customizes the LSP go to implementation feature behavior. By default, uses standard [LspGoToImplementationSupport] implementation.
+   * Implementations may override this property to:
+   * - return their specific subclass of [LspGoToImplementationSupport] that fine-tunes the behavior
+   * - return [LspGoToImplementationDisabled] to disable the LSP feature
+   *
+   * When enabled, the IDE will ask the LSP server for `Navigate -> Implementation(s)` targets by sending the
+   * [textDocument/implementation](https://microsoft.github.io/language-server-protocol/specification/#textDocument_implementation) request.
+   */
+  open val goToImplementationCustomizer: LspGoToImplementationCustomizer = LspGoToImplementationSupport()
+
+  /**
    * Customizes the LSP hover feature behavior. By default, uses standard [LspHoverSupport] implementation.
    * Implementations may override this property to:
    * - return their specific subclass of [LspHoverSupport] that fine-tunes the behavior
@@ -308,6 +319,26 @@ open class LspCustomization {
    */
   open val codeLensCustomizer: LspCodeLensCustomizer = LspCodeLensSupport()
 
+
+  /**
+   * Customizes the override/implement gutter icons (line markers). The feature is disabled by default.
+   * Implementations may override this property to:
+   * - return [LspInheritanceMarkersSupport] or a subclass of it to enable the LSP feature
+   *
+   * When enabled, the IDE finds the marker anchors with the
+   * [textDocument/documentSymbol](https://microsoft.github.io/language-server-protocol/specification/#textDocument_documentSymbol)
+   * request, and then computes one marker per symbol with the
+   * [textDocument/implementation](https://microsoft.github.io/language-server-protocol/specification/#textDocument_implementation)
+   * request for a method-like symbol, or the
+   * [textDocument/prepareTypeHierarchy](https://microsoft.github.io/language-server-protocol/specification/#textDocument_prepareTypeHierarchy)
+   * and `typeHierarchy/subtypes` requests for a class-like symbol.
+   * The per-symbol requests also respect [goToImplementationCustomizer] and [typeHierarchyCustomizer].
+   * Traffic gates keep the request count low: the IDE queries an interface member always,
+   * and a class method only when the class has subtypes.
+   *
+   * The feature is opt-in because one pull costs one request per queried symbol, and server speed varies.
+   */
+  open val inheritanceMarkersCustomizer: LspInheritanceMarkersCustomizer = LspInheritanceMarkersDisabled
 
   /**
    * Customizes the LSP Rename functionality.

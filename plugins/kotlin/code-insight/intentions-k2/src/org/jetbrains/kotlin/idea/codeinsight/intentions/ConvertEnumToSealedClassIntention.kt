@@ -14,18 +14,24 @@ import com.intellij.psi.createSmartPointer
 import com.intellij.psi.util.endOffset
 import com.intellij.psi.util.startOffset
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.analyze
+import org.jetbrains.kotlin.analysis.api.session.analyze
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.symbol
 import org.jetbrains.kotlin.config.LanguageFeature
 import org.jetbrains.kotlin.idea.base.facet.platform.platform
 import org.jetbrains.kotlin.idea.base.projectStructure.languageVersionSettings
+import org.jetbrains.kotlin.idea.base.psi.addMemberDeclaration
+import org.jetbrains.kotlin.idea.base.psi.addModifierKeyword
+import org.jetbrains.kotlin.idea.base.psi.addSuperType
 import org.jetbrains.kotlin.idea.base.psi.getOrCreateCompanionObject
 import org.jetbrains.kotlin.idea.base.psi.relativeTo
+import org.jetbrains.kotlin.idea.base.psi.removeModifierKeyword
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
-import org.jetbrains.kotlin.idea.codeinsight.intentions.ConvertEnumToSealedClassIntention.Context
 import org.jetbrains.kotlin.idea.codeinsight.api.applicable.intentions.KotlinApplicableModCommandAction
+import org.jetbrains.kotlin.idea.codeinsight.intentions.ConvertEnumToSealedClassIntention.Context
 import org.jetbrains.kotlin.idea.search.ExpectActualUtils
 import org.jetbrains.kotlin.lexer.KtTokens
+import org.jetbrains.kotlin.name.render
 import org.jetbrains.kotlin.platform.jvm.isJvm
 import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtDeclaration
@@ -34,7 +40,6 @@ import org.jetbrains.kotlin.psi.KtObjectDeclaration
 import org.jetbrains.kotlin.psi.KtPsiFactory
 import org.jetbrains.kotlin.psi.psiUtil.allChildren
 import org.jetbrains.kotlin.psi.psiUtil.siblings
-import kotlin.collections.iterator
 
 /**
  * Tests:
@@ -68,7 +73,8 @@ internal class ConvertEnumToSealedClassIntention : KotlinApplicableModCommandAct
         return listOf(TextRange(enumKeyword.startOffset, nameIdentifier.endOffset).relativeTo(element))
     }
 
-    override fun KaSession.prepareContext(element: KtClass): Context? {
+    context(session: KaSession)
+    override fun prepareContext(element: KtClass): Context? {
         val enumClassName = element.name ?: return null
         if (enumClassName.isEmpty()) return null
 
@@ -107,8 +113,8 @@ internal class ConvertEnumToSealedClassIntention : KotlinApplicableModCommandAct
         val (enumClassName, supportsDataObjects, isJvmPlatform, _) = elementContext
         val (isExpect, isActual, classFqName) = classInfo
 
-        klass.removeModifier(KtTokens.ENUM_KEYWORD)
-        klass.addModifier(KtTokens.SEALED_KEYWORD)
+        klass.removeModifierKeyword(KtTokens.ENUM_KEYWORD)
+        klass.addModifierKeyword(KtTokens.SEALED_KEYWORD)
 
         val psiFactory = KtPsiFactory(klass.project)
 
@@ -120,7 +126,7 @@ internal class ConvertEnumToSealedClassIntention : KotlinApplicableModCommandAct
                 listOfNotNull(
                     "data".takeIf { supportsDataObjects },
                     "object",
-                    member.name,
+                    member.nameAsSafeName.render(),
                 ).joinToString(" ")
             )
 
@@ -129,7 +135,7 @@ internal class ConvertEnumToSealedClassIntention : KotlinApplicableModCommandAct
                 for (initializer in initializers) {
                     val classNameText = klass.nameIdentifier?.text ?: return
                     val superTypeListEntry = psiFactory.createSuperTypeCallEntry("$classNameText${initializer.text}")
-                    obj.addSuperTypeListEntry(superTypeListEntry)
+                    obj.addSuperType(superTypeListEntry)
                 }
             } else {
                 val classNameText = klass.nameIdentifier?.text ?: enumClassName
@@ -138,11 +144,11 @@ internal class ConvertEnumToSealedClassIntention : KotlinApplicableModCommandAct
                 } else {
                     psiFactory.createSuperTypeCallEntry("$classNameText()")
                 }
-                obj.addSuperTypeListEntry(defaultEntry)
+                obj.addSuperType(defaultEntry)
             }
 
             if (isActual) {
-                obj.addModifier(KtTokens.ACTUAL_KEYWORD)
+                obj.addModifierKeyword(KtTokens.ACTUAL_KEYWORD)
             }
 
             member.body?.let { obj.add(it) }
@@ -150,13 +156,13 @@ internal class ConvertEnumToSealedClassIntention : KotlinApplicableModCommandAct
             obj.addComments(member)
 
             member.delete()
-            klass.addDeclaration(obj)
+            klass.addMemberDeclaration(obj)
 
             objects.add(obj)
         }
 
         if (isJvmPlatform) {
-            val enumEntryNames = objects.map { it.nameAsSafeName.asString() }
+            val enumEntryNames = objects.map { it.nameAsSafeName.render() }
             val targetClassName = klass.nameIdentifier?.text
             if (enumEntryNames.isNotEmpty() && targetClassName != null) {
                 val companionObject = klass.getOrCreateCompanionObject()
@@ -181,7 +187,7 @@ internal class ConvertEnumToSealedClassIntention : KotlinApplicableModCommandAct
 
     private fun KtObjectDeclaration.addValuesFunction(targetClassName: String, enumEntryNames: List<String>, psiFactory: KtPsiFactory) {
         val functionText = "fun values(): Array<${targetClassName}> { return arrayOf(${enumEntryNames.joinToString()}) }"
-        addDeclaration(psiFactory.createFunction(functionText))
+        addMemberDeclaration(psiFactory.createFunction(functionText))
     }
 
     private fun KtObjectDeclaration.addValueOfFunction(
@@ -198,7 +204,7 @@ internal class ConvertEnumToSealedClassIntention : KotlinApplicableModCommandAct
             append("}")
             append("}")
         }
-        addDeclaration(psiFactory.createFunction(functionText))
+        addMemberDeclaration(psiFactory.createFunction(functionText))
     }
 
     private fun KtObjectDeclaration.addComments(enumEntry: KtEnumEntry) {

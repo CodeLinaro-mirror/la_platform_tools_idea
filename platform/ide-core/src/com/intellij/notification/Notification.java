@@ -1,4 +1,4 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.notification;
 
 import com.intellij.ide.IdeCoreBundle;
@@ -191,6 +191,17 @@ public class Notification {
 
   @ApiStatus.Internal
   public boolean canShowFor(@Nullable Project project) {
+    configureDoNotAskOption();
+    if (DoNotAskAppManager.getInstance().isDoNotAsk(myDoNotAskId)) {
+      return false;
+    }
+    if (project != null) {
+      return !DoNotAskProjectManager.getInstance(project).isDoNotAsk(myDoNotAskId);
+    }
+    return true;
+  }
+
+  private void configureDoNotAskOption() {
     if (myDoNotAskId == null && myDisplayId != null) {
       myDoNotAskDisplayName = myTitle;
       myDoNotAskId = myDisplayId;
@@ -203,13 +214,6 @@ public class Notification {
       myDoNotAskDisplayName = title;
       myDoNotAskId = myGroupId;
     }
-    if (DoNotAskAppManager.getInstance().isDoNotAsk(myDoNotAskId)) {
-      return false;
-    }
-    if (project != null) {
-      return !DoNotAskProjectManager.getInstance(project).isDoNotAsk(myDoNotAskId);
-    }
-    return true;
   }
 
   @ApiStatus.Internal
@@ -363,7 +367,11 @@ public class Notification {
     if (!myExpired.compareAndSet(false, true)) return;
 
     UIUtil.invokeLaterIfNeeded(this::hideBalloon);
-    NotificationsManager.getNotificationsManager().expire(this);
+
+    var manager = NotificationsManager.getNotificationsManager();
+    if (manager != null) {
+      manager.expire(this);
+    }
 
     if (myWhenExpired != null) {
       for (var each : myWhenExpired) {
@@ -443,6 +451,7 @@ public class Notification {
   @ApiStatus.Experimental
   @Contract("_ -> this")
   public Notification setDoNotAskFor(@Nullable Project project) {
+    configureDoNotAskOption();
     if (project == null) {
       DoNotAskAppManager.getInstance().markDoNotAsk(myDoNotAskId, myDoNotAskDisplayName);
     }

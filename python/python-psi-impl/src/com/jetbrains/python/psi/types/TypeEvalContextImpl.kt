@@ -3,8 +3,10 @@ package com.jetbrains.python.psi.types
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.diagnostic.logger
+import com.intellij.openapi.module.Module
 import com.intellij.openapi.module.ModuleUtilCore
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.roots.JdkOrderEntry
 import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.util.RecursionManager
 import com.intellij.openapi.util.registry.Registry
@@ -14,6 +16,8 @@ import com.intellij.util.ArrayUtil
 import com.intellij.util.ProcessingContext
 import com.intellij.util.containers.CollectionFactory
 import com.intellij.util.containers.HashingStrategy
+import com.jetbrains.python.codeInsight.PyCodeInsightCounters
+import com.jetbrains.python.codeInsight.PyCodeInsightCounters.Counter
 import com.jetbrains.python.psi.AccessDirection
 import com.jetbrains.python.psi.PyCallable
 import com.jetbrains.python.psi.PyExpression
@@ -27,6 +31,7 @@ import com.jetbrains.python.psi.types.engine.PyTypeEngine
 import com.jetbrains.python.psi.types.engine.PyTypeEngineProvider
 import com.jetbrains.python.pyi.PyiLanguageDialect
 import org.jetbrains.annotations.ApiStatus
+import java.util.Optional
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentMap
 import kotlin.concurrent.Volatile
@@ -45,19 +50,44 @@ open class TypeEvalContextImpl internal constructor(
 
   private val myProcessingContext = ThreadLocal.withInitial { ProcessingContext() }
 
+  private val myModuleTypeEngines: MutableMap<Module, Optional<PyTypeEngine>> = ConcurrentHashMap()
+
   @ApiStatus.Internal
   val typeEngine: PyTypeEngine? = constraints.myOrigin?.let {
     if (isNotebookExternalTypeEngineDisabled(it)) {
       return@let null
     }
-    ModuleUtilCore.findModuleForFile(it)
-  }?.let { module ->
-    PyTypeEngineProvider.createTypeResolver(module)
+    getOrCreateTypeEngine(it.originalFile)
   }
+
+  private fun getTypeEngine(element: PyTypedElement): PyTypeEngine? {
+    val containingFile = element.containingFile ?: return null
+    if (isNotebookExternalTypeEngineDisabled(containingFile)) {
+      return null
+    }
+    return getOrCreateTypeEngine(containingFile)
+  }
+
+  private fun getOrCreateTypeEngine(file: PsiFile): PyTypeEngine? {
+    val module = file.getUserData(ModuleUtilCore.KEY_MODULE) ?: ModuleUtilCore.findModuleForFile(file.originalFile)
+    if (module != null) {
+      return moduleTypeEngine(module)
+    }
+    return findTypeEngineWithoutModule(file.originalFile)
+  }
+
+  private fun moduleTypeEngine(module: Module): PyTypeEngine? =
+    myModuleTypeEngines.computeIfAbsent(module) { Optional.ofNullable(PyTypeEngineProvider.createTypeEngine(it)) }.orElse(null)
+
   protected val myEvaluated: MutableMap<PyTypedElement?, PyType?> = getConcurrentMapForCachingTypes()
   protected val myEvaluatedReturn: MutableMap<PyCallable?, PyType?> = getConcurrentMapForCachingTypes()
   protected val contextTypeCache: ConcurrentMap<Pair<Any, Any>, PyType> = getConcurrentMapForCachingTypes()
-  protected val myVarianceCache: MutableMap<PyTypeParameterType, PyTypeParameterType.Variance> = getConcurrentMapForCaching()
+  protected val myVarianceCache: MutableMap<PyTypeParameterType, PyVariance> = getConcurrentMapForCaching()
+  protected val mySubstitutionsCache: MutableMap<SubstitutionsIdentifier, PyTypeChecker.GenericSubstitutions> = getConcurrentMapForCaching()
+
+  init {
+    PyCodeInsightCounters.inc(Counter.CONTEXTS_CONSTRUCTED)
+  }
 
   internal constructor(
     allowDataFlow: Boolean,
@@ -96,6 +126,16 @@ open class TypeEvalContextImpl internal constructor(
            !Registry.`is`("python.lsp.type.engine.notebooks", false)
   }
 
+  private fun findTypeEngineWithoutModule(origin: PsiFile): PyTypeEngine? {
+    val virtualFile = origin.virtualFile ?: return null
+    return ProjectFileIndex.getInstance(origin.project).getOrderEntriesForFile(virtualFile)
+      .asSequence()
+      .filterIsInstance<JdkOrderEntry>()
+      .map { it.ownerModule }
+      .distinct()
+      .firstNotNullOfOrNull(::moduleTypeEngine)
+  }
+
   @ApiStatus.Internal
   override fun isExternal(): Boolean = constraints.myIsExternal
 
@@ -107,9 +147,7 @@ open class TypeEvalContextImpl internal constructor(
   }
 
   override fun trace(message: String, vararg args: Any?) {
-    if (myTrace != null) {
-      myTrace!!.add(myTraceIndent + String.format(message, *args))
-    }
+    myTrace?.add(myTraceIndent + String.format(message, *args))
   }
 
   override fun traceIndent() {
@@ -148,6 +186,18 @@ open class TypeEvalContextImpl internal constructor(
     if (!Registry.`is`("python.use.better.control.flow.type.inference")) {
       return func(this)
     }
+    // PY-89956: if this exact (element, type) assumption is already in effect, don't nest another context.
+    if (this is AssumptionContext && isAlreadyAssumed(element, type)) {
+      return func(this)
+    }
+    // Bound assumption nesting: pathological def-use/operator chains (esp. in library code) can nest
+    // hundreds of levels, overflowing the stack / exhausting the heap. Past the cap fall back to the
+    // un-narrowed context — less precise narrowing, still sound.
+    val currentDepth = (this as? AssumptionContext)?.assumptionDepth ?: 0
+    if (currentDepth >= Registry.intValue("python.control.flow.assumption.max.depth", 8)) {
+      return func(this)
+    }
+    PyCodeInsightCounters.inc(Counter.ASSUME_TYPE_CALLS)
     val context = AssumptionContext(this, element, type)
     return try {
       func(context)
@@ -177,6 +227,18 @@ open class TypeEvalContextImpl internal constructor(
     }
   }
 
+  fun putSubstitutions(si: SubstitutionsIdentifier, substitutions: PyTypeChecker.GenericSubstitutions) {
+    mySubstitutionsCache.putIfAbsent(si, substitutions)
+  }
+
+  fun removeSubstitutions(si: SubstitutionsIdentifier) {
+    mySubstitutionsCache.remove(si)
+  }
+
+  open fun getKnownSubstitutions(si: SubstitutionsIdentifier): PyTypeChecker.GenericSubstitutions? {
+    return mySubstitutionsCache[si]
+  }
+
   private fun getLibraryContext(project: Project): TypeEvalContext {
     // code completion will always have a new PsiFile, use the original file instead
     val origin = constraints.myOrigin?.originalFile
@@ -199,6 +261,7 @@ open class TypeEvalContextImpl internal constructor(
   }
 
   override fun getType(element: PyTypedElement): PyType? {
+    PyCodeInsightCounters.inc(Counter.GET_TYPE_CALLS)
     if (canDelegateToLibraryContext(element)) {
       val context = getLibraryContext(element.project)
       return context.getType(element)
@@ -206,29 +269,42 @@ open class TypeEvalContextImpl internal constructor(
 
     val knownType = getKnownType(element)
     if (knownType != null) {
-      return if (knownType === PyNullType) null else knownType
+      PyCodeInsightCounters.inc(Counter.GET_TYPE_CACHE_HITS)
+      return if (knownType === PyNullType) PyAnyType.unknown else knownType
     }
 
     return RecursionManager.doPreventingRecursion(element to this, false) {
-      val engine = typeEngine
-      val type = if (engine != null && engine.isSupportedForResolve(element)) {
+      PyCodeInsightCounters.inc(Counter.GET_TYPE_EVALUATIONS)
+      val engine = getTypeEngine(element)?.takeIf { it.isSupportedForResolve(element) }
+      val type = if (engine == null) {
+        evaluateWithBuiltInEngine(element)
+      }
+      else if (engine.isReady) {
         PyTypeEvaluationAggregatesCollector.recordHybridTypeEngineTime(engine) {
           val isUserInitiated = constraints.myAllowStubToAST && constraints.myAllowDataFlow
-          engine.resolveType(element, this is LibraryTypeEvalContext, isUserInitiated)?.get()
+          val resolvedType = engine.resolveType(element, this is LibraryTypeEvalContext, isUserInitiated)
+          // resolvedType is null when the engine could not evaluate at all, in contrast to Ref(null) which means the type is legitimately null
+          if (resolvedType == null) evaluateWithBuiltInEngine(element) else resolvedType.get()
         }
       }
+      else if (engine.allowsBuiltInTypeEngineFallbackWhenUnavailable) {
+        evaluateWithBuiltInEngine(element)
+      }
       else {
-        PyTypeEvaluationAggregatesCollector.recordPyCharmTypeEngineTime {
-          element.getType(this, KeyImpl)
-        }
+        // The engine answers after its server starts, and the start drops this context. Do not cache the gap.
+        return@doPreventingRecursion PyAnyType.unknown
       }
 
       assertValid(type, element)
       PyAnyType.validate(type, element)
-      myEvaluated[element] = type ?: PyNullType
-      type
+      publish(myEvaluated, element, type)
     } ?: PyAnyType.unknown
   }
+
+  private fun evaluateWithBuiltInEngine(element: PyTypedElement): PyType? =
+    PyTypeEvaluationAggregatesCollector.recordPyCharmTypeEngineTime {
+      element.getType(this, KeyImpl)
+    }
 
   override fun getReturnType(callable: PyCallable): PyType? {
     if (canDelegateToLibraryContext(callable)) {
@@ -238,15 +314,23 @@ open class TypeEvalContextImpl internal constructor(
 
     val knownReturnType = getKnownReturnType(callable)
     if (knownReturnType != null) {
-      return if (knownReturnType is PyNullType) null else knownReturnType
+      return if (knownReturnType is PyNullType) PyAnyType.unknown else knownReturnType
     }
     return RecursionManager.doPreventingRecursion(callable to this, false) {
       val type = callable.getReturnType(this, KeyImpl)
       assertValid(type, callable)
-      PyAnyType.validate(type)
-      myEvaluatedReturn[callable] = type ?: PyNullType
-      type
+      PyAnyType.validate(type, callable)
+      publish(myEvaluatedReturn, callable, type)
     } ?: PyAnyType.unknown
+  }
+
+  /**
+   * Stores [type] for [key] unless another thread stored a type first, and returns the stored type.
+   * All threads that share this context then see the same type for [key].
+   */
+  private fun <K : Any> publish(cache: MutableMap<K?, PyType?>, key: K, type: PyType?): PyType? {
+    val stored = cache.putIfAbsent(key, type ?: PyNullType) ?: return type
+    return if (stored === PyNullType) PyAnyType.unknown else stored
   }
 
   @get:ApiStatus.Experimental
@@ -273,7 +357,7 @@ open class TypeEvalContextImpl internal constructor(
   }
 
   @ApiStatus.Internal
-  override fun getVarianceCache(): MutableMap<PyTypeParameterType, PyTypeParameterType.Variance> {
+  override fun getVarianceCache(): MutableMap<PyTypeParameterType, PyVariance> {
     return myVarianceCache
   }
 
@@ -321,17 +405,57 @@ open class TypeEvalContextImpl internal constructor(
     }
   }
 
-  class AssumptionContext(val myParent: TypeEvalContextImpl, element: PyTypedElement, type: PyType?) :
+  /**
+   * Use a temporary context to avoid that during computations, intermediate type results pollute the parent context's cache.
+   * A temporary context is stacked on top of the parent context and will first check its own cache and then delegate to the parent
+   * context's cache. New results will be stored in the temporary context's cache but eventually will be dropped when the temporary
+   * context is disposed.
+   */
+  @ApiStatus.Experimental
+  open class TemporaryContext(val myParent: TypeEvalContextImpl, val keepUncapturedTypeParameters: Boolean = false) :
     TypeEvalContextImpl(myParent.constraints) {
 
+    override fun getKnownType(element: PyTypedElement): PyType? {
+      return super.getKnownType(element) ?: myParent.getKnownType(element)
+    }
+
+    override fun getKnownReturnType(callable: PyCallable): PyType? {
+      return super.getKnownReturnType(callable) ?: myParent.getKnownReturnType(callable)
+    }
+
+    override fun getKnownSubstitutions(si: SubstitutionsIdentifier): PyTypeChecker.GenericSubstitutions? {
+      return super.getKnownSubstitutions(si) ?: myParent.getKnownSubstitutions(si)
+    }
+  }
+
+  class AssumptionContext(myParent: TypeEvalContextImpl, element: PyTypedElement, type: PyType?) :
+    TemporaryContext(myParent) {
+
     val myInstructionCache: MutableMap<List<Any>, PyType> = ConcurrentHashMap()
-    
+
     private val topAssumption: AssumptionContext =
       if (myParent is AssumptionContext) myParent.topAssumption else this
 
+    private val assumedElement: PyTypedElement = element
+    private val assumedType: PyType? = type
+
+    /** 1 for the outermost assumption, incremented for each nested one. Used to bound assumption nesting. */
+    val assumptionDepth: Int =
+      if (myParent is AssumptionContext) myParent.assumptionDepth + 1 else 1
+
     init {
-      PyAnyType.validate(type)
+      PyAnyType.validate(type, element)
       myEvaluated[element] = type ?: PyNullType
+    }
+
+    /** Whether the same `(element, type)` assumption is already in effect somewhere in this assumption chain. */
+    fun isAlreadyAssumed(element: PyTypedElement, type: PyType?): Boolean {
+      var current: TypeEvalContextImpl = this
+      while (current is AssumptionContext) {
+        if (current.assumedElement === element && current.assumedType == type) return true
+        current = current.myParent
+      }
+      return false
     }
 
     override fun getKnownType(element: PyTypedElement): PyType? {
@@ -342,7 +466,7 @@ open class TypeEvalContextImpl internal constructor(
           return knownType
         }
         current = current.myParent
-      } 
+      }
       return current.getKnownType(element)
     }
 
@@ -525,3 +649,6 @@ open class TypeEvalContextImpl internal constructor(
       get() = this.language == PyiLanguageDialect.getInstance()
   }
 }
+
+data class SubstitutionsIdentifier(val expression: PyExpression, val callableType: PyCallableType? = null)
+

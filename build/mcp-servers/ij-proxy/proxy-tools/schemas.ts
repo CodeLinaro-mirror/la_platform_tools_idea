@@ -13,90 +13,11 @@ function objectSchema(properties: Record<string, JsonSchemaProperty>, required?:
   }
 }
 
-export function createReadSchema(): ToolInputSchema {
-  const properties: Record<string, JsonSchemaProperty> = {
-    file_path: {
-      type: 'string',
-      description: 'Path relative to the project root.'
-    },
-    offset: {
-      type: 'number',
-      description: '1-based line number to start reading from.'
-    },
-    limit: {
-      type: 'number',
-      description: 'Maximum number of lines to return.'
-    }
-  }
-
-  return objectSchema(properties, ['file_path'])
-}
-
-export function createWriteSchema(): ToolInputSchema {
-  return objectSchema(
-    {
-      file_path: {
-        type: 'string',
-        description: 'Absolute or project-relative path to the file.'
-      },
-      content: {
-        type: 'string',
-        description: 'The contents to write to the file.'
-      }
-    },
-    ['file_path', 'content']
-  )
-}
-
-export function createEditSchema(): ToolInputSchema {
-  return objectSchema(
-    {
-      file_path: {
-        type: 'string',
-        description: 'Absolute or project-relative path to the file.'
-      },
-      old_string: {
-        type: 'string',
-        description: 'Text to replace.'
-      },
-      new_string: {
-        type: 'string',
-        description: 'Replacement text.'
-      },
-      replace_all: {
-        type: 'boolean',
-        description: 'When true, replace all occurrences. Otherwise replace only the first.'
-      }
-    },
-    ['file_path', 'old_string', 'new_string']
-  )
-}
-
-
-export function createListDirSchema(): ToolInputSchema {
-  return objectSchema(
-    {
-      dir_path: {
-        type: 'string',
-        description: 'Absolute or project-relative path to the directory to list.'
-      },
-      offset: {
-        type: 'number',
-        description: 'The entry number to start listing from. Must be 1 or greater.'
-      },
-      limit: {
-        type: 'number',
-        description: 'The maximum number of entries to return.'
-      },
-      depth: {
-        type: 'number',
-        description: 'The maximum directory depth to traverse. Must be 1 or greater.'
-      }
-    },
-    ['dir_path']
-  )
-}
-
+/**
+ * Search schemas mirror the IDE's own `search_*` tools so the container-mode replacements
+ * are drop-in from the agent's point of view. Outside container mode the IDE's tools are
+ * passed through and these are unused.
+ */
 function createSearchSchema(qDescription: string): ToolInputSchema {
   return objectSchema(
     {
@@ -142,60 +63,10 @@ export function createSearchFileSchema(): ToolInputSchema {
   )
 }
 
-export function createSearchSymbolSchema(): ToolInputSchema {
-  return createSearchSchema('Symbol query text (class, method, field, etc.).')
-}
-
-export function createLintFilesSchema(): ToolInputSchema {
-  return objectSchema(
-    {
-      files: {
-        type: 'array',
-        description: 'List of project-relative file paths to analyze. Duplicate paths are ignored after normalization.',
-        items: {
-          type: 'string'
-        }
-      },
-      min_severity: {
-        type: 'string',
-        description: 'Minimum severity to include: warning or error. Defaults to warning.'
-      },
-      timeout: {
-        type: 'number',
-        description: 'Timeout in milliseconds for the full batch.'
-      }
-    },
-    ['files']
-  )
-}
-
-export function createReformatFileSchema(): ToolInputSchema {
-  return objectSchema(
-    {
-      files: {
-        type: 'array',
-        description: 'List of project-relative file paths to reformat. Duplicate paths are ignored after normalization.',
-        items: {
-          type: 'string'
-        }
-      }
-    },
-    ['files']
-  )
-}
-
-export function createApplyPatchSchema(): ToolInputSchema {
-  return objectSchema(
-    {
-      input: {
-        type: 'string',
-        description: 'Patch text in the apply_patch format or unified git diff format.'
-      }
-    },
-    ['input']
-  )
-}
-
+/**
+ * Mirrors the IDE's `rename_refactoring` parameters. The schema sets `additionalProperties: false`,
+ * so a parameter missing here is rejected before it reaches the IDE.
+ */
 export function createRenameSchema(): ToolInputSchema {
   return objectSchema(
     {
@@ -210,6 +81,26 @@ export function createRenameSchema(): ToolInputSchema {
       newName: {
         type: 'string',
         description: 'New, case-sensitive name for the symbol.'
+      },
+      contextSnippet: {
+        type: 'string',
+        description: 'Preferred way to point at the symbol when the name is not unique in the file. An exact fragment of the file that shows the symbol; it must match the file once and contain symbolName. Copy it from the file text you just read.'
+      },
+      line: {
+        type: 'number',
+        description: '1-based line of the symbol. Copy it from search_symbol output; never count lines. Needs column too.'
+      },
+      column: {
+        type: 'number',
+        description: '1-based column of the symbol. Copy it from search_symbol output. Needs line too.'
+      },
+      targetIndex: {
+        type: 'number',
+        description: '1-based pick from the candidates list a previous call returned.'
+      },
+      preview: {
+        type: 'boolean',
+        description: 'Analyze only: report affects and conflicts without writing anything.'
       }
     },
     ['pathInProject', 'symbolName', 'newName']

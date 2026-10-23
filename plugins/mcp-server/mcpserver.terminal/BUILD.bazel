@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.mcpserver.terminal` start
+content_module_jar(module = ":mcpserver.terminal")
+### auto-generated section `dev intellij.mcpserver.terminal` end
 
 ### auto-generated section `build intellij.mcpserver.terminal` start
-
 jvm_library(
     name = "mcpserver.terminal",
     srcs = glob(
@@ -20,9 +24,10 @@ jvm_library(
     visibility = ["//visibility:public"],
     deps = [
         # do not sort,
-        "@lib//:jetbrains-annotations",
+        "//libraries/jetbrains/annotations",
         "@lib//:kotlin-stdlib",
         "//plugins/mcp-server:mcpserver",
+        "//plugins/mcp-server/mcpserver.toolsets",
         "//platform/core-api:core",
         "//platform/platform-api:ide",
         "//platform/ide-core",
@@ -30,8 +35,10 @@ jvm_library(
         "//platform/util:util-ui",
         "//platform/util",
         "//platform/execution-impl",
+        "//platform/consoleView",
         "//platform/platform-util-io:ide-util-io",
         "//platform/execution",
+        "//platform/projectModel-api:projectModel",
         "//plugins/terminal",
         "//plugins/terminal/backend",
         "//plugins/sh/core",
@@ -52,7 +59,9 @@ jvm_library(
     runtime_deps = [
         # do not sort,
         ":mcpserver.terminal",
+        "//libraries/jetbrains/annotations:annotations_test_lib",
         "//plugins/mcp-server:mcpserver_test_lib",
+        "//plugins/mcp-server/mcpserver.toolsets:mcpserver.toolsets_test_lib",
         "//platform/core-api:core_test_lib",
         "//platform/platform-api:ide_test_lib",
         "//platform/ide-core:ide-core_test_lib",
@@ -60,8 +69,10 @@ jvm_library(
         "//platform/util:util-ui_test_lib",
         "//platform/util:util_test_lib",
         "//platform/execution-impl:execution-impl_test_lib",
+        "//platform/consoleView:consoleView_test_lib",
         "//platform/platform-util-io:ide-util-io_test_lib",
         "//platform/execution:execution_test_lib",
+        "//platform/projectModel-api:projectModel_test_lib",
         "//plugins/terminal:terminal_test_lib",
         "//plugins/terminal/backend:backend_test_lib",
         "//plugins/sh/core:core_test_lib",
@@ -75,6 +86,7 @@ jvm_library(
 exports_files(
     [
         "intellij.mcpserver.terminal.iml",
+        "resources/intellij.mcpserver.terminal.xml",
     ],
     visibility = ["//visibility:public"],
 )

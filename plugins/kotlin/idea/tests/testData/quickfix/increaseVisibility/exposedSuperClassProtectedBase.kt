@@ -5,12 +5,11 @@
 // ACTION: Introduce import alias
 // ACTION: Make 'Data' public
 // ACTION: Make 'First' private
-// K2_ERROR: 'protected (in Outer)' subclass exposes its 'private-in-file' supertype 'Data'.
+// K2_ERROR: EXPOSED_SUPER_CLASS
 
 private open class Data(val x: Int)
 
 class Outer {
     protected class First : <caret>Data(42)
 }
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ChangeVisibilityFix$ChangeToPublicFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeVisibilityFixFactories$ChangeToPublicModCommandAction
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeVisibilityFixFactories$ChangeToPublicModCommandAction

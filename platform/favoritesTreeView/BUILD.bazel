@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.platform.ide.favoritesTreeView` start
+content_module_jar(module = ":favoritesTreeView")
+### auto-generated section `dev intellij.platform.ide.favoritesTreeView` end
 
 ### auto-generated section `build intellij.platform.ide.favoritesTreeView` start
-
 jvm_library(
     name = "favoritesTreeView",
     srcs = glob(
@@ -66,6 +70,7 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.ide.favoritesTreeView.iml",
+        "resources/intellij.platform.ide.favoritesTreeView.xml",
     ],
     visibility = ["//visibility:public"],
 )

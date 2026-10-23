@@ -7,16 +7,16 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.NlsSafe
+import com.intellij.platform.debugger.impl.frontend.FrontendCustomDescriptorStateManager
 import com.intellij.platform.debugger.impl.rpc.XSourcePositionDto
-import com.intellij.platform.debugger.impl.rpc.XValueAdvancedPresentationPart
 import com.intellij.platform.debugger.impl.rpc.XValueApi
 import com.intellij.platform.debugger.impl.rpc.XValueDto
 import com.intellij.platform.debugger.impl.rpc.XValueDtoWithPresentation
 import com.intellij.platform.debugger.impl.rpc.XValueMarkerDto
 import com.intellij.platform.debugger.impl.rpc.XValueSerializedPresentation
 import com.intellij.platform.debugger.impl.rpc.xExpression
-import com.intellij.platform.debugger.impl.shared.FrontendDescriptorStateManager
 import com.intellij.platform.debugger.impl.shared.XValueStateFlows
+import com.intellij.platform.debugger.impl.shared.renderValue
 import com.intellij.platform.debugger.impl.ui.XDebuggerEntityConverter
 import com.intellij.platform.util.coroutines.childScope
 import com.intellij.util.ThreeState
@@ -96,7 +96,7 @@ class FrontendXValue private constructor(
   init {
     cs.launch {
       val descriptor = xValueDto.descriptor?.await() ?: return@launch
-      FrontendDescriptorStateManager.getInstance(project).registerDescriptor(descriptor, cs)
+      FrontendCustomDescriptorStateManager.getInstance(project).registerDescriptor(descriptor, cs)
     }
     cs.launch {
       pinToTopData = xValueDto.pinToTopData?.await()
@@ -293,7 +293,7 @@ class FrontendXValue private constructor(
 
   private class FrontendXValuePresentation(private val advancedPresentation: XValueSerializedPresentation.AdvancedPresentation) : XValuePresentation() {
     override fun renderValue(renderer: XValueTextRenderer) {
-      renderAdvancedPresentation(renderer, advancedPresentation)
+      advancedPresentation.renderValue(renderer)
     }
 
     override fun getSeparator(): @NlsSafe String {
@@ -311,6 +311,10 @@ class FrontendXValue private constructor(
     override fun isAsync(): Boolean {
       return advancedPresentation.isAsync
     }
+
+    override fun isTemporary(): Boolean {
+      return advancedPresentation.isTemporary
+    }
   }
 
   private class FrontendXValueExtendedPresentation(
@@ -318,7 +322,7 @@ class FrontendXValue private constructor(
     private val isModified: Boolean,
   ) : XValueExtendedPresentation() {
     override fun renderValue(renderer: XValueTextRenderer) {
-      renderAdvancedPresentation(renderer, advancedPresentation)
+      advancedPresentation.renderValue(renderer)
     }
 
     override fun isModified(): Boolean {
@@ -339,6 +343,10 @@ class FrontendXValue private constructor(
 
     override fun isAsync(): Boolean {
       return advancedPresentation.isAsync
+    }
+
+    override fun isTemporary(): Boolean {
+      return advancedPresentation.isTemporary
     }
   }
 
@@ -364,47 +372,6 @@ class FrontendXValue private constructor(
       val frontendXValue = FrontendXValue(project, cs, xValueDto, hasParentValue, flows)
       val name = xValueDto.name
       return if (name != null) FrontendXNamedValue(frontendXValue, name) else frontendXValue
-    }
-  }
-}
-
-private fun renderAdvancedPresentation(renderer: XValuePresentation.XValueTextRenderer, advancedPresentation: XValueSerializedPresentation.AdvancedPresentation) {
-  for (part in advancedPresentation.parts) {
-    when (part) {
-      is XValueAdvancedPresentationPart.Comment -> {
-        renderer.renderComment(part.text)
-      }
-      is XValueAdvancedPresentationPart.Error -> {
-        renderer.renderError(part.text)
-      }
-      is XValueAdvancedPresentationPart.KeywordValue -> {
-        renderer.renderKeywordValue(part.text)
-      }
-      is XValueAdvancedPresentationPart.NumericValue -> {
-        renderer.renderNumericValue(part.text)
-      }
-      is XValueAdvancedPresentationPart.SpecialSymbol -> {
-        renderer.renderSpecialSymbol(part.text)
-      }
-      is XValueAdvancedPresentationPart.StringValue -> {
-        renderer.renderStringValue(part.text)
-      }
-      is XValueAdvancedPresentationPart.StringValueWithHighlighting -> {
-        renderer.renderStringValue(part.text, part.additionalSpecialCharsToHighlight, part.maxLength)
-      }
-      is XValueAdvancedPresentationPart.Value -> {
-        renderer.renderValue(part.text)
-      }
-      is XValueAdvancedPresentationPart.ValueWithAttributes -> {
-        // TODO[IJPL-160146]: support [TextAttributesKey] serialization
-        val attributesKey = part.key
-        if (attributesKey != null) {
-          renderer.renderValue(part.text, attributesKey)
-        }
-        else {
-          renderer.renderValue(part.text)
-        }
-      }
     }
   }
 }

@@ -2,16 +2,16 @@
 plugins {
   id("maven-publish")
   id("java")
-  id("org.jetbrains.kotlin.jvm") version "1.8.0"
+  id("org.jetbrains.kotlin.jvm") version "2.2.20"
 }
 
 group = "com.jetbrains.intellij.platform"
-version = "0.0.9"
+version = "0.0.10"
 
 repositories {
   mavenCentral()
   maven {
-    url = uri("https://packages.jetbrains.team/maven/p/ij/intellij-dependencies")
+    url = uri("https://cache-redirector.jetbrains.com/packages.jetbrains.team/maven/p/ij/intellij-dependencies")
   }
 }
 
@@ -28,7 +28,7 @@ tasks.withType(Jar::class) {
 publishing {
   repositories {
     maven {
-      url = uri(System.getProperty("intellij.dependencies.repo.url") ?: "")
+      System.getProperty("intellij.dependencies.repo.url")?.let { url = uri(it) }
       credentials {
         username = System.getProperty("intellij.workspace.codegen.repository.user")
         password = System.getProperty("intellij.workspace.codegen.repository.password")

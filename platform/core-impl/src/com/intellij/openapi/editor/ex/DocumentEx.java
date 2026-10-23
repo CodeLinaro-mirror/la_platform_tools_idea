@@ -1,13 +1,14 @@
-// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.editor.ex;
-
 
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.RangeMarker;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.util.Processor;
 import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.UnmodifiableView;
 
 import java.util.Collections;
 import java.util.List;
@@ -25,14 +26,6 @@ public interface DocumentEx extends Document {
   }
 
   default void removeEditReadOnlyListener(@NotNull EditReadOnlyListener listener) {
-  }
-
-  @ApiStatus.Internal
-  default void addFullUpdateListener(DocumentFullUpdateListener listener) {
-  }
-
-  @ApiStatus.Internal
-  default void removeFullUpdateListener(DocumentFullUpdateListener listener) {
   }
 
   void replaceText(@NotNull CharSequence chars, long newModificationStamp);
@@ -59,9 +52,44 @@ public interface DocumentEx extends Document {
     }
   }
 
+  /**
+   * Temporarily disables guarded-block checks for all document changes.
+   * <p>
+   * Use {@link #unSuppressGuardedExceptions()} to restore the default behavior.
+   *
+   * @see createGuardedBlock(int, int)
+   */
   default void suppressGuardedExceptions() {
+    suppressGuardedExceptions(false);
   }
+
+  /**
+   * Restores guarded-block checks disabled by {@link #suppressGuardedExceptions()}.
+   */
   default void unSuppressGuardedExceptions() {
+    unSuppressGuardedExceptions(false);
+  }
+
+  /**
+   * Temporarily disables guarded-block checks.
+   * <p>
+   * {@code onlyWholeText == false} is the same as {@link #suppressGuardedExceptions()} and applies to every change.
+   * {@code onlyWholeText == true} applies only to whole-text replacements, leaving ordinary range edits guarded.
+   * Use {@link #unSuppressGuardedExceptions(boolean)} with the same argument to restore the selected mode.
+   *
+   * @see createGuardedBlock(int, int)
+   */
+  @ApiStatus.Internal
+  default void suppressGuardedExceptions(boolean onlyWholeText) {
+  }
+
+  /**
+   * Restores guarded-block checks disabled by {@link #suppressGuardedExceptions(boolean)} for the selected mode.
+   *
+   * @param onlyWholeText whether to restore only the whole-text replacement suppression mode
+   */
+  @ApiStatus.Internal
+  default void unSuppressGuardedExceptions(boolean onlyWholeText) {
   }
 
   default boolean isInEventsHandling() {
@@ -73,6 +101,7 @@ public interface DocumentEx extends Document {
 
   boolean removeRangeMarker(@NotNull RangeMarkerEx rangeMarker);
 
+  @ApiStatus.Internal
   void registerRangeMarker(@NotNull RangeMarkerEx rangeMarker,
                            int start,
                            int end,
@@ -80,7 +109,7 @@ public interface DocumentEx extends Document {
                            boolean greedyToRight,
                            int layer);
 
-  default @NotNull List<RangeMarker> getGuardedBlocks() {
+  default @NotNull @UnmodifiableView List<RangeMarker> getGuardedBlocks() {
     return Collections.emptyList();
   }
 
@@ -102,7 +131,11 @@ public interface DocumentEx extends Document {
   default int getModificationSequence() {
     return 0;
   }
+
+  @ApiStatus.Experimental
+  @ApiStatus.Internal
+  @Contract(pure = true)
+  default @NotNull DocumentText getDocText() {
+    return DocumentText.createText(getImmutableCharSequence());
+  }
 }
-
-
-

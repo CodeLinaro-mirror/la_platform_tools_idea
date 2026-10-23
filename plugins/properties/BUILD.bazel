@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.properties.backend` start
+content_module_jar(module = ":properties-backend")
+### auto-generated section `dev intellij.properties.backend` end
 
 ### auto-generated section `build intellij.properties.backend` start
-
 jvm_library(
     name = "properties-backend",
     srcs = glob(
@@ -35,7 +39,7 @@ jvm_library(
         "//platform/projectModel-api:projectModel",
         "//platform/util/diff",
         "//spellchecker",
-        "//xml/impl",
+        "//xml/xml-psi-impl:psi-impl",
         "//plugins/properties/properties-psi-api:psi",
         "//plugins/properties/properties-psi-impl:backend-psi",
         "//platform/usageView",
@@ -46,7 +50,6 @@ jvm_library(
         "//platform/util:util-ui",
         "//platform/ide-core-impl",
         "//platform/ide-core",
-        "//platform/structuralsearch:structuralSearch",
         "//plugins/properties/properties-common:properties",
         "//platform/diff-impl",
         "//platform/forms_rt:java-guiForms-rt",
@@ -84,7 +87,7 @@ jvm_library(
         "//platform/projectModel-api:projectModel_test_lib",
         "//platform/util/diff:diff_test_lib",
         "//spellchecker:spellchecker_test_lib",
-        "//xml/impl:impl_test_lib",
+        "//xml/xml-psi-impl:psi-impl_test_lib",
         "//plugins/properties/properties-psi-api:psi_test_lib",
         "//plugins/properties/properties-psi-impl:backend-psi_test_lib",
         "//platform/usageView:usageView_test_lib",
@@ -95,7 +98,6 @@ jvm_library(
         "//platform/util:util-ui_test_lib",
         "//platform/ide-core-impl:ide-core-impl_test_lib",
         "//platform/ide-core:ide-core_test_lib",
-        "//platform/structuralsearch:structuralSearch_test_lib",
         "//plugins/properties/properties-common:properties_test_lib",
         "//platform/backend:backend_test_lib",
         "//platform/diff-impl:diff-impl_test_lib",
@@ -113,6 +115,7 @@ jvm_library(
 exports_files(
     [
         "intellij.properties.backend.iml",
+        "resources/intellij.properties.backend.xml",
     ],
     visibility = ["//visibility:public"],
 )

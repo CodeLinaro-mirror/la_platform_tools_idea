@@ -6,8 +6,10 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.search.GlobalSearchScope;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.Collection;
 
 public abstract class UniqueVFilePathBuilder {
   private static final UniqueVFilePathBuilder DUMMY_BUILDER = new UniqueVFilePathBuilder() {
@@ -18,6 +20,13 @@ public abstract class UniqueVFilePathBuilder {
 
     @Override
     public @NotNull String getUniqueVirtualFilePathWithinOpenedFileEditors(@NotNull Project project, @NotNull VirtualFile vFile) {
+      return vFile.getPresentableName();
+    }
+
+    @Override
+    public @NotNull String getUniqueVirtualFilePathWithinFiles(@NotNull Project project,
+                                                               @NotNull VirtualFile vFile,
+                                                               @NotNull Collection<VirtualFile> files) {
       return vFile.getPresentableName();
     }
   };
@@ -34,4 +43,28 @@ public abstract class UniqueVFilePathBuilder {
   public abstract @NotNull @NlsSafe String getUniqueVirtualFilePath(@NotNull Project project, @NotNull VirtualFile vFile);
 
   public abstract @NotNull @NlsSafe String getUniqueVirtualFilePathWithinOpenedFileEditors(@NotNull Project project, @NotNull VirtualFile vFile);
+
+  public abstract @NotNull @NlsSafe String getUniqueVirtualFilePathWithinFiles(@NotNull Project project,
+                                                                               @NotNull VirtualFile vFile,
+                                                                               @NotNull Collection<VirtualFile> files);
+
+  @ApiStatus.Experimental
+  public UniqueVFileProjectPathBuilder withProject(@NotNull Project project) {
+    return new UniqueVFileProjectPathBuilder() {
+      @Override
+      public @NotNull String getUniqueVirtualFilePath(@NotNull VirtualFile vFile, @NotNull GlobalSearchScope scope) {
+        return UniqueVFilePathBuilder.this.getUniqueVirtualFilePath(project, vFile);
+      }
+
+      @Override
+      public @NotNull String getUniqueVirtualFilePath(@NotNull VirtualFile vFile) {
+        return UniqueVFilePathBuilder.this.getUniqueVirtualFilePath(project, vFile);
+      }
+
+      @Override
+      public @NotNull String getUniqueVirtualFilePathWithinOpenedFileEditors(@NotNull VirtualFile vFile) {
+        return UniqueVFilePathBuilder.this.getUniqueVirtualFilePath(project, vFile);
+      }
+    };
+  }
 }

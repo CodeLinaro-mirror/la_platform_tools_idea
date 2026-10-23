@@ -2,6 +2,7 @@
 package org.intellij.plugins.markdown.formatter
 
 import com.intellij.application.options.CodeStyle
+import com.intellij.application.options.codeStyle.properties.LanguageCodeStylePropertyMapper
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiFile
@@ -9,6 +10,7 @@ import com.intellij.psi.codeStyle.CodeStyleManager
 import com.intellij.psi.codeStyle.CodeStyleSettings
 import com.intellij.testFramework.LightPlatformCodeInsightTestCase
 import com.intellij.testFramework.PlatformTestUtil
+import junit.framework.TestCase
 import org.intellij.plugins.markdown.MarkdownTestingUtil
 import org.intellij.plugins.markdown.lang.MarkdownLanguage
 import org.intellij.plugins.markdown.lang.formatter.settings.MarkdownCustomCodeStyleSettings
@@ -16,7 +18,32 @@ import org.intellij.plugins.markdown.lang.formatter.settings.MarkdownCustomCodeS
 class MarkdownFormatterTest: LightPlatformCodeInsightTestCase() {
   fun `test smoke`() = doTest()
 
+  fun `test blank line settings use correct external names`() {
+    val settings = CodeStyle.createTestSettings(CodeStyleSettings.getDefaults())
+    settings.getCustomSettings(MarkdownCustomCodeStyleSettings::class.java).apply {
+      MAX_LINES_AROUND_HEADER = 2
+      MIN_LINES_AROUND_HEADER = 3
+      MAX_LINES_AROUND_BLOCK_ELEMENTS = 4
+      MIN_LINES_AROUND_BLOCK_ELEMENTS = 5
+      MAX_LINES_BETWEEN_PARAGRAPHS = 6
+      MIN_LINES_BETWEEN_PARAGRAPHS = 7
+    }
+    val mapper = LanguageCodeStylePropertyMapper(settings, MarkdownLanguage.INSTANCE, null)
+    mapOf(
+      "min_lines_around_header" to 2,
+      "max_lines_around_header" to 3,
+      "min_lines_around_block_elements" to 4,
+      "max_lines_around_block_elements" to 5,
+      "min_lines_between_paragraphs" to 6,
+      "max_lines_between_paragraphs" to 7,
+    ).forEach { (propertyName, value) ->
+      TestCase.assertEquals(value.toString(), mapper.getAccessor(propertyName)!!.getAsString())
+    }
+  }
+
   fun `test headers`() = doTest()
+
+  fun `test do not wrap ATX headers with codespans`() = doTest(rightMargin = 90)
 
   fun `test paragraphs`() = doTest()
 
@@ -28,6 +55,8 @@ class MarkdownFormatterTest: LightPlatformCodeInsightTestCase() {
   fun `test blockquotes`() = doTest()
 
   fun `test codeblocks`() = doTest()
+
+  fun `test html code block`() = doTest()
 
   fun `test codespan`() = doTest()
 
@@ -65,6 +94,10 @@ class MarkdownFormatterTest: LightPlatformCodeInsightTestCase() {
 
   fun `test keep line breaks inside text block`() = doTest(rightMargin = 120, keepLineBreaks = true)
 
+  fun `test reflow text glued to emphasis`() = doTest()
+
+  fun `test reflow text glued to parenthesis`() = doTest(rightMargin = 120)
+
   // IJPL-241496: a single long line wrapped at 100 and then reformatted at 80 must reflow cleanly,
   // not accumulate extra line breaks, when "keep line breaks inside text blocks" is disabled.
   fun `test text block reflow after decreasing margin`() {
@@ -97,11 +130,15 @@ class MarkdownFormatterTest: LightPlatformCodeInsightTestCase() {
 
   fun `test blockquote with emphasis wrap`() = doTest(rightMargin = 80, insertQuoteArrows = true)
 
+  fun `test do not wrap text inside block quotes`() = doTest(rightMargin = 80, wrapTextInsideBlockquotes = false)
+
   fun `test blockquote with list item wrap`() = doTest(rightMargin = 80, insertQuoteArrows = true)
 
   fun `test blockquote with numbered list`() = doTest(rightMargin = 80, insertQuoteArrows = true)
 
-  fun `test non-breaking space before text`() = doTest(rightMargin = 20)
+  fun `test blockquote wrapping does not create numbered list`() = doTest(rightMargin = 120, insertQuoteArrows = true)
+
+  fun `test unusual whitespace before text`() = doTest(rightMargin = 20)
 
   fun `test do not wrap codespan when wrap settings disabled`() = doTest(
     rightMargin = 120,
@@ -110,6 +147,36 @@ class MarkdownFormatterTest: LightPlatformCodeInsightTestCase() {
   )
 
   fun `test reflow apostrophe as word boundary`() = doTest(rightMargin = 120)
+
+  fun `test admonitions`() = doTest()
+
+  fun `test admonitions with blank line`() = doTest()
+
+  fun `test admonitions with custom title`() = doTest()
+
+  fun `test admonitions multi paragraph`() = doTest()
+
+  fun `test admonitions collapsible`() = doTest()
+
+  fun `test admonitions followed by paragraph`() = doTest()
+
+  fun `test reflow does not split emphasis markers`() = doTest()
+
+  fun `tests sublists with fixed indents enabled`() = doSublistIndentationTest(useFixedIndents = true)
+
+  fun `tests sublists with fixed indents disabled`() = doSublistIndentationTest(useFixedIndents = false)
+
+  fun `test fixed two space indent keeps unordered sublist under ordered item`() {
+    runWithTemporaryStyleSettings(project) { settings ->
+      settings.getCustomSettings(MarkdownCustomCodeStyleSettings::class.java).USE_FIXED_INDENTS_FOR_SUBLISTS = true
+      settings.getCommonSettings(MarkdownLanguage.INSTANCE).indentOptions!!.INDENT_SIZE = 2
+      configureFromFileText("nestedList.md", "1. foo\n   * bar\n      * baz")
+
+      performReformatting(project, file)
+
+      checkResultByText("1. foo\n   * bar\n     * baz")
+    }
+  }
 
   override fun getTestDataPath(): String {
     return MarkdownTestingUtil.TEST_DATA_PATH + "/formatter/"
@@ -120,12 +187,28 @@ class MarkdownFormatterTest: LightPlatformCodeInsightTestCase() {
     return name.trimStart().replace(' ', '_')
   }
 
+  private fun doSublistIndentationTest(useFixedIndents: Boolean) {
+    val testName = if (useFixedIndents) "sublists_with_fixed_indents_enabled" else "sublists_with_fixed_indents_disabled"
+    val beforeFile = "${testName}_before.md"
+    val afterFile = "${testName}_after.md"
+    runWithTemporaryStyleSettings(project) { settings ->
+      settings.getCustomSettings(MarkdownCustomCodeStyleSettings::class.java).USE_FIXED_INDENTS_FOR_SUBLISTS = useFixedIndents
+      settings.getCommonSettings(MarkdownLanguage.INSTANCE).indentOptions!!.INDENT_SIZE = 4
+      configureByFile(beforeFile)
+      performReformatting(project, file)
+      checkResultByFile(afterFile)
+      performReformatting(project, file)
+      checkResultByFile(afterFile)
+    }
+  }
+
   private fun doTest(
     rightMargin: Int = 40,
     keepLineBreaks: Boolean = false,
     insertQuoteArrows: Boolean = false,
     wrapOnTyping: Boolean = true,
     wrapTextIfLong: Boolean = true,
+    wrapTextInsideBlockquotes: Boolean = true,
   ) {
     val before = getTestName(true) + "_before.md"
     val after = getTestName(true) + "_after.md"
@@ -137,6 +220,7 @@ class MarkdownFormatterTest: LightPlatformCodeInsightTestCase() {
         }
         getCustomSettings(MarkdownCustomCodeStyleSettings::class.java).apply {
           WRAP_TEXT_IF_LONG = wrapTextIfLong
+          WRAP_TEXT_INSIDE_BLOCKQUOTES = wrapTextInsideBlockquotes
           KEEP_LINE_BREAKS_INSIDE_TEXT_BLOCKS = keepLineBreaks
           // These tests are not aware of the fact that tables can be reformatted now by TablePostFormatProcessor
           // and wrapping block quotes can be fixed be BlockQuotePostFormatProcessor

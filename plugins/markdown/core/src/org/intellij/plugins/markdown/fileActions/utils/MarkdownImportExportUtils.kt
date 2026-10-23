@@ -2,9 +2,14 @@
 package org.intellij.plugins.markdown.fileActions.utils
 
 import com.intellij.execution.configurations.GeneralCommandLine
+import com.intellij.execution.process.ProcessNotCreatedException
 import com.intellij.execution.process.ProcessOutput
 import com.intellij.execution.util.ExecUtil
 import com.intellij.ide.actions.OpenFileAction
+import com.intellij.ide.actions.ShowSettingsUtilImpl
+import com.intellij.ide.trustedProjects.TrustedProjects
+import com.intellij.notification.Notification
+import com.intellij.notification.NotificationListener
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.DataContext
@@ -15,7 +20,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ValidationInfo
 import com.intellij.openapi.util.NlsContexts
 import com.intellij.openapi.util.io.FileUtil
-import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.vfs.StandardFileSystems
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.newvfs.impl.VirtualFileImpl
 import com.intellij.refactoring.RefactoringBundle
@@ -26,12 +31,15 @@ import org.intellij.plugins.markdown.MarkdownBundle
 import org.intellij.plugins.markdown.fileActions.export.MarkdownDocxExportProvider
 import org.intellij.plugins.markdown.fileActions.export.MarkdownExportProvider
 import org.intellij.plugins.markdown.lang.MarkdownFileType
+import org.intellij.plugins.markdown.settings.MarkdownSettingsConfigurable
+import org.intellij.plugins.markdown.settings.pandoc.PandocApplicationSettings
 import org.intellij.plugins.markdown.settings.pandoc.PandocSettings
 import org.intellij.plugins.markdown.ui.MarkdownNotifications
 import org.intellij.plugins.markdown.ui.actions.MarkdownActionUtil
 import org.intellij.plugins.markdown.ui.preview.MarkdownPreviewFileEditor
 import org.intellij.plugins.markdown.ui.preview.MarkdownPreviewBrowserActions
 import java.io.File
+import javax.swing.event.HyperlinkEvent
 
 /**
  * Utilities used mainly for import/export from markdown.
@@ -62,9 +70,8 @@ object MarkdownImportExportUtils {
    */
   fun refreshProjectDirectory(project: Project, refreshPath: String) {
     ModalityUiUtil.invokeLaterIfNeeded(ModalityState.defaultModalityState()) {
-      LocalFileSystem
-        .getInstance()
-        .refreshAndFindFileByIoFile(File(refreshPath))
+      StandardFileSystems.local()
+        .refreshAndFindFileByPath(File(refreshPath).absolutePath)
         ?.refresh(true, true)
     }
   }
@@ -105,8 +112,11 @@ object MarkdownImportExportUtils {
       private val resourcesDir = PandocSettings.getInstance(project).pathToImages ?: project.basePath!!
 
       override fun run(indicator: ProgressIndicator) {
+        check(TrustedProjects.isProjectTrusted(project)) {
+          MarkdownBundle.message("markdown.settings.pandoc.executable.run.in.safe.mode")
+        }
         val filePath = FileUtil.join(dirToImport, "${newFileName}.${MarkdownFileType.INSTANCE.defaultExtension}")
-        val cmd = getConvertDocxToMdCommandLine(vFileToImport, resourcesDir, filePath, project)
+        val cmd = getConvertDocxToMdCommandLine(vFileToImport, resourcesDir, filePath)
 
         output = ExecUtil.execAndGetOutput(cmd)
         createdFilePath = filePath
@@ -118,10 +128,24 @@ object MarkdownImportExportUtils {
       }
 
       override fun onThrowable(error: Throwable) {
+        val errorMessage = if (error is ProcessNotCreatedException) {
+          MarkdownBundle.message("markdown.import.from.docx.pandoc.not.found")
+        } else {
+          @Suppress("HardCodedStringLiteral")
+          error.localizedMessage ?: MarkdownBundle.message("markdown.export.failure.msg", vFileToImport.name)
+        }
         MarkdownNotifications.showError(
           project,
           id = MarkdownExportProvider.Companion.NotificationIds.exportFailed,
-          message = "[${vFileToImport.name}] ${error.localizedMessage}"
+          message = "[${vFileToImport.name}] $errorMessage",
+          listener = if (error is ProcessNotCreatedException) object : NotificationListener.Adapter() {
+            override fun hyperlinkActivated(notification: Notification, event: HyperlinkEvent) {
+              if (event.description == "settings") {
+                ShowSettingsUtilImpl.showSettingsDialog(project, MarkdownSettingsConfigurable.ID, "")
+                notification.expire()
+              }
+            }
+          } else null
         )
       }
 
@@ -145,8 +169,8 @@ object MarkdownImportExportUtils {
   /**
    * returns a platform-independent cmd to perform the converting of docx to markdown using pandoc.
    */
-  private fun getConvertDocxToMdCommandLine(file: VirtualFile, mediaSrc: String, targetFile: String, project: Project): GeneralCommandLine {
-    val pandoc = PandocSettings.getInstance(project).pathToPandoc ?: "pandoc"
+  private fun getConvertDocxToMdCommandLine(file: VirtualFile, mediaSrc: String, targetFile: String): GeneralCommandLine {
+    val pandoc = PandocApplicationSettings.getInstance().resolveExecutable().ifBlank { "pandoc" }
     return GeneralCommandLine(
       pandoc,
       "--extract-media=$mediaSrc",

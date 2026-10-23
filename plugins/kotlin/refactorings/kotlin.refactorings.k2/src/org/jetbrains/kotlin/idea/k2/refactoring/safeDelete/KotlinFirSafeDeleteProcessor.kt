@@ -25,24 +25,29 @@ import com.intellij.usageView.UsageInfo
 import com.intellij.util.Processor
 import com.intellij.util.containers.MultiMap
 import com.intellij.util.containers.map2Array
-import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
-import org.jetbrains.kotlin.analysis.api.analyze
-import org.jetbrains.kotlin.analysis.api.resolution.KaCallableMemberCall
-import org.jetbrains.kotlin.analysis.api.resolution.KaFunctionCall
+import org.jetbrains.kotlin.analysis.api.javaInterop.callableSymbol
+import org.jetbrains.kotlin.analysis.api.resolution.KaImplicitInvokeCall
 import org.jetbrains.kotlin.analysis.api.resolution.KaImplicitReceiverValue
-import org.jetbrains.kotlin.analysis.api.resolution.KaSimpleFunctionCall
-import org.jetbrains.kotlin.analysis.api.resolution.successfulCallOrNull
+import org.jetbrains.kotlin.analysis.api.resolution.resolveSuccessfulCall
+import org.jetbrains.kotlin.analysis.api.resolution.simple
 import org.jetbrains.kotlin.analysis.api.resolution.symbol
+import org.jetbrains.kotlin.analysis.api.session.analyze
 import org.jetbrains.kotlin.analysis.api.symbols.KaCallableSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbolModality
+import org.jetbrains.kotlin.analysis.api.symbols.allOverriddenSymbols
+import org.jetbrains.kotlin.analysis.api.symbols.containingDeclaration
+import org.jetbrains.kotlin.analysis.api.symbols.directlyOverriddenSymbols
+import org.jetbrains.kotlin.analysis.api.symbols.isSubClassOf
+import org.jetbrains.kotlin.analysis.api.symbols.symbol
 import org.jetbrains.kotlin.asJava.elements.KtLightMethod
 import org.jetbrains.kotlin.asJava.toLightMethods
 import org.jetbrains.kotlin.asJava.unwrapped
 import org.jetbrains.kotlin.idea.base.analysis.api.utils.analyzeInModalWindow
 import org.jetbrains.kotlin.idea.base.analysis.api.utils.unwrapSmartCasts
 import org.jetbrains.kotlin.idea.base.projectStructure.getKaModule
+import org.jetbrains.kotlin.idea.base.psi.removeModifierKeyword
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.k2.refactoring.KotlinFirRefactoringsSettings
 import org.jetbrains.kotlin.idea.k2.refactoring.KotlinK2RefactoringsBundle
@@ -57,6 +62,7 @@ import org.jetbrains.kotlin.idea.searching.inheritors.DirectKotlinClassInheritor
 import org.jetbrains.kotlin.idea.searching.inheritors.findAllOverridings
 import org.jetbrains.kotlin.idea.util.CommentSaver
 import org.jetbrains.kotlin.idea.util.application.isUnitTestMode
+import org.jetbrains.kotlin.idea.util.resolveSuccessfulExpressionCall
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.KtCallExpression
 import org.jetbrains.kotlin.psi.KtCallableDeclaration
@@ -155,7 +161,6 @@ class KotlinFirSafeDeleteProcessor : SafeDeleteProcessorDelegateBase() {
         return NonCodeUsageSearchInfo(isInside, element)
     }
 
-    @OptIn(KaExperimentalApi::class)
     private fun findCallsWithContextParameters(
         result: MutableList<in UsageInfo>,
         element: KtParameter,
@@ -164,11 +169,10 @@ class KotlinFirSafeDeleteProcessor : SafeDeleteProcessorDelegateBase() {
         decl?.forEachDescendantOfType<KtExpression> { expression ->
             analyze(expression) {
                 val declarationSymbol = decl.symbol as? KaCallableSymbol ?: return@forEachDescendantOfType
-                val functionCall = expression.resolveToCall()?.successfulCallOrNull<KaCallableMemberCall<*, *>>() ?: return@forEachDescendantOfType
-                if (expression is KtCallExpression && (functionCall as? KaSimpleFunctionCall)?.isImplicitInvoke != true) return@forEachDescendantOfType
-                val resolvedSymbol = functionCall.partiallyAppliedSymbol
-                if (declarationSymbol.allOverriddenSymbols.firstOrNull { it == resolvedSymbol.symbol } != null) return@forEachDescendantOfType
-                if (resolvedSymbol.contextArguments.any { (it.unwrapSmartCasts() as? KaImplicitReceiverValue)?.symbol == element.symbol }) {
+                val singleCall = expression.resolveSuccessfulExpressionCall()?.simple ?: return@forEachDescendantOfType
+                if (expression is KtCallExpression && (singleCall !is KaImplicitInvokeCall)) return@forEachDescendantOfType
+                if (declarationSymbol.allOverriddenSymbols.firstOrNull { it == singleCall.symbol } != null) return@forEachDescendantOfType
+                if (singleCall.contextArguments.any { (it.unwrapSmartCasts() as? KaImplicitReceiverValue)?.symbol == element.symbol }) {
                     result.add(SafeDeleteReferenceSimpleDeleteUsageInfo(expression, element, false))
                 }
             }
@@ -316,8 +320,7 @@ class KotlinFirSafeDeleteProcessor : SafeDeleteProcessorDelegateBase() {
         if (calleeExpression?.text != function.name) return false
 
         analyze(callExpr) {
-            val resolvedCall =
-                callExpr.resolveToCall()?.successfulCallOrNull<KaFunctionCall<*>>() ?: return false
+            val resolvedCall = callExpr.resolveSuccessfulCall() ?: return false
 
             if (resolvedCall.symbol != function.symbol) {
                 return false
@@ -448,7 +451,7 @@ class KotlinFirSafeDeleteProcessor : SafeDeleteProcessorDelegateBase() {
                 element.ownerFunction?.let {
                     with(KotlinSafeDeleteSettings) {
                         if (it.dropActualModifier == true) {
-                            it.removeModifier(KtTokens.ACTUAL_KEYWORD)
+                            it.removeModifierKeyword(KtTokens.ACTUAL_KEYWORD)
                             it.dropActualModifier = null
                         }
                     }

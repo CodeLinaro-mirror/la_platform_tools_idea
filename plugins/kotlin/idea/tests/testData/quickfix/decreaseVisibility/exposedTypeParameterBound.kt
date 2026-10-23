@@ -5,10 +5,9 @@
 // ACTION: Make 'InternalString' public
 // ACTION: Make 'User' internal
 // ACTION: Make 'User' private
-// K2_ERROR: 'public' generic exposes its 'internal' parameter bound type argument 'InternalString'.
+// K2_ERROR: EXPOSED_TYPE_PARAMETER_BOUND
 
 internal open class InternalString
 
 class User<T : <caret>User<T, InternalString>, R>
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ChangeVisibilityFix$ChangeToInternalFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeVisibilityFixFactories$ChangeToInternalModCommandAction
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeVisibilityFixFactories$ChangeToInternalModCommandAction

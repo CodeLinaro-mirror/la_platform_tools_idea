@@ -2,6 +2,7 @@
 package git4idea
 
 import com.google.common.collect.HashMultiset
+import com.intellij.diagnostic.rethrowControlFlowException
 import com.intellij.dvcs.branch.DvcsSyncSettings.Value
 import com.intellij.ide.trustedProjects.TrustedProjects
 import com.intellij.internal.statistic.beans.MetricEvent
@@ -17,7 +18,6 @@ import com.intellij.internal.statistic.service.fus.collectors.ProjectUsagesColle
 import com.intellij.internal.statistic.utils.StatisticsUtil
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.serviceIfCreated
-import com.intellij.openapi.diagnostic.ControlFlowException
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.getProjectCacheFileName
@@ -42,6 +42,7 @@ import git4idea.config.GitVersion
 import git4idea.config.UpdateMethod
 import git4idea.index.getStatus
 import git4idea.repo.GitCommitTemplateTracker
+import git4idea.repo.GitObjectFormat
 import git4idea.repo.GitRemote
 import git4idea.repo.GitRepository
 import git4idea.statistics.GitAvailabilityChecker
@@ -58,7 +59,7 @@ import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 
 internal class GitStatisticsCollector : ProjectUsagesCollector() {
-  private val GROUP = EventLogGroup("git.configuration", 27)
+  private val GROUP = EventLogGroup("git.configuration", 28)
 
   override fun getGroup(): EventLogGroup = GROUP
 
@@ -106,7 +107,6 @@ internal class GitStatisticsCollector : ProjectUsagesCollector() {
         REPO_ID with project.getProjectCacheFileName() + repository.root.name,
         LOCAL_BRANCHES with branches.localBranches.size,
         REMOTE_BRANCHES with branches.remoteBranches.size,
-        TAGS with getTagsSize(repository),
         RECENT_CHECKOUT_BRANCHES with branches.recentCheckoutBranches.size,
         REMOTES with repository.remotes.size,
         IS_WORKTREE_USED with repository.isWorkTreeUsed(),
@@ -119,6 +119,7 @@ internal class GitStatisticsCollector : ProjectUsagesCollector() {
 
         REMOTES_AVAILABILITY with repoStatus,
       )
+      getTagsSize(repository)?.let { TAGS.addData(repositoryMetric.data, it) }
 
       try {
         val commitersCount = counter.calculateWithGit(project, repository)
@@ -129,7 +130,7 @@ internal class GitStatisticsCollector : ProjectUsagesCollector() {
         }
       }
       catch (e: Exception) {
-        if (e is ControlFlowException) throw e
+        rethrowControlFlowException(e)
         Logger.getInstance(GitStatisticsCollector::class.java).warn(e)
       }
       val remoteTypes = HashMultiset.create(repository.remotes.map { getRemoteServerType(it) })
@@ -159,7 +160,15 @@ internal class GitStatisticsCollector : ProjectUsagesCollector() {
     return set
   }
 
-  private fun getTagsSize(repository: GitRepository): Int = GitBranchUtil.getAllTags(repository.project, repository.root).size
+  private fun getTagsSize(repository: GitRepository): Int? {
+    return try {
+      GitBranchUtil.getAllTags(repository.project, repository.root).size
+    }
+    catch (e: Exception) {
+      rethrowControlFlowException(e)
+      null
+    }
+  }
 
   private fun reportVersion(project: Project, set: MutableSet<MetricEvent>) {
     val executableManager = GitExecutableManager.getInstance()
@@ -290,18 +299,18 @@ internal class GitStatisticsCollector : ProjectUsagesCollector() {
   private val FS_MONITOR = EventFields.Enum<FsMonitor>("fs_monitor")
   private val REF_FORMAT = EventFields.Enum<RefFormat>("ref_format", "--ref-format")
 
-  /** Object format used for repository storage inside the `.git` directory. */
-  private val OBJECT_FORMAT_STORAGE = EventFields.Enum<ObjectFormat>("object_format_storage", "--show-object-format=storage")
+  /** Object format used for repository storage inside the `.git` directory */
+  private val OBJECT_FORMAT_STORAGE = EventFields.NullableEnum<GitObjectFormat>("object_format_storage", nullValue = "UNKNOWN", description = "--show-object-format=storage")
 
   /** Object formats accepted as input; Git may print multiple algorithms space-separated. */
-  private val OBJECT_FORMAT_INPUT = EventFields.EnumList<ObjectFormat>("object_format_input", "--show-object-format=input")
+  private val OBJECT_FORMAT_INPUT = EventFields.EnumList<GitObjectFormat>("object_format_input", "--show-object-format=input")
 
-  /** Object format used for output. */
-  private val OBJECT_FORMAT_OUTPUT = EventFields.Enum<ObjectFormat>("object_format_output", "--show-object-format=output")
+  /** Object format used for output */
+  private val OBJECT_FORMAT_OUTPUT = EventFields.NullableEnum<GitObjectFormat>("object_format_output", nullValue = "UNKNOWN", description = "--show-object-format=output")
 
   /** Compatibility object format; Git prints an empty line when no compatibility algorithm is enabled. */
-  private val OBJECT_FORMAT_COMPAT = EventFields.NullableEnum<ObjectFormat>("object_format_compat", nullValue = "NONE",
-                                                                            description = "--show-object-format=compat")
+  private val OBJECT_FORMAT_COMPAT = EventFields.NullableEnum<GitObjectFormat>("object_format_compat", nullValue = "NONE",
+                                                                               description = "--show-object-format=compat")
 
   private val remoteTypes = setOf("github", "gitlab", "bitbucket", "gitee",
                                   "github_custom", "gitlab_custom", "bitbucket_custom", "gitee_custom",
@@ -401,7 +410,7 @@ private fun GitRepository.isWorkTreeUsed(): Boolean {
     Files.list(worktreesPath).count() > 0
   }
   catch (e: Exception) {
-    if (e is ControlFlowException) throw e
+    rethrowControlFlowException(e)
     false
   }
 }
@@ -424,7 +433,7 @@ private fun getConfigFileStatus(repository: GitRepository, configDirName: String
     return ConfigStatus.SHARED
   }
   catch (e: Exception) {
-    if (e is ControlFlowException) throw e
+    rethrowControlFlowException(e)
     null
   }
 }
@@ -476,17 +485,11 @@ private fun GitRepository.detectRefFormat(): RefFormat {
   return RefFormat.UNKNOWN
 }
 
-internal enum class ObjectFormat {
-  UNKNOWN,
-  SHA1,
-  SHA256,
-}
-
 private data class DetectedObjectFormats(
-  val storage: ObjectFormat,
-  val input: List<ObjectFormat>,
-  val output: ObjectFormat,
-  val compat: ObjectFormat?,
+  val storage: GitObjectFormat?,
+  val input: List<GitObjectFormat>,
+  val output: GitObjectFormat?,
+  val compat: GitObjectFormat?,
 )
 
 private fun GitRepository.detectObjectFormats(): DetectedObjectFormats = DetectedObjectFormats(
@@ -496,25 +499,23 @@ private fun GitRepository.detectObjectFormats(): DetectedObjectFormats = Detecte
   compat = detectObjectFormatCompat(),
 )
 
-private fun GitRepository.detectObjectFormat(kind: String): ObjectFormat {
-  val output = getObjectFormatOutput(kind) ?: return ObjectFormat.UNKNOWN
-  return parseObjectFormat(output)
+private fun GitRepository.detectObjectFormat(kind: String): GitObjectFormat? {
+  val output = getObjectFormatOutput(kind) ?: return null
+  return GitObjectFormat.parseOrNull(output)
 }
 
-private fun GitRepository.detectObjectFormatInput(): List<ObjectFormat> {
-  val output = getObjectFormatOutput("input") ?: return listOf(ObjectFormat.UNKNOWN)
-  val formats = output.splitToSequence(' ', '\n', '\t', '\r')
+private fun GitRepository.detectObjectFormatInput(): List<GitObjectFormat> {
+  val output = getObjectFormatOutput("input") ?: return emptyList()
+  return output.splitToSequence(' ', '\n', '\t', '\r')
     .filter { it.isNotBlank() }
-    .map { parseObjectFormat(it) }
+    .mapNotNull { GitObjectFormat.parseOrNull(it) }
     .distinct()
     .toList()
-  return formats.ifEmpty { listOf(ObjectFormat.UNKNOWN) }
 }
 
-private fun GitRepository.detectObjectFormatCompat(): ObjectFormat? {
-  val output = getObjectFormatOutput("compat") ?: return ObjectFormat.UNKNOWN
-  if (output.isBlank()) return null
-  return parseObjectFormat(output)
+private fun GitRepository.detectObjectFormatCompat(): GitObjectFormat? {
+  val output = getObjectFormatOutput("compat") ?: return null
+  return GitObjectFormat.parseOrNull(output)
 }
 
 private fun GitRepository.getObjectFormatOutput(kind: String): String? {
@@ -533,14 +534,6 @@ private fun GitRepository.getObjectFormatOutput(kind: String): String? {
   }
 
   return null
-}
-
-private fun parseObjectFormat(value: String): ObjectFormat {
-  return when (value.trim().lowercase()) {
-    "sha1" -> ObjectFormat.SHA1
-    "sha256" -> ObjectFormat.SHA256
-    else -> ObjectFormat.UNKNOWN
-  }
 }
 
 private data class RoundedUserCountEventField(override val name: String) : PrimitiveEventField<Int>() {

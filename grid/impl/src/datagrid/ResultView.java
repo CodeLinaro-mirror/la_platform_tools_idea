@@ -7,6 +7,7 @@ import com.intellij.find.FindModel;
 import com.intellij.find.SearchSession;
 import com.intellij.lang.Language;
 import com.intellij.openapi.Disposable;
+import com.intellij.util.concurrency.annotations.RequiresEdt;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -16,6 +17,7 @@ import javax.swing.KeyStroke;
 import java.awt.Component;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseListener;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -32,6 +34,14 @@ public interface ResultView extends CoreResultView, GridModel.Listener<GridRow, 
 
   void setColumnEnabled(@NotNull ModelIndex<GridColumn> columnIdx, boolean state);
 
+  default void setColumnsEnabled(@NotNull List<ModelIndex<GridColumn>> columns, boolean state) {
+    for (var column : columns) setColumnEnabled(column, state);
+  }
+
+  /** Brings the leftmost of {@code columns} into view, leaving the rows where they are. */
+  default void scrollColumnsIntoView(@NotNull List<ModelIndex<GridColumn>> columns) {
+  }
+
   void setRowEnabled(@NotNull ModelIndex<GridRow> rowIdx, boolean state);
 
   void showFirstCell(int rowNumOnCurrentPage);
@@ -45,6 +55,30 @@ public interface ResultView extends CoreResultView, GridModel.Listener<GridRow, 
   void restoreColumnsOrder(Map<Integer, ModelIndex<GridColumn>> expectedToModel);
 
   boolean isEditing();
+
+  /**
+   * Whether the view has an active editor anywhere, including a region it renders as a separate component.
+   * {@link #isEditing()} answers for one component only, because Swing requires it to match that component's editor.
+   */
+  default boolean isEditingAnywhere() {
+    return isEditing();
+  }
+
+  /** Returns the components this view renders cells in, such as a table and its pinned-column strip. */
+  @RequiresEdt
+  default @NotNull List<Component> getCellComponents() {
+    return List.of(getComponent());
+  }
+
+  /** Whether {@code component} is one of the components this view renders cells in. */
+  @RequiresEdt
+  default boolean isCellComponent(@Nullable Component component) {
+    if (component == null) return false;
+    for (var cellComponent : getCellComponents()) {
+      if (component == cellComponent) return true;
+    }
+    return false;
+  }
 
   boolean isMultiEditingAllowed();
 

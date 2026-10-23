@@ -10,6 +10,8 @@ import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.readAction
 import com.intellij.openapi.components.ComponentManagerEx
 import com.intellij.openapi.components.serviceAsync
+import com.intellij.openapi.diagnostic.debug
+import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.editor.ClientEditorManager
 import com.intellij.openapi.editor.ex.EditorSettingsExternalizable
 import com.intellij.openapi.extensions.ExtensionNotApplicableException
@@ -76,7 +78,7 @@ fun reinitBreadcrumbsInAllEditors(project: Project, allClients: Boolean) {
 
   val fileEditorManager = FileEditorManager.getInstance(project)
   val above = isAbove()
-  val openFiles = if (allClients) fileEditorManager.getOpenFilesWithRemotes() else fileEditorManager.openFiles.toList()
+  val openFiles = if (allClients) fileEditorManager.openFilesWithRemotes else fileEditorManager.openFiles.toList()
   for (virtualFile in openFiles) {
     reinitBreadcrumbsComponent(fileEditorManager, virtualFile, above, allClients)
   }
@@ -124,6 +126,7 @@ fun reinitBreadcrumbComponent(fileEditor: TextEditor, fileEditorManager: FileEdi
     val isSuitable = readAction {
       isSuitable(project, file, forcedShown, editorIsValid)
     }
+    logger<BreadcrumbsInitializingActivity>().debug { "reinitBreadcrumbComponent for $file, isSuitable=$isSuitable" }
     withContext(Dispatchers.EDT) {
       if (editor.isDisposed) return@withContext
 
@@ -154,7 +157,7 @@ fun reinitBreadcrumbComponent(fileEditor: TextEditor, fileEditorManager: FileEdi
   }
 }
 
-@RequiresBackgroundThread
+@RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
 private fun isSuitable(project: Project, file: VirtualFile, forcedShown: Boolean?, editorIsValid: Boolean): Boolean {
   if (file is HttpVirtualFile || !editorIsValid) {
     return false

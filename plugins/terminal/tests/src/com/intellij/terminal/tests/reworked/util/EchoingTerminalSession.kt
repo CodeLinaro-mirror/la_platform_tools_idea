@@ -35,11 +35,14 @@ import org.jetbrains.plugins.terminal.session.impl.TerminalInputEvent
 import org.jetbrains.plugins.terminal.session.impl.TerminalOutputEvent
 import org.jetbrains.plugins.terminal.session.impl.TerminalSession
 import org.jetbrains.plugins.terminal.session.impl.TerminalWriteBytesEvent
+import org.jetbrains.plugins.terminal.session.impl.dto.KeyEventProcessingResultDto
 import org.jetbrains.plugins.terminal.session.impl.dto.TerminalBlocksModelStateDto
 import org.jetbrains.plugins.terminal.session.impl.dto.TerminalCommandBlockDto
 import org.jetbrains.plugins.terminal.session.impl.dto.TerminalOutputModelStateDto
 import org.jetbrains.plugins.terminal.session.impl.dto.toDto
 import org.jetbrains.plugins.terminal.view.shellIntegration.TerminalBlockIdImpl
+import java.awt.event.KeyEvent
+import java.awt.event.MouseEvent
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
@@ -125,24 +128,39 @@ internal class EchoingTerminalSession(
   }
 
   private fun decodeBytesAndUpdateScreen(bytes: ByteArray) {
-    val bytesList = bytes.toList()
-    when {
-      LEFT_ARROW_VARIANTS.contains(bytesList) -> {
-        screenState.moveCursorLeft()
+    // One write can hold several arrow key sequences and plain text, like a real terminal input.
+    var textStart = 0
+    var i = 0
+    while (i < bytes.size) {
+      val isLeft = isArrowKeyAt(bytes, i, LEFT_ARROW_FINAL_BYTE)
+      if (isLeft || isArrowKeyAt(bytes, i, RIGHT_ARROW_FINAL_BYTE)) {
+        typeText(bytes, textStart, i)
+        if (isLeft) screenState.moveCursorLeft() else screenState.moveCursorRight()
+        i += ARROW_SEQUENCE_LENGTH
+        textStart = i
       }
-      RIGHT_ARROW_VARIANTS.contains(bytesList) -> {
-        screenState.moveCursorRight()
+      else i++
+    }
+    typeText(bytes, textStart, bytes.size)
+  }
+
+  /** Checks for `ESC [ <finalByte>` (ANSI cursor sequences) or `ESC O <finalByte>` (application sequences). */
+  private fun isArrowKeyAt(bytes: ByteArray, index: Int, finalByte: Byte): Boolean {
+    return index + ARROW_SEQUENCE_LENGTH <= bytes.size &&
+           bytes[index] == Ascii.ESC &&
+           (bytes[index + 1] == '['.code.toByte() || bytes[index + 1] == 'O'.code.toByte()) &&
+           bytes[index + 2] == finalByte
+  }
+
+  private fun typeText(bytes: ByteArray, from: Int, to: Int) {
+    if (from >= to) return
+    val text = String(bytes, from, to - from).replace('\r', '\n')
+    for (char in text) {
+      if (BACKSPACE_VARIANTS.contains(char.code.toByte())) {
+        screenState.backspace()
       }
-      else -> {
-        val text = String(bytes).replace('\r', '\n')
-        for (char in text) {
-          if (BACKSPACE_VARIANTS.contains(char.code.toByte())) {
-            screenState.backspace()
-          }
-          else {
-            screenState.type(char.toString())
-          }
-        }
+      else {
+        screenState.type(char.toString())
       }
     }
   }
@@ -167,7 +185,15 @@ internal class EchoingTerminalSession(
 
         screenState.addListener(listenerDisposable) {
           val screen = screenState.getSnapshot()
-          val contentChangeEvent = TerminalContentUpdatedEvent(screen.text, emptyList(), 0, screen.cursorLine.toLong(), screen.cursorColumn)
+          val contentChangeEvent = TerminalContentUpdatedEvent(
+            text = screen.text,
+            styles = emptyList(),
+            startLineLogicalIndex = 0,
+            cursorLogicalLineIndex = screen.cursorLine.toLong(),
+            cursorColumnIndex = screen.cursorColumn,
+            screenTopLogicalLineIndex = 0,
+            screenTopColumnIndex = 0,
+          )
           trySend(listOf(contentChangeEvent))
         }
       }
@@ -190,6 +216,7 @@ internal class EchoingTerminalSession(
       trimmedCharsCount = 0,
       firstLineTrimmedCharsCount = 0,
       cursorOffset = screen.cursorOffset,
+      screenTopOffset = 0,
       highlightings = emptyList(),
       osc8Hyperlinks = emptyList(),
     )
@@ -211,9 +238,31 @@ internal class EchoingTerminalSession(
       startupOptions = startupOptions.toDto(),
       sessionState = sessionState.toDto(),
       outputModelState = outputModelState,
-      alternateBufferState = TerminalOutputModelStateDto("", 0, 0, 0, 0, emptyList(), emptyList()),
+      alternateBufferState = TerminalOutputModelStateDto("", 0, 0, 0, 0, 0, emptyList(), emptyList()),
       blocksModelState = TerminalBlocksModelStateDto(listOf(commandBlock), 1),
     )
+  }
+
+  override fun processMouseEvent(e: MouseEvent, x: Int, y: Int): ByteArray? {
+    return null
+  }
+
+  override fun processKeyEvent(e: KeyEvent): KeyEventProcessingResultDto {
+    if (e.id == KeyEvent.KEY_RELEASED) {
+      return KeyEventProcessingResultDto.Unhandled
+    }
+    if (e.id == KeyEvent.KEY_TYPED && !Character.isISOControl(e.keyChar)) {
+      return KeyEventProcessingResultDto.StringResult(e.keyChar.toString(), shouldScrollToBottom = true)
+    }
+
+    val bytes = when (e.keyCode) {
+      KeyEvent.VK_BACK_SPACE -> byteArrayOf(Ascii.BS)
+      KeyEvent.VK_ENTER -> byteArrayOf(Ascii.CR)
+      KeyEvent.VK_LEFT -> byteArrayOf(Ascii.ESC, '['.code.toByte(), 'D'.code.toByte())
+      KeyEvent.VK_RIGHT -> byteArrayOf(Ascii.ESC, '['.code.toByte(), 'C'.code.toByte())
+      else -> return KeyEventProcessingResultDto.Unhandled
+    }
+    return KeyEventProcessingResultDto.BytesResult(bytes, shouldScrollToBottom = true)
   }
 
   override suspend fun hasRunningCommands(): Boolean {
@@ -288,7 +337,8 @@ internal class EchoingTerminalSession(
     private val LOG = logger<EchoingTerminalSession>()
 
     private val BACKSPACE_VARIANTS = listOf(Ascii.BS, Ascii.DEL)
-    private val LEFT_ARROW_VARIANTS = listOf(listOf(Ascii.ESC, 79, 68), listOf(Ascii.ESC, 91, 68))
-    private val RIGHT_ARROW_VARIANTS = listOf(listOf(Ascii.ESC, 79, 67), listOf(Ascii.ESC, 91, 67))
+    private const val ARROW_SEQUENCE_LENGTH = 3
+    private const val LEFT_ARROW_FINAL_BYTE = 'D'.code.toByte()
+    private const val RIGHT_ARROW_FINAL_BYTE = 'C'.code.toByte()
   }
 }

@@ -37,7 +37,12 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+/**
+ * @deprecated The old Search Everywhere is being sunset in favor of the new (Split) Search Everywhere
+ * ({@code com.intellij.platform.searchEverywhere}). This functionality is obsolete.
+ */
 @ApiStatus.Internal
+@Deprecated
 public final class MixedResultsSearcher implements SESearcher {
 
   private static final Logger LOG = Logger.getInstance(MixedResultsSearcher.class);
@@ -246,6 +251,7 @@ public final class MixedResultsSearcher implements SESearcher {
         boolean repeat;
         do {
           ProgressIndicator wrapperIndicator = new SensitiveProgressWrapper(myIndicator);
+          SearchEverywhereElementsLimit.set(wrapperIndicator, myAccumulator.limitFor(myContributor));
           try {
             if (myContributor instanceof CorrectionWrapper) {
                 ((CorrectionWrapper<Item>)myContributor).fetchWeightedElements(myPattern, wrapperIndicator,
@@ -362,6 +368,14 @@ public final class MixedResultsSearcher implements SESearcher {
 
       sectionsLimits = new HashMap<>(contributorsAndLimits);
       conditionsMap = contributorsAndLimits.keySet().stream().collect(Collectors.toMap(Function.identity(), c -> lock.newCondition()));
+    }
+
+    /**
+     * The total number of items the contributor's section takes, or 0 when the contributor has no section.
+     */
+    public int limitFor(SearchEverywhereContributor<?> contributor) {
+      Integer limit = sectionsLimits.get(contributor);
+      return limit == null ? 0 : limit;
     }
 
     public void setContributorHasMore(SearchEverywhereContributor<?> contributor, boolean hasMore) {

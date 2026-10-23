@@ -1,9 +1,8 @@
 // "Remove 'get:' to make the annotation effective. (changes semantics. See: https://youtrack.jetbrains.com/issue/KT-48141)" "true"
 // WITH_STDLIB
-// K2_ERROR: '@get:' annotations can only be applied to property declarations.
+// K2_ERROR: INAPPLICABLE_TARGET_ON_PROPERTY
 class Foo {
     private val bar = 0
         <caret>@get /*comment*/   :    Deprecated("", level = DeprecationLevel.ERROR) get
 }
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.RemoveUseSiteTargetFix
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.RemoveUseSiteTargetFix

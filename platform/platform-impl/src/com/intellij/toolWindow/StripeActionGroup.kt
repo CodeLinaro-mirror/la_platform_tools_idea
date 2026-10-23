@@ -1,13 +1,12 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.toolWindow
 
+import com.intellij.concurrency.ConcurrentCollectionFactory
 import com.intellij.icons.AllIcons
 import com.intellij.ide.HelpTooltip
 import com.intellij.ide.actions.ActivateToolWindowAction
 import com.intellij.ide.actions.ToolWindowsGroup
 import com.intellij.ide.ui.NotRoamableUiSettings
-import com.intellij.ide.ui.customization.ActionUrl
-import com.intellij.ide.ui.customization.CustomActionsListener.Companion.fireSchemaChanged
 import com.intellij.ide.ui.customization.CustomActionsSchema
 import com.intellij.idea.ActionsBundle
 import com.intellij.openapi.Disposable
@@ -41,7 +40,6 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import com.intellij.openapi.components.service
-import com.intellij.openapi.keymap.impl.ui.Group
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
@@ -58,7 +56,6 @@ import com.intellij.ui.MouseDragHelper
 import com.intellij.ui.NewUI
 import com.intellij.util.PlatformUtils
 import com.intellij.util.concurrency.annotations.RequiresEdt
-import com.intellij.util.containers.CollectionFactory
 import com.intellij.util.containers.ConcurrentFactoryMap
 import com.intellij.util.containers.ContainerUtil
 import kotlinx.coroutines.CoroutineScope
@@ -69,17 +66,14 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.intellij.lang.annotations.Language
 import org.jdom.Element
 import org.jetbrains.annotations.ApiStatus
 import javax.swing.JComponent
 
-@Language("devkit-action-id") private const val STRIPE_ACTION_GROUP_ID = "TopStripeActionGroup"
-
 @ApiStatus.Internal
 class StripeActionGroup: ActionGroup(), DumbAware {
   private val myFactory: Map<ActivateToolWindowAction, AnAction> = ConcurrentFactoryMap.create(::createAction) {
-    CollectionFactory.createConcurrentWeakKeyWeakValueMap()
+    ConcurrentCollectionFactory.createConcurrentWeakKeyWeakValueMap()
   }
   private val myMore = MyMoreAction()
 
@@ -262,12 +256,12 @@ private class ButtonsRepaintService(project: Project, coroutineScope: CoroutineS
     }
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun trackButton(btn: ActionButton) {
     buttons.add(btn)
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun unTrackButton(btn: ActionButton) {
     buttons.remove(btn)
   }
@@ -310,7 +304,7 @@ internal class TogglePinAction(toolWindowId: String): TogglePinActionBase(toolWi
 
 @Service
 @State(name = "SingleStripeButtonsState", storages = [Storage("window.state.xml", roamingType = RoamingType.DISABLED)])
-private class ButtonsStateService: PersistentStateComponent<Element> {
+internal class ButtonsStateService: PersistentStateComponent<Element> {
   private val pinnedIds = linkedSetOf("Database", "Project", "Services", "AIAssistant")
 
   fun isPinned(id: String): Boolean = id in pinnedIds
@@ -343,68 +337,11 @@ private class ButtonsStateService: PersistentStateComponent<Element> {
 
 private val buttonState get() = ApplicationManager.getApplication().service<ButtonsStateService>()
 
+private val customizedGroup get() = getGroupPath(GROUP_MAIN_TOOLBAR_NEW_UI, GROUP_MAIN_TOOLBAR_CENTER)
 
 @ApiStatus.Internal
 class EnableStripeGroup : ToggleAction(), DumbAware {
-  @ApiStatus.Internal
-  companion object {
-    private val customizedGroup get() = getGroupPath(GROUP_MAIN_TOOLBAR_NEW_UI, GROUP_MAIN_TOOLBAR_CENTER)
 
-    fun setSingleStripeEnabled(enabled: Boolean) {
-      if (enabled) updateActionGroup(true, customizedGroup ?: return, STRIPE_ACTION_GROUP_ID)
-      NotRoamableUiSettings.getInstance().experimentalSingleStripe = enabled
-    }
-
-    fun isSingleStripeEnabled() = hasActionOnToolbar()
-                                  && shouldSingleStripeBeEnabled()
-
-    fun shouldSingleStripeBeEnabled() = NotRoamableUiSettings.getInstance().experimentalSingleStripe
-
-    fun hasActionOnToolbar() = customizedGroup?.let { isActionGroupAdded(it, STRIPE_ACTION_GROUP_ID) } == true
-
-    @ApiStatus.Internal
-    fun pinButton(toolWindowId: String, pinned: Boolean) {
-      buttonState.setPinned(toolWindowId, pinned)
-    }
-
-    @Suppress("SameParameterValue")
-    private fun isActionGroupAdded(groupPath: List<String>, actionId: String): Boolean {
-      return CustomActionsSchema.getInstance().getActions().find { it.groupPath == groupPath && matchesId(it.component, actionId) } != null
-    }
-
-    @Suppress("SameParameterValue")
-    private fun updateActionGroup(add: Boolean, groupPath: List<String>, actionId: String) {
-      val globalSchema = CustomActionsSchema.getInstance()
-      val actions = globalSchema.getActions().toMutableList()
-      actions.removeIf { it.groupPath == groupPath && matchesId(it.component, actionId) }
-      if (add) {
-        actions.add(ActionUrl(ArrayList(groupPath), actionId, ActionUrl.ADDED, 0))
-      }
-      globalSchema.setActions(actions)
-      fireSchemaChanged()
-      globalSchema.setCustomizationSchemaForCurrentProjects()
-    }
-
-    private fun matchesId(component: Any?, actionId: String) = when (component) {
-      is AnAction -> ActionManager.getInstance().getId(component) == actionId
-      is Group -> component.id == actionId
-      else -> component == actionId
-    }
-
-    @Suppress("SameParameterValue")
-    private fun getGroupPath(vararg ids: String): List<String>? {
-      val globalSchema = CustomActionsSchema.getInstance()
-      val groupPath = ArrayList<String>()
-      groupPath += "root"
-      for (id in ids) {
-        groupPath += getActionName(globalSchema, id) ?: return null
-      }
-      return groupPath
-    }
-
-    private fun getActionName(globalSchema: CustomActionsSchema, actionId: String): String? =
-      globalSchema.getDisplayName(actionId) ?: ActionManager.getInstance().getActionOrStub(actionId)?.templateText
-  }
   override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
   override fun update(e: AnActionEvent) {
@@ -413,10 +350,41 @@ class EnableStripeGroup : ToggleAction(), DumbAware {
   }
 
   override fun isSelected(e: AnActionEvent): Boolean =
-    isSingleStripeEnabled()
+    SingleStripeHelper.isSingleStripeEnabled()
 
   override fun setSelected(e: AnActionEvent, state: Boolean) {
-    setSingleStripeEnabled(state)
+    SingleStripeHelper.setSingleStripeEnabled(state)
   }
 
 }
+
+@ApiStatus.Internal
+object SingleStripeHelper {
+
+  const val STRIPE_ACTION_GROUP_ID: String = "TopStripeActionGroup"
+
+  fun setSingleStripeEnabled(enabled: Boolean) {
+    NotRoamableUiSettings.getInstance().experimentalSingleStripe = enabled
+  }
+
+  fun isSingleStripeEnabled(): Boolean = NotRoamableUiSettings.getInstance().experimentalSingleStripe
+
+  @ApiStatus.Internal
+  fun pinButton(toolWindowId: String, pinned: Boolean) {
+    buttonState.setPinned(toolWindowId, pinned)
+  }
+}
+
+@Suppress("SameParameterValue")
+private fun getGroupPath(vararg ids: String): List<String>? {
+  val globalSchema = CustomActionsSchema.getInstance()
+  val groupPath = ArrayList<String>()
+  groupPath += "root"
+  for (id in ids) {
+    groupPath += getActionName(globalSchema, id) ?: return null
+  }
+  return groupPath
+}
+
+private fun getActionName(globalSchema: CustomActionsSchema, actionId: String): String? =
+  globalSchema.getDisplayName(actionId) ?: ActionManager.getInstance().getActionOrStub(actionId)?.templateText

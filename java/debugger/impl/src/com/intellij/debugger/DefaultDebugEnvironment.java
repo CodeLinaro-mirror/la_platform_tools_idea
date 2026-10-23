@@ -18,6 +18,7 @@ import com.intellij.openapi.roots.ProjectRootManager;
 import com.intellij.openapi.util.KeyWithDefaultValue;
 import com.intellij.psi.search.ExecutionSearchScopes;
 import com.intellij.psi.search.GlobalSearchScope;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
@@ -59,9 +60,9 @@ public class DefaultDebugEnvironment implements DebugEnvironment {
   @Override
   public ExecutionResult createExecutionResult() throws ExecutionException {
     // debug port may have changed, reinit parameters just in case
-    if (myNeedParametersSet && state instanceof JavaCommandLine) {
+    if (myNeedParametersSet && state instanceof JavaCommandLine line) {
       new RemoteConnectionBuilder(true, DebuggerSettings.SOCKET_TRANSPORT, myRemoteConnection.getApplicationAddress())
-        .create(((JavaCommandLine)state).getJavaParameters());
+        .create(line.getJavaParameters());
     }
     return state.execute(environment.getExecutor(), environment.getRunner());
   }
@@ -91,6 +92,24 @@ public class DefaultDebugEnvironment implements DebugEnvironment {
     return environment.getRunProfile().getName();
   }
 
+  @ApiStatus.Internal
+  public boolean hasVmParameter(@NotNull String parameter) {
+    if (state instanceof JavaCommandLine commandLine) {
+      try {
+        return commandLine.getJavaParameters().getVMParametersList().getParameters().contains(parameter);
+      }
+      catch (ExecutionException ignore) {
+      }
+    }
+    return false;
+  }
+
+  @ApiStatus.Internal
+  public static boolean hasEnhancedClassRedefinitionEnabled(@NotNull DebugEnvironment environment) {
+    return environment instanceof DefaultDebugEnvironment debugEnvironment &&
+           debugEnvironment.hasVmParameter("-XX:+AllowEnhancedClassRedefinition");
+  }
+
   @Override
   public @Nullable Sdk getAlternativeJre() {
     return AlternativeJreClassFinder.getAlternativeJre(environment.getRunProfile());
@@ -98,9 +117,9 @@ public class DefaultDebugEnvironment implements DebugEnvironment {
 
   @Override
   public @Nullable Sdk getRunJre() {
-    if (state instanceof JavaCommandLine) {
+    if (state instanceof JavaCommandLine line) {
       try {
-        return ((JavaCommandLine)state).getJavaParameters().getJdk();
+        return line.getJavaParameters().getJdk();
       }
       catch (ExecutionException ignore) {
       }

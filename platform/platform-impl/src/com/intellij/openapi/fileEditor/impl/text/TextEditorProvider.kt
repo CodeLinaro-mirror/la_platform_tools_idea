@@ -24,6 +24,7 @@ import com.intellij.openapi.fileEditor.FileEditorProvider
 import com.intellij.openapi.fileEditor.FileEditorState
 import com.intellij.openapi.fileEditor.FileEditorStateLevel
 import com.intellij.openapi.fileEditor.TextEditor
+import com.intellij.openapi.fileEditor.createdFileEditorSink
 import com.intellij.openapi.fileEditor.ex.StructureViewFileEditorProvider
 import com.intellij.openapi.fileEditor.impl.DefaultPlatformFileEditorProvider
 import com.intellij.openapi.fileTypes.BinaryFileTypeDecompilers
@@ -118,13 +119,15 @@ open class TextEditorProvider : DefaultPlatformFileEditorProvider, TextBasedFile
       fileForTelemetry = file,
       editorCoroutineScope = editorCoroutineScope,
     )
+    // if cancellation lands between the editor creation and the consumption of the result, withContext discards the created editor
+    val createdEditors = createdFileEditorSink()
     return withContext(Dispatchers.EDT) {
       val editor = createEditorImpl(project = project, file = file, asyncLoader = asyncLoader).first
       TextEditorImpl(
         project = project,
         file = file,
         componentAndLoader = TextEditorComponent(file = file, editorImpl = editor) to asyncLoader,
-      )
+      ).also { createdEditors?.register(it) }
     }
   }
 
@@ -141,7 +144,19 @@ open class TextEditorProvider : DefaultPlatformFileEditorProvider, TextBasedFile
     )
   }
 
-  override fun readState(element: Element, project: Project, file: VirtualFile): FileEditorState {
+  @Deprecated("Implemented to keep compatibility, do not call directly")
+  override fun readState(
+    element: Element,
+    project: Project,
+    file: VirtualFile,
+  ): FileEditorState {
+    if (element.isEmpty) {
+      return TextEditorState()
+    }
+    return TextEditorState(readCarets(element), readRelativeCaretPosition(element))
+  }
+
+  override fun readState(element: Element, project: Project, file: Lazy<VirtualFile?>): FileEditorState {
     if (element.isEmpty) {
       return TextEditorState()
     }
@@ -201,7 +216,7 @@ open class TextEditorProvider : DefaultPlatformFileEditorProvider, TextBasedFile
 
   protected open fun createWrapperForEditor(editor: Editor): EditorWrapper = EditorWrapper(editor)
 
-  @RequiresReadLock
+  @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
   open fun getStateImpl(project: Project?, editor: Editor, level: FileEditorStateLevel): TextEditorState {
     val carets = editor.caretModel.caretsAndSelections.map { caretState ->
       val caretPosition = caretState.caretPosition
@@ -225,7 +240,7 @@ open class TextEditorProvider : DefaultPlatformFileEditorProvider, TextBasedFile
     return TextEditorState(carets, relativeCaretPosition)
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   open fun setStateImpl(project: Project?, editor: Editor, state: TextEditorState, exactState: Boolean) {
     val carets = state.carets
     if (carets.isNotEmpty()) {

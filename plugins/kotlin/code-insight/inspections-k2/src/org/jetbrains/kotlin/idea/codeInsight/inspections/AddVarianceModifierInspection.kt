@@ -6,21 +6,24 @@ import com.intellij.codeInspection.ProblemsHolder
 import com.intellij.modcommand.ModPsiUpdater
 import com.intellij.openapi.project.Project
 import org.jetbrains.kotlin.analysis.api.KaSession
+import org.jetbrains.kotlin.analysis.api.scopes.declaredMemberScope
 import org.jetbrains.kotlin.analysis.api.symbols.KaFunctionSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaNamedClassSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaPropertySymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbolVisibility
 import org.jetbrains.kotlin.analysis.api.symbols.KaTypeParameterSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.containingSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.symbol
 import org.jetbrains.kotlin.analysis.api.types.KaClassType
 import org.jetbrains.kotlin.analysis.api.types.KaType
 import org.jetbrains.kotlin.analysis.api.types.KaTypeParameterType
+import org.jetbrains.kotlin.idea.base.psi.addModifierKeyword
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.codeinsight.api.applicable.inspections.KotlinApplicableInspectionBase
 import org.jetbrains.kotlin.idea.codeinsight.api.applicable.inspections.KotlinModCommandQuickFix
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.KtTypeParameter
 import org.jetbrains.kotlin.psi.KtVisitorVoid
-import org.jetbrains.kotlin.psi.addRemoveModifier.addModifier
 import org.jetbrains.kotlin.types.Variance
 
 /**
@@ -38,10 +41,16 @@ internal class AddVarianceModifierInspection : KotlinApplicableInspectionBase.Si
         return element.variance == Variance.INVARIANT
     }
 
-    override fun KaSession.prepareContext(element: KtTypeParameter): Variance? {
+    context(session: KaSession)
+    override fun prepareContext(element: KtTypeParameter): Variance? {
         val classSymbol = element.symbol.containingSymbol as? KaNamedClassSymbol ?: return null
         val typeParameterSymbol = element.symbol
-        
+
+        val typeParameterAppearsInOwnBounds = typeParameterSymbol.upperBounds.any { bound ->
+            typeReferencesTypeParameter(typeParameterSymbol, bound)
+        }
+        if (typeParameterAppearsInOwnBounds) return null
+
         var usedInContravariantPosition = false
         var usedInCovariantPosition = false
         
@@ -54,7 +63,8 @@ internal class AddVarianceModifierInspection : KotlinApplicableInspectionBase.Si
         return determineVarianceSuggestion(usedInContravariantPosition, usedInCovariantPosition)
     }
     
-    private fun KaSession.analyzeConstructorUsage(
+    context(session: KaSession)
+    private fun analyzeConstructorUsage(
         classSymbol: KaNamedClassSymbol,
         typeParameterSymbol: KaTypeParameterSymbol,
         onContravariantUsage: () -> Unit
@@ -67,7 +77,8 @@ internal class AddVarianceModifierInspection : KotlinApplicableInspectionBase.Si
         }
     }
     
-    private fun KaSession.analyzeMemberUsage(
+    context(session: KaSession)
+    private fun analyzeMemberUsage(
         classSymbol: KaNamedClassSymbol,
         typeParameterSymbol: KaTypeParameterSymbol,
         onUsage: (contravariant: Boolean, covariant: Boolean) -> Unit
@@ -81,7 +92,8 @@ internal class AddVarianceModifierInspection : KotlinApplicableInspectionBase.Si
         }
     }
     
-    private fun KaSession.analyzePropertyUsage(
+    context(session: KaSession)
+    private fun analyzePropertyUsage(
         property: KaPropertySymbol,
         typeParameterSymbol: KaTypeParameterSymbol,
         onUsage: (contravariant: Boolean, covariant: Boolean) -> Unit
@@ -93,7 +105,8 @@ internal class AddVarianceModifierInspection : KotlinApplicableInspectionBase.Si
         onUsage(isMutable, true) // Properties are always covariant, mutable ones are also contravariant
     }
     
-    private fun KaSession.analyzeFunctionUsage(
+    context(session: KaSession)
+    private fun analyzeFunctionUsage(
         function: KaFunctionSymbol,
         typeParameterSymbol: KaTypeParameterSymbol,
         onUsage: (contravariant: Boolean, covariant: Boolean) -> Unit
@@ -123,7 +136,8 @@ internal class AddVarianceModifierInspection : KotlinApplicableInspectionBase.Si
         else -> null // No relevant usage found
     }
     
-    private fun KaSession.typeReferencesTypeParameter(typeParameter: KaTypeParameterSymbol, type: KaType): Boolean {
+    context(session: KaSession)
+    private fun typeReferencesTypeParameter(typeParameter: KaTypeParameterSymbol, type: KaType): Boolean {
         return when (type) {
             is KaTypeParameterType -> type.symbol == typeParameter
             is KaClassType -> type.typeArguments.any { arg ->
@@ -147,7 +161,7 @@ internal class AddVarianceModifierInspection : KotlinApplicableInspectionBase.Si
         override fun getName() = KotlinBundle.message("add.variance.fix.text", variance)
         override fun getFamilyName() = KotlinBundle.message("add.variance.fix.family.name")
         override fun applyFix(project: Project, element: KtTypeParameter, updater: ModPsiUpdater) {
-            addModifier(element, if (variance == Variance.IN_VARIANCE) KtTokens.IN_KEYWORD else KtTokens.OUT_KEYWORD)
+            element.addModifierKeyword(if (variance == Variance.IN_VARIANCE) KtTokens.IN_KEYWORD else KtTokens.OUT_KEYWORD)
         }
     }
 }

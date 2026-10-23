@@ -6,6 +6,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.flow.Flow
 import org.jetbrains.annotations.ApiStatus
+import org.jetbrains.plugins.terminal.session.impl.dto.KeyEventProcessingResultDto
+import java.awt.event.KeyEvent
+import java.awt.event.MouseEvent
 
 @ApiStatus.Internal
 interface TerminalSession {
@@ -57,4 +60,27 @@ interface TerminalSession {
    * Can be accessed from any thread.
    */
   val isClosed: Boolean
+
+  /**
+   * Encodes the given mouse event into bytes that can be sent to the terminal process.
+   *
+   * [x] and [y] are terminal grid coordinates of the event, zero-based relative to the terminal screen start.
+   * Returns encoded bytes, or `null` when the event should not be forwarded to the terminal.
+   * Called on the EDT, so it must not wait for the output flow collector.
+   */
+  fun processMouseEvent(
+    e: MouseEvent,
+    x: Int,
+    y: Int,
+  ): ByteArray?
+
+  /** Called on the EDT, so it must not wait for the output flow collector. */
+  fun processKeyEvent(e: KeyEvent): KeyEventProcessingResultDto
+
+  /**
+   * Tells the session that the terminal view lost the keyboard focus. The releases of the keys
+   * held at that moment go to another component, so a session that pairs presses with releases
+   * forgets them. Called on the EDT.
+   */
+  fun focusLost() {}
 }

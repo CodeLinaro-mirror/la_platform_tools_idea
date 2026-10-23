@@ -1,4 +1,4 @@
-// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.daemon.impl.quickfix;
 
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer;
@@ -22,7 +22,7 @@ import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.io.FileUtilRt;
-import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.StandardFileSystems;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
@@ -40,6 +40,7 @@ import com.intellij.psi.xml.XmlTokenType;
 import com.intellij.util.IncorrectOperationException;
 import com.intellij.util.io.HttpRequests;
 import com.intellij.util.net.HttpConfigurable;
+import com.intellij.util.net.HttpConnectionUtils;
 import com.intellij.util.net.IOExceptionDialog;
 import com.intellij.xml.XmlBundle;
 import com.intellij.xml.util.XmlUtil;
@@ -172,7 +173,7 @@ public final class FetchExtResourceAction extends BaseExtResourceAction {
       public void run(@NotNull ProgressIndicator indicator) {
         while (true) {
           try {
-            HttpConfigurable.getInstance().prepareURL(url);
+            HttpConnectionUtils.prepareUrl(url);
             fetchDtd(project, uri, url, indicator);
             ApplicationManager.getApplication().invokeLater(() -> DaemonCodeAnalyzer.getInstance(project).restart(psiFile, this));
             return;
@@ -204,7 +205,7 @@ public final class FetchExtResourceAction extends BaseExtResourceAction {
     final PsiManager psiManager = PsiManager.getInstance(project);
     ApplicationManager.getApplication().invokeAndWait(() -> WriteAction.run(() -> {
       final String path = FileUtil.toSystemIndependentName(extResources.getAbsolutePath());
-      final VirtualFile vFile = LocalFileSystem.getInstance().refreshAndFindFileByPath(path);
+      final VirtualFile vFile = StandardFileSystems.local().refreshAndFindFileByPath(path);
       LOG.assertTrue(vFile != null, path);
     }));
 
@@ -300,7 +301,7 @@ public final class FetchExtResourceAction extends BaseExtResourceAction {
                                             Project project) {
     final Ref<VirtualFile> ref = new Ref<>();
     ApplicationManager.getApplication().invokeAndWait(() -> ApplicationManager.getApplication().runWriteAction(() -> {
-      ref.set(LocalFileSystem.getInstance().refreshAndFindFileByPath(resPath.replace(File.separatorChar, '/')));
+      ref.set(StandardFileSystems.local().refreshAndFindFileByPath(resPath.replace(File.separatorChar, '/')));
       if (dtdUrl != null) {
         ExternalResourceManager.getInstance().addResource(dtdUrl, resPath);
       }
@@ -328,7 +329,7 @@ public final class FetchExtResourceAction extends BaseExtResourceAction {
             }
 
             for (String downloadedResource : downloadedResources) {
-              VirtualFile virtualFile = LocalFileSystem.getInstance().findFileByIoFile(new File(downloadedResource));
+              VirtualFile virtualFile = StandardFileSystems.local().findFileByPath(new File(downloadedResource).getAbsolutePath());
               if (virtualFile != null) {
                 try {
                   virtualFile.delete(this);

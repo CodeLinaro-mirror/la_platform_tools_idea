@@ -18,12 +18,12 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.python.pyproject.PY_PROJECT_TOML
+import com.intellij.python.requirements.RequirementsFileType
 import com.intellij.ui.EditorNotificationProvider
 import com.intellij.ui.components.TwoSideComponent
 import com.jetbrains.python.PyBundle
 import com.jetbrains.python.icons.PythonIcons
 import com.jetbrains.python.packaging.statistics.PythonPackagesToolwindowStatisticsCollector
-import com.jetbrains.python.requirements.RequirementsFileType
 import org.jetbrains.annotations.ApiStatus
 import java.awt.BorderLayout
 import java.util.function.Function

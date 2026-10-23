@@ -1,6 +1,6 @@
 // "Add 'Parcelable' supertype" "true"
 // WITH_STDLIB
-// K2_ERROR: No 'Parcelable' supertype.
+// K2_ERROR: NO_PARCELABLE_SUPERTYPE
 
 package com.myapp.activity
 
@@ -9,4 +9,4 @@ import kotlinx.parcelize.Parcelize
 
 @Parcelize
 class <caret>Test(val s: String)
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.compilerPlugin.parcelize.quickfixes.ParcelizeAddSupertypeQuickFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.compilerPlugin.parcelize.quickfixes.ParcelizeAddSupertypeQuickFix

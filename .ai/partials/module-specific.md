@@ -1,20 +1,10 @@
 ## Module-specific rules
 
-Special handling applies to the directories below. If a file you touch lives under one of these roots, you must activate that module's rules first (read the referenced doc before edits or reviews). These rules override general guidelines if they conflict.
+Read the referenced rules before you edit or review a file under these roots. They override the general guidance here.
 
-<!-- IF_TOOL:CODEX -->
-- **Product DSL** (`community/platform/build-scripts/product-dsl/`): read `./.claude/rules/product-dsl.md` before changing anything in this tree.
-<!-- /IF_TOOL:CODEX -->
-<!-- IF_TOOL:JUNIE -->
-- **Product DSL** (`community/platform/build-scripts/product-dsl/`): read `../.claude/rules/product-dsl.md` before changing anything in this tree.
-<!-- /IF_TOOL:JUNIE -->
-
-- **IJ Proxy MCP server** (`community/build/mcp-servers/ij-proxy/`):
+- **Product DSL** (`{{COMMUNITY_DIR}}platform/build-scripts/product-dsl/`): follow its `AGENTS.md`.
+- **IJ Proxy MCP server** (`{{COMMUNITY_DIR}}build/mcp-servers/ij-proxy/`):
   - Tests: run `bun run build` and `bun test`.
-  - Bazel: do not run Bazel build and tests here.
-- **AI Assistant activation** (`plugins/llm/activation/`):
-  - Activation: follow `plugins/llm/activation/.ai/guidelines.md` before edits or reviews.
-- **Toolbox** (`toolbox/`):
-  - Tests: never use `./tests.cmd`; see `toolbox/.ai/index.md` for Gradle/Bazel test commands.
-  - Build: use `./bazel.cmd build //toolbox/...` instead of `./bazel-build-all.cmd`.
-<!-- IF_EDITION:ULTIMATE -->- **PyCharm** (`python/` and `community/python/`): use `/community/python/.ai/index.md`.<!-- /IF_EDITION:ULTIMATE --><!-- IF_EDITION:COMMUNITY -->- **PyCharm** (`./python`): use `./python/.ai/index.md`.<!-- /IF_EDITION:COMMUNITY -->
+  - Bazel: do not run a Bazel build or test here.
+- **Eel / IJent** (`{{COMMUNITY_DIR}}platform/eel*/`, `{{COMMUNITY_DIR}}platform/ijent/`<!-- IF_EDITION:ULTIMATE -->, `platform/ijent/`<!-- /IF_EDITION:ULTIMATE -->): read `{{COMMUNITY_DIR}}platform/eel/AGENTS.md` first.<!-- IF_EDITION:ULTIMATE --> The Eel docs are public; the IJent internals start from `platform/ijent/AGENTS.md`.<!-- /IF_EDITION:ULTIMATE -->
+<!-- IF_EDITION:ULTIMATE -->- **PyCharm** (`python/`, `community/python/`): use the `pycharm-dev-workflow` skill for a PY-NNNNN issue or any Python support work.<!-- /IF_EDITION:ULTIMATE --><!-- IF_EDITION:COMMUNITY -->- **PyCharm** (`./python`): start a PY-NNNNN issue at `./python/.ai/index.md`.<!-- /IF_EDITION:COMMUNITY -->

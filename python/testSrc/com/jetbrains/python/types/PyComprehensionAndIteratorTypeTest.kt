@@ -2,8 +2,13 @@
 package com.jetbrains.python.types
 
 import com.intellij.idea.TestFor
+import com.jetbrains.python.allure.Components
+import com.jetbrains.python.allure.Layers
+import com.jetbrains.python.allure.Subsystems
 import com.jetbrains.python.fixtures.PyCodeInsightTestCase
 import com.jetbrains.python.psi.LanguageLevel
+import com.jetbrains.python.psi.impl.PyPrefixExpressionImpl
+import com.jetbrains.python.psi.impl.PyYieldExpressionImpl
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 
@@ -11,6 +16,9 @@ import org.junit.jupiter.api.Test
  * Type and type-checker tests for comprehensions, iteration type inference, generators and
  * asynchronous iteration/coroutines.
  */
+@Subsystems.Typing
+@Components.TypeInference
+@Layers.Functional
 class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
 
   @Nested
@@ -19,30 +27,33 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
     fun `set comprehension type`() = test("""
       expr = {i for i in range(3)}
       # └ TYPE set[int]
-      """)
+      """.trimIndent())
 
-    // PY-7020
+    @TestFor(issues = ["PY-7020"])
     @Test
-    fun `list comprehension type`() = test(TestOptions(assertRecursionPrevention = false), """
+    @TestCaseOptions(assertRecursionPrevention = false)
+    fun `list comprehension type`() = test("""
       expr = [str(x) for x in range(10)]
       # └ TYPE list[str]
-      """)
+      """.trimIndent())
 
-    // PY-7021
+    @TestFor(issues = ["PY-7021"])
     @Test
-    fun `generator comprehension type`() = test(TestOptions(assertRecursionPrevention = false), """
+    @TestCaseOptions(assertRecursionPrevention = false)
+    fun `generator comprehension type`() = test("""
       expr = (str(x) for x in range(10))
       # └ TYPE Generator[str, Unknown, None]
-      """)
+      """.trimIndent())
 
-    // PY-7021
+    @TestFor(issues = ["PY-7021"])
     @Test
-    fun `iterate over generator comprehension`() = test(TestOptions(assertRecursionPrevention = false), """
+    @TestCaseOptions(assertRecursionPrevention = false)
+    fun `iterate over generator comprehension`() = test("""
       xs = (str(x) for x in range(10))
       for expr in xs:
       #   └ TYPE str
           pass
-      """)
+      """.trimIndent())
 
     // PEP 798
     @Test
@@ -50,7 +61,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       def f(its: list[list[int]]):
           expr = [*it for it in its]
       #   └ TYPE list[int]
-      """)
+      """.trimIndent())
 
     // PEP 798
     @Test
@@ -58,15 +69,16 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       def f(its: list[list[int]]):
           expr = {*it for it in its}
       #   └ TYPE set[int]
-      """)
+      """.trimIndent())
 
     // PEP 798
     @Test
-    fun `unpacking in generator comprehension type`() = test(TestOptions(assertRecursionPrevention = false), """
+    @TestCaseOptions(assertRecursionPrevention = false)
+    fun `unpacking in generator comprehension type`() = test("""
       def f(its: list[list[int]]):
           expr = (*it for it in its)
       #   └ TYPE Generator[int, Unknown, None]
-      """)
+      """.trimIndent())
 
     // PEP 798
     @Test
@@ -74,21 +86,22 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       def f(dicts: list[dict[str, int]]):
           expr = {**d for d in dicts}
       #   └ TYPE dict[str, int]
-      """)
+      """.trimIndent())
 
     // PEP 798: a bare generator expression with star unpacking passed as the sole call argument
     @Test
-    fun `unpacking in generator expression call argument type`() = test(TestOptions(assertRecursionPrevention = false), """
+    @TestCaseOptions(assertRecursionPrevention = false)
+    fun `unpacking in generator expression call argument type`() = test("""
       def f(its: list[list[int]]):
           expr = list(*it for it in its)
       #   └ TYPE list[int]
-      """)
+      """.trimIndent())
 
     @Test
     fun `list constructor call with generator expression`() = test("""
       expr = list(int(i) for i in '1')
       # └ TYPE list[int]
-      """)
+      """.trimIndent())
 
     @Test
     fun `dict comprehension expression with generics`() = test("""
@@ -98,14 +111,14 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
           y = {k: v for k, v in x.items()}
           expr = y
       #   └ TYPE dict[str, (Any) -> Any]
-      """)
+      """.trimIndent())
 
     @Test
     fun `dict comprehension from kwargs`() = test("""
       def test(**kwargs):
           expr = {k: v for k, v in kwargs.items()}
       #   └ TYPE dict[str, Unknown]
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-27708"])
     @Test
@@ -116,7 +129,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
           y = {k for k in x}
           expr = y
       #   └ TYPE set[(Any) -> Any]
-      """)
+      """.trimIndent())
 
     @Test
     fun `csv DictReader iterator type in comprehension`() = test("""
@@ -125,7 +138,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
           reader = csv.DictReader(f)
           expr = [line for line in reader]
       #   └ TYPE list[dict[str | Any, str | Any]]
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-16585"])
     @Test
@@ -134,15 +147,16 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
 
       xs = [expr for expr in range(10)]  # type: List[int]
       #     └ TYPE int
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-16585"])
     @Test
-    fun `comment after comprehension in for loop`() = test(TestOptions(assertRecursionPrevention = false), """
+    @TestCaseOptions(assertRecursionPrevention = false)
+    fun `comment after comprehension in for loop`() = test("""
       for _ in [str(expr) for expr in range(10)]:  # type: str
       #             └ TYPE int
           pass
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-16585"])
     @Test
@@ -152,7 +166,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       #    │  └ TYPE int
       #    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ WARNING Expected type 'contextlib.AbstractContextManager', got 'None' instead
           pass
-      """)
+      """.trimIndent())
   }
 
   @Nested
@@ -161,7 +175,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
     fun `iteration over list literal`() = test("""
       for expr in [1, 2, 3]: pass
       #   └ TYPE int
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20063"])
     @Test
@@ -170,15 +184,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       for expr in xs:
       #   └ TYPE int
           print(expr)
-      """)
-
-    @Test
-    fun `tuple iteration type`() = test("""
-      xs = (1, 'a')
-      for expr in xs:
-      #   └ TYPE Literal[1, 'a']
-          pass
-      """)
+      """.trimIndent())
 
     @Test
     fun `iteration type from __getitem__`() = test("""
@@ -190,24 +196,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       for expr in C():
       #   └ TYPE Literal[0]
           pass
-      """)
-
-    @Test
-    fun `union iteration`() = test("""
-      def f(c):
-          if c < 0:
-              return [1, 2, 3]
-          elif c == 0:
-              return 0.0
-          else:
-              return 'foo'
-
-      def g(c):
-          for expr in f(c):
-      #       │       ^^^^ WARNING Expected type 'collections.Iterable', got 'list[int] | float | Literal["foo"]' instead
-      #       └ TYPE int | LiteralString | Unknown
-              pass
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20794"])
     @Test
@@ -217,7 +206,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       for expr in l:
       #   └ TYPE Unknown
           print(expr)
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20794"])
     @Test
@@ -227,12 +216,13 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       for expr in d.get('field', []):
       #   └ TYPE Unknown
           print(expr['id'])
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-22181"])
     @Test
+    @TestCaseOptions(languageLevel = LanguageLevel.PYTHON27, assertRecursionPrevention = false)
     fun `iteration over iterable with separate iterator using next`() =
-      test(TestOptions(languageLevel = LanguageLevel.PYTHON27, assertRecursionPrevention = false), """
+      test("""
       class AIter(object):
           def next(self):
               return 5
@@ -243,7 +233,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       for expr in a:
       #   └ TYPE Literal[5]
           print(expr)
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-22181"])
     @Test
@@ -258,7 +248,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       for expr in a:
       #   └ TYPE Literal[5]
           print(expr)
-      """)
+      """.trimIndent())
 
     @Test
     fun `iter result on iterable`() = test("""
@@ -267,7 +257,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       xs: Iterable[int]
       expr = iter(xs)
       # └ TYPE Iterator[int]
-      """)
+      """.trimIndent())
 
     @Test
     fun `next result on iterator`() = test("""
@@ -276,13 +266,13 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       xs: Iterable[int]
       expr = iter(xs).__next__()
       # └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     fun `iter on list of lists result`() = test("""
       expr = iter([[1, 2, 3]])
-      # └ TYPE Iterator[list[Literal[1, 2, 3]]]
-      """)
+      # └ TYPE Iterator[list[int]]
+      """.trimIndent())
 
     @Test
     fun `iterable for loop`() = test("""
@@ -294,19 +284,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       for expr in foo():
       #   └ TYPE int
           pass
-      """)
-
-    @Test
-    fun `homogeneous tuple iteration type`() = test("""
-      from typing import Tuple
-
-      xs = unknown() # type: Tuple[int, ...]
-      #    ^^^^^^^ ERROR Unresolved reference 'unknown'
-
-      for x in xs:
-          expr = x
-      #   └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     fun `iteration over string literal emits literal string not str`() = test("""
@@ -314,26 +292,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       for expr in s:
       #   └ TYPE LiteralString
           pass
-      """)
-
-    @TestFor(issues = ["PY-64481"])
-    @Test
-    fun `for loop target type comes from correct dunder iter overload`() = test("""
-      from typing import overload
-
-      class Super:
-          @overload
-          def __iter__(self: 'Sub') -> list['Sub']: ...
-      #       ^^^^^^^^ WARNING A series of @overload-decorated methods should always be followed by an implementation that is not @overload-ed
-          @overload
-          def __iter__(self) -> list['Super']: ...
-
-      class Sub(Super): ...
-
-      for expr in Super():
-      #   └ TYPE Super
-          pass
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-90549"])
@@ -344,7 +303,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
           async for expr in it:
       #             └ TYPE int
               pass
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-90549"])
@@ -358,7 +317,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
           for x in a:
               expr = x
       #       └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-91094"])
@@ -371,8 +330,8 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       def f(a: A[LiteralString]):
           for x in a:
               expr = x
-      #       └ TYPE Unknown FIXME LiteralString # PY-91094
-      """)
+      #       └ TYPE LiteralString
+      """.trimIndent())
 
     @Test
     fun `generic iterator parameterized with another generic`() = test("""
@@ -392,7 +351,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
           for x in iter_entries("some path"):
               expr = x
       #       └ TYPE Entry[str]
-      """)
+      """.trimIndent())
 
     @Test
     fun `dunder iter defined in metaclass`() = test("""
@@ -405,9 +364,9 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
 
       expr = set(MyClass)
       # └ TYPE set[int]
-      """)
+      """.trimIndent())
 
-    @TestFor(issues = ["PY-87575"])
+    @TestFor(issues = ["PY-76927", "PY-87575"])
     @Test
     fun `dunder iter defined in metaclass has higher priority than inherited class`() = test("""
       from collections.abc import Iterator
@@ -422,7 +381,17 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
 
       expr = set(MyClass)
       # └ TYPE set[int]
-      """)
+
+      iter_result = iter(MyClass)
+      # └ TYPE Iterator[int]
+
+      iter_method = MyClass.__iter__
+      # └ TYPE (self: MyClass) -> Iterator[str]
+
+      for e in MyClass:
+          expr = e
+      #   └ TYPE int
+      """.trimIndent())
 
     @TestFor(issues = ["PY-87575"])
     @Test
@@ -437,7 +406,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
 
       expr = set(MyClass)
       # └ TYPE set[int]
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20832"])
     @Test
@@ -447,7 +416,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
               print(a)
           expr = values1
       #   └ TYPE {__iter__}
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-16125"])
     @Test
@@ -496,13 +465,13 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
 
       for x in f6():
           pass
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-85997"])
     @Test
+    @TestCaseOptions(assertRecursionPrevention = false)
     fun `recursive iterator protocol assignability`() = test(
       // It simulates how the `builtins.map` type is declared using Self.
-      TestOptions(assertRecursionPrevention = false),
       """
       from typing import Iterator, Self
 
@@ -512,18 +481,17 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
 
       ys: MyIterable[str]
       xs: Iterator[str] = ys
-      """)
+      """.trimIndent())
 
     @Test
-    fun `builtin map type is iterator`() = test(
-      TestOptions(assertRecursionPrevention = false),
-      """
+    @TestCaseOptions(assertRecursionPrevention = false)
+    fun `builtin map type is iterator`() = test("""
       from typing import Iterator
 
 
       def foo() -> Iterator[str]:
           return map(str, range(5))
-      """)
+      """.trimIndent())
 
     @Test
     fun `dict items and iterable matches`() = test("""
@@ -535,7 +503,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       if __name__ == '__main__':
           bar_dict = {'abc': 42}
           foo(bar_dict.items())
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-38897"])
     @Test
@@ -552,7 +520,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
           my_dict = make_dict()
           items = my_dict.items()
           print(max(items, key=key_func))
-      """)
+      """.trimIndent())
 
     @Test
     fun `list literal passed to iter`() = test("iter([1, 2, 3])")
@@ -586,14 +554,15 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
 
       x = MyList('foo')
       my_iter(x)
-      """)
+      """.trimIndent())
 
     @Test
-    fun `map return type for-loop element`() = test(TestOptions(assertRecursionPrevention = false), """
+    @TestCaseOptions(assertRecursionPrevention = false)
+    fun `map return type for-loop element`() = test("""
       for x in map(lambda x: 42, 'foo'):
           expr = x
       #   └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     fun `enumerate type`() = test("""
@@ -601,14 +570,14 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       for expr in enumerate(a):
       #   └ TYPE tuple[int, int]
           pass
-      """)
+      """.trimIndent())
 
     @Test
     fun `pathlib iterdir`() = test("""
       import pathlib
       expr = pathlib.Path("").iterdir()
       # └ TYPE Generator[Path, None, None]
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-90549"])
     @Test
@@ -616,7 +585,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       class A[T](list[str]): ...
       expr = [*A[int]()]
       # └ TYPE list[str]
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-90549"])
     @Test
@@ -625,7 +594,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       for expr in A[int]():
       #   └ TYPE str
           pass
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-90549"])
     @Test
@@ -634,7 +603,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       for expr in A[int]():
       #   └ TYPE int
           pass
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-90549"])
     @Test
@@ -643,7 +612,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       for expr in M[int, str]():
       #   └ TYPE str
           pass
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-90549"])
     @Test
@@ -652,7 +621,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       for expr in M():
       #   └ TYPE int
           pass
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-90549"])
     @Test
@@ -663,7 +632,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       for expr in A():
       #   └ TYPE int
           pass
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-90549"])
     @Test
@@ -673,28 +642,156 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
           def __iter__(self) -> Iterator[int]: ...
       expr = [*A()]
       # └ TYPE list[int]
-      """)
+      """.trimIndent())
+
+    @Test
+    fun `enumerate iterator`() = test("""
+      def test():
+          def f(x):
+              '''
+              :type x: str
+              '''
+              pass
+          xs = [1.1, 2.2, 3.3]
+          for i, x in enumerate(xs):
+              f(i)
+      #         └ WARNING Expected type 'str', got 'int' instead
+              f(x)
+      #         └ WARNING Expected type 'str', got 'float | int' instead
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-6728"])
+    fun `for loop iteration`() = test("""
+      def test(p1):
+          for x in 'foo':
+              pass
+
+          for x in 42:
+      #            ^^ WARNING Expected type 'collections.Iterable', got 'Literal[42]' instead
+                  pass
+
+          for x in f('foo', p1):
+      #            ^^^^^^^^^^^^ WARNING Expected type 'collections.Iterable', got 'Literal[10] | Unknown' instead
+                  pass
+
+      def f(c, x):
+          if c:
+              return 10
+          else:
+              return x
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-10854"])
+    fun `second form iter`() = test("""
+      def test_second_form():
+          def f():
+              return ''
+
+          for chunk in iter(lambda: f(), ''):
+              pass
+
+      def test_second_form_fail():
+          for chunk in iter(10, ''):
+      #                    ^^^^^^^^ WARNING No overload of 'iter' matches the arguments. Argument types: (Literal[10], Literal[""]). Expected one of: (object: () -> _T | None, sentinel: None), (object: () -> _T, sentinel: object)
+                  pass
+
+      def test_first_form():
+          for x in iter([1, 2, 3]):
+              pass
+      """.trimIndent())
+
+    @Test
+    fun `iterate over param with no attributes`() = test("""
+      def f(xs):
+          ys = 'string'
+          for x in xs:
+              g(ys)
+
+      def g(x):
+          return x.lower()
+      """.trimIndent())
+
+    @TestFor(issues = ["PY-90570"])
+    @Test
+    @TestCaseOptions(assertRecursionPrevention = false)
+    fun `dict from enumerate`() = test("""
+      from string import ascii_lowercase
+      expr = dict(enumerate(ascii_lowercase))
+      # └ TYPE dict[int, str]
+      """.trimIndent())
+
+    @TestFor(issues = ["PY-90570"])
+    @Test
+    @TestCaseOptions(assertRecursionPrevention = false)
+    fun `list from enumerate`() = test("""
+      from string import ascii_lowercase
+      expr = list(enumerate(ascii_lowercase))
+      # └ TYPE list[tuple[int, str]]
+      """.trimIndent())
+
+    @TestFor(issues = ["PY-90570"])
+    @Test
+    @TestCaseOptions(assertRecursionPrevention = false)
+    fun `dict from zip`() = test("""
+      def f(a: list[int], b: list[str]):
+          expr = dict(zip(a, b))
+      #   └ TYPE dict[int, str]
+      """.trimIndent())
+
+    @TestFor(issues = ["PY-90570"])
+    @Test
+    @TestCaseOptions(assertRecursionPrevention = false)
+    fun `list from user-defined structural iterator`() = test("""
+      from typing import Self
+
+      class Countdown[T]:
+          def __iter__(self) -> Self: ...
+          def __next__(self) -> T: ...
+
+      def f(c: Countdown[str]):
+          expr = list(c)
+      #   └ TYPE list[str]
+      """.trimIndent())
+
+    @TestFor(issues = ["PY-90570"])
+    @Test
+    @TestCaseOptions(assertRecursionPrevention = false)
+    fun `list from structural iterator with inherited Self`() = test("""
+      from typing import Self
+
+      class Base[T]:
+          def __iter__(self) -> Self: ...
+          def __next__(self) -> T: ...
+
+      class Sub(Base[int]): ...
+
+      def f(s: Sub):
+          expr = list(s)
+      #   └ TYPE list[int]
+      """.trimIndent())
   }
 
   @Nested
   inner class GeneratorsAndYield {
-    // PY-5831
+    @TestFor(issues = ["PY-5831"])
     @Test
     fun `yield expression type`() = test("""
       def f():
           expr = yield 2
       #   └ TYPE Unknown
-      """)
+      """.trimIndent())
 
-    // PY-9590
+    @TestFor(issues = ["PY-9590"])
     @Test
     fun `parenthesized yield expression type`() = test("""
       def f():
           expr = (yield 2)
       #   └ TYPE Unknown
-      """)
+      """.trimIndent())
 
-    // PY-7215
+    @TestFor(issues = ["PY-7215"])
     @Test
     fun `function with nested generator`() = test("""
       def f():
@@ -704,7 +801,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
 
       expr = f()
       # └ TYPE list[int]
-      """)
+      """.trimIndent())
 
     @Test
     fun `generator function type`() = test("""
@@ -714,22 +811,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
 
       expr = f()
       # └ TYPE Generator[Literal["foo"], Unknown, Literal[0]]
-      """)
-
-    @TestFor(issues = ["PY-26643"])
-    @Test
-    fun `replace self in generator`() = test(
-      TestOptions(languageLevel = LanguageLevel.PYTHON34),
-      """
-      class A:
-          def foo(self):
-              yield self
-              return self
-      class B(A):
-          pass
-      expr = B().foo()
-      # └ TYPE Generator[B, Unknown, B]
-      """)
+      """.trimIndent())
 
     @Test
     fun `yield inside lambda does not make enclosing function a generator`() = test("""
@@ -738,14 +820,14 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
           return 42
       expr = foo()
       # └ TYPE Literal[42]
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20710"])
     @Test
     fun `lambda generator`() = test("""
       expr = (lambda: (yield 1))()
       # └ TYPE Generator[Literal[1], Unknown, Unknown]
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20710"])
     @Test
@@ -755,7 +837,23 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
           return "foo"
       expr = g()
       # └ TYPE Generator[Literal[1], Unknown, Literal["foo"]]
-      """)
+      """.trimIndent())
+
+    @TestFor(issues = ["PY-92828"])
+    @Test
+    @TestCaseOptions(assertRecursionPrevention = false)
+    fun `yielded tuple type after the type of the generator function`() = test("""
+      def g(line):
+      #   └ TYPE (line: {find, startswith}) -> Generator[tuple[Literal[0], Literal["def"]] | tuple[Unknown, Literal["if"]], Unknown, None]
+          found = line.find(":")
+          while -1 < found:
+              if line.startswith("def"):
+                  yield 0, "def"
+      #                  └ TYPE tuple[Literal[0], Literal["def"]]
+              elif line.startswith("if"):
+                  yield found, "if"
+              found = line.find(":", found + 1)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20710"])
     @Test
@@ -765,7 +863,68 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       def g() -> Generator[str, int, None]:
           expr = yield "foo"
       #   └ TYPE int
-      """)
+      """.trimIndent())
+
+    @TestFor(issues = ["PY-47487", "PY-89154"], classes = [PyYieldExpressionImpl::class])
+    @Test
+    fun `generator send type from yield expression expected type`() = test("""
+      def g():
+          received: int = yield "foo"
+
+      expr = g()
+      # └ TYPE Generator[Literal["foo"], int, None]
+      """.trimIndent())
+
+    @TestFor(issues = ["PY-47487"], classes = [PyYieldExpressionImpl::class])
+    @Test
+    fun `generator send type inference does not recurse through generic call`() = test("""
+      def consume[T](value: T, fallback: T) -> None:
+          pass
+
+      def g():
+          consume((yield "foo"), 42)
+
+      expr = g()
+      # └ TYPE Generator[Literal["foo"], int, None]
+      """.trimIndent())
+
+    @TestFor(issues = ["PY-47487"], classes = [PyYieldExpressionImpl::class])
+    @Test
+    fun `generator send type from assignment target`() = test("""
+      def complex_foo():
+          bar = (yield 1) or None
+      #   └ TYPE Unknown | None
+      def foo():
+          typed: bool
+          typed = yield 0
+      #   └ TYPE bool
+          return 'a'
+      def use_foo():
+          gg = foo()
+      #   └ TYPE Generator[Literal[0], bool, Literal["a"]]
+          next(gg)
+          gg.send('wrong')
+      #           ^^^^^^^ WARNING Expected type 'bool', got 'Literal["wrong"]' instead
+      """.trimIndent())
+
+    @TestFor(issues = ["PY-89154"], classes = [PyYieldExpressionImpl::class])
+    @Test
+    fun `generator send type from bare yield assignment`() = test("""
+      def f():
+          a: int = yield
+      expr = f()
+      # └ TYPE Generator[None, int, None]
+      """.trimIndent())
+
+    @TestFor(issues = ["PY-47487"], classes = [PyYieldExpressionImpl::class])
+    @Test
+    fun `generator send type unifies multiple expected types`() = test("""
+      def g():
+          received1: int = yield 1
+          received2: str = yield 2
+      expr = g()
+      # └ TYPE Generator[Literal[1, 2], int | str, None]
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20710"])
     @Test
@@ -779,7 +938,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       def g():
           expr = yield from delegate()
       #   └ TYPE int
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20710"])
     @Test
@@ -797,9 +956,9 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       l = lambda: (yield from gen1()) or (yield from gen2())
       expr = l()
       # └ TYPE Generator[int | Literal["str"], str | Unknown, bool | Literal[True]]
-      """)
+      """.trimIndent())
 
-    // PY-6702
+    @TestFor(issues = ["PY-6702"])
     @Test
     fun `yield from type`() = test("""
       def subgen():
@@ -814,7 +973,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       for expr in gen():
       #   └ TYPE Literal["foo"] | int | float
           pass
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-12944"])
     @Test
@@ -829,7 +988,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
           expr = yield from y
       #   └ TYPE None
           return expr
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-12944"])
     @Test
@@ -842,7 +1001,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
           expr = yield from a()
       #   └ TYPE Literal["a"]
           return expr
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-12944"])
     @Test
@@ -857,7 +1016,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       for expr in f():
       #   └ TYPE Literal[1]
           pass
-      """)
+      """.trimIndent())
 
     @Test
     fun `yield from homogeneous tuple`() = test("""
@@ -868,7 +1027,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
           yield from get_tuple()
       for expr in gen():    pass
       #   └ TYPE str
-      """)
+      """.trimIndent())
 
     @Test
     fun `yield from heterogeneous tuple`() = test("""
@@ -879,7 +1038,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
           yield from get_tuple()
       for expr in gen():    pass
       #   └ TYPE int | str
-      """)
+      """.trimIndent())
 
     @Test
     fun `yield from unknown tuple`() = test("""
@@ -889,7 +1048,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
           yield from get_tuple()
       for expr in gen():    pass
       #   └ TYPE Unknown
-      """)
+      """.trimIndent())
 
     @Test
     fun `yield from unknown list`() = test("""
@@ -899,7 +1058,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
           yield from get_list()
       for expr in gen():    pass
       #   └ TYPE Unknown
-      """)
+      """.trimIndent())
 
     @Test
     fun `yield from unknown dict`() = test("""
@@ -909,7 +1068,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
           yield from get_dict()
       for expr in gen():    pass
       #   └ TYPE Unknown
-      """)
+      """.trimIndent())
 
     @Test
     fun `yield from unknown set`() = test("""
@@ -919,46 +1078,16 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
           yield from get_set()
       for expr in gen():    pass
       #   └ TYPE Unknown
-      """)
+      """.trimIndent())
 
-    @TestFor(issues = ["PY-78044"])
+    @TestFor(issues = ["PY-6729"])
     @Test
-    fun `generator yields self`() = test("""
-      from collections.abc import Generator
-      from typing import Self
-
-      class A:
-          @classmethod
-          def f(cls) -> Generator[Self, None, None]:
-              pass
-
-      for x in A.f():
-          expr = x
-      #   └ TYPE A
-      """)
-
-    @TestFor(issues = ["PY-78044"])
-    @Test
-    fun `generator yields self nested`() = test("""
-      from collections.abc import Generator
-      from typing import Self
-
-      class A:
-          @classmethod
-          def f(cls) -> Generator[Self, None, None]:
-              pass
-
-      class B(A): ...
-      class C(B): ...
-
-      for x in C.f():
-          expr = x
-      #   └ TYPE C
-      """)
-
-    // PY-6729
-    @Test
-    fun `yield from non-iterable`() = test("""
+    @TestCaseOptions(assertRecursionPrevention = false)
+    fun `yield from non-iterable`() = test(
+      // `CustomIterable.__iter__` returns `self`, so its return type is inferred as `Self`. Matching such a type
+      // against the `Iterable`/`Iterator` protocols is inherently recursive (`__iter__` keeps yielding `Self`),
+      // and RecursionManager's prevention is the intended safe exit here
+      """
       class CustomIterable:
           def __iter__(self):
               return self
@@ -982,7 +1111,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
           yield from [42]
           yield from "hello"
           yield from object() # WARNING Expected type 'collections.Iterable', got 'object' instead
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-12944"])
     @Test
@@ -998,7 +1127,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
 
       def test():
           return f((yield from a())) # WARNING Expected type 'int', got 'Literal["a"]' instead
-      """)
+      """.trimIndent())
 
     @Test
     fun `function yield type`() = test("""
@@ -1092,7 +1221,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
           if b:
               yield 0
           yield "str" # WARNING Expected yield type 'int', got 'Literal["str"]' instead
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20709"])
     @Test
@@ -1104,7 +1233,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
           while sent >= 0:
               sent = yield round(sent)
           return 'Done'
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20657", "PY-21916"])
     @Test
@@ -1129,7 +1258,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       def g4() -> Iterable:
           yield 42
           return None
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-89564"])
@@ -1138,7 +1267,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
 
       def f() -> Generator[list[object], None, None]:
           yield [1, 2]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-89564"])
@@ -1147,7 +1276,19 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
 
       def f() -> Generator[list[object], None, None]:
           yield from [[1, 2]]
-      """)
+      """.trimIndent())
+
+    @Test
+    fun `generator type hint`() = test("""
+      from typing import Generator
+
+      def fixture_generator() -> Generator[str, None, None]:
+          yield "Hello World"
+      """.trimIndent())
+
+
+    // Type-checker (`PyTypeCheckerInspection`) tests migrated from the legacy
+    // `com.jetbrains.python.inspections.Py3TypeCheckerInspectionTest` to the modern inline-assertion [PyCodeInsightTestCase] suite.
   }
 
   @Nested
@@ -1163,7 +1304,19 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
           c = C()
           expr = await c
       #   └ TYPE Literal[0]
-      """)
+      """.trimIndent())
+
+    @Test
+    @TestFor(classes = [PyPrefixExpressionImpl::class])
+    fun `await an object whose __await__ returns no generator`() = test("""
+      class C:
+          def __await__(self):
+              pass
+
+      async def foo():
+          expr = await C()
+      #   └ TYPE Unknown
+      """.trimIndent())
 
     @Test
     fun `async def return type`() = test("""
@@ -1174,7 +1327,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       def bar(y):
           expr = foo(y)
       #   └ TYPE CoroutineType[Unknown, Unknown, Literal[0]]
-      """)
+      """.trimIndent())
 
     @Test
     fun `await coroutine`() = test("""
@@ -1185,7 +1338,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       async def bar(y):
           expr = await foo(y)
       #   └ TYPE Literal[0]
-      """)
+      """.trimIndent())
 
     @Test
     fun `coroutine return type annotation`() = test("""
@@ -1194,7 +1347,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       async def bar():
           expr = await foo()
       #   └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     fun `await on typing Coroutine annotation`() = test("""
@@ -1205,7 +1358,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       async def bar():
           expr = await x
       #   └ TYPE int
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20770"])
     @Test
@@ -1214,7 +1367,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
           yield 42
       expr = asyncgen()
       # └ TYPE AsyncGenerator[Literal[42], Unknown]
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20770"])
     @Test
@@ -1223,7 +1376,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
           yield 42
       expr = asyncgen().__aiter__()
       # └ TYPE AsyncIterator[Literal[42]]
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20770"])
     @Test
@@ -1232,7 +1385,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
           yield 42
       expr = asyncgen().__anext__()
       # └ TYPE Coroutine[Any, Any, Literal[42]]
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20770"])
     @Test
@@ -1242,7 +1395,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       async def asyncusage():
           expr = await asyncgen().__anext__()
       #       └ TYPE () -> CoroutineType[Unknown, Unknown, None] FIXME int
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20770"])
     @Test
@@ -1251,7 +1404,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
           yield 42
       expr = asyncgen().asend("hello")
       #└ TYPE Coroutine[Any, Any, Literal[42]]
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20770"])
     @Test
@@ -1261,7 +1414,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       async def asyncusage():
           expr = await asyncgen().asend("hello")
       #       └ TYPE () -> CoroutineType[Unknown, Unknown, None] FIXME int
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20770"])
     @Test
@@ -1272,7 +1425,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
           async for i in asyncgen():
               expr = i
       #       └ TYPE Literal[10]
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20770"])
     @Test
@@ -1282,7 +1435,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       async def run():
           {expr async for expr in asyncgen()}
       #    └ TYPE Literal[10]
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20770"])
     @Test
@@ -1292,7 +1445,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       async def run():
           [expr async for expr in asyncgen()]
       #    └ TYPE Literal[10]
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20770"])
     @Test
@@ -1302,7 +1455,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       async def run():
           {expr: expr ** 2 async for expr in asyncgen()}
       #    └ TYPE Literal[10]
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20770"])
     @Test
@@ -1312,7 +1465,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       async def run():
           (expr async for expr in asyncgen())
       #    └ TYPE Literal[10]
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20770"])
     @Test
@@ -1322,7 +1475,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       async def run():
           list(expr async for expr in asyncgen())
       #        └ TYPE Literal[10]
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20770"])
     @Test
@@ -1335,7 +1488,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       #              └ TYPE Literal[10]
                           async for data in asyncgen()
                           if check(data)}
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20770"])
     @Test
@@ -1348,7 +1501,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       #              └ TYPE Literal[10]
                           async for expr in asyncgen()
                           if check(expr)}
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20770"])
     @Test
@@ -1358,7 +1511,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       async def run():
           expr = [await z for z in [asyncgen().__anext__()]]
       #       └ TYPE () -> CoroutineType[Unknown, Unknown, None] FIXME list[int]
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20770"])
     @Test
@@ -1370,7 +1523,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       async def run():
           expr = [await z async for z in asyncgen2()]
       #       └ TYPE () -> CoroutineType[Unknown, Unknown, None] FIXME list[int]
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-22181"])
     @Test
@@ -1386,7 +1539,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
           async for expr in a:
       #             └ TYPE Literal[5]
               print(expr)
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-60714"])
     @Test
@@ -1402,7 +1555,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
           async for expr in AIterator():
       #             └ TYPE bytes
               print(expr)
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-41061"])
     @Test
@@ -1416,7 +1569,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
 
       for expr in MyIterable(): ...
       #   └ TYPE int
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-41061"])
     @Test
@@ -1430,7 +1583,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
 
       _ = [expr for expr in MyIterable()]
       #     └ TYPE int
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-41061"])
     @Test
@@ -1445,7 +1598,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       async def foo():
           async for expr in MyIterable(): ...
       #             └ TYPE str
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-41061"])
     @Test
@@ -1460,7 +1613,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       async def foo():
           _ = [expr async for expr in MyIterable()]
       #         └ TYPE str
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-24405"])
     @Test
@@ -1473,7 +1626,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       #              ^^^^^^^^^^ WARNING Expected type 'contextlib.AbstractAsyncContextManager', got 'AContext' instead
               expr = c
       #       └ TYPE str
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-29891"])
     @Test
@@ -1484,36 +1637,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
           async with manager as m:
               expr = m
       #       └ TYPE str
-      """)
-
-    @TestFor(issues = ["PY-24067"])
-    @Test
-    fun `async function return type in docstring`() = test("""
-      async def f():
-          '''
-          :rtype: int
-          '''
-          pass
-      expr = f()
-      # └ TYPE CoroutineType[Unknown, Unknown, int]
-      """)
-
-    @TestFor(issues = ["PY-27518"])
-    @Test
-    fun `async function return type in numpy docstring`() = test("""
-      async def f():
-          '''
-          An integer.
-
-          Returns
-          -------
-          int
-              A number
-          '''
-          pass
-      expr = f()
-      #└ TYPE CoroutineType[Unknown, Unknown, int]
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-26643"])
     @Test
@@ -1525,7 +1649,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
           pass
       expr = B().foo()
       # └ TYPE CoroutineType[Unknown, Unknown, B]
-      """)
+      """.trimIndent())
 
     @Test
     fun `async generator annotation`() = test("""
@@ -1536,7 +1660,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
 
       expr = g()
       # └ TYPE AsyncGenerator[int, str]
-      """)
+      """.trimIndent())
 
     @Test
     fun `coroutine returns generator`() = test("""
@@ -1550,7 +1674,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
 
       expr = coroutine()
       #└ TYPE CoroutineType[Unknown, Unknown, Generator[int, Any, Any]]
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-40458"])
     @Test
@@ -1565,7 +1689,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
 
       expr = Specific().get()
       # └ TYPE CoroutineType[Unknown, Unknown, str]
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-40458"])
     @Test
@@ -1582,7 +1706,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
 
       expr = Specific().get()
       # └ TYPE AsyncGenerator[Literal[42], Unknown]
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-40458"])
     @Test
@@ -1599,21 +1723,21 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
 
       expr = Specific().get()
       # └ TYPE AsyncIterator[int]
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-21048"])
     @Test
     fun `async function return type is checked`() = test("""
       async def test(self, a) -> int:
           return 123
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20967"])
     @Test
     fun `async function annotated to return None`() = test("""
       async def f() -> None:
           print('foo')
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-16898"])
     @Test
@@ -1658,7 +1782,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       loop = asyncio.get_event_loop()
       loop.run_until_complete(coro())
       loop.close()
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20770"])
     @Test
@@ -1670,7 +1794,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       async def run():
           async for i in asyncgen():
               print(i)
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20770"])
     @Test
@@ -1682,7 +1806,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       async def run():
           for i in asyncgen(): # WARNING Expected type 'collections.Iterable', got 'AsyncGenerator[Literal[10], Unknown]' instead
               print(i)
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20770"])
     @Test
@@ -1700,7 +1824,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
           dataset = {data async for line in asyncgen()
                           async for data in asyncgen()
                           if check(data)}
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20770"])
     @Test
@@ -1720,7 +1844,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
                           async for data in gen()
       #                                     ^^^^^ WARNING Expected type 'collections.AsyncIterable', got 'Generator[Literal[10], Unknown, None]' instead
                           if check(data)}
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20770"])
     @Test
@@ -1740,7 +1864,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
                           for data in asyncgen()
       #                               ^^^^^^^^^^ WARNING Expected type 'collections.Iterable', got 'AsyncGenerator[Literal[10], Unknown]' instead
                           if check(data)}
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20657", "PY-21916"])
     @Test
@@ -1761,7 +1885,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
       async def g4() -> AsyncIterable:
           yield 42
           return None # ERROR non-empty 'return' inside asynchronous generator
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-20770"])
     @Test
@@ -1777,7 +1901,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
 
       async_for(async_iter())
       async_for([1, 2, 3]) # WARNING Type 'list[Literal[1, 2, 3]]' doesn't have expected attribute '__aiter__'
-      """)
+      """.trimIndent())
   }
 
   @Test
@@ -1787,7 +1911,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
 
     if not value:
         print([a for a in value])
-    """)
+    """.trimIndent())
 
   @Test
   @TestFor(issues = ["PY-30629"])
@@ -1803,7 +1927,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
     def something(derived: A):
         for _, _ in derived.foo():
             pass
-    """)
+    """.trimIndent())
 
   @Test
   @TestFor(issues = ["PY-25120"])
@@ -1815,7 +1939,7 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
 
     for element in KWARGS["little_list"]: # WARNING Expected type 'collections.Iterable', got 'bool | list[str]' instead
         print(element)
-    """)
+    """.trimIndent())
 
   @Test
   fun `class is iterable only when its metaclass defines dunder iter`() = test("""
@@ -1844,34 +1968,33 @@ class PyComprehensionAndIteratorTypeTest : PyCodeInsightTestCase() {
 
     for z in B1:
         pass
-    """)
+    """.trimIndent())
 
+  /**
+   * mirrors of tests in this suite but with PyAnyType disabled to ensure that the old style doesn't regress
+   */
   @Nested
-  inner class PyAnyMigrationMirrors {
-
-    val oldAny = defaultTestOptions.copy(enablePyAnyType = false)
+  inner class PyAnyTypeMigrationMirrors {
 
     @Test
-    fun `generator function type (old py-any)`() = test(
-      oldAny,
-      """
+    @TestCaseOptions(enablePyAnyType = false)
+    fun `generator function type (old py-any)`() = test("""
       def f():
           yield 'foo'
           return 0
 
       expr = f()
       # └ TYPE Generator[Literal["foo"], Any, Literal[0]]
-      """)
+      """.trimIndent())
 
     @Test
-    fun `async generator (old py-any)`() = test(
-      oldAny,
-      """
+    @TestCaseOptions(enablePyAnyType = false)
+    fun `async generator (old py-any)`() = test("""
       async def asyncgen():
           yield 42
       expr = asyncgen()
       #└ TYPE AsyncGenerator[Literal[42], Any]
-      """)
+      """.trimIndent())
   }
 
 }

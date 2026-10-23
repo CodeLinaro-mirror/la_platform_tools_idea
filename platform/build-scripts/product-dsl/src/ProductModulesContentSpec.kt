@@ -34,7 +34,7 @@ annotation class ProductDslMarker
  * Represents an XML include directive that references a resource within a module.
  *
  * @param contentModuleName The JPS module name containing the resource (e.g., "intellij.platform.resources")
- * @param resourcePath The path to the resource within the module (e.g., "META-INF/PlatformLangPlugin.xml")
+ * @param resourcePath The path to the resource within the module (e.g., "idea/PlatformActions.xml")
  * @param optional If true, this include is always generated with xi:fallback and never inlined (safe for files that may not exist)
  */
 @Serializable
@@ -71,10 +71,34 @@ enum class CompositionType {
   MODULE_SET_REF,
   /** deprecatedInclude(...) - reference to an XML file */
   DEPRECATED_XML,
-  /** module() / embeddedModule() / requiredModule() - direct module addition */
+  /** module() / embeddedModule() / requiredModule() / onDemandModule() - direct module addition */
   DIRECT_MODULE,
   /** alias() - module alias addition */
   ALIAS,
+}
+
+/**
+ * Permission to activate restricted content modules (see [ContentModule.restricted]).
+ *
+ * A product grants it with [ProductModulesContentSpecBuilder.moduleActivation].
+ * A plugin grants it through `ModuleSetGenerationConfig.pluginModuleActivations`.
+ *
+ * @param required Modules that must be active where this activation applies.
+ * @param allowed Modules that can be active where this activation applies. The set always includes [required].
+ */
+@Serializable
+class ModuleActivation private constructor(
+  @JvmField val required: Set<ContentModuleName>,
+  @JvmField val allowed: Set<ContentModuleName>,
+) {
+  companion object {
+    fun create(required: Collection<String>, allowed: Collection<String> = emptyList()): ModuleActivation {
+      val requiredNames = required.mapTo(LinkedHashSet()) { ContentModuleName(it) }
+      val allowedNames = LinkedHashSet(requiredNames)
+      allowed.mapTo(allowedNames) { ContentModuleName(it) }
+      return ModuleActivation(requiredNames, allowedNames)
+    }
+  }
 }
 
 /**
@@ -172,6 +196,12 @@ class ProductModulesContentSpec(
    * @see <a href="../test-plugins.md">Test Plugin Generation Documentation</a>
    */
   @JvmField val testPlugins: List<TestPluginSpec> = emptyList(),
+
+  /** Restricted modules that this product can activate. See [ProductModulesContentSpecBuilder.moduleActivation]. */
+  @JvmField val moduleActivations: List<ModuleActivation> = emptyList(),
+
+  /** Bundled plugins of which only one loads at a time. See [ProductModulesContentSpecBuilder.exclusivePlugins]. */
+  @JvmField val exclusivePluginIds: List<PluginId> = emptyList(),
 )
 
 /**
@@ -187,6 +217,8 @@ class ProductModulesContentSpecBuilder @PublishedApi internal constructor() {
   private val bundledPlugins = mutableListOf<TargetName>()
   private val allowedMissingDeps = LinkedHashSet<ContentModuleName>()
   private val testPlugins = mutableListOf<TestPluginSpec>()
+  private val moduleActivations = ArrayList<ModuleActivation>()
+  private val exclusivePluginIds = ArrayList<PluginId>()
 
   // Composition tracking
   private val compositionGraph = mutableListOf<SpecComposition>()
@@ -253,6 +285,8 @@ class ProductModulesContentSpecBuilder @PublishedApi internal constructor() {
     moduleSets.addAll(spec.moduleSets)
     additionalModules.addAll(spec.additionalModules)
     allowedMissingDeps.addAll(spec.allowedMissingDependencies)
+    moduleActivations.addAll(spec.moduleActivations)
+    exclusivePluginIds.addAll(spec.exclusivePluginIds)
 
     // Also preserve the nested spec's composition graph for deep analysis
     compositionGraph.addAll(spec.compositionGraph)
@@ -260,7 +294,7 @@ class ProductModulesContentSpecBuilder @PublishedApi internal constructor() {
 
   /**
    * Add an XML include (xi:include directive) by specifying module name and resource path.
-   * Example: deprecatedInclude("intellij.platform.resources", "META-INF/PlatformLangPlugin.xml")
+   * Example: deprecatedInclude("intellij.platform.resources", "idea/PlatformActions.xml")
    *
    * For optional includes that may not exist in all builds (always uses xi:fallback):
    * Example: deprecatedInclude("intellij.rider.languages", "intellij.rider.languages.xml", optional = true)
@@ -328,12 +362,14 @@ class ProductModulesContentSpecBuilder @PublishedApi internal constructor() {
     name: String,
     namespace: String? = PluginModuleId.DEFAULT_NAMESPACE,
     loading: ModuleLoadingRuleValue = ModuleLoadingRuleValue.OPTIONAL,
+    requiredIfAvailable: String? = null,
     allowedMissingPluginIds: List<String> = emptyList(),
   ) {
     additionalModules.add(
       ContentModule(
         moduleId = PluginModuleId(name, namespace),
         loading = loading,
+        requiredIfAvailable = requiredIfAvailable?.let { PluginModuleId(it, PluginModuleId.DEFAULT_NAMESPACE) },
         allowedMissingPluginIds = allowedMissingPluginIds.map { PluginId(it) },
       )
     )
@@ -346,12 +382,47 @@ class ProductModulesContentSpecBuilder @PublishedApi internal constructor() {
   }
 
   /**
+   * Adds a module that is required when the IDE is running in the backend or monolith mode, and optional otherwise.
+   */
+  fun requiredModuleForBackend(name: String) {
+    module(name, requiredIfAvailable = "intellij.platform.backend")
+  }
+
+  /**
+   * Add a private module: a module registered in this spec's implicit namespace instead of the shared `jetbrains` one.
+   *
+   * Use it for library wrapper modules (`visibility="private"` descriptors) that only a closed set of consumers needs.
+   * Every owner declares its own copy, and the implicit namespace keeps those copies from clashing at runtime, so the
+   * module does not have to be added to a shared module set to be reachable.
+   *
+   * Note that a module set cannot express this - [ModuleSetBuilder] always emits `<content namespace="jetbrains">` -
+   * so a private module belongs in a product or plugin spec.
+   */
+  fun privateModule(name: String, allowedMissingPluginIds: List<String> = emptyList()) {
+    module(name, namespace = null, allowedMissingPluginIds = allowedMissingPluginIds)
+  }
+
+  /**
+   * Add a private module (see [privateModule]) with EMBEDDED loading.
+   *
+   * Needed when the consumer reaches the library from the main classloader - for example a plain module packed into the
+   * plugin jar, or code that resolves classes reflectively - rather than through its own declared dependency.
+   */
+  fun embeddedPrivateModule(name: String, allowedMissingPluginIds: List<String> = emptyList()) {
+    embeddedModule(name, namespace = null, allowedMissingPluginIds = allowedMissingPluginIds)
+  }
+
+  /**
    * Add an individual module with EMBEDDED loading to additionalModules.
    *
    * @param allowedMissingPluginIds Plugin IDs that are allowed to be missing for auto-added dependencies
    *   discovered from this module (DSL test plugins only).
    */
-  fun embeddedModule(name: String, namespace: String? = PluginModuleId.DEFAULT_NAMESPACE, allowedMissingPluginIds: List<String> = emptyList()) {
+  fun embeddedModule(
+    name: String,
+    namespace: String? = PluginModuleId.DEFAULT_NAMESPACE,
+    allowedMissingPluginIds: List<String> = emptyList(),
+  ) {
     additionalModules.add(
       ContentModule(
         moduleId = PluginModuleId(name, namespace),
@@ -387,6 +458,49 @@ class ProductModulesContentSpecBuilder @PublishedApi internal constructor() {
       path = java.util.List.copyOf(pathStack),
       sourceLocation = null,
     ))
+  }
+
+  /**
+   * Adds a module with on-demand loading.
+   *
+   * @param restricted If true, the module can be active only where a [ModuleActivation] allows it.
+   */
+  fun onDemandModule(
+    name: String,
+    namespace: String? = PluginModuleId.DEFAULT_NAMESPACE,
+    allowedMissingPluginIds: List<String> = emptyList(),
+    restricted: Boolean = false,
+  ) {
+    additionalModules.add(
+      ContentModule(
+        moduleId = PluginModuleId(name, namespace),
+        loading = ModuleLoadingRuleValue.ON_DEMAND,
+        allowedMissingPluginIds = allowedMissingPluginIds.map { PluginId(it) },
+        restricted = restricted,
+      )
+    )
+    compositionGraph.add(SpecComposition(
+      type = CompositionType.DIRECT_MODULE,
+      reference = name,
+      path = pathStack.toList(),
+      sourceLocation = null,
+    ))
+  }
+
+  /**
+   * Lets this product activate the restricted modules of [activation].
+   * The product must also activate the required modules of [activation].
+   */
+  fun moduleActivation(activation: ModuleActivation) {
+    moduleActivations.add(activation)
+  }
+
+  /**
+   * Declares bundled plugins of which only one loads at a time, for example two engine plugins.
+   * The `restrictedModuleActivationValidation` rule checks one configuration per plugin and disables the others.
+   */
+  fun exclusivePlugins(vararg pluginIds: String) {
+    pluginIds.mapTo(exclusivePluginIds) { PluginId(it) }
   }
 
   /**
@@ -433,7 +547,7 @@ class ProductModulesContentSpecBuilder @PublishedApi internal constructor() {
    *   name = "Python Tests Plugin",
    *   pluginXmlPath = "python/junit5Tests/plugin/testResources/META-INF/plugin.xml"
    * ) {
-   *   module("intellij.libraries.junit5")
+   *   module("intellij.libraries.junit6")
    *   module("intellij.platform.testFramework")
    * }
    * ```
@@ -441,11 +555,17 @@ class ProductModulesContentSpecBuilder @PublishedApi internal constructor() {
    * @param pluginId The plugin ID (e.g., "intellij.python.junit5Tests.plugin")
    * @param name Human-readable plugin name
    * @param pluginXmlPath Path to the plugin.xml file relative to project root
+   * @param platformModule If set, emitted as `<module name="…"/>` inside `<dependencies>`. Use
+   *   this when the plugin must declare a loading-mode dependency (e.g. `intellij.lambda.testFramework`
+   *   for all-modes lambda-test plugins, or `intellij.platform.backend.split` for backend-split
+   *   wrappers). This is a *loading directive*, not a code dependency — the dependency planner will
+   *   not discover it automatically.
    * @param additionalBundledPluginTargetNames Additional plugin JPS module target names to treat as bundled for this test plugin's
    *   dependency resolution and auto-add (useful for conditional/runtime plugin inclusion)
    * @param allowedMissingPluginIds Plugin IDs that are allowed to be missing for this test plugin.
    *   If a plugin dependency is inferred but not resolvable, it will be skipped and reported as an error unless listed here.
    *   Use module-level allowedMissingPluginIds for more precise suppression scoped to a single module.
+   * @param checkModuleActivation If true, the `restrictedModuleActivationValidation` rule also checks the product with this test plugin.
    * @param block DSL block to define the test plugin's content modules
    * @see <a href="../test-plugins.md">Test Plugin Generation Documentation</a>
    */
@@ -453,16 +573,20 @@ class ProductModulesContentSpecBuilder @PublishedApi internal constructor() {
     pluginId: String,
     name: String,
     pluginXmlPath: String,
+    platformModule: String? = null,
     additionalBundledPluginTargetNames: List<String> = emptyList(),
     allowedMissingPluginIds: List<String> = emptyList(),
+    checkModuleActivation: Boolean = false,
     block: ProductModulesContentSpecBuilder.() -> Unit,
   ) {
     addTestPlugin(
       pluginId = pluginId,
       name = name,
       pluginXmlPath = pluginXmlPath,
+      platformModule = platformModule,
       additionalBundledPluginTargetNames = additionalBundledPluginTargetNames,
       allowedMissingPluginIds = allowedMissingPluginIds,
+      checkModuleActivation = checkModuleActivation,
       spec = ProductModulesContentSpecBuilder().apply(block).build()
     )
   }
@@ -472,8 +596,10 @@ class ProductModulesContentSpecBuilder @PublishedApi internal constructor() {
     pluginId: String,
     name: String,
     pluginXmlPath: String,
+    platformModule: String?,
     additionalBundledPluginTargetNames: List<String>,
     allowedMissingPluginIds: List<String>,
+    checkModuleActivation: Boolean,
     spec: ProductModulesContentSpec,
   ) {
     testPlugins.add(
@@ -481,9 +607,11 @@ class ProductModulesContentSpecBuilder @PublishedApi internal constructor() {
         pluginId = PluginId(pluginId),
         name = name,
         pluginXmlPath = pluginXmlPath,
+        platformModule = platformModule,
         spec = spec,
         additionalBundledPluginTargetNames = additionalBundledPluginTargetNames.map { TargetName(it) },
         allowedMissingPluginIds = allowedMissingPluginIds.map { PluginId(it) },
+        checkModuleActivation = checkModuleActivation,
       )
     )
   }
@@ -501,6 +629,8 @@ class ProductModulesContentSpecBuilder @PublishedApi internal constructor() {
       compositionGraph = java.util.List.copyOf(compositionGraph),
       metadata = metadata,
       testPlugins = java.util.List.copyOf(testPlugins),
+      moduleActivations = java.util.List.copyOf(moduleActivations),
+      exclusivePluginIds = java.util.List.copyOf(exclusivePluginIds),
     )
   }
 }
@@ -513,7 +643,7 @@ class ProductModulesContentSpecBuilder @PublishedApi internal constructor() {
  * override fun getProductContentModules(): ProductModulesContentSpec {
  *   return productModules {
  *     // XML includes (optional)
- *     include("intellij.platform.resources", "META-INF/PlatformLangPlugin.xml")
+ *     include("intellij.platform.resources", "idea/PlatformActions.xml")
  *     include("intellij.gateway", "META-INF/Gateway.xml")
  *
  *     // Module sets
@@ -540,17 +670,25 @@ inline fun productModules(block: ProductModulesContentSpecBuilder.() -> Unit): P
  * @param pluginId The plugin XML ID (e.g., "intellij.python.junit5Tests.plugin")
  * @param name Human-readable plugin name for the `<name>` tag
  * @param pluginXmlPath Path to the plugin.xml file relative to project root
+ * @param platformModule When non-null, emitted as `<module name="…"/>` inside `<dependencies>`.
+ *   Expresses a loading-mode dependency that the dependency planner cannot discover automatically
+ *   (e.g. `intellij.lambda.testFramework` for all-modes lambda-test plugins, or
+ *   `intellij.platform.backend.split` for backend-split wrappers).
  * @param spec The content specification using the same DSL as products
  * @param additionalBundledPluginTargetNames Extra plugin JPS module target names to treat as bundled for this test plugin's
  *   dependency resolution and auto-add
  * @param allowedMissingPluginIds Plugin IDs that are allowed to be missing for this test plugin
+ * @param checkModuleActivation If true, the `restrictedModuleActivationValidation` rule also checks the product with this test plugin
  */
 @Serializable
 data class TestPluginSpec(
   val pluginId: PluginId,
   @JvmField val name: String,
   @JvmField val pluginXmlPath: String,
+  @JvmField val platformModule: String? = null,
   @JvmField val spec: ProductModulesContentSpec,
   @JvmField val additionalBundledPluginTargetNames: List<TargetName> = emptyList(),
   @JvmField val allowedMissingPluginIds: List<PluginId> = emptyList(),
+  @JvmField val checkModuleActivation: Boolean = false,
 )
+

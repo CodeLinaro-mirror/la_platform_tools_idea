@@ -1,7 +1,12 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.vcs.changes.ui
 
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.EDT
+import com.intellij.openapi.application.ModalityState
+import com.intellij.openapi.application.asContextElement
+import com.intellij.openapi.components.Service
+import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vcs.ex.ExclusionState
 import com.intellij.openapi.vcs.ex.LineStatusTracker
@@ -10,12 +15,17 @@ import com.intellij.openapi.vcs.impl.LineStatusTrackerManager
 import com.intellij.util.concurrency.annotations.RequiresEdt
 import com.intellij.util.containers.CollectionFactory
 import com.intellij.util.containers.HashingStrategy
-import com.intellij.util.ui.update.DisposableUpdate
-import com.intellij.util.ui.update.MergingUpdateQueue
+import com.intellij.util.ui.update.DebouncedUpdates
+import com.intellij.util.ui.update.UpdateQueue
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.jetbrains.annotations.ApiStatus
+import java.util.Collections
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.read
 import kotlin.concurrent.write
+import kotlin.time.Duration.Companion.milliseconds
 
 @ApiStatus.Internal
 abstract class PartiallyExcludedFilesStateHolder<T>(
@@ -30,12 +40,30 @@ abstract class PartiallyExcludedFilesStateHolder<T>(
     return getChangeListId(element)?.let { getExcludedFromCommitState(it) } ?: ExclusionState.NO_CHANGES
   }
 
-  protected val updateQueue =
-    MergingUpdateQueue(PartiallyExcludedFilesStateHolder::class.java.name, 300, true, MergingUpdateQueue.ANY_COMPONENT, this)
+  protected val updateQueue: UpdateQueue<Unit> =
+    DebouncedUpdates.forScope<Unit>(
+      project.service<PartiallyExcludedFilesStateHolderScopeService>().coroutineScope,
+      "PartiallyExcludedFilesStateHolder",
+      300.milliseconds
+    )
+    .runLatest {
+      withContext(Dispatchers.EDT + ModalityState.any().asContextElement()) {
+        updateExclusionStates()
+      }
+    }
+    .cancelOnDispose(this)
 
   private val lock = ReentrantReadWriteLock()
   private val includedElements = createElementsSet()
   private val trackerExclusionStates = CollectionFactory.createCustomHashingStrategyMap<T, ExclusionState>(hashingStrategy)
+
+  /**
+   * Cached result of [getIncludedSet]. The inclusion is queried once per rendered tree node (via
+   * [com.intellij.openapi.vcs.changes.ui.ChangesTree.getNodeStatus]), so rebuilding the whole set on every call is
+   * O(nodes * changes) and freezes the UI on large change sets - dramatically so under screen-reader accessibility
+   * traversal, which re-renders every node (IJPL-249904). Guarded by [lock]; invalidated on every mutation below.
+   */
+  private var includedSetCache: Set<T>? = null
 
   init {
     MyTrackerManagerListener().install(project)
@@ -58,7 +86,7 @@ abstract class PartiallyExcludedFilesStateHolder<T>(
     get() = trackableElements.mapNotNull { element -> findTrackerFor(element)?.let { tracker -> element to tracker } }
 
   private fun scheduleExclusionStatesUpdate() {
-    updateQueue.queue(DisposableUpdate.createDisposable(updateQueue, "updateExcludedFromCommit") { updateExclusionStates() })
+    updateQueue.queue(Unit)
   }
 
   private inner class MyTrackerListener : PartialLocalLineStatusTracker.ListenerAdapter() {
@@ -70,7 +98,7 @@ abstract class PartiallyExcludedFilesStateHolder<T>(
     private val trackerListener = MyTrackerListener()
     private val disposable get() = this@PartiallyExcludedFilesStateHolder
 
-    @RequiresEdt
+    @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
     fun install(project: Project) {
       with(LineStatusTrackerManager.getInstanceImpl(project)) {
         addTrackerListener(this@MyTrackerManagerListener, disposable)
@@ -78,7 +106,7 @@ abstract class PartiallyExcludedFilesStateHolder<T>(
       }
     }
 
-    @RequiresEdt
+    @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
     override fun onTrackerAdded(tracker: LineStatusTracker<*>) {
       if (tracker !is PartialLocalLineStatusTracker) return
 
@@ -88,7 +116,7 @@ abstract class PartiallyExcludedFilesStateHolder<T>(
       tracker.addListener(trackerListener, disposable)
     }
 
-    @RequiresEdt
+    @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
     override fun onTrackerRemoved(tracker: LineStatusTracker<*>) {
       if (tracker !is PartialLocalLineStatusTracker) return
 
@@ -107,6 +135,7 @@ abstract class PartiallyExcludedFilesStateHolder<T>(
               includedElements -= element
             }
           }
+          includedSetCache = null
         }
       }
 
@@ -116,11 +145,16 @@ abstract class PartiallyExcludedFilesStateHolder<T>(
 
   fun getIncludedSet(): Set<T> {
     lock.read {
+      includedSetCache?.let { return it }
+    }
+    lock.write {
+      // Double-checked under the write lock: another thread may have populated the cache between the two locks.
+      includedSetCache?.let { return it }
       val set: MutableSet<T> = createElementsSet(includedElements)
       trackerExclusionStates.forEach { (element, state) ->
         if (state == ExclusionState.ALL_EXCLUDED) set -= element else set += element
       }
-      return set
+      return Collections.unmodifiableSet(set).also { includedSetCache = it }
     }
   }
 
@@ -133,13 +167,14 @@ abstract class PartiallyExcludedFilesStateHolder<T>(
     }
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun updateExclusionStates() {
     val newTrackerStates = computeTrackerExclusionStates()
 
     lock.write {
       trackerExclusionStates.clear()
       trackerExclusionStates.putAll(newTrackerStates)
+      includedSetCache = null
     }
 
     fireInclusionChanged()
@@ -148,7 +183,7 @@ abstract class PartiallyExcludedFilesStateHolder<T>(
   /**
    * Must be called outside [lock] to prevent deadlocks through [LineStatusTrackerManager.LOCK]
    */
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private fun computeTrackerExclusionStates(): Map<T, ExclusionState> {
     val result = CollectionFactory.createCustomHashingStrategyMap<T, ExclusionState>(hashingStrategy)
     trackers.forEach { (element, tracker) ->
@@ -158,7 +193,7 @@ abstract class PartiallyExcludedFilesStateHolder<T>(
     return result
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun setIncludedElements(elements: Collection<T>) {
     val set: MutableSet<T> = createElementsSet(elements)
     trackers.forEach { (element, tracker) ->
@@ -172,12 +207,13 @@ abstract class PartiallyExcludedFilesStateHolder<T>(
       includedElements += elements
       trackerExclusionStates.clear()
       trackerExclusionStates.putAll(newTrackerStates)
+      includedSetCache = null
     }
 
     fireInclusionChanged()
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun includeElements(elements: Collection<T>) {
     elements.forEach { findTrackerFor(it)?.setExcludedFromCommit(it, false) }
 
@@ -187,12 +223,13 @@ abstract class PartiallyExcludedFilesStateHolder<T>(
       includedElements += elements
       trackerExclusionStates.clear()
       trackerExclusionStates.putAll(newTrackerStates)
+      includedSetCache = null
     }
 
     fireInclusionChanged()
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun excludeElements(elements: Collection<T>) {
     for (element in elements) {
       findTrackerFor(element)?.setExcludedFromCommit(element, true)
@@ -206,12 +243,13 @@ abstract class PartiallyExcludedFilesStateHolder<T>(
       }
       trackerExclusionStates.clear()
       trackerExclusionStates.putAll(newTrackerStates)
+      includedSetCache = null
     }
 
     fireInclusionChanged()
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun retainElements(elements: Collection<T>) {
     val toRetain = createElementsSet(elements)
 
@@ -227,8 +265,14 @@ abstract class PartiallyExcludedFilesStateHolder<T>(
       includedElements.retainAll(toRetain)
       trackerExclusionStates.clear()
       trackerExclusionStates.putAll(newTrackerStates)
+      includedSetCache = null
     }
 
     fireInclusionChanged()
   }
 }
+
+@Service(Service.Level.PROJECT)
+private class PartiallyExcludedFilesStateHolderScopeService(
+  val coroutineScope: CoroutineScope
+)

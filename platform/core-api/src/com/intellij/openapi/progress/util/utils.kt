@@ -1,15 +1,29 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 @file:JvmName("ProgressIndicatorUtilsCore")
+
 package com.intellij.openapi.progress.util
 
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.Cancellation
+import com.intellij.openapi.progress.EmptyProgressIndicator
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.ProgressIndicator
+import com.intellij.openapi.progress.ProgressIndicatorProvider
 import com.intellij.openapi.progress.ProgressManager
+import com.intellij.openapi.progress.assertRunBlockingBackgroundThreadAndNoWriteAction
+import com.intellij.openapi.util.Computable
 import com.intellij.openapi.util.ThrowableComputable
 import com.intellij.util.ConcurrencyUtil
 import com.intellij.util.ExceptionUtil
+import com.intellij.util.concurrency.annotations.RequiresBackgroundThread
+import com.intellij.util.concurrency.annotations.RequiresBlockingContext
+import com.intellij.util.io.blockingDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.future.asCompletableFuture
 import org.jetbrains.annotations.ApiStatus
 import java.util.concurrent.CancellationException
 import java.util.concurrent.Future
@@ -17,6 +31,8 @@ import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import java.util.concurrent.locks.Lock
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
 
 private const val MAX_REJECTED_EXECUTIONS_BEFORE_CANCELLATION = 16
 
@@ -65,6 +81,7 @@ fun <T> Future<T>.awaitWithCheckCanceled(indicator: ProgressIndicator?): T {
       if (cause is ProcessCanceledException) {
         throw cause
       }
+      @Suppress("RethrowControlFlowExceptionWithUtil")
       if (cause is CancellationException) {
         throw ProcessCanceledException(cause)
       }
@@ -114,4 +131,35 @@ fun checkCancelledEvenWithPCEDisabled(indicator: ProgressIndicator?) {
     indicator.checkCanceled()        // ... let the just-canceled indicator provide a customized PCE
     throw ProcessCanceledException() // ... otherwise PCE is disabled, so throw it manually
   }
+}
+
+/**
+ * Blocking version of [com.intellij.util.io.computeDetached].
+ */
+@RequiresBlockingContext
+@RequiresBackgroundThread(generateAssertion = false)
+@ApiStatus.Experimental
+fun <T> runWithCheckCanceled(
+  context: CoroutineContext = EmptyCoroutineContext,
+  action: suspend CoroutineScope.() -> T,
+): T {
+  assertRunBlockingBackgroundThreadAndNoWriteAction()
+
+  @OptIn(DelicateCoroutinesApi::class)
+  val future = GlobalScope.async(blockingDispatcher + context, block = action).asCompletableFuture()
+  try {
+    return future.awaitWithCheckCanceled()
+  }
+  catch (e: kotlin.coroutines.cancellation.CancellationException) {
+    future.cancel(false)
+    throw e
+  }
+}
+
+@RequiresBlockingContext
+@RequiresBackgroundThread(generateAssertion = false)
+@ApiStatus.Experimental
+fun <T> awaitWithCheckCanceled(deferred: Deferred<T>): T {
+  assertRunBlockingBackgroundThreadAndNoWriteAction()
+  return deferred.asCompletableFuture().awaitWithCheckCanceled()
 }

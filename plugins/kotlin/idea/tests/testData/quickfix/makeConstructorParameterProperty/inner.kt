@@ -1,5 +1,5 @@
 // "Make constructor parameter a property in class 'B'" "true"
-// K2_ERROR: Unresolved reference 'bar'.
+// K2_ERROR: UNRESOLVED_REFERENCE
 
 class B(bar: String) {
 
@@ -10,4 +10,3 @@ class B(bar: String) {
     }
 }
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.MakeConstructorParameterPropertyFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.MakeConstructorParameterPropertyFix

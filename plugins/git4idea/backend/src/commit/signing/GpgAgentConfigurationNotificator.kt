@@ -42,7 +42,7 @@ internal class GpgAgentConfigurationNotificator(private val project: Project) {
   suspend fun proposeCustomPinentryAgentConfiguration(type: NotificationType = NotificationType.INFORMATION) {
     if (!isEnabled()) return
     val canBeConfigured = withContext(Dispatchers.IO) {
-      GpgAgentConfigurator.getInstance(project).canBeConfigured(project)
+      GpgAgentConfigurator.getInstance(project).canBeConfigured()
     }
     if (!canBeConfigured) return
 
@@ -51,10 +51,10 @@ internal class GpgAgentConfigurationNotificator(private val project: Project) {
     }
   }
 
-  @RequiresBackgroundThread
+  @RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
   fun proposeCustomPinentryAgentConfigurationSync(type: NotificationType = NotificationType.INFORMATION) {
     if (!isEnabled()) return
-    if (!GpgAgentConfigurator.getInstance(project).canBeConfigured(project)) return
+    if (!GpgAgentConfigurator.getInstance(project).canBeConfigured()) return
 
     showPinentryConfigurationNotification(false, type)
   }

@@ -1,8 +1,12 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 load("//build:compiler-options.bzl", "create_kotlinc_options")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.platform.syntax.psi` start
+content_module_jar(module = ":psi")
+### auto-generated section `dev intellij.platform.syntax.psi` end
 
 ### auto-generated section `build intellij.platform.syntax.psi` start
-
 create_kotlinc_options(
     name = "custom_psi",
     jvm_target = "8",
@@ -80,6 +84,7 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.syntax.psi.iml",
+        "resources/intellij.platform.syntax.psi.xml",
     ],
     visibility = ["//visibility:public"],
 )

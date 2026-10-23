@@ -1,5 +1,5 @@
 // "Make constructor parameter a property" "true"
-// K2_ERROR: Unresolved reference 'dismissibleViewTypes'.
+// K2_ERROR: UNRESOLVED_REFERENCE
 
 class SomeClass(vararg dismissibleViewTypes: Int) {
     fun someFun() {
@@ -7,4 +7,3 @@ class SomeClass(vararg dismissibleViewTypes: Int) {
     }
 }
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.MakeConstructorParameterPropertyFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.MakeConstructorParameterPropertyFix

@@ -9,7 +9,6 @@
  * - Builds [ContentBlock] list for each module set
  * - Creates module-to-set chain mapping for tracing module origins
  * - Collects module aliases from module sets
- * - Tracks `includeDependencies` flags
  * - Validates for duplicate modules and invalid overrides
  *
  * **Key function**: [buildContentBlocksAndChainMapping] - the main entry point that processes
@@ -34,7 +33,6 @@ internal data class ContentBuildData(
   @JvmField val contentBlocks: List<ContentBlock>,
   @JvmField val moduleToSetChainMapping: Map<ContentModuleName, List<String>>,
   @JvmField val aliasToSource: Map<String, String>,
-  @JvmField val moduleToIncludeDependencies: Map<ContentModuleName, Boolean>,
 )
 
 /**
@@ -52,7 +50,6 @@ internal fun buildContentBlocksAndChainMapping(
   val contentBlocks = mutableListOf<ContentBlock>()
   val moduleToChain = LinkedHashMap<ContentModuleName, List<String>>()
   val moduleToSets = LinkedHashMap<String, MutableList<String>>()  // String keys for validateNoDuplicateModules
-  val moduleToIncludeDeps = LinkedHashMap<ContentModuleName, Boolean>()
   val aliasToSource = if (collectModuleSetAliases) LinkedHashMap<String, String>() else null
   val processedSets = HashSet<String>()
   val contentBlockByName = HashMap<String, ContentBlock>()
@@ -79,7 +76,7 @@ internal fun buildContentBlocksAndChainMapping(
                 ContentModule(
                   moduleId = existingModule.moduleId,
                   loading = effectiveLoading,
-                  includeDependencies = existingModule.includeDependencies,
+                  requiredIfAvailable = existingModule.requiredIfAvailable,
                   allowedMissingPluginIds = existingModule.allowedMissingPluginIds,
                 )
               )
@@ -118,17 +115,13 @@ internal fun buildContentBlocksAndChainMapping(
       moduleToSets.computeIfAbsent(moduleName.value) { mutableListOf() }.add(moduleSet.name)
       // Track chain
       moduleToChain.put(moduleName, currentChain)
-      // Track includeDependencies flag
-      if (module.includeDependencies) {
-        moduleToIncludeDeps.put(moduleName, true)
-      }
       // Build loading info - apply overrides from module set
       val effectiveLoading = overrides.get(moduleName) ?: module.loading
       modulesWithLoading.add(
         ContentModule(
           moduleId = module.moduleId,
           loading = effectiveLoading,
-          includeDependencies = module.includeDependencies,
+          requiredIfAvailable = module.requiredIfAvailable,
           allowedMissingPluginIds = module.allowedMissingPluginIds,
         )
       )
@@ -164,14 +157,10 @@ internal fun buildContentBlocksAndChainMapping(
       ContentModule(
         moduleId = module.moduleId,
         loading = module.loading,
-        includeDependencies = module.includeDependencies,
+        requiredIfAvailable = module.requiredIfAvailable,
         allowedMissingPluginIds = module.allowedMissingPluginIds,
       )
     )
-    // Track includeDependencies flag
-    if (module.includeDependencies) {
-      moduleToIncludeDeps.put(moduleName, true)
-    }
     // Track for duplicate detection - mark as from "additionalModules" block (String keys for validateNoDuplicateModules)
     moduleToSets.computeIfAbsent(moduleName.value) { mutableListOf() }.add(ADDITIONAL_MODULES_BLOCK)
   }
@@ -187,7 +176,6 @@ internal fun buildContentBlocksAndChainMapping(
     contentBlocks = contentBlocks,
     moduleToSetChainMapping = moduleToChain,
     aliasToSource = aliasToSource ?: emptyMap(),
-    moduleToIncludeDependencies = moduleToIncludeDeps,
   )
 }
 

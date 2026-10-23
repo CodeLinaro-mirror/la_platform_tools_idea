@@ -2,18 +2,19 @@
 @file:JvmName("EelProviderProjectUtilKt")
 package com.intellij.platform.eel.provider
 
-import com.intellij.openapi.diagnostic.logger
+import com.intellij.openapi.diagnostic.fileLogger
 import com.intellij.openapi.progress.runBlockingMaybeCancellable
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Key
 import com.intellij.platform.eel.EelApi
 import com.intellij.platform.eel.EelDescriptor
 import com.intellij.platform.eel.EelMachine
-import com.intellij.platform.eel.annotations.MultiRoutingFileSystemPath
+import com.intellij.platform.util.annotations.paths.NioPath
+import com.intellij.platform.eel.channels.EelDelicateApi
 import org.jetbrains.annotations.ApiStatus
 import java.nio.file.Path
 
-private val logger = logger<EelInitialization>()
+private val logger = fileLogger()
 
 private val EEL_MACHINE_KEY: Key<EelMachine> = Key.create("com.intellij.platform.eel.machine")
 private val EEL_DESCRIPTOR_KEY: Key<EelDescriptor> = Key.create("com.intellij.platform.eel.descriptor")
@@ -25,6 +26,7 @@ private val EEL_DESCRIPTOR_KEY: Key<EelDescriptor> = Key.create("com.intellij.pl
  * project when it was opened. Unlike [resolveEelMachine] it does not perform resolution; it expects the project's environment to be
  * already initialized and throws if no machine can be determined.
  */
+@ApiStatus.Experimental
 fun Project.getEelMachine(): EelMachine {
   val descriptor = getEelDescriptor()
 
@@ -52,6 +54,7 @@ fun Project.getEelMachine(): EelMachine {
 /**
  * Associates [machine] with this project. Called by the platform during project initialization; not for general use.
  */
+@EelDelicateApi
 @ApiStatus.Internal
 fun Project.setEelMachine(machine: EelMachine) {
   putUserData(EEL_MACHINE_KEY, machine)
@@ -66,7 +69,7 @@ fun Project.setEelMachine(machine: EelMachine) {
 fun Project.getEelDescriptor(): EelDescriptor {
   getUserData(EEL_DESCRIPTOR_KEY)?.let { return it }
 
-  @MultiRoutingFileSystemPath
+  @NioPath
   val filePath = projectFilePath
   if (filePath == null) {
     // The path to project file can be null if the project is default or used in tests.
@@ -84,7 +87,10 @@ fun Project.getEelDescriptor(): EelDescriptor {
  * Explicitly associates an [EelDescriptor] with this project.
  * This is useful for projects that are not backed by a real file path (e.g., the default project in RD thin client),
  * where the descriptor cannot be inferred from the project file path.
+ *
+ * Do not call it, unless you know exactly what you are doing.
  */
+@EelDelicateApi
 @ApiStatus.Internal
 fun Project.setEelDescriptor(descriptor: EelDescriptor) {
   putUserData(EEL_DESCRIPTOR_KEY, descriptor)

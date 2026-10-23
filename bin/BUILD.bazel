@@ -1,0 +1,19 @@
+# `CompilationContextImpl` asserts this file exists under the community root before it will treat a directory as
+# IntelliJ Community sources, so a dev assembly that materializes its own project tree has to declare it.
+exports_files(
+    ["idea.properties"],
+    visibility = ["//visibility:public"],
+)
+
+# The native files a distribution's `bin` directory takes, see `nativeBinFiles` in `OsSpecificDistributionBuilder.kt`.
+# The plan generator names each one in the `platform_assets` map of a split dev distribution, so the component places
+# it by its own label.
+exports_files(
+    glob([
+        "linux/*/*",
+        "mac/*",
+        "win/*",
+        "win/*/*",
+    ]),
+    visibility = ["//visibility:public"],
+)

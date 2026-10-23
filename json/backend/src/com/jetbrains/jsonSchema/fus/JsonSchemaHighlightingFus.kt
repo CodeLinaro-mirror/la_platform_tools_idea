@@ -11,7 +11,7 @@ import com.intellij.internal.statistic.service.fus.collectors.CounterUsagesColle
 internal object JsonFeatureUsageCollector : CounterUsagesCollector() {
   private val jsonSchemaGroup = EventLogGroup(
     id = "json.schema.features",
-    version = 8,
+    version = 9,
   )
 
   internal val jsonSchemaHighlightingSessionData =
@@ -39,7 +39,7 @@ internal sealed interface JsonSchemaFusFeature {
 }
 
 internal enum class JsonSchemaFusAllowedListFeature(override val event: StringEventField) : JsonSchemaFusFeature {
-  JsonFusSchemaId(EventFields.StringValidatedByCustomRule("schema_id", JsonSchemaIdValidationRule::class.java, "JSON schema ID"))
+  JsonFusSchemaId(EventFields.StringValidatedByCustomRule("schema_id", JsonSchemaIdValidationRule::class.java, "JSON schema ID. Only values from a predefined list (KnownSchemaIdentifiers.json) are accepted"))
 }
 
 internal enum class JsonSchemaFusCountedUniqueFeature(override val event: RoundedIntEventField) : JsonSchemaFusFeature {
@@ -47,7 +47,6 @@ internal enum class JsonSchemaFusCountedUniqueFeature(override val event: Rounde
 }
 
 internal enum class JsonSchemaFusCountedFeature(override val event: RoundedIntEventField) : JsonSchemaFusFeature {
-  ExecutedHttpVirtualFileDownloadRequest(EventFields.RoundedInt("executed_http_virtual_file_download_request", "Remote (URL) reference download was called)")),
   RemoteUrlResolveRequest(EventFields.RoundedInt("remote_url_resolve_request", "Remote (URL) reference resolve was called")),
   LocalReferenceResolveRequest(EventFields.RoundedInt("local_file_resolve_request", "Local reference resolve was called")),
 

@@ -1,7 +1,6 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
 ### auto-generated section `build intellij.libraries.batik` start
-
 jvm_library(
     name = "batik",
     srcs = glob(
@@ -23,6 +22,7 @@ jvm_library(
         # do not sort,
         "@lib//:libraries-batik-batik-transcoder",
         "@lib//:libraries-batik-xml-apis-ext",
+        "//libraries/commons/io",
     ],
 )
 
@@ -40,7 +40,11 @@ jvm_library(
         "@lib//:libraries-batik-batik-transcoder",
         "@lib//:libraries-batik-xml-apis-ext",
     ],
-    runtime_deps = [":batik"],
+    runtime_deps = [
+        # do not sort,
+        ":batik",
+        "//libraries/commons/io:io_test_lib",
+    ],
 )
 ### auto-generated section `build intellij.libraries.batik` end
 
@@ -48,6 +52,7 @@ jvm_library(
 exports_files(
     [
         "intellij.libraries.batik.iml",
+        "resources/intellij.libraries.batik.xml",
     ],
     visibility = ["//visibility:public"],
 )

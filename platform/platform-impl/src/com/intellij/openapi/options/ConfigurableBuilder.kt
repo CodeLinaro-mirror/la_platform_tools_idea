@@ -20,18 +20,16 @@ abstract class ConfigurableBuilder
 @Deprecated("Use BeanConfigurable", level = DeprecationLevel.HIDDEN)
 protected constructor() : UiDslUnnamedConfigurable.Simple(), UiDslUnnamedConfigurable, ConfigurableWithOptionDescriptors {
 
-  @ApiStatus.Internal
-  internal class CallbackAccessor(private val myGetter: Supplier<Boolean>, private val mySetter: Setter<in Boolean?>) {
+  private class CallbackAccessor(private val myGetter: Supplier<Boolean>, private val mySetter: Setter<in Boolean?>) {
 
     var value: Boolean
       get() = myGetter.get()
       set(value) = mySetter.set(value)
   }
 
-  @ApiStatus.Internal
-  internal class BeanField(
+  private class BeanField(
     private val myAccessor: CallbackAccessor,
-    internal val title: @NlsContexts.Checkbox String,
+    val title: @NlsContexts.Checkbox String,
   ) {
 
     val component: JCheckBox by lazy { JCheckBox(this.title) }
@@ -54,7 +52,7 @@ protected constructor() : UiDslUnnamedConfigurable.Simple(), UiDslUnnamedConfigu
       get() = component.isSelected
       set(value) = component.setSelected(value)
 
-    internal var accessorValue: Boolean
+    var accessorValue: Boolean
       get() = myAccessor.value
       set(value) {
         myAccessor.value = value
@@ -98,22 +96,6 @@ protected constructor() : UiDslUnnamedConfigurable.Simple(), UiDslUnnamedConfigu
           .onReset { field.reset() }
         UIUtil.applyDeprecatedBackground(field.component)
       }
-    }
-  }
-
-  @ApiStatus.Internal
-  companion object {
-
-    @ApiStatus.Internal
-    @JvmStatic
-    fun getConfigurableTitle(configurable: UnnamedConfigurable): String? {
-      if (configurable is BeanConfigurable<*>) {
-        return configurable.title
-      }
-      if (configurable is BoundConfigurable) {
-        return configurable.displayName
-      }
-      return null
     }
   }
 }

@@ -8,13 +8,14 @@ import com.intellij.modcommand.ModPsiUpdater
 import com.intellij.psi.SmartPsiElementPointer
 import com.intellij.psi.createSmartPointer
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.analyzeCopy
 import org.jetbrains.kotlin.analysis.api.fir.diagnostics.KaFirDiagnostic
 import org.jetbrains.kotlin.analysis.api.projectStructure.KaDanglingFileResolutionMode
+import org.jetbrains.kotlin.analysis.api.session.analyzeCopy
 import org.jetbrains.kotlin.analysis.api.symbols.KaNamedClassSymbol
 import org.jetbrains.kotlin.config.LanguageVersion
 import org.jetbrains.kotlin.idea.base.analysis.api.utils.findSamSymbolOrNull
 import org.jetbrains.kotlin.idea.base.projectStructure.languageVersionSettings
+import org.jetbrains.kotlin.idea.base.psi.addModifierKeyword
 import org.jetbrains.kotlin.idea.base.psi.replaceSamConstructorCall
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.codeinsight.api.applicable.intentions.KotlinPsiUpdateModCommandAction
@@ -70,7 +71,7 @@ internal object AddFunModifierFixFactory {
             updater: ModPsiUpdater,
         ) {
             val referrerCall = updater.getWritable(elementContext.referrerCallPointer.element)
-            element.addModifier(KtTokens.FUN_KEYWORD)
+            element.addModifierKeyword(KtTokens.FUN_KEYWORD)
             if (referrerCall?.lambdaArguments?.singleOrNull() == null) return
             val argument = referrerCall.getStrictParentOfType<KtValueArgument>()
                 ?.takeIf { it.getArgumentExpression() == referrerCall }

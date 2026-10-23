@@ -13,9 +13,9 @@ import kotlin.io.path.pathString
 import kotlin.io.path.readText
 
 
-private const val DEFAULT_PLUGIN_VERIFIER_VERSION = "1.396"
+private const val DEFAULT_PLUGIN_VERIFIER_VERSION = "1.410"
 
-suspend fun createPluginVerifier(
+fun createPluginVerifier(
   pluginVerifierVersion: String = DEFAULT_PLUGIN_VERIFIER_VERSION,
   compatibilityExceptions: List<String> = emptyList(),
   exceptionHandler: (exception: String) -> Unit = {},
@@ -50,7 +50,7 @@ class PluginVerifier internal constructor(
   val errorHandler: (exception: String) -> Unit,
 ) {
 
-  suspend fun verify(
+  fun verify(
     homeDir: Path,
     reportDir: Path,
     plugin: VerifierPluginInfo,
@@ -127,7 +127,7 @@ class PluginVerifier internal constructor(
 
       lines.forEach { line ->
         when {
-          line.startsWith("Package ") || line.startsWith("Probably the package") || line.startsWith("It is also possible") || line.startsWith("The following classes") || line.startsWith("The method might have been declared") || line.startsWith("The field might have been declared in the super classes") || line.startsWith("  ") || line.isBlank() -> { // logger.warn(line)
+          line.startsWith("  ") || line.isBlank() -> {
           }
           else -> {
             val foundExceptions = compatibilityExceptions.filter {

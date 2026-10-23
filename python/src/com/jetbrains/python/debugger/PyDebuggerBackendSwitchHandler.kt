@@ -1,6 +1,8 @@
+@file:Suppress("SpellCheckingInspection")
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.debugger
 
+import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.projectRoots.Sdk
@@ -23,17 +25,26 @@ interface PyDebuggerBackendSwitchHandler {
   fun handleSessions(project: Project)
 
   /**
-   * Controls visibility of the backend switcher UI.
-   * Return false to hide the switcher (e.g., when the currently open file uses a remote kernel).
-   * This is one of two gates: returning true does not show the switcher by itself, since it is also
-   * hidden on Debug tool window tabs that do not run a Python or Jupyter session.
+   * Returns true if this handler is responsible for the debug session in the current Debug tool window tab.
+   * Claiming a tab is what makes the switcher appear on it, so a tab no handler claims stays free of the
+   * switcher unless it is a pydevd-backed Python session, which is recognized without any handler.
    */
-  fun shouldShowSwitcher(project: Project): Boolean = true
+  fun ownsRunProfile(e: AnActionEvent): Boolean = false
+
+  /**
+   * Returns true if the switcher should be visible for the current Debug tool window tab.
+   * Called only when [ownsRunProfile] returned true for the same event, and the answer is final for that
+   * tab: no other handler and no fallback is consulted afterwards.
+   */
+  fun shouldShowSwitcher(project: Project, e: AnActionEvent): Boolean = true
 
   /**
    * Returns true if debugpy is available for the current SDK.
    */
   fun isDebugpyAvailableForSdk(project: Project, sdk: Sdk): Boolean
+
+  /** Returns a non-empty set of available backends, or null to use the SDK defaults. */
+  fun getAvailableBackends(e: AnActionEvent): Set<PyDebuggerBackend>? = null
 
   /**
    * Called after the backend has been switched via the toolbar or post-install prompt.

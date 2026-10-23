@@ -23,6 +23,11 @@ public class KtReferenceTypeHintsProviderTestGenerated extends AbstractKtReferen
         KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
     }
 
+    @TestMetadata("AnnotatedType.kt")
+    public void testAnnotatedType() throws Exception {
+        runTest("../../idea/tests/testData/codeInsight/hints/types/AnnotatedType.kt");
+    }
+
     @TestMetadata("AnonymousAnyCollectionElement.kt")
     public void testAnonymousAnyCollectionElement() throws Exception {
         runTest("../../idea/tests/testData/codeInsight/hints/types/AnonymousAnyCollectionElement.kt");
@@ -41,6 +46,11 @@ public class KtReferenceTypeHintsProviderTestGenerated extends AbstractKtReferen
     @TestMetadata("AnonymousObjectNoBaseType.kt")
     public void testAnonymousObjectNoBaseType() throws Exception {
         runTest("../../idea/tests/testData/codeInsight/hints/types/AnonymousObjectNoBaseType.kt");
+    }
+
+    @TestMetadata("companionObject.kt")
+    public void testCompanionObject() throws Exception {
+        runTest("../../idea/tests/testData/codeInsight/hints/types/companionObject.kt");
     }
 
     @TestMetadata("ConstInitializerType.kt")

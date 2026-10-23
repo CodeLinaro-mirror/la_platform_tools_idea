@@ -1,7 +1,6 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.tools.ide.performanceTesting.commands
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.intellij.tools.ide.performanceTesting.commands.dto.BuildToolsAutoReloadType
 import com.intellij.tools.ide.performanceTesting.commands.dto.BuildType
 import com.intellij.tools.ide.performanceTesting.commands.dto.GradleTaskInfoDto
@@ -13,6 +12,7 @@ import com.intellij.tools.ide.performanceTesting.commands.dto.MoveFilesData
 import com.intellij.tools.ide.performanceTesting.commands.dto.NewGradleProjectDto
 import com.intellij.tools.ide.performanceTesting.commands.dto.NewMavenProjectDto
 import com.intellij.tools.ide.performanceTesting.commands.dto.NewSpringProjectDto
+import tools.jackson.module.kotlin.jacksonObjectMapper
 import java.io.File
 import java.lang.reflect.Modifier
 import java.nio.file.Path
@@ -31,6 +31,10 @@ val objectMapper = jacksonObjectMapper()
 
 fun <T : CommandChain> T.waitForSmartMode(): T = apply {
   addCommand("${CMD_PREFIX}waitForSmart")
+}
+
+fun <T : CommandChain> T.waitForFirstScanningToFinish(): T = apply {
+  addCommand("${CMD_PREFIX}waitForFirstScanningToFinish")
 }
 
 fun <T : CommandChain> T.replaceBrowser(): T = apply {
@@ -303,6 +307,10 @@ fun <T : CommandChain> T.startProfile(profileFileName: String, profilerParams: S
 
 fun <T : CommandChain> T.stopProfile(profilerParams: String = "jfr"): T = apply {
   addCommand("${CMD_PREFIX}stopProfile $profilerParams")
+}
+
+fun <T : CommandChain> T.mark(name: String): T = apply {
+  addCommand("${CMD_PREFIX}mark $name")
 }
 
 fun <T : CommandChain> T.memoryDump(): T = apply {
@@ -1395,6 +1403,10 @@ fun <T : CommandChain> T.detectProjectLeaks(): T = apply {
   addCommand("${CMD_PREFIX}detectProjectLeaks")
 }
 
+fun <T : CommandChain> T.logProjectLibrariesAndSdks(): T = apply {
+  addCommand("${CMD_PREFIX}logProjectLibrariesAndSdks")
+}
+
 fun <T : CommandChain> T.hideAllToolWindows(): T = apply {
   addCommand("${CMD_PREFIX}takeScreenshot before_close_all_tabs")
   addCommand("${CMD_PREFIX}hideAllToolWindows")
@@ -1403,4 +1415,8 @@ fun <T : CommandChain> T.hideAllToolWindows(): T = apply {
 fun <T : CommandChain> T.optimizeImportsOnDirectory(directoryPath: String = ""): T = apply {
   if (directoryPath.isEmpty()) addCommand("${CMD_PREFIX}optimizeImportsOnDirectory")
   else addCommand("${CMD_PREFIX}optimizeImportsOnDirectory $directoryPath")
+}
+
+fun <T : CommandChain> T.retypeFile(filePath: String, delayMs: Int = 20): T = apply {
+  addCommand("${CMD_PREFIX}retypeFile $filePath $delayMs")
 }

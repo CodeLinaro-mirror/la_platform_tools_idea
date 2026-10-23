@@ -1,7 +1,14 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.libraries.netty.handler.proxy` start
+content_module_jar(
+    libraries = ["@lib//:libraries-netty-handler-proxy-netty-handler-proxy"],
+    module = ":libraries-netty-handler-proxy",
+)
+### auto-generated section `dev intellij.libraries.netty.handler.proxy` end
 
 ### auto-generated section `build intellij.libraries.netty.handler.proxy` start
-
 jvm_library(
     name = "libraries-netty-handler-proxy",
     srcs = glob(
@@ -47,6 +54,7 @@ jvm_library(
 exports_files(
     [
         "intellij.libraries.netty.handler.proxy.iml",
+        "resources/intellij.libraries.netty.handler.proxy.xml",
     ],
     visibility = ["//visibility:public"],
 )

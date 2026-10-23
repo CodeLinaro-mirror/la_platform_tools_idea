@@ -10,18 +10,24 @@ import com.intellij.psi.util.parentOfTypes
 import com.intellij.psi.util.parentsOfType
 import com.intellij.util.containers.addIfNotNull
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.analyze
 import org.jetbrains.kotlin.analysis.api.fir.diagnostics.KaFirDiagnostic
+import org.jetbrains.kotlin.analysis.api.session.analyze
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaDeclarationSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaNamedClassSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.containingSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.markers.KaNamedSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.name
+import org.jetbrains.kotlin.analysis.api.symbols.symbol
+import org.jetbrains.kotlin.analysis.api.types.allSupertypes
+import org.jetbrains.kotlin.analysis.api.types.defaultType
 import org.jetbrains.kotlin.analysis.api.types.symbol
 import org.jetbrains.kotlin.descriptors.EffectiveVisibility
 import org.jetbrains.kotlin.descriptors.Visibilities
 import org.jetbrains.kotlin.descriptors.Visibility
+import org.jetbrains.kotlin.idea.base.psi.addModifierKeyword
+import org.jetbrains.kotlin.idea.base.psi.removeModifierKeyword
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.base.util.module
 import org.jetbrains.kotlin.idea.codeinsight.api.applicable.intentions.KotlinPsiUpdateModCommandAction
@@ -95,9 +101,9 @@ internal object ChangeVisibilityFixFactories {
             if (visibilityModifier == KtTokens.PUBLIC_KEYWORD
                 && !forceUsingExplicitModifier
             ) {
-                element.visibilityModifierType()?.let { element.removeModifier(it) }
+                element.visibilityModifierType()?.let { element.removeModifierKeyword(it) }
             } else {
-                element.addModifier(visibilityModifier)
+                element.addModifierKeyword(visibilityModifier)
             }
 
             val propertyAccessor = element as? KtPropertyAccessor
@@ -308,7 +314,8 @@ internal object ChangeVisibilityFixFactories {
         return targetVisibilities.mapNotNull { createFixToTargetVisibility(reference, declaration, it) }
     }
 
-    private fun KaSession.createChangeVisibilityFixOnExposure(
+    context(session: KaSession)
+    private fun createChangeVisibilityFixOnExposure(
         element: PsiElement,
         elementVisibility: EffectiveVisibility,
         restrictingSymbol: KaSymbol,

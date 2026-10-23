@@ -17,14 +17,12 @@ import com.intellij.internal.statistic.eventLog.validator.storage.IntellijValida
 import com.intellij.internal.statistic.utils.StatisticsRecorderUtil
 import com.intellij.internal.statistic.utils.StatisticsUtil
 import com.intellij.openapi.application.ApplicationManager
-import com.jetbrains.fus.reporting.MessageBus
 import com.jetbrains.fus.reporting.MetadataStorage
 import com.jetbrains.fus.reporting.api.IEventContext
 import com.jetbrains.fus.reporting.api.IEventGroupRules
 import com.jetbrains.fus.reporting.api.IEventGroupsFilterRules
 import com.jetbrains.fus.reporting.api.IGroupValidators
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
+import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.ApiStatus.ScheduledForRemoval
 import java.util.concurrent.ConcurrentHashMap
 
@@ -108,7 +106,7 @@ open class IntellijSensitiveDataValidator protected constructor(
         // Validator creation initializes metadata storage and may do IO; keep it outside ConcurrentHashMap locks.
         lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
           if (ApplicationManager.getApplication().isUnitTestMode) {
-            BlindSensitiveDataValidator(FusComponentProvider.createBlindFusComponents(id), id)
+            BlindSensitiveDataValidator(FusComponentProvider.createFusComponents(id, blind = true), id)
           }
           else {
             IntellijSensitiveDataValidator(FusComponentProvider.createFusComponents(id), id)
@@ -124,9 +122,9 @@ open class IntellijSensitiveDataValidator protected constructor(
     }
 
     private val EMPTY_METADATA_STORAGE: MetadataStorage<EventLogBuild> = object : MetadataStorage<EventLogBuild> {
-      override suspend fun update(scope: CoroutineScope): Job = Job()
-      override fun update(): Boolean = false
-      override fun reload() {}
+      override suspend fun scheduleUpdate() = Unit
+      override suspend fun update(): Boolean = false
+      override suspend fun reload() {}
       override fun getFieldsToAnonymize(groupId: String, eventId: String): Set<String> = emptySet()
       override fun getSkipAnonymizationIds(): Set<String> = emptySet()
       override fun getGroupValidators(groupId: String): IGroupValidators<EventLogBuild> = object : IGroupValidators<EventLogBuild> {
@@ -148,8 +146,9 @@ open class IntellijSensitiveDataValidator protected constructor(
   @Suppress("UNUSED_PARAMETER")
   protected constructor(storage: IntellijValidationRulesStorage, recorderId: String) : this(null, recorderId)
 
-  val messageBus: MessageBus
-    get() = fusComponents!!.messageBus
+  @get:ApiStatus.Internal
+  val fusClient: com.jetbrains.fus.reporting.FusClient<com.jetbrains.fus.reporting.model.lion3.LogEvent, com.jetbrains.fus.reporting.model.lion3.ValidatedFusReport>?
+    get() = fusComponents?.fusClient
 
   open suspend fun isGroupAllowed(group: EventLogGroup): Boolean {
     if (StatisticsRecorderUtil.isTestModeEnabled(recorderId)) {
@@ -228,7 +227,7 @@ open class IntellijSensitiveDataValidator protected constructor(
            rule.getEventIdRules().any { it is TestModeValidationRule }
   }
 
-  fun update() {
+  suspend fun update() {
     validationRulesStorage.update()
   }
 }

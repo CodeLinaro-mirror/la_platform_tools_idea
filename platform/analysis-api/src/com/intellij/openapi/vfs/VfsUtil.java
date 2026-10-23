@@ -12,6 +12,8 @@ import com.intellij.openapi.util.io.OSAgnosticPathUtil;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.newvfs.ArchiveFileSystem;
 import com.intellij.openapi.vfs.newvfs.NewVirtualFile;
+import com.intellij.openapi.vfs.newvfs.NewVirtualFileSystem;
+import com.intellij.openapi.vfs.newvfs.RefreshQueue;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.ArrayUtilRt;
 import com.intellij.util.PathUtil;
@@ -200,6 +202,30 @@ public final class VfsUtil extends VfsUtilCore {
       virtualFile = fileSystem.refreshAndFindFileByPath(filePath);
     }
     return virtualFile;
+  }
+
+  /// Searches for the file specified by given URL.
+  /// If file is not yet cached in VFS return `null`
+  ///
+  /// If fileSystem is not [NewVirtualFileSystem], may load file into vfs
+  ///
+  /// @param url URL of the file to find by. In VFS format
+  /// @see VirtualFileManager#findFileByUrl
+  /// @see NewVirtualFileSystem#findFileByPathIfCached
+  /// @see VfsUtilCore#convertFromUrl
+  @ApiStatus.Experimental
+  public static @Nullable VirtualFile findFileByUrlIfCached(@NotNull String url) {
+    var schemeSeparatorIndex = url.indexOf(URLUtil.SCHEME_SEPARATOR);
+    if (schemeSeparatorIndex < 0) return null;
+
+    var fileSystem = VirtualFileManager.getInstance().getFileSystem(url.substring(0, schemeSeparatorIndex));
+    if (fileSystem == null) return null;
+
+    var path = url.substring(schemeSeparatorIndex + URLUtil.SCHEME_SEPARATOR.length());
+    if (fileSystem instanceof NewVirtualFileSystem newFileSystem) {
+      return newFileSystem.findFileByPathIfCached(path);
+    }
+    return fileSystem.findFileByPath(path);
   }
 
   @SuppressWarnings({"IO_FILE_USAGE", "UnnecessaryFullyQualifiedName"})
@@ -478,21 +504,21 @@ public final class VfsUtil extends VfsUtilCore {
   public static void markDirtyAndRefresh(boolean async, boolean recursive, boolean reloadChildren, VirtualFile @NotNull ... files) {
     var list = markDirty(recursive, reloadChildren, files);
     if (list.isEmpty()) return;
-    LocalFileSystem.getInstance().refreshFiles(list, async, recursive, null);
+    RefreshQueue.getInstance().refresh(async, recursive, null, list);
   }
 
   /// @see #markDirtyAndRefresh(boolean, boolean, boolean, VirtualFile...)
   @SuppressWarnings({"IO_FILE_USAGE", "UnnecessaryFullyQualifiedName"})
   public static void markDirtyAndRefresh(boolean async, boolean recursive, boolean reloadChildren, java.io.File @NotNull ... files) {
-    var fileSystem = LocalFileSystem.getInstance();
-    var virtualFiles = ContainerUtil.map(files, fileSystem::refreshAndFindFileByIoFile, VirtualFile.EMPTY_ARRAY);
+    var fileSystem = StandardFileSystems.local();
+    var virtualFiles = ContainerUtil.map(files, file -> fileSystem.refreshAndFindFileByPath(file.getAbsolutePath()), VirtualFile.EMPTY_ARRAY);
     markDirtyAndRefresh(async, recursive, reloadChildren, virtualFiles);
   }
 
   /// @see #markDirtyAndRefresh(boolean, boolean, boolean, VirtualFile...)
   public static void markDirtyAndRefresh(boolean async, boolean recursive, boolean reloadChildren, Path @NotNull ... paths) {
-    var fileSystem = LocalFileSystem.getInstance();
-    var virtualFiles = ContainerUtil.map(paths, fileSystem::refreshAndFindFileByNioFile, VirtualFile.EMPTY_ARRAY);
+    var fileManager = VirtualFileManager.getInstance();
+    var virtualFiles = ContainerUtil.map(paths, fileManager::refreshAndFindFileByNioPath, VirtualFile.EMPTY_ARRAY);
     markDirtyAndRefresh(async, recursive, reloadChildren, virtualFiles);
   }
 

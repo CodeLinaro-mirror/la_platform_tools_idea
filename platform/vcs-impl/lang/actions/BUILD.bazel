@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.platform.vcs.impl.lang.actions` start
+content_module_jar(module = ":actions")
+### auto-generated section `dev intellij.platform.vcs.impl.lang.actions` end
 
 ### auto-generated section `build intellij.platform.vcs.impl.lang.actions` start
-
 jvm_library(
     name = "actions",
     srcs = glob(
@@ -42,6 +46,7 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.vcs.impl.lang.actions.iml",
+        "resources/intellij.platform.vcs.impl.lang.actions.xml",
     ],
     visibility = ["//visibility:public"],
 )

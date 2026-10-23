@@ -3,14 +3,14 @@
 
 package org.jetbrains.idea.devkit.inspections.remotedev
 
-import com.fasterxml.jackson.core.JsonProcessingException
-import com.fasterxml.jackson.core.json.JsonReadFeature
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.json.JsonMapper
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
+import tools.jackson.core.JacksonException
+import tools.jackson.core.json.JsonReadFeature
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.databind.json.JsonMapper
 import java.io.IOException
 
 internal const val MONOREPO_FEATURES_WITHOUT_SPLIT_MODE_SUPPORT_FILE_NAME: String = "MonorepoFeaturesWithoutSplitModeSupport.json5"
@@ -23,6 +23,12 @@ internal const val SPLIT_MODE_EXCLUDED_MODULES_SCOPE_FILE_NAME: String = "SplitM
 internal val SPLIT_MODE_EXCLUDED_MODULES_SCOPE_RELATIVE_PATHS: List<String> = listOf(
   ".idea/scopes/$SPLIT_MODE_EXCLUDED_MODULES_SCOPE_FILE_NAME",
   ".idea.bazel/scopes/$SPLIT_MODE_EXCLUDED_MODULES_SCOPE_FILE_NAME",
+)
+
+internal const val SPLIT_MODE_EXCLUDED_PATHS_SCOPE_FILE_NAME: String = "SplitModeExcludedPaths.xml"
+internal val SPLIT_MODE_EXCLUDED_PATHS_SCOPE_RELATIVE_PATHS: List<String> = listOf(
+  ".idea/scopes/$SPLIT_MODE_EXCLUDED_PATHS_SCOPE_FILE_NAME",
+  ".idea.bazel/scopes/$SPLIT_MODE_EXCLUDED_PATHS_SCOPE_FILE_NAME",
 )
 
 internal fun createSplitModeExcludedModulesScopeXml(
@@ -40,9 +46,31 @@ internal fun createSplitModeExcludedModulesScopeXml(
 internal fun createSplitModeExcludedModulesScopeXml(json5Text: String): String {
   val configuration = parseMonorepoFeaturesWithoutSplitModeSupport(json5Text)
   val scopePattern = createSplitModeExcludedModulesScopePattern(configuration)
+  return createScopeXml("SplitModeExcludedModules", scopePattern)
+}
+
+internal fun createSplitModeExcludedPathsScopeXml(
+  resourceReader: SplitModeInspectionResourceReader,
+  readMode: SplitModeInspectionResourceReadMode,
+): String {
+  val configurationText = requireNotNull(
+    resourceReader.readText(MONOREPO_FEATURES_WITHOUT_SPLIT_MODE_SUPPORT_RESOURCE_PATH, readMode)
+  ) {
+    "Cannot load $MONOREPO_FEATURES_WITHOUT_SPLIT_MODE_SUPPORT_RELATIVE_PATH"
+  }
+  return createSplitModeExcludedPathsScopeXml(configurationText)
+}
+
+internal fun createSplitModeExcludedPathsScopeXml(json5Text: String): String {
+  val configuration = parseMonorepoFeaturesWithoutSplitModeSupport(json5Text)
+  val scopePattern = createSplitModeExcludedPathsScopePattern(configuration)
+  return createScopeXml("SplitModeExcludedPaths", scopePattern)
+}
+
+private fun createScopeXml(scopeName: String, scopePattern: String): String {
   return """
     <component name="DependencyValidationManager">
-      <scope name="SplitModeExcludedModules" pattern="${scopePattern.escapeXmlAttributeValue()}" />
+      <scope name="$scopeName" pattern="${scopePattern.escapeXmlAttributeValue()}" />
     </component>
   """.trimIndent() + "\n"
 }
@@ -51,7 +79,7 @@ private fun parseMonorepoFeaturesWithoutSplitModeSupport(json5Text: String): Mon
   val normalizedJson = try {
     json5.readTree(json5Text).toString()
   }
-  catch (e: JsonProcessingException) {
+  catch (e: JacksonException) {
     throw IllegalArgumentException("Cannot parse $MONOREPO_FEATURES_WITHOUT_SPLIT_MODE_SUPPORT_RELATIVE_PATH", e)
   }
   catch (e: IOException) {
@@ -68,9 +96,15 @@ private fun parseMonorepoFeaturesWithoutSplitModeSupport(json5Text: String): Mon
     throw IllegalArgumentException("Cannot parse $MONOREPO_FEATURES_WITHOUT_SPLIT_MODE_SUPPORT_RELATIVE_PATH", e)
   }
 
+  require(configuration.pathPatterns.isNotEmpty()) {
+    "$MONOREPO_FEATURES_WITHOUT_SPLIT_MODE_SUPPORT_RELATIVE_PATH must define at least one entry in pathPatterns"
+  }
+  require(configuration.moduleNames.isNotEmpty()) {
+    "$MONOREPO_FEATURES_WITHOUT_SPLIT_MODE_SUPPORT_RELATIVE_PATH must define at least one entry in moduleNames"
+  }
   validateEntries("pathPatterns", configuration.pathPatterns) { entry ->
-    require(!entry.startsWith("file:")) {
-      "pathPatterns entries must not include the generated 'file:' prefix: $entry"
+    require(!entry.startsWith("file:") && !entry.startsWith("projectPath:")) {
+      "Entries in pathPatterns must not include a generated scope prefix: $entry"
     }
   }
   validateEntries("moduleNames", configuration.moduleNames) { entry ->
@@ -82,11 +116,20 @@ private fun parseMonorepoFeaturesWithoutSplitModeSupport(json5Text: String): Mon
 }
 
 private fun createSplitModeExcludedModulesScopePattern(configuration: MonorepoFeaturesWithoutSplitModeSupportFile): String {
-  val pathPatterns = configuration.pathPatterns.map { "file:$it" }
-  val modulePatterns = configuration.moduleNames.map { "file[$it]:*/" }
-  val patterns = pathPatterns + modulePatterns
+  val patterns = configuration.moduleNames.map { "file[$it]:*/" }
   require(patterns.isNotEmpty()) {
-    "$MONOREPO_FEATURES_WITHOUT_SPLIT_MODE_SUPPORT_RELATIVE_PATH must define at least one pathPatterns or moduleNames entry"
+    "$MONOREPO_FEATURES_WITHOUT_SPLIT_MODE_SUPPORT_RELATIVE_PATH must define at least one entry in moduleNames"
+  }
+  require(patterns.size == patterns.toSet().size) {
+    "$MONOREPO_FEATURES_WITHOUT_SPLIT_MODE_SUPPORT_RELATIVE_PATH contains entries that generate duplicate scope patterns"
+  }
+  return patterns.joinToString("||")
+}
+
+private fun createSplitModeExcludedPathsScopePattern(configuration: MonorepoFeaturesWithoutSplitModeSupportFile): String {
+  val patterns = configuration.pathPatterns.map { "projectPath:$it" }
+  require(patterns.isNotEmpty()) {
+    "$MONOREPO_FEATURES_WITHOUT_SPLIT_MODE_SUPPORT_RELATIVE_PATH must define at least one entry in pathPatterns"
   }
   require(patterns.size == patterns.toSet().size) {
     "$MONOREPO_FEATURES_WITHOUT_SPLIT_MODE_SUPPORT_RELATIVE_PATH contains entries that generate duplicate scope patterns"
@@ -145,7 +188,7 @@ private val json5: ObjectMapper = JsonMapper.builder()
   .enable(
     JsonReadFeature.ALLOW_JAVA_COMMENTS,
     JsonReadFeature.ALLOW_SINGLE_QUOTES,
-    JsonReadFeature.ALLOW_UNQUOTED_FIELD_NAMES,
+    JsonReadFeature.ALLOW_UNQUOTED_PROPERTY_NAMES,
     JsonReadFeature.ALLOW_TRAILING_COMMA,
   )
   .build()

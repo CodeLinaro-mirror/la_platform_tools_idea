@@ -3,8 +3,11 @@ package com.jetbrains.python.packaging.pipenv
 
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.projectRoots.Sdk
+import com.intellij.python.sdk.backend.PythonInterpreter
+import com.jetbrains.python.sdk.pipenv.PIP_FILE_LOCK
 import com.jetbrains.python.errorProcessing.PyResult
+import com.jetbrains.python.packaging.packageRequirements.cachedDependencyTree
+import com.jetbrains.python.packaging.PyPackageName
 import com.jetbrains.python.packaging.common.PythonOutdatedPackage
 import com.jetbrains.python.packaging.common.PythonPackage
 import com.jetbrains.python.packaging.common.PythonRepositoryPackageSpecification
@@ -14,14 +17,24 @@ import com.jetbrains.python.packaging.management.PyWorkspaceMember
 import com.jetbrains.python.packaging.management.PythonPackageInstallRequest
 import com.jetbrains.python.packaging.management.PythonPackageManager
 import com.jetbrains.python.packaging.management.PythonRepositoryManager
+import com.jetbrains.python.packaging.packageRequirements.DependencyTreeProvider
+import com.jetbrains.python.packaging.packageRequirements.PackageTreeNode
 import com.jetbrains.python.packaging.pip.PipRepositoryManager
 import com.jetbrains.python.sdk.pipenv.PIP_FILE
 import com.jetbrains.python.sdk.pipenv.runPipEnvWithSdk
 import java.nio.file.Path
 import com.jetbrains.python.sdk.pipenv.PipEnvParser as SdkPipEnvParser
 
-internal class PipEnvPackageManager(project: Project, sdk: Sdk) : PythonPackageManager(project, sdk) {
+internal class PipEnvPackageManager(project: Project, interpreter: PythonInterpreter) : PythonPackageManager(project, interpreter) {
   override val repositoryManager: PythonRepositoryManager = PipRepositoryManager.getInstance(project)
+
+  override val treeProvider: DependencyTreeProvider = cachedDependencyTree(
+    lockFileName = PIP_FILE_LOCK,
+    parse = { json -> PipEnvParser.parsePipEnvGraph(json).map { it.toTreeNode() } },
+    dependencyFiles = { resolveDependencyFilesTree() },
+    fetchOutput = { runPipEnvWithSdk(sdk, "graph", "--json") },
+  )
+
 
   override suspend fun syncLockedCommand(): PyResult<Unit> {
     return runPipEnvWithSdk(sdk, "install", "--dev").mapSuccess { }
@@ -36,14 +49,21 @@ internal class PipEnvPackageManager(project: Project, sdk: Sdk) : PythonPackageM
       is PythonPackageInstallRequest.ByLocation -> TODO("Not yet implemented")
       is PythonPackageInstallRequest.ByRepositoryPythonPackageSpecifications -> {
 
-        val args = listOf("install") + installRequest.specifications.map { it.nameWithVersionSpec } + options
+        val args = buildList {
+          addAll(listOf("install"))
+          installRequest.specifications.mapTo(this) { it.nameWithVersionSpecs }
+          addAll(options)
+        }
         runPipEnvWithSdk(sdk, *args.toTypedArray()).mapSuccess { }
       }
     }
   }
 
   override suspend fun updatePackageCommand(vararg specifications: PythonRepositoryPackageSpecification): PyResult<Unit> {
-    val args = listOf("install") + specifications.map { it.nameWithVersionSpec }
+    val args = buildList {
+      addAll(listOf("install"))
+      specifications.mapTo(this) { it.nameWithVersionSpecs }
+    }
     return runPipEnvWithSdk(sdk, *args.toTypedArray()).mapSuccess { }
   }
 
@@ -84,3 +104,10 @@ internal class PipEnvPackageManager(project: Project, sdk: Sdk) : PythonPackageM
     get() =
       listOf(Path.of(PIP_FILE))
 }
+
+private fun PipEnvParser.GraphEntry.toTreeNode(): PackageTreeNode =
+  PackageTreeNode(
+    PyPackageName.from(pkg.packageName),
+    dependencies.mapTo(mutableListOf()) { PackageTreeNode(PyPackageName.from(it.packageName), version = it.installedVersion) },
+    version = pkg.installedVersion,
+  )

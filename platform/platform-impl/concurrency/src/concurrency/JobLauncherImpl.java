@@ -1,15 +1,15 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.concurrency;
 
-import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ex.ApplicationEx;
+import com.intellij.openapi.application.ex.ApplicationManagerEx;
 import com.intellij.openapi.application.ex.ApplicationUtil;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.progress.ProgressIndicator;
+import com.intellij.openapi.progress.ProgressIndicatorProvider;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.impl.CoreProgressManager;
-import com.intellij.openapi.progress.util.StandardProgressIndicatorBase;
-import com.intellij.openapi.util.Ref;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.Processor;
 import com.intellij.util.ThrowableConsumer;
@@ -34,15 +34,12 @@ import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ForkJoinTask;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 @ApiStatus.Internal
 public final class JobLauncherImpl extends JobLauncher {
-  @ApiStatus.Internal
-  public static final int CORES_FORK_THRESHOLD = 1;
+  private static final int CORES_FORK_THRESHOLD = 1;
   private static final Logger LOG = Logger.getInstance(JobLauncher.class);
   private final boolean logAllExceptions = System.getProperty("idea.job.launcher.log.all.exceptions", "false").equals("true");
   private final ForkJoinPool myForkJoinPool;
@@ -56,28 +53,25 @@ public final class JobLauncherImpl extends JobLauncher {
     this(ForkJoinPool.commonPool());
   }
 
-  @Override
-  public <T> boolean invokeConcurrentlyUnderProgress(@NotNull List<? extends T> things,
-                                                     @NotNull ProgressIndicator progress,
-                                                     boolean runInReadAction,
-                                                     boolean failFastOnAcquireReadAction,
-                                                     @NotNull Processor<? super T> thingProcessor) throws ProcessCanceledException {
-    return invokeConcurrentlyUnderProgressAsync(things, progress, runInReadAction, failFastOnAcquireReadAction, thingProcessor, ()->{});
+  private static @NotNull ProgressIndicator assertUnderProgressIndicator() {
+    ProgressIndicator indicator = ProgressIndicatorProvider.getGlobalProgressIndicator();
+    if (indicator == null) {
+      throw new IllegalStateException("Must be run under ProgressIndicator. See ProgressManager.runProcess()");
+    }
+    return indicator;
   }
 
-  private static <T> boolean invokeConcurrentlyUnderProgressAsync(@NotNull List<? extends T> things,
-                                                                  ProgressIndicator progress,
-                                                                  boolean runInReadAction,
-                                                                  boolean failFastOnAcquireReadAction,
-                                                                  @NotNull Processor<? super T> thingProcessor,
-                                                                  @NotNull Runnable runWhileForking) {
-    // supply our own indicator even if we haven't given one - to support cancellation
-    // use StandardProgressIndicator by default to avoid assertion in SensitiveProgressWrapper() ctr later
-    ProgressIndicator wrapper = progress == null ? new StandardProgressIndicatorBase() : new SensitiveProgressWrapper(progress);
+  //@RequiresBackgroundThread
+  @Override
+  @ApiStatus.Internal
+  public <T> boolean processConcurrentlyAsync(@NotNull List<? extends T> things,
+                                              @NotNull Processor<? super T> thingProcessor,
+                                              @NotNull Runnable runWhileForking) throws ProcessCanceledException {
+    ProgressIndicator progress = assertUnderProgressIndicator();
+    ApplicationEx app = ApplicationManagerEx.getApplicationEx();
 
-    Boolean result = processImmediatelyIfTooFew(things, wrapper, runInReadAction, thingProcessor);
+    Boolean result = processImmediatelyIfTooFew(things, app.isWriteAccessAllowed(), thingProcessor, runWhileForking);
     if (result != null) {
-      runWhileForking.run();
       return result;
     }
 
@@ -97,6 +91,9 @@ public final class JobLauncherImpl extends JobLauncher {
     int hi = things.size();
     boolean[] processed = new boolean[things.size()];
     AtomicReference<Throwable> thrown = new AtomicReference<>();
+    boolean runInReadAction = app.isReadAccessAllowed();
+    boolean failFastOnAcquireReadAction = app.isInImpatientReader();
+    ProgressIndicator wrapper = new SensitiveProgressWrapper(progress);
     for (int n=globalCompleters.length-1; n>=0; n--) {
       int lo = n == 0 ? 0 : hi - chunk;
       ApplierCompleter<T> completer =
@@ -113,48 +110,28 @@ public final class JobLauncherImpl extends JobLauncher {
       runWhileForking.run();
 
       // help all others
-      ThreadContext.resetThreadContext(() -> {
+      try (var _ = ThreadContext.resetThreadContext()) {
         safeIterate(globalCompleters, thrown, completer -> {
           wrapper.checkCanceled();
           // don't call .invoke() or other FJP-setting status functions
           completer.wrapAndRun(() -> completer.execAll());
         });
-        return null;
-      });
-      // all work is done or distributed; wait for in-flight appliers and manifest exceptions
-      safeIterate(globalCompleters, thrown, completer -> {
-        while (true) {
-          try {
+
+        // all work is done or distributed; wait for in-flight appliers and manifest exceptions
+        safeIterate(globalCompleters, thrown, completer -> {
+          while (true) {
             // while waiting for completion, check for cancellation, except when some applier returned false and the wrapper was canceled because of that
             if (wrapper.isCanceled() && !(thrown.get() instanceof ApplierCompleter.ComputationAbortedException)) {
               wrapper.checkCanceled();
             }
             // optimization
-            if (completer.isDone()) {
+            if (completer.isDone() || completer.quietlyJoin(1, TimeUnit.MILLISECONDS)) {
               completer.get();
+              break;
             }
-            else {
-              Ref<Throwable> throwableRef = new Ref<>(null);
-              ThreadContext.resetThreadContext(() -> {
-                try {
-                  completer.get(1, TimeUnit.MILLISECONDS);
-                }
-                catch (Throwable e) {
-                  throwableRef.set(e);
-                }
-                return null;
-              });
-              Throwable throwable = throwableRef.get();
-              if (throwable != null) {
-                throw throwable;
-              }
-            }
-            break;
           }
-          catch (TimeoutException ignored) {
-          }
-        }
-      });
+        });
+      }
 
       if (thrown.get() != null) {
         throw thrown.get();
@@ -168,13 +145,11 @@ public final class JobLauncherImpl extends JobLauncher {
       // failFastOnAcquireReadAction==true and one of the processors called runReadAction() during the pending write action
       throw e;
     }
-    catch (ProcessCanceledException e) {
+    catch (ProcessCanceledException _) {
       // We should distinguish between genuine 'progress' cancellation and optimization when
       // task1.processor returns false and the task cancels the indicator then task2 calls checkCancel() and get here.
       // The former requires to re-throw PCE, the latter should just return false.
-      if (progress != null) {
-        progress.checkCanceled();
-      }
+      progress.checkCanceled();
       ProgressManager.checkCanceled();
       Throwable savedException = thrown.get();
       if (savedException != null) {
@@ -221,46 +196,34 @@ public final class JobLauncherImpl extends JobLauncher {
         thrown.set(e);
       }
       catch (Throwable e) {
-        e = ApplierCompleter.accumulateException(thrown, e);
-        ApplierCompleter.rethrowUncheckedRaw(e);
+        ApplierCompleter.rethrowUncheckedRaw(ApplierCompleter.accumulateException(thrown, e));
       }
     }
   }
   // if {@code things} are too few to be processed in the real pool, returns TRUE if processed successfully, FALSE if not
   // returns null if things need to be processed in the real pool
   private static <T> Boolean processImmediatelyIfTooFew(@NotNull List<? extends T> things,
-                                                        @NotNull ProgressIndicator progress,
-                                                        boolean runInReadAction,
-                                                        @NotNull Processor<? super T> thingProcessor) {
-    if (things.isEmpty()) return true;
-
-    if (things.size() == 1 ||
+                                                        boolean isWriteAccessAllowed,
+                                                        @NotNull Processor<? super T> thingProcessor,
+                                                        @NotNull Runnable runWhileForking) {
+    if (things.size() <= 1 ||
         JobSchedulerImpl.getJobPoolParallelism() <= CORES_FORK_THRESHOLD ||
-        runInReadAction && ApplicationManager.getApplication().isWriteAccessAllowed()
-      ) {
-      AtomicBoolean result = new AtomicBoolean(true);
-      Runnable runnable = () -> ProgressManager.getInstance().executeProcessUnderProgress(() -> {
-        for (int i = 0; i < things.size(); i++) {
-          T thing = things.get(i);
-          if (!thingProcessor.process(thing)) {
-            result.set(false);
-            break;
-          }
+        isWriteAccessAllowed) {
+      runWhileForking.run();
+      boolean result = true;
+      //noinspection ForLoopReplaceableByForEach
+      for (int i = 0; i < things.size(); i++) {
+        T thing = things.get(i);
+        if (!thingProcessor.process(thing)) {
+          result = false;
+          break;
         }
-      }, progress);
-      if (runInReadAction) {
-        //noinspection UseRunReadActionBlockingShortcut
-        ApplicationManager.getApplication().runReadAction(runnable);
       }
-      else {
-        runnable.run();
-      }
-      return result.get();
+      return result;
     }
     return null;
   }
 
-  @Override
   public @NotNull Job submitToJobThread(@NotNull Runnable action, @Nullable Consumer<? super Future<?>> onDoneCallback) {
     VoidForkJoinTask task = new VoidForkJoinTask(action, myForkJoinPool, onDoneCallback);
     task.submit();
@@ -292,8 +255,8 @@ public final class JobLauncherImpl extends JobLauncher {
           myStatus = Status.EXECUTED;
         }
         catch (Throwable throwable) {
-          myStatus = Status.CANCELED;
           completeExceptionally(throwable);
+          myStatus = Status.CANCELED;
         }
         finally {
           if (myOnDoneCallback != null) {
@@ -305,7 +268,12 @@ public final class JobLauncherImpl extends JobLauncher {
 
       @Override
       public String toString() {
-        return "ForkJoinTask: "+state();
+        State state = state();
+        return "ForkJoinTask: " + state + ":"+switch (state) {
+          case RUNNING, SUCCESS -> "";
+          case FAILED -> getException();
+          case CANCELLED -> getForkJoinTaskTag();
+        };
       }
     };
 
@@ -406,12 +374,17 @@ public final class JobLauncherImpl extends JobLauncher {
       @Override
       public Boolean call() {
         boolean[] result = new boolean[1];
+        return ThreadContext.installThreadContext(myContext, true, () -> {
         ProgressManager.getInstance().executeProcessUnderProgress(() -> {
+          T element = myFirstTask;
           try {
-            T element = myFirstTask;
             while (true) {
-              if (element == null) element = failedToProcess.poll();
-              if (element == null) element = things.take();
+              if (element == null) {
+                element = failedToProcess.poll();
+              }
+              if (element == null) {
+                element = things.take();
+              }
 
               if (element == tombStone) {
                 things.put(tombStone); // return just popped tombStone to the 'things' queue for everybody else to see it
@@ -419,25 +392,8 @@ public final class JobLauncherImpl extends JobLauncher {
                 result[0] = true;
                 break;
               }
-              try {
-                T finalElement = element;
-                boolean shouldBreak = ThreadContext.installThreadContext(myContext, true, () -> {
-                  ProgressManager.checkCanceled();
-                  if (!thingProcessor.process(finalElement)) {
-                    return true;
-                  }
-                  return false;
-                });
-                if (shouldBreak) {
-                  break;
-                }
-              }
-              catch (RuntimeException|Error e) {
-                if (logAllExceptions) {
-                  LOG.info("Failed to process " + element + ". Add too failed query.", e);
-                }
-                failedToProcess.add(element);
-                throw e;
+              if (!thingProcessor.process(element)) {
+                break;
               }
               element = null;
             }
@@ -445,9 +401,19 @@ public final class JobLauncherImpl extends JobLauncher {
           catch (InterruptedException e) {
             throw new RuntimeException(e);
           }
+          catch (RuntimeException|Error e) {
+            if (logAllExceptions && !Logger.shouldRethrow(e)) {
+              LOG.info("Failed to process " + element + ". Add too failed query.", e);
+            }
+            if (element != null) {
+              failedToProcess.add(element);
+            }
+            throw e;
+          }
         }, progress);
         return result[0];
-      }
+      });
+    }
 
       @Override
       public @NonNls String toString() {
@@ -455,16 +421,16 @@ public final class JobLauncherImpl extends JobLauncher {
       }
     }
     progress.checkCanceled(); // do not start up expensive threads if there's no need to
-    int size = things.size();
     boolean isQueueBounded = things.contains(tombStone);
+    int remainingSize = things.size() + failedToProcess.size() - (isQueueBounded ? 1 : 0);
     // start up (CPU cores) parallel tasks but no more than (queue size)
-    int n = Math.max(1, Math.min(isQueueBounded ? size-1 : Integer.MAX_VALUE, JobSchedulerImpl.getJobPoolParallelism() - 1));
+    int n = Math.clamp(isQueueBounded ? remainingSize : Integer.MAX_VALUE, 1, Math.max(1, myForkJoinPool.getParallelism() - 1));
     List<ForkJoinTask<Boolean>> tasks = new ArrayList<>(n-1);
     List<T> firstElements = new ArrayList<>(n);
     things.drainTo(firstElements, n);
     // if the tombstone was removed by this batch operation, return it to the queue to give a chance to other tasks to stop themselves
     if (ContainerUtil.getLastItem(firstElements) == tombStone) {
-      firstElements.remove(firstElements.size() - 1);
+      firstElements.removeLast();
       try {
         things.put(tombStone);
       }
@@ -499,14 +465,4 @@ public final class JobLauncherImpl extends JobLauncher {
     }
     return result;
   }
-
-  @Override
-  @ApiStatus.Internal
-  public <T> boolean processConcurrentlyAsync(@NotNull ProgressIndicator progress,
-                                              @NotNull List<? extends T> items,
-                                              @NotNull Processor<? super T> thingProcessor,
-                                              @NotNull Runnable runnable) throws ProcessCanceledException {
-    return invokeConcurrentlyUnderProgressAsync(items, progress, true, true, thingProcessor, runnable);
-  }
 }
-

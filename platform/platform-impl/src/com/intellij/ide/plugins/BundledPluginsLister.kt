@@ -1,6 +1,7 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.ide.plugins
 
+import com.google.common.collect.Comparators
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.ModernApplicationStarter
@@ -8,6 +9,7 @@ import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.fileTypes.PlainTextLikeFileType
+import com.intellij.platform.productMode.ProductMode
 import com.intellij.util.io.jackson.array
 import com.intellij.util.io.jackson.obj
 import com.intellij.util.io.jackson.writeStringField
@@ -19,7 +21,6 @@ import tools.jackson.core.JsonGenerator
 import tools.jackson.core.ObjectWriteContext
 import tools.jackson.core.json.JsonFactory
 import java.io.OutputStreamWriter
-import java.io.Writer
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -31,7 +32,7 @@ internal class BundledPluginsLister : ModernApplicationStarter() {
   // not premain because FileTypeManager is used to report extensions
   override suspend fun start(args: List<String>) {
     try {
-      val out: Writer = if (args.size == 2) {
+      val out = if (args.size == 2) {
         val outFile = Path.of(args[1])
         withContext(Dispatchers.IO) {
           Files.createDirectories(outFile.parent)
@@ -42,16 +43,19 @@ internal class BundledPluginsLister : ModernApplicationStarter() {
         // noinspection UseOfSystemOutOrSystemErr
         OutputStreamWriter(System.out, StandardCharsets.UTF_8)
       }
+
       JsonFactory().createGenerator(ObjectWriteContext.empty(), out).use { writer ->
-        val plugins = PluginManagerCore.getPluginSet().enabledPlugins
+        val pluginSet = PluginManagerCore.getPluginSet()
+        val plugins = pluginSet.enabledPlugins
+        val skipExcludedModules = CurrentProductMode.value != ProductMode.MONOLITH
         val layout = HashSet<LayoutItemDescriptor>()
         val pluginIds = ArrayList<String>(plugins.size)
-        val homeDir = Path.of(PathManager.getHomePath())
+        val homeDir = PathManager.getHomeDir()
 
         for (plugin in plugins) {
           var jarFiles = plugin.ownClassPath
           if (jarFiles == null && plugin.pluginId == PluginManagerCore.CORE_ID) {
-            jarFiles = (plugin.classLoader as? UrlClassLoader)?.files
+            jarFiles = (@Suppress("DEPRECATION") plugin.classLoader as? UrlClassLoader)?.files
           }
 
           layout.add(LayoutItemDescriptor(
@@ -65,6 +69,10 @@ internal class BundledPluginsLister : ModernApplicationStarter() {
             LayoutItemDescriptor(name = it.idString, kind = ProductInfoLayoutItemKind.pluginAlias, classPath = emptyList())
           }
           for (module in plugin.contentModules) {
+            if (skipExcludedModules && !pluginSet.isModuleEnabled(module.moduleId)) {
+              continue
+            }
+
             layout.add(LayoutItemDescriptor(
               name = module.moduleId.name,
               kind = if (plugin.pluginId == PluginManagerCore.CORE_ID) {
@@ -99,12 +107,15 @@ internal class BundledPluginsLister : ModernApplicationStarter() {
 
         writer.obj {
           writer.array("layout") {
-            for (module in layout.sortedBy { it.name }) {
+            val order = compareBy(LayoutItemDescriptor::name)
+              .thenBy(LayoutItemDescriptor::kind)
+              .thenBy(Comparators.lexicographical(Comparator.naturalOrder()), LayoutItemDescriptor::classPath)
+            for ((name, kind, classPath) in layout.sortedWith(order)) {
               writer.obj {
-                writer.writeStringField("name", module.name)
-                writer.writeStringField("kind", module.kind.name)
-                if (module.classPath.isNotEmpty()) {
-                  writeList(writer, "classPath", module.classPath)
+                writer.writeStringField("name", name)
+                writer.writeStringField("kind", kind.name)
+                if (classPath.isNotEmpty()) {
+                  writeList(writer, "classPath", classPath)
                 }
               }
             }
@@ -118,37 +129,37 @@ internal class BundledPluginsLister : ModernApplicationStarter() {
       try {
         logger<BundledPluginsLister>().error("Bundled plugins list builder failed", e)
       }
-      catch (ignored: Throwable) { }
+      catch (_: Throwable) { }
       e.printStackTrace(System.err)
       closeApplication(1)
     }
 
     closeApplication(0)
   }
-}
 
-private suspend fun closeApplication(exitCode: Int) {
-  withContext(Dispatchers.EDT) {
-    ApplicationManager.getApplication().exit(false, true, false, exitCode)
+  private suspend fun closeApplication(exitCode: Int) {
+    withContext(Dispatchers.EDT) {
+      ApplicationManager.getApplication().exit(false, true, false, exitCode)
+    }
   }
-}
 
-private data class LayoutItemDescriptor(
-  @JvmField val name: String,
-  @JvmField val kind: ProductInfoLayoutItemKind,
-  @JvmField val classPath: List<String>,
-)
+  private data class LayoutItemDescriptor(
+    @JvmField val name: String,
+    @JvmField val kind: ProductInfoLayoutItemKind,
+    @JvmField val classPath: List<String>,
+  )
 
-@Suppress("EnumEntryName")
-@Serializable
-private enum class ProductInfoLayoutItemKind {
-  plugin, pluginAlias, productModuleV2, moduleV2
-}
+  @Suppress("EnumEntryName")
+  @Serializable
+  private enum class ProductInfoLayoutItemKind {
+    plugin, pluginAlias, productModuleV2, moduleV2
+  }
 
-private fun writeList(writer: JsonGenerator, name: String, elements: Collection<String>) {
-  writer.array(name) {
-    for (module in elements) {
-      writer.writeString(module)
+  private fun writeList(writer: JsonGenerator, name: String, elements: Collection<String>) {
+    writer.array(name) {
+      for (module in elements) {
+        writer.writeString(module)
+      }
     }
   }
 }

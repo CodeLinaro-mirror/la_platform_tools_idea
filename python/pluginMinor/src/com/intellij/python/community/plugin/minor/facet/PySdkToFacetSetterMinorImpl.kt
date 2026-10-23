@@ -5,10 +5,13 @@ import com.intellij.facet.FacetManager
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.util.concurrency.annotations.RequiresWriteLock
+import com.jetbrains.python.PyInternalExecApi
 import com.jetbrains.python.module.PySdkToFacetSetter
 
+@OptIn(PyInternalExecApi::class)
 internal class PySdkToFacetSetterMinorImpl : PySdkToFacetSetter {
-  @RequiresWriteLock
+  @PyInternalExecApi
+  @RequiresWriteLock(generateAssertion = false /* IJPL-115548 */)
   override fun setPythonSdkToFacet(module: Module, sdk: Sdk?) {
     setSdkToFacet(sdk, module)
   }

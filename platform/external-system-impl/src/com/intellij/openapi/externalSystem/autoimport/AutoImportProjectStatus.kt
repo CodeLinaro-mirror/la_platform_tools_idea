@@ -43,7 +43,7 @@ class AutoImportProjectStatus(private val debugName: String? = null) {
     return update(Break(stamp))
   }
 
-  fun markDirty(stamp: Stamp, type: ExternalSystemModificationType = INTERNAL): ProjectState {
+  fun markDirty(stamp: Stamp, type: ExternalSystemModificationType = EXTERNAL): ProjectState {
     return update(Invalidate(stamp, type))
   }
 
@@ -112,6 +112,11 @@ class AutoImportProjectStatus(private val debugName: String? = null) {
     }
   }
 
+  override fun toString(): String {
+    val debugPrefix = if (debugName == null) "" else "$debugName: "
+    return debugPrefix + state.get().toString()
+  }
+
   private fun ProjectEvent.withFuture(state: ProjectState, action: (Stamp) -> ProjectState): ProjectState {
     return action(maxOf(stamp, state.stamp))
   }
@@ -150,15 +155,10 @@ class AutoImportProjectStatus(private val debugName: String? = null) {
     abstract val stamp: Stamp
 
     data class Synchronize(override val stamp: Stamp) : ProjectEvent()
-    data class Invalidate(override val stamp: Stamp, val type: ExternalSystemModificationType) : ProjectEvent()
-    data class Modify(override val stamp: Stamp, val type: ExternalSystemModificationType) : ProjectEvent()
+    data class Invalidate(override val stamp: Stamp, val type: ExternalSystemModificationType = EXTERNAL) : ProjectEvent()
+    data class Modify(override val stamp: Stamp, val type: ExternalSystemModificationType = INTERNAL) : ProjectEvent()
     data class Revert(override val stamp: Stamp) : ProjectEvent()
     data class Break(override val stamp: Stamp) : ProjectEvent()
-
-    companion object {
-      fun externalModify(stamp: Stamp) = Modify(stamp, EXTERNAL)
-      fun externalInvalidate(stamp: Stamp) = Invalidate(stamp, EXTERNAL)
-    }
   }
 
   sealed class ProjectState {
@@ -175,6 +175,23 @@ class AutoImportProjectStatus(private val debugName: String? = null) {
 
     override fun compareTo(other: Stamp): Int {
       return stamp.compareTo(other.stamp)
+    }
+
+    override fun equals(other: Any?): Boolean {
+      if (this === other) return true
+      if (other !is Stamp) return false
+
+      if (stamp != other.stamp) return false
+
+      return true
+    }
+
+    override fun hashCode(): Int {
+      return stamp
+    }
+
+    override fun toString(): String {
+      return "Stamp($stamp)"
     }
 
     companion object {

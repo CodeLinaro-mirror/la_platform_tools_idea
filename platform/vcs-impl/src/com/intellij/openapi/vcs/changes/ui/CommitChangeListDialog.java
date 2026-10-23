@@ -71,7 +71,6 @@ import com.intellij.vcs.commit.SingleChangeListCommitWorkflow;
 import com.intellij.vcs.commit.SingleChangeListCommitWorkflowHandler;
 import com.intellij.vcs.commit.SingleChangeListCommitWorkflowUi;
 import kotlin.sequences.SequencesKt;
-import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
@@ -84,6 +83,7 @@ import javax.swing.JPanel;
 import java.awt.Container;
 import java.awt.Dimension;
 import java.awt.Rectangle;
+import java.awt.Window;
 import java.awt.event.ActionEvent;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
@@ -91,6 +91,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 import static com.intellij.openapi.util.text.StringUtil.escapeXmlEntities;
@@ -167,6 +168,8 @@ public abstract class CommitChangeListDialog extends DialogWrapper implements Si
 
   /**
    * @deprecated Prefer using {@link #commitWithExecutor} or {@link #commitVcsChanges}.
+   *
+   * But still used by https://plugins.jetbrains.com/plugin/9238-jetforcer--the-smartest-force-com-ide
    */
   @Deprecated
   public static boolean commitChanges(@NotNull Project project,
@@ -175,7 +178,7 @@ public abstract class CommitChangeListDialog extends DialogWrapper implements Si
                                       @Nullable CommitExecutor executor,
                                       @Nullable String comment) {
     if (executor != null) {
-      return commitWithExecutor(project, included, initialChangeList, executor, comment, null);
+      return commitWithExecutor(project, included, initialChangeList, executor, comment, true, null);
     }
     else {
       return commitVcsChanges(project, included, initialChangeList, comment, null);
@@ -202,6 +205,7 @@ public abstract class CommitChangeListDialog extends DialogWrapper implements Si
                                            @Nullable LocalChangeList initialChangeList,
                                            @NotNull CommitExecutor executor,
                                            @Nullable String comment,
+                                           @NotNull Boolean saveCommentOnCancel,
                                            @Nullable CommitResultHandler customResultHandler) {
     boolean showVcsCommit = false;
     Set<AbstractVcs> affectedVcses = getVcsesForLocalChanges(project, showVcsCommit);
@@ -212,7 +216,7 @@ public abstract class CommitChangeListDialog extends DialogWrapper implements Si
 
     List<CommitExecutor> executors = singletonList(executor);
     return showCommitDialog(project, affectedVcses, included, initialChangeList, executors, showVcsCommit,
-                            comment, customResultHandler);
+                            comment, saveCommentOnCancel, customResultHandler);
   }
 
   public static boolean commitVcsChanges(@NotNull Project project,
@@ -229,7 +233,7 @@ public abstract class CommitChangeListDialog extends DialogWrapper implements Si
 
     List<CommitExecutor> executors = getCommitExecutors(project, affectedVcses);
     return showCommitDialog(project, affectedVcses, included, initialChangeList, executors, showVcsCommit,
-                            comment, customResultHandler);
+                            comment, true, customResultHandler);
   }
 
   /**
@@ -255,6 +259,7 @@ public abstract class CommitChangeListDialog extends DialogWrapper implements Si
                                          @NotNull List<? extends CommitExecutor> executors,
                                          boolean showVcsCommit,
                                          @Nullable String comment,
+                                         @NotNull Boolean saveCommentOnCancel,
                                          @Nullable CommitResultHandler customResultHandler) {
     List<Change> changes = ContainerUtil.filterIsInstance(included, Change.class);
     for (BaseCheckinHandlerFactory factory : getCommitHandlerFactories(affectedVcses)) {
@@ -268,7 +273,7 @@ public abstract class CommitChangeListDialog extends DialogWrapper implements Si
                                                                                  executors, showVcsCommit, customResultHandler);
     CommitChangeListDialog dialog = new DefaultCommitChangeListDialog(workflow);
 
-    return new SingleChangeListCommitWorkflowHandler(workflow, dialog, comment, included).activate();
+    return new SingleChangeListCommitWorkflowHandler(workflow, dialog, comment, included, saveCommentOnCancel).activate();
   }
 
   public static void showNothingToCommitMessage(@NotNull Project project) {
@@ -346,7 +351,7 @@ public abstract class CommitChangeListDialog extends DialogWrapper implements Si
     addInclusionListener(() -> updateButtons(), this);
     getBrowser().getViewer().addSelectionListener(() -> {
       refreshDetails(getBrowser().getViewer().isModelUpdateInProgress(), true);
-    });
+    }, getDisposable());
 
     initCommitActions(myWorkflow.getCommitExecutors());
 
@@ -385,13 +390,16 @@ public abstract class CommitChangeListDialog extends DialogWrapper implements Si
       @Override
       public void on(int hideableHeight) {
         if (hideableHeight == 0) return;
-        getWindow().addComponentListener(new ComponentAdapter() {
+        Window window = getWindow();
+        ComponentAdapter resizeListener = new ComponentAdapter() {
           @Override
           public void componentResized(ComponentEvent e) {
-            e.getComponent().removeComponentListener(this);
+            window.removeComponentListener(this);
             refreshDetails(false, true);
           }
-        });
+        };
+        window.addComponentListener(resizeListener);
+        Disposer.register(getDisposable(), () -> window.removeComponentListener(resizeListener));
         mySplitter.skipNextLayout();
         myDetailsSplitter.getComponent().skipNextLayout();
         Dimension dialogSize = getSize();
@@ -469,7 +477,12 @@ public abstract class CommitChangeListDialog extends DialogWrapper implements Si
   }
 
   private static @Nullable String getHelpId(@NotNull List<? extends CommitExecutor> executors) {
-    return StreamEx.of(executors).select(HelpIdProvider.class).map(HelpIdProvider::getHelpId).nonNull().findFirst().orElse(null);
+    return executors.stream()
+      .filter(HelpIdProvider.class::isInstance)
+      .map(HelpIdProvider.class::cast)
+      .map(HelpIdProvider::getHelpId)
+      .filter(Objects::nonNull)
+      .findFirst().orElse(null);
   }
 
   private void showDetailsIfSaved() {

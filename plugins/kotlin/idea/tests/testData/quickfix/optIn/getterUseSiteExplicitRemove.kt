@@ -1,5 +1,5 @@
 // "Remove annotation" "true"
-// K2_ERROR: Opt-in requirement marker annotation cannot be used on getter.
+// K2_ERROR: OPT_IN_MARKER_ON_WRONG_TARGET
 
 @RequiresOptIn
 annotation class SomeOptInAnnotation
@@ -7,5 +7,4 @@ annotation class SomeOptInAnnotation
 @get:SomeOptInAnnotation<caret>
 val someProperty: Int = 5
 
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.inspections.RemoveAnnotationFix
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.inspections.RemoveAnnotationFix

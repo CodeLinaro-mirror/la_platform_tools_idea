@@ -1,8 +1,15 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 load("//build:compiler-options.bzl", "create_kotlinc_options")
 
-### auto-generated section `build intellij.platform.buildScripts` start
+exports_files(
+    [
+        "tools/mac/scripts/makedmg.sh",
+        "tools/mac/scripts/makedmg.py",
+    ],
+    visibility = ["//visibility:public"],
+)
 
+### auto-generated section `build intellij.platform.buildScripts` start
 create_kotlinc_options(
     name = "custom_build-scripts",
     opt_in = [
@@ -27,6 +34,7 @@ jvm_library(
     visibility = ["//visibility:public"],
     exports = [
         # do not sort,
+        "//platform/build-scripts/plugin-preparation",
         "//platform/build-scripts/api",
         "//platform/build-scripts/product-dsl",
     ],
@@ -40,8 +48,7 @@ jvm_library(
         "//libraries/jackson/dataformat-yaml:libraries-jackson-dataformat-yaml",
         "//libraries/jackson/datatype-joda:libraries-jackson-datatype-joda",
         "//libraries/kotlinx/coroutines/slf4j",
-        "@lib//:jaxb-api",
-        "@lib//:jaxb-runtime",
+        "//libraries/jaxb",
         "//libraries/javax/activation",
         "//libraries/kotlin/reflect",
         "//libraries/jackson3/module-kotlin:libraries-jackson3-module-kotlin",
@@ -51,7 +58,9 @@ jvm_library(
     ],
     deps = [
         # do not sort,
+        "//platform/build-scripts/plugin-preparation",
         "//platform/build-scripts/downloader",
+        "//platform/build-scripts/dev-launch",
         "//libraries/commons/compress",
         "//platform/util",
         "//platform/bazel-runfiles",
@@ -68,6 +77,7 @@ jvm_library(
         "@community//build:build-javac-rt",
         "//jps/model-serialization",
         "//platform/runtime/repository",
+        "//platform/build-scripts/runtime-module-repository",
         "//platform/testFramework/core",
         "//platform/util-class-loader:util-classLoader",
         "//libraries/jackson3/jr-objects:libraries-jackson3-jr-objects",
@@ -78,13 +88,13 @@ jvm_library(
         "//build/deps:dependencies",
         "//platform/util/jdom",
         "//libraries/jackson3/databind",
-        "@lib//:json-schema-validator",
+        "//libraries/json-schema-validator",
+        "//libraries/kaml",
         "//libraries/kotlinx/serialization/json",
         "//libraries/kotlinx/serialization/core",
         "//platform/util/zip",
         "//platform/runtime/product",
-        "@lib//:okhttp",
-        "@lib//:zstd-jni",
+        "//libraries/zstd-jni",
         "//platform/util/rt-java8",
         "//libraries/kotlinx/collections-immutable:libraries-kotlinx-collections-immutable",
         "//libraries/kotlinx/coroutines/core",
@@ -116,17 +126,19 @@ jvm_library(
         "//platform/util/base/multiplatform",
         "//platform/util/base",
         "@community//build:zip",
+        "//platform/build-scripts/bazel-rules/searchable-options-injector",
         "@lib//:com-jetbrains-fus-reporting-fus-api",
-        "@lib//:com-jetbrains-fus-reporting-ap-validation-all",
+        "//libraries/fus-ap-validation",
+        "@lib//:jetbrains-fus-reporting-api-jvm",
         "@lib//:platform-build_scripts-netty",
         "@lib//:platform-build_scripts-jetbrains-intellij-deps-coverage-reporter",
-        "//libraries/ktor/client",
         "//platform/pluginSystem/parser/impl",
         "//libraries/maven-resolver-provider",
         "//platform/build-scripts/product-dsl/plugin-graph",
         "//platform/build-scripts/api",
         "//platform/build-scripts/product-dsl",
         "//platform/build-scripts/licenses",
+        "//platform/distribution-content",
     ],
 )
 
@@ -142,6 +154,8 @@ jvm_library(
     visibility = ["//visibility:public"],
     exports = [
         # do not sort,
+        "//platform/build-scripts/plugin-preparation",
+        "//platform/build-scripts/plugin-preparation:plugin-preparation_test_lib",
         "//platform/build-scripts/api",
         "//platform/build-scripts/api:api_test_lib",
         "//platform/build-scripts/product-dsl",
@@ -150,9 +164,12 @@ jvm_library(
     runtime_deps = [
         # do not sort,
         ":build-scripts",
-        "@lib//:junit4",
+        "//platform/build-scripts/plugin-preparation:plugin-preparation_test_lib",
+        "//libraries/junit4",
+        "//libraries/junit4:junit4_test_lib",
         "//libraries/commons/cli:cli_test_lib",
         "//platform/build-scripts/downloader:downloader_test_lib",
+        "//platform/build-scripts/dev-launch:dev-launch_test_lib",
         "//libraries/commons/compress:compress_test_lib",
         "//platform/util:util_test_lib",
         "//platform/bazel-runfiles:bazel-runfiles_test_lib",
@@ -169,6 +186,7 @@ jvm_library(
         "@community//build:build-javac-rt_test_lib",
         "//jps/model-serialization:model-serialization_test_lib",
         "//platform/runtime/repository:repository_test_lib",
+        "//platform/build-scripts/runtime-module-repository:runtime-module-repository_test_lib",
         "//platform/testFramework/core:core_test_lib",
         "//platform/util-class-loader:util-classLoader_test_lib",
         "//libraries/jackson3/jr-objects:libraries-jackson3-jr-objects_test_lib",
@@ -183,10 +201,13 @@ jvm_library(
         "//libraries/jackson/databind:databind_test_lib",
         "//libraries/jackson/dataformat-yaml:libraries-jackson-dataformat-yaml_test_lib",
         "//libraries/jackson3/databind:databind_test_lib",
+        "//libraries/json-schema-validator:json-schema-validator_test_lib",
+        "//libraries/kaml:kaml_test_lib",
         "//libraries/kotlinx/serialization/json:json_test_lib",
         "//libraries/kotlinx/serialization/core:core_test_lib",
         "//platform/util/zip:zip_test_lib",
         "//platform/runtime/product:product_test_lib",
+        "//libraries/zstd-jni:zstd-jni_test_lib",
         "//platform/util/rt-java8:rt-java8_test_lib",
         "//libraries/kotlinx/collections-immutable:libraries-kotlinx-collections-immutable_test_lib",
         "//libraries/kotlinx/coroutines/core:core_test_lib",
@@ -197,6 +218,7 @@ jvm_library(
         "//libraries/jackson/datatype-joda:libraries-jackson-datatype-joda_test_lib",
         "//libraries/http-client:http-client_test_lib",
         "//libraries/kotlinx/coroutines/slf4j:slf4j_test_lib",
+        "//libraries/jaxb:jaxb_test_lib",
         "//libraries/javax/activation:activation_test_lib",
         "//libraries/teamcity/service-messages:libraries-teamcity-service-messages_test_lib",
         "//libraries/kotlin/reflect:reflect_test_lib",
@@ -220,7 +242,8 @@ jvm_library(
         "//platform/util/base/multiplatform:multiplatform_test_lib",
         "//platform/util/base:base_test_lib",
         "@community//build:zip_test_lib",
-        "//libraries/ktor/client:client_test_lib",
+        "//platform/build-scripts/bazel-rules/searchable-options-injector:searchable-options-injector_test_lib",
+        "//libraries/fus-ap-validation:fus-ap-validation_test_lib",
         "//platform/pluginSystem/parser/impl:impl_test_lib",
         "//libraries/maven-resolver-provider:maven-resolver-provider_test_lib",
         "//libraries/jackson/module-kotlin:libraries-jackson-module-kotlin_test_lib",
@@ -228,6 +251,7 @@ jvm_library(
         "//platform/build-scripts/api:api_test_lib",
         "//platform/build-scripts/product-dsl:product-dsl_test_lib",
         "//platform/build-scripts/licenses:licenses_test_lib",
+        "//platform/distribution-content:distribution-content_test_lib",
     ],
 )
 ### auto-generated section `build intellij.platform.buildScripts` end

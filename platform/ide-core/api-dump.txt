@@ -681,9 +681,7 @@ f:com.intellij.openapi.application.Experiments
 f:com.intellij.openapi.application.Experiments$Companion
 - f:getInstance():com.intellij.openapi.application.Experiments
 c:com.intellij.openapi.fileChooser.FileChooserDescriptor
-- java.lang.Cloneable
 - <init>(com.intellij.openapi.fileChooser.FileChooserDescriptor):V
-- f:clone():java.lang.Object
 - getDescription():java.lang.String
 - getIcon(com.intellij.openapi.vfs.VirtualFile):javax.swing.Icon
 - getRoots():java.util.List
@@ -695,6 +693,7 @@ c:com.intellij.openapi.fileChooser.FileChooserDescriptor
 - isEnvironmentRestricted():Z
 - F:isFileSelectable(com.intellij.openapi.vfs.VirtualFile):Z
 - isHideIgnored():Z
+- isLocalFileSystem():Z
 - isShowHiddenFiles():Z
 - setDescription(java.lang.String):V
 - setEnvironmentRestricted(Z):V
@@ -711,6 +710,8 @@ c:com.intellij.openapi.fileChooser.FileChooserDescriptor
 - withExtensionFilter(java.lang.String):com.intellij.openapi.fileChooser.FileChooserDescriptor
 - withFileFilter(com.intellij.openapi.util.Condition):com.intellij.openapi.fileChooser.FileChooserDescriptor
 - withHideIgnored(Z):com.intellij.openapi.fileChooser.FileChooserDescriptor
+- withLocalFileSystem():com.intellij.openapi.fileChooser.FileChooserDescriptor
+- withLocalFileSystem(Z):com.intellij.openapi.fileChooser.FileChooserDescriptor
 - withRoots(java.util.List):com.intellij.openapi.fileChooser.FileChooserDescriptor
 - withRoots(com.intellij.openapi.vfs.VirtualFile[]):com.intellij.openapi.fileChooser.FileChooserDescriptor
 - withShowFileSystemRoots(Z):com.intellij.openapi.fileChooser.FileChooserDescriptor
@@ -746,6 +747,7 @@ f:com.intellij.openapi.fileEditor.TextEditorLocation
 - getPosition():com.intellij.openapi.editor.LogicalPosition
 a:com.intellij.openapi.fileEditor.UniqueVFilePathBuilder
 - s:getInstance():com.intellij.openapi.fileEditor.UniqueVFilePathBuilder
+- a:getUniqueVirtualFilePathWithinFiles(com.intellij.openapi.project.Project,com.intellij.openapi.vfs.VirtualFile,java.util.Collection):java.lang.String
 com.intellij.openapi.fileTypes.FileTypeConsumer
 - sf:EXTENSION_DELIMITER:java.lang.String
 - a:consume(com.intellij.openapi.fileTypes.FileType):V
@@ -815,7 +817,9 @@ com.intellij.openapi.options.Configurable$TopComponentController
 - sf:EMPTY:com.intellij.openapi.options.Configurable$TopComponentController
 - a:setLeftComponent(java.awt.Component):V
 - a:showProgress(Z):V
+- showProgressIndicator(Z):V
 - a:showProject(Z):V
+- showResetAction(Z):V
 com.intellij.openapi.options.Configurable$TopComponentProvider
 - a:getCenterComponent(com.intellij.openapi.options.Configurable$TopComponentController):java.awt.Component
 - isAvailable():Z
@@ -825,12 +829,17 @@ com.intellij.openapi.options.Configurable$WithEpDependencies
 - a:getDependencies():java.util.Collection
 c:com.intellij.openapi.options.ConfigurableEP
 - com.intellij.openapi.extensions.PluginAware
+- beta:Z
+- newOptions:Z
+- promo:Z
+- promoIcon:java.lang.String
 - p:<init>():V
 - createConfigurable():com.intellij.openapi.options.UnnamedConfigurable
 - getDisplayName():java.lang.String
 a:com.intellij.openapi.options.ConfigurableProvider
 - <init>():V
 - canCreateConfigurable():Z
+- getConfigurableType():java.lang.Class
 com.intellij.openapi.options.ConfigurableWithId
 - com.intellij.openapi.options.Configurable
 - a:getId():java.lang.String
@@ -846,8 +855,6 @@ c:com.intellij.openapi.options.ConfigurationException
 - setQuickFix(java.lang.Runnable):V
 - withHtmlMessage():com.intellij.openapi.options.ConfigurationException
 com.intellij.openapi.options.NoAutomaticReset
-f:com.intellij.openapi.options.OptionsBundle
-- com.intellij.DynamicBundle
 com.intellij.openapi.options.SearchableConfigurable
 - com.intellij.openapi.options.ConfigurableWithId
 - enableSearch(java.lang.String):java.lang.Runnable
@@ -1122,11 +1129,37 @@ c:com.intellij.openapi.ui.popup.ListSeparator
 - <init>():V
 - <init>(java.lang.String):V
 - getText():java.lang.String
+e:com.intellij.openapi.ui.popup.PopupRelativePosition
+- java.lang.Enum
+- sf:BOTTOM:com.intellij.openapi.ui.popup.PopupRelativePosition
+- sf:LEFT:com.intellij.openapi.ui.popup.PopupRelativePosition
+- sf:RIGHT:com.intellij.openapi.ui.popup.PopupRelativePosition
+- sf:TOP:com.intellij.openapi.ui.popup.PopupRelativePosition
+- s:getEntries():kotlin.enums.EnumEntries
+- s:valueOf(java.lang.String):com.intellij.openapi.ui.popup.PopupRelativePosition
+- s:values():com.intellij.openapi.ui.popup.PopupRelativePosition[]
 com.intellij.openapi.ui.popup.PopupShowOptions
+- s:aboveComponentRightAligned(java.awt.Component):com.intellij.openapi.ui.popup.PopupShowOptions
+- s:atScreenLocation(java.awt.Component,I,I,Z):com.intellij.openapi.ui.popup.PopupShowOptions
+- s:belowComponent(java.awt.Component):com.intellij.openapi.ui.popup.PopupShowOptions
+- s:belowComponentRightAligned(java.awt.Component):com.intellij.openapi.ui.popup.PopupShowOptions
+- a:getPopupComponentGap():I
+- a:getScreenX():I
+- a:getScreenY():I
+- a:withComponentPoint(com.intellij.ui.awt.AnchoredPoint):com.intellij.openapi.ui.popup.PopupShowOptions
+- a:withDefaultPopupAnchor(com.intellij.ui.awt.AnchoredPoint$Anchor):com.intellij.openapi.ui.popup.PopupShowOptions
+- a:withDefaultPopupComponentUnscaledGap(I):com.intellij.openapi.ui.popup.PopupShowOptions
+- a:withForcedXY(Z):com.intellij.openapi.ui.popup.PopupShowOptions
 - a:withMinimumHeight(java.lang.Integer):com.intellij.openapi.ui.popup.PopupShowOptions
 - a:withPopupComponentUnscaledGap(java.lang.Integer):com.intellij.openapi.ui.popup.PopupShowOptions
+- a:withRelativePosition(com.intellij.openapi.ui.popup.PopupRelativePosition):com.intellij.openapi.ui.popup.PopupShowOptions
+- a:withScreenXY(I,I):com.intellij.openapi.ui.popup.PopupShowOptions
 f:com.intellij.openapi.ui.popup.PopupShowOptions$Companion
 - f:aboveComponent(java.awt.Component):com.intellij.openapi.ui.popup.PopupShowOptions
+- f:aboveComponentRightAligned(java.awt.Component):com.intellij.openapi.ui.popup.PopupShowOptions
+- f:atScreenLocation(java.awt.Component,I,I,Z):com.intellij.openapi.ui.popup.PopupShowOptions
+- f:belowComponent(java.awt.Component):com.intellij.openapi.ui.popup.PopupShowOptions
+- f:belowComponentRightAligned(java.awt.Component):com.intellij.openapi.ui.popup.PopupShowOptions
 com.intellij.openapi.util.Expirable
 - a:isExpired():Z
 com.intellij.openapi.util.ExpirableRunnable
@@ -1397,6 +1430,28 @@ c:com.intellij.ui.UserActivityWatcher
 - <init>():V
 - addUserActivityListener(com.intellij.ui.UserActivityListener):V
 - removeUserActivityListener(com.intellij.ui.UserActivityListener):V
+c:com.intellij.ui.components.panels.Wrapper
+- javax.swing.JPanel
+- com.intellij.openapi.ui.NullableComponent
+- <init>():V
+- <init>(java.awt.LayoutManager):V
+- <init>(java.awt.LayoutManager,javax.swing.JComponent):V
+- <init>(java.awt.LayoutManager,Z):V
+- <init>(javax.swing.JComponent):V
+- <init>(Z):V
+- getPreferredSize():java.awt.Dimension
+- getTargetComponent():javax.swing.JComponent
+- isNull():Z
+- requestFocus():V
+- f:requestFocus(Z):Z
+- requestFocusInWindow():Z
+- requestFocusInternal():V
+- setContent(javax.swing.JComponent):V
+- f:setHorizontalSizeReferent(javax.swing.JComponent):com.intellij.ui.components.panels.Wrapper
+- f:setVerticalSizeReferent(javax.swing.JComponent):com.intellij.ui.components.panels.Wrapper
+f:com.intellij.ui.components.panels.Wrapper$North
+- com.intellij.ui.components.panels.Wrapper
+- <init>(javax.swing.JComponent):V
 c:com.intellij.ui.content.AlertIcon
 - com.intellij.ui.RetrievableIcon
 - javax.swing.Icon

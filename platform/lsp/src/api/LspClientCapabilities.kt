@@ -23,6 +23,7 @@ import org.eclipse.lsp4j.CompletionListCapabilities
 import org.eclipse.lsp4j.DefinitionCapabilities
 import org.eclipse.lsp4j.DiagnosticCapabilities
 import org.eclipse.lsp4j.DiagnosticTag
+import org.eclipse.lsp4j.DiagnosticWorkspaceCapabilities
 import org.eclipse.lsp4j.DiagnosticsTagSupport
 import org.eclipse.lsp4j.DidChangeWatchedFilesCapabilities
 import org.eclipse.lsp4j.DocumentHighlightCapabilities
@@ -37,6 +38,7 @@ import org.eclipse.lsp4j.FoldingRangeSupportCapabilities
 import org.eclipse.lsp4j.FormattingCapabilities
 import org.eclipse.lsp4j.GeneralClientCapabilities
 import org.eclipse.lsp4j.HoverCapabilities
+import org.eclipse.lsp4j.ImplementationCapabilities
 import org.eclipse.lsp4j.InlayHintCapabilities
 import org.eclipse.lsp4j.InlayHintWorkspaceCapabilities
 import org.eclipse.lsp4j.MarkupKind
@@ -54,7 +56,6 @@ import org.eclipse.lsp4j.SemanticTokensClientCapabilitiesRequestsFull
 import org.eclipse.lsp4j.SemanticTokensWorkspaceCapabilities
 import org.eclipse.lsp4j.ShowDocumentCapabilities
 import org.eclipse.lsp4j.SignatureHelpCapabilities
-import org.eclipse.lsp4j.SignatureInformationCapabilities
 import org.eclipse.lsp4j.StaleRequestCapabilities
 import org.eclipse.lsp4j.SymbolCapabilities
 import org.eclipse.lsp4j.SymbolKindCapabilities
@@ -62,6 +63,7 @@ import org.eclipse.lsp4j.SymbolTag
 import org.eclipse.lsp4j.SymbolTagSupportCapabilities
 import org.eclipse.lsp4j.SynchronizationCapabilities
 import org.eclipse.lsp4j.TextDocumentClientCapabilities
+import org.eclipse.lsp4j.TextDocumentContentCapabilities
 import org.eclipse.lsp4j.TokenFormat
 import org.eclipse.lsp4j.TypeDefinitionCapabilities
 import org.eclipse.lsp4j.TypeHierarchyCapabilities
@@ -79,7 +81,7 @@ internal fun createClientCapabilities(lspCustomization: LspCustomization): Clien
     //configuration = true // keep false by default because [getWorkspaceConfiguration] returns null by default
     workspaceEdit = WorkspaceEditCapabilities().apply {
       documentChanges = true
-      resourceOperations = listOf(ResourceOperationKind.Create)
+      resourceOperations = listOf(ResourceOperationKind.Create, ResourceOperationKind.Rename, ResourceOperationKind.Delete)
       failureHandling = FailureHandlingKind.Abort
       normalizesLineEndings = true
     }
@@ -87,10 +89,15 @@ internal fun createClientCapabilities(lspCustomization: LspCustomization): Clien
       relativePatternSupport = true
     }
     executeCommand = ExecuteCommandCapabilities(false)
+    // static only: the client reads `workspace.textDocumentContent.schemes` from the initialize result
+    textDocumentContent = TextDocumentContentCapabilities(false)
     semanticTokens = SemanticTokensWorkspaceCapabilities().apply {
       refreshSupport = true
     }
     inlayHint = InlayHintWorkspaceCapabilities().apply {
+      refreshSupport = true
+    }
+    diagnostics = DiagnosticWorkspaceCapabilities().apply {
       refreshSupport = true
     }
     symbol = SymbolCapabilities(true).apply {
@@ -119,6 +126,9 @@ internal fun createClientCapabilities(lspCustomization: LspCustomization): Clien
     typeDefinition = TypeDefinitionCapabilities().apply {
       linkSupport = true
     }
+    implementation = ImplementationCapabilities().apply {
+      linkSupport = true
+    }
     completion = CompletionCapabilities().apply {
       completionItem = CompletionItemCapabilities().apply {
         documentationFormat = listOf(MarkupKind.MARKDOWN, MarkupKind.PLAINTEXT)
@@ -136,18 +146,20 @@ internal fun createClientCapabilities(lspCustomization: LspCustomization): Clien
       }
       completionList = CompletionListCapabilities().apply {
         itemDefaults = listOf("commitCharacters", "editRange", "insertTextFormat", "insertTextMode", "data")
+        applyKindSupport = true
       }
     }
     hover = HoverCapabilities().apply {
       contentFormat = listOf(MarkupKind.MARKDOWN, MarkupKind.PLAINTEXT)
     }
     signatureHelp = SignatureHelpCapabilities(true).apply {
-      signatureInformation = SignatureInformationCapabilities().apply {
+      signatureInformation = SignatureInformationCapabilitiesWithNoActiveParameterSupport().apply {
         documentationFormat = listOf(MarkupKind.MARKDOWN, MarkupKind.PLAINTEXT)
         parameterInformation = ParameterInformationCapabilities().apply {
           labelOffsetSupport = true
         }
         activeParameterSupport = true
+        noActiveParameterSupport = true
       }
     }
     documentSymbol = DocumentSymbolCapabilities().apply {
@@ -202,6 +214,8 @@ internal fun createClientCapabilities(lspCustomization: LspCustomization): Clien
                 CodeActionKind.Empty,
                 CodeActionKind.Source,
                 CodeActionKind.Refactor,
+                CodeActionKind.RefactorInline,
+                CodeActionKind.RefactorExtract,
             )
         )
       }

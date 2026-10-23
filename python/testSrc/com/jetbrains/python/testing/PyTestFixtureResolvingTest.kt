@@ -1,6 +1,10 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.testing
 
+import com.jetbrains.python.allure.Subsystems
+import com.jetbrains.python.allure.Layers
+import com.jetbrains.python.allure.Components
+import com.intellij.codeInsight.TargetElementUtil
 import com.intellij.codeInsight.navigation.actions.GotoTypeDeclarationAction
 import com.intellij.idea.TestFor
 import com.intellij.psi.PsiElement
@@ -11,6 +15,7 @@ import com.jetbrains.python.fixture.PythonCommonTestCase
 import com.jetbrains.python.fixtures.PyTestCase
 import com.jetbrains.python.psi.PyFile
 import com.jetbrains.python.psi.PyNamedParameter
+import com.jetbrains.python.psi.PyTargetExpression
 import com.jetbrains.python.psi.resolve.ImportedResolveResult
 import com.jetbrains.python.psi.types.TypeEvalContext
 import com.jetbrains.python.testing.pyTestFixtures.CONFTEST_PY
@@ -21,13 +26,15 @@ import com.jetbrains.python.testing.pyTestFixtures.reservedFixtureClassSet
 import com.jetbrains.python.testing.pyTestFixtures.reservedFixturesSet
 import junit.framework.TestCase
 
+@Subsystems.TestRunner
+@Components.Pytest
+@Layers.Functional
 class PyTestFixtureResolvingTest : PyTestCase() {
 
   companion object {
     const val TESTS_SUBDIR = "/testPytestFixtureResolving"
     const val STR_TYPE_NAME = "str"
     const val STR_TYPE_DICT = "dict[$STR_TYPE_NAME, $STR_TYPE_NAME]"
-    const val INT_STR_UNION = "int | str"
 
     const val SIMPLE_TEST_DIR = "/testSimple"
     const val SIMPLE_TEST_CONFTEST_FIXTURE = "/test_conftest_fixture.py"
@@ -361,7 +368,7 @@ class PyTestFixtureResolvingTest : PyTestCase() {
   }
 
   fun testNamedParameterTypes() {
-    assertCorrectType(PARAMETRIZED_DIR, TEST_PARAMETER_TYPES, INT_STR_UNION)
+    assertCorrectType(PARAMETRIZED_DIR, TEST_PARAMETER_TYPES, "Literal[9, \"foo\"]")
   }
 
   @TestFor(issues = ["PY-56268"])
@@ -385,5 +392,16 @@ class PyTestFixtureResolvingTest : PyTestCase() {
     assertNotNull("Go to Type Declaration should resolve the fixture parameter type", types)
     assertEquals(1, types!!.size)
     assertEquals((myFixture.file as PyFile).findTopLevelClass("A"), types.single())
+  }
+
+  @TestFor(issues = ["PY-66245"])
+  fun `test target element for attribute of fixture from conftest`() {
+    myFixture.configureByFile("/testAttributeOfFixtureFromConftest/test_attribute.py")
+    val target = TargetElementUtil.findTargetElement(myFixture.editor, TargetElementUtil.getInstance().allAccepted)
+    assertInstanceOf(target, PyTargetExpression::class.java)
+    target as PyTargetExpression
+    assertEquals("key", target.name)
+    assertEquals("TestData", target.containingClass?.name)
+    assertEquals(CONFTEST_PY, target.containingFile.name)
   }
 }

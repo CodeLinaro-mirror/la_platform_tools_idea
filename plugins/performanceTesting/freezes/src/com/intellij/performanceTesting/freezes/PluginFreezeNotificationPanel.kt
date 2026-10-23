@@ -10,13 +10,14 @@ import com.intellij.featureStatistics.fusCollectors.LifecycleUsageTriggerCollect
 import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.ide.plugins.PluginManagerCore.isVendorJetBrains
 import com.intellij.ide.setToolTipText
-import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.impl.ApplicationInfoImpl
+import com.intellij.openapi.application.readActionBlocking
 import com.intellij.openapi.diagnostic.UnhandledReportSinkService
 import com.intellij.openapi.diagnostic.UnhandledReportSinkService.PluginFreezeReportData
-import com.intellij.openapi.diagnostic.thisLogger
+import com.intellij.openapi.diagnostic.fileLogger
 import com.intellij.openapi.extensions.PluginDescriptor
+import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.fileEditor.FileEditor
 import com.intellij.openapi.project.IntelliJProjectUtil
 import com.intellij.openapi.project.Project
@@ -24,44 +25,46 @@ import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.util.text.HtmlChunk
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.performanceTesting.freezes.promo.FREEZE_COUNT_KEY
-import com.intellij.performanceTesting.freezes.promo.FREEZE_THRESHOLD
 import com.intellij.ui.EditorNotificationPanel
 import com.intellij.ui.EditorNotificationProvider
 import com.intellij.ui.EditorNotifications
 import com.intellij.util.application
-import java.nio.file.Path
 import java.util.Collections
 import java.util.function.Function
 import javax.swing.JComponent
 
+private val LOG = fileLogger()
+
 internal class PluginFreezeNotifier : FreezeNotifier {
-  override fun notifyFreeze(event: LogMessage, currentDumps: Collection<ThreadDump>, reportDir: Path, durationMs: Long) {
+  override suspend fun notifyFreeze(
+    event: LogMessage,
+    problematicPluginId: PluginId,
+    currentDumps: Collection<ThreadDump>,
+    durationMs: Long,
+  ) {
     val freezeWatcher = PluginFreezeWatcher.getInstance()
 
     val freezeReason = freezeWatcher.getFreezeReason()
-    if (freezeReason != null) return // still have previous reason shown to user
+    if (freezeReason != null) {
+      LOG.info("Still have previous reason shown to user, ignoring new one")
+      return
+    }
 
-    countFreezes()
-
-    for (dump in currentDumps) {
-      val reason = freezeWatcher.dumpedThreads(event, dump, durationMs)
-      if (reason != null) {
-        LifecycleUsageTriggerCollector.pluginFreezeDetected(reason.pluginId, durationMs, reason.reportToUser)
-        thisLogger().warn("Identified UI freeze in plugin ${reason.pluginId} for $durationMs ms")
-        if (reason.reportToUser) {
+    val reason = freezeWatcher.processFreeze(event, problematicPluginId, durationMs)
+    if (reason != null) {
+      if (reason.reportToUser) {
+        readActionBlocking {
           updateUi()
         }
-
-        UnhandledReportSinkService.getInstance()?.report(PluginFreezeReportData(
-          reason.pluginId,
-          reason.event.message,
-          durationMs,
-          reason.event.allAttachments,
-          currentDumps
-        ))
-        break
       }
+
+      UnhandledReportSinkService.getInstance()?.report(PluginFreezeReportData(
+        reason.pluginId,
+        reason.event.message,
+        durationMs,
+        reason.event.allAttachments,
+        currentDumps
+      ))
     }
   }
 
@@ -69,18 +72,6 @@ internal class PluginFreezeNotifier : FreezeNotifier {
     for (project in ProjectManager.getInstance().openProjects) {
       EditorNotifications.getInstance(project).updateAllNotifications()
     }
-  }
-
-  internal fun countFreezes() {
-    val props = PropertiesComponent.getInstance()
-    val currentCount = props.getInt(FREEZE_COUNT_KEY, 0)
-    if (currentCount > FREEZE_THRESHOLD) {
-      thisLogger().debug("Freeze count exceeded threshold, do not count further")
-      return
-    }
-
-    props.setValue(FREEZE_COUNT_KEY, currentCount + 1, 0)
-    thisLogger().debug("Freeze detected, incrementing freeze count for promo")
   }
 }
 

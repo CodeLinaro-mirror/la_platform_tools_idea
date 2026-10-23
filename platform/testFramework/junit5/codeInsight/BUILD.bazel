@@ -1,6 +1,24 @@
+load("@community//build:tests-options.bzl", "jps_test")
 load("@rules_jvm//:jvm.bzl", "jvm_library", "jvm_provided_library")
 
+jps_test(
+    name = "testFramework-junit5-codeInsight-tests_test",
+    timeout = "short",
+    tags = ["community-aggregator"],
+    runtime_deps = [":testFramework-junit5-codeInsight-tests_test_lib"],
+)
+### skip generation section `test intellij.platform.testFramework.junit5.codeInsight.tests`
+
 ### auto-generated section `build intellij.platform.testFramework.junit5.codeInsight` start
+jvm_provided_library(
+    name = "libraries_junit6_provided",
+    lib = "//libraries/junit6",
+)
+
+jvm_provided_library(
+    name = "libraries_junit6-jupiter_provided",
+    lib = "//libraries/junit6-jupiter",
+)
 
 jvm_provided_library(
     name = "libraries_junit4_provided",
@@ -26,15 +44,19 @@ jvm_library(
     deps = [
         # do not sort,
         "@lib//:kotlin-stdlib",
+        "//libraries/kotlinx/coroutines/core",
         "//platform/testFramework",
         "//platform/testFramework/junit5",
         "//platform/core-api:core",
+        "//platform/core-impl",
         "//platform/core-ui",
         "//platform/editor-ui-api:editor-ui",
         "//platform/lang-impl",
         "//platform/lang-api:lang",
         "//platform/projectModel-api:projectModel",
         "//platform/ide-core",
+        ":libraries_junit6_provided",
+        ":libraries_junit6-jupiter_provided",
         ":libraries_junit4_provided",
     ],
 )
@@ -51,9 +73,15 @@ jvm_library(
     runtime_deps = [
         # do not sort,
         ":codeInsight",
+        "//libraries/junit6",
+        "//libraries/junit6:junit6_test_lib",
+        "//libraries/junit6-jupiter",
+        "//libraries/junit6-jupiter:junit6-jupiter_test_lib",
+        "//libraries/kotlinx/coroutines/core:core_test_lib",
         "//platform/testFramework:testFramework_test_lib",
         "//platform/testFramework/junit5:junit5_test_lib",
         "//platform/core-api:core_test_lib",
+        "//platform/core-impl:core-impl_test_lib",
         "//platform/core-ui:core-ui_test_lib",
         "//platform/editor-ui-api:editor-ui_test_lib",
         "//platform/lang-impl:lang-impl_test_lib",
@@ -70,7 +98,62 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.testFramework.junit5.codeInsight.iml",
+        "resources/intellij.platform.testFramework.junit5.codeInsight.xml",
     ],
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.platform.testFramework.junit5.codeInsight` end
+
+### auto-generated section `build intellij.platform.testFramework.junit5.codeInsight.tests` start
+jvm_library(
+    name = "testFramework-junit5-codeInsight-tests",
+    srcs = glob(
+        [],
+        allow_empty = True,
+    ),
+    module_name = "intellij.platform.testFramework.junit5.codeInsight.tests",
+    visibility = ["//visibility:public"],
+)
+
+jvm_library(
+    name = "testFramework-junit5-codeInsight-tests_test_lib",
+    testonly = True,
+    srcs = glob(
+        [
+            "test/**/*.kt",
+            "test/**/*.java",
+            "test/**/*.form",
+        ],
+        allow_empty = True,
+    ),
+    associates = [
+        "//platform/testFramework/junit5/codeInsight",
+        "//platform/testFramework/junit5/codeInsight:codeInsight_test_lib",
+    ],
+    visibility = ["//visibility:public"],
+    runtime_deps = [":testFramework-junit5-codeInsight-tests"],
+    deps = [
+        # do not sort,
+        "@lib//:kotlin-stdlib",
+        "//libraries/junit6",
+        "//libraries/junit6:junit6_test_lib",
+        "//platform/core-api:core",
+        "//platform/core-api:core_test_lib",
+        "//platform/testFramework",
+        "//platform/testFramework:testFramework_test_lib",
+        "//platform/testFramework/junit5",
+        "//platform/testFramework/junit5:junit5_test_lib",
+        "//platform/util",
+        "//platform/util:util_test_lib",
+    ],
+)
+### auto-generated section `build intellij.platform.testFramework.junit5.codeInsight.tests` end
+
+### auto-generated section `iml intellij.platform.testFramework.junit5.codeInsight.tests` start
+exports_files(
+    [
+        "intellij.platform.testFramework.junit5.codeInsight.tests.iml",
+    ],
+    visibility = ["//visibility:public"],
+)
+### auto-generated section `iml intellij.platform.testFramework.junit5.codeInsight.tests` end

@@ -10,8 +10,6 @@ import com.intellij.platform.runtime.repository.RuntimeModuleLoadingRule
 import com.intellij.platform.runtime.repository.RuntimeModuleRepository
 import com.intellij.platform.runtime.repository.RuntimePluginHeader
 import com.intellij.util.containers.FList
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
 import org.assertj.core.api.SoftAssertions
 import org.jetbrains.intellij.build.BuildContext
 import org.jetbrains.intellij.build.ModuleOutputProvider
@@ -121,6 +119,9 @@ class RuntimeModuleRepositoryChecker private constructor(
           //todo: remove when PY-89477 is fixed (`intellij.pycharm.community` module contains two classes and some resources only, adding it to two classpaths shouldn't cause problems)
           if (pluginModule.moduleId.name == "intellij.pycharm.community") continue
 
+          //todo remove when IJPL-255167 is fixed (`intellij.libraries.kotlin.logging` is included in the core plugin and other plugins with different namespaces)
+          if (pluginModule.moduleId.name == "intellij.libraries.kotlin.logging") continue
+
           for (resourcePath in pluginModule.ownClasspath) {
             val corePluginModules = corePluginResourceRoots[resourcePath]
             if (corePluginModules != null) {
@@ -216,11 +217,9 @@ class RuntimeModuleRepositoryChecker private constructor(
         // so including its JAR to classpath should not cause problems
         continue
       }
-      
-      val resourceRoots = repository.getModuleResourcePaths(moduleId)/*.filterNot {
-        //ClassLoader used for classes in modules.jar ignores classes from irrelevant packages, so it's ok to have it in classpath
-        it.invariantSeparatorsPathString.endsWith("/lib/modules.jar")
-      }*/
+
+      val moduleHeader = repository.findModuleHeader(moduleId) ?: error("Module '$moduleId' is not found in the runtime module repository")
+      val resourceRoots = moduleHeader.ownClasspath
       val included = resourceRoots.find { it in productResourceRoots }
       if (included != null && moduleId !in allProductModules) {
         val includedModules = productResourceRoots.getValue(included)
@@ -271,14 +270,13 @@ class RuntimeModuleRepositoryChecker private constructor(
     val currentDistributionName = if (isEmbeddedVariant) productName else "'$productName Frontend'"
     for (mainModuleId in rawProductModules.bundledPluginMainModules) {
       if (isBundledPluginSkipped(mainModuleId)) continue
-      val mainModule = repository.resolveModule(mainModuleId)
-      if (mainModule.resolvedModule == null) {
-        val problematicModule = if (mainModule.failedDependencyPath.size == 1) "it" else "its dependency ${mainModule.failedDependencyPath.reversed().joinToString(" <- ") { it.displayName }}"
+      val mainModule = repository.findModuleHeader(mainModuleId)
+      if (mainModule == null) {
         softly.registerFailure(
           place = mainModuleId.displayName,
           errorMessage = buildString {
               append("Module '${mainModuleId.displayName}' is specified as the main module of a bundled plugin in product-modules.xml in '$productModulesModule',\n")
-              append("but $problematicModule cannot be found in the runtime module repository in the distribution of $currentDistributionName.\n")
+              append("but it cannot be found in the runtime module repository in the distribution of $currentDistributionName.\n")
               if (isEmbeddedVariant) {
                 append("It means that the corresponding plugin won't be loaded when '$productName Frontend' is started from the full\n")
                 append("installation of $productName\n")
@@ -291,10 +289,6 @@ class RuntimeModuleRepositoryChecker private constructor(
               }
               else {
                 append("If it should, make sure that all necessary modules are included in the distribution of $currentDistributionName.\n")
-              }
-              if (mainModule.failedDependencyPath.size > 1) {
-                append("If some dependencies in the chain ${mainModule.failedDependencyPath.reversed().joinToString(" <- ") { it.displayName }}\n")
-                append("are not actually needed, they can be removed from configuration of the corresponding JPS modules (*.iml) to fix this problem.\n")
               }
               append("Please refer to https://youtrack.jetbrains.com/articles/IJPL-A-268 to learn more how the frontend process starts.")
             }
@@ -326,8 +320,7 @@ private fun loadProductModules(productModulesModule: String, outputProvider: Mod
   val relativePath = "META-INF/$productModulesModule/product-modules.xml"
   val debugName = "($relativePath file in $productModulesModule)"
 
-  @Suppress("RAW_RUN_BLOCKING")
-  val content = runBlocking(Dispatchers.IO) {
+  val content = run {
     outputProvider.readFileContentFromModuleOutput(outputProvider.findRequiredModule(productModulesModule), relativePath)
   } ?: throw MalformedRepositoryException("File '$relativePath' is not found in module $productModulesModule output")
   try {

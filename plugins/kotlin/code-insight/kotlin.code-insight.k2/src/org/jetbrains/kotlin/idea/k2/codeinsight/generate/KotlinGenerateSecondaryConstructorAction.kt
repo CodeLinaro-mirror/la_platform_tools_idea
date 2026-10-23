@@ -12,27 +12,28 @@ import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiMethod
 import com.intellij.refactoring.util.CommonRefactoringUtil
-import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.components.KaDiagnosticCheckerFilter
-import org.jetbrains.kotlin.analysis.api.components.collectDiagnostics
-import org.jetbrains.kotlin.analysis.api.components.containingSymbol
-import org.jetbrains.kotlin.analysis.api.components.createInheritanceTypeSubstitutor
-import org.jetbrains.kotlin.analysis.api.components.declaredMemberScope
-import org.jetbrains.kotlin.analysis.api.components.isVisibleInClass
-import org.jetbrains.kotlin.analysis.api.components.namedClassSymbol
-import org.jetbrains.kotlin.analysis.api.components.render
 import org.jetbrains.kotlin.analysis.api.components.returnType
-import org.jetbrains.kotlin.analysis.api.components.semanticallyEquals
+import org.jetbrains.kotlin.analysis.api.diagnostics.diagnostics
 import org.jetbrains.kotlin.analysis.api.fir.diagnostics.KaFirDiagnostic
+import org.jetbrains.kotlin.analysis.api.javaInterop.namedClassSymbol
+import org.jetbrains.kotlin.analysis.api.renderer.render
+import org.jetbrains.kotlin.analysis.api.scopes.declaredMemberScope
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassKind
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.containingSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.symbol
 import org.jetbrains.kotlin.analysis.api.types.KaType
+import org.jetbrains.kotlin.analysis.api.types.createInheritanceTypeSubstitutor
+import org.jetbrains.kotlin.analysis.api.types.semanticallyEquals
 import org.jetbrains.kotlin.analysis.api.types.symbol
+import org.jetbrains.kotlin.analysis.api.visibility.isVisibleInClass
 import org.jetbrains.kotlin.idea.base.analysis.api.utils.analyzeInModalWindow
 import org.jetbrains.kotlin.idea.base.codeInsight.KotlinNameSuggester
 import org.jetbrains.kotlin.idea.base.codeInsight.KotlinPsiElementMemberChooserObject
+import org.jetbrains.kotlin.idea.base.psi.appendParameter
+import org.jetbrains.kotlin.idea.base.psi.convertImplicitDelegationCallToExplicit
+import org.jetbrains.kotlin.idea.base.psi.getOrCreateClassBody
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.core.CollectingNameValidator
 import org.jetbrains.kotlin.idea.core.insertMembersAfterAndReformat
@@ -48,7 +49,6 @@ import org.jetbrains.kotlin.psi.KtEnumEntry
 import org.jetbrains.kotlin.psi.KtProperty
 import org.jetbrains.kotlin.psi.KtPsiFactory
 import org.jetbrains.kotlin.psi.KtSecondaryConstructor
-import org.jetbrains.kotlin.psi.getOrCreateBody
 import org.jetbrains.kotlin.psi.psiUtil.quoteIfNeeded
 import org.jetbrains.kotlin.psi.psiUtil.siblings
 import org.jetbrains.kotlin.types.Variance
@@ -72,7 +72,6 @@ class KotlinGenerateSecondaryConstructorAction : KotlinGenerateMemberActionBase<
 
     private fun shouldPreselect(element: PsiElement) = element is KtProperty && !element.isVar
 
-    @OptIn(KaExperimentalApi::class)
     context(_: KaSession)
     private fun chooseSuperConstructors(classSymbol: KaClassSymbol): List<ClassMember> {
         val superClassSymbol = getSuperClassSymbolNoAny(classSymbol) ?: return emptyList()
@@ -92,10 +91,7 @@ class KotlinGenerateSecondaryConstructorAction : KotlinGenerateMemberActionBase<
 
     context(_: KaSession)
     private fun KtProperty.isPropertyNotInitialized(): Boolean {
-        // TODO: when KT-63221 is fixed use `diagnostics(KaDiagnosticCheckerFilter.ONLY_COMMON_CHECKERS)` instead
-        return containingKtFile.collectDiagnostics(KaDiagnosticCheckerFilter.ONLY_COMMON_CHECKERS)
-            .filter { it.psi == this@isPropertyNotInitialized }
-            .any { it is KaFirDiagnostic.MustBeInitializedOrBeAbstract }
+        return diagnostics().directOnly(true).any { it is KaFirDiagnostic.MustBeInitializedOrBeAbstract }
     }
 
     context(_: KaSession)
@@ -156,7 +152,7 @@ class KotlinGenerateSecondaryConstructorAction : KotlinGenerateMemberActionBase<
             val declarationsAfter =
                 lastPropertyToInitialize?.siblings()?.filterIsInstance<KtDeclaration>() ?: targetClass.declarations.asSequence()
             val firstNonProperty = declarationsAfter.firstOrNull { it !is KtProperty } ?: return null
-            return firstNonProperty.siblings(forward = false).firstIsInstanceOrNull<KtProperty>() ?: targetClass.getOrCreateBody().lBrace
+            return firstNonProperty.siblings(forward = false).firstIsInstanceOrNull<KtProperty>() ?: targetClass.getOrCreateClassBody().lBrace
         }
 
         with(info) {
@@ -184,7 +180,6 @@ class KotlinGenerateSecondaryConstructorAction : KotlinGenerateMemberActionBase<
         }
     }
 
-    @OptIn(KaExperimentalApi::class)
     context(_: KaSession)
     private fun generateConstructor(
         klass: KtClass,
@@ -233,13 +228,13 @@ class KotlinGenerateSecondaryConstructorAction : KotlinGenerateMemberActionBase<
                 val paramType = substitutor.substitute(typeToUse).render(position = Variance.OUT_VARIANCE)
                 val modifiers = if (isVararg) "vararg " else ""
 
-                parameterList.addParameter(psiFactory.createParameter("$modifiers$paramName: $paramType"))
+                parameterList.appendParameter(psiFactory.createParameter("$modifiers$paramName: $paramType"))
                 delegationCallArguments.add(if (isVararg) "*$paramName" else paramName)
             }
 
             val delegationCall =
                 psiFactory.creareDelegatedSuperTypeEntry(delegationCallArguments.joinToString(prefix = "super(", postfix = ")"))
-            constructor.replaceImplicitDelegationCallWithExplicit(false).replace(delegationCall)
+            constructor.convertImplicitDelegationCallToExplicit(false).replace(delegationCall)
         }
 
         if (propertiesToInitialize.isNotEmpty()) {
@@ -249,7 +244,7 @@ class KotlinGenerateSecondaryConstructorAction : KotlinGenerateMemberActionBase<
                 val paramName = suggestSafeNameByName(propertyName, validator)
                 val paramType = property.returnType.render(position = Variance.IN_VARIANCE)
 
-                parameterList.addParameter(psiFactory.createParameter("$paramName: $paramType"))
+                parameterList.appendParameter(psiFactory.createParameter("$paramName: $paramType"))
                 body.addElement(psiFactory.createExpression("this.${propertyName.quoteIfNeeded()} = $paramName"), true)
             }
 

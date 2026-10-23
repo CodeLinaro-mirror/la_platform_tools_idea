@@ -21,6 +21,7 @@ import com.intellij.openapi.diagnostic.getOrLogException
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectCloseListener
+import com.intellij.openapi.project.impl.getOrCreateIdeFrameDeferred
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.SystemInfoRt
 import com.intellij.openapi.wm.IdeFocusManager
@@ -36,7 +37,7 @@ import com.intellij.ui.ComponentUtil
 import com.intellij.ui.ScreenUtil
 import com.intellij.util.application
 import com.intellij.util.concurrency.annotations.RequiresEdt
-import com.sun.jna.platform.WindowUtils
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jdom.Element
@@ -179,7 +180,7 @@ class WindowManagerImpl : WindowManagerEx(), PersistentStateComponentWithModific
         window.shape = mask
       }
       else {
-        WindowUtils.setWindowMask(window, mask)
+        WindowEffects.setMask(window, mask)
       }
     }
     catch (e: Throwable) {
@@ -286,6 +287,10 @@ class WindowManagerImpl : WindowManagerEx(), PersistentStateComponentWithModific
     return null
   }
 
+  override fun getIdeFrameDeferred(project: Project): Deferred<IdeFrame?> {
+    return project.getOrCreateIdeFrameDeferred()
+  }
+
   @Internal
   fun removeAndGetRootFrame(): IdeFrameImpl? {
     return frameToReuse.getAndSet(null)
@@ -312,7 +317,7 @@ class WindowManagerImpl : WindowManagerEx(), PersistentStateComponentWithModific
     }
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   override fun releaseFrame(releasedFrameHelper: ProjectFrameHelper) {
     val project = releasedFrameHelper.project
     if (project != null) {
@@ -399,12 +404,11 @@ private fun calcAlphaModelSupported(): Boolean {
     return true
   }
 
-  // GTW-3304 WindowUtils crashes on X11-enabled RD hosts
   if (AppMode.isRemoteDevHost())
     return false
 
   return try {
-    WindowUtils.isWindowAlphaSupported()
+    WindowEffects.isAlphaSupported()
   }
   catch (_: Throwable) {
     false
@@ -432,7 +436,7 @@ private fun setAlphaMode(window: Window, ratio: Float) {
         window.opacity = 1.0f - ratio
       }
       else -> {
-        WindowUtils.setWindowAlpha(window, 1.0f - ratio)
+        WindowEffects.setAlpha(window, 1.0f - ratio)
       }
     }
   }
@@ -488,7 +492,6 @@ internal class FrameStateListener(private val defaultFrameInfoHelper: FrameInfoH
     val extendedState = frame.extendedState
     val bounds = frame.bounds
     checkForNonsenseBounds("FrameStateListener.update.bounds", bounds)
-    frame.ensureSensibleSize()
     var normalBoundsOnCurrentScreen: Rectangle? = null
     if (rootPane != null) {
       val oldScreen = frame.screenBounds

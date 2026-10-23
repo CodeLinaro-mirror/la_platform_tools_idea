@@ -6,7 +6,6 @@
         <entry key="kotlin-script-runtime" value="kotlin.util.compiler-classpath" />
         <entry key="kotlinc.allopen-compiler-plugin" value="kotlin.util.compiler-classpath" />
         <entry key="kotlinc.analysis-api" value="kotlin.util.compiler-classpath" />
-        <entry key="kotlinc.analysis-api-fe10" value="kotlin.util.compiler-classpath" />
         <entry key="kotlinc.analysis-api-impl-base" value="kotlin.util.compiler-classpath" />
         <entry key="kotlinc.analysis-api-k2" value="kotlin.util.compiler-classpath" />
         <entry key="kotlinc.analysis-api-platform-interface" value="kotlin.util.compiler-classpath" />
@@ -20,7 +19,6 @@
         <entry key="kotlinc.kotlin-build-tools-impl" value="kotlin.util.compiler-classpath" />
         <entry key="kotlinc.kotlin-compiler-cli" value="kotlin.util.compiler-classpath" />
         <entry key="kotlinc.kotlin-compiler-common" value="kotlin.util.compiler-classpath" />
-        <entry key="kotlinc.kotlin-compiler-fe10" value="kotlin.util.compiler-classpath" />
         <entry key="kotlinc.kotlin-compiler-fir" value="kotlin.util.compiler-classpath" />
         <entry key="kotlinc.kotlin-compiler-ir" value="kotlin.util.compiler-classpath" />
         <entry key="kotlinc.kotlin-compiler-tests" value="kotlin.util.compiler-classpath" />

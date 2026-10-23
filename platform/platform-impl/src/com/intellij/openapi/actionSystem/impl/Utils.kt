@@ -48,13 +48,16 @@ import com.intellij.openapi.application.AccessToken
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.ModalityState
-import com.intellij.openapi.application.UI
+import com.intellij.openapi.application.ReadWriteActionSupport
+import com.intellij.openapi.application.UiWithModelAccess
 import com.intellij.openapi.application.asContextElement
 import com.intellij.openapi.application.ex.ApplicationManagerEx
 import com.intellij.openapi.application.readActionUndispatched
 import com.intellij.openapi.application.runReadActionBlocking
+import com.intellij.openapi.application.rw.PlatformReadWriteActionSupport
 import com.intellij.openapi.components.service
 import com.intellij.openapi.components.serviceIfCreated
+import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.editor.ex.EditorGutterComponentEx
 import com.intellij.openapi.keymap.impl.ActionProcessor
@@ -80,7 +83,6 @@ import com.intellij.platform.ide.menu.FrameMenuUiKind
 import com.intellij.platform.ide.menu.IdeJMenuBar
 import com.intellij.platform.ide.menu.MacNativeActionMenuItem
 import com.intellij.platform.ide.menu.createMacNativeActionMenu
-import com.intellij.platform.locking.impl.getGlobalThreadingSupport
 import com.intellij.ui.AnimatedIcon
 import com.intellij.ui.ClientProperty
 import com.intellij.ui.ExperimentalUI
@@ -88,7 +90,7 @@ import com.intellij.ui.GroupHeaderSeparator
 import com.intellij.ui.awt.RelativePoint
 import com.intellij.ui.mac.MacMenuSettings
 import com.intellij.ui.mac.foundation.NSDefaults
-import com.intellij.ui.mac.screenmenu.Menu
+import com.intellij.ui.mac.screenmenu.MenuItem
 import com.intellij.util.IntelliJCoroutinesFacade
 import com.intellij.util.SlowOperations
 import com.intellij.util.TimeoutUtil
@@ -113,7 +115,6 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.InternalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Runnable
@@ -185,6 +186,9 @@ private val toolbarDispatcher = Dispatchers.Default.limitedParallelism(2, "toolb
 private var lastFailedFastTrackFinishNanos = 0L
 private var lastFailedFastTrackCount = 0
 
+// The action classes already reported by `reportEdtLockActions`, one line per class per IDE session
+private val reportedEdtLockActions: MutableSet<String> = ConcurrentHashMap.newKeySet()
+
 /**
  * The main utility to expand action groups asynchronously (without blocking EDT).
  *
@@ -197,6 +201,8 @@ private var lastFailedFastTrackCount = 0
  *    It is used by **toolbars**, and they often expand on [JComponent.addNotify].
  *    If their action groups are fast to expand, then the UI will appear instantly.
  *    Otherwise, a progress icon is shown while expecting the results.
+ *    The short EDT block takes the read lock, so it runs only where the caller's frame permits the lock.
+ *    A toolbar added from `Dispatchers.UI` skips it and fills asynchronously.
  *
  * 2. Blocking without blocking the UI approach via [Utils.expandActionGroup].
  *    The call blocks the caller but keeps the UI running using secondary EDT loop inside.
@@ -362,7 +368,14 @@ object Utils {
     ThreadingAssertions.assertEventDispatchThread()
     val asyncDataContext = createAsyncDataContext(dataContext)
     checkAsyncDataContext(asyncDataContext, place)
-    val fastTrackTime = getFastTrackMaxTime(fastTrack, place, uiKind is ActionUiKind.Toolbar, true)
+    // The fast track runs the EDT half of the update inline in this frame, under a blocking read action.
+    // A frame that forbids the lock (`Dispatchers.UI`, a paint) cannot host it, so the update takes the
+    // dispatched path, and a toolbar fills in a later event.
+    val lockProhibitedAdvice = ApplicationManager.getApplication().lockProhibitedAdvice
+    val fastTrackTime = if (lockProhibitedAdvice == null) getFastTrackMaxTime(fastTrack, place, uiKind is ActionUiKind.Toolbar, true) else 0
+    if (fastTrack && lockProhibitedAdvice != null) {
+      LOG.debug { "Fast track skipped for '$place': the RW lock is prohibited on this thread" }
+    }
     val edtDispatcher =
       if (fastTrackTime > 0) AltEdtDispatcher.apply { switchToQueue() }
       else if (isLockRequired(group)) lockingEdtCoroutineDispatcher
@@ -376,8 +389,34 @@ object Utils {
     if (fastTrackTime > 0) {
       AltEdtDispatcher.runOwnQueueBlockingAndSwitchBackToEDT(deferred, fastTrackTime)
     }
-    deferred.await()
+    val result = deferred.await()
+    if (fastTrack && lockProhibitedAdvice != null) {
+      reportEdtLockActions(place, updater.edtLockRequiringActions)
+    }
+    result
   }
+
+  /**
+   * Logs each action class that took the read lock on the EDT while the fast track was skipped.
+   * A class is logged once per IDE session, in internal mode or unit-test mode only.
+   */
+  private fun reportEdtLockActions(place: String, classNames: Set<String>) {
+    val application = ApplicationManager.getApplication()
+    if (!application.isInternal && !application.isUnitTestMode) {
+      return
+    }
+    for (name in classNames) {
+      if (reportedEdtLockActions.add(name)) {
+        LOG.warn("$name takes the read lock on the EDT during the update of '$place'. " +
+                 "A toolbar added under Dispatchers.UI waits for it. " +
+                 "Call getTemplatePresentation().setRWLockRequired(false) when the update needs no model access.")
+      }
+    }
+  }
+
+  @TestOnly
+  @JvmStatic
+  fun getReportedEdtLockActions(): Set<String> = reportedEdtLockActions
 
   fun isLockRequired(action: AnAction): Boolean {
     if (action.actionUpdateThread == ActionUpdateThread.EDT
@@ -387,6 +426,13 @@ object Utils {
     }
     return action.templatePresentation.isRWLockRequired
   }
+
+  fun <T> runWithLocksForbidden(reason: String, runnable: () -> T): T {
+    return ApplicationManagerEx.getApplicationEx().withLocksSoftlyProhibited(
+      "The Read/Write lock is disallowed for $reason because `Presentation#isRWLockRequired` set to `false`.\n" +
+                "Actions that require locks hinder responsiveness of the IDE. Consider refactoring your action so that it does not require the Read/Write lock", LOG::error, runnable)
+  }
+
 
   /**
    * The preferred way to synchronously expand a group while pumping EDT intended for synchronous clients
@@ -500,7 +546,7 @@ object Utils {
     return withProgressIcon(loadingIconPoint, component, place, task)
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   suspend fun <T> withProgressIcon(
     loadingIconPoint: RelativePoint?,
     component: Component?,
@@ -584,7 +630,7 @@ object Utils {
                         presentationFactory, asyncDataContext, place, uiKind)
         }
         else {
-          fillMenuInnerMacNative(uiKind.peer, uiKind.frame, list, checked, enableMnemonics,
+          fillMenuInnerMacNative(uiKind.items, uiKind.frame, list, checked, enableMnemonics,
                                  presentationFactory, asyncDataContext, place)
         }
       }
@@ -706,7 +752,7 @@ object Utils {
   }
 
   private fun fillMenuInnerMacNative(
-    nativePeer: Menu,
+    items: MutableList<MenuItem?>,
     frame: JFrame,
     list: List<AnAction>,
     checked: Boolean,
@@ -728,8 +774,14 @@ object Utils {
           updateFromPresentation(presentation)
         }.menuItemPeer
       }
-      // null peer means `null`
-      nativePeer.add(peer)
+      items.add(peer) // null peer means a separator
+    }
+    if (filtered.isEmpty()) {
+      val presentation = presentationFactory.getPresentation(EMPTY_MENU_FILLER)
+      items.add(MacNativeActionMenuItem(
+        EMPTY_MENU_FILLER, place, context, enableMnemonics, checked, useDarkIcons).apply {
+        updateFromPresentation(presentation)
+      }.menuItemPeer)
     }
   }
 
@@ -1039,7 +1091,6 @@ object Utils {
 
   private fun <R> runWithPotemkinOverlayProgress(actions: List<AnAction>, contextComponent: Component?, block: suspend CoroutineScope.() -> R): R? {
     if (shallAbortActionUpdateDueToProhibitingWriteAction(actions)) {
-      LOG.error("Actions cannot be updated when write-action is running or pending on EDT")
       return null
     }
     if (ourInUpdateSessionForInputEventEDTLoop) {
@@ -1048,6 +1099,8 @@ object Utils {
     }
     val potemkin = PotemkinOverlayProgress(contextComponent)
     ourInUpdateSessionForInputEventEDTLoop = true
+    val rwService = application.service<ReadWriteActionSupport>() as? PlatformReadWriteActionSupport
+    rwService?.signalSuspendedEdtWriteActionNeedsToBeRetried()
     try {
       potemkin.start()
       return runBlockingForActionExpand(CoroutineName("runWithInputEventEdtDispatcher") +
@@ -1071,6 +1124,7 @@ object Utils {
       }
     }
     finally {
+      rwService?.signalSuspendedEdtWriteActionCanProceed()
       ourInUpdateSessionForInputEventEDTLoop = false
       ourCurrentInputEventProcessingJobFlow.value = null
       potemkin.stop()
@@ -1210,11 +1264,17 @@ object Utils {
     get() = Dispatchers.EDT[CoroutineDispatcher]!!
 
   private val nonLockingEdtCoroutineDispatcher: CoroutineDispatcher
-    get() = Dispatchers.UI[CoroutineDispatcher]!!
+    get() = Dispatchers.UiWithModelAccess[CoroutineDispatcher]!!
+}
+
+internal fun preloadPromoters() {
+  ActionPromoter.EP_NAME.forEachExtensionSafe {
+    it.promote(emptyList<AnAction>(), DataContext.EMPTY_CONTEXT)
+  }
 }
 
 @ApiStatus.Internal
-suspend fun rearrangeByPromoters(actions: List<AnAction>, dataContext: DataContext): List<AnAction> {
+fun rearrangeByPromoters(actions: List<AnAction>, dataContext: DataContext): List<AnAction> {
   val frozenContext = Utils.getUiOnlyDataContext(dataContext)
   return SlowOperations.startSection(SlowOperations.FORCE_ASSERT).use {
     try {
@@ -1436,11 +1496,11 @@ internal inline fun <R> runBlockingForActionExpand(
     // sometimes this code runs under write action. It does not call read actions inside, so it makes no sense parallelizing lock; moreover, having write access
     // could prevent deadlocks caused by background write actions
     val (lockContextElement, cleanup) = if (application.isWriteAccessAllowed) {
-      getGlobalThreadingSupport().getLockContextElement() to {}
+      application.threadingSupport.getLockContextElement() to {}
     }
     else {
       installThreadContext(ctx, true) {
-        getGlobalThreadingSupport().parallelizeLock()
+        application.threadingSupport.parallelizeLock(true)
       }
     }
     try {
@@ -1493,4 +1553,9 @@ interface SuspendingUpdateSessionInternal: SuspendingUpdateSession {
 
   fun visitCaches(visitor: (AnAction, String, Any) -> Unit)
   fun dropCaches(predicate: (Any) -> Boolean)
+}
+
+@ApiStatus.Internal
+fun AnActionEvent.getActionMenu(): ActionMenu? {
+  return (uiKind as? ActualActionUiKind)?.component as? ActionMenu?
 }

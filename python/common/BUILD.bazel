@@ -1,8 +1,12 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 load("//build:compiler-options.bzl", "create_kotlinc_options")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.python.community.common` start
+content_module_jar(module = ":common")
+### auto-generated section `dev intellij.python.community.common` end
 
 ### auto-generated section `build intellij.python.community.common` start
-
 create_kotlinc_options(
     name = "custom_common",
     x_context_parameters = True,
@@ -35,6 +39,7 @@ jvm_library(
         "//libraries/kotlinx/serialization/core",
         "//platform/platform-api:ide",
         "//platform/ide-core",
+        "//platform/ide-core-impl",
     ],
 )
 
@@ -58,6 +63,7 @@ jvm_library(
         "//libraries/kotlinx/serialization/core:core_test_lib",
         "//platform/platform-api:ide_test_lib",
         "//platform/ide-core:ide-core_test_lib",
+        "//platform/ide-core-impl:ide-core-impl_test_lib",
     ],
 )
 ### auto-generated section `build intellij.python.community.common` end
@@ -66,6 +72,7 @@ jvm_library(
 exports_files(
     [
         "intellij.python.community.common.iml",
+        "resources/intellij.python.community.common.xml",
     ],
     visibility = ["//visibility:public"],
 )

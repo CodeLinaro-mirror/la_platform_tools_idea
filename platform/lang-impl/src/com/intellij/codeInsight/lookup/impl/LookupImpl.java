@@ -19,6 +19,8 @@ import com.intellij.codeInsight.completion.impl.CamelHumpMatcher;
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer;
 import com.intellij.codeInsight.editorActions.smartEnter.SmartEnterProcessor;
 import com.intellij.codeInsight.editorActions.smartEnter.SmartEnterProcessors;
+import com.intellij.codeInsight.hint.HintManager;
+import com.intellij.codeInsight.hint.HintManagerImpl;
 import com.intellij.codeInsight.lookup.LookupActionProvider;
 import com.intellij.codeInsight.lookup.LookupArranger;
 import com.intellij.codeInsight.lookup.LookupElement;
@@ -92,6 +94,7 @@ import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.impl.source.tree.injected.InjectedLanguageEditorUtil;
 import com.intellij.psi.util.PsiUtilBase;
+import com.intellij.psi.util.PsiVersioningService;
 import com.intellij.ui.ClickListener;
 import com.intellij.ui.CollectionListModel;
 import com.intellij.ui.ComponentUtil;
@@ -121,7 +124,6 @@ import com.intellij.util.ui.update.UiNotifyConnector;
 import kotlinx.coroutines.CoroutineScope;
 import kotlinx.coroutines.CoroutineScopeKt;
 import kotlinx.coroutines.Dispatchers;
-import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -163,6 +165,8 @@ import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static com.intellij.codeInsight.completion.FusCompletionKeys.LOOKUP_ELEMENT_SHOW_TIMESTAMP_MILLIS;
 import static kotlinx.coroutines.SupervisorKt.SupervisorJob;
@@ -219,7 +223,6 @@ public class LookupImpl extends LightweightHint implements LookupEx, Disposable,
   private final EmptyLookupItem myDummyItem = new EmptyLookupItem(CommonBundle.message("tree.node.loading"), true);
   private boolean myFirstElementAdded = false;
   private boolean myShowIfMeaningless = false;
-  private final LookupDisplayStrategy myDisplayStrategy;
 
   final CoroutineScope coroutineScope = CoroutineScopeKt.CoroutineScope(SupervisorJob(null).plus(Dispatchers.getDefault()));
 
@@ -235,7 +238,6 @@ public class LookupImpl extends LightweightHint implements LookupEx, Disposable,
     myArranger = arranger;
     myPresentableArranger = arranger;
     this.editor.getColorsScheme().getFontPreferences().copyTo(myFontPreferences);
-    myDisplayStrategy = LookupDisplayStrategy.getStrategy(editor);
 
     DaemonCodeAnalyzer.getInstance(session.getProject()).disableUpdateByTimer(this);
 
@@ -279,7 +281,7 @@ public class LookupImpl extends LightweightHint implements LookupEx, Disposable,
 
   @ApiStatus.Internal
   protected @NotNull Color getBackgroundColor() {
-    return myDisplayStrategy.getBackgroundColor();
+    return LookupCellRenderer.BACKGROUND_COLOR;
   }
 
   private @NotNull CollectionListModelWithBatchUpdate<LookupElement> getListModel() {
@@ -637,11 +639,22 @@ public class LookupImpl extends LightweightHint implements LookupEx, Disposable,
 
     updateListHeight(listModel);
 
+    int previousSelectedIndex = list.getSelectedIndex();
+
     list.setSelectedIndex(toSelect);
-    if (ScreenReader.isActive()) {
-      AccessibleContext context = list.getAccessibleContext();
-      Accessible child = context.getAccessibleChild(list.getSelectedIndex());
-      context.firePropertyChange(AccessibleContext.ACCESSIBLE_ACTIVE_DESCENDANT_PROPERTY, null, child);
+
+    // The batch update above mutes the list listeners, so a refiltered model can put another item under an
+    // unchanged index with no event. AccessibleJList reports every other case itself.
+    if (ScreenReader.isActive() && list.getSelectedIndex() == previousSelectedIndex) {
+      LookupElement previousSelectedItem = previousSelectedIndex >= 0 && previousSelectedIndex < oldModel.size()
+                                           ? oldModel.get(previousSelectedIndex)
+                                           : null;
+      LookupElement selectedItem = toSelect < items.size() ? items.get(toSelect) : null;
+      if (selectedItem != previousSelectedItem) {
+        AccessibleContext context = list.getAccessibleContext();
+        Accessible child = context.getAccessibleChild(previousSelectedIndex);
+        context.firePropertyChange(AccessibleContext.ACCESSIBLE_ACTIVE_DESCENDANT_PROPERTY, null, child);
+      }
     }
     return !ContainerUtil.equalsIdentity(oldModel, items);
   }
@@ -774,6 +787,7 @@ public class LookupImpl extends LightweightHint implements LookupEx, Disposable,
       return;
     }
     if (item.getUserData(CodeCompletionHandlerBase.DIRECT_INSERTION) != null) {
+      item.putUserData(CodeCompletionHandlerBase.DIRECT_INSERTION_START_OFFSET, getLookupStart());
       hideWithItemSelected(item, completionChar);
       return;
     }
@@ -881,11 +895,11 @@ public class LookupImpl extends LightweightHint implements LookupEx, Disposable,
 
   private static void reportErrorAfterInsert(@NotNull LookupElement item, @NotNull AssertionError ae) {
     @SuppressWarnings("RedundantTypeArguments") // type argument is needed to suppress incorrect nullability issue
-    String classes = StreamEx
+    String classes = Stream
       .<LookupElement>iterate(item, Objects::nonNull, i -> {
         return i instanceof LookupElementDecorator ? ((LookupElementDecorator<?>)i).getDelegate() : null;
       })
-      .map(le -> le.getClass().getName()).joining(" -> ");
+      .map(le -> le.getClass().getName()).collect(Collectors.joining(" -> "));
     LOG.error("When completing " + item + " (" + classes + ")", ae);
   }
 
@@ -929,7 +943,7 @@ public class LookupImpl extends LightweightHint implements LookupEx, Disposable,
 
   @ApiStatus.Internal
   protected void updateLocation(@NotNull Point p) {
-    myDisplayStrategy.updateLocation(this, editor, p);
+    HintManagerImpl.updateLocation(this, editor, p);
   }
 
   @Override
@@ -1025,7 +1039,14 @@ public class LookupImpl extends LightweightHint implements LookupEx, Disposable,
       delegateActionToEditor(IdeActions.ACTION_RENAME, null, actionEvent);
     }
     try {
-      myDisplayStrategy.showLookup(this, editor, p);
+      HintManagerImpl.getInstanceImpl().showEditorHint(
+        this,
+        editor,
+        p,
+        HintManager.HIDE_BY_ESCAPE | HintManager.UPDATE_BY_SCROLLING,
+        0,
+        false,
+        HintManagerImpl.createHintHint(editor, p, this, HintManager.UNDER).setRequestFocus(ScreenReader.isActive()).setAwtTooltip(false));
     }
     catch (Exception e) {
       LOG.error(e);
@@ -1131,7 +1152,10 @@ public class LookupImpl extends LightweightHint implements LookupEx, Disposable,
       public void valueChanged(@NotNull ListSelectionEvent e) {
         if (!myUpdating) {
           LookupElement item = getCurrentItem();
-          fireCurrentItemChanged(oldItem, item);
+          PsiVersioningService.freezePsiVersion(() -> {
+            fireCurrentItemChanged(oldItem, item);
+            return null;
+          });
           oldItem = item;
         }
       }
@@ -1316,10 +1340,13 @@ public class LookupImpl extends LightweightHint implements LookupEx, Disposable,
         ActionContext finalActionContext = actionContext
           .withOffset(start)
           .withSelection(TextRange.create(start, actionContext.offset()));
+        long stamp = file.getFileDocument().getModificationStamp();
         // Cache current item result
         ReadAction.nonBlocking(
           () -> wrapper.computeCommand(finalActionContext, ModCompletionItem.DEFAULT_INSERTION_CONTEXT))
+          .withDocumentsCommitted(getProject())
           .expireWith(this)
+          .expireWhen(() -> stamp != finalActionContext.file().getFileDocument().getModificationStamp())
           .submit(AppExecutorUtil.getAppExecutorService());
       }
     }
@@ -1459,7 +1486,7 @@ public class LookupImpl extends LightweightHint implements LookupEx, Disposable,
       myHidden = true;
 
       try {
-        myDisplayStrategy.hideLookup(this, editor);
+        hide(false);
 
         Disposer.dispose(this);
         ToolTipManager.sharedInstance().unregisterComponent(list);
@@ -1488,8 +1515,9 @@ public class LookupImpl extends LightweightHint implements LookupEx, Disposable,
     ThreadingAssertions.assertEventDispatchThread();
     assert myHidden;
 
+    // set the trace before the markers go away, so that a concurrent reader of the offsets sees it
+    disposeTrace = new Throwable("the lookup was disposed here");
     myOffsets.disposeMarkers();
-    disposeTrace = new Throwable();
     if (LOG.isDebugEnabled()) {
       LOG.debug("Disposing lookup:", disposeTrace);
     }
@@ -1503,21 +1531,24 @@ public class LookupImpl extends LightweightHint implements LookupEx, Disposable,
     assert !myUpdating;
     LookupElement prevItem = getCurrentItem();
     myUpdating = true;
-    try {
-      boolean reused = mayCheckReused && checkReused();
-      boolean selectionVisible = isSelectionVisible();
-      boolean itemsChanged = updateList(onExplicitAction, reused);
-      if (isVisible()) {
-        LOG.assertTrue(!ApplicationManager.getApplication().isUnitTestMode());
-        cellRenderer.refreshUi();
-        myUi.refreshUi(selectionVisible, itemsChanged, reused, onExplicitAction);
+    PsiVersioningService.freezePsiVersion(() -> {
+      try {
+        boolean reused = mayCheckReused && checkReused();
+        boolean selectionVisible = isSelectionVisible();
+        boolean itemsChanged = updateList(onExplicitAction, reused);
+        if (isVisible()) {
+          LOG.assertTrue(!ApplicationManager.getApplication().isUnitTestMode());
+          cellRenderer.refreshUi();
+          myUi.refreshUi(selectionVisible, itemsChanged, reused, onExplicitAction);
+        }
       }
-    }
-    finally {
-      myUpdating = false;
-      fireCurrentItemChanged(prevItem, getCurrentItem());
-      fireUiRefreshed();
-    }
+      finally {
+        myUpdating = false;
+        fireCurrentItemChanged(prevItem, getCurrentItem());
+        fireUiRefreshed();
+      }
+      return null;
+    });
   }
 
   public void markReused() {

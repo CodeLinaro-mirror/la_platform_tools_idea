@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.javadoc;
 
 import com.intellij.analysis.AnalysisScope;
@@ -21,6 +21,7 @@ import com.intellij.execution.process.ProcessTerminatedListener;
 import com.intellij.execution.runners.ExecutionEnvironment;
 import com.intellij.ide.BrowserUtil;
 import com.intellij.java.JavaBundle;
+import com.intellij.java.impl.template.JavaTemplatePresentationSupport;
 import com.intellij.openapi.module.LanguageLevelUtil;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleUtilCore;
@@ -49,7 +50,6 @@ import com.intellij.psi.PsiJavaFile;
 import com.intellij.psi.PsiJavaModule;
 import com.intellij.psi.PsiManager;
 import com.intellij.psi.PsiRecursiveElementWalkingVisitor;
-import com.intellij.psi.ServerPageFile;
 import com.intellij.util.PathUtil;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.SmartHashSet;
@@ -65,6 +65,8 @@ import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.nio.charset.Charset;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -130,8 +132,8 @@ public final class JavadocGeneratorRunProfile implements ModuleRunProfile {
         @Override
         public void processTerminated(@NotNull ProcessEvent event) {
           if (myConfiguration.OPEN_IN_BROWSER && event.getExitCode() == 0) {
-            File index = new File(myConfiguration.OUTPUT_DIRECTORY, INDEX_HTML);
-            if (index.exists()) {
+            var index = Path.of(myConfiguration.OUTPUT_DIRECTORY, INDEX_HTML);
+            if (Files.exists(index)) {
               BrowserUtil.browse(index);
             }
           }
@@ -280,7 +282,7 @@ public final class JavadocGeneratorRunProfile implements ModuleRunProfile {
           }
         }
       }
-      
+
       File argsFile = createTempArgsFile();
       List<VirtualFile> sourceRoots = findSourceRoots(modules);
       List<VirtualFile> classRoots = findClassRoots(modules, jdk);
@@ -415,7 +417,7 @@ public final class JavadocGeneratorRunProfile implements ModuleRunProfile {
 
     @Override
     public void visitFile(@NotNull PsiFile psiFile) {
-      if (psiFile instanceof PsiJavaFile && !(psiFile instanceof ServerPageFile)) {
+      if (psiFile instanceof PsiJavaFile && JavaTemplatePresentationSupport.isJavaSourceAllowed(psiFile)) {
         VirtualFile vFile = psiFile.getVirtualFile();
         if (vFile != null && vFile.isInLocalFileSystem()) {
           mySourceFiles.add(vFile);

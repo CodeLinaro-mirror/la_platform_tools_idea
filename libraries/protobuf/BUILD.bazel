@@ -1,7 +1,14 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.libraries.protobuf` start
+content_module_jar(
+    libraries = ["@lib//:libraries-protobuf-protobuf"],
+    module = ":protobuf",
+)
+### auto-generated section `dev intellij.libraries.protobuf` end
 
 ### auto-generated section `build intellij.libraries.protobuf` start
-
 jvm_library(
     name = "protobuf",
     srcs = glob(
@@ -37,6 +44,7 @@ jvm_library(
 exports_files(
     [
         "intellij.libraries.protobuf.iml",
+        "resources/intellij.libraries.protobuf.xml",
     ],
     visibility = ["//visibility:public"],
 )

@@ -5,6 +5,7 @@ import com.intellij.find.FindManager
 import com.intellij.find.FindModel
 import com.intellij.find.FindUtil
 import com.intellij.find.SearchSession
+import com.intellij.ide.actions.ToolWindowTabLocationFusUtil
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.DataKey
 import com.intellij.openapi.application.ApplicationManager
@@ -102,7 +103,7 @@ class BlockTerminalController(
     session.postResize(newSize)
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun startCommandExecution(command: String) {
     if (command.isBlank()) {
       promptController.model.clearCommandAndResetChangesHistory()
@@ -112,7 +113,12 @@ class BlockTerminalController(
       session.commandExecutionManager.sendCommandToExecute(command) // will trigger `userCommandSent`
     }
     // report event even if it is an empty command, because it will be reported as a separate command type
-    TerminalUsageTriggerCollector.triggerCommandStarted(project, command, isBlockTerminal = true)
+    TerminalUsageTriggerCollector.triggerCommandStarted(
+      project,
+      command,
+      isBlockTerminal = true,
+      tabLocation = ToolWindowTabLocationFusUtil.fromComponentHierarchy(outputController.outputModel.editor.component),
+    )
   }
 
   @RequiresEdt(generateAssertion = false)
@@ -145,7 +151,7 @@ class BlockTerminalController(
     }
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun startSearchSession() {
     val findModel = FindModel()
     findModel.copyFrom(FindManager.getInstance(project).findInFileModel)
@@ -161,7 +167,7 @@ class BlockTerminalController(
     session.component.requestFocusInTheSearchFieldAndSelectContent(project)
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun activateSearchSession() {
     val session = searchSession ?: return
     val editor = outputController.outputModel.editor
@@ -171,7 +177,7 @@ class BlockTerminalController(
     session.findModel.isGlobal = false
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   fun finishSearchSession() {
     searchSession?.close()
   }

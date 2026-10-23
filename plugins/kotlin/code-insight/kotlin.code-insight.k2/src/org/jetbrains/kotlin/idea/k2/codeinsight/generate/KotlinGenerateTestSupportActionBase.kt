@@ -29,10 +29,13 @@ import org.jetbrains.kotlin.analysis.api.permissions.KaAllowAnalysisOnEdt
 import org.jetbrains.kotlin.analysis.api.permissions.allowAnalysisFromWriteAction
 import org.jetbrains.kotlin.analysis.api.permissions.allowAnalysisOnEdt
 import org.jetbrains.kotlin.analysis.api.symbols.KaNamedFunctionSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.directlyOverriddenSymbols
+import org.jetbrains.kotlin.analysis.api.symbols.symbol
 import org.jetbrains.kotlin.asJava.toLightClass
 import org.jetbrains.kotlin.idea.actions.generate.KotlinGenerateActionBase
 import org.jetbrains.kotlin.idea.actions.generate.TestFrameworkListCellRenderer
 import org.jetbrains.kotlin.idea.base.analysis.api.utils.analyzeInModalWindow
+import org.jetbrains.kotlin.idea.base.psi.addModifierKeyword
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.codeinsights.impl.base.testIntegration.findSuitableFrameworks
 import org.jetbrains.kotlin.idea.core.insertMembersAfterAndReformat
@@ -125,7 +128,7 @@ abstract class KotlinGenerateTestSupportActionBase(
                     }
 
                     if (needToOverride) {
-                        functionInPlace.addModifier(KtTokens.OVERRIDE_KEYWORD)
+                        functionInPlace.addModifierKeyword(KtTokens.OVERRIDE_KEYWORD)
                     }
                 }
 

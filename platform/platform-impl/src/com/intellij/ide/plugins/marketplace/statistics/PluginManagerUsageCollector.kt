@@ -6,6 +6,11 @@ import com.intellij.ide.plugins.marketplace.statistics.collectors.PluginManagerF
 import com.intellij.ide.plugins.marketplace.statistics.collectors.PluginManagerMPCollector
 import com.intellij.ide.plugins.marketplace.statistics.enums.DialogAcceptanceResultEnum
 import com.intellij.ide.plugins.marketplace.statistics.enums.InstallationSourceEnum
+import com.intellij.ide.plugins.marketplace.statistics.enums.PluginManagerButtonType
+import com.intellij.ide.plugins.marketplace.statistics.enums.PluginManagerManageAction
+import com.intellij.ide.plugins.marketplace.statistics.enums.PluginManagerOpenSourceEnum
+import com.intellij.ide.plugins.marketplace.statistics.enums.PluginManagerSide
+import com.intellij.ide.plugins.marketplace.statistics.enums.PluginManagerTab
 import com.intellij.ide.plugins.marketplace.statistics.enums.SignatureVerificationResult
 import com.intellij.ide.plugins.newui.PluginUiModel
 import com.intellij.ide.plugins.newui.PluginsGroup
@@ -18,7 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 /*
   Collects plugin manager usage statistics:
-    - Data about search requests on the Marketplace and Installed tabs and search resets actions will be collected
+    - Data about search requests on the Marketplace and Installed tabs and search reset actions will be collected
       by [PluginManagerMPCollector].
     - Data about opening plugin cards, installing/removing plugins and plugin state changes will be collected by
       both [PluginManagerMPCollector] and [PluginManagerFUSCollector] for backward compatibility.
@@ -28,18 +33,50 @@ object PluginManagerUsageCollector {
   private val fusCollector = PluginManagerFUSCollector()
   private val mpCollector = PluginManagerMPCollector()
 
-  // Plugin manager search session identifier which is unique within one IDE session
+  // Plugin manager UI session identifier which is unique within one IDE session
   private val sessionId = AtomicInteger(-1)
+
+  // Plugin manager search session identifier which is unique within one IDE session
+  private val searchSessionId = AtomicInteger(-1)
+
   // Search index within one plugin manager search session. The order corresponds to the order of query updates
   private val searchIndex = AtomicInteger(0)
 
   private val installedPluginInSession = AtomicBoolean(false)
 
   @JvmStatic
-  fun sessionStarted(): Int {
+  fun logSessionStarted(openSource: PluginManagerOpenSourceEnum = PluginManagerOpenSourceEnum.OTHER): Int {
+    return logSessionStarted(openSource, isUnifiedPage = false)
+  }
+
+  internal fun logUnifiedSessionStarted(openSource: PluginManagerOpenSourceEnum): Int {
+    return logSessionStarted(openSource, isUnifiedPage = true)
+  }
+
+  private fun logSessionStarted(openSource: PluginManagerOpenSourceEnum, isUnifiedPage: Boolean): Int {
+    val newSessionId = sessionId.incrementAndGet()
+    val newSearchSessionId = startNewSearchSession()
+    fusCollector.sessionStarted(openSource, newSessionId, newSearchSessionId, isUnifiedPage)
+    mpCollector.sessionStarted(openSource, newSessionId, newSearchSessionId, isUnifiedPage)
+    return newSessionId
+  }
+
+  @JvmStatic
+  fun tabSelected(tab: PluginManagerTab) {
+    fusCollector.tabSelected(tab, sessionId.get(), searchSessionId.get())
+    mpCollector.tabSelected(tab, sessionId.get(), searchSessionId.get())
+  }
+
+  @JvmStatic
+  fun manageActionInvoked(action: PluginManagerManageAction) {
+    fusCollector.manageActionInvoked(action, sessionId.get(), searchSessionId.get())
+    mpCollector.manageActionInvoked(action, sessionId.get(), searchSessionId.get())
+  }
+
+  private fun startNewSearchSession(): Int {
     searchIndex.set(0)
     installedPluginInSession.set(false)
-    return sessionId.getAndIncrement()
+    return searchSessionId.incrementAndGet()
   }
 
   /**
@@ -50,7 +87,7 @@ object PluginManagerUsageCollector {
   @JvmStatic
   fun updateAndGetSearchIndex(): Int {
     // If we perform search after installing a plugin, we consider this as a new search session:
-    if (installedPluginInSession.compareAndSet(true, false)) sessionStarted()
+    if (installedPluginInSession.compareAndSet(true, false)) startNewSearchSession()
     return searchIndex.getAndIncrement()
   }
 
@@ -59,9 +96,14 @@ object PluginManagerUsageCollector {
     query: SearchQueryParser.Marketplace,
     results: List<PluginUiModel>,
     searchIndex: Int,
-    pluginToScore: Map<PluginUiModel, Double>? = null
+    pluginToScore: Map<PluginUiModel, Double>? = null,
   ) {
-    mpCollector.performMarketplaceSearch(project, query, results, searchIndex, sessionId.get(), pluginToScore)
+    mpCollector.performMarketplaceSearch(project, query, results, searchIndex, sessionId.get(), searchSessionId.get(), pluginToScore)
+  }
+
+  internal fun performUnifiedSearch(project: Project?, statistics: UnifiedPluginSearchStatistics, searchIndex: Int) {
+    fusCollector.performUnifiedSearch(project, statistics, searchIndex, sessionId.get(), searchSessionId.get())
+    mpCollector.performUnifiedSearch(project, statistics, searchIndex, sessionId.get(), searchSessionId.get())
   }
 
   @JvmStatic
@@ -70,25 +112,25 @@ object PluginManagerUsageCollector {
     query: SearchQueryParser.Installed,
     results: List<PluginUiModel>,
     searchIndex: Int,
-    pluginToScore: Map<PluginUiModel, Double>? = null
+    pluginToScore: Map<PluginUiModel, Double>? = null,
   ) {
-    mpCollector.performInstalledTabSearch(project, query, results, searchIndex, sessionId.get(), pluginToScore)
+    mpCollector.performInstalledTabSearch(project, query, results, searchIndex, sessionId.get(), searchSessionId.get(), pluginToScore)
   }
 
   fun searchReset() {
-    mpCollector.searchReset(sessionId.get())
+    mpCollector.searchReset(sessionId.get(), searchSessionId.get())
   }
 
   @JvmStatic
   fun pluginCardOpened(descriptor: IdeaPluginDescriptor, group: PluginsGroup?) {
-    fusCollector.pluginCardOpened(descriptor, group, sessionId.get())
-    mpCollector.pluginCardOpened(descriptor, group, sessionId.get())
+    fusCollector.pluginCardOpened(descriptor, group, sessionId.get(), searchSessionId.get())
+    mpCollector.pluginCardOpened(descriptor, group, sessionId.get(), searchSessionId.get())
   }
 
   @JvmStatic
   fun thirdPartyAcceptanceCheck(result: DialogAcceptanceResultEnum) {
-    fusCollector.thirdPartyAcceptanceCheck(result, sessionId.get())
-    mpCollector.thirdPartyAcceptanceCheck(result, sessionId.get())
+    fusCollector.thirdPartyAcceptanceCheck(result, sessionId.get(), searchSessionId.get())
+    mpCollector.thirdPartyAcceptanceCheck(result, sessionId.get(), searchSessionId.get())
   }
 
   @JvmStatic
@@ -97,40 +139,52 @@ object PluginManagerUsageCollector {
     enable: Boolean,
     project: Project? = null,
   ) {
-    fusCollector.pluginsStateChanged(descriptors, enable, project, sessionId.get())
-    mpCollector.pluginsStateChanged(descriptors, enable, project, sessionId.get())
+    fusCollector.pluginsStateChanged(descriptors, enable, project, sessionId.get(), searchSessionId.get())
+    mpCollector.pluginsStateChanged(descriptors, enable, project, sessionId.get(), searchSessionId.get())
   }
 
   @JvmStatic
   fun pluginRemoved(pluginId: PluginId) {
-    fusCollector.pluginRemoved(pluginId, sessionId.get())
-    mpCollector.pluginRemoved(pluginId, sessionId.get())
+    fusCollector.pluginRemoved(pluginId, sessionId.get(), searchSessionId.get())
+    mpCollector.pluginRemoved(pluginId, sessionId.get(), searchSessionId.get())
+  }
+
+  @JvmStatic
+  fun pluginInstallButtonClicked(pluginId: PluginId, side: PluginManagerSide, buttonType: PluginManagerButtonType) {
+    fusCollector.pluginInstallButtonClicked(pluginId, side, buttonType, sessionId.get(), searchSessionId.get())
+    mpCollector.pluginInstallButtonClicked(pluginId, side, buttonType, sessionId.get(), searchSessionId.get())
+  }
+
+  @JvmStatic
+  fun pluginUninstallButtonClicked(pluginId: PluginId, side: PluginManagerSide, buttonType: PluginManagerButtonType) {
+    fusCollector.pluginUninstallButtonClicked(pluginId, side, buttonType, sessionId.get(), searchSessionId.get())
+    mpCollector.pluginUninstallButtonClicked(pluginId, side, buttonType, sessionId.get(), searchSessionId.get())
   }
 
   @JvmStatic
   fun pluginInstallationStarted(
     descriptor: IdeaPluginDescriptor,
     source: InstallationSourceEnum,
-    previousVersion: String? = null
+    previousVersion: String? = null,
   ) {
-    fusCollector.pluginInstallationStarted(descriptor, source, sessionId.get(), previousVersion)
-    mpCollector.pluginInstallationStarted(descriptor, source, sessionId.get(), previousVersion)
+    fusCollector.pluginInstallationStarted(descriptor, source, sessionId.get(), searchSessionId.get(), previousVersion)
+    mpCollector.pluginInstallationStarted(descriptor, source, sessionId.get(), searchSessionId.get(), previousVersion)
   }
 
   @JvmStatic
   fun pluginInstallationFinished(descriptor: IdeaPluginDescriptor) {
     installedPluginInSession.set(true)
-    fusCollector.pluginInstallationFinished(descriptor, sessionId.get())
-    mpCollector.pluginInstallationFinished(descriptor, sessionId.get())
+    fusCollector.pluginInstallationFinished(descriptor, sessionId.get(), searchSessionId.get())
+    mpCollector.pluginInstallationFinished(descriptor, sessionId.get(), searchSessionId.get())
   }
 
   fun signatureCheckResult(descriptor: IdeaPluginDescriptor, result: SignatureVerificationResult) {
-    fusCollector.signatureCheckResult(descriptor, result, sessionId.get())
-    mpCollector.signatureCheckResult(descriptor, result, sessionId.get())
+    fusCollector.signatureCheckResult(descriptor, result, sessionId.get(), searchSessionId.get())
+    mpCollector.signatureCheckResult(descriptor, result, sessionId.get(), searchSessionId.get())
   }
 
   fun signatureWarningShown(descriptor: IdeaPluginDescriptor, result: DialogAcceptanceResultEnum) {
-    fusCollector.signatureWarningShown(descriptor, result, sessionId.get())
-    mpCollector.signatureWarningShown(descriptor, result, sessionId.get())
+    fusCollector.signatureWarningShown(descriptor, result, sessionId.get(), searchSessionId.get())
+    mpCollector.signatureWarningShown(descriptor, result, sessionId.get(), searchSessionId.get())
   }
 }

@@ -1,9 +1,9 @@
 // "Import extension function 'A.extension'" "true"
 // WITH_STDLIB
-// K2_ERROR: Cannot infer type for type parameter 'R'. Specify it explicitly.
-// K2_ERROR: Cannot infer type for type parameter 'R'. Specify it explicitly.
-// K2_ERROR: Cannot infer type for type parameter 'R'. Specify it explicitly.
-// K2_ERROR: Unresolved reference 'extension' on receiver of type 'A'.
+// K2_ERROR: CANNOT_INFER_PARAMETER_TYPE
+// K2_ERROR: CANNOT_INFER_PARAMETER_TYPE
+// K2_ERROR: CANNOT_INFER_PARAMETER_TYPE
+// K2_ERROR: UNRESOLVED_REFERENCE
 package p
 
 class A
@@ -26,5 +26,4 @@ fun usage(a: A, b: B, c: C) {
     a.run { b.run { c.run { a.<caret>extension() } } }
 }
 
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ImportFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.imprt.ImportQuickFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.imprt.ImportQuickFix

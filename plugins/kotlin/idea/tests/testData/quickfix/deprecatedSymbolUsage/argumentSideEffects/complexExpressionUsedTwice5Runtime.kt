@@ -1,5 +1,6 @@
 // "Replace with 'newFun(p, p)'" "true"
 // WITH_STDLIB
+// K2_AFTER_ERROR: CANNOT_INFER_PARAMETER_TYPE
 
 import java.util.*
 
@@ -16,5 +17,4 @@ fun foo() {
 
 fun <T> bar(): List<T> = ArrayList()
 
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.replaceWith.DeprecatedSymbolUsageFix
 // IGNORE_K2

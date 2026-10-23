@@ -6,7 +6,9 @@ import com.intellij.collaboration.ui.SimpleEventListener
 import com.intellij.collaboration.ui.codereview.details.model.CodeReviewChangeListViewModel.SelectionRequest
 import com.intellij.collaboration.util.ChangesSelection
 import com.intellij.collaboration.util.RefComparisonChange
+import com.intellij.collaboration.util.filePath
 import com.intellij.openapi.actionSystem.DataKey
+import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.Project
 import com.intellij.util.EventDispatcher
 import com.intellij.util.concurrency.annotations.RequiresEdt
@@ -52,6 +54,14 @@ interface CodeReviewChangeListViewModel {
    */
   fun showDiff()
 
+  fun canEdit(change: RefComparisonChange): Boolean =
+    change.filePath.virtualFile != null
+
+  fun startEditing(change: RefComparisonChange) {
+    val file = change.filePath.virtualFile ?: return
+    OpenFileDescriptor(project, file).navigate(true)
+  }
+
   interface WithDetails : CodeReviewChangeListViewModel {
     /**
      * Map of additional details for changes
@@ -71,7 +81,7 @@ interface CodeReviewChangeListViewModel {
 
   @ApiStatus.Experimental
   interface WithViewedState : WithDetails {
-    @RequiresEdt
+    @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
     fun setViewedState(changes: Iterable<RefComparisonChange>, viewed: Boolean)
   }
 

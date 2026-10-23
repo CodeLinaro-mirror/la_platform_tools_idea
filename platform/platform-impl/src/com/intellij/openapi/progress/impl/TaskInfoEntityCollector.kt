@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.progress.impl
 
 import com.intellij.openapi.components.Service
@@ -11,6 +11,7 @@ import com.intellij.openapi.progress.ProgressModel
 import com.intellij.openapi.progress.util.ProgressIndicatorBase
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
+import com.intellij.platform.ide.progress.BackgroundTaskOwnerKind
 import com.intellij.platform.ide.progress.TaskInfoEntity
 import com.intellij.platform.ide.progress.TaskManager
 import com.intellij.platform.ide.progress.TaskStatus
@@ -19,11 +20,19 @@ import com.intellij.platform.ide.progress.statuses
 import com.intellij.platform.ide.progress.suspender.TaskSuspension
 import com.intellij.platform.ide.progress.suspensionState
 import com.intellij.platform.ide.progress.updates
+import com.intellij.platform.project.ProjectEntity
+import com.intellij.platform.project.ProjectId
 import com.intellij.platform.project.projectId
+import com.jetbrains.rhizomedb.EID
+import com.jetbrains.rhizomedb.entities
+import com.jetbrains.rhizomedb.exists
+import fleet.kernel.change
 import fleet.kernel.rete.asValuesFlow
 import fleet.kernel.rete.collect
 import fleet.kernel.rete.collectLatest
+import fleet.kernel.rete.each
 import fleet.kernel.rete.filter
+import fleet.kernel.rete.tokenSetsFlow
 import fleet.kernel.tryWithEntities
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.awaitCancellation
@@ -38,6 +47,7 @@ internal class TaskInfoEntityCollector(cs: CoroutineScope) {
   init {
     LOG.trace { "TaskInfoEntityCollector started for application"}
     collectActiveTasks(cs, project = null)
+    collectStaleProjectTasks(cs)
   }
 }
 
@@ -52,11 +62,76 @@ internal class PerProjectTaskInfoEntityCollector(private val project: Project, p
 private fun collectActiveTasks(cs: CoroutineScope, project: Project?) {
   cs.launch {
     activeTasks
-      .filter { it.projectEntity?.projectId == project?.projectId() }
+      .filter { isTaskShownByCollector(it.ownerKind, it.projectId, project?.projectId()) }
       .collect { task ->
         showTaskIndicator(cs, project, task)
       }
   }
+}
+
+/**
+ * Decides if a collector shows a task in its frame.
+ *
+ * The application collector shows the tasks of the default project and the tasks of the last focused frame.
+ * A per-project collector shows the tasks of its project and the tasks of all frames.
+ *
+ * @param collectorProjectId the project id of a per-project collector, or null for the application collector
+ */
+internal fun isTaskShownByCollector(
+  ownerKind: BackgroundTaskOwnerKind,
+  taskProjectId: ProjectId?,
+  collectorProjectId: ProjectId?,
+): Boolean {
+  return when (ownerKind) {
+    BackgroundTaskOwnerKind.PROJECT -> taskProjectId == collectorProjectId
+    // we make only the application collector to handle the UI of the last-focused-only progress
+    // otherwise we would have multiple projects attempting to draw UI for the same last-focused frame
+    BackgroundTaskOwnerKind.GUESS -> collectorProjectId == null
+    // we ignore the application collector by filtering for non-null project id
+    BackgroundTaskOwnerKind.ALL_FRAMES -> collectorProjectId != null
+  }
+}
+
+/**
+ * Tasks reference their project by a plain id (see [TaskInfoEntity.projectId]), so nothing cascades
+ * when a `ProjectEntity` disappears. This watches project entities and removes the tasks of a project
+ * that is truly unregistered — as opposed to one whose entity got replaced by another with the same id
+ * (both peers create one; in IJ Light the id itself is re-bound on connect), which used to trip the
+ * cascade delete and silently wipe the tasks.
+ */
+internal fun collectStaleProjectTasks(cs: CoroutineScope) {
+  val projectIdsByEntity = mutableMapOf<EID, ProjectId>()
+  cs.launch {
+    ProjectEntity.each().tokenSetsFlow().collect { tokenSet ->
+      val removedProjectIds = tokenSet.retracted
+        .map { it.value }
+        .mapNotNull { projectEntity ->
+          projectIdsByEntity.remove(projectEntity.eid) ?: run {
+            LOG.warn("Can't remove project entity with id ${projectEntity.eid}. It's already removed")
+            null
+          }
+        }.toSet()
+
+      tokenSet.asserted
+        .map { it.value }
+        .filter { it.exists() }
+        .forEach { projectEntity ->
+          projectIdsByEntity[projectEntity.eid] = projectEntity.projectId
+        }
+
+      removeTasksForUnregisteredProjects(removedProjectIds)
+    }
+  }
+}
+
+internal suspend fun removeTasksForUnregisteredProjects(projectIds: Set<ProjectId>) {
+  projectIds
+    .filter { projectId -> entities(ProjectEntity.ProjectIdValue, projectId).isEmpty() }
+    .forEach { projectId ->
+      change {
+        entities(TaskInfoEntity.ProjectIdType, projectId).forEach { it.delete() }
+      }
+    }
 }
 
 private fun showTaskIndicator(cs: CoroutineScope, project: Project?, task: TaskInfoEntity) {
@@ -64,7 +139,7 @@ private fun showTaskIndicator(cs: CoroutineScope, project: Project?, task: TaskI
     tryWithEntities(task) {
       LOG.trace { "Showing indicator for task: entityId=${task.eid}, title=${task.title}, project=$project" }
 
-      val progressModel = if (isRhizomeProgressModelEnabled) {
+      val progressModel = if (isRhizomeProgressModelEnabled()) {
         ProgressTaskInfoEntityModel(task, cs)
       }
       else {
@@ -78,9 +153,14 @@ private fun showTaskIndicator(cs: CoroutineScope, project: Project?, task: TaskI
         }
       }
 
-      val projectOrDefault = project ?: serviceAsync<ProjectManager>().defaultProject
+      // a null project makes the indicator use the last focused frame
+      val indicatorProject = when {
+        project != null -> project
+        task.ownerKind == BackgroundTaskOwnerKind.GUESS -> null
+        else -> serviceAsync<ProjectManager>().defaultProject
+      }
       showIndicator(
-        projectOrDefault,
+        indicatorProject,
         progressModel,
         task.updates.asValuesFlow()
       )

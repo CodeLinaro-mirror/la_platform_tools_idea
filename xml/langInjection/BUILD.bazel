@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.xml.langInjection` start
+content_module_jar(module = ":langInjection")
+### auto-generated section `dev intellij.xml.langInjection` end
 
 ### auto-generated section `build intellij.xml.langInjection` start
-
 jvm_library(
     name = "langInjection",
     srcs = glob(
@@ -81,6 +85,8 @@ jvm_library(
 exports_files(
     [
         "intellij.xml.langInjection.iml",
+        "resources/intellij.xml.langInjection.xml",
+        "resources/resources/xmlInjections-html.xml",
     ],
     visibility = ["//visibility:public"],
 )

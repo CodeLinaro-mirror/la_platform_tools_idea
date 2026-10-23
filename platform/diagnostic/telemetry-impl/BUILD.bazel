@@ -1,8 +1,12 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 load("//build:compiler-options.bzl", "create_kotlinc_options")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.platform.diagnostic.telemetry.impl` start
+content_module_jar(module = ":telemetry-impl")
+### auto-generated section `dev intellij.platform.diagnostic.telemetry.impl` end
 
 ### auto-generated section `build intellij.platform.diagnostic.telemetry.impl` start
-
 create_kotlinc_options(
     name = "custom_telemetry-impl",
     opt_in = ["kotlinx.serialization.ExperimentalSerializationApi"],
@@ -104,6 +108,7 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.diagnostic.telemetry.impl.iml",
+        "resources/intellij.platform.diagnostic.telemetry.impl.xml",
     ],
     visibility = ["//visibility:public"],
 )

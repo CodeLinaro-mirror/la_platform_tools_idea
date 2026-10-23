@@ -5,6 +5,7 @@ import com.intellij.diagnostic.VMOptions;
 import com.intellij.ide.GeneralSettings;
 import com.intellij.internal.DebugAttachDetector;
 import com.intellij.internal.statistic.collectors.fus.MethodNameRuleValidator;
+import com.intellij.internal.statistic.collectors.fus.ProjectlessData;
 import com.intellij.internal.statistic.eventLog.EventLogGroup;
 import com.intellij.internal.statistic.eventLog.events.BooleanEventField;
 import com.intellij.internal.statistic.eventLog.events.ClassEventField;
@@ -23,10 +24,13 @@ import com.intellij.internal.statistic.utils.StatisticsUploadAssistant;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.diagnostic.UnhandledException;
+import com.intellij.openapi.diagnostic.UnhandledExceptionKind;
 import com.intellij.openapi.extensions.PluginId;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.util.text.Strings;
+import com.intellij.openapi.wm.ex.WelcomeScreenProjectProvider;
+import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -41,7 +45,7 @@ import static com.intellij.internal.statistic.utils.PluginInfoDetectorKt.getPlug
 public final class LifecycleUsageTriggerCollector extends CounterUsagesCollector {
   private static final Logger LOG = Logger.getInstance(LifecycleUsageTriggerCollector.class);
 
-  private static final EventLogGroup LIFECYCLE = new EventLogGroup("lifecycle", 79);
+  private static final EventLogGroup LIFECYCLE = new EventLogGroup("lifecycle", 82);
 
   private static final AtomicInteger MAX_SIMULTANEOUS_PROJECTS = new AtomicInteger(0);
 
@@ -59,14 +63,20 @@ public final class LifecycleUsageTriggerCollector extends CounterUsagesCollector
     EventFields.Enum("session_type", SessionType.class);
   private static final VarargEventId IDE_CLOSE = LIFECYCLE.registerVarargEvent("ide.close", restartField, sessionTypeField);
 
-  private static final EventId2<Long, Boolean> PROJECT_OPENING_FINISHED =
-    LIFECYCLE.registerEvent("project.opening.finished", EventFields.Long("duration_ms"), EventFields.Boolean("project_tab"));
+  private static final BooleanEventField isWelcomeScreenDummyProjectField =
+    EventFields.Boolean("is_non_modal_welcome_screen_project",
+                        "Flag is used to show if current project is dummy welcome screen project and not a real user project");
 
-  private static final EventId PROJECT_OPENED = LIFECYCLE.registerEvent("project.opened");
+  private static final EventId3<Long, Boolean, Boolean> PROJECT_OPENING_FINISHED =
+    LIFECYCLE.registerEvent("project.opening.finished", EventFields.Long("duration_ms"), EventFields.Boolean("project_tab"),
+                            isWelcomeScreenDummyProjectField);
+
+  private static final VarargEventId PROJECT_OPENED =
+    LIFECYCLE.registerVarargEvent("project.opened", EventFields.Projectless, isWelcomeScreenDummyProjectField);
 
   private static final EventId1<Integer> PROJECT_MAX_SIMULTANEOUS =
     LIFECYCLE.registerEvent("project.max.simultaneous",
-                           EventFields.BoundedInt("count", new int[]{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}));
+                            EventFields.BoundedInt("count", new int[]{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}));
 
   private static final EventId PROJECT_CLOSED = LIFECYCLE.registerEvent("project.closed"); // actually called before closed and disposed
 
@@ -91,7 +101,8 @@ public final class LifecycleUsageTriggerCollector extends CounterUsagesCollector
   private static final EventId FREEZE_POPUP_SHOWN = LIFECYCLE.registerEvent("freeze.popup.shown");
 
   private static final EventId3<PluginInfo, Long, Boolean> IDE_FREEZE_DETECTED_PLUGIN =
-    LIFECYCLE.registerEvent("ide.freeze.detected.plugin", EventFields.PluginInfo, EventFields.DurationMs, EventFields.Boolean("reported_to_user"));
+    LIFECYCLE.registerEvent("ide.freeze.detected.plugin", EventFields.PluginInfo, EventFields.DurationMs,
+                            EventFields.Boolean("reported_to_user"));
   private static final EventId1<PluginInfo> IDE_FREEZE_PLUGIN_ISSUE_REPORTED =
     LIFECYCLE.registerEvent("ide.freeze.reported.plugin", EventFields.PluginInfo);
   private static final EventId1<PluginInfo> IDE_FREEZE_PLUGIN_IGNORED =
@@ -111,7 +122,8 @@ public final class LifecycleUsageTriggerCollector extends CounterUsagesCollector
   private static final EventField<Integer> errorSizeField = EventFields.Int("error_size");
   private static final EventField<Boolean> tooManyErrorsField = EventFields.Boolean("too_many_errors");
   private static final VarargEventId IDE_ERROR = LIFECYCLE.registerVarargEvent(
-    "ide.error", EventFields.PluginInfo, errorField, memoryErrorKindField, errorHashField, errorFramesField, errorSizeField, tooManyErrorsField, unhandledExceptionInteractiveField);
+    "ide.error", EventFields.PluginInfo, errorField, memoryErrorKindField, errorHashField, errorFramesField, errorSizeField,
+    tooManyErrorsField, unhandledExceptionInteractiveField);
 
   private static final EventId IDE_CRASH_DETECTED = LIFECYCLE.registerEvent("ide.crash.detected");
 
@@ -124,14 +136,29 @@ public final class LifecycleUsageTriggerCollector extends CounterUsagesCollector
     LIFECYCLE.registerEvent("ide.hundred.exceptions.happened.in.plugin", numberOfExceptionsField, EventFields.PluginInfo);
 
   private enum ProjectOpenMode {New, Same, Attach}
-  private static final EventField<ProjectOpenMode> projectOpenModeField = EventFields.Enum("mode", ProjectOpenMode.class, mode -> Strings.toLowerCase(mode.name()));
-  private static final EventId1<ProjectOpenMode> PROJECT_FRAME_SELECTED = LIFECYCLE.registerEvent("project.frame.selected", projectOpenModeField);
+
+  private static final EventField<ProjectOpenMode> projectOpenModeField =
+    EventFields.Enum("mode", ProjectOpenMode.class, mode -> Strings.toLowerCase(mode.name()));
+  private static final EventId1<ProjectOpenMode> PROJECT_FRAME_SELECTED =
+    LIFECYCLE.registerEvent("project.frame.selected", projectOpenModeField);
 
   private static final EventId1<Integer> EARLY_ERRORS =
     LIFECYCLE.registerEvent("early.errors", EventFields.Int("errors_ignored"));
 
   private static final EventsRateThrottle ourErrorRateThrottle = new EventsRateThrottle(100, 5L * 60 * 1000); // 100 errors per 5 minutes
-  private static final EventsIdentityThrottle ourErrorIdentityThrottle = new EventsIdentityThrottle(50, 60L * 60 * 1000); // 1 unique error per 1 hour
+  private static final EventsIdentityThrottle ourErrorIdentityThrottle = new EventsIdentityThrottle(50, 60L * 60 * 1000);
+    // 1 unique error per 1 hour
+
+  private static final EventId1<Boolean> IDE_MEMORY_REPORT_SENT =
+    LIFECYCLE.registerEvent("ide.memory.report.send", EventFields.Boolean("automatic"));
+
+  private static final EventId IDE_MEMORY_REPORT_VIEW = LIFECYCLE.registerEvent("ide.memory.report.view");
+  private static final EventId IDE_MEMORY_REPORT_PREPARE = LIFECYCLE.registerEvent("ide.memory.report.prepare");
+  private static final EventId IDE_MEMORY_REPORT_FAIL = LIFECYCLE.registerEvent("ide.memory.report.failed");
+
+  private static final EventField<Boolean> IS_OOM_ERROR = EventFields.Boolean("oomError");
+  private static final EventId1<Boolean> IDE_MEMORY_ADJUST = LIFECYCLE.registerEvent("ide.memory.adjust", IS_OOM_ERROR);
+  private static final EventId1<Boolean> IDE_MEMORY_REPORT_PROBLEM = LIFECYCLE.registerEvent("ide.memory.report.problem", IS_OOM_ERROR);
 
   @Override
   public EventLogGroup getGroup() {
@@ -157,11 +184,14 @@ public final class LifecycleUsageTriggerCollector extends CounterUsagesCollector
   }
 
   public static void onProjectOpenFinished(@NotNull Project project, long time, boolean isTab) {
-    PROJECT_OPENING_FINISHED.log(project, time, isTab);
+    PROJECT_OPENING_FINISHED.log(project, time, isTab, WelcomeScreenProjectProvider.isWelcomeScreenProject(project));
   }
 
   public static void onProjectOpened(@NotNull Project project) {
-    PROJECT_OPENED.log(project);
+    var data = new ArrayList<EventPair<?>>(2);
+    ContainerUtil.addIfNotNull(data, ProjectlessData.forProject(project));
+    data.add(isWelcomeScreenDummyProjectField.with(WelcomeScreenProjectProvider.isWelcomeScreenProject(project)));
+    PROJECT_OPENED.log(project, data);
     int current = ProjectManager.getInstance().getOpenProjects().length;
     MAX_SIMULTANEOUS_PROJECTS.updateAndGet(prev -> Math.max(prev, current));
   }
@@ -210,19 +240,24 @@ public final class LifecycleUsageTriggerCollector extends CounterUsagesCollector
     FREEZE_POPUP_SHOWN.log(null);
   }
 
+  /**
+   * @param realCause              the cause without an {@link UnhandledException} wrapper
+   * @param unhandledExceptionKind how the exception reached the collector. See IJPL-100 and IJPL-254578.
+   */
   public static void onError(
     @Nullable PluginId pluginId,
-    @NotNull Throwable throwable,
+    @NotNull Throwable realCause,
+    @NotNull UnhandledExceptionKind unhandledExceptionKind,
     @Nullable VMOptions.MemoryKind memoryErrorKind
   ) {
     try {
-      var description = new ThrowableDescription(throwable);
+      var description = new ThrowableDescription(realCause);
       var data = new ArrayList<EventPair<?>>();
       data.add(EventFields.PluginInfo.with(pluginId == null ? getPlatformPlugin() : getPluginInfoById(pluginId)));
       data.add(errorField.with(description.getThrowableClass()));
 
-      if (throwable instanceof UnhandledException uh) { // See IJPL-100
-        data.add(unhandledExceptionInteractiveField.with(uh.isInteractive()));
+      if (unhandledExceptionKind != UnhandledExceptionKind.HANDLED) {
+        data.add(unhandledExceptionInteractiveField.with(unhandledExceptionKind == UnhandledExceptionKind.INTERACTIVE));
       }
       if (memoryErrorKind != null) {
         data.add(memoryErrorKindField.with(memoryErrorKind));
@@ -298,5 +333,29 @@ public final class LifecycleUsageTriggerCollector extends CounterUsagesCollector
       PluginInfo pluginInfo = (pluginId != null) ? getPluginInfoById(pluginId) : getPlatformPlugin();
       IDE_HUNDRED_EXCEPTIONS_HAPPENED_IN_PLUGIN.log(numberOfExceptions, pluginInfo);
     }
+  }
+
+  public static void onMemoryReportPrepared() {
+    IDE_MEMORY_REPORT_PREPARE.log();
+  }
+
+  public static void onMemoryReportFailed() {
+    IDE_MEMORY_REPORT_FAIL.log();
+  }
+
+  public static void onMemoryReportReview() {
+    IDE_MEMORY_REPORT_VIEW.log();
+  }
+
+  public static void onReportProblemClicked(boolean oomError) {
+    IDE_MEMORY_REPORT_PROBLEM.log(oomError);
+  }
+
+  public static void onMemoryAdjust(boolean oomError) {
+    IDE_MEMORY_ADJUST.log(oomError);
+  }
+
+  public static void onMemoryReportSubmitted(boolean automatic) {
+    IDE_MEMORY_REPORT_SENT.log(automatic);
   }
 }

@@ -20,10 +20,13 @@ interface IncompleteDependenciesService {
    */
   val stateFlow: Flow<DependenciesState>
 
-  @RequiresReadLock
+  @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
   fun getState(): DependenciesState
 
-  @RequiresWriteLock
+  @ApiStatus.Internal
+  fun getStateUnsafe(): DependenciesState
+
+  @RequiresWriteLock(generateAssertion = false /* IJPL-115548 */)
   fun enterIncompleteState(requestor: Any): IncompleteDependenciesAccessToken
 
   enum class DependenciesState(val isComplete: Boolean) {
@@ -32,7 +35,7 @@ interface IncompleteDependenciesService {
   }
 
   abstract class IncompleteDependenciesAccessToken {
-    @RequiresWriteLock
+    @RequiresWriteLock(generateAssertion = false /* IJPL-115548 */)
     abstract fun finish()
   }
 }

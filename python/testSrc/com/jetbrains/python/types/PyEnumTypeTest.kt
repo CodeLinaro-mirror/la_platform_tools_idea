@@ -1,16 +1,30 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.types
 
+import com.intellij.openapi.application.runReadActionBlocking
+import com.intellij.psi.util.PsiTreeUtil
+import com.intellij.testFramework.runInEdtAndWait
+import com.jetbrains.python.allure.Subsystems
+import com.jetbrains.python.allure.Layers
+import com.jetbrains.python.allure.Components
 import com.intellij.idea.TestFor
+import com.jetbrains.python.codeInsight.stdlib.PyStdlibTypeProvider
+import com.jetbrains.python.extensions.isExhaustive
 import com.jetbrains.python.fixtures.PyCodeInsightTestCase
 import com.jetbrains.python.psi.LanguageLevel
+import com.jetbrains.python.psi.PyMatchStatement
+import com.jetbrains.python.psi.types.TypeEvalContext
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 
 /**
- * Type and type-checker tests for [enum][https://docs.python.org/3/library/enum.html] members,
+ * Type and type-checker tests for [enum](https://docs.python.org/3/library/enum.html) members,
  * values, aliases and narrowing.
  */
+@Subsystems.Typing
+@Components.TypeInference
+@Layers.Functional
 class PyEnumTypeTest : PyCodeInsightTestCase() {
 
   @Nested
@@ -29,7 +43,7 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
       
       expr = Color.RED
       # └ TYPE Literal[Color.RED]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-76816"])
@@ -47,7 +61,7 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
       
       expr = Color.RED
       # └ TYPE Literal[Color.RED]
-      """)
+      """.trimIndent())
 
     @Test
     fun `enum members of various kinds`() = test("""
@@ -65,10 +79,11 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
       
       expr = Example.foo, Example.bar, Example.A, Example.B
       # └ TYPE tuple[() -> Literal[1], (x: int) -> None, Literal[Example.A], Literal[Example.B]]
-      """)
+      """.trimIndent())
 
     @Test
-    fun `enum member and nonmember`() = test(TestOptions(assertRecursionPrevention = false), """
+    @TestCaseOptions(assertRecursionPrevention = false)
+    fun `enum member and nonmember`() = test("""
       from enum import Enum, member, nonmember
       
       def func(x: int) -> None: ...
@@ -83,17 +98,16 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
       
       expr = Example.a, Example.A, Example.B, Example.method
       # └ TYPE tuple[int, Literal[Example.A], Literal[Example.B], Literal[Example.method]]
-      """)
+      """.trimIndent())
 
     @Test
-    fun `enum member and nonmember from another file`() = test(
-      TestOptions(assertRecursionPrevention = false),
-      """
+    @TestCaseOptions(assertRecursionPrevention = false)
+    fun `enum member and nonmember from another file`() = test("""
       from enum_members import Example
       
       expr = Example.a, Example.A, Example.B, Example.method
       #└ TYPE tuple[int, Literal[Example.A], Literal[Example.B], Literal[Example.method]]
-      """,
+      """.trimIndent(),
       "enum_members.py" to """
         from enum import Enum, member, nonmember
         from _enum_members import *
@@ -105,7 +119,7 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
         
             @member
             def method() -> None: ...
-        """,
+        """.trimIndent(),
       "_enum_members.py" to "def func(x: int) -> None: ...",
     )
 
@@ -126,8 +140,46 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
       def f(e: E):
         expr = e.value, E.__x__
       #  └ TYPE tuple[Literal["a", "b", "c"], int]
-      """)
+      """.trimIndent())
 
+
+    @Test
+    @TestFor(issues = ["PY-80837"])
+    fun `init enum member`() = test("""
+      from enum import Enum, IntEnum, StrEnum
+
+      class MyEnum(Enum):
+          A = 1
+          B = "string"
+          C = None
+
+      class MyIntEnum(IntEnum):
+          OK = 1
+          BAD = "string"
+      #         ^^^^^^^^ WARNING Expected type 'int', got 'Literal["string"]' instead
+      #         ^^^^^^^^ WARNING Type 'Literal["string"]' is not assignable to declared type 'int'
+
+      class MyStrEnum(StrEnum):
+          OK = "a"
+          BAD = 1
+      #         └ WARNING Expected type 'str', got 'Literal[1]' instead
+      #         └ WARNING Type 'Literal[1]' is not assignable to declared type 'str'
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-90192"])
+    fun `init enum member custom new`() = test("""
+      from enum import Enum
+
+      class A:
+          def __new__(cls, x: int, y: int):
+              return object.__new__(cls)
+
+      class MyEnum(A, Enum):
+          OK = 1, 2
+          BAD = 1, "abb"
+      #            ^^^^^ WARNING FIXME Expected type 'int', got 'str' instead
+      """.trimIndent())
   }
 
   @Nested
@@ -143,16 +195,15 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
       
       expr = Color.RED, Color.BLUE
       # └ TYPE tuple[Literal[Color.RED], Literal[Color.BLUE]]
-      """)
+      """.trimIndent())
 
     @Test
-    fun `enum auto values yield member literals from another file`() = test(
-      """
+    fun `enum auto values yield member literals from another file`() = test("""
       from color import Color
       
       expr = Color.RED, Color.BLUE
       #└ TYPE tuple[Literal[Color.RED], Literal[Color.BLUE]]
-      """,
+      """.trimIndent(),
       "color.py" to """
         from enum import Enum, auto
         
@@ -160,8 +211,23 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
         class Color(Enum):
             RED = auto()
             BLUE = auto()
-        """,
-    )
+        """.trimIndent())
+
+    @Test
+    @TestFor(classes = [PyStdlibTypeProvider::class])
+    fun `enum member value from a call in another file`() = test("""
+      from color import Color
+
+      expr = Color.RED.value
+      #               └ TYPE Unknown
+      """.trimIndent(),
+      "color.py" to """
+        from enum import Enum
+
+
+        class Color(Enum):
+            RED = make()
+        """.trimIndent())
   }
 
   @Nested
@@ -179,7 +245,7 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
       
       expr = Color.RED, Color.R, Color.r
       #└ TYPE tuple[Literal[Color.RED], Literal[Color.RED], Literal[Color.RED]]
-      """)
+      """.trimIndent())
 
     @Test
     fun `enum member function aliases resolve to the original member`() = test("""
@@ -195,15 +261,14 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
       
       expr = Color.foo, Color.bar, Color.buz
       #└ TYPE tuple[Literal[Color.foo], Literal[Color.foo], Literal[Color.foo]]
-      """)
+      """.trimIndent())
 
     @Test
-    fun `enum member aliases resolve to the original member from another file`() = test(
-      """
+    fun `enum member aliases resolve to the original member from another file`() = test("""
       from color import *
       expr = Color.RED, Color.R, Color.r, Color.foo, Color.bar, Color.buz
       #└ TYPE tuple[Literal[Color.RED], Literal[Color.RED], Literal[Color.RED], Literal[Color.foo], Literal[Color.foo], Literal[Color.foo]]
-      """,
+      """.trimIndent(),
       "color.py" to """
         from enum import EnumMeta, member
         
@@ -219,8 +284,7 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
         
             bar = foo
             buz = bar
-        """,
-    )
+        """.trimIndent())
   }
 
   @Nested
@@ -238,7 +302,7 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
       def foo(arg: State):
           expr = arg.value
       #   └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-79330"])
@@ -252,7 +316,7 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
       def foo(e: MyEnum):
           expr = e.value
       #   └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-79330"])
@@ -269,18 +333,17 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
       def foo(e: MyEnumDerived):
           expr = e.value
       #   └ TYPE str
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-79330"])
-    fun `enum auto value type with custom _generate_next_value_ from another file`() = test(
-      """
+    fun `enum auto value type with custom _generate_next_value_ from another file`() = test("""
       from my_enum import MyEnumDerived
       
       def foo(e: MyEnumDerived):
           expr = e.value
       #   └ TYPE str
-      """,
+      """.trimIndent(),
       "my_enum.py" to """
         from enum import auto, Enum
         
@@ -292,8 +355,7 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
         
         class MyEnumDerived(MyEnumBase):
             FOO = auto()
-        """,
-    )
+        """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-16622"])
@@ -309,7 +371,7 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
       IDE_TO_CLEAR_SETTINGS_FOR = IDE.PY
       expr = IDE_TO_CLEAR_SETTINGS_FOR.value
       # └ TYPE Literal["PyCharm"]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-16622"])
@@ -326,7 +388,7 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
       res = f()
       expr = res.value
       #└ TYPE Literal[1]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-54503"])
@@ -339,11 +401,12 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
       
       expr = MyEnum['ONE'].value
       # └ TYPE Literal[1, 2]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-54503"])
-    fun `value type of enum item from __call__`() = test(TestOptions(assertRecursionPrevention = false), """
+    @TestCaseOptions(assertRecursionPrevention = false)
+    fun `value type of enum item from __call__`() = test("""
       import enum
       
       class MyEnum(enum.Enum):
@@ -352,7 +415,7 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
       
       expr = MyEnum(1).value
       #└ TYPE Literal[1, 2]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-54503"])
@@ -366,7 +429,7 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
       def f(p: MyEnum):
           expr = p.value
       #   └ TYPE Literal[1, 2]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-79330", "PY-71603"])
@@ -376,17 +439,16 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
       def f(p: Enum):
           expr = p.value
       #   └ TYPE Any
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-54503"])
-    fun `value type of imported enum item from __getitem__`() = test(
-      """
+    fun `value type of imported enum item from __getitem__`() = test("""
       from mod import MyEnum
       
       expr = MyEnum['ONE'].value
       # └ TYPE Literal[1, 2]
-      """,
+      """.trimIndent(),
       "mod.py" to """
         import enum
         
@@ -394,8 +456,7 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
         class MyEnum(enum.Enum):
             ONE = 1
             TWO = 2
-        """,
-    )
+        """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-57621"])
@@ -408,7 +469,151 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
       
       expr = Color.BLUE.value
       # └ TYPE tuple[Literal[2], Literal["blue"]]
-      """)
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-59260"])
+    fun `enum value type inference`() = test("""
+      from enum import Enum, IntFlag, StrEnum
+
+      # IntFlag should infer int
+      class IF(IntFlag):
+          A = 1
+      i: int = IF.A.value
+
+      # StrEnum should infer str
+      class SE(StrEnum):
+          B = "b"
+      s: str = SE.B.value
+
+      # str mixin should infer str
+      class StrMixin(str, Enum):
+          C = "c"
+      s2: str = StrMixin.C.value
+      s3: int = StrMixin.C.value
+      #         ^^^^^^^^^^^^^^^^ WARNING Expected type 'int', got 'Literal["c"]' instead
+
+      # Empty str mixin should also infer str
+      class EmptyStrMixin(str, Enum):
+          pass
+      def test_empty(x: EmptyStrMixin):
+          s4: str = x.value
+          i2: int = x.value
+      #             ^^^^^^^ WARNING Expected type 'int', got 'str' instead
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-59260"])
+    fun `empty enum value types`() = test("""
+      from enum import StrEnum, Enum
+
+      class EmptyStrEnum(StrEnum):
+          pass
+
+      class EmptyStrMixin(str, Enum):
+          pass
+
+      def test_empty_str_enum(x: EmptyStrEnum):
+          s: str = x.value
+          i: int = x.value
+      #            ^^^^^^^ WARNING Expected type 'int', got 'str' instead
+
+      def test_empty_str_mixin(x: EmptyStrMixin):
+          s: str = x.value
+          i: int = x.value
+      #            ^^^^^^^ WARNING Expected type 'int', got 'str' instead
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-59260"])
+    fun `enum value type ignores non members`() = test("""
+      from enum import Enum, nonmember
+
+      # Simple enum with just integer members
+      class SimpleEnum(Enum):
+          A = 1
+          B = 2
+
+      # Should infer int
+      x: int = SimpleEnum.A.value
+      y: str = SimpleEnum.B.value
+      #        ^^^^^^^^^^^^^^^^^^ WARNING Expected type 'str', got 'Literal[2]' instead
+
+      # Enum with non-member first, then actual members
+      class E(Enum):
+          # This should be classified as a non-member
+          HELPER_CONSTANT = nonmember("not a member")
+          # These are the actual members - should infer int from first member
+          FIRST_MEMBER = 42
+          SECOND_MEMBER = 43
+
+      # Should infer int from FIRST_MEMBER (ignoring HELPER_CONSTANT)
+      a: int = E.FIRST_MEMBER.value
+      b: str = E.SECOND_MEMBER.value
+      #        ^^^^^^^^^^^^^^^^^^^^^ WARNING Expected type 'str', got 'Literal[43]' instead
+      """.trimIndent())
+
+    @Test
+    @TestFor(classes = [PyStdlibTypeProvider::class])
+    fun `_value_ annotation decides the type of value`() = test("""
+      from enum import Enum
+
+      class Planet(Enum):
+          _value_: int
+
+          def __init__(self, value: int, mass: float) -> None:
+              self._value_ = value
+
+          MERCURY = (1, 3.3)
+
+      res = Planet.MERCURY.value
+      # └ TYPE tuple[Literal[1], float | int] FIXME int
+      """.trimIndent())
+
+    @Test
+    @TestFor(classes = [PyStdlibTypeProvider::class])
+    fun `value is Any when a custom __new__ sets it`() = test("""
+      from enum import Enum
+
+      class Coin(Enum):
+          def __new__(cls, label: str):
+              obj = object.__new__(cls)
+              obj._value_ = len(label)
+              return obj
+
+          PENNY = "penny"
+
+      res = Coin.PENNY.value
+      # └ TYPE Literal["penny"] FIXME Any
+      """.trimIndent())
+
+    @Test
+    @TestFor(classes = [PyStdlibTypeProvider::class])
+    fun `Flag name is an optional str`() = test("""
+      from enum import Flag
+
+      class Perm(Flag):
+          R = 1
+          W = 2
+
+      def func(perm: Perm) -> None:
+          res = perm.name
+      #    └ TYPE str FIXME str | None
+      """.trimIndent())
+
+    @Test
+    @TestFor(classes = [PyStdlibTypeProvider::class])
+    fun `__members__ matches a Mapping with str keys`() = test("""
+      from enum import Enum
+      from typing import Mapping
+
+      class Color(Enum):
+          RED = 1
+
+      def take(members: Mapping[str, Color]) -> None: ...
+
+      take(Color.__members__)
+      """.trimIndent())
   }
 
   @Nested
@@ -428,7 +633,7 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
           else:
               expr = f
       #       └ TYPE MyFlag
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-90694"])
@@ -442,7 +647,7 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
 
       expr = E.a.f()
       # └ TYPE E
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-90694"])
@@ -454,7 +659,7 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
 
       expr = E.a
       # └ TYPE Literal[E.a]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-90694"])
@@ -466,9 +671,9 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
           GREEN = auto()
           BLUE = auto()
 
-      expr = Color.RED | Color.BLUE  # ISSUES * FIXME
-      # └ TYPE Unknown FIXME Color
-      """)
+      expr = Color.RED | Color.BLUE
+      # └ TYPE Color
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-90694"])
@@ -480,9 +685,9 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
           GREEN = auto()
           BLUE = auto()
 
-      expr = (Color.RED & Color.BLUE, Color.RED ^ Color.BLUE)  # ISSUES * FIXME
-      # └ TYPE tuple[Unknown, Unknown] FIXME tuple[Color, Color]
-      """)
+      expr = (Color.RED & Color.BLUE, Color.RED ^ Color.BLUE)
+      # └ TYPE tuple[Color, Color]
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-90694"])
@@ -494,9 +699,9 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
           GREEN = auto()
           BLUE = auto()
 
-      expr = Color.RED | Color.GREEN | Color.BLUE  # ISSUES * FIXME
-      # └ TYPE Unknown FIXME Color
-      """)
+      expr = Color.RED | Color.GREEN | Color.BLUE
+      # └ TYPE Color
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-90694"])
@@ -510,7 +715,7 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
 
       expr = Perm.READ | Perm.WRITE
       # └ TYPE Perm
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-90694"])
@@ -525,11 +730,11 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
 
       expr = A | B
       # └ TYPE UnionType | type[A] | type[B]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-87344"])
-    fun `set of StrEnum class inferred from values classmethod`() = test(TestOptions(enablePyAnyType = false), """
+    fun `set of StrEnum class inferred from values classmethod`() = test("""
       from enum import StrEnum
       from typing import Self
       
@@ -542,11 +747,11 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
       
       expr = set(Variant)
       # └ TYPE set[Variant]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-87344"])
-    fun `set of StrEnum via cls`() = test(TestOptions(enablePyAnyType = false), """
+    fun `set of StrEnum via cls`() = test("""
       from enum import StrEnum
       from typing import Self
       
@@ -557,7 +762,28 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
           def values(cls):
               expr = set(cls)
       #       └ TYPE set[Self@Variant]
-      """)
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-59260"])
+    fun `int flag value type`() = test("""
+      from enum import IntFlag, auto
+
+      # IntFlag should infer int
+      class IF(IntFlag):
+          FIRST = auto()
+          SECOND = auto()
+          THIRD = 42
+
+      # IntFlag.value should return int, so these should not produce type errors
+      variable: int = IF.FIRST.value
+      another_var: int = IF.SECOND.value
+      explicit_var: int = IF.THIRD.value
+
+      # This should produce a type error
+      wrong_var: str = IF.FIRST.value
+      #                ^^^^^^^^^^^^^^ WARNING Expected type 'str', got 'int' instead
+      """.trimIndent())
   }
 
   @Nested
@@ -575,7 +801,7 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
           if v is Answer.Yes or v is Answer.No:
               expr = v
       #       └ TYPE Literal[Answer.Yes, Answer.No]
-      """)
+      """.trimIndent())
 
     @Test
     fun `is enum member narrowing with negated and`() = test("""
@@ -590,7 +816,7 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
               raise ValueError("Invalid value")
           expr = v
       #   └ TYPE Literal[Answer.Yes, Answer.No]
-      """)
+      """.trimIndent())
 
     @Test
     fun `is enum member narrowing with assert`() = test("""
@@ -604,7 +830,7 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
           assert v is Answer.Yes or v is Answer.No
           expr = v
       #   └ TYPE Literal[Answer.Yes, Answer.No]
-      """)
+      """.trimIndent())
 
     @Test
     fun `union with enum members narrowed by isinstance`() = test("""
@@ -621,7 +847,60 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
           else:
               expr = v
       #       └ TYPE Color
-      """)
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-92703"])
+    fun `match that covers every member is exhaustive`() = runInEdtAndWait {
+      val file = myFixture.configureByText("a.py", """
+        from enum import Enum
+
+        class Color(Enum):
+            RED = 1
+            GREEN = 2
+
+        def f(c: Color) -> int:
+            match c:
+                case Color.RED: return 1
+                case Color.GREEN: return 2
+        """.trimIndent())
+      val match = PsiTreeUtil.findChildOfType(file, PyMatchStatement::class.java)!!
+      val context = TypeEvalContext.codeAnalysis(file.project, file)
+      // FIXME: the match is exhaustive
+      assertEquals(false, runReadActionBlocking { match.isExhaustive(context) })
+    }
+
+    @Test
+    @TestFor(issues = ["PY-92703"])
+    fun `match that misses a member is reported`() = test("""
+      from enum import Enum
+
+      class Color(Enum):
+          RED = 1
+          GREEN = 2
+          BLUE = 3
+
+      def f(c: Color) -> int:
+      #                  ^^^ WARNING Expected type 'int', got 'Literal[2, 1] | None' instead
+          match c: # WEAK_WARNING FIXME Cases do not cover Color.BLUE
+              case Color.RED: return 1
+              case Color.GREEN: return 2
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-92703"])
+    fun `function with an exhaustive match does not return None`() = test("""
+      from enum import Enum
+
+      class Color(Enum):
+          RED = 1
+          GREEN = 2
+
+      def f(c: Color) -> int:
+          match c:
+              case Color.RED: return 1
+              case Color.GREEN: return 2
+      """.trimIndent())
   }
 
   @Nested
@@ -636,7 +915,7 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
       for expr in Foo:
       #   └ TYPE Foo
           pass
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-77074"])
@@ -648,16 +927,15 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
       
       expr = Color["RED"]
       #└ TYPE Color
-      """)
+      """.trimIndent())
   }
 
   @Nested
   inner class LiteralTypeAssignability {
 
     @Test
-    fun `typing Literal of enum member`() = test(
-      TestOptions(languageLevel = LanguageLevel.PYTHON35),
-      """
+    @TestCaseOptions(languageLevel = LanguageLevel.PYTHON35)
+    fun `typing Literal of enum member`() = test("""
       from typing_extensions import Literal
       
       from enum import Enum
@@ -668,8 +946,7 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
       
       expr: Literal[A.V1] = A.V1 # ERROR Python version 3.5 does not support variable annotations
       #└ TYPE Literal[A.V1]
-      """,
-    )
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-46385"])
@@ -687,7 +964,7 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
       x: AliasColors = Colors.RED
       y: Literal[Colors.RED] = Colors.GREEN # WARNING Expected type 'Literal[Colors.RED]', got 'Literal[Colors.GREEN]' instead
       z: Literal[AliasColors.RED] = Colors.RED
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-46385"])
@@ -707,8 +984,8 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
       
       special_painter(Colors.GREEN) # WARNING Expected type 'Literal[Colors.RED]', got 'Literal[Colors.GREEN]' instead
       
-      costs: dict[SpecialColors, int] = {Colors.GREEN: 7} # WARNING Expected type 'dict[Literal[Colors.RED], int]', got 'dict[Literal[Colors.GREEN], Literal[7]]' instead
-      """)
+      costs: dict[SpecialColors, int] = {Colors.GREEN: 7} # WARNING Expected type 'dict[Literal[Colors.RED], int]', got 'dict[Colors, int]' instead
+      """.trimIndent())
 
     @Test
     fun `enum member alias assignable to literal type`() = test("""
@@ -721,18 +998,17 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
       
       x: Literal[Color.RED]
       x = Color.R
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-80195"])
-    fun `multi value enum literal assignability across files`() = test(
-      """
+    fun `multi value enum literal assignability across files`() = test("""
       from typing import Literal
       from m import SimpleEnum, SuperEnum
       
       p: Literal[SuperEnum.PINK] = SuperEnum.PINK
       q: Literal[SimpleEnum.FOO] = SuperEnum.PINK # WARNING Expected type 'Literal[SimpleEnum.FOO]', got 'Literal[SuperEnum.PINK]' instead
-      """,
+      """.trimIndent(),
       "m.py" to """
         import enum
         
@@ -744,8 +1020,7 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
         
         class SimpleEnum(enum.Enum):
             FOO = "FOO"
-        """,
-    )
+        """.trimIndent())
   }
 
   @Nested
@@ -769,7 +1044,7 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
       
       def index(d: Direction) -> None:
           print(CARTESIAN.index(d))
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-80837"])
@@ -785,7 +1060,7 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
       class MyEnum(Enum):
           OK = 1
           ALSO_OK = "string"
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-88892"])
@@ -803,11 +1078,11 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
 
       class PlainEnum(Enum):
           C = 1, 2       # OK: value type is inferred as the tuple itself
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-87344"])
-    fun `iterating an Enum type and instance`() = test(TestOptions(enablePyAnyType = false), """
+    fun `iterating an Enum type and instance`() = test("""
       from enum import Enum
       from typing import Self
       
@@ -820,12 +1095,12 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
       
           def foo(self):
               # __iter__ is defined in EnumMeta, thus, for definitions only
-              return set(self) # WARNING Expected type 'Iterable[Any]' (matched generic type 'Iterable[_T]'), got 'Self@Color' instead
-      """)
+              return set(self) # WARNING Expected type 'Iterable[_T]', got 'Self@Color' instead
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-87344"])
-    fun `iterating a StrEnum type and instance`() = test(TestOptions(enablePyAnyType = false), """
+    fun `iterating a StrEnum type and instance`() = test("""
       from enum import StrEnum
       from typing import Self
       
@@ -840,6 +1115,81 @@ class PyEnumTypeTest : PyCodeInsightTestCase() {
           def foo(self):
               # StrEnum inherits str which inherits Iterable[str], thus, iterable for both instance and definition
               return set(self) # OK
-      """)
+      """.trimIndent())
   }
+
+  @Test
+  @TestFor(issues = ["PY-58076"])
+  fun `enum members mapping`() = test(
+    """
+    from enum import Enum, IntEnum
+
+    class Color(Enum):
+        red = 1
+        green = 2
+        blue = 3
+
+    Color.__members__
+    #        └ TYPE MappingProxyType[str, Color] FIXME MappingProxyType[Literal["red", "green", "blue"], Literal[Color.red, Color.green, Color.blue]]
+    
+    
+    class Empty(Enum):
+        pass
+
+    Empty.__members__
+    #       └ TYPE MappingProxyType[str, Empty]
+    
+    class EmptyInt(IntEnum):
+        pass
+
+    EmptyInt.__members__
+    #         └ TYPE MappingProxyType[str, EmptyInt]
+    """.trimIndent())
+
+  @Test
+  fun `empty enum name and value`() = test(
+    """
+    from enum import Enum
+
+    class Empty(Enum):
+        pass
+
+    def f(e: Empty):
+        e.name
+    #       └ TYPE str
+        e.value
+    #       └ TYPE object
+    """.trimIndent())
+
+  @Test
+  @TestFor(issues = ["PY-90693"])
+  fun `IntEnum StrEnum literal type`() = test("""
+    from enum import IntEnum, StrEnum
+    
+    class I(IntEnum):
+        a = 1
+        b = 2
+    
+    I.a.value
+    #    └ TYPE Literal[1]
+    
+    def fi(i: I):
+        i.name
+    #     └ TYPE Literal["a", "b"]
+        i.value
+    #     └ TYPE Literal[1, 2]
+    
+    class S(StrEnum):
+        a = "x"
+        b = "y"
+    
+    S.a.value
+    #    └ TYPE Literal["x"]
+    
+    def fs(s: S):
+        s.name
+    #     └ TYPE Literal["a", "b"]
+        s.value
+    #     └ TYPE Literal["x", "y"]
+    """)
 }

@@ -15,6 +15,7 @@ import com.intellij.debugger.engine.JVMName;
 import com.intellij.debugger.engine.JVMNameUtil;
 import com.intellij.debugger.engine.evaluation.EvaluateException;
 import com.intellij.debugger.engine.evaluation.EvaluationContextImpl;
+import com.intellij.debugger.engine.events.SuspendContextCommandImpl;
 import com.intellij.debugger.engine.requests.RequestManagerImpl;
 import com.intellij.debugger.impl.DebuggerUtilsAsync;
 import com.intellij.debugger.impl.DebuggerUtilsEx;
@@ -44,6 +45,7 @@ import com.intellij.psi.PsiModifier;
 import com.intellij.ui.LayeredIcon;
 import com.intellij.util.DocumentUtil;
 import com.intellij.util.concurrency.annotations.RequiresBackgroundThread;
+import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.MultiMap;
 import com.intellij.xdebugger.breakpoints.XBreakpoint;
 import com.intellij.xdebugger.breakpoints.XBreakpointListener;
@@ -82,6 +84,8 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
+
+import static com.intellij.debugger.impl.DebugUtilsKt.emulateMethodBreakpointsOnVM;
 
 public class MethodBreakpoint extends BreakpointWithHighlighter<JavaMethodBreakpointProperties> implements MethodBreakpointBase {
   private static final Logger LOG = Logger.getInstance(MethodBreakpoint.class);
@@ -143,7 +147,7 @@ public class MethodBreakpoint extends BreakpointWithHighlighter<JavaMethodBreakp
                                                  @NotNull ReferenceType baseType) {
     DebuggerManagerThreadImpl.assertIsManagerThread();
     RequestManagerImpl requestsManager = debugProcess.getRequestsManager();
-    ClassPrepareRequest request = requestsManager.createClassPrepareRequest((debuggerProcess, referenceType) -> {
+    ClassPrepareRequest request = requestsManager.createClassPrepareRequest((_, referenceType) -> {
       if (DebuggerUtilsImpl.instanceOf(referenceType, baseType)) {
         createRequestForPreparedClassEmulated(breakpoint, debugProcess, referenceType, false);
       }
@@ -296,7 +300,7 @@ public class MethodBreakpoint extends BreakpointWithHighlighter<JavaMethodBreakp
 
   @Override
   protected void createRequestForPreparedClass(@NotNull DebugProcessImpl debugProcess, @NotNull ReferenceType classType) {
-    if (isEmulated()) {
+    if (isEmulated(classType.virtualMachine())) {
       createRequestForPreparedClassEmulated(this, debugProcess, classType, true);
     }
     else {
@@ -371,15 +375,15 @@ public class MethodBreakpoint extends BreakpointWithHighlighter<JavaMethodBreakp
 
   static @Nls String getEventMessage(@NotNull LocatableEvent event, @NotNull String defaultFileName) {
     Location location = event.location();
-    if (event instanceof MethodEntryEvent) {
-      return getEventMessage(true, ((MethodEntryEvent)event).method(), location, defaultFileName);
+    if (event instanceof MethodEntryEvent entryEvent) {
+      return getEventMessage(true, entryEvent.method(), location, defaultFileName);
     }
-    if (event instanceof MethodExitEvent) {
-      return getEventMessage(false, ((MethodExitEvent)event).method(), location, defaultFileName);
+    if (event instanceof MethodExitEvent exitEvent) {
+      return getEventMessage(false, exitEvent.method(), location, defaultFileName);
     }
     Object entryProperty = event.request().getProperty(METHOD_ENTRY_KEY);
-    if (entryProperty instanceof Boolean) {
-      return getEventMessage((Boolean)entryProperty, location.method(), location, defaultFileName);
+    if (entryProperty instanceof Boolean b) {
+      return getEventMessage(b, location.method(), location, defaultFileName);
     }
     return "";
   }
@@ -451,7 +455,7 @@ public class MethodBreakpoint extends BreakpointWithHighlighter<JavaMethodBreakp
   }
 
   public boolean matchesEvent(final @NotNull LocatableEvent event, final DebugProcessImpl process) {
-    if (isEmulated()) {
+    if (isEmulated(event.virtualMachine())) {
       return true;
     }
     if (getMethodName() == null || mySignature == null) {
@@ -521,7 +525,7 @@ public class MethodBreakpoint extends BreakpointWithHighlighter<JavaMethodBreakp
   }
 
   static @Nullable <T extends EventRequest> T findRequest(@NotNull DebugProcessImpl debugProcess, Class<T> requestClass, Requestor requestor) {
-    return StreamEx.of(debugProcess.getRequestsManager().findRequests(requestor)).select(requestClass).findFirst().orElse(null);
+    return ContainerUtil.findInstance(debugProcess.getRequestsManager().findRequests(requestor), requestClass);
   }
 
   @Override
@@ -539,8 +543,9 @@ public class MethodBreakpoint extends BreakpointWithHighlighter<JavaMethodBreakp
     }
   }
 
-  public boolean isEmulated() {
-    return getProperties().EMULATED;
+  @Override
+  public boolean isEmulated(@NotNull VirtualMachine vm) {
+    return getProperties().EMULATED && emulateMethodBreakpointsOnVM(vm);
   }
 
   @Override
@@ -587,7 +592,7 @@ public class MethodBreakpoint extends BreakpointWithHighlighter<JavaMethodBreakp
       this.methodName = methodName;
       this.methodSignature = new JVMName() {
         @Override
-        public String getName(DebugProcessImpl process) throws EvaluateException {
+        public String getName(DebugProcessImpl process) {
           return signature;
         }
 
@@ -666,6 +671,11 @@ public class MethodBreakpoint extends BreakpointWithHighlighter<JavaMethodBreakp
     progressIndicator.setFraction((double)current / total);
   }
 
+  @Override
+  public boolean processLocatableEvent(@NotNull SuspendContextCommandImpl action, LocatableEvent event) throws EventProcessingException {
+    return MethodBreakpointBase.processWithReturnValueCapture(this, action, event, LOG, () -> super.processLocatableEvent(action, event));
+  }
+
   /**
    * Optimized {@link Location} which should be used only to create breakpoint
    * at known valid code index.
@@ -677,7 +687,7 @@ public class MethodBreakpoint extends BreakpointWithHighlighter<JavaMethodBreakp
     private final Method method;
     private final long codeIndex;
 
-    public LocationCodeIndexOnly(Method method, long codeIndex) {
+    LocationCodeIndexOnly(Method method, long codeIndex) {
       assert !method.isNative() && !method.isAbstract();
       assert codeIndex >= 0;
 

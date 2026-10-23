@@ -1,5 +1,5 @@
 // "Wrap argument with parentheses" "true"
-// K2_ERROR: Calls in the form of 'suspend {}' are deprecated because 'suspend' in this context will have the meaning of a modifier. Surround the lambda with parentheses: 'suspend({ ... })'.
+// K2_ERROR: MODIFIER_FORM_FOR_NON_BUILT_IN_SUSPEND
 infix fun Int.suspend(bar: () -> Unit) {}
 
 fun foo() {
@@ -7,4 +7,3 @@ fun foo() {
 }
 
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.WrapWithParenthesesFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.WrapWithParenthesesFix

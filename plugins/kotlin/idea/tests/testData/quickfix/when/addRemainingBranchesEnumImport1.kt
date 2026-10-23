@@ -1,6 +1,6 @@
 // "Add remaining branches with * import" "true"
 // WITH_STDLIB
-// K2_ERROR: 'when' expression must be exhaustive. Add the 'A', 'B', 'C' branches or an 'else' branch.
+// K2_ERROR: NO_ELSE_IN_WHEN
 enum class Foo {
     A, B, C
 }
@@ -12,5 +12,4 @@ class Test {
     }
 }
 
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AddWhenRemainingBranchesFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.AddWhenRemainingBranchFixFactories$AddRemainingWhenBranchesQuickFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.AddWhenRemainingBranchFixFactories$AddRemainingWhenBranchesQuickFix

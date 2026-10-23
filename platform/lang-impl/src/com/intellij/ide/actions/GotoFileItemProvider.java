@@ -18,11 +18,15 @@ import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.ProjectFileIndex;
 import com.intellij.openapi.util.Ref;
+import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.io.FileUtilRt;
+import com.intellij.openapi.util.io.OSAgnosticPathUtil;
+import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.vfs.newvfs.CacheAvoidingVirtualFile;
 import com.intellij.psi.PsiDirectory;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFileSystemItem;
@@ -43,7 +47,7 @@ import com.intellij.util.indexing.FindSymbolParameters;
 import com.intellij.util.indexing.ProcessorWithThrottledCancellationCheck;
 import com.intellij.util.text.matching.MatchedFragment;
 import com.intellij.util.text.matching.MatchingMode;
-import one.util.streamex.StreamEx;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -70,7 +74,6 @@ import static com.intellij.ide.util.gotoByName.FuzzyFileSearchExperimentOptionKt
 public class GotoFileItemProvider extends DefaultChooseByNameItemProvider {
   private static final Logger LOG = Logger.getInstance(GotoFileItemProvider.class);
 
-  public static final int EXACT_MATCH_DEGREE = 5000;
   private static final int DIRECTORY_MATCH_DEGREE = 0;
   private static final int DIR_CHILD_MATCH_DEGREE = 0;
 
@@ -370,26 +373,110 @@ public class GotoFileItemProvider extends DefaultChooseByNameItemProvider {
       .build();
   }
 
+  /**
+   * The characters every haystack accepted by {@link #getQualifiedNameMatcher} must contain, in order:
+   * {@code '*'} is a wildcard and {@code ' '} a separator the matcher never requires in the haystack,
+   * everything else is mandatory. Kept next to the matcher construction so the two cannot drift apart;
+   * used as a coarse server-side pre-filter that must over-match, never under-match.
+   */
+  @ApiStatus.Internal
+  public static @NotNull String getMandatorySubsequence(@NotNull String pattern) {
+    return pattern.replace("*", "").replace(" ", "");
+  }
+
   private static @NotNull String removeSlashes(@NotNull String s) {
     return UriUtil.trimLeadingSlashes(UriUtil.trimTrailingSlashes(s));
   }
 
   private @Nullable PsiFileSystemItem getFileByAbsolutePath(@NotNull String pattern) {
-    if (pattern.contains("/") || pattern.contains("\\")) {
-      String path = FileUtil.toSystemIndependentName(ChooseByNamePopup.getTransformedPattern(pattern, myModel));
-      VirtualFile vFile = LocalFileSystem.getInstance().findFileByPathIfCached(path);
-      if (vFile == null) {
-        path = unitePaths(myProject.getBasePath(), path);
-        if (path != null) vFile = LocalFileSystem.getInstance().findFileByPathIfCached(path);
+    return findFileSystemItemByAbsolutePath(myProject, pattern);
+  }
+
+  /**
+   * Resolves a Go to File pattern that is an absolute path, or a path relative to the project base directory.
+   * <p>
+   * The line and column suffix of the pattern is ignored. A file outside the project content and libraries
+   * is found only for an absolute path, and only when {@code search.everywhere.absolute.path.outside.project} is on.
+   * Needs a read action.
+   *
+   * @return the file or directory the pattern points to, or {@code null} if the pattern is not such a path
+   */
+  @ApiStatus.Internal
+  public static @Nullable PsiFileSystemItem findFileSystemItemByAbsolutePath(@NotNull Project project, @NotNull String pattern) {
+    if (!pattern.contains("/") && !pattern.contains("\\")) {
+      return null;
+    }
+
+    // the line and column detection is the same for every model that is not a class or symbol model
+    String path = FileUtil.toSystemIndependentName(ChooseByNamePopup.getTransformedPattern(pattern, null));
+    if (Registry.is("search.everywhere.absolute.path.outside.project")) {
+      if (!SystemInfo.isWindows) {
+        // '~' is a shell convention, not a Windows one
+        path = OSAgnosticPathUtil.expandUserHome(path);
       }
-      if (vFile != null) {
-        ProjectFileIndex index = ProjectFileIndex.getInstance(myProject);
-        if (index.isInContent(vFile) || index.isInLibrary(vFile)) {
-          return PsiUtilCore.findFileSystemItem(myProject, vFile);
-        }
+      // the filesystem root is not a meaningful exact match, and being one it would outrank every real candidate
+      if (OSAgnosticPathUtil.isAbsolute(path) && !isFileSystemRoot(path)) {
+        // an absolute path is an explicit navigation request, so the file doesn't have to belong to the project
+        VirtualFile vFile = findFileByAbsolutePathWithoutCaching(path);
+        return vFile == null ? null : PsiUtilCore.findFileSystemItem(project, vFile);
+      }
+    }
+
+    VirtualFile vFile = LocalFileSystem.getInstance().findFileByPathIfCached(path);
+    if (vFile == null) {
+      String unitedPath = unitePaths(project.getBasePath(), path);
+      if (unitedPath != null) vFile = LocalFileSystem.getInstance().findFileByPathIfCached(unitedPath);
+    }
+    if (vFile != null) {
+      ProjectFileIndex index = ProjectFileIndex.getInstance(project);
+      if (index.isInContent(vFile) || index.isInLibrary(vFile)) {
+        return PsiUtilCore.findFileSystemItem(project, vFile);
       }
     }
     return null;
+  }
+
+  /**
+   * Resolves an absolute path that may well point outside the project, without putting it into the VFS cache.
+   * <p>
+   * A file that is already cached is returned as a regular {@link VirtualFile}; everything else is resolved via
+   * {@code findFileByPathWithoutCaching} and stays a {@link CacheAvoidingVirtualFile}, so neither the many incomplete
+   * paths produced while the user is typing, nor the paths the user never opens, clutter the VFS cache.
+   * Such a file is turned into a regular one ({@link CacheAvoidingVirtualFile#asCacheable()}) only when the user
+   * actually navigates to it, see {@code SearchEverywhereNavigationHandler}.
+   *
+   * @return an existing {@link VirtualFile} for the path, possibly a {@link CacheAvoidingVirtualFile},
+   * or {@code null} if there is no such file
+   */
+  private static @Nullable VirtualFile findFileByAbsolutePathWithoutCaching(@NotNull String path) {
+    LocalFileSystem fileSystem = LocalFileSystem.getInstance();
+    VirtualFile cached = fileSystem.findFileByPathIfCached(path);
+    if (cached != null) {
+      return cached;
+    }
+
+    if (path.startsWith("//")) {
+      // a UNC path that is not cached yet: resolving it could block on the network
+      return null;
+    }
+
+    VirtualFile file = fileSystem.findFileByPathWithoutCaching(path);
+    // path resolution itself doesn't check existence: every not-yet-cached segment resolves to a transient file
+    // regardless of whether anything is there, so a non-existent path has to be filtered out here
+    if (file == null || !file.isValid()) {
+      return null;
+    }
+    // if the file happens to be cached already, there is nothing to avoid: unwrap it to get the full VirtualFile contract
+    if (file instanceof CacheAvoidingVirtualFile cacheAvoiding && cacheAvoiding.isCached()) {
+      return cacheAvoiding.asCacheable();
+    }
+    return file;
+  }
+
+  /** @return true for {@code "/"}, {@code "//"} and a bare DOS drive root such as {@code "C:/"} */
+  private static boolean isFileSystemRoot(@NotNull String path) {
+    String trimmed = UriUtil.trimTrailingSlashes(path);
+    return trimmed.isEmpty() || trimmed.length() == 2 && OSAgnosticPathUtil.startsWithWindowsDrive(trimmed);
   }
 
   public static String unitePaths(String projectPathStr, String filePathStr) {
@@ -650,14 +737,14 @@ public class GotoFileItemProvider extends DefaultChooseByNameItemProvider {
       Comparator<MatchResult> byNameWithoutExtension = Comparator.comparing(
         mr -> StringUtil.toLowerCase(FileUtilRt.getNameWithoutExtension(mr.elementName)));
       Comparator<MatchResult> matchingDegreeComparator = matchingDegreeComparator();
-      matchingNames = ContainerUtil.sorted(matchingNames, matchingDegreeComparator);
+      matchingNames = ContainerUtil.sorted(matchingNames, cancellable(matchingDegreeComparator));
       // comparator1.thenComparing(comparator2) is too slow, let's lazily apply comparator2 as needed below
       Function<List<MatchResult>, List<MatchResult>> sortGroup = new Function<>() {
         final Set<Object> sortedGroups = CollectionFactory.createCustomHashingStrategySet(HashingStrategy.identity());
         @Override
         public List<MatchResult> apply(List<MatchResult> results) {
           if (sortedGroups.add(results)) {
-            results.sort(byNameWithoutExtension);
+            results.sort(cancellable(byNameWithoutExtension));
           }
           return results;
         }
@@ -726,6 +813,15 @@ public class GotoFileItemProvider extends DefaultChooseByNameItemProvider {
   }
 
   private static @NotNull <T> List<List<T>> group(@NotNull List<T> items, @NotNull Comparator<? super T> comparator) {
-    return StreamEx.of(items).groupRuns((n1, n2) -> comparator.compare(n1, n2) == 0).toList();
+    List<List<T>> groups = new ArrayList<>();
+    List<T> current = null;
+    for (T item : items) {
+      if (current == null || comparator.compare(current.getLast(), item) != 0) {
+        current = new ArrayList<>();
+        groups.add(current);
+      }
+      current.add(item);
+    }
+    return groups;
   }
 }

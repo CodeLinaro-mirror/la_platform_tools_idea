@@ -1,5 +1,5 @@
 // "Convert to anonymous object" "true"
-// K2_ERROR: Interface 'interface I : Any' does not have constructors.
+// K2_ERROR: INTERFACE_AS_FUNCTION
 interface I {
     fun a()
     fun b() {}
@@ -10,5 +10,4 @@ fun foo(i: I) {}
 fun test() {
     foo(<caret>I {})
 }
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ConvertToAnonymousObjectFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ConvertToAnonymousObjectFixFactories$ConvertToAnonymousObjectFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ConvertToAnonymousObjectFixFactories$ConvertToAnonymousObjectFix

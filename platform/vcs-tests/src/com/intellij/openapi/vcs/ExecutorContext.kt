@@ -2,8 +2,8 @@
 package com.intellij.openapi.vcs
 
 import com.intellij.openapi.diagnostic.Logger
-import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.testFramework.utils.io.createFile
 import com.intellij.util.io.delete
 import com.intellij.vcsUtil.VcsUtil
@@ -88,7 +88,7 @@ interface ExecutorContext {
   }
 
   fun echo(fileName: String, content: String) {
-    Files.write(child(fileName), content.toByteArray(StandardCharsets.UTF_8), StandardOpenOption.APPEND, StandardOpenOption.CREATE)
+    append(child(fileName), content)
   }
 
   fun overwrite(fileName: String, content: String) {
@@ -96,10 +96,12 @@ interface ExecutorContext {
   }
 
   fun overwrite(file: Path, content: String) {
+    file.parent?.createDirectories()
     Files.write(file, content.toByteArray(StandardCharsets.UTF_8), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
   }
 
   fun append(file: Path, content: String) {
+    file.parent?.createDirectories()
     Files.write(file, content.toByteArray(StandardCharsets.UTF_8), StandardOpenOption.CREATE, StandardOpenOption.APPEND)
   }
 
@@ -119,7 +121,7 @@ interface ExecutorContext {
     val file = child(dirName)
     Files.createDirectory(file)
     debug("# mkdir " + dirName)
-    LocalFileSystem.getInstance().refreshAndFindFileByNioFile(file)
+    VirtualFileManager.getInstance().refreshAndFindFileByNioPath(file)
     return file
   }
 

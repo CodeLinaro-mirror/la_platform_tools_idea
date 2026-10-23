@@ -1,7 +1,6 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
 ### auto-generated section `build intellij.execution.process.mediator.daemon` start
-
 jvm_library(
     name = "daemon",
     srcs = glob(
@@ -22,10 +21,9 @@ jvm_library(
         # do not sort,
         "@lib//:kotlin-stdlib",
         "//libraries/kotlinx/coroutines/core",
-        "@lib//:jetbrains-annotations",
+        "//libraries/jetbrains/annotations",
         "//libraries/guava",
         "//libraries/protobuf",
-        "@lib//:jna",
         "//platform/execution-process-mediator/common",
         "//libraries/grpc",
         "//libraries/grpc-netty-shaded",
@@ -45,6 +43,7 @@ jvm_library(
         # do not sort,
         ":daemon",
         "//libraries/kotlinx/coroutines/core:core_test_lib",
+        "//libraries/jetbrains/annotations:annotations_test_lib",
         "//libraries/guava:guava_test_lib",
         "//libraries/protobuf:protobuf_test_lib",
         "//platform/execution-process-mediator/common:common_test_lib",
@@ -58,6 +57,7 @@ jvm_library(
 exports_files(
     [
         "intellij.execution.process.mediator.daemon.iml",
+        "resources/intellij.execution.process.mediator.daemon.xml",
     ],
     visibility = ["//visibility:public"],
 )

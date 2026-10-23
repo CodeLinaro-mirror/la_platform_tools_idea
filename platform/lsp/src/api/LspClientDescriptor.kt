@@ -8,15 +8,28 @@ import com.intellij.execution.process.OSProcessHandler
 import com.intellij.openapi.application.ApplicationInfo
 import com.intellij.openapi.application.ApplicationNamesInfo
 import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.progress.runBlockingMaybeCancellable
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.NlsSafe
 import com.intellij.openapi.util.io.OSAgnosticPathUtil
 import com.intellij.openapi.util.text.StringUtil
-import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.vfs.StandardFileSystems
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.VirtualFileManager
+import com.intellij.platform.eel.EelDescriptor
+import com.intellij.platform.eel.convertToJVMProcess
+import com.intellij.platform.eel.environmentVariables
+import com.intellij.platform.eel.path.EelPath
+import com.intellij.platform.eel.provider.LocalEelDescriptor
+import com.intellij.platform.eel.provider.asEelPath
+import com.intellij.platform.eel.provider.asNioPath
+import com.intellij.platform.eel.provider.getEelDescriptor
+import com.intellij.platform.eel.provider.toEelApi
+import com.intellij.platform.eel.spawnProcess
 import com.intellij.platform.lsp.api.customization.LspCustomization
+import com.intellij.util.PlatformUtils
 import com.intellij.util.concurrency.annotations.RequiresBackgroundThread
 import com.intellij.util.concurrency.annotations.RequiresReadLock
 import com.intellij.util.io.BaseDataReader
@@ -27,8 +40,11 @@ import org.eclipse.lsp4j.ClientInfo
 import org.eclipse.lsp4j.ConfigurationItem
 import org.eclipse.lsp4j.InitializeParams
 import org.eclipse.lsp4j.WorkspaceFolder
+import org.jetbrains.annotations.ApiStatus
+import java.io.IOException
 import java.net.URI
 import java.net.URISyntaxException
+import java.nio.file.Path
 
 /**
  * Defines how the [LspClient] interacts with the running LSP server
@@ -44,11 +60,6 @@ import java.net.URISyntaxException
  * As a rule, plugins don't keep references to the `LspClientDescriptor` implementations. To get an `LspClientDescriptor` that is used to
  * start a specific LSP server, use [LspClient.descriptor], where the [LspClient] itself could be found using
  * [LspClientManager.getClients].
- *
- * To see all [window/logMessage](https://microsoft.github.io/language-server-protocol/specification/#window_logMessage)
- * and [$/logTrace](https://microsoft.github.io/language-server-protocol/specification/#traceValue) notifications from the server in the
- * `Notifications` tool window, select the `'Show in tool window'` check box for the `'LSP log: info, trace'` category
- * in Settings -> Appearance & Behavior -> Notifications.
  *
  * @param presentableName this string may appear in the UI in some cases, for example:
  * - `Language Services` status bar widget item
@@ -92,31 +103,75 @@ abstract class LspClientDescriptor protected constructor(
    *   override fun isSupportedFile(file: VirtualFile) = file.fileType == FooFileType.INSTANCE
    * ```
    *
-   * @param file the file is guaranteed to be valid, in a local file system, and within project content roots. However, it might be not
-   *             within the roots configured for this LSP server, which is usually fine.
+   * @param file the file is guaranteed to be valid and within project content roots. It may be located on a remote
+   *             execution host and might not be within the roots configured for this LSP server, which is usually fine.
    */
-  @RequiresReadLock
+  @RequiresReadLock(generateAssertion = false /* IJPL-115548 */)
   abstract fun isSupportedFile(file: VirtualFile): Boolean
 
   /**
    * Starts the LSP server process.
    * Usually, plugins don't need to override this function, but only implement the [createCommandLine] function.
+   *
+   * In WSL/Docker projects the process is launched via EEL so the server runs inside the project environment.
+   * In local projects the existing [GeneralCommandLine] / [OSProcessHandler] path is used unchanged.
    */
-  @RequiresBackgroundThread
+  @RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
   @Throws(ExecutionException::class)
   open fun startServerProcess(): BaseProcessHandler<*> {
     // LSP spec says: "It defaults to utf-8, which is the only encoding supported right now"
     // see https://microsoft.github.io/language-server-protocol/specification/#contentPart
-    val startingCommandLine = createCommandLine().withCharset(Charsets.UTF_8)
-    LOG.info("$this: starting LSP server: $startingCommandLine")
-    return object : OSProcessHandler(startingCommandLine) {
-      override fun readerOptions(): BaseOutputReader.Options = object : BaseOutputReader.Options() {
-        override fun policy(): BaseDataReader.SleepingPolicy = forMostlySilentProcess().policy()
+    val commandLine = createCommandLine().withCharset(Charsets.UTF_8)
 
-        // Must not loose '\r' in "\r\n" line endings. They affect char count, which must match `Content-Length`
-        override fun splitToLines(): Boolean = false
+    val descriptor = project.getEelDescriptor()
+    if (descriptor !is LocalEelDescriptor) {
+      return startServerProcessViaEel(descriptor, commandLine)
+    }
+
+    LOG.info("$this: starting LSP server: $commandLine")
+    return object : OSProcessHandler(commandLine) {
+      override fun readerOptions(): BaseOutputReader.Options = lspReaderOptions()
+    }
+  }
+
+  private fun startServerProcessViaEel(descriptor: EelDescriptor, commandLine: GeneralCommandLine): BaseProcessHandler<*> {
+    val eelProcess = try {
+      @Suppress("checkedExceptions")
+      runBlockingMaybeCancellable {
+        val eelApi = descriptor.toEelApi()
+        val env = eelApi.exec.environmentVariables().eelIt().await() + commandLine.environment
+        val workingDir = commandLine.workDirectory?.toPath()?.let { nioPath ->
+          runCatching { nioPath.asEelPath() }.getOrNull()
+        }
+        val executablePath = Path.of(commandLine.exePath)
+        val executable = if (executablePath.isAbsolute && executablePath.getEelDescriptor() == descriptor) {
+          executablePath.asEelPath().toString()
+        }
+        else {
+          commandLine.exePath
+        }
+        eelApi.exec.spawnProcess(executable)
+          .args(commandLine.parametersList.list)
+          .env(env)
+          .let { if (workingDir != null) it.workingDirectory(workingDir) else it }
+          .eelIt()
       }
     }
+    catch (e: IOException) {
+      throw ExecutionException(e.message, e)
+    }
+
+    LOG.info("$this: starting LSP server via Eel: ${commandLine.exePath}")
+    return object : OSProcessHandler(eelProcess.convertToJVMProcess(), commandLine.commandLineString, Charsets.UTF_8) {
+      override fun readerOptions(): BaseOutputReader.Options = lspReaderOptions()
+    }
+  }
+
+  private fun lspReaderOptions(): BaseOutputReader.Options = object : BaseOutputReader.Options() {
+    override fun policy(): BaseDataReader.SleepingPolicy = forMostlySilentProcess().policy()
+
+    // Must not lose '\r' in "\r\n" line endings. They affect char count, which must match `Content-Length`
+    override fun splitToLines(): Boolean = false
   }
 
   /**
@@ -125,7 +180,7 @@ abstract class LspClientDescriptor protected constructor(
    * - the plugin implements the more generic function [startServerProcess]
    * - the plugin uses [LspCommunicationChannel.Socket] with `startProcess` set to `false`
    */
-  @RequiresBackgroundThread
+  @RequiresBackgroundThread(generateAssertion = false /* IJPL-115548 */)
   @Throws(ExecutionException::class)
   open fun createCommandLine(): GeneralCommandLine {
     // this text goes only to the IDE logs
@@ -142,13 +197,42 @@ abstract class LspClientDescriptor protected constructor(
    * Returns a [DocumentUri](https://microsoft.github.io/language-server-protocol/specification/#documentUri), which can be used in various
    * requests to the LSP server.
    * The default implementation simply calls [getFilePath] and converts it to `file://...` URI.
+   * For a dynamic file, an in-memory file the [LspClient] created from a `workspace/textDocumentContent` result,
+   * it returns the URI the content was requested with.
+   * For a UNC path, it produces a `file://host/share/path` URI, which keeps the host in the authority.
    */
-  open fun getFileUri(file: VirtualFile): String {
-    val escapedPath = URLUtil.encodePath(getFilePath(file))
+  open fun getFileUri(file: VirtualFile): String =
+    file.getUserData(DYNAMIC_FILE_URI) ?: localFileUri(getFilePath(file))
+
+  private fun localFileUri(path: String): String {
+    uncFileUri(path)?.let { return it }
+    val escapedPath = URLUtil.encodePath(path)
     val url = VirtualFileManager.constructUrl(URLUtil.FILE_PROTOCOL, escapedPath)
     val uri = VfsUtil.toUri(url)?.toString() ?: url
     return lowercaseWindowsDriveAndEscapeColon(uri)
   }
+
+  /**
+   * Puts the host of a UNC path in the authority of the URI, as [RFC 8089](https://datatracker.ietf.org/doc/html/rfc8089#section-2)
+   * and VS Code do: the `//wsl.localhost/Ubuntu/project` path becomes `file://wsl.localhost/Ubuntu/project`.
+   *
+   * @return the URI of a UNC [path], or `null` when [path] is not a UNC path or its host cannot be an authority
+   */
+  private fun uncFileUri(path: String): String? {
+    if (!path.startsWith("//")) return null
+    val host = path.substring(2, path.indexOf('/', 2).takeIf { it >= 0 } ?: path.length)
+    if (!isUriHost(host)) return null
+    // The encoded path still starts with `//`, so it becomes the authority and the path of the URI
+    return URLUtil.FILE_PROTOCOL + ":" + URLUtil.encodePath(path)
+  }
+
+  /**
+   * A device path such as `//./pipe/x` or `//?/C:/dir` has no host.
+   * A WebDAV host such as `host@SSL@443`, a port, an IPv6 literal or a backslash separator changes its meaning in an authority.
+   * Such a path keeps the plain `file:////host/share` conversion, which RFC 8089 also allows.
+   */
+  private fun isUriHost(host: String): Boolean =
+    host.isNotEmpty() && !host.startsWith('.') && host.none { it in "\\?#@:[]%<>^|" || it.isWhitespace() || it.isISOControl() }
 
   /**
    * The LSP spec [requires](https://microsoft.github.io/language-server-protocol/specification/#uri)
@@ -171,32 +255,49 @@ abstract class LspClientDescriptor protected constructor(
   /**
    * @see getFileUri
    */
-  protected open fun getFilePath(file: VirtualFile): String = file.path
+  // note: currently both overriders of this method JSNodeLspClientDescriptor and TailwindLspClientDescriptor are not EEL-compatible.
+  @ApiStatus.Internal
+  open fun getFilePath(file: VirtualFile): String {
+    val descriptor = project.getEelDescriptor()
+    if (descriptor !is LocalEelDescriptor) {
+      val path = runCatching { Path.of(file.path).asEelPath().toString() }.getOrNull()
+      if (path != null) {
+        return path
+      }
+    }
+    return file.path
+  }
 
   /**
-   * Extracts a file path from [fileUri] and calls [findLocalFileByPath]. Respects only `file://...` URIs.
+   * Extracts a file path from [fileUri] and calls [findLocalFileByPath].
+   * Respects only `file://...` URIs.
+   * A host in the authority gives a UNC path, symmetric to [getFileUri].
    * @param fileUri a [DocumentUri](https://microsoft.github.io/language-server-protocol/specification/#documentUri) received from the LSP
    *                server within some response or notification
    */
   open fun findFileByUri(fileUri: String): VirtualFile? {
-    val badWslUriStart = "file:///wsl$/"
-    val fixedFileUri = when {
-      fileUri.startsWith(badWslUriStart) -> "file:////wsl$/${fileUri.substring(badWslUriStart.length)}"
-      else -> fileUri
-    }
-
     return try {
-      val uri = URI(fixedFileUri)
+      val uri = URI(fileUri)
       if (URLUtil.FILE_PROTOCOL != uri.scheme) {
         LOG.warn("Unexpected URI scheme: $fileUri")
         return null
       }
-      val path = uri.path
-      if (path == null) {
+      val uriPath = uri.path
+      if (uriPath == null) {
         LOG.warn("Unexpected URI (no path): $fileUri")
         return null
       }
-      findLocalFileByPath(path)
+      val authority = uri.authority
+      if (authority.isNullOrEmpty()) {
+        return findLocalFileByPath(uriPath)
+      }
+      // RFC 8089 reads the `localhost` host as the local machine, so `file://localhost/dir` names the local `/dir`
+      if (authority.equals("localhost", ignoreCase = true)) {
+        findLocalFileByPath(uriPath)?.let { return it }
+      }
+      // Any other host names a UNC path: `file://wsl.localhost/Ubuntu/project` is `//wsl.localhost/Ubuntu/project`.
+      // Do not drop the host, because the local path without it is a file that the server did not name.
+      findLocalFileByPath("//$authority$uriPath")
     }
     catch (e: URISyntaxException) {
       LOG.warn("Malformed URI: " + fileUri + "; " + e.message)
@@ -207,7 +308,19 @@ abstract class LspClientDescriptor protected constructor(
   /**
    * @see findFileByUri
    */
-  protected open fun findLocalFileByPath(path: String): VirtualFile? = LocalFileSystem.getInstance().findFileByPath(path)
+  protected open fun findLocalFileByPath(path: String): VirtualFile? {
+    val descriptor = project.getEelDescriptor()
+    if (descriptor !is LocalEelDescriptor) {
+      if (PlatformUtils.isJetBrainsClient()) return VirtualFileManager.getInstance().findFileByUrl("cwm://$path")
+      val file = runCatching {
+        StandardFileSystems.local().findFileByPath(EelPath.parse(path, descriptor).asNioPath().toString())
+      }.getOrNull()
+      if (file != null) {
+        return file
+      }
+    }
+    return StandardFileSystems.local().findFileByPath(path)
+  }
 
   /**
    * Returns a `languageId` field of the [TextDocumentItem](https://microsoft.github.io/language-server-protocol/specification#textDocumentItem) class,
@@ -335,6 +448,10 @@ abstract class LspClientDescriptor protected constructor(
   companion object {
     @JvmField
     val LOG: Logger = Logger.getInstance(LspClientDescriptor::class.java)
+
+    /** The URI the [LspClient] requested the content of a dynamic file with, see [getFileUri]. */
+    @get:ApiStatus.Internal
+    val DYNAMIC_FILE_URI: Key<String> = Key.create("lsp.dynamic.file.uri")
 
     fun getLanguageId(file: VirtualFile): String {
       val nameLowercased = StringUtil.toLowerCase(file.name)

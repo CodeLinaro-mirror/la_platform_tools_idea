@@ -2,16 +2,23 @@
 package com.jetbrains.python.types
 
 import com.intellij.idea.TestFor
-import com.intellij.openapi.util.StackOverflowPreventedException
+import com.jetbrains.python.allure.Components
+import com.jetbrains.python.allure.Layers
+import com.jetbrains.python.allure.Subsystems
 import com.jetbrains.python.fixtures.PyCodeInsightTestCase
-import com.jetbrains.python.fixtures.PyTestCase.fixme
+import com.jetbrains.python.inspections.PyAbstractClassInspection
+import com.jetbrains.python.psi.LanguageLevel
+import com.jetbrains.python.psi.types.PyTypeChecker
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 
 /**
- * Type and type-checker tests for [typing.Protocol][https://docs.python.org/3/library/typing.html#typing.Protocol]:
+ * Type and type-checker tests for [typing.Protocol](https://docs.python.org/3/library/typing.html#typing.Protocol):
  * structural conformance, protocol assignability/subtyping, generic protocols and protocol members.
  */
+@Subsystems.Typing
+@Components.TypeInference
+@Layers.Functional
 class PyProtocolTypeTest : PyCodeInsightTestCase() {
 
   @Nested
@@ -51,7 +58,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
 
       expr = a(C())
       # └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-88326"])
@@ -79,8 +86,8 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
           raise NotImplementedError
 
       expr = func1(ImplB())
-      #└ TYPE list[int]
-      """)
+      #└ TYPE list[T] FIXME list[int]
+      """.trimIndent())
 
     @Test
     fun `generic protocol unification with the same type variable`() = test("""
@@ -102,7 +109,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
 
       expr = my_iter(MyList())
       #└ TYPE list[int]
-      """)
+      """.trimIndent())
 
     @Test
     fun `generic protocol unification with a separate type variable`() = test("""
@@ -125,7 +132,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
 
       expr = my_iter(MyList())
       # └ TYPE list[int]
-      """)
+      """.trimIndent())
 
     @Test
     fun `generic protocol unification with generic implementation`() = test("""
@@ -145,7 +152,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
       obj: MyClass[int]
       expr = f(obj)
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     fun `generic protocol unification with nongeneric implementation with generic superclass`() = test("""
@@ -168,30 +175,34 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
       obj: MyClass
       expr = f(obj)
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     fun `generic protocol unification with generic implementation with generic superclass`() = test("""
-      from typing import Generic, Protocol
+      from typing import Generic, Protocol, TypeVar
 
-      class Fooable[T1](Protocol):
+      T1 = TypeVar('T1')
+      T2 = TypeVar('T2')
+
+      class Fooable(Protocol[T1]):
+      #                      ^^ WARNING This type variable is effectively covariant in this protocol, so it cannot be invariant here
           def foo(self) -> T1:
               ...
 
-      class Super[T2]:
+      class Super(Generic[T2]):
           def foo(self) -> T2:
               ...
 
-      class MyClass[T2](Super[T2]):
+      class MyClass(Super[T2]):
           pass
 
-      def f[T1](x: Fooable[T1]) -> T1:
+      def f(x: Fooable[T1]) -> T1:
           ...
 
       obj: MyClass[int]
       expr = f(obj)
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     fun `generic protocol unification with generic implementation with generic superclass and extra parameter`() = test("""
@@ -214,7 +225,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
       obj: MyClass[str]
       expr = f(obj)
       # └ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-61883"])
@@ -237,7 +248,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
 
       expr = my_iter(MyList())
       #└ TYPE list[int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-61883"])
@@ -257,7 +268,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
 
       expr = my_iter(MyList())
       #└ TYPE list[int]
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-61883"])
@@ -282,7 +293,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
       obj: MyClass[int]
       expr = f(obj)
       #└ TYPE int
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-76902"])
@@ -300,7 +311,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
       #                    ^^^ WARNING Expected type 'Pair[int, str]', got 'EllipsisType' instead
       expr = xs.get()
       #└ TYPE str
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-86463"])
@@ -324,7 +335,299 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
 
       expr = expects_generic(Impl())
       #└ TYPE int
-      """)
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-26628"])
+    fun `against typing protocol`() = test("""
+      from typing import Protocol
+
+      class SupportsClose(Protocol):
+          def close(self) -> None:
+              pass
+
+      class Resource:
+          def close(self) -> None:
+              pass
+
+      def close(closeable: SupportsClose) -> None:
+          closeable.close()
+
+      f = open("a.txt")
+      close(f)
+
+      r = Resource()
+      close(r)
+
+      # There must be a warning "Expected type 'SupportsClose', got 'type[Resource]' instead".
+      # To fix this in PyTypeChecker.match(PyCallableType, PyCallableType, MatchContext) should be added checking named, optional and star params, not only positional ones.
+      # close(Resource)
+
+      close(1)
+      #     └ WARNING Expected type 'SupportsClose', got 'Literal[1]' instead
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-26628"])
+    fun `against typing protocol with implemented method`() = test("""
+      from typing import Protocol
+      from abc import abstractmethod
+
+      class MethodExample(Protocol):
+          def first(self) -> int:
+              return 42
+
+          @abstractmethod
+          def second(self) -> int:
+              raise NotImplementedError
+
+      class MethodExampleImpl1:
+          def first(self) -> int:
+              return 42
+
+          def second(self) -> int:
+              return 24
+
+      class MethodExampleImpl2(MethodExample):
+          def second(self) -> int:
+              return 24
+
+      class MethodExampleImpl3:
+          def second(self) -> int:
+              return 24
+
+      def example(e: MethodExample) -> None:
+          print(e.first())
+          print(e.second())
+
+      example(MethodExampleImpl1())
+      example(MethodExampleImpl2())
+      example(MethodExampleImpl3())
+      #       ^^^^^^^^^^^^^^^^^^^^ WARNING Expected type 'MethodExample', got 'MethodExampleImpl3' instead
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-26628"])
+    fun `against typing protocol with implemented variable`() = test("""
+      from typing import Protocol
+
+      class VariableExample(Protocol):
+          name: str
+          value: int = 0
+
+      class VariableExampleImpl1:
+          def __init__(self, name: str, value: int) -> None:
+              self.name = name
+              self.value = value
+
+      class VariableExampleImpl2(VariableExample):
+          def __init__(self, name: str) -> None:
+              self.name = name
+
+      class VariableExampleImpl3:
+          def __init__(self, name: str) -> None:
+              self.name = name
+
+      def example(e: VariableExample) -> None:
+          print(e.name)
+          print(e.value)
+
+      example(VariableExampleImpl1("1", 1))
+      example(VariableExampleImpl2("1"))
+      example(VariableExampleImpl3("1"))
+      #       ^^^^^^^^^^^^^^^^^^^^^^^^^ WARNING Expected type 'VariableExample', got 'VariableExampleImpl3' instead
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-26628"])
+    fun `against merged typing protocols`() = test("""
+      from typing import Protocol, Sized
+
+      class SupportsClose(Protocol):
+          def close(self) -> None:
+              pass
+
+      class SizedAndClosable(Sized, SupportsClose, Protocol):
+          pass
+
+      class Resource:
+          def __len__(self) -> int:
+              return 0
+
+          def close(self) -> None:
+              pass
+
+      def close(sized_and_closeable: SizedAndClosable) -> None:
+          print(len(sized_and_closeable))
+          sized_and_closeable.close()
+
+      r = Resource()
+      close(r)
+
+      close(1)
+      #     └ WARNING Expected type 'SizedAndClosable', got 'Literal[1]' instead
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-26628"])
+    fun `against generic typing protocol`() = test("""
+      from typing import Generic, Protocol, TypeVar
+
+      T = TypeVar("T")
+
+      class Box1(Protocol[T]):
+          attr: T
+
+      class Box2(Protocol, Generic[T]):
+      #     ^^^^ WARNING All bases of a protocol must be protocols FIXME
+          attr: T
+
+      class BoxImpl(Generic[T]):
+          def __init__(self, attr: T) -> None:
+              self.attr = attr
+
+      def b1(b: Box1[int]):
+          print(b.attr)
+
+      def b2(b: Box2[int]):
+          print(b.attr)
+
+      b3: BoxImpl[int]
+      b1(b3)
+      b2(b3)
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-26628"])
+    @TestCaseOptions(assertRecursionPrevention = false)
+    fun `against recursive typing protocol`() = test("""
+      from typing import Generic, Iterable, List, Protocol, TypeVar
+
+      T = TypeVar("T")
+
+      class Traversable(Protocol):
+          def leaves(self) -> Iterable['Traversable']:
+              pass
+
+      class SimpleTree:
+          def leaves(self) -> List['SimpleTree']:
+              pass
+
+      class Tree(Generic[T]):
+          def leaves(self) -> List['Tree[T]']:
+              pass
+
+      def traverse(t: Traversable):
+          for l in t.leaves():
+              traverse(l)
+
+      traverse(SimpleTree())
+      traverse(Tree())
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-26628"])
+    fun `typing protocol against protocol`() = test("""
+      from typing import Protocol
+
+      class MyProtocol1(Protocol):
+          attr: int
+
+          def func(self, p: int) -> str:
+              pass
+
+      class MyProtocol2(Protocol):
+          attr: int
+          more_attr: int
+
+          def func(self, p: int) -> str:
+              pass
+
+          def more_func(self, p: str) -> int:
+              pass
+
+      class MyProtocol3(Protocol):
+          attr: str
+          more_attr: str
+
+          def func(self, p: str) -> int:
+              pass
+
+          def more_func(self, p: int) -> str:
+              pass
+
+      def foo(p: MyProtocol1):
+          pass
+
+      v1: MyProtocol2
+      v2: MyProtocol3
+
+      foo(v1)
+      foo(v2)
+      #   ^^ WARNING Expected type 'MyProtocol1', got 'MyProtocol3' instead
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-43133"])
+    fun `hierarchy against protocol`() = test("""
+      from typing import Protocol
+
+      class A:
+          def f1(self, x: str):
+              pass
+
+      class B(A):
+          def f2(self, y: str):
+              pass
+
+      class P(Protocol):
+          def f1(self, x: str): ...
+          def f2(self, y: str): ...
+
+      def test(p: P):
+          pass
+
+      b = B()
+      test(b)
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-90570"])
+    fun `Self return of instance member binds protocol type parameter`() = test("""
+      from typing import Protocol, Self
+
+      class Clones[T](Protocol):
+          def clone(self) -> T: ...
+
+      class Box[V]:
+          def clone(self) -> Self: ...
+
+      def first_clone[T](x: Clones[T]) -> T: ...
+
+      def f(b: Box[int]):
+          expr = first_clone(b)
+      #   └ TYPE Box[int]
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-90570"])
+    fun `Self return of enum member binds protocol type parameter to enum class`() = test("""
+      from enum import Enum
+      from typing import Protocol, Self
+
+      class Shifts[T](Protocol):
+          def shifted(self) -> T: ...
+
+      def shift[T](x: Shifts[T]) -> T: ...
+
+      class Colour(Enum):
+          RED = 1
+
+          def shifted(self) -> Self: ...
+
+      expr = shift(Colour.RED)
+      # └ TYPE Colour
+      """.trimIndent())
   }
 
   @Nested
@@ -352,7 +655,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
 
       obj = MyClass()
       accepts_protocol(obj)
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-53104"])
     @Test
@@ -380,7 +683,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
 
       obj = MyClass()
       accepts_protocol(obj)
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-53104"])
     @Test
@@ -404,7 +707,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
 
       obj = MyClass()
       accepts_protocol(obj) # WARNING Expected type 'MyProtocol', got 'MyClass' instead
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-53104"])
     @Test
@@ -433,7 +736,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
 
       obj = MyClass()
       accepts_protocol(obj) # WARNING Expected type 'MyProtocol', got 'MyClass' instead
-      """)
+      """.trimIndent())
 
     @TestFor(issues = ["PY-53104"])
     @Test
@@ -457,7 +760,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
 
       obj = MyClass()
       accepts_protocol(obj)
-      """)
+      """.trimIndent())
 
     @Test
     fun `nongeneric protocol does not match generic class`() = test("""
@@ -478,7 +781,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
 
       box: Box[str]
       f(box) # WARNING Expected type 'IntGetter', got 'Box[str]' instead
-      """)
+      """.trimIndent())
 
     @Test
     fun `generic protocol does not match generic class with wrong argument`() = test("""
@@ -497,7 +800,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
 
       box: Box[str]
       f(box) # WARNING Expected type 'Getter[int]', got 'Box[str]' instead
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-85123"])
@@ -519,7 +822,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
 
 
       a: SupportsWrite[str] = B()
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-85123"])
@@ -542,7 +845,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
 
       def accepts_p(arg: P[T, str]) -> None: ...
       accepts_p(B())
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-85123"])
@@ -564,7 +867,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
 
       def accepts_union(x: SupportsWrite[str] | SupportsWrite[T]) -> None: ...
       accepts_union(B())
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-86463"])
@@ -586,7 +889,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
           pass
 
       expr = expects_P2_str(Impl()) # WARNING Expected type 'P2[str]', got 'Impl' instead
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-86249"])
@@ -614,7 +917,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
 
 
       do(Impl(name="vrf1"))
-      """)
+      """.trimIndent())
 
     @Test
     fun `overloaded method in concrete class matches protocol`() = test("""
@@ -635,7 +938,394 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
               return 1
 
       var: Template = Concrete()
-      """)
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-26628"])
+    fun `against typing protocol wrong types`() = test("""
+      from typing import Protocol
+
+      class MyProtocol(Protocol):
+          attr: int
+          def func(self, p: int) -> str:
+              pass
+
+      class MyClass1:
+          def __init__(self, attr: int) -> None:
+              self.attr = attr
+
+          def func(self, p: str) -> int:
+              pass
+
+      class MyClass2:
+          def __init__(self, attr: str) -> None:
+              self.attr = attr
+
+          def func(self, p: int) -> str:
+              pass
+
+      class MyClass3:
+          def __init__(self, attr: str) -> None:
+              self.attr = attr
+
+          def func(self, p: str) -> int:
+              pass
+
+      def foo(m: MyProtocol):
+          pass
+
+      foo(MyClass1(1))
+      #   ^^^^^^^^^^^ WARNING Expected type 'MyProtocol', got 'MyClass1' instead
+      foo(MyClass2("1"))
+      #   ^^^^^^^^^^^^^ WARNING Expected type 'MyProtocol', got 'MyClass2' instead
+      foo(MyClass3("1"))
+      #   ^^^^^^^^^^^^^ WARNING Expected type 'MyProtocol', got 'MyClass3' instead
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-26628"])
+    @TestCaseOptions(languageLevel = LanguageLevel.PYTHON35)
+    fun `against typing protocol definition`() = test("""
+      from typing import Protocol, Type
+
+      class Proto(Protocol):
+          def proto(self, i: int) -> None:
+              pass
+
+      class Concrete1:
+          def proto(self, i: int) -> None:
+              pass
+
+      class Concrete2(Proto):
+          def proto(self, i: int) -> None:
+              pass
+
+      class Concrete3:
+          def proto(self, i: str) -> None:
+              pass
+
+      class Concrete4(Proto):
+          def proto(self, i: str) -> None: # ISSUES *
+              pass
+
+      class NewProto(Proto, Protocol):
+          def new_proto(self, s: str) -> None:
+              pass
+
+      def foo(cls: Type[Proto]) -> None:
+          pass
+
+      def bar(*classes: Type[Proto]) -> None:
+          pass
+
+      foo(Proto)
+      #   ^^^^^ WARNING Only a concrete class can be used where 'Type[Proto]' protocol is expected
+      foo(Concrete1)
+      foo(Concrete2)
+      foo(Concrete3)
+      #   ^^^^^^^^^ WARNING Expected type 'Type[Proto]', got 'Type[Concrete3]' instead
+      foo(Concrete4)  # matched as inheritor
+      foo(NewProto)
+      #   ^^^^^^^^ WARNING Only a concrete class can be used where 'Type[Proto]' protocol is expected
+
+      bar(Proto)
+      #   ^^^^^ WARNING Only a concrete class can be used where 'Type[Proto]' protocol is expected
+      bar(Concrete1)
+      bar(Concrete2)
+      bar(Concrete3)
+      #   ^^^^^^^^^ WARNING Expected type 'Type[Proto]', got 'Type[Concrete3]' instead
+      bar(Concrete4)  # matched as inheritor
+      bar(NewProto)
+      #   ^^^^^^^^ WARNING Only a concrete class can be used where 'Type[Proto]' protocol is expected
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-26628"])
+    fun `typing protocols inheritor against hashable`() = test("""
+      from typing import Hashable
+
+      def foo(args: Hashable):
+          pass
+
+      foo((1, 2, 3))
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-28720"])
+    fun `overridden builtin method against typing protocol`() = test("""
+      import typing
+      class Proto(typing.Protocol):
+          def function(self) -> None:
+              pass
+      class Cls:
+          def __eq__(self, other) -> 'Cls':
+      #                              ^^^^^ WARNING Return type of method 'Cls.__eq__()' does not match return type the base method in class 'object'
+              pass
+          def function(self) -> None:
+              pass
+      def method(p: Proto):
+          pass
+      method(Cls())
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-28720"])
+    fun `against invalid protocol`() = test("""
+      from typing import Any, Protocol
+      class B:
+          def foo(self):
+              ...
+      class C(B, Protocol): # WARNING All bases of a protocol must be protocols
+          def bar(self):
+              ...
+      class Bar:
+          def bar(self):
+              ...
+      def f(x: C) -> Any:
+          ...
+      f(Bar())
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-90570"])
+    fun `Self parameter of instance member against protocol`() = test("""
+      from typing import Protocol, Self
+
+      class Mergeable(Protocol):
+          def merge(self, other: Self) -> Self: ...
+
+      class Box:
+          def merge(self, other: Self) -> Self: ...
+
+      class Bad:
+          def merge(self, other: int) -> Bad: ...
+
+      def use(m: Mergeable): ...
+
+      use(Box())
+      use(Bad())
+      #   ^^^^^ WARNING Expected type 'Mergeable', got 'Bad' instead
+      """.trimIndent())
+  }
+
+  @Nested
+  @TestFor(issues = ["PY-49246"])
+  inner class ProtocolCallAndConstructorMembers {
+
+    @Test
+    fun `protocol __call__ is matched against the subclass __call__ and not its constructor`() = test("""
+      from typing import Protocol
+
+      class MyProtocol(Protocol):
+          def __call__(self, *args, **kwargs):
+              pass
+
+      class MyClass(MyProtocol):
+          def __init__(self):
+              pass
+
+          def __call__(self, *args, **kwargs):
+              pass
+      """.trimIndent())
+
+    @Test
+    fun `inherited protocol __call__ is compatible with any subclass constructor`() = test("""
+      from typing import Protocol
+
+      class MyProtocol(Protocol):
+          def __call__(self, x: int) -> str: ...
+
+      class MyClass(MyProtocol):
+          def __init__(self, y: str) -> None:
+              pass
+      """.trimIndent())
+
+    @Test
+    fun `incompatible __call__ override is reported`() = test("""
+      from typing import Protocol
+
+      class MyProtocol(Protocol):
+          def __call__(self, x: int) -> str: ...
+
+      class MyClass(MyProtocol):
+          def __init__(self, y: str) -> None:
+              pass
+
+          def __call__(self, x: str) -> int: ...
+      #       │       │                 ^^^ WARNING Return type of method 'MyClass.__call__()' does not match return type the base method in class 'MyProtocol'
+      #       │       ^^^^^^^^^^^^^^ WARNING Signature of method 'MyClass.__call__()' does not match signature of the base method in class 'MyProtocol'
+      #       ^^^^^^^^ WARNING Type of '__call__' is incompatible with 'MyProtocol'
+      """.trimIndent())
+
+    @Test
+    fun `same __init__ as the protocol is compatible`() = test("""
+      from typing import Protocol
+
+      class MyProtocol(Protocol):
+          def __init__(self, verbose): ...
+
+      class MyClass(MyProtocol):
+          def __init__(self, verbose):
+              pass
+      """.trimIndent())
+
+    @Test
+    fun `constructor overrides are not checked against the protocol`() = test("""
+      from typing import Protocol
+
+      class MyProtocol(Protocol):
+          def __init__(self, verbose: int) -> None: ...
+
+          def __new__(cls, verbose: int) -> "MyProtocol": ...
+
+      class MyClass(MyProtocol):
+          def __init__(self, verbose: str, extra: bytes) -> None:
+              pass
+
+          def __new__(cls, verbose: str, extra: bytes) -> "MyClass": ...
+      """.trimIndent())
+
+    @Test
+    fun `metaclass __init__ is not checked against the protocol __init__`() = test("""
+      from typing import Protocol
+
+      class Meta(type):
+          def __init__(cls, name, bases, namespace) -> None:
+              super().__init__(name, bases, namespace)
+
+      class MyProtocol(Protocol):
+          def __init__(self, verbose: int) -> None: ...
+
+      class MyClass(MyProtocol, metaclass=Meta):
+          pass
+      """.trimIndent())
+
+    @Test
+    fun `override of a member that type also defines is checked`() = test("""
+      from typing import Protocol
+
+      class MyProtocol(Protocol):
+          def __repr__(self) -> str: ...
+
+      class MyClass(MyProtocol):
+          def __repr__(self) -> int: ...
+      #       │                 ^^^ WARNING Return type of method 'MyClass.__repr__()' does not match return type the base method in class 'MyProtocol'
+      #       ^^^^^^^^ WARNING Type of '__repr__' is incompatible with 'MyProtocol'
+      """.trimIndent())
+
+    @Test
+    fun `metaclass member is not checked instead of the subclass member`() = test("""
+      from typing import Iterator, Protocol
+
+      class Meta(type):
+          def __iter__(cls) -> Iterator[str]: ...
+
+      class MyProtocol(Protocol):
+          def __iter__(self) -> Iterator[int]: ...
+
+      class MyClass(MyProtocol, metaclass=Meta):
+          def __iter__(self) -> Iterator[int]: ...
+      """.trimIndent())
+
+    @Test
+    fun `annotated instance attribute is checked against the protocol attribute`() = test("""
+      from typing import Protocol
+
+      class MyProtocol(Protocol):
+          x: int
+
+      class MyClass(MyProtocol):
+          def __init__(self) -> None:
+              self.x: str = ""
+      #            └ WARNING Type of 'x' is incompatible with 'MyProtocol'
+      """.trimIndent())
+
+    @Test
+    fun `unannotated instance attribute takes the protocol attribute type`() = test("""
+      from typing import Protocol
+
+      class MyProtocol(Protocol):
+          x: list[float]
+
+      class MyClass(MyProtocol):
+          def __init__(self) -> None:
+              self.x = [1]
+      """.trimIndent())
+
+    @Test
+    fun `instance attribute that replaces a protocol method is reported`() = test("""
+      from typing import Protocol
+
+      class MyProtocol(Protocol):
+          def handler(self) -> None: ...
+
+      class MyClass(MyProtocol):
+          def __init__(self) -> None:
+              self.handler = lambda: None
+      #            ^^^^^^^ WARNING Type of 'handler' is incompatible with 'MyProtocol'
+      """.trimIndent())
+
+    @Test
+    fun `incompatible property override is reported`() = test("""
+      from typing import Protocol
+
+      class MyProtocol(Protocol):
+          @property
+          def value(self) -> int: ...
+
+      class MyClass(MyProtocol):
+          @property
+          def value(self) -> str: ...
+      #       │              ^^^ WARNING Return type of method 'MyClass.value()' does not match return type the base method in class 'MyProtocol'
+      #       ^^^^^ WARNING Type of 'value' is incompatible with 'MyProtocol'
+      """.trimIndent())
+
+    @Test
+    fun `protocol class object with __call__ is matched against the instance __call__`() = test("""
+      from typing import Protocol
+
+      class CallP(Protocol):
+          def __call__(self, x: int) -> str: ...
+
+      class Matching:
+          def __init__(self, y: str) -> None: ...
+
+          def __call__(self, x: int) -> str:
+              return ""
+
+      class OnlyConstructor:
+          def __init__(self, x: int) -> None: ...
+
+      def accepts_class(t: type[CallP]) -> None: ...
+
+      def accepts_instance(p: CallP) -> None: ...
+
+      accepts_class(Matching)
+      accepts_class(OnlyConstructor)
+      #             ^^^^^^^^^^^^^^^ WARNING Expected type 'type[CallP]', got 'type[OnlyConstructor]' instead
+      accepts_instance(Matching(""))
+      accepts_instance(Matching)
+      #                ^^^^^^^^ WARNING Expected type 'CallP', got 'type[Matching]' instead
+      """.trimIndent())
+
+    @Test
+    fun `generic protocol class object with __call__ is solved from the instance __call__`() = test("""
+      from typing import Protocol
+
+      class CallP[T](Protocol):
+          def __call__(self) -> T: ...
+
+      class C:
+          def __init__(self, y: str) -> None: ...
+
+          def __call__(self) -> int:
+              return 0
+
+      def f[T](t: type[CallP[T]]) -> T: ...
+
+      expr = f(C)
+      # └ TYPE int
+      """.trimIndent())
   }
 
   @Nested
@@ -665,7 +1355,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
 
 
       var: Template = Concrete("value", 42)
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-76822"])
@@ -682,7 +1372,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
           val1: int = 0
 
       var: Template = Concrete()
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-76822"])
@@ -701,7 +1391,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
               ...
 
       var: Template = Concrete()
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-76822"])
@@ -727,8 +1417,8 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
           def val1(self, val: int) -> None:
               ...
 
-      var: Template = Concrete() # WARNING Expected type 'Template', got 'Concrete' instead
-      """)
+      var: Template = Concrete() # WARNING FIXME Expected type 'Template', got 'Concrete' instead # PY-91385
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-76822"])
@@ -750,8 +1440,8 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
       class Concrete:
           val: int = 0
 
-      var: Template = Concrete() # WARNING Expected type 'Template', got 'Concrete' instead
-      """)
+      var: Template = Concrete() # WARNING FIXME Expected type 'Template', got 'Concrete' instead # PY-91385
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-76822"])
@@ -766,7 +1456,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
           val: ClassVar[int] = 0
 
       var: Template = Concrete()
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-76822"])
@@ -781,7 +1471,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
           val: int = 0
 
       var: Template = Concrete() # WARNING Expected type 'Template', got 'Concrete' instead
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-76822"])
@@ -796,7 +1486,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
           val: ClassVar[int] = 0
 
       var: Template = Concrete() # WARNING Expected type 'Template', got 'Concrete' instead
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-76822"])
@@ -819,7 +1509,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
           val: int = 0
 
       var: Template = Concrete() # WARNING Expected type 'Template', got 'Concrete' instead
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-76822"])
@@ -834,7 +1524,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
           val: Any
 
       var: Template = Concrete()
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-76822"])
@@ -849,7 +1539,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
           val: int
 
       var: Template = Concrete()
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-76822"])
@@ -864,19 +1554,20 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
           val: Any
 
       var: Template = Concrete()
-      """)
+      """.trimIndent())
 
     @Test
+    @TestFor(issues = ["PY-87730"])
     fun `ellipsis default argument in protocol method is allowed`() = test("""
       from typing import Protocol
 
       class A(Protocol):
           def f(self, a: str = ...):
               pass
-      """)
+      """.trimIndent())
 
     @Test
-    @TestFor(issues = ["PY-87801"])
+    @TestFor(issues = ["PY-87801", "PY-87802"])
     fun `callable protocol with additional attribute rejects plain function`() = test("""
       from typing import Protocol
 
@@ -892,7 +1583,187 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
 
 
       v: Proto = f # WARNING Expected type 'Proto', got '(x: int) -> None' instead
-      """)
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-41806"])
+    fun `class definition against protocol dunder call`() = test("""
+      from typing import Protocol
+
+      class C:
+          def __init__(self, a: undef): # ERROR Unresolved reference 'undef'
+              pass
+
+      class P(Protocol):
+          def __call__(self, a: undef) -> C: # ERROR Unresolved reference 'undef'
+              pass
+
+      def foo(arg: P):
+          pass
+
+      foo(C)
+      foo(C())
+      #   │ └ WARNING Parameter 'a' unfilled
+      #   ^^^ WARNING Expected type 'P', got 'C' instead
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-41806"])
+    fun `class instance against protocol dunder call`() = test("""
+      from typing import Protocol
+
+      class C:
+          def __call__(self, a: undef): # ERROR Unresolved reference 'undef'
+              pass
+
+      class P(Protocol):
+          def __call__(self, a: undef): # ERROR Unresolved reference 'undef'
+              pass
+
+      def foo(arg: P):
+          pass
+
+      foo(C())
+      foo(C)
+      #   └ WARNING Expected type 'P', got 'type[C]' instead
+      """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-90570"])
+    fun `class object with Self classmethod against protocol`() = test("""
+      from typing import Protocol, Self
+
+      class Factory(Protocol):
+          def create(self) -> Widget: ...
+
+      class Widget:
+          @classmethod
+          def create(cls) -> Self: ...
+
+      def build(f: Factory): ...
+
+      build(Widget)
+      """.trimIndent())
+
+    @Test
+    @TestFor(classes = [PyTypeChecker::class])
+    fun `mutable protocol member rejects a Final attribute`() = test("""
+      from typing import Final, Protocol
+
+      class HasX(Protocol):
+          x: int
+
+      class FinalX:
+          x: Final[int] = 1
+
+      val: HasX = FinalX() # WARNING FIXME Expected type 'HasX', got 'FinalX' instead
+      """.trimIndent())
+
+    @Test
+    @TestFor(classes = [PyTypeChecker::class])
+    fun `mutable protocol member rejects a frozen dataclass`() = test("""
+      from dataclasses import dataclass
+      from typing import Protocol
+
+      class HasX(Protocol):
+          x: int
+
+      @dataclass(frozen=True)
+      class FrozenX:
+          x: int
+
+      val: HasX = FrozenX(1) # WARNING Expected type 'HasX', got 'FrozenX' instead
+      """.trimIndent())
+
+    @Test
+    @TestFor(classes = [PyTypeChecker::class])
+    fun `mutable protocol member rejects a getter only property`() = test("""
+      from typing import Protocol
+
+      class HasX(Protocol):
+          x: int
+
+      class PropX:
+          @property
+          def x(self) -> int: return 1
+
+      val: HasX = PropX() # WARNING Expected type 'HasX', got 'PropX' instead
+      """.trimIndent())
+
+    @Test
+    @TestFor(classes = [PyTypeChecker::class])
+    fun `mutable protocol member rejects a NamedTuple`() = test("""
+      from typing import NamedTuple, Protocol
+
+      class HasX(Protocol):
+          x: int
+
+      class NT(NamedTuple):
+          x: int
+
+      val: HasX = NT(1) # WARNING Expected type 'HasX', got 'NT' instead
+      """.trimIndent())
+
+    @Test
+    @TestFor(classes = [PyTypeChecker::class])
+    fun `read only protocol property accepts a mutable attribute`() = test("""
+      from typing import Protocol
+
+      class HasX(Protocol):
+          @property
+          def x(self) -> int: ...
+
+      class MutX:
+          x: int = 1
+
+      val: HasX = MutX()
+      """.trimIndent())
+
+    @Test
+    @TestFor(classes = [PyTypeChecker::class])
+    fun `mutable protocol attribute is invariant`() = test("""
+      from typing import Protocol, Sequence
+
+      class Proto(Protocol):
+          val: Sequence[int]
+
+      class Narrower:
+          val: list[int] = []
+
+      res: Proto = Narrower() # WARNING FIXME Expected type 'Proto', got 'Narrower' instead
+      """.trimIndent())
+
+    @Test
+    @TestFor(classes = [PyTypeChecker::class])
+    fun `protocol property with a setter rejects a getter only class`() = test("""
+      from typing import Protocol
+
+      class RW(Protocol):
+          @property
+          def v(self) -> int: ...
+          @v.setter
+          def v(self, x: int) -> None: ...
+
+      class OnlyGetter:
+          @property
+          def v(self) -> int: return 1
+
+      res: RW = OnlyGetter() # WARNING FIXME Expected type 'RW', got 'OnlyGetter' instead # PY-91385
+      """.trimIndent())
+
+    @Test
+    @TestFor(classes = [PyAbstractClassInspection::class])
+    fun `explicit protocol subclass with an unassigned attribute is abstract`() = test("""
+      from typing import Protocol
+
+      class PA(Protocol):
+          attr: int
+
+      class ImplA(PA):
+          pass
+
+      ImplA() # WARNING FIXME Cannot instantiate abstract class 'ImplA' with abstract attribute 'attr'
+      """.trimIndent())
   }
 
   @Nested
@@ -952,7 +1823,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
       def all_union_members_dont_match_with_any(iterable: C | None | Any):
           for _ in iterable: # WARNING Expected type 'collections.Iterable', got 'C | None | Any' instead
               pass
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-76922"])
@@ -1014,14 +1885,14 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
       #                                                             └ WARNING Class 'type' does not define '__and__', so the '&' operator cannot be used on its instances
           for _ in iterable:
               pass
-      """)
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-85997"])
+    @TestCaseOptions(assertRecursionPrevention = false)
     fun `recursive iterator protocol matches Iterator`() = test(
       // Matching `() -> Iterator` against `() -> Self` is mutually recursive, so recursion prevention
       // legitimately engages while checking the assignment below.
-      defaultTestOptions.copy(assertRecursionPrevention = false),
       """
       from typing import Iterator, Self
 
@@ -1031,8 +1902,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
 
       ys: MyIterable[str]
       xs: Iterator[str] = ys
-      """,
-    )
+      """.trimIndent())
 
     @Test
     fun `identical generic protocol and implementation using Self`() = test("""
@@ -1048,7 +1918,18 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
 
       ys: MyIterable[str] = MyIterable[str]()
       xs: MyProtocol[str] = ys
-      """)
+      """.trimIndent())
+
+    @Test
+    @TestFor(classes = [PyTypeChecker::class])
+    fun `Hashable rejects a class with __hash__ set to None`() = test("""
+      from typing import Hashable
+
+      class NoHash:
+          __hash__ = None
+
+      val: Hashable = NoHash() # WARNING Expected type 'Hashable', got 'NoHash' instead
+      """.trimIndent())
   }
 
   @Nested
@@ -1056,8 +1937,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
 
     @Test
     @TestFor(issues = ["PY-76818"])
-    fun `match module with protocol by number of attributes`() = test(
-      """
+    fun `match module with protocol by number of attributes`() = test("""
       import _protocols_modules1
       from typing import Protocol
 
@@ -1075,20 +1955,17 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
 
       op1: Options1 = _protocols_modules1
       op1: Options2 = _protocols_modules1
-      #│              ^^^^^^^^^^^^^^^^^^^ WARNING Expected type 'Options2', got '_protocols_modules1' instead
-      #^^ WARNING Redeclared 'op1' defined above without usage
-      """,
+      #               ^^^^^^^^^^^^^^^^^^^ WARNING Expected type 'Options2', got '_protocols_modules1' instead
+      """.trimIndent(),
       "_protocols_modules1.py" to """
         timeout = 100
         one_flag = True
         other_flag = False
-        """,
-    )
+        """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-76818"])
-    fun `match protocol with module callables`() = test(
-      """
+    fun `match protocol with module callables`() = test("""
       import _protocols_modules2
       from typing import Protocol
 
@@ -1114,7 +1991,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
       rp1: Reporter1 = _protocols_modules2  # OK
       rp2: Reporter2 = _protocols_modules2 # WARNING Expected type 'Reporter2', got '_protocols_modules2' instead
       rp3: Reporter3 = _protocols_modules2 # WARNING Expected type 'Reporter3', got '_protocols_modules2' instead
-      """,
+      """.trimIndent(),
       "_protocols_modules2.py" to """
         def on_error(x: int) -> None:
             ...
@@ -1122,13 +1999,11 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
 
         def on_success() -> None:
             ...
-        """,
-    )
+        """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-76818"])
-    fun `match generic protocol with module`() = test(
-      """
+    fun `match generic protocol with module`() = test("""
       import mod
       from typing import Protocol
 
@@ -1143,15 +2018,50 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
       t2: Options1[int, float, bool] = mod # WARNING Expected type 'Options1[int, float | int, bool]', got 'mod' instead
       t3: Options1[str, float, bool] = mod # WARNING Expected type 'Options1[str, float | int, bool]', got 'mod' instead
       t4: Options1[int, str, str] = mod # WARNING Expected type 'Options1[int, str, str]', got 'mod' instead
-      """,
+      """.trimIndent(),
       "mod.py" to """
         timeout = 100
         one_flag = True
         other_flag = False
 
         def foo(x: int, y: str) -> bool: ...
-        """,
+        """.trimIndent())
+
+    @Test
+    @TestFor(issues = ["PY-36062"])
+    fun `module type parameter`() = test(
+      """
+      import module
+      from types import ModuleType
+
+      def foo(m: ModuleType):
+          pass
+
+      def bar(m):
+          return m.__name__
+
+      foo(module)
+      bar(module)
+      """.trimIndent(),
+      "module.py" to "",
     )
+
+    @Test
+    @TestFor(classes = [PyTypeChecker::class])
+    fun `module with extra names matches a protocol`() = test("""
+      from typing import Protocol
+      import modimpl
+
+      class Options(Protocol):
+          timeout: int
+
+      res: Options = modimpl
+      #              ^^^^^^^ WARNING Expected type 'Options', got 'modimpl' instead FIXME
+      """.trimIndent(),
+      "modimpl.py" to """
+      timeout: int = 100
+      extra: str = ''
+      """.trimIndent())
   }
 
   @Nested
@@ -1159,45 +2069,39 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
 
     @Test
     @TestFor(issues = ["PY-85997"])
-    fun `recursive protocol and implementation using Self`() = test(
-      TestOptions(enablePyAnyType = false, assertRecursionPrevention = false),
-      """
-          from typing import Self, Protocol
-    
-          class MyProtocol[T](Protocol):
-              def __next__(self) -> T: ...
-              def __iter__(self) -> MyProtocol[T]: ...
-    
-          class MyIterable[T]:
-              def __next__(self) -> T: ...
-              def __iter__(self) -> Self: ...
-    
-          ys: MyIterable[str] = MyIterable[str]()
-          xs: MyProtocol[str] = ys
-          """,
-    )
+    @TestCaseOptions(assertRecursionPrevention = false)
+    fun `recursive protocol and implementation using Self`() = test("""
+      from typing import Self, Protocol
+
+      class MyProtocol[T](Protocol):
+          def __next__(self) -> T: ...
+          def __iter__(self) -> MyProtocol[T]: ...
+
+      class MyIterable[T]:
+          def __next__(self) -> T: ...
+          def __iter__(self) -> Self: ...
+
+      ys: MyIterable[str] = MyIterable[str]()
+      xs: MyProtocol[str] = ys
+      """.trimIndent())
 
     @Test
     @TestFor(issues = ["PY-85997"])
-    fun `recursive protocol and implementation referring to itself`() =
-      fixme("Recursive protocol definitions cause infinite recursion during matching",
-            StackOverflowPreventedException::class.java,
-            "Endless recursion prevention occurred on") {
-        test("""
-          from typing import Self, Protocol
-    
-          class MyProtocol[T](Protocol):
-              def __next__(self) -> T: ...
-              def __iter__(self) -> MyProtocol[T]: ...
-    
-          class MyIterable[T]:
-              def __next__(self) -> T: ...
-              def __iter__(self) -> MyIterable[T]: ...
-    
-          ys: MyIterable[str] = MyIterable[str]()
-          xs: MyProtocol[str] = ys
-          """)
-      }
+    @TestCaseOptions(assertRecursionPrevention = false)
+    fun `recursive protocol and implementation referring to itself`() = test("""
+      from typing import Self, Protocol
+
+      class MyProtocol[T](Protocol):
+          def __next__(self) -> T: ...
+          def __iter__(self) -> MyProtocol[T]: ...
+
+      class MyIterable[T]:
+          def __next__(self) -> T: ...
+          def __iter__(self) -> MyIterable[T]: ...
+
+      ys: MyIterable[str] = MyIterable[str]()
+      xs: MyProtocol[str] = ys
+      """.trimIndent())
   }
 
   @Test
@@ -1211,102 +2115,7 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
             pass
 
     f(A)
-    """)
-
-  @Test
-  @TestFor(issues = ["PY-43133"])
-  fun `inherited methods across hierarchy satisfy protocol`() = test("""
-    from typing import Protocol
-
-    class A:
-        def f1(self, x: str):
-            pass
-
-    class B(A):
-        def f2(self, y: str):
-            pass
-
-    class P(Protocol):
-        def f1(self, x: str): ...
-        def f2(self, y: str): ...
-
-    def test(p: P):
-        pass
-
-    b = B()
-    test(b)
-    """)
-
-  @Test
-  @TestFor(issues = ["PY-28720"])
-  fun `class overriding builtin dunder matches typing protocol`() = test("""
-    import typing
-
-    class Proto(typing.Protocol):
-        def function(self) -> None:
-            pass
-
-    class Cls:
-        def __eq__(self, other) -> 'Cls':
-            pass
-
-        def function(self) -> None:
-            pass
-
-    def method(p: Proto):
-        pass
-
-    method(Cls())
-    """)
-
-  @Test
-  @TestFor(issues = ["PY-28720"])
-  fun `matching against invalid protocol is not reported`() = test("""
-    from typing import Any, Protocol
-
-    class B:
-        def foo(self):
-            ...
-
-    class C(B, Protocol): # WARNING All bases of a protocol must be protocols
-        def bar(self):
-            ...
-
-    class Bar:
-        def bar(self):
-            ...
-
-    def f(x: C) -> Any:
-        ...
-
-    f(Bar())
-    """)
-
-  @Test
-  fun `structural types for nested calls`() = test("""
-    def f(x):
-        return x.foo + g(x)
-
-
-    def g(x):
-        return x.bar
-
-
-    def test():
-        f("string") # WARNING Type 'Literal["string"]' doesn't have expected attributes 'foo', 'bar'
-    """)
-
-  @Test
-  fun `comparison operators for numeric types`() = test("""
-    def f(x):
-        print(x < 0, x <= 0, x > 0, x >= 0, x != 0)
-        print(x.foo)
-
-
-    print(f(True)) # WARNING Type 'Literal[True]' doesn't have expected attribute 'foo'
-    print(f(0)) # WARNING Type 'Literal[0]' doesn't have expected attribute 'foo'
-    print(f(3.14)) # WARNING Type 'float' doesn't have expected attribute 'foo'
-    """)
+    """.trimIndent())
 
   @Test
   @TestFor(issues = ["PY-27231"])
@@ -1323,24 +2132,5 @@ class PyProtocolTypeTest : PyCodeInsightTestCase() {
 
     func31(None) # WARNING Type 'None' doesn't have expected attribute '__mul__'
     func32(None) # WARNING Type 'None' doesn't have expected attribute '__mul__'
-    """)
-
-  @Test
-  @TestFor(issues = ["PY-36062"])
-  fun `module object matches ModuleType and structural parameter`() = test(
-    """
-    import module
-    from types import ModuleType
-
-    def foo(m: ModuleType):
-        pass
-
-    def bar(m):
-        return m.__name__
-
-    foo(module)
-    bar(module)
-    """,
-    "module.py" to "",
-  )
+    """.trimIndent())
 }

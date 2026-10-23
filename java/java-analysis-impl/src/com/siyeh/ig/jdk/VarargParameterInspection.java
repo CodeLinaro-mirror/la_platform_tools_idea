@@ -25,6 +25,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.psi.CommonClassNames;
 import com.intellij.psi.JavaPsiFacade;
 import com.intellij.psi.JavaResolveResult;
+import com.intellij.psi.JavaTokenType;
 import com.intellij.psi.PsiAnnotation;
 import com.intellij.psi.PsiCall;
 import com.intellij.psi.PsiCapturedWildcardType;
@@ -36,6 +37,7 @@ import com.intellij.psi.PsiExpression;
 import com.intellij.psi.PsiExpressionList;
 import com.intellij.psi.PsiJavaCodeReferenceElement;
 import com.intellij.psi.PsiMethod;
+import com.intellij.psi.PsiNewExpression;
 import com.intellij.psi.PsiParameter;
 import com.intellij.psi.PsiParameterList;
 import com.intellij.psi.PsiReference;
@@ -109,6 +111,8 @@ public final class VarargParameterInspection extends BaseInspection {
         return SyntaxTraverser.psiTraverser(method.getContainingFile())
           .filter(ref -> ref instanceof PsiJavaCodeReferenceElement element && element.isReferenceTo(method) ||
                          ref instanceof PsiEnumConstant constant && method.isEquivalentTo(constant.resolveMethod()) ||
+                         // the class reference of a new expression resolves to the class, so it does not report the constructor
+                         ref instanceof PsiNewExpression newExpression && method.isEquivalentTo(newExpression.resolveMethod()) ||
                          ref instanceof PsiDocMethodOrFieldRef && ref.getReference() instanceof PsiReference docRef && docRef.isReferenceTo(method))
           .toList();
       }
@@ -198,6 +202,9 @@ public final class VarargParameterInspection extends BaseInspection {
         element = element.getNextSibling();
       }
       argumentList.deleteChildRange(start, end);
+      if (isEndOfLineComment(end)) {
+        builder.append("\n");
+      }
     }
     builder.append('}');
     final Project project = call.getProject();
@@ -215,6 +222,10 @@ public final class VarargParameterInspection extends BaseInspection {
       if (sibling instanceof PsiComment) return skipToIncludeComments(sibling, forward);
     }
     return element;
+  }
+
+  private static boolean isEndOfLineComment(PsiElement element) {
+    return element instanceof PsiComment comment && JavaTokenType.END_OF_LINE_COMMENT.equals(comment.getTokenType());
   }
 
   @Override

@@ -7,29 +7,32 @@ import com.intellij.codeInsight.lookup.LookupElement
 import com.intellij.codeInsight.lookup.LookupElementBuilder
 import com.intellij.codeInsight.lookup.LookupElementPresentation
 import com.intellij.openapi.util.NlsSafe
-import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaImplementationDetail
 import org.jetbrains.kotlin.analysis.api.KaSession
 import org.jetbrains.kotlin.analysis.api.components.KaScopeKind
-import org.jetbrains.kotlin.analysis.api.components.containingDeclaration
 import org.jetbrains.kotlin.analysis.api.signatures.KaCallableSignature
 import org.jetbrains.kotlin.analysis.api.signatures.KaFunctionSignature
+import org.jetbrains.kotlin.analysis.api.signatures.KaVariableSignature
 import org.jetbrains.kotlin.analysis.api.symbols.KaConstructorSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaNamedClassSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaNamedFunctionSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaVariableSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.containingDeclaration
 import org.jetbrains.kotlin.analysis.api.symbols.markers.KaNamedSymbol
+import org.jetbrains.kotlin.analysis.api.types.KaIntersectionType
 import org.jetbrains.kotlin.analysis.api.types.KaType
 import org.jetbrains.kotlin.analysis.api.types.abbreviationOrSelf
+import org.jetbrains.kotlin.analysis.api.types.isSubtypeOf
 import org.jetbrains.kotlin.analysis.api.types.symbol
+import org.jetbrains.kotlin.idea.base.analysis.KotlinK2CodeFragmentUtils
 import org.jetbrains.kotlin.idea.base.analysis.api.utils.buildClassTypeWithStarProjections
 import org.jetbrains.kotlin.idea.codeinsight.utils.StandardKotlinNames
 import org.jetbrains.kotlin.idea.completion.KOTLIN_CAST_REQUIRED_COLOR
-import org.jetbrains.kotlin.idea.completion.impl.k2.KotlinFirCompletionParameters
 import org.jetbrains.kotlin.idea.completion.api.serialization.ensureSerializable
+import org.jetbrains.kotlin.idea.completion.impl.k2.K2CompletionSectionContext
+import org.jetbrains.kotlin.idea.completion.impl.k2.KotlinFirCompletionParameters
 import org.jetbrains.kotlin.idea.completion.impl.k2.contributors.helpers.CallableMetadataProvider
 import org.jetbrains.kotlin.idea.completion.impl.k2.contributors.helpers.KtSymbolWithOrigin
-import org.jetbrains.kotlin.idea.completion.impl.k2.K2CompletionSectionContext
 import org.jetbrains.kotlin.idea.completion.impl.k2.handlers.AdaptToExplicitReceiverInsertionHandler
 import org.jetbrains.kotlin.idea.completion.impl.k2.handlers.addRequiredTypeArgumentsIfNecessary
 import org.jetbrains.kotlin.idea.completion.impl.k2.handlers.qualifyContextSensitiveResolutionIfNecessary
@@ -38,10 +41,10 @@ import org.jetbrains.kotlin.idea.completion.impl.k2.lookups.CallableInsertionOpt
 import org.jetbrains.kotlin.idea.completion.impl.k2.lookups.factories.FunctionCallLookupObject
 import org.jetbrains.kotlin.idea.completion.impl.k2.lookups.factories.FunctionLookupElementFactory
 import org.jetbrains.kotlin.idea.completion.impl.k2.lookups.factories.KotlinFirLookupElementFactory
+import org.jetbrains.kotlin.idea.completion.impl.k2.smartCastTypeForSymbol
 import org.jetbrains.kotlin.idea.completion.impl.k2.weighers.CallableWeigher.callableWeight
 import org.jetbrains.kotlin.idea.completion.impl.k2.weighers.Weighers.applyWeighs
 import org.jetbrains.kotlin.idea.completion.impl.k2.weighers.WeighingContext
-import org.jetbrains.kotlin.idea.debugger.evaluate.util.KotlinK2CodeFragmentUtils
 import org.jetbrains.kotlin.idea.util.positionContext.KotlinTypeNameReferencePositionContext
 import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.Name
@@ -68,7 +71,10 @@ internal fun createCallableLookupElements(
     } ?: return emptySequence()
 
     val shortName = namedSymbol.name
+    val expectedType = context.weighingContext.expectedType
     val symbolWithOrigin = KtSymbolWithOrigin(callableSymbol, scopeKind)
+
+    val smartCastType = getSmartCastTypeForPresentation(signature, expectedType, scopeKind)
 
     return sequence {
         KotlinFirLookupElementFactory.createCallableLookupElement(
@@ -77,6 +83,7 @@ internal fun createCallableLookupElements(
             options = options,
             expectedType = context.weighingContext.expectedType,
             aliasName = aliasName,
+            smartCastType = smartCastType,
         ).let { yield(it) }
 
         if (withTrailingLambda && signature is KaFunctionSignature<*>) {
@@ -113,6 +120,31 @@ internal fun createCallableLookupElements(
             .addRequiredTypeArgumentsIfNecessary(context.positionContext)
             .qualifyContextSensitiveResolutionIfNecessary(context.positionContext)
             .applyKindToPresentation()
+    }
+}
+
+/**
+ * The smart cast type returned by [smartCastTypeForSymbol] potentially returns an intersection type, which
+ * is not suitable to be displayed to the user.
+ * This function attempts to return the most relevant conjunct of the intersection type
+ * given the [expectedType] that needs to be matched.
+ *
+ * If the [signature]'s type is already a type matching the [expectedType], no smart cast is necessary
+ * and null will be returned.
+ */
+context(_: KaSession, context: K2CompletionSectionContext<*>)
+private fun getSmartCastTypeForPresentation(
+    signature: KaCallableSignature<*>,
+    expectedType: KaType?,
+    scopeKind: KaScopeKind?,
+): KaType? {
+    if (signature !is KaVariableSignature<*> || expectedType == null) return null
+    if (signature.returnType.isSubtypeOf(expectedType)) return null
+
+    val type = smartCastTypeForSymbol(signature.symbol, signature.returnType, scopeKind) ?: return null
+    return when (type) {
+        is KaIntersectionType -> type.conjuncts.firstOrNull { it.isSubtypeOf(expectedType) }
+        else -> type.takeIf { it.isSubtypeOf(expectedType) }
     }
 }
 
@@ -179,12 +211,11 @@ internal fun LookupElementBuilder.adaptToExplicitReceiver(
     )
 )
 
-@OptIn(KaExperimentalApi::class)
 internal fun isRuntimeTypeEvaluatorAvailable(context: K2CompletionSectionContext<*>) =
     (context.parameters.originalFile as? KtCodeFragment)
         ?.getCopyableUserData(KotlinK2CodeFragmentUtils.RUNTIME_TYPE_EVALUATOR_K2) != null
 
-@OptIn(KaExperimentalApi::class, KaImplementationDetail::class)
+@OptIn(KaImplementationDetail::class)
 context(kaSession: KaSession)
 internal fun KtExpression.evaluateRuntimeKaType(): KaType? {
     val expr = this

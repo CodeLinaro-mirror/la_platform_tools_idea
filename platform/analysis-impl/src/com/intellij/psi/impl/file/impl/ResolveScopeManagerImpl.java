@@ -5,10 +5,12 @@ import com.intellij.codeInsight.multiverse.CodeInsightContext;
 import com.intellij.codeInsight.multiverse.CodeInsightContextUtil;
 import com.intellij.codeInsight.multiverse.CodeInsightContexts;
 import com.intellij.codeInsight.multiverse.ModuleContext;
+import com.intellij.concurrency.ConcurrentCollectionFactory;
 import com.intellij.ide.scratch.ScratchUtil;
 import com.intellij.injected.editor.VirtualFileWindow;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ReadAction;
+import com.intellij.openapi.diagnostic.Attachment;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.progress.ProgressIndicatorProvider;
@@ -33,7 +35,6 @@ import com.intellij.psi.impl.ResolveScopeManager;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.search.PsiSearchScopeUtil;
 import com.intellij.psi.search.SearchScope;
-import com.intellij.util.containers.CollectionFactory;
 import com.intellij.util.containers.ConcurrentFactoryMap;
 import com.intellij.util.indexing.AdditionalIndexableFileSet;
 import com.intellij.workspaceModel.core.fileIndex.WorkspaceFileIndex;
@@ -64,7 +65,7 @@ public final class ResolveScopeManagerImpl extends ResolveScopeManager implement
 
     myDefaultResolveScopesCache = ConcurrentFactoryMap.create(
       fileWithContext -> ReadAction.computeBlocking(() -> createScopeByFile(fileWithContext)),
-      () -> CollectionFactory.createConcurrentWeakKeySoftValueMap()
+      () -> ConcurrentCollectionFactory.createConcurrentWeakKeySoftValueMap()
     );
 
     myProject.getMessageBus().connect(this).subscribe(ANY_PSI_CHANGE_TOPIC, new AnyPsiChangeListener() {
@@ -109,7 +110,7 @@ public final class ResolveScopeManagerImpl extends ResolveScopeManager implement
   private @NotNull FileWithContext getEffective(@NotNull FileWithContext fileWithContext) {
     VirtualFile file = fileWithContext.file;
     VirtualFile originalVirtualFile = VirtualFileUtil.rootOriginalFile(file);
-    if (file.equals(originalVirtualFile)) {
+    if (originalVirtualFile == null || file.equals(originalVirtualFile)) {
       return fileWithContext;
     }
 
@@ -124,11 +125,15 @@ public final class ResolveScopeManagerImpl extends ResolveScopeManager implement
     PsiFile originalPsiFile = findRootOriginalFile(psiFile);
     CodeInsightContext originalContext = CodeInsightContextUtil.getCodeInsightContext(originalPsiFile);
 
+    // PSI and virtual file originals are set independently, so the root original PSI file can be an intermediate copy
+    // whose virtual file has an original of its own (e.g., the Edit Fragment file of an injection, see QuickEditHandler)
     VirtualFile originalPsiFileVirtualFile = originalPsiFile.getViewProvider().getVirtualFile();
-    LOG.assertTrue(
-      originalVirtualFile.equals(originalPsiFileVirtualFile),
-      "Virtual file of original PSI file should be the same have the same virtual file as the original virtual file of the copy virtual file"
-    );
+    if (!originalVirtualFile.equals(VirtualFileUtil.rootOriginalFile(originalPsiFileVirtualFile))) {
+      LOG.error("Root original virtual file of the copy differs from the root original virtual file of its original PSI file",
+                new Attachment("files.txt", "copy: " + file +
+                                            "\noriginal of copy: " + originalVirtualFile +
+                                            "\nvirtual file of original PSI file: " + originalPsiFileVirtualFile));
+    }
     return new FileWithContext(originalVirtualFile, originalContext);
   }
 
@@ -200,7 +205,7 @@ public final class ResolveScopeManagerImpl extends ResolveScopeManager implement
     if (psiFile instanceof FileResolveScopeProvider provider) {
       return provider.getFileResolveScope();
     }
-    if (!psiFile.getOriginalFile().isPhysical() && !psiFile.getViewProvider().isPhysical()) {
+    if (!psiFile.getOriginalFile().isPhysical() && !psiFile.getViewProvider().correspondsToRealFile()) {
       return withFile(psiFile, GlobalSearchScope.allScope(myProject));
     }
     return getResolveScopeFromProviders(psiFile.getViewProvider().getVirtualFile(), CodeInsightContextUtil.getCodeInsightContext(psiFile));

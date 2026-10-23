@@ -262,7 +262,7 @@
     "feedback-warning-border": "accent-warning-border-secondary",
     "feedback-error-bg": "accent-error-bg-secondary",
     "feedback-error-border": "accent-error-border-secondary",
-    "feedback-control-border": "control-border",
+    "feedback-control-border": "transparent-black-40",
     "feedback-ai-bg": "accent-ai-bg",
     "feedback-ai-border": "accent-ai-border",
 
@@ -289,9 +289,19 @@
     "inlay-bg": "transparent-black-20",
     "inlay-border": "transparent-black-50",
 
-    "toggle-off-bg": "gray-160",
-    "toggle-button-bg": "gray-120",
-    "toggle-border": "gray-120",
+    "toggle-on-bg": "accent-brand-bg",
+    "toggle-off-bg": "transparent-black-40",
+    "toggle-off-border": "transparent",
+    "toggle-on-border": "accent-brand-bg",
+    "toggle-on-disabled-bg": "control-bg-disabled",
+    "toggle-off-disabled-bg": "control-bg-disabled",
+    "toggle-on-disabled-border": "control-border-disabled",
+    "toggle-off-disabled-border": "control-border-disabled",
+    "toggle-focus-border": "control-brand-border",
+    "toggle-on-notch": "white",
+    "toggle-off-notch": "icon-over-accent",
+    "toggle-on-disabled-notch": "icon-disabled",
+    "toggle-off-disabled-notch": "icon-disabled",
 
     "editor-floating-toolbar-bg": "layer-0-bg",
     "popup-completion-match-text": "blue-70",
@@ -300,6 +310,7 @@
     "tree-indent-guide-border": "tool-window-border",
 
     "icon-default-stroke": "gray-80",
+    "icon-disabled": "gray-120",
     "icon-over-accent": "white",
     "icon-green-stroke": "green-80",
 
@@ -467,6 +478,10 @@
       "successBorderColor": "feedback-success-border",
       "infoBackground": "feedback-brand-bg",
       "infoBorderColor": "feedback-brand-border",
+      "infoMutedBackground": "blue-160",
+      "infoMutedBorderColor": "blue-140",
+      "neutralMutedBackground": "gray-160",
+      "neutralMutedBorderColor": "gray-150",
       "aiBackground": "feedback-ai-bg",
       "aiBorderColor": "feedback-ai-border",
       "arc": 12,
@@ -868,6 +883,14 @@
       "border": "com.intellij.ide.ui.laf.darcula.ui.DarculaTextBorderNew"
     },
 
+    "PillButton": {
+      "blueForeground": "blue-70",
+      "blueBorderColor": "blue-90",
+      "blueHoverForeground": "blue-70",
+      "blueHoverBackground": "blue-150",
+      "blueHoverBorderColor": "blue-90"
+    },
+
     "Plugins": {
       "background": "white",
       "SearchField.background": "control-bg",
@@ -1098,15 +1121,6 @@
       "warningForeground": "text-default"
     },
 
-    "ToggleButton": {
-      "onBackground": "control-success-bg",
-      "onForeground": "text-over-accent",
-      "offBackground": "toggle-off-bg",
-      "offForeground": "text-secondary",
-      "buttonColor": "toggle-button-bg",
-      "borderColor": "toggle-border"
-    },
-
     "ToolWindow": {
       "background": "tool-window-bg",
       "borderColor": "transparent",
@@ -1138,7 +1152,8 @@
         }
       },
       "DragAndDrop": {
-        "areaBackground": "#A0BDF84D"
+        "areaBackground": "#A0BDF84D",
+        "hintBackground": "#A0BDF81A"
       }
     },
 

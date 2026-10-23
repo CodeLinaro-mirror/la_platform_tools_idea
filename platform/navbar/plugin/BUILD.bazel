@@ -1,7 +1,25 @@
+load("@community//platform/build-scripts/bazel-rules:ij_plugin.bzl", "ij_plugin")
+load("@jps_dynamic_deps_community//:targets.bzl", "dev_dist_plugin")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
-### auto-generated section `build intellij.platform.navbar.plugin` start
+### auto-generated section `dev intellij.platform.navbar.plugin` start
+dev_dist_plugin(
+    content_modules = [
+        # do not sort,
+        "intellij.platform.navbar",
+        "intellij.platform.navbar.backend",
+        "intellij.platform.navbar.frontend",
+        "intellij.platform.navbar.monolith",
+    ],
+    descriptor = "resources/META-INF/plugin.xml",
+    jars = {
+        "lib/platform-navbar-plugin.jar": ["intellij.platform.navbar.plugin"],
+    },
+    main_module = "intellij.platform.navbar.plugin",
+)
+### auto-generated section `dev intellij.platform.navbar.plugin` end
 
+### auto-generated section `build intellij.platform.navbar.plugin` start
 jvm_library(
     name = "plugin",
     srcs = glob(
@@ -27,12 +45,26 @@ jvm_library(
     visibility = ["//visibility:public"],
     runtime_deps = [":plugin"],
 )
+
+ij_plugin(
+    name = "plugin_plugin",
+    descriptor_module = ":plugin",
+    content_modules = [
+        # do not sort,
+        "//platform/navbar/shared:navbar",
+        "//platform/navbar/backend",
+        "//platform/navbar/frontend",
+        "//platform/navbar/monolith",
+    ],
+    visibility = ["//visibility:public"],
+)
 ### auto-generated section `build intellij.platform.navbar.plugin` end
 
 ### auto-generated section `iml intellij.platform.navbar.plugin` start
 exports_files(
     [
         "intellij.platform.navbar.plugin.iml",
+        "resources/META-INF/plugin.xml",
     ],
     visibility = ["//visibility:public"],
 )

@@ -1,7 +1,14 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.libraries.mvstore` start
+content_module_jar(
+    libraries = ["@lib//:libraries-mvstore-mvstore"],
+    module = ":mvstore",
+)
+### auto-generated section `dev intellij.libraries.mvstore` end
 
 ### auto-generated section `build intellij.libraries.mvstore` start
-
 jvm_library(
     name = "mvstore",
     srcs = glob(
@@ -37,6 +44,7 @@ jvm_library(
 exports_files(
     [
         "intellij.libraries.mvstore.iml",
+        "resources/intellij.libraries.mvstore.xml",
     ],
     visibility = ["//visibility:public"],
 )

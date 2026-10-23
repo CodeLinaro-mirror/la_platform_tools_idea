@@ -1,4 +1,5 @@
 // "Change to 'var'" "true"
+// K2_ERROR: CAPTURED_VAL_INITIALIZATION
 fun exec(f: () -> Unit) = f()
 
 fun foo() {
@@ -9,4 +10,3 @@ fun foo() {
 }
 
 // IGNORE_K2
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.codeinsights.impl.base.quickFix.ChangeVariableMutabilityFix

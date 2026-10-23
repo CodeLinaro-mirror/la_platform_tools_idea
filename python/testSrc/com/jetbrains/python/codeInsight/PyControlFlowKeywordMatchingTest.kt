@@ -5,7 +5,10 @@ import com.intellij.codeInsight.highlighting.CodeBlockSupportHandler
 import com.intellij.codeInsight.highlighting.HeavyBraceHighlighter
 import com.intellij.idea.TestFor
 import com.intellij.openapi.util.TextRange
+import com.intellij.psi.util.PsiUtilCore
 import com.intellij.testFramework.runInEdtAndWait
+import com.jetbrains.python.allure.Layers
+import com.jetbrains.python.allure.Subsystems
 import com.jetbrains.python.fixtures.PyCodeInsightTestCase
 import com.jetbrains.python.psi.LanguageLevel
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -15,6 +18,8 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 @TestFor(issues = ["PY-53379"])
+@Subsystems.CodeInsight
+@Layers.Functional
 class PyControlFlowKeywordMatchingTest : PyCodeInsightTestCase() {
 
   // region off-screen header preview (HeavyBraceHighlighter)
@@ -271,14 +276,14 @@ class PyControlFlowKeywordMatchingTest : PyCodeInsightTestCase() {
 
   private fun assertMarkers(code: String, vararg expected: String) = runInEdtAndWait {
     myFixture.configureByText("a.py", code.trimIndent())
-    val element = myFixture.file.findElementAt(myFixture.caretOffset)!!
+    val element = PsiUtilCore.getElementAtOffset(myFixture.file, myFixture.caretOffset)
     val ranges = CodeBlockSupportHandler.findMarkersRanges(element)
     assertEquals(expected.toList(), ranges.map { textOf(it) })
   }
 
   private fun assertNoMarkers(code: String) = runInEdtAndWait {
     myFixture.configureByText("a.py", code.trimIndent())
-    val element = myFixture.file.findElementAt(myFixture.caretOffset) ?: return@runInEdtAndWait
+    val element = PsiUtilCore.getElementAtOffset(myFixture.file, myFixture.caretOffset)
     assertTrue(CodeBlockSupportHandler.findMarkersRanges(element).isEmpty())
   }
 

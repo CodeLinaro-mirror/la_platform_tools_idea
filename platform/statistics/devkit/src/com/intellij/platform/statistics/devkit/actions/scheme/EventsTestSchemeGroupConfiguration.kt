@@ -5,11 +5,7 @@ package com.intellij.platform.statistics.devkit.actions.scheme
 
 import com.intellij.codeInsight.completion.CompletionResultSet
 import com.intellij.codeInsight.completion.InsertHandler
-import com.intellij.codeInsight.daemon.impl.DaemonProgressIndicator
 import com.intellij.codeInsight.lookup.LookupElementBuilder
-import com.intellij.codeInspection.InspectionEngine
-import com.intellij.codeInspection.ProblemDescriptor
-import com.intellij.codeInspection.ex.LocalInspectionToolWrapper
 import com.intellij.icons.AllIcons
 import com.intellij.internal.statistic.StatisticsBundle
 import com.intellij.internal.statistic.config.SerializationHelper
@@ -17,6 +13,10 @@ import com.intellij.internal.statistic.eventLog.events.scheme.GroupDescriptor
 import com.intellij.internal.statistic.eventLog.validator.storage.GroupValidationTestRule
 import com.intellij.internal.statistic.eventLog.validator.storage.GroupValidationTestRule.Companion.EMPTY_RULES
 import com.intellij.json.JsonLanguage
+import com.intellij.json.psi.JsonArray
+import com.intellij.json.psi.JsonFile
+import com.intellij.json.psi.JsonObject
+import com.intellij.json.psi.JsonStringLiteral
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.WriteAction
 import com.intellij.openapi.command.WriteCommandAction
@@ -32,6 +32,7 @@ import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.ui.ValidationInfo
 import com.intellij.openapi.util.Key
 import com.intellij.platform.statistics.devkit.actions.TestParseEventsSchemeDialog
+import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiFileFactory
@@ -45,16 +46,13 @@ import com.intellij.ui.dsl.builder.selected
 import com.intellij.ui.dsl.gridLayout.UnscaledGaps
 import com.intellij.ui.layout.selected
 import com.intellij.util.IncorrectOperationException
-import com.intellij.util.PairProcessor
 import com.intellij.util.TextFieldCompletionProviderDumbAware
 import com.intellij.util.ThrowableRunnable
 import com.intellij.util.textCompletion.TextFieldWithCompletion
 import com.intellij.util.ui.JBDimension
 import com.jetbrains.fus.reporting.model.metadata.EventGroupRemoteDescriptors
-import com.jetbrains.jsonSchema.impl.inspections.JsonSchemaComplianceInspection
 import tools.jackson.core.JacksonException
 import tools.jackson.databind.ObjectMapper
-import java.util.Collections
 import javax.swing.JComponent
 import javax.swing.JPanel
 
@@ -295,14 +293,65 @@ class EventsTestSchemeGroupConfiguration(private val project: Project,
         psiFile.virtualFile.putUserData(EVENTS_TEST_SCHEME_VALIDATION_RULES_KEY, true)
         psiFile
       }
-      val map: Map<LocalInspectionToolWrapper, List<ProblemDescriptor>> = InspectionEngine.inspectEx(
-        Collections.singletonList(LocalInspectionToolWrapper(JsonSchemaComplianceInspection())),
-        file, file.textRange, file.textRange, true, false, true, DaemonProgressIndicator(),
-        PairProcessor.alwaysTrue())
+      PsiDocumentManager.getInstance(project).commitAllDocuments()
+      return validateRulesStructure(project, file)
+    }
 
-      return map.values.flatten().map { descriptor ->
-        ValidationInfo("Line ${descriptor.lineNumber + 1}: ${descriptor.descriptionTemplate}")
+    private fun validateRulesStructure(project: Project, file: PsiFile): List<ValidationInfo> {
+      val root = (file as? JsonFile)?.topLevelValue
+      if (root !is JsonObject) {
+        return listOf(createValidationInfo(project, file, root ?: file, "stats.validation.rules.expected.object"))
       }
+
+      val validationInfo = mutableListOf<ValidationInfo>()
+      val eventId = root.findProperty("event_id")
+      if (eventId == null) {
+        validationInfo.add(createValidationInfo(project, file, root, "stats.validation.rules.missing.property", "event_id"))
+      }
+      else {
+        validationInfo.addAll(validateStringArray(project, file, eventId.value ?: eventId))
+      }
+
+      val eventData = root.findProperty("event_data")
+      if (eventData == null) {
+        validationInfo.add(createValidationInfo(project, file, root, "stats.validation.rules.missing.property", "event_data"))
+      }
+      else {
+        val eventDataObject = eventData.value as? JsonObject
+        if (eventDataObject == null) {
+          validationInfo.add(createValidationInfo(project, file, eventData.value ?: eventData,
+                                                  "stats.validation.rules.expected.object"))
+        }
+        else {
+          for (property in eventDataObject.propertyList) {
+            validationInfo.addAll(validateStringArray(project, file, property.value ?: property))
+          }
+        }
+      }
+      return validationInfo
+    }
+
+    private fun validateStringArray(project: Project, file: PsiFile, value: PsiElement): List<ValidationInfo> {
+      val array = value as? JsonArray
+      if (array == null || array.valueList.isEmpty()) {
+        return listOf(createValidationInfo(project, file, value, "stats.validation.rules.expected.non.empty.string.array"))
+      }
+      return array.valueList.filterNot { it is JsonStringLiteral }.map {
+        createValidationInfo(project, file, it, "stats.validation.rules.expected.string")
+      }
+    }
+
+    private fun createValidationInfo(
+      project: Project,
+      file: PsiFile,
+      element: PsiElement,
+      messageKey: String,
+      vararg params: Any,
+    ): ValidationInfo {
+      val document = PsiDocumentManager.getInstance(project).getDocument(file)
+      val line = document?.getLineNumber(element.textOffset)?.plus(1) ?: 1
+      val message = StatisticsBundle.message(messageKey, *params)
+      return ValidationInfo(StatisticsBundle.message("stats.validation.rules.error.at.line", line, message))
     }
 
     internal fun createEventsScheme(generatedScheme: List<GroupDescriptor>): HashMap<String, String> {
@@ -316,21 +365,35 @@ class EventsTestSchemeGroupConfiguration(private val project: Project,
       return eventsScheme
     }
 
+    /**
+     * Builds validation rules for the given group based on the current event scheme.
+     *
+     * Note: default_value and required rules are annotated with the current group version
+     * ([GroupDescriptor.version]) and event ID, as required by the FUS metadata format.
+     * However, the DevKit scheme is built from the current source code state and is not aware
+     * of the actual version ranges defined in the production metadata (e.g. a rule valid for
+     * versions `1..3` in production will appear here as version `5` if that is the current group version).
+     *
+     * When testing events that use `default_value` or `required` rules, ensure the group version
+     * and event ID in the generated scheme match what you intend to validate against.
+     */
     private fun createValidationRules(group: GroupDescriptor): EventGroupRemoteDescriptors.GroupRemoteRule? {
       val eventIds = hashSetOf<String>()
       val eventData = hashMapOf<String, MutableSet<String>>()
+      val version = group.version
       val events = group.schema
       for (event in events) {
         eventIds.add(event.event)
         for (dataField in event.fields) {
-          val validationRule = dataField.value
-          val validationRules = eventData[dataField.path]
-          if (validationRules == null) {
-            eventData[dataField.path] = validationRule.toHashSet()
+          val processedRules = dataField.value.mapTo(hashSetOf()) { rule ->
+            if ((rule.startsWith("{default_value:") || rule.startsWith("{required:")) && rule.endsWith("}")) {
+              "${rule.dropLast(1)}|${event.event}|$version}"
+            }
+            else {
+              rule
+            }
           }
-          else {
-            validationRules.addAll(validationRule)
-          }
+          eventData.getOrPut(dataField.path) { hashSetOf() }.addAll(processedRules)
         }
       }
 

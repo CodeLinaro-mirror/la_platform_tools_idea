@@ -54,4 +54,3 @@ internal class MarkdownAlertLineMarkerProvider : LineMarkerProviderDescriptor() 
       ShowSettingsUtil.getInstance().showSettingsDialog(e.project, GutterIconsConfigurable::class.java)
   }
 }
-

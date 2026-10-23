@@ -15,7 +15,8 @@ import com.intellij.diagnostic.logs.LogLevelConfigurationManager
 import com.intellij.ide.AppLifecycleListener
 import com.intellij.ide.ApplicationActivity
 import com.intellij.ide.ApplicationInitializedListener
-import com.intellij.ide.ApplicationLoadListener
+import com.intellij.ide.ApplicationLoadHandlers
+import com.intellij.ide.BeforeApplicationLoadedEvent
 import com.intellij.ide.BootstrapBundle
 import com.intellij.ide.CliResult
 import com.intellij.ide.CommandLineProcessor
@@ -54,6 +55,7 @@ import com.intellij.openapi.application.ex.ApplicationEx
 import com.intellij.openapi.application.ex.ApplicationInfoEx
 import com.intellij.openapi.application.ex.ApplicationManagerEx
 import com.intellij.openapi.application.impl.ApplicationImpl
+import com.intellij.openapi.application.impl.islands.IslandsUICustomization
 import com.intellij.openapi.components.impl.stores.ComponentStoreOwner
 import com.intellij.openapi.components.service
 import com.intellij.openapi.components.serviceAsync
@@ -75,6 +77,7 @@ import com.intellij.platform.ide.ideFingerprint
 import com.intellij.platform.settings.SettingsController
 import com.intellij.ui.AppIcon
 import com.intellij.ui.ExperimentalUI
+import com.intellij.ui.tabs.impl.UIThemeCustomization
 import com.intellij.util.PlatformUtils
 import com.intellij.util.io.URLUtil
 import com.intellij.util.io.createDirectories
@@ -288,6 +291,8 @@ private val asyncAppListenerAllowListForNonCorePlugin = java.util.Set.of(
   "com.intellij.internal.statistic.updater.StatisticsJobsScheduler",
   "com.intellij.internal.statistic.updater.StatisticsStateCollectorsScheduler",
   "com.intellij.platform.daemon.client.DaemonApplicationActivity",
+  "com.intellij.platform.ijent.community.impl.IjentMessageBusAdapter",
+  "com.intellij.platform.compose.SkikoPreloader",
 )
 
 private fun executeAsyncAppInitListeners(scope: CoroutineScope) {
@@ -420,6 +425,9 @@ private suspend fun initLafManagerAndCss(app: ApplicationImpl, asyncScope: Corou
       if (lafManager is LafManagerImpl) {
         lafManager.applyInitState()
       }
+      // depends on LafManager
+      val uiCustomization = IslandsUICustomization()
+      UIThemeCustomization.activate(uiCustomization)
     }
 
     if (app.isHeadlessEnvironment) {
@@ -444,9 +452,10 @@ suspend fun initConfigurationStore(app: ApplicationImpl, args: List<String>) {
     }
 
     span("beforeApplicationLoaded") {
-      for (extension in ApplicationLoadListener.EP_NAME.filterableLazySequence()) {
+      val event = BeforeApplicationLoadedEvent(app, configDir, args)
+      for (extension in ApplicationLoadHandlers.EP_NAME.filterableLazySequence()) {
         extension.useOrLogError {
-          it.beforeApplicationLoaded(app, configDir, args)
+          it.beforeApplicationLoaded(event)
         }
       }
     }
@@ -512,7 +521,7 @@ private suspend fun createAppStarter(args: List<String>, asyncScope: CoroutineSc
   val commandName = args.firstOrNull()  // the first argument maybe a project path
   return when {
     commandName == null -> {
-      asyncScope.async(CoroutineName("app starter creation")) { IdeStarter() }
+      asyncScope.async(CoroutineName("app starter creation")) { createProductDefaultAppStarter() }
     }
     args.size == 1 && OSAgnosticPathUtil.isAbsolute(commandName) -> {
       asyncScope.async(CoroutineName("app starter creation")) { createDefaultAppStarter() }
@@ -540,8 +549,24 @@ private suspend fun createAppStarter(args: List<String>, asyncScope: CoroutineSc
   }
 }
 
-private fun createDefaultAppStarter(): ApplicationStarter =
-  if (PlatformUtils.getPlatformPrefix() == "LightEdit") IdeStarter.StandaloneLightEditStarter() else IdeStarter()
+private fun createDefaultAppStarter(): ApplicationStarter {
+  return when (PlatformUtils.getPlatformPrefix()) {
+    "LightEdit" -> IdeStarter.StandaloneLightEditStarter()
+    else -> createProductDefaultAppStarter()
+  }
+}
+
+/**
+ * A product may replace the default [IdeStarter] used when the IDE is started without an explicit command
+ * (either without arguments at all or with a project path only) by an [ApplicationStarter] bundled in the product layout:
+ * the starter ID is specified in the [DEFAULT_APP_STARTER_ID_PROPERTY] system property (usually set via the product's launcher JVM arguments).
+ */
+private fun createProductDefaultAppStarter(): ApplicationStarter {
+  val starterId = System.getProperty(DEFAULT_APP_STARTER_ID_PROPERTY) ?: return IdeStarter()
+  return ApplicationStarter.findStarter(starterId) ?: IdeStarter()
+}
+
+private const val DEFAULT_APP_STARTER_ID_PROPERTY: String = "ide.default.app.starter.id"
 
 @VisibleForTesting
 internal fun createAppLocatorFile() {
@@ -575,13 +600,12 @@ private fun setActivationListeners() {
 
 private suspend fun handleExternalCommand(args: List<String>, currentDirectory: String?): CommandLineProcessorResult {
   if (args.isNotEmpty() && args[0].contains(URLUtil.SCHEME_SEPARATOR)) {
-    val cliResult = CommandLineProcessor.processProtocolCommand(args[0])
-    val result = CommandLineProcessorResult(project = null, cliResult)
+    val result = CommandLineProcessor.processProtocolCommand(args[0])
     withContext(Dispatchers.EDT) {
       if (result.hasError) {
         result.showError()
       }
-      else if (cliResult.exitCode != ProtocolHandler.PLEASE_DO_NOT_FOCUS) {
+      else if (result.getExitCode() != ProtocolHandler.PLEASE_DO_NOT_FOCUS) {
         CommandLineProcessor.findVisibleFrame()?.let { frame ->
           AppIcon.getInstance().requestFocus(frame)
         }

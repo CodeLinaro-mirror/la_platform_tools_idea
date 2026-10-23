@@ -153,6 +153,20 @@ interface DefaultToolWindowDescriptorBuilder {
    * Defaults to 0.5.
    */
   var sideWeight: Float
+
+  /**
+   * Hides stripe button if the product wants to hide standard platform tool window to More menu.
+   */
+  fun hideStripeButton() {}
+
+  /**
+   * Seeds this entry into a project layout that was saved before the tool window joined the default layout.
+   *
+   * When the tool window registers in the New UI, such a project layout gets the entry at its default place.
+   * The window stays closed. Without this call, the project layout has no entry, and the stripe button stays under More.
+   * An entry that the project layout already holds stays as it is.
+   */
+  fun seedIntoExistingLayout() {}
 }
 
 // Old (server-based API)
@@ -197,6 +211,11 @@ internal class DefaultToolWindowLayoutBuilderImpl : DefaultToolWindowLayoutBuild
     else {
       toolWindowBuilders.values.removeAll(predicate)
     }
+  }
+
+  /** The ids of the tool windows that called [DefaultToolWindowDescriptorBuilder.seedIntoExistingLayout] and are still in the layout. */
+  fun seededIntoExistingLayoutIds(): Set<String> {
+    return toolWindowBuilders.values.asSequence().filter { it.isSeededIntoExistingLayout }.mapTo(HashSet()) { it.id }
   }
 
   fun build(): List<ToolWindowDescriptor> {
@@ -294,6 +313,7 @@ internal class DefaultToolWindowLayoutBuilderImpl : DefaultToolWindowLayoutBuild
           id = it.id,
           anchor = it.anchor,
           isVisible = it.isVisible,
+          isShowStripeButton = it.isShowStripeButton,
           weight = it.weight,
           contentUiType = it.contentUiType,
           isSplit = it.isSplit,
@@ -309,6 +329,18 @@ internal class DefaultToolWindowLayoutBuilderImpl : DefaultToolWindowLayoutBuild
     override var contentUiType: ToolWindowDescriptor.ToolWindowContentUiType = ToolWindowDescriptor.ToolWindowContentUiType.TABBED
     override var isSplit: Boolean = false
     override var sideWeight: Float = 0.5f
+
+    var isShowStripeButton: Boolean = true
+
+    var isSeededIntoExistingLayout: Boolean = false
+
+    override fun hideStripeButton() {
+      this.isShowStripeButton = false
+    }
+
+    override fun seedIntoExistingLayout() {
+      isSeededIntoExistingLayout = true
+    }
   }
 }
 

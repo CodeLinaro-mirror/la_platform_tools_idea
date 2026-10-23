@@ -1,6 +1,6 @@
 // "Change return type of called function 'foo' to 'Int'" "true"
 // WITH_STDLIB
-// K2_ERROR: Incompatible types 'Int' and 'String'.
+// K2_ERROR: INCOMPATIBLE_TYPES
 fun test(i: Int) {
     when (i) {
         <caret>foo() -> {}
@@ -8,5 +8,4 @@ fun test(i: Int) {
 }
 
 fun foo(): String = TODO()
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ChangeCallableReturnTypeFix$ForCalled
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeTypeQuickFixFactories$UpdateTypeQuickFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeTypeQuickFixFactories$UpdateTypeQuickFix

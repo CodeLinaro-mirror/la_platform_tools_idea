@@ -1,20 +1,23 @@
 package com.jetbrains.python.sdk;
 
 import com.intellij.openapi.module.Module;
+import com.intellij.openapi.project.Project;
 import com.intellij.openapi.projectRoots.Sdk;
-import com.intellij.openapi.roots.OrderRootType;
 import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
+import com.intellij.python.sdk.backend.PythonEnvironment;
+import com.intellij.python.sdk.backend.PythonEnvironmentExtKt;
+import com.intellij.python.sdk.backend.PythonInterpreter;
+import com.intellij.python.sdk.backend.PythonInterpreterKt;
 import com.intellij.util.concurrency.annotations.RequiresBackgroundThread;
+import com.jetbrains.python.project.PyProject;
 import com.jetbrains.python.sdk.skeleton.PySkeletonUtil;
 import org.jetbrains.annotations.ApiStatus;
-import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
-import java.nio.file.Path;
 import java.util.List;
 
 /**
@@ -23,20 +26,34 @@ import java.util.List;
 @SuppressWarnings("unused")
 public final class PythonSdkUtil {
 
-  public static final String REMOTE_SOURCES_DIR_NAME = com.jetbrains.python.sdk.legacy.PythonSdkUtil.REMOTE_SOURCES_DIR_NAME;
-  public static final String SKELETON_DIR_NAME = com.jetbrains.python.sdk.legacy.PythonSdkUtil.SKELETON_DIR_NAME;
-  public static final OrderRootType BUILTIN_ROOT_TYPE = com.jetbrains.python.sdk.legacy.PythonSdkUtil.BUILTIN_ROOT_TYPE;
+  private PythonSdkUtil() {
+  }
+
+  /** The `id` the venv provider declares in `intellij.python.venv.xml`. */
+  private static final String VENV_KIND_ID = "venv";
+  /** The `id` the conda provider declares in `intellij.python.community.impl.conda.xml`. */
+  private static final String CONDA_KIND_ID = "conda";
 
   public static boolean isPythonSdk(@NotNull Sdk sdk) {
     return com.jetbrains.python.sdk.legacy.PythonSdkUtil.isPythonSdk(sdk);
   }
 
+  /**
+   * @deprecated Use {@link #getAllSdks(Project)} or {@link #getAllSdks(PyProject)}
+   */
+  @Deprecated(forRemoval = true)
   public static @Unmodifiable @NotNull List<@NotNull Sdk> getAllSdks() {
     return com.jetbrains.python.sdk.legacy.PythonSdkUtil.getAllSdks();
   }
 
-  public static boolean isStdLib(@NotNull VirtualFile vFile, @Nullable Sdk pythonSdk) {
-    return PySkeletonUtil.isStdLib(vFile, pythonSdk);
+  @ApiStatus.Experimental
+  public static @Unmodifiable @NotNull List<@NotNull Sdk> getAllSdks(@NotNull Project project) {
+    return com.jetbrains.python.sdk.legacy.PythonSdkUtil.getAllSdks(project);
+  }
+
+  @ApiStatus.Experimental
+  public static @Unmodifiable @NotNull List<@NotNull Sdk> getAllSdks(@NotNull PyProject pyProject) {
+    return com.jetbrains.python.sdk.legacy.PythonSdkUtil.getAllSdks(pyProject);
   }
 
   public static @Nullable Sdk findPythonSdk(@Nullable Module module) {
@@ -76,14 +93,6 @@ public final class PythonSdkUtil {
     return com.jetbrains.python.sdk.legacy.PythonSdkUtil.findPythonSdk(element);
   }
 
-  /**
-   * @deprecated path is not unique, use {@link #findSdkByKey(String)} instead
-   */
-  @Deprecated
-  public static @Nullable Sdk findSdkByPath(@Nullable String path) {
-    return com.jetbrains.python.sdk.legacy.PythonSdkUtil.findSdkByPath(path);
-  }
-
 
   /**
    * Returns the "site-packages" directory that is going to be used for installing new packages with {@code pip}.
@@ -99,22 +108,26 @@ public final class PythonSdkUtil {
   }
 
   /**
-   * @deprecated use {@link PyRichSdk}
+   * @deprecated use {@link PythonInterpreter}
    */
   @Deprecated
   @RequiresBackgroundThread(generateAssertion = false)
   public static boolean isVirtualEnv(@NotNull Sdk sdk) {
-    return PyRichSdkKt.pyRichSdk(sdk, false).getPythonEnvironment() instanceof PythonEnvironment.Venv;
+    return VENV_KIND_ID.equals(kindIdOf(sdk));
   }
 
   /**
-   * @deprecated use {@link PyRichSdk}
+   * @deprecated use {@link PythonInterpreter}
    */
   @Deprecated
   @RequiresBackgroundThread(generateAssertion = false)
   public static boolean isCondaVirtualEnv(@NotNull Sdk sdk) {
-    PyRichSdk pyRichSdk = PyRichSdkKt.pyRichSdk(sdk, false);
-    PythonEnvironment environment = pyRichSdk.getPythonEnvironment();
-    return environment instanceof PythonEnvironment.Conda && !((PythonEnvironment.Conda)environment).isBase();
+    return CONDA_KIND_ID.equals(kindIdOf(sdk));
+  }
+
+  /** The id its provider declares in xml, or {@code null} when no environment was detected. */
+  private static @Nullable String kindIdOf(@NotNull Sdk sdk) {
+    PythonEnvironment environment = PythonInterpreterKt.pythonInterpreter(sdk, false).getPythonEnvironment();
+    return environment == null ? null : PythonEnvironmentExtKt.getKindId(environment);
   }
 }

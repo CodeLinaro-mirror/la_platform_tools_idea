@@ -1,7 +1,22 @@
+load("@jps_dynamic_deps_community//:targets.bzl", "dev_dist_plugin")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
-### auto-generated section `build intellij.textmate.plugin` start
+### auto-generated section `dev intellij.textmate.plugin` start
+dev_dist_plugin(
+    content_modules = [
+        # do not sort,
+        "intellij.textmate",
+        "intellij.textmate.common",
+        "intellij.textmate.core",
+        "intellij.textmate.joni",
+        "intellij.textmate.backend",
+        "intellij.libraries.joni",
+    ],
+    main_module = "intellij.textmate.plugin",
+)
+### auto-generated section `dev intellij.textmate.plugin` end
 
+### auto-generated section `build intellij.textmate.plugin` start
 jvm_library(
     name = "plugin",
     srcs = glob(
@@ -33,6 +48,7 @@ jvm_library(
 exports_files(
     [
         "intellij.textmate.plugin.iml",
+        "resources/META-INF/plugin.xml",
     ],
     visibility = ["//visibility:public"],
 )

@@ -4,10 +4,11 @@ package com.jetbrains.python.run
 import com.intellij.execution.filters.Filter
 import com.intellij.execution.filters.OpenFileHyperlinkInfo
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.vfs.StandardFileSystems
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.util.SystemProperties
+import com.jetbrains.python.traceBackParsers.LinkInTrace
 import com.jetbrains.python.traceBackParsers.TraceBackParser
 import java.io.File
 
@@ -26,29 +27,39 @@ open class PythonTracebackFilter : Filter {
   }
 
   override fun applyFilter(line: String, entireLength: Int): Filter.Result? {
-    for (parser in TraceBackParser.PARSERS) {
-      val linkInTrace = parser.findLinkInTrace(line)
-      if (linkInTrace == null) {
-        continue
-      }
+    val textStartOffset = entireLength - line.length
+    val resultItems = mutableListOf<Filter.ResultItem>()
+    var searchStart = 0
+    while (searchStart < line.length) {
+      val linkInTrace = findLinkInTrace(line.substring(searchStart)) ?: break
+      val startPos = searchStart + linkInTrace.startPos
+      val endPos = searchStart + linkInTrace.endPos
+      searchStart = endPos
+
       val lineNumber = linkInTrace.lineNumber
       val vFile = findFileByName(linkInTrace.fileName)
+      if (vFile == null) {
+        continue
+      }
+      if (!vFile.isDirectory && vFile.extension != null && vFile.extension != "py") {
+        continue
+      }
 
-      if (vFile != null) {
-        if (!vFile.isDirectory) {
-          val extension = vFile.extension
-          if (extension != null && extension != "py") {
-            return null
-          }
-        }
-        val hyperlink = OpenFileHyperlinkInfo(project, vFile, lineNumber - 1)
-        val textStartOffset = entireLength - line.length
-        val startPos = linkInTrace.startPos
-        val endPos = linkInTrace.endPos
-        return Filter.Result(startPos + textStartOffset, endPos + textStartOffset, hyperlink)
+      val hyperlink = OpenFileHyperlinkInfo(project, vFile, lineNumber - 1)
+      resultItems.add(Filter.ResultItem(startPos + textStartOffset, endPos + textStartOffset, hyperlink))
+    }
+    return if (resultItems.isEmpty()) null else Filter.Result(resultItems)
+  }
+
+  private fun findLinkInTrace(line: String): LinkInTrace? {
+    var earliestLink: LinkInTrace? = null
+    for (parser in TraceBackParser.PARSERS) {
+      val link = parser.findLinkInTrace(line)
+      if (link != null && (earliestLink == null || link.startPos < earliestLink.startPos)) {
+        earliestLink = link
       }
     }
-    return null
+    return earliestLink
   }
 
   protected open fun findFileByName(fileName: String): VirtualFile? {
@@ -58,9 +69,9 @@ open class PythonTracebackFilter : Filter {
     else {
       fileName
     }
-    var vFile = LocalFileSystem.getInstance().findFileByPath(preparedName)
+    var vFile = StandardFileSystems.local().findFileByPath(preparedName)
     if (vFile == null && !myWorkingDirectory.isNullOrBlank()) {
-      vFile = LocalFileSystem.getInstance().findFileByIoFile(File(myWorkingDirectory, preparedName))
+      vFile = StandardFileSystems.local().findFileByPath(File(myWorkingDirectory, preparedName).absolutePath)
     }
     if (vFile == null) {
       vFile = VirtualFileManager.getInstance().findFileByUrl(preparedName)

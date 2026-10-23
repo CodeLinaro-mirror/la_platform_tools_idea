@@ -27,6 +27,7 @@ import com.intellij.ui.ScreenUtil
 import com.intellij.ui.awt.RelativePoint
 import com.intellij.ui.components.JBOptionButton.Companion.PROP_OPTIONS
 import com.intellij.ui.components.JBOptionButton.Companion.PROP_OPTION_TOOLTIP
+import com.intellij.ui.paint.useCopy
 import com.intellij.ui.popup.ActionPopupOptions
 import com.intellij.ui.popup.ActionPopupStep
 import com.intellij.ui.popup.PopupFactoryImpl
@@ -54,6 +55,7 @@ import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.awt.event.MouseListener
 import java.beans.PropertyChangeListener
+import javax.swing.AbstractButton
 import javax.swing.AbstractButton.ICON_CHANGED_PROPERTY
 import javax.swing.AbstractButton.MNEMONIC_CHANGED_PROPERTY
 import javax.swing.AbstractButton.TEXT_CHANGED_PROPERTY
@@ -103,6 +105,16 @@ open class BasicOptionButtonUI : OptionButtonUI() {
     uninstallPopup()
 
     _optionButton = null
+  }
+
+  /**
+   * Reads the nullable backing fields rather than [mainButton] and [arrowButton]: those throw once the UI is
+   * uninstalled, and a caller asking where the halves are must be told "nowhere" instead.
+   */
+  @ApiStatus.Internal
+  override fun splitButtonHalfButton(half: SplitButtonHalf): AbstractButton? = when (half) {
+    SplitButtonHalf.ACTION -> _mainButton
+    SplitButtonHalf.EXPAND -> _arrowButton?.takeIf { it.isVisible }
   }
 
   override fun getPreferredSize(c: JComponent): Dimension {
@@ -243,7 +255,7 @@ open class BasicOptionButtonUI : OptionButtonUI() {
     }
   }
 
-  protected open fun createArrowButtonActionListener(): ActionListener? = ActionListener { togglePopup() }
+  protected open fun createArrowButtonActionListener(): ActionListener? = ActionListener { optionButton.togglePopup() }
 
   protected open fun createArrowButtonMouseListener(): MouseListener? = object : MouseAdapter() {
     override fun mousePressed(e: MouseEvent) {
@@ -369,10 +381,10 @@ open class BasicOptionButtonUI : OptionButtonUI() {
     override fun isDefaultButton(): Boolean = DarculaButtonUI.isDefaultButton(optionButton)
     override fun getBackground(): Color? = optionButton.background
 
-    override fun paint(g: Graphics): Unit = if (isSimpleButton) super.paint(g) else cloneAndPaint(g) { paintNotSimple(it) }
+    override fun paint(g: Graphics): Unit = if (isSimpleButton) super.paint(g) else g.useCopy { paintNotSimple(it) }
     open fun paintNotSimple(g: Graphics2D): Unit = super.paint(g)
 
-    override fun paintBorder(g: Graphics): Unit = if (isSimpleButton) super.paintBorder(g) else cloneAndPaint(g) { paintBorderNotSimple(it) }
+    override fun paintBorder(g: Graphics): Unit = if (isSimpleButton) super.paintBorder(g) else g.useCopy { paintBorderNotSimple(it) }
     open fun paintBorderNotSimple(g: Graphics2D): Unit = super.paintBorder(g)
   }
 
@@ -474,16 +486,6 @@ open class BasicOptionButtonUI : OptionButtonUI() {
       if (c.isOpaque) {
         g.color = c.background
         g.fillRect(0, 0, c.width, c.height)
-      }
-    }
-
-    fun cloneAndPaint(g: Graphics, block: (Graphics2D) -> Unit) {
-      val g2 = g.create() as Graphics2D
-      try {
-        block(g2)
-      }
-      finally {
-        g2.dispose()
       }
     }
   }

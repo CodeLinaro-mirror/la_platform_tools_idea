@@ -16,6 +16,7 @@ import com.intellij.openapi.util.JDOMUtil
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.vfs.VirtualFileManager
+import com.intellij.platform.backend.workspace.virtualFile
 import com.intellij.platform.workspace.jps.JpsFileEntitySource
 import com.intellij.platform.workspace.jps.entities.ContentRootEntity
 import com.intellij.platform.workspace.jps.entities.ContentRootEntityBuilder
@@ -241,7 +242,7 @@ internal class EclipseModuleRootsSerializer : CustomModuleRootsSerializer, Stora
           val linked = expandLinkedResourcesPath(storageRootPath, expandMacroMap, path)
           val outputUrl: VirtualFileUrl
           if (linked != null) {
-            outputUrl = virtualUrlManager.getOrCreateFromUrl(pathToUrl(linked))
+            outputUrl = virtualUrlManager.storeAndGet(pathToUrl(linked))
             editEclipseProperties {
               it.setVariable(EclipseModuleManagerImpl.LINK_PREFIX, path, outputUrl.url)
             }
@@ -357,7 +358,7 @@ internal class EclipseModuleRootsSerializer : CustomModuleRootsSerializer, Stora
           else if (path.startsWith(EclipseXml.JUNIT_CONTAINER)) {
             val junitName = IdeaXml.JUNIT + AbstractEclipseClasspathReader.getPresentableName(path)
             val url = EclipseClasspathReader.getJunitClsUrl(junitName.contains("4"))
-            val roots = listOf(LibraryRoot(virtualUrlManager.getOrCreateFromUrl(url),
+            val roots = listOf(LibraryRoot(virtualUrlManager.storeAndGet(url),
                                            LibraryRootTypeId.COMPILED))
             val libraryEntity = LibraryEntity(junitName,
                                               LibraryTableId.ModuleLibraryTableId(ModuleId(moduleEntity.name)),
@@ -468,7 +469,7 @@ internal class EclipseModuleRootsSerializer : CustomModuleRootsSerializer, Stora
       saveXmlFile(dotProjectFile, content)
     }
 
-    val classpathFile = VirtualFileManager.getInstance().findFileByUrl(entitySource.classpathFile.url)
+    val classpathFile = entitySource.classpathFile.virtualFile
     val oldClasspath = classpathFile?.inputStream?.use { JDOMUtil.load(it) }
     val pathShortener = ModulePathShortener(storage)
     if (oldClasspath != null || !entities[SourceRootEntity::class.java].isNullOrEmpty() || module.dependencies.size > 2) {

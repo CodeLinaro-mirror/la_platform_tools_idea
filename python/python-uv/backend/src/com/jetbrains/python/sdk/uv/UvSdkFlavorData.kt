@@ -2,9 +2,10 @@ package com.jetbrains.python.sdk.uv
 
 import com.intellij.execution.target.FullPathOnTarget
 import com.intellij.execution.target.TargetedCommandLineBuilder
+import com.intellij.openapi.progress.runBlockingMaybeCancellable
 import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.remote.RemoteSdkPropertiesPaths
-import com.jetbrains.python.sdk.PySdkUtil
+import com.jetbrains.python.sdk.activationEnvironment
 import com.jetbrains.python.sdk.flavors.PyFlavorData
 import com.jetbrains.python.sdk.legacy.PythonSdkUtil
 import com.jetbrains.python.venvReader.VirtualEnvReader
@@ -35,7 +36,7 @@ data class UvSdkFlavorData(
     val envPath = VirtualEnvReader().resolvePythonHomeFromBinaryOrDir(interpreterPath, targetCommandLineBuilder.request.targetPlatform.platform)
     targetCommandLineBuilder.addEnvironmentVariable("UV_PROJECT_ENVIRONMENT", envPath)
     if (!PythonSdkUtil.isRemote(sdk)) {
-      PySdkUtil.activateVirtualEnv(sdk)
+      runBlockingMaybeCancellable { sdk.activationEnvironment() }
     }
   }
 }

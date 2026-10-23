@@ -13,15 +13,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.ui.IconManager
 import com.intellij.util.PlatformIcons
 import org.jetbrains.annotations.Nls
-import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.components.allSupertypes
-import org.jetbrains.kotlin.analysis.api.components.containingDeclaration
-import org.jetbrains.kotlin.analysis.api.components.containingSymbol
-import org.jetbrains.kotlin.analysis.api.components.defaultType
-import org.jetbrains.kotlin.analysis.api.components.importableFqName
-import org.jetbrains.kotlin.analysis.api.components.isUnitType
-import org.jetbrains.kotlin.analysis.api.components.render
 import org.jetbrains.kotlin.analysis.api.fir.diagnostics.KaFirDiagnostic
 import org.jetbrains.kotlin.analysis.api.renderer.base.annotations.KaRendererAnnotationsFilter
 import org.jetbrains.kotlin.analysis.api.renderer.declarations.KaDeclarationRenderer
@@ -29,6 +21,7 @@ import org.jetbrains.kotlin.analysis.api.renderer.declarations.bodies.KaParamete
 import org.jetbrains.kotlin.analysis.api.renderer.declarations.impl.KaDeclarationRendererForSource
 import org.jetbrains.kotlin.analysis.api.renderer.declarations.modifiers.renderers.KaRendererModalityModifierProvider
 import org.jetbrains.kotlin.analysis.api.renderer.declarations.modifiers.renderers.KaRendererOtherModifiersProvider
+import org.jetbrains.kotlin.analysis.api.renderer.render
 import org.jetbrains.kotlin.analysis.api.symbols.KaCallableSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassKind
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassSymbol
@@ -37,11 +30,20 @@ import org.jetbrains.kotlin.analysis.api.symbols.KaNamedFunctionSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbolModality
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbolOrigin
 import org.jetbrains.kotlin.analysis.api.symbols.KaValueParameterSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.containingDeclaration
+import org.jetbrains.kotlin.analysis.api.symbols.containingSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.importableFqName
 import org.jetbrains.kotlin.analysis.api.symbols.symbol
+import org.jetbrains.kotlin.analysis.api.types.KaStandardTypeClassIds
+import org.jetbrains.kotlin.analysis.api.types.allSupertypes
+import org.jetbrains.kotlin.analysis.api.types.classId
+import org.jetbrains.kotlin.analysis.api.types.defaultType
 import org.jetbrains.kotlin.analysis.api.types.symbol
 import org.jetbrains.kotlin.analysis.utils.printer.PrettyPrinter
 import org.jetbrains.kotlin.idea.base.analysis.api.utils.defaultValue
 import org.jetbrains.kotlin.idea.base.analysis.api.utils.shortenReferences
+import org.jetbrains.kotlin.idea.base.psi.addAnnotation
+import org.jetbrains.kotlin.idea.base.psi.getOrCreateClassBody
 import org.jetbrains.kotlin.idea.base.psi.predictImplicitModality
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.codeinsight.api.applicable.intentions.KotlinPsiUpdateModCommandAction
@@ -57,7 +59,6 @@ import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtNamedFunction
 import org.jetbrains.kotlin.psi.KtProperty
 import org.jetbrains.kotlin.psi.KtPsiFactory
-import org.jetbrains.kotlin.psi.getOrCreateBody
 import org.jetbrains.kotlin.psi.psiUtil.modalityModifier
 import org.jetbrains.kotlin.types.Variance
 import javax.swing.Icon
@@ -96,7 +97,6 @@ internal object AddMemberToSupertypeFixFactory {
     return classSymbols.mapNotNull { createMemberData(it, memberElement) }
   }
 
-  @OptIn(KaExperimentalApi::class)
   context(_: KaSession)
   private fun createMemberData(classSymbol: KaClassSymbol, memberElement: KtCallableDeclaration): MemberData? {
     val project = memberElement.project
@@ -107,7 +107,7 @@ internal object AddMemberToSupertypeFixFactory {
     if (memberElement is KtNamedFunction) {
       if (classSymbol.classKind != KaClassKind.INTERFACE && classSymbol.modality != KaSymbolModality.ABSTRACT && classSymbol.modality != KaSymbolModality.SEALED) {
         val returnType = (callableSymbol as KaNamedFunctionSymbol).returnType
-        sourceCode += if (!returnType.isUnitType) {
+        sourceCode += if (returnType.classId != KaStandardTypeClassIds.UNIT) {
           val bodyText = getFunctionBodyTextFromTemplate(project, TemplateKind.FUNCTION, callableSymbol.name.asString(),
                                                          callableSymbol.returnType.render(position = Variance.OUT_VARIANCE),
                                                          classSymbol.importableFqName)
@@ -127,7 +127,6 @@ internal object AddMemberToSupertypeFixFactory {
     return MemberData(signaturePreview, sourceCode, targetClass)
   }
 
-  @OptIn(KaExperimentalApi::class)
   context(_: KaSession)
   private fun KaDeclarationRenderer.render(targetClassSymbol: KaClassSymbol) = with {
     modifiersRenderer = modifiersRenderer.with {
@@ -230,7 +229,7 @@ private fun addMember(
   updater: ModPsiUpdater,
 ) {
   val memberElement: KtCallableDeclaration = KtPsiFactory(project).createDeclaration(memberData.sourceCode)
-  val classBody = updater.getWritable(memberData.targetClass).getOrCreateBody()
+  val classBody = updater.getWritable(memberData.targetClass).getOrCreateClassBody()
   element.removeDefaultParameterValues()
   memberElement.copyAnnotationEntriesFrom(element)
   val insertedMemberElement = classBody.addBefore(memberElement, classBody.rBrace) as KtCallableDeclaration
@@ -250,7 +249,7 @@ private fun KtCallableDeclaration.removeDefaultParameterValues() {
 }
 
 private fun KtCallableDeclaration.copyAnnotationEntriesFrom(member: KtCallableDeclaration?) {
-  member?.annotationEntries?.reversed()?.forEach { addAnnotationEntry(it) }
+  member?.annotationEntries?.reversed()?.forEach { addAnnotation(it) }
 }
 
 @Nls

@@ -1,14 +1,13 @@
 // "Change parameter 'transform' type of function 'map' to 'String'" "false"
-// K2_ERROR: Argument type mismatch: actual type is 'String', but '(Int) -> uninferred R (of fun <T, R> Iterable<T>.map)' was expected.
-// K2_ERROR: Cannot infer type for type parameter 'R'. Specify it explicitly.
-// K2_AFTER_ERROR: Argument type mismatch: actual type is 'String', but '(Int) -> uninferred R (of fun <T, R> Iterable<T>.map)' was expected.
-// K2_AFTER_ERROR: Cannot infer type for type parameter 'R'. Specify it explicitly.
 // ERROR: Type mismatch: inferred type is String but (TypeVariable(T)) -> TypeVariable(R) was expected
 // WITH_STDLIB
+// K2_AFTER_ERROR: ARGUMENT_TYPE_MISMATCH
+// K2_AFTER_ERROR: CANNOT_INFER_PARAMETER_TYPE
+// K2_ERROR: ARGUMENT_TYPE_MISMATCH
+// K2_ERROR: CANNOT_INFER_PARAMETER_TYPE
 
 fun foo(param: String) {
     listOf(1, 2, 3).map(para<caret>m)
 }
 
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ChangeParameterTypeFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.refactoring.changeSignature.quickFix.ChangeParameterTypeFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.refactoring.changeSignature.quickFix.ChangeParameterTypeFix

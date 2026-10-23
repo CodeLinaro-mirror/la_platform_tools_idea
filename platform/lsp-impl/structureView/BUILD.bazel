@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.platform.lsp.impl.structureView` start
+content_module_jar(module = ":structureView")
+### auto-generated section `dev intellij.platform.lsp.impl.structureView` end
 
 ### auto-generated section `build intellij.platform.lsp.impl.structureView` start
-
 jvm_library(
     name = "structureView",
     srcs = glob(
@@ -21,7 +25,7 @@ jvm_library(
     deps = [
         # do not sort,
         "@lib//:kotlin-stdlib",
-        "@lib//:eclipse-lsp4j",
+        "//libraries/lsp4j",
         "//platform/core-api:core",
         "//platform/core-impl",
         "//platform/editor-ui-api:editor-ui",
@@ -33,6 +37,7 @@ jvm_library(
         "//platform/lsp-impl",
         "//platform/structure-view-impl:structureView",
         "//platform/util:util-ui",
+        "//platform/platform-frontend:frontend",
     ],
 )
 
@@ -48,6 +53,7 @@ jvm_library(
     runtime_deps = [
         # do not sort,
         ":structureView",
+        "//libraries/lsp4j:lsp4j_test_lib",
         "//platform/core-api:core_test_lib",
         "//platform/core-impl:core-impl_test_lib",
         "//platform/editor-ui-api:editor-ui_test_lib",
@@ -59,6 +65,7 @@ jvm_library(
         "//platform/lsp-impl:lsp-impl_test_lib",
         "//platform/structure-view-impl:structureView_test_lib",
         "//platform/util:util-ui_test_lib",
+        "//platform/platform-frontend:frontend_test_lib",
     ],
 )
 ### auto-generated section `build intellij.platform.lsp.impl.structureView` end
@@ -67,6 +74,7 @@ jvm_library(
 exports_files(
     [
         "intellij.platform.lsp.impl.structureView.iml",
+        "resources/intellij.platform.lsp.impl.structureView.xml",
     ],
     visibility = ["//visibility:public"],
 )

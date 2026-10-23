@@ -8,7 +8,21 @@
   "colors": {
     "core-border": "#c4c4c4",
     "core-border-transparent": "#00000000",
-    "tab-selected-bg-active": "#2121a6"
+    "tab-selected-bg-active": "#2121a6",
+
+    "toggle-on-bg": "#1AEBFF",
+    "toggle-off-bg": "#000000",
+    "toggle-off-border": "#1AEBFF",
+    "toggle-on-border": "#1AEBFF",
+    "toggle-on-disabled-bg": "#AA6E28",
+    "toggle-off-disabled-bg": "#000000",
+    "toggle-on-disabled-border": "#AA6E28",
+    "toggle-off-disabled-border": "#AA6E28",
+    "toggle-focus-border": "#1AEBFF",
+    "toggle-on-notch": "#000000",
+    "toggle-off-notch": "#1AEBFF",
+    "toggle-on-disabled-notch": "#000000",
+    "toggle-off-disabled-notch": "#AA6E28"
   },
 
   "ui": {
@@ -290,15 +304,16 @@
     "Banner": {
       "errorBackground": "#800002",
       "errorBorderColor": "#E6194B",
-
       "warningBackground": "#804605",
       "warningBorderColor": "#F58231",
-
+      "successBackground": "Actions.Green",
+      "successBorderColor": "#6FA574",
       "infoBackground": "#450073",
       "infoBorderColor": "#e6e6e6",
-
-      "successBackground": "Actions.Green",
-      "successBorderColor": "#6FA574"
+      "infoMutedBackground": "#450073",
+      "infoMutedBorderColor": "#e6e6e6",
+      "neutralMutedBackground": "#450073",
+      "neutralMutedBorderColor": "#e6e6e6"
     },
 
     "NotificationsToolwindow": {
@@ -318,6 +333,14 @@
       "foreground": "#CCCCCC",
       "currentOverloadBackground": "#450073",
       "currentParameterForeground": "#FFFFFF"
+    },
+
+    "PillButton": {
+      "blueForeground": "#80F4FF",
+      "blueBorderColor": "#1AEBFF",
+      "blueHoverForeground": "#B2F8FF",
+      "blueHoverBackground": "#09656E",
+      "blueHoverBorderColor": "#1AEBFF"
     },
 
     "Plugins": {
@@ -506,6 +529,10 @@
         "hoverBackground": "#3333FF",
         "selectedBackground": "#3333FF",
         "selectedForeground": "#FFFFFF"
+      },
+      "DragAndDrop": {
+        "areaBackground": "#00EAFF7F",
+        "hintBackground": "#00EAFF40"
       }
     },
 
@@ -772,18 +799,15 @@
       "Objects.YellowDark": "#FFD333FF",
       "Objects.GreenAndroid": "#00E61FFF",
 
-      "Checkbox.Background.Default.Dark": "#000000",
-      "Checkbox.Border.Default.Dark": "#FFFFFF",
-      "Checkbox.Foreground.Selected.Dark": "#FFFFFF",
-      "Checkbox.Focus.Wide.Dark": "#1AEBFF",
-      "Checkbox.Focus.Thin.Default.Dark": "#1AEBFF",
-      "Checkbox.Focus.Thin.Selected.Dark": "#1AEBFF",
-      "Checkbox.Background.Disabled.Dark": "#000000",
-      "Checkbox.Border.Disabled.Dark": "#AA6E28",
-      "Checkbox.Foreground.Disabled.Dark": "#AA6E28",
+      "Checkbox.Background.Default": "#000000",
+      "Checkbox.Border.Default": "#FFFFFF",
+      "Checkbox.Foreground.Selected": "#FFFFFF",
+      "Checkbox.Focus.Wide": "#1AEBFF",
+      "Checkbox.Background.Disabled": "#000000",
+      "Checkbox.Border.Disabled": "#AA6E28",
+      "Checkbox.Foreground.Disabled": "#AA6E28",
 
       "#CED0D6": "#FFFFFF"
-
     }
   }
 }

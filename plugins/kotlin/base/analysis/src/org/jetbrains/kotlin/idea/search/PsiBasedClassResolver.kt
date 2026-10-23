@@ -1,4 +1,4 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package org.jetbrains.kotlin.idea.search
 
@@ -11,10 +11,9 @@ import com.intellij.psi.util.CachedValue
 import com.intellij.psi.util.CachedValueProvider
 import com.intellij.psi.util.CachedValuesManager
 import org.jetbrains.annotations.TestOnly
-import org.jetbrains.kotlin.analysis.api.KaPlatformInterface
 import org.jetbrains.kotlin.analysis.api.imports.getDefaultImports
 import org.jetbrains.kotlin.analysis.api.platform.modification.KotlinModificationTrackerFactory
-import org.jetbrains.kotlin.analysis.api.projectStructure.KaModuleProvider
+import org.jetbrains.kotlin.analysis.api.projectStructure.kaModule
 import org.jetbrains.kotlin.asJava.ImpreciseResolveResult
 import org.jetbrains.kotlin.asJava.ImpreciseResolveResult.MATCH
 import org.jetbrains.kotlin.asJava.ImpreciseResolveResult.NO_MATCH
@@ -30,7 +29,6 @@ import org.jetbrains.kotlin.psi.KtUserType
 import org.jetbrains.kotlin.psi.psiUtil.getParentOfType
 import org.jetbrains.kotlin.psi.psiUtil.getParentOfTypeAndBranch
 import org.jetbrains.kotlin.psi.psiUtil.getStrictParentOfType
-import org.jetbrains.kotlin.utils.addToStdlib.safeAs
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -73,7 +71,6 @@ class PsiBasedClassResolver @TestOnly constructor(private val targetClassFqName:
 
             val cachedValue = CachedValuesManager.getManager(target.project).createCachedValue(
                 {
-                    @OptIn(KaPlatformInterface::class)
                     CachedValueProvider.Result(
                         PsiBasedClassResolver(target),
                         KotlinModificationTrackerFactory.getInstance(target.project).createProjectWideSourceModificationTracker(),
@@ -178,7 +175,7 @@ class PsiBasedClassResolver @TestOnly constructor(private val targetClassFqName:
         }
 
         val project = file.project
-        val kaModule = KaModuleProvider.getModule(project, file, useSiteModule = null)
+        val kaModule = file.kaModule(useSiteModule = null)
         for (defaultImports in kaModule.targetPlatform.getDefaultImports(project).defaultImports) {
             val importPath = defaultImports.importPath
             result = analyzeSingleImport(result, importPath.fqName, importPath.isAllUnder, importPath.alias?.asString())
@@ -231,7 +228,7 @@ class PsiBasedClassResolver @TestOnly constructor(private val targetClassFqName:
         // A qualified name can resolve to the target element even if it's not imported,
         // but it can also resolve to something else e.g. if the file defines a class with the same name
         // as the top-level package of the target class.
-        ref.parent.safeAs<KtUserType>()?.qualifier?.let { qualifier ->
+        (ref.parent as? KtUserType)?.qualifier?.let { qualifier ->
             val fqName = sequence {
                 var q: KtUserType? = qualifier
                 while (q?.referencedName != null) {

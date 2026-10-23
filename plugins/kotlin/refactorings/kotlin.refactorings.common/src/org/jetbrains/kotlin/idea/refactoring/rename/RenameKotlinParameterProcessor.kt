@@ -1,4 +1,4 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package org.jetbrains.kotlin.idea.refactoring.rename
 
@@ -7,6 +7,7 @@ import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiReference
 import com.intellij.psi.search.SearchScope
 import com.intellij.refactoring.listeners.RefactoringElementListener
+import com.intellij.refactoring.rename.DelegatingHeadlessRenamePsiElementProcessor
 import com.intellij.usageView.UsageInfo
 import org.jetbrains.kotlin.asJava.elements.KtLightParameter
 import org.jetbrains.kotlin.asJava.namedUnwrappedElement
@@ -16,7 +17,6 @@ import org.jetbrains.kotlin.idea.base.util.or
 import org.jetbrains.kotlin.idea.refactoring.KotlinCommonRefactoringSettings
 import org.jetbrains.kotlin.idea.refactoring.conflicts.checkRedeclarationConflicts
 import org.jetbrains.kotlin.idea.references.KtDestructuringDeclarationReference
-import org.jetbrains.kotlin.psi.KtDestructuringDeclaration
 import org.jetbrains.kotlin.psi.KtDestructuringDeclarationEntry
 import org.jetbrains.kotlin.psi.KtFunction
 import org.jetbrains.kotlin.psi.KtNamedDeclaration
@@ -24,17 +24,19 @@ import org.jetbrains.kotlin.psi.KtParameter
 import org.jetbrains.kotlin.psi.KtPropertyAccessor
 import org.jetbrains.kotlin.utils.SmartList
 
-class RenameKotlinParameterProcessor : RenameKotlinPsiProcessor() {
+class RenameKotlinParameterProcessor : RenameKotlinPsiProcessor(), DelegatingHeadlessRenamePsiElementProcessor {
     override fun canProcessElement(element: PsiElement): Boolean = when (val original = element.originalElement) {
         is KtDestructuringDeclarationEntry -> original.initializer == null
-        is KtParameter if (original.ownerFunction is KtFunction || original.ownerFunction is KtPropertyAccessor) && !original.hasValOrVar() -> true
-
+        is KtParameter -> !original.hasValOrVar() && (
+                original.ownerDeclaration is KtFunction ||
+                original.ownerDeclaration is KtPropertyAccessor
+        )
         // rename started from java (for example by automatic renamer)
         is KtLightParameter -> true
         else -> false
     }
 
-    override fun isToSearchInComments(psiElement: PsiElement) = KotlinCommonRefactoringSettings.getInstance().RENAME_SEARCH_IN_COMMENTS_FOR_PARAMETER
+    override fun isToSearchInComments(psiElement: PsiElement): Boolean = KotlinCommonRefactoringSettings.getInstance().RENAME_SEARCH_IN_COMMENTS_FOR_PARAMETER
 
     override fun setToSearchInComments(element: PsiElement, enabled: Boolean) {
         KotlinCommonRefactoringSettings.getInstance().RENAME_SEARCH_IN_COMMENTS_FOR_PARAMETER = enabled

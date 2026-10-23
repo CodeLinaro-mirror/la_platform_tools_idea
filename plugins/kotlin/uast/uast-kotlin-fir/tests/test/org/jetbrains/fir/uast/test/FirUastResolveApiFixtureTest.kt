@@ -20,8 +20,6 @@ class FirUastResolveApiFixtureTest : KotlinLightCodeInsightFixtureTestCase(), Ua
     private val whitelist : Set<String> = setOf(
         // TODO: multiResolve
         "MultiInvokableObjectResolve",
-        // TODO: resolve annotation param to annotation ctor ??
-        "ResolveCompiledAnnotation",
     )
 
     private fun isExpectedToFail(key: String): Boolean {
@@ -131,7 +129,7 @@ class FirUastResolveApiFixtureTest : KotlinLightCodeInsightFixtureTestCase(), Ua
     }
 
     fun testResolveCompiledAnnotation() {
-        doCheck("ResolveCompiledAnnotation", ::checkResolveCompiledAnnotation)
+        checkResolveCompiledAnnotation(myFixture)
     }
 
     fun testResolveExplicitLambdaParameter() {
@@ -314,6 +312,10 @@ class FirUastResolveApiFixtureTest : KotlinLightCodeInsightFixtureTestCase(), Ua
         checkResolvePropertiesInCompanionObjectFromBinaryDependency(myFixture)
     }
 
+    fun testResolvePropertiesInInnerClass() {
+        checkResolvePropertiesInInnerClass(myFixture)
+    }
+
     fun testResolvePropertiesInInnerClassFromBinaryDependency() {
         checkResolvePropertiesInInnerClassFromBinaryDependency(myFixture)
     }
@@ -342,6 +344,10 @@ class FirUastResolveApiFixtureTest : KotlinLightCodeInsightFixtureTestCase(), Ua
         checkResolveTopLevelInlineInFacadeFromLibrary(myFixture, isK2 = true)
     }
 
+    fun testResolveTopLevelInlineReifiedPropertyFromLibrary() {
+        checkResolveTopLevelInlineReifiedPropertyFromLibrary(myFixture, isK2 = true)
+    }
+
     fun testResolveInnerInlineFromLibrary() {
         checkResolveInnerInlineFromLibrary(myFixture)
     }
@@ -360,5 +366,33 @@ class FirUastResolveApiFixtureTest : KotlinLightCodeInsightFixtureTestCase(), Ua
 
     fun testResolveProtoDSL() {
         checkResolveProtoDSL(myFixture, isK2 = true)
+    }
+
+    fun testResolveCompiledKotlinProperty_pairFirst() {
+        checkResolveCompiledKotlinProperty_pairFirst(myFixture)
+    }
+
+    fun testResolveCompiledKotlinProperty_customLibrary() {
+        checkResolveCompiledKotlinProperty_customLibrary(myFixture)
+    }
+
+    fun testResolveCompiledKotlinProperty_var() {
+        checkResolveCompiledKotlinProperty_var(myFixture)
+    }
+
+    fun testResolveCompiledKotlinProperty_BooleanVarWithIsConvention() {
+        checkResolveCompiledKotlinProperty_BooleanVarWithIsConvention(myFixture)
+    }
+
+    fun testResolveSourceKotlinProperty() {
+        checkResolveSourceKotlinProperty(myFixture)
+    }
+
+    fun testResolveSourceKotlinProperty_var() {
+        checkResolveSourceKotlinProperty_var(myFixture)
+    }
+
+    fun testResolveSourceKotlinProperty_BooleanVarWithIsConvention() {
+        checkResolveSourceKotlinProperty_BooleanVarWithIsConvention(myFixture)
     }
 }

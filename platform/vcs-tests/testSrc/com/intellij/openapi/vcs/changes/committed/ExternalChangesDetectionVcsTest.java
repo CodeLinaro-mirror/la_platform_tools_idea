@@ -12,9 +12,10 @@ import com.intellij.openapi.vcs.changes.ChangelistBuilder;
 import com.intellij.openapi.vcs.changes.VcsDirtyScope;
 import com.intellij.openapi.vcs.changes.VcsDirtyScopeManager;
 import com.intellij.openapi.vcs.impl.ProjectLevelVcsManagerImpl;
-import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.StandardFileSystems;
 import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.vfs.VirtualFileSystem;
 import com.intellij.testFramework.EdtTestUtil;
 import com.intellij.testFramework.fixtures.IdeaTestFixtureFactory;
 import com.intellij.testFramework.fixtures.TempDirTestFixture;
@@ -31,12 +32,13 @@ import java.io.File;
 import java.util.List;
 import java.util.regex.Pattern;
 
+import static com.intellij.openapi.vcs.changes.ChangeListManagerExtensionsKt.getUnversionedFiles;
 import static org.junit.Assert.assertTrue;
 
 public class ExternalChangesDetectionVcsTest extends AbstractJunitVcsTestCase  {
   private MockAbstractVcs myVcs;
   private ProjectLevelVcsManagerImpl myVcsManager;
-  private LocalFileSystem myLFS;
+  private VirtualFileSystem myLFS;
   private ChangeListManagerImpl myChangeListManager;
   private VcsDirtyScopeManager myVcsDirtyScopeManager;
   private TempDirTestFixture myTempDirTestFixture;
@@ -60,7 +62,7 @@ public class ExternalChangesDetectionVcsTest extends AbstractJunitVcsTestCase  {
       myVcsManager.registerVcs(myVcs);
       myVcsManager.setDirectoryMapping(myClientRoot.getPath(), myVcs.getName());
 
-      myLFS = LocalFileSystem.getInstance();
+      myLFS = StandardFileSystems.local();
       myChangeListManager = ChangeListManagerImpl.getInstanceImpl(myProject);
       myVcsDirtyScopeManager = VcsDirtyScopeManager.getInstance(myProject);
     });
@@ -85,13 +87,13 @@ public class ExternalChangesDetectionVcsTest extends AbstractJunitVcsTestCase  {
   public void testDeletion() throws Exception {
     final File f = new File(myClientRoot, "f.txt");
     f.createNewFile();
-    final VirtualFile vf = myLFS.refreshAndFindFileByIoFile(f);
+    final VirtualFile vf = myLFS.refreshAndFindFileByPath(f.getAbsolutePath());
     myChangeListManager.ensureUpToDate();
-    assertTrue(myChangeListManager.getUnversionedFiles().contains(vf));
+    assertTrue(getUnversionedFiles(myChangeListManager).contains(vf));
     FileUtil.delete(f);
     myWorkingCopyDir.refresh(false, true);
     myChangeListManager.ensureUpToDate();
-    assertTrue(myChangeListManager.getUnversionedFiles().isEmpty());
+    assertTrue(getUnversionedFiles(myChangeListManager).isEmpty());
   }
 
   @Test
@@ -102,7 +104,7 @@ public class ExternalChangesDetectionVcsTest extends AbstractJunitVcsTestCase  {
     }
     myWorkingCopyDir.refresh(false, true);
     myChangeListManager.ensureUpToDate();
-    final List<VirtualFile> unversionedFiles = myChangeListManager.getUnversionedFiles();
+    final List<VirtualFile> unversionedFiles = getUnversionedFiles(myChangeListManager);
     final Pattern pattern = Pattern.compile("f([0-9])+\\.txt");
     int cnt = 0;
     for (VirtualFile unversionedFile : unversionedFiles) {

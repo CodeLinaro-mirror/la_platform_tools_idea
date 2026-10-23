@@ -90,7 +90,7 @@ class NotebookEditorUiComponent(private val data: ComponentData) : JEditorUiComp
   val notebookCellExecutionInfos: List<JLabelUiComponent>
     get() = xx("//div[@accessiblename='ExecutionLabel']", JLabelUiComponent::class.java).list()
   val notebookTables: List<NotebookTableOutputUi>
-    get() = xx("//div[@class='LoadingDecoratorLayeredPaneImpl']/div[@class='JPanel'][descendant::div[@class='TableResultView']][descendant::div[@class='TwoSideComponent']]",
+    get() = xx("//div[@class='LoadingDecoratorLayeredPaneImpl']/div[@class='JPanel'][descendant::div[@class='TableResultView' or @class='PrimaryTableResultView']][descendant::div[@class='TwoSideComponent']]",
                NotebookTableOutputUi::class.java).list()
   val notebookPlots: List<LetsPlotComponent>
     get() = xx("//div[@class='LetsPlotComponent']", LetsPlotComponent::class.java).list()
@@ -117,6 +117,13 @@ class NotebookEditorUiComponent(private val data: ComponentData) : JEditorUiComp
     get() = xx("//div[@class='JupyterCellActionsToolbar']").list()
   val newCellActions: List<UiComponent>
     get() = x("//div[@class='JupyterAddNewCellToolbar']").xx("//div[@class='ActionButtonWithText']", JButtonUiComponent::class.java).list()
+  val newCodeCellButton: UiComponent
+    get() = x("//div[@class='JupyterAddNewCellToolbar']//div[@class='ActionButtonWithText' and @visible_text='Code']",JButtonUiComponent::class.java)
+  val newMarkdownCellButton: UiComponent
+    get() = x("//div[@class='JupyterAddNewCellToolbar']//div[@class='ActionButtonWithText' and @visible_text='Markdown']",JButtonUiComponent::class.java)
+  val newSqlCellButton: UiComponent
+    get() = x("//div[@class='JupyterAddNewCellToolbar']//div[@class='ActionButtonWithText' and @visible_text='SQL']",JButtonUiComponent::class.java)
+
   val foldingBars: List<UiComponent>
     get() = xx("//div[@class='EditorCellFoldingBarComponent']").list()
 

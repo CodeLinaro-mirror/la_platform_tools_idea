@@ -1,7 +1,11 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
+load("//platform/build-scripts/bazel-rules:content_module_jar.bzl", "content_module_jar")
+
+### auto-generated section `dev intellij.terminal.sh` start
+content_module_jar(module = ":sh")
+### auto-generated section `dev intellij.terminal.sh` end
 
 ### auto-generated section `build intellij.terminal.sh` start
-
 jvm_library(
     name = "sh",
     srcs = glob(
@@ -18,7 +22,6 @@ jvm_library(
         ["resources/**/*"],
     ),
     visibility = ["//visibility:public"],
-    runtime_deps = ["//platform/backend"],
     deps = [
         # do not sort,
         "//platform/core-api:core",
@@ -49,7 +52,6 @@ jvm_library(
         "//platform/platform-impl:ide-impl_test_lib",
         "//plugins/terminal:terminal_test_lib",
         "//plugins/sh/core:core_test_lib",
-        "//platform/backend:backend_test_lib",
         "//libraries/kotlinx/serialization/core:core_test_lib",
         "//libraries/kotlinx/serialization/json:json_test_lib",
     ],
@@ -60,6 +62,7 @@ jvm_library(
 exports_files(
     [
         "intellij.terminal.sh.iml",
+        "resources/intellij.terminal.sh.xml",
     ],
     visibility = ["//visibility:public"],
 )

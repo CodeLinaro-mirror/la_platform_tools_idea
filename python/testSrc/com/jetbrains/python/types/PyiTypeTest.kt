@@ -1,6 +1,9 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.types
 
+import com.jetbrains.python.allure.Components
+import com.jetbrains.python.allure.Layers
+import com.jetbrains.python.allure.Subsystems
 import com.intellij.idea.TestFor
 import com.jetbrains.python.fixtures.PyCodeInsightTestCase
 import org.junit.jupiter.api.Test
@@ -9,85 +12,82 @@ import org.junit.jupiter.api.Test
  * Type inference tests for `.pyi` stub files: a `.py` implementation without annotations paired with
  * a same-named (or sibling-module) `.pyi` stub that supplies the types.
  */
+@Subsystems.Typing
+@Components.TypeInference
+@Layers.Functional
 class PyiTypeTest : PyCodeInsightTestCase() {
 
   @Test
-  fun `function parameter`() = test(
-    "FunctionParameter.py",
-    """
+  @TestCaseOptions(testFileName = "FunctionParameter.py")
+  fun `function parameter`() = test("""
     def f(x):
     #     └ TYPE int
         pass
-    """,
+    """.trimIndent(),
     "FunctionParameter.pyi" to "def f(x: int) -> None: ...",
   )
 
   @Test
-  fun `function return type`() = test(
-    "FunctionReturnType.py",
-    """
+  @TestCaseOptions(testFileName = "FunctionReturnType.py")
+  fun `function return type`() = test("""
     def f():
         pass
     
     x = f()
     #\ TYPE int | None
-    """,
+    """.trimIndent(),
     "FunctionReturnType.pyi" to """
       from typing import Optional
       
       
       def f() -> Optional[int]: ...
-      """,
+      """.trimIndent(),
   )
 
   @Test
-  fun `function type`() = test(
-    "FunctionType.py",
-    """
+  @TestCaseOptions(testFileName = "FunctionType.py")
+  fun `function type`() = test("""
     def f(x):
     #   └ TYPE (x: int) -> dict[Unknown, Unknown]
         pass
-    """,
+    """.trimIndent(),
     "FunctionType.pyi" to "def f(x: int) -> dict: ...",
   )
 
   @Test
-  fun `module attribute`() = test(
-    "ModuleAttribute.py",
-    """
+  @TestCaseOptions(testFileName = "ModuleAttribute.py")
+  fun `module attribute`() = test("""
     x = None # WARNING Expected type 'int', got 'None' instead
     #\ TYPE int
-    """,
+    """.trimIndent(),
     "ModuleAttribute.pyi" to "x = ...  # type: int",
   )
 
   @Test
-  fun `coroutine type`() = test(
-    "CoroutineType.py",
-    """
+  @TestCaseOptions(testFileName = "CoroutineType.py")
+  fun `coroutine type`() = test("""
     async def f():
         return 42
     
     coroutine = f()
-    #\ TYPE CoroutineType[Unknown, Unknown, int]
-    """,
+    # └ TYPE CoroutineType[Unknown, Unknown, int]
+    """.trimIndent(),
     "CoroutineType.pyi" to """
       async def f() -> int:
           ...
-      """,
+      """.trimIndent(),
   )
 
   @Test
-  fun `overloaded return type`() = test(
-    "OverloadedReturnType.py",
-    """
+  @TestCaseOptions(testFileName = "OverloadedReturnType.py")
+  fun `overloaded return type`() = test("""
     def f(x):
         pass
     
     
     x = f('foo')
     #\ TYPE str
-    """,
+    """.trimIndent(),
     "OverloadedReturnType.pyi" to """
       from typing import overload
       
@@ -96,13 +96,12 @@ class PyiTypeTest : PyCodeInsightTestCase() {
       def f(x: int) -> int: ...
       @overload
       def f(x: str) -> str: ...
-      """,
+      """.trimIndent(),
   )
 
   @Test
   @TestFor(issues = ["PY-22808"])
-  fun `overloaded not matched type`() = test(
-    """
+  fun `overloaded not matched type`() = test("""
     from typing import Any
     from m1 import C
     
@@ -110,7 +109,7 @@ class PyiTypeTest : PyCodeInsightTestCase() {
         c = C()
         expr = c.foo(x)
     #   └ TYPE UnsafeUnion[Unknown, list[Unknown]]
-    """,
+    """.trimIndent(),
     "m1.pyi" to """
       from typing import overload
       
@@ -119,14 +118,12 @@ class PyiTypeTest : PyCodeInsightTestCase() {
           def foo(self, i: int) -> T: ...
           @overload
           def foo(self, s: slice) -> list[T]: ...
-      """,
+      """.trimIndent(),
   )
 
   @Test
   @TestFor(issues = ["PY-22808"])
-  fun `overloaded not matched generic type`() = test(
-    """
-    from typing import Any
+  fun `overloaded not matched generic type`() = test("""
     from m1 import C
     
     def f(x: list):
@@ -134,7 +131,7 @@ class PyiTypeTest : PyCodeInsightTestCase() {
     #\ ERROR Indent expected
     expr = c.foo(non_existing=0) # ISSUES *
     #└ TYPE UnsafeUnion[dict[str, Unknown], list[Unknown]]
-    """,
+    """.trimIndent(),
     "m1.pyi" to """
       from typing import TypeVar, Generic, overload, List, Dict
       
@@ -145,17 +142,16 @@ class PyiTypeTest : PyCodeInsightTestCase() {
           def foo(self, i: int) -> Dict[str, _T]: ...
           @overload
           def foo(self, s: str) -> List[_T]: ...
-      """,
+      """.trimIndent(),
   )
 
   @Test
-  fun `generic class definition in other file`() = test(
-    """
+  fun `generic class definition in other file`() = test("""
     from other import Holder
     
     expr = Holder(42).get()
-    #\ TYPE int
-    """,
+    #└ TYPE int
+    """.trimIndent(),
     "other.pyi" to """
       from typing import Generic, TypeVar
       
@@ -168,7 +164,7 @@ class PyiTypeTest : PyCodeInsightTestCase() {
       
           def get(self) -> T:
               pass
-      """,
+      """.trimIndent(),
     "other.py" to """
       class Holder:
           def __init__(self, x):
@@ -176,14 +172,13 @@ class PyiTypeTest : PyCodeInsightTestCase() {
       
           def get(self):
               return self.x
-      """,
+      """.trimIndent(),
   )
 
   @Test
   @TestFor(issues = ["PY-27186"])
-  fun `generic class definition in same file`() = test(
-    "main.py",
-    """
+  @TestCaseOptions(testFileName = "main.py")
+  fun `generic class definition in same file`() = test("""
     class Holder:
         def __init__(self, x):
             self.x = x # WARNING Unresolved attribute reference 'x' for class 'Holder'
@@ -194,7 +189,7 @@ class PyiTypeTest : PyCodeInsightTestCase() {
 
     expr = Holder(42).get()
     # └ TYPE int
-    """,
+    """.trimIndent(),
     "main.pyi" to """
       from typing import Generic, TypeVar
       
@@ -207,17 +202,16 @@ class PyiTypeTest : PyCodeInsightTestCase() {
       
           def get(self) -> T:
               pass
-      """,
+      """.trimIndent(),
   )
 
   @Test
-  fun `comparison operator overloads`() = test(
-    """
+  fun `comparison operator overloads`() = test("""
     from lib import MyClass
     
     expr = 42 < MyClass(42) < MyClass('foo')
-    #\ TYPE int
-    """,
+    #└ TYPE int
+    """.trimIndent(),
     "lib.pyi" to """
       from typing import overload, Generic, TypeVar
       
@@ -238,7 +232,7 @@ class PyiTypeTest : PyCodeInsightTestCase() {
       
           def __gt__(self, other: int) -> bool:
               pass
-      """,
+      """.trimIndent(),
     "lib.py" to """
       class MyClass:
           def __init__(self, *args):
@@ -249,24 +243,23 @@ class PyiTypeTest : PyCodeInsightTestCase() {
       
           def __gt__(self, other):
               return True
-      """,
+      """.trimIndent(),
   )
 
   @Test
   @TestFor(issues = ["PY-24929"])
-  fun `instance attribute annotation`() = test(
-    "InstanceAttributeAnnotation.py",
-    """
+  @TestCaseOptions(testFileName = "InstanceAttributeAnnotation.py")
+  fun `instance attribute annotation`() = test("""
     class C:
         def __init__(self):
             self.attr = None # WARNING Expected type 'int', got 'None' instead
     
     C().attr
     #   └ TYPE int
-    """,
+    """.trimIndent(),
     "InstanceAttributeAnnotation.pyi" to """
       class C:
           attr: int
-      """,
+      """.trimIndent(),
   )
 }

@@ -34,6 +34,8 @@ import org.jetbrains.annotations.NotNull;
 
 import java.nio.file.Path;
 
+@Subsystems.Interpreters
+@Layers.Functional
 public class PySdkFlavorTest extends PyTestCase {
   public void testPython27VersionString() {
     testVersionAndFlavor("Python 2.7.6\n", "Python 2.7.6", LanguageLevel.PYTHON27);

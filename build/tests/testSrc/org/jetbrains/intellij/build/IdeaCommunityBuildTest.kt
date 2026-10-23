@@ -8,10 +8,13 @@ import com.intellij.platform.buildScripts.testFramework.runEssentialPluginsTest
 import com.intellij.platform.buildScripts.testFramework.runTestBuild
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import kotlin.io.path.inputStream
 import org.jetbrains.intellij.build.BuildPaths.Companion.COMMUNITY_ROOT
 import org.jetbrains.intellij.build.impl.createBuildContext
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInfo
+import java.util.zip.ZipInputStream
 
 class IdeaCommunityBuildTest {
   @Test
@@ -36,23 +39,41 @@ class IdeaCommunityBuildTest {
 
   @Test
   fun jpsStandalone(testInfo: TestInfo) {
-    val homePath = PathManager.getHomeDirFor(javaClass)!!
-    runBlocking(Dispatchers.Default) {
-      runTestBuild(
-        testInfo = testInfo,
-        context = {
-          val productProperties = IdeaCommunityProperties(COMMUNITY_ROOT.communityRoot)
-          val options = createBuildOptionsForTest(
-            productProperties = productProperties,
-            homeDir = homePath,
-            skipDependencySetup = true,
-            testInfo = testInfo,
-          )
-          createBuildContext(projectHome = homePath, productProperties = productProperties, setupTracer = false, options = options)
-        },
-      ) {
-        buildCommunityStandaloneJpsBuilder(targetDir = it.paths.artifactDir.resolve("jps"), context = it)
+    BuildLifetime().use { lifetime ->
+
+      val homePath = PathManager.getHomeDirFor(javaClass)!!
+      runBlocking(Dispatchers.Default) {
+        runTestBuild(
+          testInfo = testInfo,
+          context = {
+            val productProperties = IdeaCommunityProperties(COMMUNITY_ROOT.communityRoot)
+            val options = createBuildOptionsForTest(
+              productProperties = productProperties,
+              homeDir = homePath,
+              testInfo = testInfo,
+            )
+            createBuildContext(projectHome = homePath,
+                               productProperties = productProperties,
+                               setupTracer = false,
+                               options = options,
+                               lifetime = lifetime)
+          },
+        ) {
+          val targetDir = it.paths.artifactDir.resolve("jps")
+          buildCommunityStandaloneJpsBuilder(targetDir = targetDir, context = it)
+          val artifact = targetDir.resolve("standalone-jps-${it.fullBuildNumber}.zip")
+          ZipInputStream(artifact.inputStream()).use { zipInputStream ->
+            assertTrue(
+              generateSequence { zipInputStream.nextEntry }.any { entry ->
+                val fileName = entry.name.substringAfterLast('/')
+                fileName == "zstd-jni.jar"
+              },
+              "zstd-jni must be included in $artifact",
+            )
+          }
+        }
       }
+
     }
   }
 

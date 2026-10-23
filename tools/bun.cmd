@@ -16,23 +16,25 @@ set -eu
 
 # bun configuration
 export TOOL_NAME="bun"
-export TOOL_VERSION="1.3.14"
+export TOOL_VERSION="1.4.2"
 
-# SHA-256 checksums for each platform (Bun v1.3.14)
-export TOOL_CHECKSUM_LINUX_X64="951ee2aee855f08595aeec6225226a298d3fea83a3dcd6465c09cbccdf7e848f"
-export TOOL_CHECKSUM_LINUX_ARM64="a27ffb63a8310375836e0d6f668ae17fa8d8d18b88c37c821c65331973a19a3b"
-export TOOL_CHECKSUM_WINDOWS_X64="0a0620930b6675d7ba440e81f4e0e00d3cfbe096c4b140d3fff02205e9e18922"
-export TOOL_CHECKSUM_WINDOWS_ARM64="89841f5a57f2348b67ec0839b718f4bf4ea7d07c371c9ba4b77b6c790f918953"
-export TOOL_CHECKSUM_MACOS_X64="4183df3374623e5bab315c547cfa0974533cd457d86b73b639f7a87974cd6633"
-export TOOL_CHECKSUM_MACOS_ARM64="d8b96221828ad6f97ac7ac0ab7e95872341af763001e8803e8267652c2652620"
+# SHA-256 checksums for each platform (Bun v1.4.2)
+export TOOL_CHECKSUM_LINUX_X64="36368faef7527875d5ffa52e53cd48021741f2a83eb6208a8dd64068d422a913"
+export TOOL_CHECKSUM_LINUX_ARM64="54328bbc2d9c8e0c9f892c544d66c57a83b84139e34909e5ee81758f1ac8fda7"
+export TOOL_CHECKSUM_WINDOWS_X64="ce4c17497b2f29712a99d3d53f028de28cd42e3bacb8589599e7f000e49b6405"
+export TOOL_CHECKSUM_WINDOWS_ARM64="a7a16b876a305fd1029c66dbd27007b4f6112ae896532f675878731a21e50cfd"
+export TOOL_CHECKSUM_MACOS_X64="80520d7e17526308c9185d261679ac6d27798d3803a0e9f7ff9121ab8affb012"
+export TOOL_CHECKSUM_MACOS_ARM64="90987a3a16d7db556d886ac3d551e7b6d3edf0a1cf43acaed622e8676be1d12f"
 
-# Download URLs (GitHub releases)
-export TOOL_URL_LINUX_X64="https://github.com/oven-sh/bun/releases/download/bun-v${TOOL_VERSION}/bun-linux-x64.zip"
-export TOOL_URL_LINUX_ARM64="https://github.com/oven-sh/bun/releases/download/bun-v${TOOL_VERSION}/bun-linux-aarch64.zip"
-export TOOL_URL_WINDOWS_X64="https://github.com/oven-sh/bun/releases/download/bun-v${TOOL_VERSION}/bun-windows-x64.zip"
-export TOOL_URL_WINDOWS_ARM64="https://github.com/oven-sh/bun/releases/download/bun-v${TOOL_VERSION}/bun-windows-aarch64.zip"
-export TOOL_URL_MACOS_X64="https://github.com/oven-sh/bun/releases/download/bun-v${TOOL_VERSION}/bun-darwin-x64.zip"
-export TOOL_URL_MACOS_ARM64="https://github.com/oven-sh/bun/releases/download/bun-v${TOOL_VERSION}/bun-darwin-aarch64.zip"
+# Download URLs: the JetBrains mirror of the GitHub release archives, byte-identical. The same
+# mirror serves the bun_* http_archives in the ultimate MODULE.bazel, so both pins share one source.
+TOOL_MIRROR="https://packages.jetbrains.team/files/p/ij/intellij-build-dependencies/bun/${TOOL_VERSION}"
+export TOOL_URL_LINUX_X64="${TOOL_MIRROR}/bun-linux-x64.zip"
+export TOOL_URL_LINUX_ARM64="${TOOL_MIRROR}/bun-linux-aarch64.zip"
+export TOOL_URL_WINDOWS_X64="${TOOL_MIRROR}/bun-windows-x64.zip"
+export TOOL_URL_WINDOWS_ARM64="${TOOL_MIRROR}/bun-windows-aarch64.zip"
+export TOOL_URL_MACOS_X64="${TOOL_MIRROR}/bun-darwin-x64.zip"
+export TOOL_URL_MACOS_ARM64="${TOOL_MIRROR}/bun-darwin-aarch64.zip"
 
 # Binary path within extracted archive
 export TOOL_BINARY_UNIX="bun"
@@ -55,23 +57,25 @@ REM to verify all platform checksums before committing.
 
 REM bun configuration
 set "TOOL_NAME=bun"
-set "TOOL_VERSION=1.3.14"
+set "TOOL_VERSION=1.4.2"
 
-REM SHA-256 checksums for each platform (Bun v1.3.14)
-set "TOOL_CHECKSUM_LINUX_X64=951ee2aee855f08595aeec6225226a298d3fea83a3dcd6465c09cbccdf7e848f"
-set "TOOL_CHECKSUM_LINUX_ARM64=a27ffb63a8310375836e0d6f668ae17fa8d8d18b88c37c821c65331973a19a3b"
-set "TOOL_CHECKSUM_WINDOWS_X64=0a0620930b6675d7ba440e81f4e0e00d3cfbe096c4b140d3fff02205e9e18922"
-set "TOOL_CHECKSUM_WINDOWS_ARM64=89841f5a57f2348b67ec0839b718f4bf4ea7d07c371c9ba4b77b6c790f918953"
-set "TOOL_CHECKSUM_MACOS_X64=4183df3374623e5bab315c547cfa0974533cd457d86b73b639f7a87974cd6633"
-set "TOOL_CHECKSUM_MACOS_ARM64=d8b96221828ad6f97ac7ac0ab7e95872341af763001e8803e8267652c2652620"
+REM SHA-256 checksums for each platform (Bun v1.4.2)
+set "TOOL_CHECKSUM_LINUX_X64=36368faef7527875d5ffa52e53cd48021741f2a83eb6208a8dd64068d422a913"
+set "TOOL_CHECKSUM_LINUX_ARM64=54328bbc2d9c8e0c9f892c544d66c57a83b84139e34909e5ee81758f1ac8fda7"
+set "TOOL_CHECKSUM_WINDOWS_X64=ce4c17497b2f29712a99d3d53f028de28cd42e3bacb8589599e7f000e49b6405"
+set "TOOL_CHECKSUM_WINDOWS_ARM64=a7a16b876a305fd1029c66dbd27007b4f6112ae896532f675878731a21e50cfd"
+set "TOOL_CHECKSUM_MACOS_X64=80520d7e17526308c9185d261679ac6d27798d3803a0e9f7ff9121ab8affb012"
+set "TOOL_CHECKSUM_MACOS_ARM64=90987a3a16d7db556d886ac3d551e7b6d3edf0a1cf43acaed622e8676be1d12f"
 
-REM Download URLs (GitHub releases)
-set "TOOL_URL_LINUX_X64=https://github.com/oven-sh/bun/releases/download/bun-v%TOOL_VERSION%/bun-linux-x64.zip"
-set "TOOL_URL_LINUX_ARM64=https://github.com/oven-sh/bun/releases/download/bun-v%TOOL_VERSION%/bun-linux-aarch64.zip"
-set "TOOL_URL_WINDOWS_X64=https://github.com/oven-sh/bun/releases/download/bun-v%TOOL_VERSION%/bun-windows-x64.zip"
-set "TOOL_URL_WINDOWS_ARM64=https://github.com/oven-sh/bun/releases/download/bun-v%TOOL_VERSION%/bun-windows-aarch64.zip"
-set "TOOL_URL_MACOS_X64=https://github.com/oven-sh/bun/releases/download/bun-v%TOOL_VERSION%/bun-darwin-x64.zip"
-set "TOOL_URL_MACOS_ARM64=https://github.com/oven-sh/bun/releases/download/bun-v%TOOL_VERSION%/bun-darwin-aarch64.zip"
+REM Download URLs: the JetBrains mirror of the GitHub release archives, byte-identical. The same
+REM mirror serves the bun_* http_archives in the ultimate MODULE.bazel, so both pins share one source.
+set "TOOL_MIRROR=https://packages.jetbrains.team/files/p/ij/intellij-build-dependencies/bun/%TOOL_VERSION%"
+set "TOOL_URL_LINUX_X64=%TOOL_MIRROR%/bun-linux-x64.zip"
+set "TOOL_URL_LINUX_ARM64=%TOOL_MIRROR%/bun-linux-aarch64.zip"
+set "TOOL_URL_WINDOWS_X64=%TOOL_MIRROR%/bun-windows-x64.zip"
+set "TOOL_URL_WINDOWS_ARM64=%TOOL_MIRROR%/bun-windows-aarch64.zip"
+set "TOOL_URL_MACOS_X64=%TOOL_MIRROR%/bun-darwin-x64.zip"
+set "TOOL_URL_MACOS_ARM64=%TOOL_MIRROR%/bun-darwin-aarch64.zip"
 
 REM Binary path within extracted archive
 set "TOOL_BINARY_UNIX=bun"

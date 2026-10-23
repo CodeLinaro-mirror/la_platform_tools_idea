@@ -7,7 +7,7 @@
 // ACTION: Opt in for 'MyOptIn' in module 'light_idea_test_case'
 // ACTION: Opt in for 'MyOptIn' on 'SamI'
 // ACTION: Opt in for 'MyOptIn' on statement
-// K2_ERROR: This declaration needs opt-in. Its usage must be marked with '@MyOptIn' or '@OptIn(MyOptIn::class)'
+// K2_ERROR: OPT_IN_USAGE_ERROR
 
 @RequiresOptIn
 annotation class MyOptIn
@@ -30,4 +30,3 @@ SamI {
 }
 
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.OptInFixes$UseOptInAnnotationFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.OptInFixes$UseOptInAnnotationFix

@@ -6,8 +6,8 @@ import com.intellij.mcpserver.clients.McpClient
 import com.intellij.mcpserver.clients.McpClientInfo
 import com.intellij.mcpserver.clients.impl.ClaudeCodeClient
 import com.intellij.mcpserver.clients.impl.CodexClient
-import com.intellij.mcpserver.settings.McpServerSettingsConfigurable
-import com.intellij.mcpserver.util.getConsentDialog
+import com.intellij.mcpserver.frontend.settings.McpServerSettingsConfigurable
+import com.intellij.mcpserver.frontend.util.getConsentDialog
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.Disposable
@@ -324,18 +324,18 @@ private fun collectTerminalPromotionCandidates(
   return when (provider) {
     McpServerTerminalProvider.CODEX -> McpServerTerminalPromotionCandidates(
       projectClient = project.basePath?.let { basePath ->
-        CodexClient(McpClientInfo.Scope.Project(project), Paths.get(basePath, ".codex", "config.toml"))
+        CodexClient(McpClientInfo.McpClientScope.McpClientProjectScope(project), Paths.get(basePath, ".codex", "config.toml"))
       },
       globalClient = McpClientDetector.preferredCodexConfigPath()?.let { configPath ->
-        CodexClient(McpClientInfo.Scope.Global, configPath)
+        CodexClient(McpClientInfo.McpClientScope.McpClientGlobalScope, configPath)
       },
     )
     McpServerTerminalProvider.CLAUDE -> McpServerTerminalPromotionCandidates(
       projectClient = project.basePath?.let { basePath ->
-        ClaudeCodeClient(McpClientInfo.Scope.Project(project), Paths.get(basePath, ".mcp.json"))
+        ClaudeCodeClient(McpClientInfo.McpClientScope.McpClientProjectScope(project), Paths.get(basePath, ".mcp.json"))
       },
       globalClient = ClaudeCodeClient(
-        McpClientInfo.Scope.Global,
+        McpClientInfo.McpClientScope.McpClientGlobalScope,
         Paths.get(OSAgnosticPathUtil.expandUserHome("~/.claude.json"))
       ),
     )
@@ -362,14 +362,15 @@ private fun showMcpServerTerminalPromotionBanner(
       return
     }
 
-    if (!McpServerService.getInstance().isRunning) {
-      if (!getConsentDialog(project)) {
-        return
-      }
-      McpServerService.getInstance().start()
-    }
-
     view.coroutineScope.launch(Dispatchers.Default + CoroutineName("MCP server terminal promotion setup")) {
+      val service = McpServerService.getInstanceAsync()
+      if (!service.isRunning) {
+        val agree = withContext(Dispatchers.EDT) { getConsentDialog(project) }
+        if (!agree) return@launch
+
+        service.start()
+      }
+
       val configuredClients = ArrayList<McpClient>(clientsToConfigure.size)
 
       for (targetClient in clientsToConfigure.distinct()) {
@@ -517,10 +518,10 @@ internal fun mcpServerTerminalPromotionFixActionText(): @NlsActions.ActionText S
   return McpServerBundle.message("mcp.server.terminal.promotion.fix.action")
 }
 
-internal fun mcpServerTerminalPromotionSetupActionText(scope: McpClientInfo.Scope): @NlsActions.ActionText String {
+internal fun mcpServerTerminalPromotionSetupActionText(scope: McpClientInfo.McpClientScope): @NlsActions.ActionText String {
   val scopeText = when (scope) {
-    is McpClientInfo.Scope.Project -> McpServerBundle.message("mcp.server.terminal.promotion.scope.project")
-    is McpClientInfo.Scope.Global -> McpServerBundle.message("mcp.server.terminal.promotion.scope.global")
+    is McpClientInfo.McpClientScope.McpClientProjectScope -> McpServerBundle.message("mcp.server.terminal.promotion.scope.project")
+    is McpClientInfo.McpClientScope.McpClientGlobalScope -> McpServerBundle.message("mcp.server.terminal.promotion.scope.global")
   }
   return McpServerBundle.message("mcp.server.terminal.promotion.setup.action", McpServerBundle.ideDisplayName(), scopeText)
 }

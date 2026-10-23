@@ -12,6 +12,7 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.plugins.terminal.runner.TerminalCustomizerLocalPathTranslator;
 import org.jetbrains.plugins.terminal.startup.MutableShellExecOptions;
 import org.jetbrains.plugins.terminal.startup.ShellExecOptionsCustomizer;
+import org.jetbrains.plugins.terminal.startup.TerminalWorkingDirectoryCustomizer;
 
 import java.util.Arrays;
 import java.util.List;
@@ -38,7 +39,7 @@ public abstract class LocalTerminalCustomizer {
    *     EelDescriptor eelDescriptor
    *   ) throws InvalidPathException, EelPathException {
    *     Path nioPath = Path.of(localPathString);
-   *     return EelNioBridgeServiceKt.asEelPath(nioPath, eelDescriptor).toString();
+   *     return EelNioBridgeServiceKt.asEelPath(nioPath).toString();
    *   }
    * }</pre>
    * One of the common use cases is modifying the PATH environment variable.
@@ -112,7 +113,7 @@ public abstract class LocalTerminalCustomizer {
   }
 
   /**
-   * @deprecated use {@link ShellExecOptionsCustomizer#getDefaultStartWorkingDirectory(Project)} instead
+   * @deprecated use {@link TerminalWorkingDirectoryCustomizer#getDefaultStartWorkingDirectory} instead
    * @return path to the directory to run the terminal in or null if default directory should be used
    */
   @Deprecated

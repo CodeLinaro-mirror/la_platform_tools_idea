@@ -1,9 +1,10 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.plugins.gradle.issue
 
 import com.intellij.build.FilePosition
 import com.intellij.build.events.BuildEvent
 import com.intellij.build.issue.BuildIssue
+import com.intellij.gradle.toolingExtension.util.GradleVersionUtil
 import com.intellij.openapi.externalSystem.service.execution.ExternalSystemJdkUtil
 import com.intellij.util.lang.JavaVersion
 import org.gradle.internal.jvm.UnsupportedJavaRuntimeException
@@ -81,10 +82,20 @@ class IncompatibleGradleJvmAndGradleIssueChecker : GradleIssueChecker {
       }
     }
     val buildEnvironment = issueData.buildEnvironment
-    if (buildEnvironment != null) {
+    if (buildEnvironment != null && gradleVersion.hasCorrectJavaEnvironment()) {
       return ExternalSystemJdkUtil.getJavaVersion(buildEnvironment.java.javaHome.path)
     }
     return null
+  }
+
+  /**
+   * The modern versions of Gradle Tooling API is incompatible with the BuildEnvironment older than 2.6.
+   */
+  private fun GradleVersion?.hasCorrectJavaEnvironment(): Boolean {
+    if (this == null) {
+      return false
+    }
+    return GradleVersionUtil.isGradleAtLeast(this, "2.6")
   }
 
   private fun isUnsupportedClassVersionIssue(rootCause: GradleIssueFailure): Boolean {
@@ -172,11 +183,11 @@ private class IncompatibleGradleJvmAndGradleBuildIssue(
     when {
       gradleVersion != null && oldestCompatibleGradleVersion != null && gradleVersion < oldestCompatibleGradleVersion -> {
         addDescription(GradleBundle.message("gradle.build.issue.gradle.compatible.minimum.description", oldestCompatibleGradleVersion.version))
-        addGradleVersionQuickFix(projectPath, oldestCompatibleGradleVersion)
+        addGradleWrapperVersionQuickFix(projectPath, oldestCompatibleGradleVersion)
       }
       gradleVersion != null && latestCompatibleGradleVersion != null && gradleVersion > latestCompatibleGradleVersion -> {
         addDescription(GradleBundle.message("gradle.build.issue.gradle.compatible.maximum.description", latestCompatibleGradleVersion.version))
-        addGradleVersionQuickFix(projectPath, latestCompatibleGradleVersion)
+        addGradleWrapperVersionQuickFix(projectPath, latestCompatibleGradleVersion)
       }
     }
   }

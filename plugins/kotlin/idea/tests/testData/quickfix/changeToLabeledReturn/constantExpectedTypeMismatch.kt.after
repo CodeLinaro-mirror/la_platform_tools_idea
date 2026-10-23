@@ -1,5 +1,5 @@
 // "Change to 'return@foo'" "true"
-// K2_ERROR: Return type mismatch: expected 'Unit', actual 'Int'.
+// K2_ERROR: RETURN_TYPE_MISMATCH
 inline fun foo(f: (Int) -> Int) {}
 
 fun test() {
@@ -9,4 +9,3 @@ fun test() {
     }
 }
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ChangeToLabeledReturnFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ChangeToLabeledReturnFix

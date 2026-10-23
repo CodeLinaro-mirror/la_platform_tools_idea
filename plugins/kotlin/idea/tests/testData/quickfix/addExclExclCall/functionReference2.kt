@@ -1,5 +1,5 @@
 // "Add non-null asserted (foo?.bar!!) call" "true"
-// K2_ERROR: Bound callable reference cannot be created on nullable receiver of type 'Bar?'.
+// K2_ERROR: UNSAFE_CALLABLE_REFERENCE
 class Foo {
     val bar = Bar()
 }
@@ -13,4 +13,3 @@ fun test(foo: Foo?) {
 }
 
 // FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AddExclExclCallFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.AddExclExclCallFix

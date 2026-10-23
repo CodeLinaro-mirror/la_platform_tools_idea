@@ -1322,6 +1322,44 @@ public abstract class K2EnterHandlerTestGenerated extends AbstractK2EnterHandler
         }
 
         @RunWith(JUnit3RunnerWithInners.class)
+        @TestMetadata("../../idea/tests/testData/editor/enterHandler/kDocCodeFence")
+        public static class KDocCodeFence extends AbstractK2EnterHandlerTest {
+            private void runTest(String testDataFilePath) throws Exception {
+                KotlinTestUtils.runTest(this::doNewlineTest, this, testDataFilePath);
+            }
+
+            @TestMetadata("ImplicitKotlinFenceCurlyBraces.after.kt")
+            public void testImplicitKotlinFenceCurlyBraces() throws Exception {
+                runTest("../../idea/tests/testData/editor/enterHandler/kDocCodeFence/ImplicitKotlinFenceCurlyBraces.after.kt");
+            }
+
+            @TestMetadata("ImplicitKotlinFenceEmptyParentheses.after.kt")
+            public void testImplicitKotlinFenceEmptyParentheses() throws Exception {
+                runTest("../../idea/tests/testData/editor/enterHandler/kDocCodeFence/ImplicitKotlinFenceEmptyParentheses.after.kt");
+            }
+
+            @TestMetadata("ImplicitKotlinFenceSingleSpace.after.kt")
+            public void testImplicitKotlinFenceSingleSpace() throws Exception {
+                runTest("../../idea/tests/testData/editor/enterHandler/kDocCodeFence/ImplicitKotlinFenceSingleSpace.after.kt");
+            }
+
+            @TestMetadata("ImplicitKotlinFenceSpaces.after.kt")
+            public void testImplicitKotlinFenceSpaces() throws Exception {
+                runTest("../../idea/tests/testData/editor/enterHandler/kDocCodeFence/ImplicitKotlinFenceSpaces.after.kt");
+            }
+
+            @TestMetadata("ImplicitKotlinFenceTrailingSpaces.after.kt")
+            public void testImplicitKotlinFenceTrailingSpaces() throws Exception {
+                runTest("../../idea/tests/testData/editor/enterHandler/kDocCodeFence/ImplicitKotlinFenceTrailingSpaces.after.kt");
+            }
+
+            @TestMetadata("ImplicitKotlinFenceWord.after.kt")
+            public void testImplicitKotlinFenceWord() throws Exception {
+                runTest("../../idea/tests/testData/editor/enterHandler/kDocCodeFence/ImplicitKotlinFenceWord.after.kt");
+            }
+        }
+
+        @RunWith(JUnit3RunnerWithInners.class)
         @TestMetadata("../../idea/tests/testData/editor/enterHandler/multilineString")
         public abstract static class MultilineString extends AbstractK2EnterHandlerTest {
             @RunWith(JUnit3RunnerWithInners.class)
@@ -1976,6 +2014,11 @@ public abstract class K2EnterHandlerTestGenerated extends AbstractK2EnterHandler
                 runTest("../../idea/tests/testData/editor/enterHandler/ConsecutiveCallsInSafeCallsEnd.after.kt");
             }
 
+            @TestMetadata("ConstructorParameterListWithoutLineBreakBeforeClosingBracket.after.kt")
+            public void testConstructorParameterListWithoutLineBreakBeforeClosingBracket() throws Exception {
+                runTest("../../idea/tests/testData/editor/enterHandler/ConstructorParameterListWithoutLineBreakBeforeClosingBracket.after.kt");
+            }
+
             @TestMetadata("EnterInFunctionWithExpressionBody.after.kt")
             public void testEnterInFunctionWithExpressionBody() throws Exception {
                 runTest("../../idea/tests/testData/editor/enterHandler/EnterInFunctionWithExpressionBody.after.kt");
@@ -2184,6 +2227,11 @@ public abstract class K2EnterHandlerTestGenerated extends AbstractK2EnterHandler
             @TestMetadata("NotFirstParameter.after.kt")
             public void testNotFirstParameter() throws Exception {
                 runTest("../../idea/tests/testData/editor/enterHandler/NotFirstParameter.after.kt");
+            }
+
+            @TestMetadata("ParameterListAfterTrailingComma.after.kt")
+            public void testParameterListAfterTrailingComma() throws Exception {
+                runTest("../../idea/tests/testData/editor/enterHandler/ParameterListAfterTrailingComma.after.kt");
             }
 
             @TestMetadata("ReindentOnUnmatchedBrace.after.kt")
@@ -2761,6 +2809,11 @@ public abstract class K2EnterHandlerTestGenerated extends AbstractK2EnterHandler
             @TestMetadata("ConsecutiveCallsInSaeCallsMiddle.after.inv.kt")
             public void testConsecutiveCallsInSaeCallsMiddle() throws Exception {
                 runTest("../../idea/tests/testData/editor/enterHandler/ConsecutiveCallsInSaeCallsMiddle.after.inv.kt");
+            }
+
+            @TestMetadata("ConstructorParameterListWithoutLineBreakBeforeClosingBracket.after.inv.kt")
+            public void testConstructorParameterListWithoutLineBreakBeforeClosingBracket() throws Exception {
+                runTest("../../idea/tests/testData/editor/enterHandler/ConstructorParameterListWithoutLineBreakBeforeClosingBracket.after.inv.kt");
             }
 
             @TestMetadata("HigherOrderFunction2.after.inv.kt")

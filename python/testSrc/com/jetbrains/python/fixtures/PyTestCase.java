@@ -10,6 +10,7 @@ import com.intellij.find.findUsages.CustomUsageSearcher;
 import com.intellij.find.findUsages.FindUsagesOptions;
 import com.intellij.openapi.actionSystem.IdeActions;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.command.CommandProcessor;
 import com.intellij.openapi.command.WriteCommandAction;
@@ -26,7 +27,6 @@ import com.intellij.openapi.roots.impl.FilePropertyPusher;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.util.registry.Registry;
-import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.StandardFileSystems;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -64,7 +64,6 @@ import com.jetbrains.python.PythonTestUtil;
 import com.jetbrains.python.codeInsight.typing.PyBundledStubs;
 import com.jetbrains.python.codeInsight.typing.PyTypeShed;
 import com.jetbrains.python.documentation.PyDocumentationSettings;
-import com.jetbrains.python.documentation.PyTypeRenderer.Feature;
 import com.jetbrains.python.documentation.PythonDocumentationProvider;
 import com.jetbrains.python.documentation.docstrings.DocStringFormat;
 import com.jetbrains.python.namespacePackages.PyNamespacePackagesService;
@@ -77,6 +76,7 @@ import com.jetbrains.python.psi.impl.IntentionalUnstubbing;
 import com.jetbrains.python.psi.impl.PyFileImpl;
 import com.jetbrains.python.psi.impl.PythonLanguageLevelPusher;
 import com.jetbrains.python.psi.search.PySearchUtilBase;
+import com.jetbrains.python.psi.types.PyAnyType;
 import com.jetbrains.python.psi.types.PyType;
 import com.jetbrains.python.psi.types.TypeEvalContext;
 import com.jetbrains.python.sdk.legacy.PythonSdkUtil;
@@ -86,6 +86,7 @@ import org.junit.Assert;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -115,6 +116,29 @@ public abstract class PyTestCase extends UsefulTestCase {
     myFixture = IdeaTestFixtureFactory.getFixtureFactory().createCodeInsightFixture(fixture, createTempDirFixture());
     myFixture.setTestDataPath(getTestDataPath());
     myFixture.setUp();
+
+    // Enable Any/Unknown type support by default in all tests; opt out per method or class with @PyAnyTypeDisabled.
+    Registry.get(PyAnyType.REGISTRY_KEY).setValue(!isPyAnyTypeDisabledForCurrentTest());
+  }
+
+  private boolean isPyAnyTypeDisabledForCurrentTest() {
+    for (Class<?> c = getClass(); c != null && PyTestCase.class.isAssignableFrom(c); c = c.getSuperclass()) {
+      if (c.isAnnotationPresent(PyAnyTypeDisabled.class)) {
+        return true;
+      }
+    }
+    String name = getName();
+    if (name != null) {
+      try {
+        Method testMethod = getClass().getMethod(name);
+        if (testMethod.isAnnotationPresent(PyAnyTypeDisabled.class)) {
+          return true;
+        }
+      }
+      catch (NoSuchMethodException ignored) {
+      }
+    }
+    return false;
   }
 
   @Override
@@ -137,6 +161,7 @@ public abstract class PyTestCase extends UsefulTestCase {
       addSuppressedException(e);
     }
     finally {
+      Registry.get(PyAnyType.REGISTRY_KEY).resetToDefault();
       super.tearDown();
     }
   }
@@ -171,7 +196,7 @@ public abstract class PyTestCase extends UsefulTestCase {
 
   @Nullable
   protected static VirtualFile getVirtualFileByName(String fileName) {
-    final VirtualFile path = LocalFileSystem.getInstance().findFileByPath(fileName.replace(File.separatorChar, '/'));
+    final VirtualFile path = StandardFileSystems.local().findFileByPath(fileName.replace(File.separatorChar, '/'));
     if (path != null) {
       refreshRecursively(path);
       return path;
@@ -314,7 +339,7 @@ public abstract class PyTestCase extends UsefulTestCase {
 
   protected void enableTestDataTypeshedStubsForPackages(String @NotNull ... packageNames) throws IOException {
     final String absPath = getTestDataPath() + "/resolve/typeshed/stubs";
-    final VirtualFile sourceThirdPartyStubRoot = LocalFileSystem.getInstance().refreshAndFindFileByPath(absPath);
+    final VirtualFile sourceThirdPartyStubRoot = StandardFileSystems.local().refreshAndFindFileByPath(absPath);
     assertNotNull("Third-party typeshed root '" + absPath + "' not found", sourceThirdPartyStubRoot);
 
     final VirtualFile targetThirdPartyStubRoot = PyTypeShed.INSTANCE.getThirdPartyStubRoot();
@@ -486,7 +511,7 @@ public abstract class PyTestCase extends UsefulTestCase {
         result.add(((PsiElementUsage)usage).getElement());
       }
     }
-    for (final PsiReference reference : ReferencesSearch.search(element).findAll()) {
+    for (final PsiReference reference : ReadAction.computeBlocking(()->ReferencesSearch.search(element).findAll())) {
       result.add(reference.getElement());
     }
 
@@ -650,7 +675,7 @@ public abstract class PyTestCase extends UsefulTestCase {
                                 @NotNull PyTypedElement element,
                                 @NotNull TypeEvalContext context) {
     final PyType actual = context.getType(element);
-    final String actualType = PythonDocumentationProvider.getTypeName(actual, context, Feature.UNSAFE_UNION);
+    final String actualType = PythonDocumentationProvider.getTypeName(actual, context);
     assertEquals(message, expectedType, actualType);
   }
 
@@ -714,7 +739,7 @@ public abstract class PyTestCase extends UsefulTestCase {
   }
 
   protected static void withNewAnyTypeEnabled(@NotNull Runnable test) {
-    var key = Registry.get("python.type.any");
+    var key = Registry.get(PyAnyType.REGISTRY_KEY);
     var previousValue = key.asBoolean();
     try {
       key.setValue(true);

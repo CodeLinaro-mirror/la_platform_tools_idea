@@ -13,7 +13,6 @@ import com.intellij.ide.plugins.marketplace.statistics.PluginManagerUsageCollect
 import com.intellij.ide.plugins.newui.ListPluginComponent
 import com.intellij.ide.plugins.newui.MultiSelectionEventHandler
 import com.intellij.ide.plugins.newui.MyPluginModel
-import com.intellij.ide.plugins.newui.PluginUpdatesService
 import com.intellij.ide.plugins.newui.NoOpPluginsViewCustomizer
 import com.intellij.ide.plugins.newui.PluginDetailsPageComponent
 import com.intellij.ide.plugins.newui.PluginInstallationState
@@ -23,6 +22,7 @@ import com.intellij.ide.plugins.newui.PluginModelFacade
 import com.intellij.ide.plugins.newui.PluginUiModel
 import com.intellij.ide.plugins.newui.PluginUiModelAdapter
 import com.intellij.ide.plugins.newui.PluginUpdateSubscription
+import com.intellij.ide.plugins.newui.PluginUpdatesService
 import com.intellij.ide.plugins.newui.PluginsGroup
 import com.intellij.ide.plugins.newui.PluginsGroupComponent
 import com.intellij.ide.plugins.newui.PluginsGroupComponentWithProgress
@@ -48,6 +48,7 @@ import com.intellij.openapi.application.ModalityState.any
 import com.intellij.openapi.application.asContextElement
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.extensions.PluginId
+import com.intellij.openapi.progress.runBlockingMaybeCancellable
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.updateSettings.impl.pluginsAdvertisement.FUSEventSource
@@ -72,9 +73,9 @@ import java.util.function.Consumer
 import java.util.function.Predicate
 import java.util.function.Supplier
 import javax.swing.JComponent
+import kotlin.time.TimeSource
 
-@ApiStatus.Internal
-internal class MarketplacePluginsTab @RequiresEdt constructor(
+internal class MarketplacePluginsTab @RequiresEdt(generateAssertion = false /* IJPL-115548 */) constructor(
   facade: PluginModelFacade,
   scope: CoroutineScope,
   customizer: PluginManagerCustomizer?,
@@ -100,11 +101,13 @@ internal class MarketplacePluginsTab @RequiresEdt constructor(
   private val eventHandler = MultiSelectionEventHandler()
   private val marketplacePanel = createMarketplacePanel(eventHandler)
 
+  private val tracker: PluginManagerUiTracker = PluginManagerUiTracker()
+
   init {
     customizeSearchTextField()
   }
 
-  @RequiresEdt
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   override fun createPluginsPanel(): JComponent {
     val project = ProjectUtil.getActiveProject()
     computeAndApplyMarketplacePanelModel(selectionListener, project)
@@ -155,55 +158,88 @@ internal class MarketplacePluginsTab @RequiresEdt constructor(
   private fun computeAndApplyMarketplacePanelModel(selectionListener: Consumer<in PluginsGroupComponent?>, project: Project?) {
     val myPluginModel = pluginModelFacade.getModel()
     coroutineScope.launch(Dispatchers.IO) {
-      myPluginModel.waitForSessionInitialization()
-      val customRepositoriesMap = UiPluginManager.getInstance().getCustomRepositoryPluginMap()
-      val suggestedPlugins = if (project != null) findSuggestedPlugins(project, customRepositoriesMap) else emptyList()
-      val pluginManager = UiPluginManager.getInstance()
-      val marketplaceData = mutableMapOf<String, PluginSearchResult>()
-      val internalPluginsGroupDescriptor = getPluginsViewCustomizer().getInternalPluginsGroupDescriptor()
-      val installationStates = pluginManager.getInstallationStates()
+      val totalStart = TimeSource.Monotonic.markNow()
+      val model = fetchMarketplacePanelModel(myPluginModel, project)
+      tracker.measure(PluginManagerUiMetric.MARKETPLACE_TAB_FETCH, totalStart)
 
-      val queries = listOf(
-        "is_featured_search=true",
-        "orderBy=update+date",
-        "orderBy=downloads",
-        "orderBy=rating"
-      )
-
-      val errorCheckResults = pluginManager.loadErrors(myPluginModel.mySessionId.toString())
-      val errors = MyPluginModel.getErrors(errorCheckResults)
-      try {
-        for (query in queries) {
-          val result = pluginManager.executeMarketplaceQuery(query, 18, false)
-          marketplaceData[query] = result
-        }
-      }
-      catch (e: Exception) {
-        LOG.info("Main plugin repository is not available (${e.message}). Please check your network settings.")
-      }
-      val pluginIds = marketplaceData.flatMap { it.value.getPlugins().map { plugin -> plugin.pluginId } }.toSet() +
-                      customRepositoriesMap.flatMap { it.value.map { plugin -> plugin.pluginId } }.toSet()
-      val installedPlugins = pluginManager.findInstalledPlugins(pluginIds)
       withContext(Dispatchers.EDT + any().asContextElement()) {
-        val model = CreateMarketplacePanelModel(
-          marketplaceData,
-          errors,
-          suggestedPlugins,
-          customRepositoriesMap,
-          installedPlugins,
-          installationStates,
-          internalPluginsGroupDescriptor
-        )
-        applyMarketplacePanelModel(project, model, selectionListener)
+        val renderStart = TimeSource.Monotonic.markNow()
+        applyMarketplacePanelModel(project, model, selectionListener) {
+          tracker.measure(PluginManagerUiMetric.MARKETPLACE_TAB_RENDER, renderStart)
+          tracker.measure(PluginManagerUiMetric.MARKETPLACE_TAB_TOTAL, totalStart)
+        }
       }
     }
   }
 
-  @RequiresEdt
+  /** Loads all data needed to render the marketplace panel. Must run off the EDT. */
+  private suspend fun fetchMarketplacePanelModel(myPluginModel: MyPluginModel, project: Project?): CreateMarketplacePanelModel {
+    myPluginModel.waitForSessionInitialization()
+    val pluginManager = UiPluginManager.getInstance()
+    val customRepositoriesMap = pluginManager.getCustomRepositoryPluginMap()
+    val suggestedPlugins = if (project != null) findSuggestedPlugins(project, customRepositoriesMap) else emptyList()
+    val internalPluginsGroupDescriptor = getPluginsViewCustomizer().getInternalPluginsGroupDescriptor()
+    val installationStates = pluginManager.getInstallationStates()
+
+    val errorCheckResults = pluginManager.loadErrors(myPluginModel.mySessionId.toString())
+    val errors = MyPluginModel.getErrors(errorCheckResults)
+
+    val marketplaceData = loadMarketplaceData(pluginManager)
+
+    val pluginIds = marketplaceData.flatMap { it.value.getPlugins().map { plugin -> plugin.pluginId } }.toSet() +
+                    customRepositoriesMap.flatMap { it.value.map { plugin -> plugin.pluginId } }.toSet()
+    val installedPlugins = pluginManager.findInstalledPlugins(pluginIds)
+    pluginManagerCustomizer?.awaitPluginStatesLoaded()
+
+    return CreateMarketplacePanelModel(
+      marketplaceData,
+      errors,
+      suggestedPlugins,
+      customRepositoriesMap,
+      installedPlugins,
+      installationStates,
+      internalPluginsGroupDescriptor,
+      MyPluginModel.getExpectedExplanations(errorCheckResults),
+    )
+  }
+
+  /** Runs the featured/sorted marketplace search queries, reporting load failures via the tracker. */
+  private suspend fun loadMarketplaceData(pluginManager: UiPluginManager): Map<String, PluginSearchResult> {
+    val queries = listOf(
+      "is_featured_search=true",
+      "orderBy=update+date",
+      "orderBy=downloads",
+      "orderBy=rating",
+    )
+
+    val marketplaceData = mutableMapOf<String, PluginSearchResult>()
+    var unexpectedLoadError = false
+    try {
+      for (query in queries) {
+        marketplaceData[query] = pluginManager.executeMarketplaceQuery(query, 18, false)
+      }
+    }
+    catch (e: Exception) {
+      LOG.info("Main plugin repository is not available (${e.message}). Please check your network settings.")
+      unexpectedLoadError = true
+    }
+
+    // executeMarketplaceQuery does not throw on network failures; it reports them via the
+    // PluginSearchResult.error field, so failures are detected here rather than in the catch above.
+    val failedQueries = queries.count { marketplaceData[it]?.error != null || marketplaceData[it] == null }
+    when {
+      unexpectedLoadError || failedQueries == queries.size -> tracker.logEvent(PluginManagerUiEvent.MARKETPLACE_TAB_LOAD_ERROR)
+      failedQueries > 0 -> tracker.logEvent(PluginManagerUiEvent.MARKETPLACE_TAB_LOAD_PARTIAL)
+    }
+    return marketplaceData
+  }
+
+  @RequiresEdt(generateAssertion = false /* IJPL-115548 */)
   private fun applyMarketplacePanelModel(
     project: Project?,
     model: CreateMarketplacePanelModel,
     selectionListener: Consumer<in PluginsGroupComponent?>,
+    renderCallback: () -> Unit
   ) {
     val groups = ArrayList<PluginsGroup>()
     try {
@@ -287,12 +323,12 @@ internal class MarketplacePluginsTab @RequiresEdt constructor(
         val allDescriptors = model.customRepositories[host]
         if (allDescriptors != null) {
           val groupName = IdeBundle.message("plugins.configurable.repository.0", host)
-          LOG.info("Marketplace tab: '" + groupName + "' group load started")
+          LOG.debug("Marketplace tab: '$groupName' group load started (custom repository)")
           addGroup(
             groups,
             groupName,
             PluginsGroupType.CUSTOM_REPOSITORY,
-            "/repository:\"" + host + "\"",
+            "/repository:\"$host\"",
             allDescriptors,
             Predicate { group ->
               PluginsGroup.sortByName(group.getModels())
@@ -304,9 +340,6 @@ internal class MarketplacePluginsTab @RequiresEdt constructor(
           )
         }
       }
-      if (pluginManagerCustomizer != null) {
-        pluginManagerCustomizer.ensurePluginStatesLoaded()
-      }
     }
     finally {
       ApplicationManager.getApplication().invokeLater({
@@ -315,6 +348,7 @@ internal class MarketplacePluginsTab @RequiresEdt constructor(
                                                           PluginLogo.startBatchMode()
 
                                                           for (group in groups) {
+                                                            group.getPreloadedModel().setExpectedExplanations(model.expectedExplanations)
                                                             marketplacePanel.addGroup(group)
                                                           }
                                                         }
@@ -331,6 +365,7 @@ internal class MarketplacePluginsTab @RequiresEdt constructor(
                                                           selectionListener.accept(marketplacePanel)
                                                           selectionListener.accept(searchPanel.panel)
                                                         }
+                                                        renderCallback()
                                                       }, ModalityState.any())
     }
   }
@@ -371,7 +406,7 @@ internal class MarketplacePluginsTab @RequiresEdt constructor(
           ).map { sort -> sort.query }
           SearchWords.VENDOR -> getOrCalculateVendors()
           SearchWords.REPOSITORY -> RepositoryHelper.getCustomPluginRepositoryHosts()
-          SearchWords.INTERNAL, SearchWords.SUGGESTED, SearchWords.STAFF_PICKS, null -> null
+          SearchWords.INTERNAL, SearchWords.SUGGESTED, SearchWords.STAFF_PICKS, SearchWords.PLUGIN_UPDATE_SOURCE, null -> null
         }
       }
 
@@ -431,11 +466,13 @@ internal class MarketplacePluginsTab @RequiresEdt constructor(
       selectionListener,
       marketplaceSortByGroup,
       Supplier { marketplacePanel },
+      pluginModelFacade,
     )
     return searchPanel
   }
 
   private fun reloadMarketplaceTab() {
+    tracker.logEvent(PluginManagerUiEvent.MARKETPLACE_TAB_RELOAD)
     val project = ProjectUtil.getActiveProject()
     marketplacePanel.clear()
     marketplacePanel.showLoadingIcon()
@@ -453,7 +490,7 @@ internal class MarketplacePluginsTab @RequiresEdt constructor(
       val vendors = LinkedHashSet<String>()
       try {
         ProcessIOExecutorService.INSTANCE.submit {
-          vendors.addAll(UiPluginManager.getInstance().getAllVendors())
+          vendors.addAll(runBlockingMaybeCancellable { UiPluginManager.getInstance().getMarketplaceVendors() })
         }.get()
       }
       catch (e: InterruptedException) {
@@ -569,7 +606,7 @@ internal class MarketplacePluginsTab @RequiresEdt constructor(
     installationStates: Map<PluginId, PluginInstallationState>,
   ) {
     val groupName = IdeBundle.message("plugins.configurable.suggested")
-    LOG.info("Marketplace tab: '" + groupName + "' group load started")
+    LOG.debug("Marketplace tab: '$groupName' group load started (suggested)")
 
     for (plugin in plugins) {
       if (plugin.isFromMarketplace) {
@@ -626,7 +663,7 @@ internal class MarketplacePluginsTab @RequiresEdt constructor(
     if (!group.getModels().isEmpty()) {
       groups.add(group)
     }
-    LOG.info("Marketplace tab: '" + name + "' group load finished")
+    LOG.debug("Marketplace tab: '$name' group load finished")
   }
 
   @Throws(IOException::class)
@@ -641,7 +678,7 @@ internal class MarketplacePluginsTab @RequiresEdt constructor(
     installedPluginIds: Map<PluginId, PluginUiModel>,
     installationStates: Map<PluginId, PluginInstallationState>,
   ) {
-    LOG.info("Marketplace tab: '" + name + "' group load started")
+    LOG.debug("Marketplace tab: '$name' group load started (via light descriptor)")
     val searchResult = marketplaceData[query]!!
     val error = searchResult.error
     if (error != null) {
@@ -745,4 +782,5 @@ private data class CreateMarketplacePanelModel(
   val installedPlugins: Map<PluginId, PluginUiModel>,
   val installationStates: Map<PluginId, PluginInstallationState>,
   val internalPluginsGroupDescriptor: PluginsViewCustomizer.PluginsGroupDescriptor?,
+  val expectedExplanations: Map<PluginId, List<@Nls String>>,
 )

@@ -138,8 +138,4 @@ public abstract class FileBasedIndexExtension<K, V> extends IndexExtension<K, V,
     return true;
   }
 
-  @ApiStatus.Internal
-  public boolean enableWal() {
-    return false;
-  }
 }

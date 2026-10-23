@@ -1,12 +1,11 @@
 // "Change type of 'A.x' to '() -> Int'" "true"
-// K2_ERROR: Argument type mismatch: actual type is '() -> Int', but 'Int' was expected.
-// K2_ERROR: Argument type mismatch: actual type is '() -> Int', but 'Int' was expected.
-// K2_ERROR: Return type mismatch: expected 'Int', actual '() -> Int'.
+// K2_ERROR: ARGUMENT_TYPE_MISMATCH
+// K2_ERROR: ARGUMENT_TYPE_MISMATCH
+// K2_ERROR: RETURN_TYPE_MISMATCH
 class A {
     var x: Int
         get(): Int = if (true) { {42}<caret> } else { {24} }
         set(i: Int) {}
 }
 
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ChangeVariableTypeFix
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeTypeQuickFixFactories$UpdateTypeQuickFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeTypeQuickFixFactories$UpdateTypeQuickFix

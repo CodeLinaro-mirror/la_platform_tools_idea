@@ -1,5 +1,5 @@
 // "Change return type to 'Boolean'" "true"
-// K2_ERROR: Return type of 'fun foo(): Boolean?' is not a subtype of the return type of the overridden member 'fun foo(): Boolean' defined in 'A'.
+// K2_ERROR: RETURN_TYPE_MISMATCH_ON_OVERRIDE
 
 interface A {
     fun foo(): Boolean
@@ -11,5 +11,4 @@ fun foo() {
     }
 }
 
-// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.quickfix.ChangeCallableReturnTypeFix$OnType
-// FUS_K2_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeTypeQuickFixFactories$UpdateTypeQuickFix
+// FUS_QUICKFIX_NAME: org.jetbrains.kotlin.idea.k2.codeinsight.fixes.ChangeTypeQuickFixFactories$UpdateTypeQuickFix

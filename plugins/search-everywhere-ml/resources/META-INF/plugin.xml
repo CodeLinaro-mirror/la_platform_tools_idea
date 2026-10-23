@@ -15,6 +15,17 @@
 
   <dependencies>
     <module name="intellij.json.backend"/>
+    <!-- region Generated dependencies - run `Generate Product Layouts` to regenerate -->
+    <module name="intellij.platform.core"/>
+    <module name="intellij.platform.core.impl"/>
+    <module name="intellij.platform.editor.ui"/>
+    <module name="intellij.platform.experiment"/>
+    <module name="intellij.platform.ide"/>
+    <module name="intellij.platform.lang"/>
+    <module name="intellij.platform.lang.impl"/>
+    <module name="intellij.platform.projectModel"/>
+    <module name="intellij.platform.statistics"/>
+    <!-- endregion -->
   </dependencies>
   <content namespace="jetbrains">
     <module name="intellij.platform.ml.logs"/>
@@ -26,6 +37,11 @@
     <module name="intellij.searchEverywhereMl.ranking.yaml"/>
     <module name="intellij.searchEverywhereMl.ranking.vcs"/>
   </content>
+  <content>
+    <module name="intellij.libraries.mlapi.core" loading="required"/>
+    <module name="intellij.libraries.search.everywhere.find.all.model" loading="required"/>
+    <module name="intellij.libraries.search.everywhere.find.ec.model" loading="required"/>
+  </content>
 
   <resource-bundle>messages.searchEverywhereMlCoreBundle</resource-bundle>
 
@@ -34,6 +50,9 @@
     <registryKey defaultValue="-1"
                  description="Defines the experiment group number. Negative value will be ignored."
                  key="search.everywhere.ml.experiment.group"/>
+    <registryKey defaultValue="0"
+                 description="Overrides the group of the no ML sorting A/B experiment. 1 forces the no ML group, -1 forces the ML group, 0 keeps the computed group."
+                 key="search.everywhere.force.no.ml.sorting.experiment.decision"/>
     <registryKey defaultValue="false"
                  description="When enabled ML logs and experiments in Search Everywhere will be disabled"
                  key="search.everywhere.force.disable.logging.ml"/>
@@ -82,6 +101,7 @@
       implementation="com.intellij.searchEverywhereMl.SearchEverywhereEventLoggerProvider"
       order="first"/>
     <applicationSettings service="com.intellij.searchEverywhereMl.SearchEverywhereMlSettingsService"/>
+    <postStartupActivity implementation="com.intellij.searchEverywhereMl.SearchEverywhereMlExperiment$NoMlSortingPlatformAbExperimentInitializer"/>
   </extensions>
 
   <extensionPoints>
@@ -89,4 +109,11 @@
                     interface="com.intellij.searchEverywhereMl.TextEmbeddingProvider"
                     dynamic="true"/>
   </extensionPoints>
+
+  <actions>
+    <action id="ToggleSearchEverywhereMlSorting"
+            class="com.intellij.searchEverywhereMl.ToggleSearchEverywhereMlSortingAction"
+            internal="true">
+    </action>
+  </actions>
 </idea-plugin>

@@ -3,33 +3,35 @@
 This directory (`community/.ai`) contains the templates and documentation source used by:
 
 ```bash
-node community/.ai/render-guides.mjs
+bazel run //.ai:render-guides
 ```
 
-The renderer produces guide files (`AGENTS.md`, `CLAUDE.md`, `.junie/AGENTS.md`), skill stubs, and OpenCode config/skills.
+The renderer produces guide files (`AGENTS.md`, `community/AGENTS.md`), skill stubs, the OpenCode config, and the harness tool-permission rules.
 
 ## Quick run
 
 ```bash
-node community/.ai/render-guides.mjs
+bazel run //.ai:render-guides
 ```
+
+The target runs `render-guides.mjs` on the bun Bazel pins (`//build:bun`) rather than on a machine-provided `node`; `.ai/BUILD.bazel` documents how. It renders into the workspace `bazel run` was invoked from, which must be the monorepo root — the renderer's repo root is the parent of `community/`.
+
+The target lives in the ultimate `.ai/` package, not beside these sources: a community sync analyzes `//...`, so a community target would download bun for every sync. The renderer renders the monorepo and refuses to run from a community checkout, so it loses nothing.
 
 Force edition when needed:
 
 ```bash
-AI_GUIDE_EDITION=COMMUNITY node community/.ai/render-guides.mjs
-AI_GUIDE_EDITION=ULTIMATE  node community/.ai/render-guides.mjs
+AI_GUIDE_EDITION=COMMUNITY bazel run //.ai:render-guides
+AI_GUIDE_EDITION=ULTIMATE  bazel run //.ai:render-guides
 ```
 
 ## What is generated
 
 - `AGENTS.md`
 - `community/AGENTS.md` (generated in ultimate workspace)
-- `CLAUDE.md` (ultimate only)
-- `.junie/AGENTS.md`
 - `opencode.json` (from `.mcp.json`)
-- `.opencode/skill/*` (mirrored from `.codex/skills/*`)
-- Skill stubs in `.agents/skills/*`, `.claude/skills/*`, `.junie/skills/*`, `community/.claude/skills/*`
+- Skill stubs in `.agents/skills/*`, `.claude/skills/*`, `community/.claude/skills/*`
+- Tool-permission rules (ultimate only): the `permissions` arrays of `.claude/settings.json` and all of `.codex/rules/default.rules`, both from `tool-permissions.json`
 
 ## High-level render pipeline
 
@@ -49,19 +51,40 @@ AI_GUIDE_EDITION=ULTIMATE  node community/.ai/render-guides.mjs
                              |
                              +--> AGENTS.md
                              +--> community/AGENTS.md (ultimate workspace)
-                             +--> CLAUDE.md (ultimate only)
-                             +--> .junie/AGENTS.md
                              +--> opencode.json
-                             +--> .opencode/skill/*
                              +--> skill stubs (see next section)
+
+      community/.ai/tool-permissions.json
+                         |
+                         | resolve {{TOOLS_DIR}}, emit both `./x` and `x` spellings
+                         v
+                         +--> .claude/settings.json (permissions.allow / permissions.deny)
+                         '--> .codex/rules/default.rules
 ```
+
+## Tool permissions
+
+`tool-permissions.json` is the single list of shell commands that run without a prompt, plus the
+commands and whole tools that are refused. It is rendered into each harness's own declarative
+config, so neither harness needs a permission hook:
+
+- `.claude/settings.json` -- the renderer replaces every `Bash(...)` entry in `permissions.allow`
+  and the whole `permissions.deny`. MCP/Skill allows, `hooks`, `defaultMode` and everything else in
+  that file stay hand-written.
+- `.codex/rules/default.rules` -- fully generated.
+
+Both are ultimate-only outputs, since a community checkout has neither file. Entries are argv
+prefixes, not command strings; see the `$comment` blocks in the source for the matching contract.
 
 ## Skill sources and stub generation
 
-The renderer has two skill sources:
+The renderer has two skill sources for all generated skill outputs:
 
 1. Community source skills: `community/.agents/skills/*/SKILL.md`
 2. Ultimate-only source skills: manual (non-generated) `.agents/skills/*/SKILL.md`
+
+Codex, OpenCode and Junie read `.agents/skills/` directly, so the renderer writes no skill tree for them.
+Junie reads the root `AGENTS.md` when `.junie/AGENTS.md` does not exist, so the renderer writes no Junie guide.
 
 Generated stubs are recognized by marker:
 
@@ -71,20 +94,37 @@ Generated stubs are recognized by marker:
 
 Manual files in `.agents/skills/` without that marker are treated as ultimate-only sources.
 
+### Skill description budget
+
+Skill descriptions are always loaded into Codex context, so canonical `SKILL.md` frontmatter must keep them concise:
+
+- `description` must be a non-empty, single-line YAML value without an inline YAML comment.
+- Each description is limited to 160 UTF-8 bytes.
+- All descriptions available in one edition are limited to 6 KiB (`6 * 1024` bytes) combined.
+- Front-load the skill's action and decisive trigger terms; keep detailed guidance in the skill body.
+
+The renderer validates the canonical sources available to the selected edition before writing or pruning generated files. If rendering fails on this budget, shorten the reported canonical descriptions and rerun the renderer; do not edit generated skill stubs.
+
+Every skill added spends from a fixed budget, so each run reports what is left:
+
+```text
+Skill descriptions for edition ULTIMATE: 5368/6144 bytes, 776 remaining.
+```
+
+Once less than 10% of the budget remains, the renderer also warns. Treat that as the signal to shorten existing descriptions rather than waiting for the next skill to fail the build.
+
 ```text
 PASS 1 (community source skills)
 --------------------------------
 community/.agents/skills/<name>/SKILL.md
    |--> .agents/skills/<name>/SKILL.md
    |--> .claude/skills/<name>/SKILL.md
-   |--> .junie/skills/<name>/SKILL.md
    '--> community/.claude/skills/<name>/SKILL.md
 
 PASS 2 (ultimate-only manual skills)
 ------------------------------------
 .agents/skills/<name>/SKILL.md   [manual, non-generated]
-   |--> .claude/skills/<name>/SKILL.md   [ULTIMATE only]
-   '--> .junie/skills/<name>/SKILL.md    [ULTIMATE only]
+    '--> .claude/skills/<name>/SKILL.md   [ULTIMATE only]
 
 Cleanup
 -------
@@ -105,10 +145,10 @@ Accepted values: `COMMUNITY`, `ULTIMATE`.
 Edition impact:
 
 - `ULTIMATE`
-  - pass-2 runs (ultimate-only skills can generate `.claude/skills/*` and `.junie/skills/*` stubs)
+  - pass-2 runs (ultimate-only skills can generate `.claude/skills/*` stubs)
 - `COMMUNITY`
   - pass-2 is skipped
-  - stale generated ultimate-only stubs are pruned from `.claude/skills/` and `.junie/skills/`
+  - stale generated ultimate-only stubs are pruned from `.claude/skills/`
 
 ## Template model
 
@@ -124,10 +164,6 @@ Tool gating:
 <!-- IF_TOOL:CODEX -->
 ... only in Codex outputs ...
 <!-- /IF_TOOL:CODEX -->
-
-<!-- IF_TOOL:JUNIE -->
-... only in Junie outputs ...
-<!-- /IF_TOOL:JUNIE -->
 ```
 
 Edition gating:
@@ -148,7 +184,10 @@ internal notes only
 
 ## Required placeholders
 
-- `{{FORBIDDEN_TOOLS_SUFFIX}}` is filled per output target.
+- `{{TOOLS_DIR}}` is filled from the target's resolved edition: `./community/tools` for
+  `ULTIMATE`, `./tools` for `COMMUNITY`. Use it for every `fd.cmd`/`rg.cmd` reference instead
+  of a pair of `IF_EDITION` blocks, so a search rule is written once and cannot drift between
+  editions.
 
 If placeholders remain after rendering, the renderer fails fast.
 

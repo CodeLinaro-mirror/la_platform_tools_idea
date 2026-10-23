@@ -1,7 +1,6 @@
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
 ### auto-generated section `build intellij.pycharm.community.ide.implTraining` start
-
 jvm_library(
     name = "pycharm-community-ide-implTraining",
     srcs = glob(
@@ -16,6 +15,7 @@ jvm_library(
     resource_strip_prefix = "resources",
     resources = glob(
         ["resources/**/*"],
+        exclude = ["resources/**/icon-robots.txt"],
     ),
     visibility = ["//visibility:public"],
     deps = [
@@ -56,6 +56,7 @@ jvm_library(
 exports_files(
     [
         "intellij.pycharm.community.ide.implTraining.iml",
+        "resources/intellij.pycharm.community.ide.implTraining.xml",
     ],
     visibility = ["//visibility:public"],
 )

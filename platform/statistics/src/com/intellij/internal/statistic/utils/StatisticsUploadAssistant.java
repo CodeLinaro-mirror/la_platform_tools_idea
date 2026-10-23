@@ -4,25 +4,20 @@ package com.intellij.internal.statistic.utils;
 import com.intellij.ide.ConsentOptionsProvider;
 import com.intellij.idea.AppMode;
 import com.intellij.internal.statistic.eventLog.EventLogInternalApplicationInfo;
-import com.intellij.internal.statistic.eventLog.EventLogInternalSendConfig;
 import com.intellij.internal.statistic.eventLog.ExternalEventLogSettings;
 import com.intellij.internal.statistic.eventLog.StatisticsEventLogProviderUtil;
-import com.intellij.internal.statistic.eventLog.connection.EventLogSendListener;
 import com.intellij.internal.statistic.eventLog.connection.EventLogSettingsClient;
-import com.intellij.internal.statistic.eventLog.connection.EventLogStatisticsService;
 import com.intellij.internal.statistic.eventLog.connection.EventLogUploadSettingsClient;
 import com.intellij.internal.statistic.eventLog.connection.StatisticsService;
 import com.intellij.internal.statistic.persistence.UsageStatisticsPersistenceComponent;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.util.NlsContexts;
+import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.Strings;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.List;
 import java.util.function.BooleanSupplier;
-
-import static com.intellij.internal.statistic.eventLog.StatisticsEventLogProviderUtil.getEventLogProvider;
 
 public final class StatisticsUploadAssistant {
   private static final String IDEA_HEADLESS_ENABLE_STATISTICS = "idea.headless.enable.statistics";
@@ -131,28 +126,24 @@ public final class StatisticsUploadAssistant {
            || isUseTestStatisticsConfig();
   }
 
+  /**
+   * In-process flush of the given recorder's queued events. The legacy implementation returned a long-lived
+   * {@link EventLogStatisticsService}; the new wiring dispatches through the recorder's
+   * {@link com.jetbrains.fus.reporting.FusClient} (see {@link com.intellij.internal.statistic.eventLog.dispatcher.DispatcherBackedStatisticsService}),
+   * which is what {@link com.intellij.internal.statistic.updater.StatisticsJobsScheduler} also drives. The external
+   * uploader (out-of-process JVM) still uses {@link EventLogStatisticsService} directly.
+   */
   public static @NotNull StatisticsService getEventLogStatisticsService(@NotNull String recorderId) {
-    EventLogSendListener listener = new EventLogSendListener() {
-      @Override
-      public void onLogsSend(@NotNull List<String> successfullySentFiles,
-                             @NotNull List<Integer> errors,
-                             int totalLocalFiles) {
-        int success = successfullySentFiles.size();
-        int failed = errors.size();
-        getEventLogProvider(recorderId).getEventLogSystemLogger$intellij_platform_statistics()
-          .logFilesSend(totalLocalFiles, success, failed, false, successfullySentFiles, errors);
-      }
-    };
-
-    return new EventLogStatisticsService(
-      EventLogInternalSendConfig.createByRecorder(recorderId, true),
-      new EventLogInternalApplicationInfo(isUseTestStatisticsConfig(), isUseTestStatisticsSendEndpoint()),
-      listener
-    );
+    return new com.intellij.internal.statistic.eventLog.dispatcher.DispatcherBackedStatisticsService(recorderId);
   }
 
   public static EventLogSettingsClient createExternalSettings(@NotNull String recorderId, boolean isTestConfig, boolean isTestSendEndpoint, long cacheTimeoutMs) {
-    return new EventLogUploadSettingsClient(recorderId, new EventLogInternalApplicationInfo(isTestConfig, isTestSendEndpoint), cacheTimeoutMs);
+    return new EventLogUploadSettingsClient(
+      recorderId,
+      new EventLogInternalApplicationInfo(isTestConfig, isTestSendEndpoint),
+      Registry.is("feature.usage.event.snapshot.filtering.disabled", false),
+      cacheTimeoutMs
+    );
   }
 
   public static boolean isTeamcityDetected() {

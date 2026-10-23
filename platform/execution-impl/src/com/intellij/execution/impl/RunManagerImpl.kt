@@ -270,7 +270,7 @@ open class RunManagerImpl @NonInjectable constructor(val project: Project, priva
   internal val dotIdeaRunConfigurationsPath: String
     get() = FileUtilRt.toSystemIndependentName(projectSchemeManager.rootDirectory.path)
 
-  private val rcInArbitraryFileManager = RCInArbitraryFileManager(project)
+  private val rcInArbitraryFileManager = RCInArbitraryFileManager(this, lock)
 
   private val isFirstLoadState = AtomicBoolean(true)
 
@@ -435,7 +435,7 @@ open class RunManagerImpl @NonInjectable constructor(val project: Project, priva
   private fun deleteRunConfigsFromArbitraryFilesNotWithinProjectContent() {
     ReadAction
       .nonBlocking(Callable {
-        lock.read { rcInArbitraryFileManager.findRunConfigsThatAreNotWithinProjectContent() }
+        rcInArbitraryFileManager.findRunConfigsThatAreNotWithinProjectContent()
       })
       .coalesceBy(this)
       .expireWith(project)
@@ -466,7 +466,7 @@ open class RunManagerImpl @NonInjectable constructor(val project: Project, priva
 
     for (filePath in updatedFilePaths) {
       val deletedAndAddedRunConfigs = runReadActionBlocking {
-        lock.read { rcInArbitraryFileManager.loadChangedRunConfigsFromFile(this, filePath) }
+        rcInArbitraryFileManager.loadChangedRunConfigsFromFile(filePath)
       }
 
       for (runConfig in deletedAndAddedRunConfigs.addedRunConfigs) {
@@ -695,7 +695,7 @@ open class RunManagerImpl @NonInjectable constructor(val project: Project, priva
     }
 
   override suspend fun save() {
-    rcInArbitraryFileManager.saveRunConfigs(lock)
+    rcInArbitraryFileManager.save()
   }
 
   override fun getState(): Element {
@@ -1517,7 +1517,7 @@ const val PROJECT_RUN_MANAGER_COMPONENT_NAME: String = "ProjectRunConfigurationM
 @Service(Service.Level.PROJECT)
 @State(name = PROJECT_RUN_MANAGER_COMPONENT_NAME, useLoadedStateAsExisting = false /* ProjectRunConfigurationManager is used only for IPR,
 avoid relative cost call getState */)
-private class IprRunManagerImpl(private val project: Project) : PersistentStateComponent<Element> {
+internal class IprRunManagerImpl(private val project: Project) : PersistentStateComponent<Element> {
   val lastLoadedState = AtomicReference<Element>()
 
   override fun getState(): Element? {

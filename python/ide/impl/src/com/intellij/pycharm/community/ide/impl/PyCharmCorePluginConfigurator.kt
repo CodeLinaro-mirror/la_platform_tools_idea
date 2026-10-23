@@ -4,6 +4,7 @@ package com.intellij.pycharm.community.ide.impl
 import com.intellij.application.options.CodeStyle
 import com.intellij.codeInsight.CodeInsightSettings
 import com.intellij.diagnostic.LoadingState
+import com.intellij.diagnostic.awaitOccurred
 import com.intellij.ide.ApplicationInitializedListener
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.application.ApplicationManager
@@ -21,9 +22,7 @@ import com.intellij.pycharm.community.ide.impl.settings.PythonMainConfigurable
 import com.jetbrains.python.PythonLanguage
 import com.jetbrains.python.codeInsight.PyCodeInsightSettings
 import com.jetbrains.python.console.PyConsoleOptions
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Initialize PyCharm.
@@ -32,7 +31,7 @@ import kotlin.time.Duration.Companion.milliseconds
  * It does not work in plugin.
  *
  * In patchConfigurables() we are rearranging applicationConfigurable, assigning Pycharm specific groups and weights.
- * We should remember that the same work for projectConfigurables done in [PyCharmProjectConfigurableStartupActivity].
+ * The frontend project activity does the same work for project configurables.
  */
 internal class PyCharmCorePluginConfigurator : ApplicationInitializedListener {
   init {
@@ -56,9 +55,7 @@ internal class PyCharmCorePluginConfigurator : ApplicationInitializedListener {
     if (!propertyManager.getBoolean("PyCharm.InitialConfiguration.V3")) {
       propertyManager.setValue("PyCharm.InitialConfiguration.V3", "true")
       (ApplicationManager.getApplication() as ComponentManagerEx).getCoroutineScope().launch {
-        while (!LoadingState.COMPONENTS_LOADED.isOccurred) {
-          delay(10.milliseconds)
-        }
+        LoadingState.COMPONENTS_LOADED.awaitOccurred()
 
         val fileTypeManager = FileTypeManager.getInstance()
         val ignoredFilesList = fileTypeManager.getIgnoredFilesList()
@@ -107,21 +104,17 @@ internal class PyCharmCorePluginConfigurator : ApplicationInitializedListener {
           ep.groupWeight = 70
         }
         "PyPlotsConfigurable" -> {
-          ep.groupId = PythonMainConfigurable.ID
-          ep.key = "configurable.plots.pycharm.display.name"
-          ep.bundle = "messages.PyBundle"
+          // groupId already points at the Python group, see intellij.python.scientific.xml
           ep.groupWeight = 60
         }
         "debugger.dataViews.python.type.renderers" -> {
-          ep.groupId = "reference.idesettings.debugger.python"
+          // groupId already points at the Python Debugger page, see intellij.python.community.impl.xml
           ep.key = "configurable.PyUserTypeRenderersConfigurable.pycharm.display.name"
           ep.bundle="messages.PyBundle"
           ep.groupWeight = 30
         }
         "com.jetbrains.python.documentation.PythonDocumentationConfigurable" -> {
-          ep.groupId = PythonMainConfigurable.ID
-          ep.key = "external.documentation.pycharm"
-          ep.bundle="messages.PyBundle"
+          // groupId already points at the Python group, see intellij.python.community.impl.xml
           ep.groupWeight = 10
         }
       }

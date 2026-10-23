@@ -1,8 +1,19 @@
 load("@community//build:tests-options.bzl", "jps_test")
+load("@community//platform/build-scripts/bazel-rules:ij_plugin.bzl", "ij_plugin")
+load("@jps_dynamic_deps_community//:targets.bzl", "dev_dist_plugin")
 load("@rules_jvm//:jvm.bzl", "jvm_library")
 
-### auto-generated section `build intellij.vcs.hg` start
+### auto-generated section `dev intellij.vcs.hg` start
+dev_dist_plugin(
+    descriptor = "resources/META-INF/plugin.xml",
+    jars = {
+        "lib/vcs-hg.jar": ["intellij.vcs.hg"],
+    },
+    main_module = "intellij.vcs.hg",
+)
+### auto-generated section `dev intellij.vcs.hg` end
 
+### auto-generated section `build intellij.vcs.hg` start
 jvm_library(
     name = "vcs-hg",
     srcs = glob(
@@ -54,6 +65,7 @@ jvm_library(
         "//platform/lang-core",
         "//platform/util:util-ui",
         "//platform/util-ex",
+        "//platform/lvcs-impl",
     ],
 )
 
@@ -77,8 +89,6 @@ jvm_library(
         "//platform/lvcs-api:lvcs_test_lib",
         "//platform/projectModel-api:projectModel_test_lib",
         "//platform/vcs-api:vcs_test_lib",
-        "//platform/testFramework",
-        "//platform/testFramework:testFramework_test_lib",
         "//platform/platform-api:ide_test_lib",
         "//platform/vcs-impl:vcs-impl_test_lib",
         "//platform/ide-core-impl:ide-core-impl_test_lib",
@@ -91,8 +101,6 @@ jvm_library(
         "//platform/vcs-log/impl:impl_test_lib",
         "//platform/dvcs-api:vcs-dvcs_test_lib",
         "//platform/lang-impl:lang-impl_test_lib",
-        "//platform/vcs-tests:vcs-testFramework",
-        "//platform/vcs-tests:vcs-testFramework_test_lib",
         "//libraries/miglayout-swing:miglayout-swing_test_lib",
         "//libraries/stream:stream_test_lib",
         "//platform/core-ui:core-ui_test_lib",
@@ -106,7 +114,14 @@ jvm_library(
         "//platform/lang-core:lang-core_test_lib",
         "//platform/util:util-ui_test_lib",
         "//platform/util-ex:util-ex_test_lib",
+        "//platform/lvcs-impl:lvcs-impl_test_lib",
     ],
+)
+
+ij_plugin(
+    name = "vcs-hg_plugin",
+    descriptor_module = ":vcs-hg",
+    visibility = ["//visibility:public"],
 )
 ### auto-generated section `build intellij.vcs.hg` end
 
@@ -114,13 +129,13 @@ jvm_library(
 exports_files(
     [
         "intellij.vcs.hg.iml",
+        "resources/META-INF/plugin.xml",
     ],
     visibility = ["//visibility:public"],
 )
 ### auto-generated section `iml intellij.vcs.hg` end
 
 ### auto-generated section `build intellij.vcs.hg.tests` start
-
 jvm_library(
     name = "vcs-hg-tests",
     srcs = glob(
@@ -239,7 +254,6 @@ exports_files(
 ### auto-generated section `iml intellij.vcs.hg.tests` end
 
 ### auto-generated section `test intellij.vcs.hg.tests` start
-
 jps_test(
     name = "vcs-hg-tests_test",
     runtime_deps = [":vcs-hg-tests_test_lib"],

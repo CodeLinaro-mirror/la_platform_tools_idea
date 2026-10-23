@@ -9,10 +9,10 @@ import com.intellij.psi.impl.source.PsiMethodImpl
 import com.intellij.refactoring.BaseRefactoringProcessor
 import com.intellij.refactoring.RefactoringBundle
 import com.intellij.refactoring.util.CommonRefactoringUtil
-import org.jetbrains.kotlin.analysis.api.analyze
-import org.jetbrains.kotlin.analysis.api.components.KaDiagnosticCheckerFilter
+import org.jetbrains.kotlin.analysis.api.diagnostics.diagnostics
 import org.jetbrains.kotlin.analysis.api.permissions.KaAllowAnalysisOnEdt
 import org.jetbrains.kotlin.analysis.api.permissions.allowAnalysisOnEdt
+import org.jetbrains.kotlin.analysis.api.session.analyze
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbolVisibility
 import org.jetbrains.kotlin.asJava.unwrapped
 import org.jetbrains.kotlin.idea.codeinsight.utils.AddQualifiersUtil
@@ -161,7 +161,7 @@ class KotlinFirChangeSignatureTest :
         assertTrue(
             allowAnalysisOnEdt {
                 analyze(fragment) {
-                    fragment.collectDiagnostics(KaDiagnosticCheckerFilter.ONLY_COMMON_CHECKERS).isNotEmpty()
+                    fragment.diagnostics().any()
                 }
             }
         )
@@ -173,8 +173,9 @@ class KotlinFirChangeSignatureTest :
         val fragment = KtPsiFactory(project).createTypeCodeFragment("", psiFile)
         val diagnostics = allowAnalysisOnEdt {
             analyze(fragment) {
-                fragment.collectDiagnostics(KaDiagnosticCheckerFilter.ONLY_COMMON_CHECKERS)
-                    .map { it.defaultMessage}
+                fragment.diagnostics()
+                    .map { it.defaultMessage }
+                    .toList()
             }
         }
         assertNotEmpty(diagnostics)
@@ -189,7 +190,7 @@ class KotlinFirChangeSignatureTest :
         assertTrue(
             allowAnalysisOnEdt {
                 analyze(fragment) {
-                    fragment.collectDiagnostics(KaDiagnosticCheckerFilter.ONLY_COMMON_CHECKERS).isEmpty()
+                    fragment.diagnostics().none()
                 }
             }
         )
@@ -228,6 +229,17 @@ class KotlinFirChangeSignatureTest :
                                                        defaultValueAsDefaultParameter = true)
         newIntParameter.isContextParameter = true
         addParameter(newIntParameter)
+    }
+
+    fun testAddMultipleContextParameters() = doTest {
+        val psiFactory = KtPsiFactory(project)
+        val newIntParameter = createKotlinIntParameter(defaultValueForCall = kotlinDefaultIntValue,
+                                                       defaultValueAsDefaultParameter = true)
+        newIntParameter.isContextParameter = true
+        val newStringParameter = createKotlinStringParameter("s", defaultValueForCall = psiFactory.createExpression("\"ctx\""))
+        newStringParameter.isContextParameter = true
+        addParameter(newIntParameter)
+        addParameter(newStringParameter)
     }
 
     fun testToContextParameterExtensionTopLevelFunctionReceiver() = doTest {
@@ -276,6 +288,12 @@ class KotlinFirChangeSignatureTest :
     fun testFromContextParameterToParameter() = doTest {
         val parameterInfo = newParameters[0]
         parameterInfo.isContextParameter = false
+    }
+
+    fun testContextParameterToReceiver() = doTest {
+        val parameterInfo = newParameters[0]
+        parameterInfo.isContextParameter = false
+        receiverParameterInfo = parameterInfo
     }
 
     fun testDeleteUsedContextParameter() = doTestConflict {

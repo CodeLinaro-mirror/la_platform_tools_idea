@@ -15,6 +15,7 @@ import com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerImpl;
 import com.intellij.codeInsight.daemon.impl.HighlightInfo;
 import com.intellij.codeInsight.daemon.impl.HighlightInfoType;
 import com.intellij.codeInsight.daemon.impl.IdentifierHighlighterPassFactory;
+import com.intellij.codeInsight.daemon.impl.LineMarkersPass;
 import com.intellij.codeInsight.daemon.impl.TestDaemonCodeAnalyzerImpl;
 import com.intellij.codeInsight.highlighting.actions.HighlightUsagesAction;
 import com.intellij.codeInsight.intention.IntentionAction;
@@ -37,6 +38,7 @@ import com.intellij.codeInspection.actions.CleanupInspectionIntention;
 import com.intellij.codeInspection.ex.InspectionToolWrapper;
 import com.intellij.facet.Facet;
 import com.intellij.facet.FacetManager;
+import com.intellij.facet.FacetRootsProvider;
 import com.intellij.find.FindManager;
 import com.intellij.find.actions.SearchTarget2UsageTarget;
 import com.intellij.find.findUsages.FindUsagesHandler;
@@ -124,8 +126,8 @@ import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vcs.readOnlyHandler.ReadonlyStatusHandlerImpl;
-import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.ReadonlyStatusHandler;
+import com.intellij.openapi.vfs.StandardFileSystems;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -133,6 +135,7 @@ import com.intellij.openapi.vfs.VirtualFileFilter;
 import com.intellij.openapi.vfs.VirtualFileUtil;
 import com.intellij.openapi.vfs.impl.VirtualFilePointerTracker;
 import com.intellij.openapi.vfs.newvfs.ArchiveFileSystem;
+import com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess;
 import com.intellij.openapi.vfs.transformer.TextPresentationTransformers;
 import com.intellij.platform.testFramework.core.FileComparisonFailedError;
 import com.intellij.profile.codeInspection.ProjectInspectionProfileManager;
@@ -171,6 +174,7 @@ import com.intellij.testFramework.IndexingTestUtil;
 import com.intellij.testFramework.InspectionTestUtil;
 import com.intellij.testFramework.InspectionsKt;
 import com.intellij.testFramework.LightPlatformTestCase;
+import com.intellij.testFramework.EditorOpenTestUtil;
 import com.intellij.testFramework.PlatformTestUtil;
 import com.intellij.testFramework.PsiTestUtil;
 import com.intellij.testFramework.RunAll;
@@ -179,6 +183,7 @@ import com.intellij.testFramework.TestDataFile;
 import com.intellij.testFramework.TreeNodeTester;
 import com.intellij.testFramework.UsefulTestCase;
 import com.intellij.testFramework.VfsTestUtil;
+import com.intellij.testFramework.common.BazelTestUtil;
 import com.intellij.testFramework.common.EditorCaretTestUtil;
 import com.intellij.testFramework.fixtures.CodeInsightTestFixture;
 import com.intellij.testFramework.fixtures.CodeInsightTestUtil;
@@ -231,12 +236,12 @@ import org.jetbrains.annotations.TestOnly;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.io.File;
-import java.time.Duration;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.lang.ref.Reference;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -248,10 +253,10 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.SortedMap;
 import java.util.TreeMap;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
@@ -514,14 +519,7 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
         }
       });
       try {
-        while (!future.isDone()) {
-          try {
-            future.get(10, TimeUnit.MILLISECONDS);
-          }
-          catch (TimeoutException ignored) {
-          }
-          UIUtil.dispatchAllInvocationEvents();
-        }
+        PlatformTestUtil.waitForFuture(future);
         future.get();
       }
       catch (InterruptedException | ExecutionException e) {
@@ -614,9 +612,15 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
   private static void copyContent(@NotNull File sourceFile, @NotNull VirtualFile targetFile) {
     try {
       WriteAction.runAndWait(() -> {
+        FileDocumentManager manager = FileDocumentManager.getInstance();
+        Document document = manager.getCachedDocument(targetFile);
+        if (document != null) {
+          // save changes to prevent possible memory-disk conflicts with re-configure
+          manager.saveDocument(document);
+        }
         targetFile.setBinaryContent(FileUtil.loadFileBytes(sourceFile));
         // update the document now, otherwise MemoryDiskConflictResolver will do it later at unexpected moment of time
-        FileDocumentManager.getInstance().reloadFiles(targetFile);
+        manager.reloadFiles(targetFile);
       });
     }
     catch (IOException e) {
@@ -643,7 +647,7 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
       throw new RuntimeException(e);
     }
 
-    VirtualFile file = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(targetFile);
+    VirtualFile file = StandardFileSystems.local().refreshAndFindFileByPath(targetFile.getAbsolutePath());
     assertNotNull(file);
     file.refresh(false, true);
     IndexingTestUtil.waitUntilIndexesAreReady(getProject());
@@ -1140,6 +1144,7 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
     ActionUtil.updateAction(action, e);
     if (e.getPresentation().isEnabled()) {
       ActionUtil.performAction(action, e);
+      EditorOpenTestUtil.awaitPendingNavigationAndEditorOpenIfEnabled(getProject());
     }
     return e.getPresentation();
   }
@@ -1535,6 +1540,14 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
 
     for (Module module : ModuleManager.getInstance(getProject()).getModules()) {
       ModuleRootManager.getInstance(module).orderEntries().getAllLibrariesAndSdkClassesRoots(); // instantiate all VFPs
+      // Facets may create virtual file pointers lazily on first root access (e.g. WebRoot/ConfigFile pointers).
+      // Materialize them now so they belong to the tracker baseline instead of being reported as leaks: facets of
+      // a reused light project are not disposed per-test (see LightPlatformTestCase project reuse).
+      for (Facet<?> facet : FacetManager.getInstance(module).getAllFacets()) {
+        if (facet instanceof FacetRootsProvider) {
+          ((FacetRootsProvider)facet).getFacetRoots();
+        }
+      }
     }
     if (shouldTrackVirtualFilePointers()) {
       myVirtualFilePointerTracker = new VirtualFilePointerTracker();
@@ -1708,11 +1721,11 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
         }
         else if (myTempDirFixture instanceof TempDirTestFixtureImpl) {
           Path tempFile = ((TempDirTestFixtureImpl)myTempDirFixture).createTempFile(fileName);
-          file = LocalFileSystem.getInstance().refreshAndFindFileByPath(FileUtil.toSystemIndependentName(tempFile.toString()));
+          file = StandardFileSystems.local().refreshAndFindFileByPath(FileUtil.toSystemIndependentName(tempFile.toString()));
           assertNotNull(tempFile + " not found", file);
         }
         else {
-          file = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(new File(getTempDirPath(), fileName));
+          file = StandardFileSystems.local().refreshAndFindFileByPath(new File(getTempDirPath(), fileName).getAbsolutePath());
           assertNotNull(fileName + " not found in " + getTempDirPath(), file);
         }
 
@@ -1856,7 +1869,7 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
     }
     String fullPath = getTempDirPath() + "/" + filePath;
 
-    VirtualFile copy = LocalFileSystem.getInstance().refreshAndFindFileByPath(fullPath.replace(File.separatorChar, '/'));
+    VirtualFile copy = StandardFileSystems.local().refreshAndFindFileByPath(fullPath.replace(File.separatorChar, '/'));
     assertNotNull("file " + fullPath + " not found", copy);
     VfsTestUtil.assertFilePathEndsWithCaseSensitivePath(copy, filePath);
     return copy;
@@ -1923,7 +1936,7 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
     data.checkResult(file, infos, file.getText());
     if (data.hasLineMarkers()) {
       Document document = getDocument(getFile());
-      data.checkLineMarkers(file, DaemonCodeAnalyzerImpl.getLineMarkers(document, getProject()), document.getText());
+      data.checkLineMarkers(file, LineMarkersPass.getDisplayedLineMarkers(document, getProject()), document.getText());
     }
     Reference.reachabilityFence(hardRefToFileElement);
     return elapsed;
@@ -1963,6 +1976,9 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
   @Override
   public void setTestDataPath(@NotNull String dataPath) {
     myTestDataPath = dataPath;
+    if (BazelTestUtil.isUnderBazelTest() && !dataPath.isEmpty()) {
+      VfsRootAccess.allowRootAccess(getTestRootDisposable(), Paths.get(dataPath).toAbsolutePath().toString());
+    }
   }
 
   @Override
@@ -2181,7 +2197,7 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
         }
         else {
           FileUtil.writeToFile(new File(destinationFileName), cleanContent);
-          VirtualFile file = LocalFileSystem.getInstance().refreshAndFindFileByPath(destinationFileName);
+          VirtualFile file = StandardFileSystems.local().refreshAndFindFileByPath(destinationFileName);
           assertNotNull(file);
           configureFromExistingVirtualFile(file);
         }
@@ -2409,9 +2425,9 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
   private SearchEverywhereContributor<Object> createMockClassSearchEverywhereContributor(boolean everywhere) {
     DataContext dataContext = SimpleDataContext.getProjectContext(getProject());
     AnActionEvent event = AnActionEvent.createFromDataContext(ActionPlaces.UNKNOWN, null, dataContext);
-    ClassSearchEverywhereContributor contributor = new ClassSearchEverywhereContributor(event) {{
+    ClassSearchEverywhereContributor contributor = ReadAction.computeBlocking(() -> new ClassSearchEverywhereContributor(event) {{
       myScopeDescriptor = new ScopeDescriptor(FindSymbolParameters.searchScopeFor(myProject, everywhere));
-    }};
+    }});
     Disposer.register(getProjectDisposable(), contributor);
     return contributor;
   }
@@ -2419,9 +2435,9 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
   private SearchEverywhereContributor<Object> createMockSymbolSearchEverywhereContributor(boolean everywhere) {
     DataContext dataContext = SimpleDataContext.getProjectContext(getProject());
     AnActionEvent event = AnActionEvent.createFromDataContext(ActionPlaces.UNKNOWN, null, dataContext);
-    SymbolSearchEverywhereContributor contributor = new SymbolSearchEverywhereContributor(event) {{
+    SymbolSearchEverywhereContributor contributor = ReadAction.computeBlocking(() -> new SymbolSearchEverywhereContributor(event) {{
       myScopeDescriptor = new ScopeDescriptor(FindSymbolParameters.searchScopeFor(myProject, everywhere));
-    }};
+    }});
     Disposer.register(getProjectDisposable(), contributor);
     return contributor;
   }
@@ -2446,11 +2462,15 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
     VirtualFile vFile = requireNonNull(InjectedLanguageManager.getInstance(project).getTopLevelFile(file)).getVirtualFile();
     withReadOnlyFile(vFile, project, () -> {
       try {
+        CompletableFuture<Void> barrier = new CompletableFuture<>();
         ApplicationManager.getApplication().invokeLater(() -> {
           try {
-            boolean executed = ShowIntentionActionsHandler.chooseActionAndInvoke(file, editor, action, action.getText());
+            //PsiFile may be invalidated by any WA executed in between -> needs to be re-resolved
+            // (Resolve through the editor to preserve the language-specific PSI at the caret in template files)
+            PsiFile currentFile = requireNonNull(PsiUtilBase.getPsiFileInEditor(editor, project));
+            boolean executed = ShowIntentionActionsHandler.chooseActionAndInvoke(currentFile, editor, action, action.getText());
             if (!executed) {
-              boolean available = action.isAvailable(project, editor, file);
+              boolean available = action.isAvailable(project, editor, currentFile);
               fail("Quick fix '" + action.getText() + "' (" + action.getClass() + ")" +
                    " hasn't executed. isAvailable()=" + available);
             }
@@ -2458,8 +2478,14 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
           catch (StubTextInconsistencyException e) {
             PsiTestUtil.compareStubTexts(e);
           }
+          finally {
+            // FIFO barrier: completes after every runnable that the intention queued with Application.invokeLater. Relies on:
+            // - NonBlockingFlushQueue runs runnables with the same metadata (modality state, write-intent flag) in scheduling order;
+            // - Application.invokeLater on the EDT schedules with the current modality state and the write-intent flag.
+            ApplicationManager.getApplication().invokeLater(() -> barrier.complete(null));
+          }
         });
-        UIUtil.dispatchAllInvocationEvents();
+        PlatformTestUtil.waitForFuture(barrier);
         checkPsiTextConsistency(project, vFile);
       }
       catch (AssertionError e) {
@@ -2519,6 +2545,7 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
     Disposer.register(getTestRootDisposable(), usageView);
     Ref<String> ref = new Ref<>();
     ApplicationManager.getApplication().invokeAndWait(() -> {
+      PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue();
       usageView.expandAll();
       ref.set(TreeNodeTester.forNode(usageView.getRoot()).withPresenter(usageView::getNodeText).constructTextRepresentation());
     });

@@ -1,6 +1,7 @@
 // Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.psi.impl;
 
+import com.intellij.diagnostic.ControlFlowExceptionsKt;
 import com.intellij.ide.FileIconUtil;
 import com.intellij.navigation.ItemPresentation;
 import com.intellij.openapi.application.ApplicationManager;
@@ -9,13 +10,11 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.fileTypes.INativeFileType;
 import com.intellij.openapi.fileTypes.UnknownFileType;
-import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.project.IndexNotReadyException;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Iconable;
 import com.intellij.openapi.util.LastComputedIconCache;
 import com.intellij.openapi.util.NotNullLazyValue;
-import com.intellij.openapi.util.UserDataHolderBase;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
@@ -23,6 +22,7 @@ import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiFileSystemItem;
 import com.intellij.psi.SmartPointerManager;
 import com.intellij.psi.SmartPsiElementPointer;
+import com.intellij.psi.impl.source.tree.mvcc.userData.VersionedUserDataHolderBase;
 import com.intellij.psi.util.PsiUtilCore;
 import com.intellij.ui.CoreAwareIconManager;
 import com.intellij.ui.IconManager;
@@ -40,7 +40,7 @@ import org.jetbrains.annotations.TestOnly;
 
 import javax.swing.Icon;
 
-public abstract class ElementBase extends UserDataHolderBase implements Iconable {
+public abstract class ElementBase extends VersionedUserDataHolderBase implements Iconable {
   private static final Logger LOG = Logger.getInstance(ElementBase.class);
 
   private static boolean forceDeferredIconsInTests = false;
@@ -71,10 +71,11 @@ public abstract class ElementBase extends UserDataHolderBase implements Iconable
     try {
       return computeIcon(flags);
     }
-    catch (ProcessCanceledException | IndexNotReadyException e) {
+    catch (IndexNotReadyException e) {
       throw e;
     }
     catch (Exception e) {
+      ControlFlowExceptionsKt.rethrowControlFlowException(e);
       LOG.error(e);
       return null;
     }
@@ -164,10 +165,8 @@ public abstract class ElementBase extends UserDataHolderBase implements Iconable
           try {
             return file.getFileType().getIcon();
           }
-          catch (ProcessCanceledException e) {
-            throw e;
-          }
           catch (Throwable e) {
+            ControlFlowExceptionsKt.rethrowControlFlowException(e);
             LOG.error(e);
           }
         }

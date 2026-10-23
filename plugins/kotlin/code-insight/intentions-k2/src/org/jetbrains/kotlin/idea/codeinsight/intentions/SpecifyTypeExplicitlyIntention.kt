@@ -7,10 +7,8 @@ import com.intellij.modcommand.ModPsiUpdater
 import com.intellij.modcommand.Presentation
 import com.intellij.openapi.util.TextRange
 import org.jetbrains.annotations.ApiStatus
-import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaSession
-import org.jetbrains.kotlin.analysis.api.components.KaDiagnosticCheckerFilter
-import org.jetbrains.kotlin.analysis.api.components.diagnostics
+import org.jetbrains.kotlin.analysis.api.diagnostics.diagnostics
 import org.jetbrains.kotlin.analysis.api.fir.diagnostics.KaFirDiagnostic
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.codeinsight.api.applicable.intentions.KotlinApplicableModCommandAction
@@ -46,15 +44,13 @@ class SpecifyTypeExplicitlyIntention @JvmOverloads constructor(private val useTe
         return element.typeReference == null && (element as? KtNamedFunction)?.hasBlockBody() != true
     }
 
-    @OptIn(KaExperimentalApi::class)
     context(_: KaSession)
     private fun skip(element: KtCallableDeclaration): Boolean =
-        element.diagnostics(KaDiagnosticCheckerFilter.ONLY_COMMON_CHECKERS)
-            .any { diagnostic ->
-                diagnostic is KaFirDiagnostic.AmbiguousAnonymousTypeInferred
-                        || diagnostic is KaFirDiagnostic.PropertyWithNoTypeNoInitializer
-                        || diagnostic is KaFirDiagnostic.MustBeInitialized
-            }
+        element.diagnostics().directOnly(true).any { diagnostic ->
+            diagnostic is KaFirDiagnostic.AmbiguousAnonymousTypeInferred
+                    || diagnostic is KaFirDiagnostic.PropertyWithNoTypeNoInitializer
+                    || diagnostic is KaFirDiagnostic.MustBeInitialized
+        }
 
     override fun getFamilyName(): String =
         KotlinBundle.message("specify.type.explicitly")
@@ -70,7 +66,8 @@ class SpecifyTypeExplicitlyIntention @JvmOverloads constructor(private val useTe
         return Presentation.of(actionName)
     }
 
-    override fun KaSession.prepareContext(element: KtCallableDeclaration): TypeInfo? =
+    context(session: KaSession)
+    override fun prepareContext(element: KtCallableDeclaration): TypeInfo? =
         if (skip(element)) {
             null
         } else {

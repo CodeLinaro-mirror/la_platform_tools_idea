@@ -144,9 +144,7 @@ public final class JavaClassSupersImpl extends JavaClassSupers {
               //  Bar<String> getNonNullBar() { <- with String
               //    return new Bar<>();
               //  }
-
-              //simplified without taking into account the nullability of the captured type
-              instantiated = innerType.getNullability().instantiatedWith(targetType.getNullability());
+              instantiated = innerType.getNullability().instantiatedWith(PsiSubstitutorImpl.instantiationNullability(targetType));
             }
             targetType = targetType.withNullability(instantiated);
           }

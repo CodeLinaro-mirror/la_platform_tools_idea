@@ -102,8 +102,13 @@ class WindowsCustomizerBuilder @PublishedApi internal constructor(private val pr
    */
   var customNsiConfigurationFiles: List<String> = emptyList()
 
+  /**
+   * When `true`, builds the installer with NSISBI instead of stock NSIS, lifting the ~2 GB size limit.
+   */
+  var useBigNsisInstaller: Boolean = false
+
   // Method override handlers (stored as lambdas)
-  private var copyAdditionalFilesHandler: (suspend (Path, JvmArchitecture, BuildContext) -> Unit)? = null
+  private var copyAdditionalFilesHandler: ((Path, JvmArchitecture, BuildContext) -> Unit)? = null
   private var fullNameHandler: ((ApplicationInfoProperties) -> String)? = null
   private var alternativeFullNameHandler: ((ApplicationInfoProperties) -> String?)? = null
   private var uninstallFeedbackUrlHandler: ((ApplicationInfoProperties) -> String?)? = null
@@ -114,7 +119,7 @@ class WindowsCustomizerBuilder @PublishedApi internal constructor(private val pr
    * Gets the current copyAdditionalFiles handler for wrapping purposes.
    * @return the current handler, or null if none is set
    */
-  fun getCopyAdditionalFilesHandler(): (suspend (Path, JvmArchitecture, BuildContext) -> Unit)? = copyAdditionalFilesHandler
+  fun getCopyAdditionalFilesHandler(): ((Path, JvmArchitecture, BuildContext) -> Unit)? = copyAdditionalFilesHandler
 
   /**
    * Adds custom logic for copying additional files to the Windows distribution.
@@ -122,7 +127,7 @@ class WindowsCustomizerBuilder @PublishedApi internal constructor(private val pr
    *
    * @see [ProductProperties.copyAdditionalOsSpecificFiles]
    */
-  fun copyAdditionalFiles(handler: suspend (targetDir: Path, arch: JvmArchitecture, context: BuildContext) -> Unit) {
+  fun copyAdditionalFiles(handler: (targetDir: Path, arch: JvmArchitecture, context: BuildContext) -> Unit) {
     copyAdditionalFilesHandler = handler
   }
 
@@ -196,7 +201,10 @@ class WindowsCustomizerBuilder @PublishedApi internal constructor(private val pr
     override val customNsiConfigurationFiles: List<Path>
       get() = builder.customNsiConfigurationFiles.map { projectHome.resolve(it) }
 
-    override suspend fun copyAdditionalFiles(targetDir: Path, arch: JvmArchitecture, context: BuildContext) {
+    override val useBigNsisInstaller: Boolean
+      get() = builder.useBigNsisInstaller
+
+    override fun copyAdditionalFiles(targetDir: Path, arch: JvmArchitecture, context: BuildContext) {
       super.copyAdditionalFiles(targetDir, arch, context)
       context.productProperties.copyAdditionalOsSpecificFiles(targetDir, OsFamily.WINDOWS, arch, context)
       builder.copyAdditionalFilesHandler?.invoke(targetDir, arch, context)
@@ -283,6 +291,12 @@ abstract class WindowsDistributionCustomizer {
   var publishUninstaller: Boolean = true
 
   /**
+   * When `true`, the installer is built with NSISBI instead of stock NSIS, lifting the ~2 GB size limit.
+   */
+  open val useBigNsisInstaller: Boolean
+    get() = false
+
+  /**
    * List of file extensions (without a leading dot) which the installer will suggest to associate with the product.
    */
   open val fileAssociations: List<String>
@@ -311,7 +325,7 @@ abstract class WindowsDistributionCustomizer {
   /**
    * Override this method to copy additional files to the Windows distribution of the product.
    */
-  open suspend fun copyAdditionalFiles(targetDir: Path, arch: JvmArchitecture, context: BuildContext) {
+  open fun copyAdditionalFiles(targetDir: Path, arch: JvmArchitecture, context: BuildContext) {
     bundleRepairUtility(OsFamily.WINDOWS, arch, targetDir, context)
   }
 

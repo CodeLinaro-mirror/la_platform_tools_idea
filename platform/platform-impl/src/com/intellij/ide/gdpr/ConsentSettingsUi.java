@@ -6,7 +6,6 @@ import com.intellij.ide.gdpr.localConsents.LocalConsentOptions;
 import com.intellij.ide.gdpr.ui.consents.AiDataCollectionConsentUi;
 import com.intellij.ide.gdpr.ui.consents.ConsentUi;
 import com.intellij.ide.gdpr.ui.consents.DefaultConsentUi;
-import com.intellij.ide.gdpr.ui.consents.ErrorsAutoReportConsentUi;
 import com.intellij.ide.gdpr.ui.consents.TraceDataCollectionConsentUI;
 import com.intellij.ide.gdpr.ui.consents.UsageStatisticsConsentUi;
 import com.intellij.openapi.application.impl.ApplicationInfoImpl;
@@ -43,7 +42,7 @@ import static javax.swing.ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED;
 import static javax.swing.ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED;
 
 @ApiStatus.Internal
-public class ConsentSettingsUi extends JPanel implements ConfigurableUi<List<Consent>> {
+public class ConsentSettingsUi extends JPanel implements ConfigurableUi<ConsentsState> {
   private final Collection<ConsentStateSupplier> consentMapping = new ArrayList<>();
   private final boolean myPreferencesMode;
   private final boolean myIsJetBrainsVendor;
@@ -60,17 +59,17 @@ public class ConsentSettingsUi extends JPanel implements ConfigurableUi<List<Con
   }
 
   @Override
-  public void reset(@NotNull List<Consent> consents) {
+  public void reset(@NotNull ConsentsState consentsState) {
     consentMapping.clear();
     removeAll();
 
-    if (consents.isEmpty()) {
+    if (consentsState.getAllConsents().isEmpty()) {
       add(ConsentSettingsBodyKt.createNoOptionsConsentSettings(myPreferencesMode));
       return;
     }
 
     JBScrollPane scrollPane =
-      new JBScrollPane(ConsentSettingsBodyKt.createConsentSettings(consentMapping, myPreferencesMode, myIsJetBrainsVendor, consents),
+      new JBScrollPane(ConsentSettingsBodyKt.createConsentSettings(consentMapping, myPreferencesMode, myIsJetBrainsVendor, consentsState),
                        VERTICAL_SCROLLBAR_AS_NEEDED, HORIZONTAL_SCROLLBAR_AS_NEEDED);
     scrollPane.setBorder(JBUI.Borders.empty());
     add(scrollPane);
@@ -129,9 +128,6 @@ public class ConsentSettingsUi extends JPanel implements ConfigurableUi<List<Con
         LocalConsentOptions.condTraceDataCollectionNonComLocalConsent().test(consent)) {
       return new TraceDataCollectionConsentUI(consent);
     }
-    if (ConsentOptions.condEAAutoReportConsent().test(consent)) {
-      return new ErrorsAutoReportConsentUi(consent);
-    }
     return new DefaultConsentUi(consent);
   }
 
@@ -140,7 +136,9 @@ public class ConsentSettingsUi extends JPanel implements ConfigurableUi<List<Con
     return getParagraphTag() + StringUtil.replace(text, "\n", "</p>" + getParagraphTag()) + "</p>";
   }
 
-  private @NotNull List<Consent> getState() {
+  /** Returns the consents with the state that the user selected in the UI. */
+  @ApiStatus.Internal
+  public @NotNull List<Consent> getState() {
     final List<Consent> result = new ArrayList<>();
     for (ConsentStateSupplier supplier : consentMapping) {
       result.add(supplier.consent.derive(supplier.getState()));
@@ -149,9 +147,10 @@ public class ConsentSettingsUi extends JPanel implements ConfigurableUi<List<Con
     return result;
   }
 
-
   @Override
-  public boolean isModified(@NotNull List<Consent> consents) {
+  public boolean isModified(@NotNull ConsentsState consentsState) {
+    var consents = consentsState.getAllConsents();
+
     List<Consent> state = getState();
     if (consents.size() != state.size()) return true;
     for (int i = 0; i < state.size(); i++) {
@@ -165,9 +164,9 @@ public class ConsentSettingsUi extends JPanel implements ConfigurableUi<List<Con
   }
 
   @Override
-  public void apply(@NotNull List<Consent> consents) {
-    consents.clear();
-    consents.addAll(getState());
+  public void apply(@NotNull ConsentsState consents) {
+    consents.getAllConsents().clear();
+    consents.getAllConsents().addAll(getState());
   }
 
   @Override
