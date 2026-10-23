@@ -1,18 +1,17 @@
-import kotlinx.coroutines.runBlocking
 import org.jetbrains.intellij.build.AndroidStudioProperties
 import org.jetbrains.intellij.build.BuildContext
+import org.jetbrains.intellij.build.BuildLifetime
 import org.jetbrains.intellij.build.BuildPaths
 import org.jetbrains.intellij.build.createBuildTasks
 import org.jetbrains.intellij.build.impl.BuildContextImpl
 
-@Suppress("RAW_RUN_BLOCKING")
 object AndroidStudioBuildTarget {
   @JvmStatic
   fun main(args: Array<String>) {
-    runBlocking {
+    BuildLifetime().use { lifetime ->
       val home = BuildPaths.COMMUNITY_ROOT
       val properties = AndroidStudioProperties()
-      val buildContext = BuildContextImpl.createContext(home.communityRoot, properties)
+      val buildContext = BuildContextImpl.createContext(home.communityRoot, properties, lifetime = lifetime)
       validateProductVersion(buildContext)
       val tasks = createBuildTasks(buildContext)
       tasks.buildDistributions()

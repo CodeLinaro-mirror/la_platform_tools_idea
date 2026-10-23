@@ -1,4 +1,3 @@
-import kotlinx.coroutines.runBlocking
 import org.jetbrains.intellij.build.*
 import org.jetbrains.intellij.build.impl.BuildContextImpl
 import java.nio.file.Path
@@ -9,14 +8,13 @@ import kotlin.io.path.writeLines
  * Builds a module's tests and all its dependencies. It additionally outputs the classpath to be able to run those tests.
  * This is done later separately run the tests in parallel and distributed.
  */
-@Suppress("RAW_RUN_BLOCKING")
 object TestModuleTarget {
   @JvmStatic
   fun main(args: Array<String>) {
-    runBlocking {
+    BuildLifetime().use { lifetime ->
       val home = BuildPaths.COMMUNITY_ROOT
       val properties = AndroidStudioProperties()
-      val context = BuildContextImpl.createContext(home.communityRoot, properties)
+      val context = BuildContextImpl.createContext(home.communityRoot, properties, lifetime = lifetime)
 
       val moduleName = System.getProperty("idea.test.module")
       val outDir = context.paths.artifactDir.resolve("module-tests")

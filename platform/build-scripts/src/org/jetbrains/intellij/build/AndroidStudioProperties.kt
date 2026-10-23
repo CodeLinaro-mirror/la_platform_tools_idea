@@ -17,7 +17,8 @@ package org.jetbrains.intellij.build
 
 import com.intellij.platform.ijent.community.buildConstants.IJENT_BOOT_CLASSPATH_MODULE
 import kotlinx.collections.immutable.toPersistentList
-import org.jetbrains.intellij.build.CommunityRepositoryModules.COMMUNITY_REPOSITORY_PLUGINS
+import org.jetbrains.intellij.build.dev.ClassicDevRun
+import org.jetbrains.intellij.build.dev.DevPluginLayoutAssetSpec
 import org.jetbrains.intellij.build.impl.PatchOverwriteMode
 import org.jetbrains.intellij.build.impl.PlatformJarNames.PLATFORM_CORE_NIO_FS
 import org.jetbrains.intellij.build.impl.PlatformJarNames.TEST_FRAMEWORK_JAR
@@ -63,7 +64,7 @@ class AndroidStudioProperties : ProductProperties() {
       "intellij.java.byteCodeViewer",
       "intellij.jcef.plugin",
       "intellij.maven.plugin",
-      "intellij.mcpserver",
+      "intellij.mcpserver.plugin",
     )
   }
 
@@ -104,7 +105,7 @@ class AndroidStudioProperties : ProductProperties() {
       // From IdeaCommunityProperties:
       "intellij.platform.starter",
     )
-    productLayout.addPlatformSpec { layout, _ ->
+    productLayout.addPlatformSpec { layout ->
       // From JetBrainsProductProperties.
       layout.withModule(IJENT_BOOT_CLASSPATH_MODULE, PLATFORM_CORE_NIO_FS)
 
@@ -135,14 +136,14 @@ class AndroidStudioProperties : ProductProperties() {
       // version should be consistent with the coroutines library in the platform, and (2) kotlinx-coroutines-guava is used in some
       // platform modules, leading to duplicated classes on the runtime classpath in some situations (depending on classloader configuration).
       // For precedent, see IntelliJ commit https://github.com/JetBrains/intellij-community/commit/bb6d3cf0ac.
-      layout.withProjectLibrary("kotlinx-coroutines-guava")
+      layout.withModuleLibrary("kotlinx-coroutines-guava", "intellij.libraries.kotlinx.coroutines.guava", "")
 
       // We have a separate MCP server which depends on several ktor libraries. While the platform core already bundles
       // most of these, we have to explicitly add a few. This is done to avoid any binary incompatibilities by intermingling
       // versions between our MCP and the core classloader and to avoid friction during updates by having to manually
       // update our versions. (b/500176062).
-      layout.withProjectLibrary("ktor-server-content-negotiation")
-      layout.withProjectLibrary("ktor-server-sse-jvm")
+      layout.withModuleLibrary("ktor-server-content-negotiation", "intellij.libraries.ktor.server.content.negotiation", "")
+      layout.withModuleLibrary("ktor-server-sse-jvm", "intellij.libraries.ktor.server.sse", "")
 
       layout.withPatch { patcher, context ->
         // Patch AndroidStudioProperties.xml: set the platform API version to match the 3-component
@@ -173,10 +174,10 @@ class AndroidStudioProperties : ProductProperties() {
     productLayout.prepareCustomPluginRepositoryForPublishedPlugins = false
     productLayout.buildAllCompatiblePlugins = false
 
-    val inheritedPluginLayouts = COMMUNITY_REPOSITORY_PLUGINS.removingAll { it.mainModule !in bundledPlugins }
-    productLayout.pluginLayouts = inheritedPluginLayouts.addingAll(listOf(
+    val inheritedPluginLayouts = getCommunityRepositoryPlugins().removingAll { it.mainModule !in bundledPlugins }
+    productLayout.pluginLayouts = lazyOf(inheritedPluginLayouts.addingAll(listOf(
       JavaPluginLayout.javaPlugin(),
-      CommunityRepositoryModules.groovyPlugin(),
+      groovyPlugin(),
       // CIDR plugins migrated to v2 layouts, thus the included modules are computed
       // mostly automatically based on the <content> tag in plugin.xml. Additional
       // customization is mostly inspired by CidrPluginLayouts.kt.
@@ -185,7 +186,6 @@ class AndroidStudioProperties : ProductProperties() {
       },
       pluginAuto("intellij.c") { spec ->
         copyCidrLicense(spec)
-        spec.excludeProjectLibrary("Kryo")
       },
       pluginAuto("intellij.cidr.debugger.plugin") { spec ->
         copyCidrLicense(spec)
@@ -194,16 +194,16 @@ class AndroidStudioProperties : ProductProperties() {
       pluginAuto("intellij.cidr.base") { spec ->
         copyCidrLicense(spec)
       },
-    ))
+    )))
 
     // Fill in the remaining plugin layouts (including "trivial-layout" plugins)
     // so we can correctly patch all plugin layouts below.
-    productLayout.pluginLayouts = getPluginLayoutsByJpsModuleNames(bundledPlugins, productLayout).toPersistentList()
+    productLayout.pluginLayouts = lazyOf(getPluginLayoutsByJpsModuleNames(bundledPlugins, productLayout).toPersistentList())
 
     // Patch plugin.xml files to ensure plugins are non-updatable. We want platform
     // plugins to always come from our own IntelliJ fork (which may have patches, for example).
     // Note: this logic is validated by an assertion in check_plugin.py in our Bazel build.
-    for (pluginLayout in productLayout.pluginLayouts) {
+    for (pluginLayout in productLayout.pluginLayouts.value) {
       val delegatePatcher = pluginLayout.pluginXmlPatcher
       pluginLayout.pluginXmlPatcher = { pluginXml, ctx ->
         delegatePatcher(pluginXml, ctx).replace("allow-bundled-update=\"true\"", "allow-bundled-update=\"false\"")
@@ -221,9 +221,15 @@ class AndroidStudioProperties : ProductProperties() {
 
     include(CommunityProductFragments.javaIdeBaseFragment())
     moduleSet(CommunityModuleSets.ideCommon())
+    moduleSet(CommunityModuleSets.platformResourceDefaults())
+    // Since IJ 2026.3, ideCommon() no longer nests the Compose runtime; products bundling the Compose plugin add it.
+    moduleSet(CommunityModuleSets.composeRuntime())
     module("intellij.platform.coverage")
     module("intellij.platform.coverage.agent")
     module("intellij.platform.customization.min")
+    // Required by the Java IDE Customization plugin (com.intellij.java.ide) since IJ 2026.3. The .backend module
+    // is intentionally not included so that IDEA's non-modal welcome screen stays disabled in Android Studio.
+    module("intellij.platform.ide.nonModalWelcomeScreen")
 
     // For CIDR.
     module("intellij.rml.dfa")
@@ -231,7 +237,8 @@ class AndroidStudioProperties : ProductProperties() {
   }
 
   private fun copyCidrLicense(spec: PluginLayout.PluginLayoutBuilder) {
-    spec.withGeneratedResources { pluginDir, context ->
+    // Not part of the JetBrains dev distribution; still run it in the classic dev build, as before IJ 2026.3.
+    spec.withGeneratedResources(DevPluginLayoutAssetSpec.OMITTED.copy(classicDev = ClassicDevRun.RUN)) { pluginDir, context ->
       val source = context.paths.communityHomeDir.resolve("CIDR_LICENSE.txt")
       val target = pluginDir.resolve("lib/LICENSE.txt")
       target.createParentDirectories()
@@ -240,11 +247,11 @@ class AndroidStudioProperties : ProductProperties() {
   }
 
   private fun clangdPluginDirName(): String {
-    val clangdPlugin = productLayout.pluginLayouts.single { p -> p.mainModule == "intellij.cidr.clangd" }
+    val clangdPlugin = productLayout.pluginLayouts.value.single { p -> p.mainModule == "intellij.cidr.clangd" }
     return clangdPlugin.directoryName
   }
 
-  override suspend fun copyAdditionalFiles(targetDir: Path, context: BuildContext) {
+  override fun copyAdditionalFiles(targetDir: Path, context: BuildContext) {
     FileSet(context.paths.communityHomeDir)
       .include("LICENSE.txt")
       .include("NOTICE.txt")
@@ -278,7 +285,7 @@ class AndroidStudioProperties : ProductProperties() {
         return "https://www.jetbrains.com/idea/uninstall/?edition=IC-${appInfo.majorVersion}.${appInfo.minorVersion}"
       }
 
-      override suspend fun copyAdditionalFiles(targetDir: Path, arch: JvmArchitecture, context: BuildContext) {
+      override fun copyAdditionalFiles(targetDir: Path, arch: JvmArchitecture, context: BuildContext) {
         FileSet(context.paths.communityHomeDir.resolve("../../prebuilts/tools/clion/bin/clang/win/x64"))
           .includeAll()
           .copyToDir(targetDir.resolve("plugins/${clangdPluginDirName()}/bin/clang/win/x64/bin"))
@@ -296,7 +303,7 @@ class AndroidStudioProperties : ProductProperties() {
 
       override fun getRootDirectoryName(appInfo: ApplicationInfoProperties, buildNumber: String): String = "android-studio"
 
-      override suspend fun copyAdditionalFiles(targetDir: Path, arch: JvmArchitecture, context: BuildContext) {
+      override fun copyAdditionalFiles(targetDir: Path, arch: JvmArchitecture, context: BuildContext) {
         FileSet(context.paths.communityHomeDir.resolve("../../prebuilts/tools/clion/bin/clang/linux/x64"))
           .includeAll()
           .copyToDir(targetDir.resolve("plugins/${clangdPluginDirName()}/bin/clang/linux/x64/bin"))
@@ -321,7 +328,7 @@ class AndroidStudioProperties : ProductProperties() {
 
     override fun getRootDirectoryName(appInfo: ApplicationInfoProperties, buildNumber: String): String = "android-studio"
 
-    override suspend fun copyAdditionalFiles(context: BuildContext, targetDir: Path, arch: JvmArchitecture) {
+    override fun copyAdditionalFiles(context: BuildContext, targetDir: Path, arch: JvmArchitecture) {
       val archDir = when (arch) {
         JvmArchitecture.x64 -> "x64"
         JvmArchitecture.aarch64 -> "aarch64"

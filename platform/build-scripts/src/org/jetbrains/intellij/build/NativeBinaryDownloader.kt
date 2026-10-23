@@ -128,7 +128,11 @@ object NativeBinaryDownloader {
   }
 
   private fun downloadAndUnpack(context: BuildContext, propertyName: String, artifactId: String): Pair<Path, Path> {
-    error("Android Studio (b/342419219): platform binaries should be built from source instead of downloaded from JetBrains")
+    // TODO(b/568401998): libwebp is temporarily exempt because upstream commit 58dff8813143 deleted the
+    // checked-in plugins/webp/lib/libwebp binaries. Build it from source like the launcher and restarter.
+    if (artifactId != LIBWEBP_ID) {
+      error("Android Studio (b/342419219): platform binaries should be built from source instead of downloaded from JetBrains")
+    }
     val communityRoot = context.paths.communityHomeDirRoot
     val version = context.dependenciesProperties.property(propertyName)
     val uri = BuildDependenciesDownloader.getUriForMavenArtifact(INTELLIJ_DEPENDENCIES_URL, GROUP_ID, artifactId, version, PACKAGING)
