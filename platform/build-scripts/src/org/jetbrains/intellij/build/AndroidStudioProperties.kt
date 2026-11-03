@@ -143,6 +143,7 @@ class AndroidStudioProperties : ProductProperties() {
       // versions between our MCP and the core classloader and to avoid friction during updates by having to manually
       // update our versions. (b/500176062).
       layout.withModuleLibrary("ktor-server-content-negotiation", "intellij.libraries.ktor.server.content.negotiation", "")
+      layout.withModuleLibrary("ktor-server-routing-openapi", "intellij.libraries.ktor.server.content.negotiation", "")
       layout.withModuleLibrary("ktor-server-sse-jvm", "intellij.libraries.ktor.server.sse", "")
 
       layout.withPatch { patcher, context ->

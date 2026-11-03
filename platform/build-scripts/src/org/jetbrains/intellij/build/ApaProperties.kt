@@ -118,6 +118,7 @@ class ApaProperties(private val home: Path) : ProductProperties() {
       layout.withModuleLibrary("kotlinx-coroutines-guava", "intellij.libraries.kotlinx.coroutines.guava", "")
       // Required for ACP/MCP JSON content negotiation:
       layout.withModuleLibrary("ktor-server-content-negotiation", "intellij.libraries.ktor.server.content.negotiation", "")
+      layout.withModuleLibrary("ktor-server-routing-openapi", "intellij.libraries.ktor.server.content.negotiation", "")
       // Required for Studiobot LLM token streaming via Server-Sent Events (SSE):
       layout.withModuleLibrary("ktor-server-sse-jvm", "intellij.libraries.ktor.server.sse", "")
     }
