@@ -120,6 +120,9 @@ class AndroidStudioProperties : ProductProperties() {
       layout.withModule("intellij.java.testFramework.shared", TEST_FRAMEWORK_JAR)
       layout.withModule("intellij.platform.testFramework.core", TEST_FRAMEWORK_JAR)
       layout.withModule("intellij.platform.testFramework.teamCity", TEST_FRAMEWORK_JAR)
+      // intellij.platform.testFramework.core depends on intellij.java.rt (e.g. FileComparisonData). Since IJPL-256998,
+      // idea_rt.jar ships only in the Java plugin, which tests without the Java plugin do not have (b/582334681).
+      layout.withModule("intellij.java.rt", TEST_FRAMEWORK_JAR)
       // The following are needed for Jewel/Compose tests.
       layout.withModule("intellij.platform.jewel.intUi.standalone", TEST_FRAMEWORK_JAR)
       layout.withModule("intellij.platform.jewel.markdown.intUiStandaloneStyling", TEST_FRAMEWORK_JAR)
