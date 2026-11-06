@@ -2,10 +2,11 @@
 
 Scripts and container definitions for building IntelliJ Platform native tools used by Android Studio across Linux, Windows, and macOS (`x64` and `ARM64`).
 
-- **Native source code**: `tools/idea/native/`
+- **Native source code**: `tools/idea/native/` and `external/webp/`
 - **Checked-in prebuilt destinations**:
   - `tools/idea/bin/{linux,win}/{amd64,aarch64}/` and `tools/idea/bin/mac/`
   - `tools/idea/platform/build-scripts/resources/{linux,win}/{amd64,aarch64}/` and `tools/idea/platform/build-scripts/resources/mac/`
+  - `tools/idea/plugins/webp/lib/libwebp/{linux,win,mac}/{amd64,aarch64}/`
 - **Busytown CI branch config**: `google3/configs/wireless/android/busytown/apps/git_studio/git_studio-intellij.gcl` (`git_studio-intellij`)
 - **Prebuilt drop tool**: `google3/wireless/android/devtools/studio/prebuilt_drop/`
 
@@ -21,26 +22,31 @@ All three CI targets (`IntelliJ-linux`, `IntelliJ-win`, `IntelliJ-mac_arm64`) or
 ├── linux-arm/
 ├── windows-x64/
 ├── windows-arm/
-└── mac/
+├── mac/
+├── mac-x64/
+└── mac-arm/
 ```
 
-| Tool | Source (`tools/idea/native/`) | CI Target (Entry Script) | Build Artifact Path (`<dist_dir>/artifacts/...`) | Checked-In Repo Path (`tools/idea/...`) |
+| Tool | Source | CI Target (Entry Script) | Build Artifact Path (`<dist_dir>/artifacts/...`) | Checked-In Repo Path (`tools/idea/...`) |
 | :--- | :--- | :--- | :--- | :--- |
-| **fsnotifier** (Linux) | `fsNotifier/linux` | `IntelliJ-linux` (`linux_tools_re_proxy.sh`) | `linux-{x64,arm}/fsnotifier` | `bin/linux/{amd64,aarch64}/fsnotifier` |
-| **restarter** (Linux) | `restarter` | `IntelliJ-linux` (`linux_tools_re_proxy.sh`) | `linux-{x64,arm}/restarter` | `platform/build-scripts/resources/linux/{amd64,aarch64}/restarter` |
-| **XPlatLauncher** (Linux) | `XPlatLauncher` | `IntelliJ-linux` (`linux_tools_re_proxy.sh`) | `linux-{x64,arm}/{launcher,xplat-launcher-third-party-licenses.html}` | `platform/build-scripts/resources/linux/{amd64,aarch64}/{launcher,launcher_licenses.html}` |
-| **WslTools** (`wslhash`, `wslproxy`, `ttyfix`) | `WslTools` | `IntelliJ-linux` (`linux_tools_re_proxy.sh`) | `windows-{x64,arm}/{wslhash,wslproxy,ttyfix}` | `bin/win/{amd64,aarch64}/{wslhash,wslproxy,ttyfix}` |
-| **restarter** (Windows) | `restarter` | `IntelliJ-linux` (`linux_tools_re_proxy.sh`) | `windows-{x64,arm}/restarter.exe` | `platform/build-scripts/resources/win/{amd64,aarch64}/restarter.exe` |
-| **XPlatLauncher** (Windows) | `XPlatLauncher` | `IntelliJ-linux` (`linux_tools_re_proxy.sh`) | `windows-{x64,arm}/{launcher.exe,launcher-win-con.exe,xplat-launcher-third-party-licenses.html}` | `platform/build-scripts/resources/win/{amd64,aarch64}/{launcher.exe,launcher-win-con.exe,launcher_licenses.html}` |
-| **WinFsNotifier** | `WinFsNotifier` | `IntelliJ-win` (`native_win.cmd`) | `windows-{x64,arm}/fsnotifier.exe` | `bin/win/{amd64,aarch64}/fsnotifier.exe` |
-| **WinProcessListHelper** | `WinProcessListHelper` | `IntelliJ-win` (`native_win.cmd`) | `windows-{x64,arm}/WinProcessListHelper.exe` | `bin/win/{amd64,aarch64}/WinProcessListHelper.exe` |
-| **WinShellIntegration** | `WinShellIntegration` | `IntelliJ-win` (`native_win.cmd`) | `windows-{x64,arm}/WinShellIntegrationBridge.dll` | `bin/win/{amd64,aarch64}/WinShellIntegrationBridge.dll` |
-| **fsnotifier** (macOS) | `fsNotifier/mac` | `IntelliJ-mac_arm64` (`native_mac.sh`) | `mac/fsnotifier` | `bin/mac/fsnotifier` |
-| **MacEnvReader** | `MacEnvReader` | `IntelliJ-mac_arm64` (`native_mac.sh`) | `mac/printenv` | `bin/mac/printenv` |
-| **MacScreenMenu** | `MacScreenMenu` | `IntelliJ-mac_arm64` (`native_mac.sh`) | `mac/libmacscreenmenu64.dylib` | `bin/mac/libmacscreenmenu64.dylib` |
-| **MacTouchBar** | `MacTouchBar` | `IntelliJ-mac_arm64` (`native_mac.sh`) | `mac/libnst64.dylib` | `bin/mac/libnst64.dylib` |
-| **restarter** (macOS) | `restarter` | `IntelliJ-mac_arm64` (`native_mac.sh`) | `mac/restarter` | `platform/build-scripts/resources/mac/restarter` |
-| **XPlatLauncher** (macOS) | `XPlatLauncher` | `IntelliJ-mac_arm64` (`native_mac.sh`) | `mac/xplat-launcher` | `platform/build-scripts/resources/mac/launcher` |
+| **fsnotifier** (Linux) | `tools/idea/native/fsNotifier/linux` | `IntelliJ-linux` (`linux_tools_re_proxy.sh`) | `linux-{x64,arm}/fsnotifier` | `bin/linux/{amd64,aarch64}/fsnotifier` |
+| **restarter** (Linux) | `tools/idea/native/restarter` | `IntelliJ-linux` (`linux_tools_re_proxy.sh`) | `linux-{x64,arm}/restarter` | `platform/build-scripts/resources/linux/{amd64,aarch64}/restarter` |
+| **XPlatLauncher** (Linux) | `tools/idea/native/XPlatLauncher` | `IntelliJ-linux` (`linux_tools_re_proxy.sh`) | `linux-{x64,arm}/{launcher,xplat-launcher-third-party-licenses.html}` | `platform/build-scripts/resources/linux/{amd64,aarch64}/{launcher,launcher_licenses.html}` |
+| **libwebp_jni** (Linux) | `external/webp` | `IntelliJ-linux` (`linux_tools_re_proxy.sh`) | `linux-{x64,arm}/libwebp_jni.so` | `plugins/webp/lib/libwebp/linux/{amd64,aarch64}/libwebp_jni.so` |
+| **WslTools** (`wslhash`, `wslproxy`, `ttyfix`) | `tools/idea/native/WslTools` | `IntelliJ-linux` (`linux_tools_re_proxy.sh`) | `windows-{x64,arm}/{wslhash,wslproxy,ttyfix}` | `bin/win/{amd64,aarch64}/{wslhash,wslproxy,ttyfix}` |
+| **restarter** (Windows) | `tools/idea/native/restarter` | `IntelliJ-linux` (`linux_tools_re_proxy.sh`) | `windows-{x64,arm}/restarter.exe` | `platform/build-scripts/resources/win/{amd64,aarch64}/restarter.exe` |
+| **XPlatLauncher** (Windows) | `tools/idea/native/XPlatLauncher` | `IntelliJ-linux` (`linux_tools_re_proxy.sh`) | `windows-{x64,arm}/{launcher.exe,launcher-win-con.exe,xplat-launcher-third-party-licenses.html}` | `platform/build-scripts/resources/win/{amd64,aarch64}/{launcher.exe,launcher-win-con.exe,launcher_licenses.html}` |
+| **WinFsNotifier** | `tools/idea/native/WinFsNotifier` | `IntelliJ-win` (`native_win.cmd`) | `windows-{x64,arm}/fsnotifier.exe` | `bin/win/{amd64,aarch64}/fsnotifier.exe` |
+| **WinProcessListHelper** | `tools/idea/native/WinProcessListHelper` | `IntelliJ-win` (`native_win.cmd`) | `windows-{x64,arm}/WinProcessListHelper.exe` | `bin/win/{amd64,aarch64}/WinProcessListHelper.exe` |
+| **WinShellIntegration** | `tools/idea/native/WinShellIntegration` | `IntelliJ-win` (`native_win.cmd`) | `windows-{x64,arm}/WinShellIntegrationBridge.dll` | `bin/win/{amd64,aarch64}/WinShellIntegrationBridge.dll` |
+| **libwebp_jni** (Windows) | `external/webp` | `IntelliJ-win` (`native_win.cmd`) | `windows-{x64,arm}/webp_jni.dll` | `plugins/webp/lib/libwebp/win/{amd64,aarch64}/webp_jni.dll` |
+| **fsnotifier** (macOS) | `tools/idea/native/fsNotifier/mac` | `IntelliJ-mac_arm64` (`native_mac.sh`) | `mac/fsnotifier` | `bin/mac/fsnotifier` |
+| **MacEnvReader** | `tools/idea/native/MacEnvReader` | `IntelliJ-mac_arm64` (`native_mac.sh`) | `mac/printenv` | `bin/mac/printenv` |
+| **MacScreenMenu** | `tools/idea/native/MacScreenMenu` | `IntelliJ-mac_arm64` (`native_mac.sh`) | `mac/libmacscreenmenu64.dylib` | `bin/mac/libmacscreenmenu64.dylib` |
+| **MacTouchBar** | `tools/idea/native/MacTouchBar` | `IntelliJ-mac_arm64` (`native_mac.sh`) | `mac/libnst64.dylib` | `bin/mac/libnst64.dylib` |
+| **restarter** (macOS) | `tools/idea/native/restarter` | `IntelliJ-mac_arm64` (`native_mac.sh`) | `mac/restarter` | `platform/build-scripts/resources/mac/restarter` |
+| **XPlatLauncher** (macOS) | `tools/idea/native/XPlatLauncher` | `IntelliJ-mac_arm64` (`native_mac.sh`) | `mac/xplat-launcher` | `platform/build-scripts/resources/mac/launcher` |
+| **libwebp_jni** (macOS) | `external/webp` | `IntelliJ-mac_arm64` (`native_mac.sh`) | `mac-{x64,arm}/libwebp_jni.dylib` | `plugins/webp/lib/libwebp/mac/{amd64,aarch64}/libwebp_jni.dylib` |
 
 > **Note on `WslTools`**: `wslhash`, `wslproxy`, and `ttyfix` are statically linked Linux `musl` ELF binaries (`x86_64` and `aarch64`), but they are placed under `artifacts/windows-{x64,arm}/` because they ship inside the Windows IDE distribution (`bin/win/{amd64,aarch64}/`) and are executed by the Windows IDE inside the user's WSL distribution.
 
@@ -60,6 +66,7 @@ The `IntelliJ-linux` target runs on Remote Build Execution (RBE) inside a pinned
    - Shuts down `bootstrap` and copies RBE logs into `<dist_dir>`.
 2. **`linux_tools.sh`**:
    - **`fsnotifier`**: Compiled with `clang` (`linux-x64`) and `clang --target=aarch64-linux-gnu` (`linux-arm`) against Ubuntu 20.04 glibc headers so the resulting binaries maintain a low `GLIBC_2.*` symbol requirement.
+   - **`libwebp_jni`**: Built with CMake (`webp/CMakeLists.txt` wrapping `external/webp` and `swig/libwebp_java_wrap.c`, using JNI headers from `prebuilts/studio/jdk/jni_headers/jdk11`) with `/usr/bin/clang` (`linux-x64`) and `/usr/bin/aarch64-linux-gnu-gcc` (`linux-arm`).
    - **`WslTools` (`wslhash`, `wslproxy`, `ttyfix`)**: Builds `musl-1.2.6` from `/home/builder/musl-1.2.6.tar.gz` for both `x86_64` and `aarch64` and compiles the three C tools with `-static` using `musl-gcc` so they have zero dynamic library dependencies (`INTERP` and `NEEDED` are verified empty via `readelf`).
    - **`restarter` & `XPlatLauncher`**: Built with Cargo (`--offline`) across four targets:
      - `x86_64-unknown-linux-gnu` $\rightarrow$ `artifacts/linux-x64/`
@@ -74,15 +81,17 @@ The `IntelliJ-win` target runs on Windows buildbot machines (`adt-win-*`) via `n
 - `build-win-fsnotifier.cmd` (`tools/idea/native/WinFsNotifier`)
 - `build-win-process-list-helper.cmd` (`tools/idea/native/WinProcessListHelper`)
 - `build-win-shell-integration.cmd` (`tools/idea/native/WinShellIntegration`, using JNI headers from `prebuilts/studio/jdk/jni_headers/jdk11`)
+- `build-win-webp.cmd` (`webp/CMakeLists.txt` wrapping `external/webp`, using JNI headers from `prebuilts/studio/jdk/jni_headers/jdk11`)
 
 Each script runs Visual Studio 2019's bundled CMake twice in separate build directories (`<Tool>-x64` with `-A x64` and `<Tool>-arm64` with `-A ARM64`) and copies the resulting `Release` binaries to `<dist_dir>\artifacts\windows-x64\` and `<dist_dir>\artifacts\windows-arm\`. (`WinElevator` is intentionally not built here; see note above.)
 
-### macOS Universal Native Tools (`IntelliJ-mac_arm64`)
+### macOS Native Tools (`IntelliJ-mac_arm64`)
 
-The `IntelliJ-mac_arm64` target runs on macOS build machines via `native_mac.sh <out_dir> <dist_dir> <build_number>`, which invokes `build-mac-{touchbar,envreader,screenmenu,fsnotifier,xplat-launcher,restarter}.sh` (sharing helpers from `build-mac-common.sh`):
+The `IntelliJ-mac_arm64` target runs on macOS build machines via `native_mac.sh <out_dir> <dist_dir> <build_number>`, which invokes `build-mac-{touchbar,envreader,screenmenu,fsnotifier,xplat-launcher,restarter,webp}.sh` (sharing helpers from `build-mac-common.sh`):
 - C/C++/Objective-C projects (`MacTouchBar`, `MacEnvReader`, `MacScreenMenu`, `fsNotifier/mac`) are built with `prebuilts/studio/sdk/darwin/cmake` configured for both `x86_64` and `arm64`.
 - Rust projects (`XPlatLauncher`, `restarter`) are built with `prebuilts/rust-toolchain/darwin` for `x86_64-apple-darwin` and `aarch64-apple-darwin` and combined into universal Mach-O binaries using `lipo -create`.
-- `verifyArchs` checks `lipo -archs` on each output binary before copying it to `<dist_dir>/artifacts/mac/`.
+- `verifyArchs` checks `lipo -archs` on each universal output binary before copying it to `<dist_dir>/artifacts/mac/`.
+- `build-mac-webp.sh` builds separate single-architecture `x86_64` and `arm64` `libwebp_jni.dylib` binaries via CMake (`webp/CMakeLists.txt` wrapping `external/webp`) and copies them to `<dist_dir>/artifacts/mac-x64/libwebp_jni.dylib` and `<dist_dir>/artifacts/mac-arm/libwebp_jni.dylib`.
 
 ---
 
@@ -177,19 +186,19 @@ Once a build finishes on `ab/git_studio-intellij` (or Rapid project `adt_drop.in
 ```bash
 # Drop Linux + cross-compiled Windows tools from an IntelliJ-linux build_id:
 blaze run //wireless/android/devtools/studio/prebuilt_drop:prebuilt_drop -- \
-  --config=LinuxFsNotifier,LinuxLauncher,LinuxRestarter,WinLauncher,WinRestarter,WslTools \
+  --config=LinuxFsNotifier,LinuxLauncher,LinuxRestarter,LinuxWebp,WinLauncher,WinRestarter,WslTools \
   --branch=studio-main \
   --build_id=<INTELLIJ_LINUX_BUILD_ID>
 
 # Drop Windows MSVC tools from an IntelliJ-win build_id:
 blaze run //wireless/android/devtools/studio/prebuilt_drop:prebuilt_drop -- \
-  --config=WinFsNotifier,WinProcessListHelper,WinShellIntegration \
+  --config=WinFsNotifier,WinProcessListHelper,WinShellIntegration,WinWebp \
   --branch=studio-main \
   --build_id=<INTELLIJ_WIN_BUILD_ID>
 
 # Drop macOS tools from an IntelliJ-mac_arm64 build_id:
 blaze run //wireless/android/devtools/studio/prebuilt_drop:prebuilt_drop -- \
-  --config=MacEnvReader,MacFsNotifier,MacLauncher,MacRestarter,MacScreenMenu,MacTouchBar \
+  --config=MacEnvReader,MacFsNotifier,MacLauncher,MacRestarter,MacScreenMenu,MacTouchBar,MacWebp \
   --branch=studio-main \
   --build_id=<INTELLIJ_MAC_BUILD_ID>
 ```

@@ -36,6 +36,13 @@ if errorlevel 1 (
 )
 @echo native_win.cmd time: %time%
 
+@echo "Building WinWebp"
+call %SCRIPT_DIR%build-win-webp.cmd %OUTDIR% %DISTDIR% %BUILDNUMBER%
+if errorlevel 1 (
+  set /A EXITCODE=EXITCODE+1
+)
+@echo native_win.cmd time: %time%
+
 :: WinElevator (elevator.exe and its companion launcher.exe in bin\win) is intentionally NOT built here.
 :: Android Studio uses the prebuilt binaries signed by JetBrains from IntelliJ upstream merges.
 

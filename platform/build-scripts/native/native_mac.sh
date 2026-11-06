@@ -43,8 +43,11 @@ ${script_dir}/build-mac-xplat-launcher.sh -o ${out_dir}/xplat-launcher -d ${mac_
 echo "Building restarter..."
 ${script_dir}/build-mac-restarter.sh -o ${out_dir}/restarter -d ${mac_dist_dir} || { failed_builds+=" restarter" ;  ((failed_count++)) ; }
 
+echo "Building libwebp_jni..."
+${script_dir}/build-mac-webp.sh -o ${out_dir}/webp -d "${dist_dir}/artifacts" || { failed_builds+=" libwebp_jni" ;  ((failed_count++)) ; }
+
 echo "=========================="
-ls -lha $mac_dist_dir
+ls -lha "$mac_dist_dir" "${dist_dir}/artifacts/mac-x64" "${dist_dir}/artifacts/mac-arm"
 echo "=========================="
 
 if [ $failed_count -gt 0 ]; then

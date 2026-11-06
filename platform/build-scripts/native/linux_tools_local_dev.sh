@@ -39,6 +39,8 @@ mkdir dist && chmod 777 dist
 docker run -it --rm \
   -v $top/tools/idea/native:/home/builder/tools/idea/native \
   -v $script_dir:/home/builder/tools/idea/platform/build-scripts/native \
+  -v $top/external/webp:/home/builder/external/webp:ro \
+  -v $top/prebuilts/studio/jdk/jni_headers/jdk11:/home/builder/prebuilts/studio/jdk/jni_headers/jdk11:ro \
   -v $work_dir/out:/home/builder/out \
   -v $work_dir/dist:/home/builder/dist \
   linux_tools:dev \

@@ -34,17 +34,30 @@ declare -r re_client="${top}/prebuilts/remoteexecution-client/latest"
   (
     rm -rf re_files && mkdir re_files && cd re_files
     mkdir -p ./tools/idea/platform/build-scripts/native/ && cp ${top}/tools/idea/platform/build-scripts/native/linux_tools.sh ./tools/idea/platform/build-scripts/native/
+    cp -r ${top}/tools/idea/platform/build-scripts/native/webp ./tools/idea/platform/build-scripts/native/webp
     mkdir -p ./tools/idea/native/ && cp -r ${top}/tools/idea/native/. ./tools/idea/native/
+    mkdir -p ./prebuilts/studio/jdk/jni_headers/jdk11/ && cp -r ${top}/prebuilts/studio/jdk/jni_headers/jdk11/include ./prebuilts/studio/jdk/jni_headers/jdk11/include
+    mkdir -p ./external/webp/ && cp -r \
+      ${top}/external/webp/CMakeLists.txt \
+      ${top}/external/webp/Makefile.am \
+      ${top}/external/webp/configure.ac \
+      ${top}/external/webp/cmake \
+      ${top}/external/webp/sharpyuv \
+      ${top}/external/webp/src \
+      ${top}/external/webp/swig \
+      ./external/webp/
 
     declare -r output_files=$(IFS=,; echo "\
 dist/artifacts/linux-x64/fsnotifier,\
 dist/artifacts/linux-x64/restarter,\
 dist/artifacts/linux-x64/launcher,\
 dist/artifacts/linux-x64/xplat-launcher-third-party-licenses.html,\
+dist/artifacts/linux-x64/libwebp_jni.so,\
 dist/artifacts/linux-arm/fsnotifier,\
 dist/artifacts/linux-arm/restarter,\
 dist/artifacts/linux-arm/launcher,\
 dist/artifacts/linux-arm/xplat-launcher-third-party-licenses.html,\
+dist/artifacts/linux-arm/libwebp_jni.so,\
 dist/artifacts/windows-x64/wslhash,\
 dist/artifacts/windows-x64/ttyfix,\
 dist/artifacts/windows-x64/wslproxy,\

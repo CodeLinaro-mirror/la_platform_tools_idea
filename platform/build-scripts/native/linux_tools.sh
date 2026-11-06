@@ -230,6 +230,42 @@ declare failed_builds=""
   ls -lha $linux_x64_dir/launcher $linux_arm_dir/launcher $win_x64_dir/launcher.exe $win_arm_dir/launcher.exe
 ) || { failed_builds+=" launcher" ;  failed_count="$((failed_count+1))" ; }
 
+(
+  echo "---------------------------"
+  echo " Building libwebp_jni"
+  echo "---------------------------"
+  mkdir -p "$out_dir/webp/x64" "$out_dir/webp/arm64"
+  declare -r jni_include="$top/prebuilts/studio/jdk/jni_headers/jdk11/include"
+  declare -r webp_cmake_dir="$top/tools/idea/platform/build-scripts/native/webp"
+
+  cmake -S "$webp_cmake_dir" -B "$out_dir/webp/x64" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_C_COMPILER=/usr/bin/clang \
+    -DWEBP_DIR="$top/external/webp" \
+    -DJNI_INCLUDE_DIR="$jni_include" \
+    -DJNI_MD_INCLUDE_DIR="$jni_include/linux"
+  cmake --build "$out_dir/webp/x64" --config Release --parallel 4
+
+  cmake -S "$webp_cmake_dir" -B "$out_dir/webp/arm64" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_SYSTEM_NAME=Linux \
+    -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
+    -DCMAKE_C_COMPILER=/usr/bin/aarch64-linux-gnu-gcc \
+    -DWEBP_DIR="$top/external/webp" \
+    -DJNI_INCLUDE_DIR="$jni_include" \
+    -DJNI_MD_INCLUDE_DIR="$jni_include/linux"
+  cmake --build "$out_dir/webp/arm64" --config Release --parallel 4
+
+  verify_glibc "$out_dir/webp/x64/bin/libwebp_jni.so"
+  verify_arch "$out_dir/webp/x64/bin/libwebp_jni.so" "x86-64"
+  verify_glibc "$out_dir/webp/arm64/bin/libwebp_jni.so"
+  verify_arch "$out_dir/webp/arm64/bin/libwebp_jni.so" "ARM aarch64"
+
+  cp "$out_dir/webp/x64/bin/libwebp_jni.so" "$linux_x64_dir/libwebp_jni.so"
+  cp "$out_dir/webp/arm64/bin/libwebp_jni.so" "$linux_arm_dir/libwebp_jni.so"
+  ls -lha "$linux_x64_dir/libwebp_jni.so" "$linux_arm_dir/libwebp_jni.so"
+) || { failed_builds+=" libwebp_jni" ;  failed_count="$((failed_count+1))" ; }
+
 echo "=========================="
 ls -lha $linux_x64_dir $linux_arm_dir $win_x64_dir $win_arm_dir
 echo "=========================="
