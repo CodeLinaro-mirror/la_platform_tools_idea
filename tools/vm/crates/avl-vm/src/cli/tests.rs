@@ -9,31 +9,20 @@ use std::path::{Path, PathBuf};
 
 use avl_base::config::{Presentation, THEME_VARIABLE};
 use avl_base::report::{Renderer, Terminal};
-use avl_base::{Backend, Environment, Exit, GuestOs, Reporter, SCHEMA_VERSION, Selection};
-use avl_host_sys::Interrupts;
+use avl_base::{Backend, Environment, Exit, GuestOs, SCHEMA_VERSION, Selection};
 use avl_wire::progress::{Event, Verdict};
 use pretty_assertions::assert_eq;
 use serde_json::Value;
 use tempfile::TempDir;
 
 use super::*;
-use crate::controller::{resolve_selection, run};
+use crate::cli::testing::{Answer, invoke_under};
+use crate::controller::resolve_selection;
 use crate::terminal::{DEFAULT_TERMINAL_WIDTH, TerminalFacts, colors_for, screen_for, wants_dashboard};
 
 // --- fixtures ----------------------------------------------------------------------------------------------------
 
-/// One invocation's two streams and its exit status, which is the whole observable surface.
-#[derive(Debug)]
-struct Answer {
-    exit: Exit,
-    stdout: String,
-    stderr: String,
-}
-
-/// An environment whose every path is under a temporary root.
-///
-/// `BUILD_WORKSPACE_DIRECTORY` is what the skill directory resolves from, so the suite never searches upwards and
-/// never depends on where the test binary started - which under Bazel is a sandbox with no checkout above it.
+/// An environment whose every path is under a temporary root, as [`invoke_under`] builds it.
 struct Hermetic {
     root: TempDir,
 }
@@ -46,38 +35,9 @@ impl Hermetic {
         }
     }
 
-    fn pairs(&self) -> Vec<(String, String)> {
-        let root = self.root.path();
-        let path = |relative: &str| root.join(relative).to_string_lossy().into_owned();
-        [
-            ("HOME", path("")),
-            ("BUILD_WORKSPACE_DIRECTORY", path("")),
-            ("AIR_VM_RUNTIME_ROOT", path("runtime")),
-            ("AIR_VM_IMAGE_ROOT", path("image")),
-            ("AIR_VM_HOST_REPO", path("")),
-            ("AIR_VM_BAZEL_USER_ROOT", path("bazel-root")),
-        ]
-        .into_iter()
-        .map(|(name, value)| (name.to_owned(), value))
-        .collect()
-    }
-
     /// Runs the controller over in-memory writers, which is why `main` holds nothing but the process's facts.
     async fn invoke(&self, argv: &[&str]) -> Answer {
-        let (reporter, stdout, stderr) = Reporter::in_memory("vm");
-        let exit = run(
-            os(argv),
-            Environment::from_pairs(self.pairs()),
-            reporter,
-            TerminalFacts::default(),
-            Interrupts::detached(),
-        )
-        .await;
-        Answer {
-            exit,
-            stdout: stdout.text(),
-            stderr: stderr.text(),
-        }
+        invoke_under(self.root.path(), argv, &[]).await
     }
 }
 
@@ -354,6 +314,19 @@ fn a_global_option_after_the_command_is_the_same_option() {
             guest_os: GuestOs::Linux
         })
     );
+}
+
+// The controller runs the lane daemon alone, so `--runner` is no option any more: a command line that still names it is
+// a usage refusal before any command runs.
+#[test]
+fn a_command_line_with_the_retired_runner_option_is_refused() {
+    let pipe = TerminalFacts::default();
+    for argv in [&["--runner", "daemon", "status"][..], &["daemon", "status", "--runner", "jvm"][..]] {
+        let Parsed::Refused { refusal, .. } = parse_argv(argv, &pipe) else {
+            panic!("{argv:?} was accepted");
+        };
+        assert_eq!(refusal.exit, Exit::USAGE, "{argv:?}: {}", refusal.message);
+    }
 }
 
 // An acquisition that names no holder takes the invoking user's, in the shape a self-leased run uses, so a caller
@@ -730,14 +703,12 @@ fn the_help_names_the_wrapper_and_interpolates_the_lists_it_does_not_own() {
     // Each of these has exactly one owner; the help text reads it rather than restating it.
     let text = every_long_help().join("\n");
     for expected in [
-        // 263 only: master's lane table makes `jcp` an integration lane with a test label and no catalog lane, so the
-        // help names it as a UI lane and as an explicit-only lane. See `plugins/air/BRANCH-263-DIVERGENCE.md` section 3.16.
         "ui|ui-real|ui-live|ui-perf|jcp|gui-chat",
         "explicit-only lane (ui-live, ui-perf, jcp)",
         "none|fresh-ide|daemon",
         "capped at 5",
         "default --reset fresh-ide",
-        "include-tag, exclude-tag",
+        "include-classname, exclude-classname",
     ] {
         assert!(text.contains(expected), "the help text does not carry {expected:?}");
     }
@@ -918,6 +889,14 @@ fn parse_refusal(argv: &[&str]) -> Refusal {
     }
 }
 
+/// Checks that `verb` with `argv` is a usage refusal whose message contains `fragment`.
+fn assert_usage_refusal(verb: &str, argv: &[&str], fragment: &str) {
+    let argv: Vec<&str> = std::iter::once(verb).chain(argv.iter().copied()).collect();
+    let refusal = parse_refusal(&argv);
+    assert_eq!(refusal.exit, Exit::USAGE, "{argv:?}");
+    assert!(refusal.message.contains(fragment), "{argv:?}: {}", refusal.message);
+}
+
 // The command's own options refuse in the controller's words, before anything is leased: a count outside the useful
 // range, a count that is not a strict base-ten integer, and an option with no value.
 #[test]
@@ -932,10 +911,7 @@ fn a_shard_count_the_split_cannot_use_is_a_usage_refusal() {
         (&["--shards", "6", "--lane", "ui"], "--shards"),
         (&["--shards"], "--shards needs a value"),
     ] {
-        let argv: Vec<&str> = std::iter::once("shard").chain(argv.iter().copied()).collect();
-        let refusal = parse_refusal(&argv);
-        assert_eq!(refusal.exit, Exit::USAGE, "{argv:?}");
-        assert!(refusal.message.contains(fragment), "{argv:?}: {}", refusal.message);
+        assert_usage_refusal("shard", argv, fragment);
     }
 }
 
@@ -952,10 +928,7 @@ fn a_trial_count_or_reset_the_measurement_cannot_use_is_a_usage_refusal() {
         (&["--lane", "ui", "--trials", "2", "--reset", "reboot"], "none, fresh-ide, daemon"),
         (&["--lane", "ui", "--trials", "2", "--reset"], "--reset needs a value"),
     ] {
-        let argv: Vec<&str> = std::iter::once("flake").chain(argv.iter().copied()).collect();
-        let refusal = parse_refusal(&argv);
-        assert_eq!(refusal.exit, Exit::USAGE, "{argv:?}");
-        assert!(refusal.message.contains(fragment), "{argv:?}: {}", refusal.message);
+        assert_usage_refusal("flake", argv, fragment);
     }
 }
 

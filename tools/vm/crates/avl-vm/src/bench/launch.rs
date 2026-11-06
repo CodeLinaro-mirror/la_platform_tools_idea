@@ -22,11 +22,11 @@ use avl_base::{Exit, Refusal};
 use avl_host_sys::{Ctx, ProcError, Runner, SpawnOptions};
 use serde::Deserialize;
 
-use super::arm::{Arm, Gate};
+use super::arm::{Arm, ArmKind, Gate};
 use super::files;
 use super::fus;
 use super::profile::{GATE_PROFILE, ProfileEvent, WHOLE_PROFILE};
-use super::record::{self, EDITOR_HIGHLIGHTED, LaunchFacts, RunKind};
+use super::record::{self, EDITOR_HIGHLIGHTED, LaunchFacts, RunKind, THREAD_DUMP_FILE};
 use super::session::{CLASS_LOAD_LOG, ProjectPaths, Sandbox, TRACE_FILE};
 use super::stage::{DistConfig, Generation};
 use super::stats;
@@ -93,6 +93,17 @@ pub(crate) const FORCE_MODAL_PROPERTY: &str = "idea.force.disable.non.modal.welc
 /// dialog stops a run.
 pub(crate) const TRUST_PROPERTY: &str = "idea.trust.all.projects=true";
 
+/// The properties of the cargo-sync arm that the context of `RustRoverIndexingTest` sets (`rustRoverVmOptions`) and
+/// that act before the first Cargo sync: no AI promotion window, and no external linter on the fly.
+pub(crate) const CARGO_SYNC_PROPERTIES: [&str; 2] = [
+    "llm.show.ai.promotion.window.on.start=false",
+    "org.rust.external.linter.on.the.fly=false",
+];
+
+/// The property of a twin arm, see [`Arm::suppressed`]. The IDE reads it as a list of plugin ids at the start and loads
+/// none of them.
+pub(crate) const SUPPRESSED_PLUGINS_PROPERTY: &str = "idea.suppressed.plugins.id";
+
 /// The file of the opened packages in a generation, a copy of
 /// `community/platform/platform-impl/resources/META-INF/OpenedPackages.txt`.
 pub(crate) const OPENED_PACKAGES_FILE: &str = "OpenedPackages.txt";
@@ -117,9 +128,9 @@ pub(crate) fn sandbox_options(sandbox: &Sandbox) -> Vec<String> {
 /// stays rare.
 pub(crate) const ASYNC_LOG_OPTIONS: [&str; 2] = ["-Xlog:async:stall", "-XX:AsyncLogBufferSize=32M"];
 
-/// The option that makes the JVM write [`CLASS_LOAD_LOG`] with the uptime of each class. The `-Xlog` grammar ends the
-/// file name at a `:`, so a run directory with a `:` in its path is an error that names it. A space is no problem,
-/// because the argfile quotes it.
+/// The option that makes the JVM write [`CLASS_LOAD_LOG`] with the uptime and the thread of each class, and the start
+/// of each thread. The `-Xlog` grammar ends the file name at a `:`, so a run directory with a `:` in its path is an
+/// error that names it. A space is no problem, because the argfile quotes it.
 pub(crate) fn class_load_option(run_dir: &Path) -> Result<String, String> {
     let log = run_dir.join(CLASS_LOAD_LOG);
     let path = log.display().to_string();
@@ -129,14 +140,14 @@ pub(crate) fn class_load_option(run_dir: &Path) -> Result<String, String> {
             run_dir.display()
         ));
     }
-    Ok(format!("-Xlog:class+load:file={path}:uptime,tags"))
+    Ok(format!("-Xlog:class+load,os+thread:file={path}:uptime,tid,tags"))
 }
 
 /// The options of a measured start, in order: the sandbox, the files of the run, the asynchronous log, see
-/// [`ASYNC_LOG_OPTIONS`], the class-load log, the properties, the arm and the profiler. A run directory that the
-/// class-load log cannot name is an error, see [`class_load_option`]. The profiler starts with the JVM and writes
-/// [`WHOLE_PROFILE`] at the exit, unless the run stops it at the gate.
-pub(crate) fn measure_options(run_dir: &Path, sandbox: &Sandbox, arm: Arm, profiler: Option<&Profiler>) -> Result<Vec<String>, String> {
+/// [`ASYNC_LOG_OPTIONS`], the class-load log, the properties, the arm, the suppressed plugin of a twin and the
+/// profiler. A run directory that the class-load log cannot name is an error, see [`class_load_option`]. The profiler
+/// starts with the JVM and writes [`WHOLE_PROFILE`] at the exit, unless the run stops it at the gate.
+pub(crate) fn measure_options(run_dir: &Path, sandbox: &Sandbox, arm: &Arm, profiler: Option<&Profiler>) -> Result<Vec<String>, String> {
     let mut options = sandbox_options(sandbox);
     options.extend([
         property("idea.log.path", &run_dir.join("log")),
@@ -148,10 +159,17 @@ pub(crate) fn measure_options(run_dir: &Path, sandbox: &Sandbox, arm: Arm, profi
     options.extend(ASYNC_LOG_OPTIONS.map(str::to_owned));
     options.push(class_load_option(run_dir)?);
     options.extend(MEASURE_PROPERTIES.iter().map(|property| format!("-D{property}")));
-    match arm {
-        Arm::Modal => options.push(format!("-D{FORCE_MODAL_PROPERTY}")),
-        Arm::Project | Arm::EmptyEditor => options.push(format!("-D{TRUST_PROPERTY}")),
-        Arm::NonModal | Arm::OpenProject => {}
+    match arm.kind {
+        ArmKind::Modal => options.push(format!("-D{FORCE_MODAL_PROPERTY}")),
+        ArmKind::Project | ArmKind::EmptyEditor => options.push(format!("-D{TRUST_PROPERTY}")),
+        ArmKind::CargoSync => {
+            options.push(format!("-D{TRUST_PROPERTY}"));
+            options.extend(CARGO_SYNC_PROPERTIES.iter().map(|property| format!("-D{property}")));
+        }
+        ArmKind::NonModal | ArmKind::OpenProject => {}
+    }
+    if let Some(plugin) = &arm.suppressed {
+        options.push(format!("-D{SUPPRESSED_PLUGINS_PROPERTY}={plugin}"));
     }
     if let Some(profiler) = profiler {
         options.push(DYNAMIC_AGENT_OPTION.to_owned());
@@ -179,6 +197,11 @@ pub(crate) fn profile_stop_argv(jcmd: &Path, pid: u32, library: &Path, file: &Pa
     ]
 }
 
+/// The argv that writes the thread dump of the IDE `pid`: `jcmd <pid> Thread.print`.
+pub(crate) fn thread_dump_argv(jcmd: &Path, pid: u32) -> Vec<String> {
+    vec![jcmd.display().to_string(), pid.to_string(), "Thread.print".to_owned()]
+}
+
 /// The PID of the IDE: the line `PID: <pid>` that `logEssentialInfoAboutIde` writes into `idea.log` at the start. A
 /// log without the line has none.
 pub(crate) fn idea_log_pid(log: &str) -> Option<u32> {
@@ -202,8 +225,10 @@ impl RunPlan<'_> {
     /// the IDE saves the editor state. A measured run passes the project only, and the IDE restores the editor. Each
     /// run of the `empty-editor` arm passes the project only, so the IDE saves and restores no editor.
     pub(crate) fn program_arguments(&self) -> Vec<String> {
-        match (&self.project, self.arm, self.kind) {
-            (Some(project), Arm::Project, RunKind::Prime) => vec![project.dir.display().to_string(), project.file.display().to_string()],
+        match (&self.project, self.arm.kind, self.kind) {
+            (Some(project), ArmKind::Project, RunKind::Prime) => {
+                vec![project.dir.display().to_string(), project.file.display().to_string()]
+            }
             (Some(project), _, _) => vec![project.dir.display().to_string()],
             (None, _, _) => Vec::new(),
         }
@@ -529,7 +554,7 @@ impl Launcher {
     /// Runs the IDE once in `run_dir` and answers what the controller saw. The run waits for the gate of its arm.
     pub(crate) async fn run(&self, ctx: &Ctx, run_dir: &Path, sandbox: &Sandbox, plan: &RunPlan<'_>) -> LaunchFacts {
         let mut facts = LaunchFacts::default();
-        let options = match measure_options(run_dir, sandbox, plan.arm, self.profiler.as_ref()) {
+        let options = match measure_options(run_dir, sandbox, &plan.arm, self.profiler.as_ref()) {
             Ok(options) => options,
             Err(failure) => {
                 facts.failure = Some(failure);
@@ -554,8 +579,12 @@ impl Launcher {
             Gate::Welcome { .. } => wait_for_welcome(ctx, &mut ide, run_dir, &fus_dir, &mut collector, &mut facts).await,
             Gate::Highlighted => wait_for_highlighted(ctx, &mut ide, run_dir, plan.kind == RunKind::Prime, &mut facts).await,
             Gate::Span { name, missing } => wait_for_span(ctx, &mut ide, run_dir, name, missing, &mut facts).await,
+            Gate::LogLine { line, missing, .. } => wait_for_log_line(ctx, &mut ide, run_dir, line, missing, &mut facts).await,
         };
         facts.waited_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        if exited.is_none() && facts.failure.is_none() {
+            facts.thread_dump_failure = self.dump_threads(ctx, run_dir).await.err();
+        }
         if exited.is_none()
             && facts.failure.is_none()
             && let Some(profiler) = &self.profiler
@@ -584,10 +613,9 @@ impl Launcher {
         facts
     }
 
-    /// Stops the profiler of the running IDE when the run passed its gate, so [`GATE_PROFILE`] holds the start-up and
-    /// not the hold and the quit. Answers why it could not: no `jcmd` in the JBR of the generation, no PID in
-    /// `log/idea.log`, or a `jcmd` that wrote no profile. The run then keeps [`WHOLE_PROFILE`].
-    async fn stop_profile(&self, ctx: &Ctx, run_dir: &Path, profiler: &Profiler) -> Result<(), String> {
+    /// The `jcmd` of the JBR of the generation and the PID of the running IDE, which `log/idea.log` of `run_dir` names.
+    /// Answers why it could not: no `jcmd` in the JBR, or no PID in the log.
+    fn jcmd_target(&self, run_dir: &Path) -> Result<(PathBuf, u32), String> {
         let jcmd = self.java.with_file_name(if cfg!(windows) { "jcmd.exe" } else { "jcmd" });
         if !jcmd.is_file() {
             return Err("the JBR of the generation has no bin/jcmd".to_owned());
@@ -597,6 +625,14 @@ impl Launcher {
             .flatten()
             .unwrap_or_default();
         let pid = idea_log_pid(&log).ok_or_else(|| "log/idea.log names no PID".to_owned())?;
+        Ok((jcmd, pid))
+    }
+
+    /// Stops the profiler of the running IDE when the run passed its gate, so [`GATE_PROFILE`] holds the start-up and
+    /// not the hold and the quit. Answers why it could not: no `jcmd` in the JBR of the generation, no PID in
+    /// `log/idea.log`, or a `jcmd` that wrote no profile. The run then keeps [`WHOLE_PROFILE`].
+    async fn stop_profile(&self, ctx: &Ctx, run_dir: &Path, profiler: &Profiler) -> Result<(), String> {
+        let (jcmd, pid) = self.jcmd_target(run_dir)?;
         let file = run_dir.join(GATE_PROFILE);
         let argv = profile_stop_argv(&jcmd, pid, &profiler.library, &file);
         let result = self
@@ -615,6 +651,29 @@ impl Launcher {
             "jcmd wrote no {GATE_PROFILE} ({}); see {PROFILE_STOP_LOG}",
             describe(&result)
         ))
+    }
+
+    /// Writes [`THREAD_DUMP_FILE`] with `jcmd <pid> Thread.print` after the gate. The dump names the Java threads by
+    /// the tid of the class-load log, the EDT among them, which the log names only when a thread ends. It runs before
+    /// the stop of the profile, and both take their time from the hold. The timeout of the profile stop bounds it.
+    /// Answers why it could not: no `jcmd`, no PID, or a `jcmd` that failed or timed out. The record makes that a note
+    /// of the run, and the classes of the run then have no thread.
+    async fn dump_threads(&self, ctx: &Ctx, run_dir: &Path) -> Result<(), String> {
+        let (jcmd, pid) = self.jcmd_target(run_dir)?;
+        let file = run_dir.join(THREAD_DUMP_FILE);
+        let result = self
+            .runner
+            .checked_to_file(
+                ctx,
+                &thread_dump_argv(&jcmd, pid),
+                &file,
+                &self.logged(PROFILE_STOP_TIMEOUT, "bench_thread_dump_timeout"),
+            )
+            .await;
+        match result {
+            Ok(_) => Ok(()),
+            Err(_) => Err(format!("jcmd Thread.print failed ({}); see {THREAD_DUMP_FILE}", describe(&result))),
+        }
     }
 
     /// Asks the running IDE to open `project`, and polls the trace for the highlighted editor.
@@ -724,6 +783,90 @@ fn interrupted_text() -> String {
     "the session was interrupted".to_owned()
 }
 
+/// The answer of one check of a wait for an event of the IDE.
+enum Check {
+    /// The event has not come yet.
+    Pending,
+    /// The wait ends without a failure.
+    Done,
+    /// The wait ends with this failure.
+    Failed(String),
+}
+
+/// Runs `check` every [`POLL`] until it ends the wait, the IDE exits, the session is interrupted, or [`EVENT_TIMEOUT`]
+/// passes. An exit, an interrupt and the timeout set the failure: `event` names the awaited event in the failure of an
+/// exit, and `timed_out` is the failure of the timeout. Answers how the IDE ended when it exited.
+async fn poll_until<F>(
+    ctx: &Ctx,
+    ide: &mut F,
+    facts: &mut LaunchFacts,
+    event: &str,
+    timed_out: String,
+    mut check: impl FnMut(Instant) -> Check,
+) -> Option<Ended>
+where
+    F: Future<Output = Result<String, ProcError>> + Unpin,
+{
+    let deadline = Instant::now() + EVENT_TIMEOUT;
+    loop {
+        tokio::select! {
+            result = &mut *ide => {
+                facts.failure = Some(format!("the IDE exited ({}) before {event}", describe(&result)));
+                return Some(ended(&result));
+            }
+            alive = ctx.sleep(POLL) => {
+                if !alive {
+                    facts.failure = Some(interrupted_text());
+                    return None;
+                }
+            }
+        }
+        let now = Instant::now();
+        match check(now) {
+            Check::Pending => {}
+            Check::Done => return None,
+            Check::Failed(failure) => {
+                facts.failure = Some(failure);
+                return None;
+            }
+        }
+        if now >= deadline {
+            facts.failure = Some(timed_out);
+            return None;
+        }
+    }
+}
+
+/// The limit of a wait that starts when `startup-stats.json` of the run appears.
+struct AfterReport {
+    report: PathBuf,
+    wait: Duration,
+    limit: Option<Instant>,
+}
+
+impl AfterReport {
+    fn new(run_dir: &Path, wait: Duration) -> Self {
+        Self {
+            report: run_dir.join("startup-stats.json"),
+            wait,
+            limit: None,
+        }
+    }
+
+    /// Tells whether the report exists. The first call that sees it starts the limit at `now`.
+    fn seen(&mut self, now: Instant) -> bool {
+        if self.limit.is_none() && self.report.exists() {
+            self.limit = Some(now + self.wait);
+        }
+        self.limit.is_some()
+    }
+
+    /// Tells whether the limit passed at `now`.
+    fn passed(&mut self, now: Instant) -> bool {
+        self.seen(now) && self.limit.is_some_and(|limit| now >= limit)
+    }
+}
+
 /// Polls the FUS log for the welcome event. Answers how the IDE ended when it exited before the event.
 async fn wait_for_welcome<F>(
     ctx: &Ctx,
@@ -736,44 +879,28 @@ async fn wait_for_welcome<F>(
 where
     F: Future<Output = Result<String, ProcError>> + Unpin,
 {
-    let deadline = Instant::now() + EVENT_TIMEOUT;
-    let report = run_dir.join("startup-stats.json");
-    let mut report_deadline: Option<Instant> = None;
-    loop {
-        tokio::select! {
-            result = &mut *ide => {
-                collector.read(fus_dir);
-                facts.failure = Some(format!("the IDE exited ({}) before {}", describe(&result), fus::WELCOME_BECAME_VISIBLE));
-                return Some(ended(&result));
-            }
-            alive = ctx.sleep(POLL) => {
-                if !alive {
-                    facts.failure = Some(interrupted_text());
-                    return None;
-                }
-            }
-        }
+    let event = fus::WELCOME_BECAME_VISIBLE;
+    let mut after_report = AfterReport::new(run_dir, AFTER_REPORT_TIMEOUT);
+    let timed_out = format!("no {event} within {} s", EVENT_TIMEOUT.as_secs());
+    let ended = poll_until(ctx, ide, facts, event, timed_out, |now| {
         collector.read(fus_dir);
-        if collector.has_event(fus::WELCOME_BECAME_VISIBLE) {
-            return None;
-        }
-        let now = Instant::now();
-        if report_deadline.is_none() && report.exists() {
-            report_deadline = Some(now + AFTER_REPORT_TIMEOUT);
-        }
-        if report_deadline.is_some_and(|limit| now >= limit) {
-            facts.failure = Some(format!(
-                "no {} within {} s after startup-stats.json",
-                fus::WELCOME_BECAME_VISIBLE,
+        if collector.has_event(event) {
+            Check::Done
+        } else if after_report.passed(now) {
+            Check::Failed(format!(
+                "no {event} within {} s after startup-stats.json",
                 AFTER_REPORT_TIMEOUT.as_secs()
-            ));
-            return None;
+            ))
+        } else {
+            Check::Pending
         }
-        if now >= deadline {
-            facts.failure = Some(format!("no {} within {} s", fus::WELCOME_BECAME_VISIBLE, EVENT_TIMEOUT.as_secs()));
-            return None;
-        }
+    })
+    .await;
+    if ended.is_some() {
+        // The exit ends the wait before a check, so this read takes the events up to the exit.
+        collector.read(fus_dir);
     }
+    ended
 }
 
 /// Polls the trace and the report for the highlighted editor. Answers how the IDE ended when it exited before the
@@ -786,44 +913,22 @@ async fn wait_for_highlighted<F>(ctx: &Ctx, ide: &mut F, run_dir: &Path, prime: 
 where
     F: Future<Output = Result<String, ProcError>> + Unpin,
 {
-    let deadline = Instant::now() + EVENT_TIMEOUT;
-    let report = run_dir.join("startup-stats.json");
-    let mut report_deadline: Option<Instant> = None;
-    loop {
-        tokio::select! {
-            result = &mut *ide => {
-                facts.failure = Some(format!("the IDE exited ({}) before \"{EDITOR_HIGHLIGHTED}\"", describe(&result)));
-                return Some(ended(&result));
-            }
-            alive = ctx.sleep(POLL) => {
-                if !alive {
-                    facts.failure = Some(interrupted_text());
-                    return None;
-                }
-            }
-        }
-        if highlighted(run_dir, None) {
-            return None;
-        }
-        let now = Instant::now();
-        if report_deadline.is_none() && report.exists() {
-            if prime {
-                return None;
-            }
-            report_deadline = Some(now + AFTER_REPORT_TIMEOUT);
-        }
-        if report_deadline.is_some_and(|limit| now >= limit) {
-            facts.failure = Some(format!(
-                "no \"{EDITOR_HIGHLIGHTED}\" within {} s after startup-stats.json",
+    let event = format!("\"{EDITOR_HIGHLIGHTED}\"");
+    let mut after_report = AfterReport::new(run_dir, AFTER_REPORT_TIMEOUT);
+    let timed_out = format!("no {event} within {} s", EVENT_TIMEOUT.as_secs());
+    poll_until(ctx, ide, facts, &event, timed_out, |now| {
+        if highlighted(run_dir, None) || (prime && after_report.seen(now)) {
+            Check::Done
+        } else if after_report.passed(now) {
+            Check::Failed(format!(
+                "no {event} within {} s after startup-stats.json",
                 AFTER_REPORT_TIMEOUT.as_secs()
-            ));
-            return None;
+            ))
+        } else {
+            Check::Pending
         }
-        if now >= deadline {
-            facts.failure = Some(format!("no \"{EDITOR_HIGHLIGHTED}\" within {} s", EVENT_TIMEOUT.as_secs()));
-            return None;
-        }
-    }
+    })
+    .await
 }
 
 /// Polls the trace for the span `name`. Answers how the IDE ended when it exited before the span. A prime run waits
@@ -837,40 +942,37 @@ async fn wait_for_span<F>(ctx: &Ctx, ide: &mut F, run_dir: &Path, name: &str, mi
 where
     F: Future<Output = Result<String, ProcError>> + Unpin,
 {
-    let deadline = Instant::now() + EVENT_TIMEOUT;
-    let report = run_dir.join("startup-stats.json");
-    let mut settle_deadline: Option<Instant> = None;
-    loop {
-        tokio::select! {
-            result = &mut *ide => {
-                facts.failure = Some(format!("the IDE exited ({}) before the {name} span ended", describe(&result)));
-                return Some(ended(&result));
-            }
-            alive = ctx.sleep(POLL) => {
-                if !alive {
-                    facts.failure = Some(interrupted_text());
-                    return None;
-                }
-            }
+    let mut settle = AfterReport::new(run_dir, SPAN_SETTLE);
+    let timed_out = format!(
+        "no {name} span and no startup-stats.json within {} s: {missing}",
+        EVENT_TIMEOUT.as_secs()
+    );
+    poll_until(ctx, ide, facts, &format!("the {name} span ended"), timed_out, |now| {
+        if span_ended(run_dir, name) || settle.passed(now) {
+            Check::Done
+        } else {
+            Check::Pending
         }
-        if span_ended(run_dir, name) {
-            return None;
+    })
+    .await
+}
+
+/// Waits for the first line of `log/idea.log` that holds `line`, an exit of the IDE, an interrupt or the timeout. An
+/// exit, an interrupt and the timeout set the failure.
+async fn wait_for_log_line<F>(ctx: &Ctx, ide: &mut F, run_dir: &Path, line: &str, missing: &str, facts: &mut LaunchFacts) -> Option<Ended>
+where
+    F: Future<Output = Result<String, ProcError>> + Unpin,
+{
+    let log = run_dir.join("log").join("idea.log");
+    let timed_out = format!("no line \"{line}\" in log/idea.log within {} s: {missing}", EVENT_TIMEOUT.as_secs());
+    poll_until(ctx, ide, facts, &format!("the line \"{line}\" of log/idea.log"), timed_out, |_| {
+        if files::read_optional(&log).ok().flatten().is_some_and(|text| text.contains(line)) {
+            Check::Done
+        } else {
+            Check::Pending
         }
-        let now = Instant::now();
-        if settle_deadline.is_none() && report.exists() {
-            settle_deadline = Some(now + SPAN_SETTLE);
-        }
-        if settle_deadline.is_some_and(|limit| now >= limit) {
-            return None;
-        }
-        if now >= deadline {
-            facts.failure = Some(format!(
-                "no {name} span and no startup-stats.json within {} s: {missing}",
-                EVENT_TIMEOUT.as_secs()
-            ));
-            return None;
-        }
-    }
+    })
+    .await
 }
 
 /// Tells whether the trace that the IDE wrote so far has the span `name`. The IDE writes a span when it ends, into a

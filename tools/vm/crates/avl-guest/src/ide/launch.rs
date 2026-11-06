@@ -1,40 +1,31 @@
-//! `ide-launch`: one launch of the lane IDE on a prepared context, from the launch document on standard input to a
-//! running supervisor run.
+//! The launch: one launch of the lane IDE on a prepared context, from the launch document to a running supervisor run.
 //!
-//! The steps, in order: refuse a Linux guest whose agent names no X display, and a context with a live IDE run. Kill
-//! the JCEF helpers that name the context. Create `log/<launchName>` with `jvm`, `heap-dump` and `snapshots`. Compose
-//! the argument file through `dev-launch`, with the data paths of the context last. Publish the argument file and the
-//! launch record. Start the run `run-ide-<launchName>` in the run slot of the context: `<javaHome>/bin/java
-//! @<argument file> <projectDir>` in the distribution home, with the closed environment of the context.
-//!
-//! The document comes on standard input, as the document of `ide-prepare` does: it is large, and the two verbs read
-//! their documents the same way. It holds no secret.
+//! The steps, in order: refuse a launch document that [`ide::validate_ide_launch`] refuses, a Linux guest whose agent
+//! names no X display, and a context with a live IDE run. Kill the JCEF helpers that name the context. Create
+//! `log/<launchName>` with `jvm`, `heap-dump` and `snapshots`. Compose the argument file through `dev-launch`, with the
+//! data paths of the context last. Publish the argument file and the launch record. Start the run
+//! `run-ide-<launchName>` in the run slot of the context: `<javaHome>/bin/java @<argument file> <projectDir>` in the
+//! distribution home, with the closed environment of the context.
 
 use std::ffi::OsString;
 use std::fs;
-use std::io::Read;
+use std::io::{self, Write};
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
-use avl_wire::ide::{
-    self, ARG_FILE, CONFIG_DIR, IdeLaunch, IdeLaunched, LAUNCH_RECORD_FILE, LOG_DIR, LaunchRecord, OWNED_JVM_OPTIONS, OWNED_PROPERTIES,
-    PLUGINS_DIR, SYSTEM_DIR,
-};
+use avl_wire::ide::{self, IdeLaunch, IdeLaunched, LOG_DIR, LaunchRecord, OWNED_JVM_OPTIONS, OWNED_PROPERTIES};
 use avl_wire::supervisor::EnvironmentPolicy;
-use avl_wire::verb::AgentVerb;
 use dev_launch::{Distribution, DistributionFiles};
 use serde::Deserialize;
 
-use super::{create_private_dirs, reap, require_free_slot};
+use super::{CODE_LAUNCH_FAILED, ContextPaths, create_private_dirs, reap, require_free_slot};
 use crate::clock::stamp;
-use crate::reply::{AgentRefusal, AgentRefusalExt, refuse};
-use crate::stage::launch_prep::publish_privately;
-use crate::stage::{is_directory, is_file};
+use crate::fs::{is_directory, is_file};
+use crate::reply::{AgentRefusal, AgentRefusalExt};
 use crate::supervisor::{self, Launcher, System};
 
 #[cfg(test)]
 mod tests;
-
-const VERB: AgentVerb = AgentVerb::IdeLaunch;
 
 /// The refusal of a launch on a Linux guest whose agent names no X display.
 pub(crate) const CODE_DISPLAY_MISSING: &str = "ide_display_missing";
@@ -54,83 +45,72 @@ impl Guest {
     }
 }
 
-/// Reads the launch document from standard input.
-pub(crate) fn read_document(stdin: &mut dyn Read) -> Result<IdeLaunch, AgentRefusal> {
-    let mut raw = Vec::new();
-    stdin
-        .read_to_end(&mut raw)
-        .map_err(|error| AgentRefusal::for_verb(VERB, format!("cannot read the IDE launch document: {error}")))?;
-    ide::decode_ide_launch(&raw).map_err(|error| AgentRefusal::for_verb(VERB, error.message))
+/// A refusal of the launch, with [`CODE_LAUNCH_FAILED`].
+fn refused(message: impl Into<String>) -> AgentRefusal {
+    AgentRefusal::refused(CODE_LAUNCH_FAILED, message)
 }
 
 /// The paths of one context for one launch, as guest path text.
 struct LaunchPaths {
-    context: String,
-    config: String,
-    system: String,
-    plugins: String,
+    context: ContextPaths,
     log: String,
-    arg_file: String,
-    launch_record: String,
 }
 
 impl LaunchPaths {
     fn new(document: &IdeLaunch) -> Self {
-        let context = ide::context_dir(&document.ide_root, &document.launch_key);
-        let child = |name: &str| format!("{context}/{name}");
+        let context = ContextPaths::new(&document.ide_root, &document.launch_key);
         Self {
-            config: child(CONFIG_DIR),
-            system: child(SYSTEM_DIR),
-            plugins: child(PLUGINS_DIR),
-            log: format!("{context}/{LOG_DIR}/{}", document.launch_name),
-            arg_file: child(ARG_FILE),
-            launch_record: child(LAUNCH_RECORD_FILE),
+            log: context.child(&format!("{LOG_DIR}/{}", document.launch_name)),
             context,
         }
     }
 }
 
-/// Launches the IDE of `document` on its prepared context and answers the state of the run.
+/// Launches the IDE of `document` on its prepared context and answers the state of the run. The document is checked
+/// first, so every caller gets the checks of [`ide::validate_ide_launch`].
 pub(crate) fn launch(system: &dyn System, launcher: &Launcher, guest: &Guest, document: &IdeLaunch) -> Result<IdeLaunched, AgentRefusal> {
+    ide::validate_ide_launch(document).map_err(|error| refused(error.message))?;
     require_display(guest)?;
     let paths = LaunchPaths::new(document);
-    let context = Path::new(&paths.context);
+    let context = Path::new(&paths.context.dir);
     require_free_slot(system, context)?;
-    for (directory, what) in [(&paths.config, "context"), (&document.project_dir, "project")] {
+    for (directory, what) in [(&paths.context.config, "context"), (&document.project_dir, "project")] {
         if !is_directory(Path::new(directory)) {
-            refuse!(VERB, "the {what} directory {directory} does not exist; call ide-prepare first");
+            return Err(refused(format!(
+                "the {what} directory {directory} does not exist; prepare the context first"
+            )));
         }
     }
     reap::reap_jcef_helpers(context);
     for directory in ["jvm", "heap-dump", "snapshots"] {
-        create_private_dirs(VERB, &Path::new(&paths.log).join(directory))?;
+        create_private_dirs(CODE_LAUNCH_FAILED, &Path::new(&paths.log).join(directory))?;
     }
 
     let arguments = compose_arguments(document, &paths)?;
-    let text = dev_launch::argument_file_text(&arguments)
-        .map_err(|error| AgentRefusal::for_verb(VERB, format!("cannot write the IDE argument file: {error:#}")))?;
-    publish_privately(Path::new(&paths.arg_file), text.as_bytes())
-        .map_err(|error| AgentRefusal::for_verb(VERB, format!("cannot publish {}: {error}", paths.arg_file)))?;
+    let text =
+        dev_launch::argument_file_text(&arguments).map_err(|error| refused(format!("cannot write the IDE argument file: {error:#}")))?;
+    publish_privately(Path::new(&paths.context.arg_file), text.as_bytes())
+        .map_err(|error| refused(format!("cannot publish {}: {error}", paths.context.arg_file)))?;
     let record = LaunchRecord {
         schema_version: ide::SCHEMA_VERSION,
         launch_key: document.launch_key.clone(),
         launch_name: document.launch_name.clone(),
         product_digest: document.product_digest.clone(),
         java_home: document.java_home.clone(),
-        arg_file: paths.arg_file.clone(),
+        arg_file: paths.context.arg_file.clone(),
         prepared_at: stamp(system.now()),
     };
     let mut encoded = serde_json::to_vec(&record).map_err(AgentRefusal::internal)?;
     encoded.push(b'\n');
-    publish_privately(Path::new(&paths.launch_record), &encoded)
-        .map_err(|error| AgentRefusal::for_verb(VERB, format!("cannot publish {}: {error}", paths.launch_record)))?;
+    publish_privately(Path::new(&paths.context.launch_record), &encoded)
+        .map_err(|error| refused(format!("cannot publish {}: {error}", paths.context.launch_record)))?;
 
     let Some(run_id) = ide::ide_run_id(&document.launch_name) else {
         return Err(AgentRefusal::internal("the checked launch name gives no run id"));
     };
     let argv = vec![
         format!("{}/bin/java", document.java_home.trim_end_matches('/')),
-        format!("@{}", paths.arg_file),
+        format!("@{}", paths.context.arg_file),
         document.project_dir.clone(),
     ];
     let run = supervisor::launch_run(
@@ -142,12 +122,12 @@ pub(crate) fn launch(system: &dyn System, launcher: &Launcher, guest: &Guest, do
         argv,
         None,
         EnvironmentPolicy::Context {
-            context_dir: paths.context.clone(),
+            context_dir: paths.context.dir.clone(),
         },
     )?;
     Ok(IdeLaunched {
         log_dir: paths.log,
-        arg_file: paths.arg_file,
+        arg_file: paths.context.arg_file,
         run,
     })
 }
@@ -176,15 +156,14 @@ fn compose_arguments(document: &IdeLaunch, paths: &LaunchPaths) -> Result<Vec<St
     let vm_options = vm_options_destination(&product_info)?;
 
     let flags_file = Path::new(&document.flags_file);
-    let flags = dev_launch::read_lines(flags_file).map_err(|error| AgentRefusal::for_verb(VERB, format!("{error:#}")))?;
+    let flags = dev_launch::read_lines(flags_file).map_err(|error| refused(format!("{error:#}")))?;
     let mut command_line = Vec::new();
     for flag in flags.iter().map(|line| line.trim()).filter(|line| !line.is_empty()) {
         if let Some(owned) = owned_option(flag) {
-            refuse!(
-                VERB,
+            return Err(refused(format!(
                 "the flags file {} states {owned}, which names a data path that the agent owns",
                 flags_file.display()
-            );
+            )));
         }
         command_line.push(flag.to_owned());
     }
@@ -202,9 +181,9 @@ fn compose_arguments(document: &IdeLaunch, paths: &LaunchPaths) -> Result<Vec<St
     };
     let runtime_module_repository = is_file(&Path::new(home).join("modules").join("module-descriptors.dat"));
     let distribution = Distribution::read(home, &files, &vm_options, runtime_module_repository)
-        .map_err(|error| AgentRefusal::for_verb(VERB, format!("cannot read the distribution {home}: {error:#}")))?;
+        .map_err(|error| refused(format!("cannot read the distribution {home}: {error:#}")))?;
     let mut arguments = dev_launch::java_arguments(command_line, distribution, None)
-        .map_err(|error| AgentRefusal::for_verb(VERB, format!("cannot compose the IDE launch: {error:#}")))?;
+        .map_err(|error| refused(format!("cannot compose the IDE launch: {error:#}")))?;
 
     // `java_arguments` ends with `-cp <class path> <main class>`, and a JVM option after the main class is a program
     // argument.
@@ -255,25 +234,23 @@ fn vm_options_destination(product_info: &Path) -> Result<String, AgentRefusal> {
         vm_options_file_path: String,
     }
 
-    let data =
-        fs::read(product_info).map_err(|error| AgentRefusal::for_verb(VERB, format!("cannot read {}: {error}", product_info.display())))?;
+    let data = fs::read(product_info).map_err(|error| refused(format!("cannot read {}: {error}", product_info.display())))?;
     let info: ProductInfo = serde_json::from_slice(&data).map_err(|error| {
-        AgentRefusal::for_verb(
-            VERB,
-            format!("{} states no launch with a vmOptionsFilePath: {error}", product_info.display()),
-        )
+        refused(format!(
+            "{} states no launch with a vmOptionsFilePath: {error}",
+            product_info.display()
+        ))
     })?;
     let Some(launch) = info.launch.first() else {
-        refuse!(VERB, "{} states no launch", product_info.display());
+        return Err(refused(format!("{} states no launch", product_info.display())));
     };
     let base = PRODUCT_INFO_FILE.rsplit_once('/').map_or("", |(directory, _)| directory);
     let Some(destination) = resolve_in_home(base, &launch.vm_options_file_path) else {
-        refuse!(
-            VERB,
+        return Err(refused(format!(
             "the vmOptionsFilePath '{}' of {} is not a file of the home",
             launch.vm_options_file_path,
             product_info.display()
-        );
+        )));
     };
     Ok(destination)
 }
@@ -312,9 +289,9 @@ fn owned_option(flag: &str) -> Option<&str> {
 fn data_options(paths: &LaunchPaths) -> Vec<String> {
     let log = &paths.log;
     vec![
-        format!("-Didea.config.path={}", paths.config),
-        format!("-Didea.system.path={}", paths.system),
-        format!("-Didea.plugins.path={}", paths.plugins),
+        format!("-Didea.config.path={}", paths.context.config),
+        format!("-Didea.system.path={}", paths.context.system),
+        format!("-Didea.plugins.path={}", paths.context.plugins),
         format!("-Didea.log.path={log}"),
         format!("-Dsnapshots.path={log}/snapshots"),
         format!("-Didea.diagnostic.opentelemetry.file={log}/opentelemetry.json"),
@@ -322,4 +299,24 @@ fn data_options(paths: &LaunchPaths) -> Vec<String> {
         format!("-XX:HeapDumpPath={log}/heap-dump/heap-dump.hprof"),
         format!("-Xlog:gc*:file={log}/gcLog.log"),
     ]
+}
+
+/// Writes `content` where a reader sees the whole file or no file, readable only by this account.
+///
+/// The publish is atomic, because the IDE that starts next reads the file. A half-written argument file is an IDE
+/// that starts with part of its options. The file is synced before the rename, because a worker can hard-reset. A
+/// failed publish leaves no temporary file.
+fn publish_privately(path: &Path, content: &[u8]) -> io::Result<()> {
+    let parent = path.parent().unwrap_or(Path::new("."));
+    let name = path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+    let mut temporary = tempfile::Builder::new()
+        .prefix(&format!(".{name}."))
+        .permissions(fs::Permissions::from_mode(0o600))
+        .tempfile_in(parent)?;
+    temporary.write_all(content)?;
+    temporary.as_file().sync_all()?;
+    let mut temporary = temporary.into_temp_path();
+    fs::rename(&temporary, path)?;
+    temporary.disable_cleanup(true);
+    Ok(())
 }

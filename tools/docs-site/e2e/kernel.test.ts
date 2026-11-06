@@ -193,7 +193,85 @@ export function defineKernelSuite({ test, expect, config, sitePage }: KernelSuit
       // the figure walks its own steps and links the explainer chapter
       await figures.first().locator('button[aria-label="Next step"]').click()
       await expect(figures.first().locator('.react-flow__node.step-active')).not.toHaveCount(0)
+      // the chapter walk belongs to the explainer canvas, not to a figure
+      assert.strictEqual(await figures.first().locator('.diagram-step-chapter, .diagram-next-chapter, .hand-off').count(), 0)
       assert.ok((await figures.first().locator('figcaption a').getAttribute('href'))?.includes(app('/explain/')))
+    })
+  })
+
+  describe('page layout', () => {
+    const guides = harvest.docs.filter(doc => doc.kind === 'guide')
+    const group = config.guideGroups.find(entry => guides.filter(doc => doc.group === entry.id).length >= 2)
+    const [first, second] = group === undefined ? [] : guides.filter(doc => doc.group === group.id)
+    const guideRoute = (doc: HarvestedDoc) => app(`/guides/${slugOf(doc.path)}`)
+    const currentTreeLink = (page: Page) => page.locator('.section-nav a[aria-current="page"]')
+    const background = (page: Page, selector: string) => page.locator(selector).first().evaluate(element => getComputedStyle(element).backgroundColor)
+
+    test('a guide page lies flat on the page in three columns: the section tree, the document, and the table of contents', async ({ page }) => {
+      assert.ok(first, 'no guide group of the site has two guides')
+      await open(page, guideRoute(first))
+      await expect(page.locator('.section-nav')).toBeVisible()
+      await expect(currentTreeLink(page)).toHaveAttribute('href', guideRoute(first))
+      await expect(page.locator('.doc-article .page-breadcrumb')).toContainText('Guides')
+      // the page has the one --background: the columns have no fill of their own
+      assert.notStrictEqual(await background(page, '.app-shell'), 'rgba(0, 0, 0, 0)')
+      assert.strictEqual(await background(page, '.doc-article'), 'rgba(0, 0, 0, 0)')
+      assert.strictEqual(await background(page, '.section-nav'), 'rgba(0, 0, 0, 0)')
+      // the top bar is a stock site header: the page background and a bottom border
+      assert.strictEqual(await background(page, '.topbar'), await background(page, '.app-shell'))
+      assert.strictEqual(await page.locator('.topbar').evaluate(element => getComputedStyle(element).borderBottomWidth), '1px')
+      const tree = await page.locator('.section-nav').boundingBox()
+      const doc = await page.locator('.doc-article').boundingBox()
+      assert.ok(tree && doc)
+      assert.ok(Math.abs(doc.x - (tree.x + tree.width) - 8) < 1, `the columns are ${doc.x - tree.x - tree.width}px apart, not 8px`)
+    })
+
+    test('the section tree sticks under the top bar and stays mounted within its section', async ({ page }) => {
+      assert.ok(first && second, 'no guide group of the site has two guides')
+      await open(page, guideRoute(first))
+      const tree = page.locator('.section-nav')
+      await tree.evaluate(element => element.setAttribute('data-probe', 'kept'))
+      const top = (await tree.boundingBox())!.y
+      await page.locator('.route-outlet').evaluate(outlet => outlet.scrollTo({ top: outlet.scrollHeight }))
+      await expect.poll(async () => Math.round((await tree.boundingBox())!.y)).toBe(Math.round(top))
+      await tree.locator(`a[href="${guideRoute(second)}"]`).click()
+      await expectUrlContains(page, guideRoute(second))
+      await expect(currentTreeLink(page)).toHaveAttribute('href', guideRoute(second))
+      await expect(page.locator('.section-nav[data-probe="kept"]')).toHaveCount(1)
+    })
+
+    test('a decision page marks its record in the tree of the topics', async ({ page }) => {
+      const record = harvest.docs.find(doc => doc.adr !== undefined)
+      assert.ok(record, 'no decision record is harvested')
+      await open(page, app(`/decisions/${slugOf(record.path)}`))
+      await expect(currentTreeLink(page)).toHaveAttribute('href', app(`/decisions/${slugOf(record.path)}`))
+      const topic = config.decisions.topics.find(entry => entry.id === record.adr!.topic)!
+      await expect(page.locator(`.section-tree-group[data-group="${topic.id}"] button`)).toHaveAttribute('aria-expanded', 'true')
+    })
+
+    test('a doc page has no section tree, and a tool page is one column across the page', async ({ page }) => {
+      const doc = harvest.docs.find(entry => !entry.path.startsWith(`${config.docs.root}/`) && entry.adr === undefined && entry.kind !== 'explainer')
+      if (doc !== undefined) {
+        await open(page, app(`/doc/${encodeURIComponent(doc.path)}`))
+        await expect(page.locator('.doc-article')).toBeVisible()
+        await expect(page.locator('.section-nav, .section-nav-trigger')).toHaveCount(0)
+      }
+      await open(page, app('/'))
+      await expect(page.locator('.tool-layout')).toHaveCount(1)
+      await expect(page.locator('.section-nav, .doc-article')).toHaveCount(0)
+    })
+
+    test('below the section-nav breakpoint the tree opens in a sheet from the crumb row', async ({ page }) => {
+      assert.ok(first && second, 'no guide group of the site has two guides')
+      await page.setViewportSize({ width: 1000, height: 900 })
+      await open(page, guideRoute(first))
+      await expect(page.locator('.section-nav')).toBeHidden()
+      await page.locator('.doc-article .section-nav-trigger').click()
+      const sheet = page.locator('.section-nav-sheet')
+      await expect(sheet.locator('a[aria-current="page"]')).toHaveAttribute('href', guideRoute(first))
+      await sheet.locator(`a[href="${guideRoute(second)}"]`).click()
+      await expectUrlContains(page, guideRoute(second))
+      await expect(sheet).toHaveCount(0)
     })
   })
 
@@ -250,6 +328,76 @@ export function defineKernelSuite({ test, expect, config, sitePage }: KernelSuit
       await expect.poll(() => page.url()).not.toContain('step=')
     })
 
+    const stepsOf = (chapter: { diagram: string | null }): number =>
+      harvest.diagrams.find(diagram => diagram.id === chapter.diagram)?.steps.length ?? 0
+    // two chapters in a row that both have steps: the walk from the last step of one to the next one
+    const handOffIndex = chapters.findIndex((chapter, index) => stepsOf(chapter) > 0 && index + 1 < chapters.length && stepsOf(chapters[index + 1]) > 0)
+    const proseTop = (page: Page) => page.locator('.explainer-prose').evaluate(element => element.scrollTop)
+
+    test('the last step hands off to the next chapter, and Previous walks back', async ({ page }) => {
+      test.skip(handOffIndex < 0, 'no two chapters in a row have steps')
+      const from = chapters[handOffIndex]
+      const to = chapters[handOffIndex + 1]
+      const last = stepsOf(from)
+      await openChapter(page, from.id, `?step=${last}`)
+      const bar = page.locator('.diagram-step-bar')
+      await expect(bar.locator('.diagram-step-chapter')).toContainText(`Chapter ${handOffIndex + 1} of ${chapters.length}`)
+      await expect(bar.locator('[data-hand-off="chapter"]')).toContainText(to.title)
+      await expect(page.locator('.chapter-rail a', { hasText: to.title }).locator('.chapter-up-next')).toHaveCount(1)
+      await expect(bar.locator('.diagram-overview')).toBeEnabled()
+      // a new chapter starts at the top of its text
+      const scrolled = await page.locator('.explainer-prose').evaluate((element) => {
+        element.scrollTop = element.scrollHeight
+        return element.scrollTop > 0
+      })
+      await bar.locator('.diagram-next-chapter').click()
+      await expectUrlContains(page, chapterUrl(to.id))
+      await expect.poll(() => page.url()).not.toContain('step=')
+      await expect(page.locator('.explainer-chapter-title')).toContainText(to.title)
+      if (scrolled) {
+        await expect.poll(() => proseTop(page)).toBe(0)
+      }
+      await expect(page.locator('.chapter-rail a', { hasText: from.title })).toHaveAttribute('data-state', 'done')
+      await bar.locator('button[aria-label="Previous step"]').click()
+      await expectUrlContains(page, `${chapterUrl(from.id)}?step=${last}`)
+    })
+
+    test('the last chapter ends the explainer, and its text scrolls', async ({ page }) => {
+      const last = chapters[chapters.length - 1]
+      await open(page, chapterUrl(last.id), 'none')
+      const end = page.locator('.explainer-pager [data-hand-off="end"]')
+      await expect(end).toBeVisible()
+      assert.strictEqual(await page.locator('.explainer-pager [data-hand-off="chapter"]').count(), 0)
+      if (last.diagram === null) {
+        const pane = page.locator('.explainer-page-scroll')
+        const scrollable = await pane.evaluate(element => element.scrollHeight > element.clientHeight)
+        if (scrollable) {
+          await pane.evaluate((element) => {
+            element.scrollTop = element.scrollHeight
+          })
+          await expect.poll(() => pane.evaluate(element => element.scrollTop)).toBeGreaterThan(0)
+        }
+      }
+    })
+
+    test('on a phone the step bar stays small and the current chapter chip is in view', async ({ page }) => {
+      test.skip(handOffIndex < 0, 'no two chapters in a row have steps')
+      await page.setViewportSize({ width: 390, height: 844 })
+      const target = chapters.findLast(chapter => stepsOf(chapter) > 0)!
+      await openChapter(page, target.id, `?step=${stepsOf(target)}`)
+      const pane = await page.locator('.explainer-canvas-pane').boundingBox()
+      const bar = await page.locator('.diagram-step-bar').boundingBox()
+      assert.ok(pane !== null && bar !== null)
+      assert.ok(bar.height < pane.height / 2, `the step bar is ${bar.height}px of a ${pane.height}px canvas`)
+      await expect(page.locator('.diagram-step-chapter')).toBeHidden()
+      const rail = page.locator('.chapter-rail')
+      await expect.poll(async () => {
+        const railBox = await rail.boundingBox()
+        const chipBox = await rail.locator('a[aria-current="page"]').boundingBox()
+        return railBox !== null && chipBox !== null && chipBox.x >= railBox.x - 1 && chipBox.x + chipBox.width <= railBox.x + railBox.width + 1
+      }).toBe(true)
+    })
+
     test('a clicked card opens its detail with a source link, and Escape closes it', async ({ page }) => {
       const withSource = firstDiagram.nodes.find(node => node.symbolRef !== null || node.sourceRef !== null)!
       await openChapter(page, firstDiagramChapter.id, `?node=${withSource.id}`)
@@ -300,7 +448,8 @@ export function defineKernelSuite({ test, expect, config, sitePage }: KernelSuit
       await open(page, app('/guides'))
       await page.keyboard.press('ControlOrMeta+k')
       await expect(page.locator('.palette')).toHaveCount(1)
-      assert.strictEqual(await page.evaluate(() => document.activeElement?.tagName), 'INPUT')
+      // the dialog moves the focus after it mounts, as in the test below
+      await expect.poll(() => page.evaluate(() => document.activeElement?.tagName)).toBe('INPUT')
       await page.fill('.palette input', word)
       await expect.poll(() => paletteItems(page).count()).toBeGreaterThan(0)
       assert.ok(await page.locator('.palette-results [cmdk-group-heading]').count() > 0)
@@ -363,6 +512,21 @@ export function defineKernelSuite({ test, expect, config, sitePage }: KernelSuit
     // a dated record has no number (adrFiles.ts of the kernel); the oldest numbered one stands for the numbered records
     const numbered = decisions.filter(doc => doc.adr!.number !== null)
     const lastNumbered = numbered[numbered.length - 1]
+
+    test('a record header shows the title, the status and date chips, and the status as a callout', async ({ page }) => {
+      const record = decisions.find(doc => doc.adr!.date !== null && /^(## Status\n+\S|Status: )/m.test(harvestedMarkdown(doc.path)))
+      assert.ok(record, 'no dated decision record with a status is harvested')
+      await open(page, decisionRouteOf(record.path))
+      await expect(page.locator('.record-header h1')).toHaveText(record.title)
+      // the header replaces the first heading and the Date line of the body
+      await expect(page.locator('.markdown-body h1')).toHaveCount(0)
+      await expect(page.locator('.record-chips time')).toHaveAttribute('datetime', record.adr!.date!)
+      await expect(page.locator('.markdown-body blockquote').first()).toContainText(record.adr!.statusText.replace(/\.$/, ''))
+      const linked = /\]\([^)]*\.md\)/.test(harvestedMarkdown(record.path))
+      if (linked) {
+        await expect(page.locator('.toc-aside .record-links a').first()).toBeVisible()
+      }
+    })
 
     test('an old doc link to a decision record opens the decision page', async ({ page }) => {
       assert.ok(lastNumbered, 'no numbered decision record is harvested')

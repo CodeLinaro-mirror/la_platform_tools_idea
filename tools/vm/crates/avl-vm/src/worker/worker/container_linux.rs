@@ -9,7 +9,6 @@ use serde_json::json;
 use super::pool::render_list;
 use super::{GUEST_PROBE_TIMEOUT, Lease, Manager, StartState, StopState, probe_timeout, read_lease};
 use crate::worker::container_linux::ContainerLinux;
-use crate::worker::docker::validate_argv;
 use avl_base::RefusalExt;
 
 impl Manager {
@@ -36,11 +35,7 @@ impl Manager {
             return self.start_container_linux(ctx, container_linux, worker).await.map(drop);
         }
         let channel = self.channel(worker);
-        let guest = self.guest(ctx, channel.as_ref());
-        if guest.parity_broken().await? {
-            guest.provision_worker(self.share_mount()).await?;
-        }
-        guest.ensure_ready(self).await
+        self.ready_guest(&self.guest(ctx, channel.as_ref())).await
     }
 
     /// [`Manager::require_release_ready`] for a container-linux worker: the Docker refusals, because a Linux guest has
@@ -52,17 +47,8 @@ impl Manager {
         worker: &str,
     ) -> Result<(), Refusal> {
         container_linux.require_available(ctx, worker).await?;
-        if !container_linux.running(ctx, worker).await? {
-            return Err(Refusal::new(
-                "worker_stopped",
-                Exit::FAILURE,
-                format!("worker {worker} is stopped; run pool start {worker}"),
-            ));
-        }
-        if !self.guest_answers(ctx, worker, GUEST_PROBE_TIMEOUT).await {
-            return Err(self.guest_agent_unavailable(worker));
-        }
-        Ok(())
+        self.require_running_guest(ctx, worker, container_linux.running(ctx, worker).await?)
+            .await
     }
 
     // --- start -----------------------------------------------------------------------------------------------
@@ -114,13 +100,7 @@ impl Manager {
                 ));
             }
         }
-        let channel = self.channel(worker);
-        let guest = self.guest(ctx, channel.as_ref());
-        guest.provision_linux(self.bazel(), &validate_argv(&self.settings)).await?;
-        if guest.parity_broken().await? {
-            guest.provision_worker(self.share_mount()).await?;
-        }
-        guest.ensure_ready(self).await?;
+        self.boot_linux_guest(ctx, worker).await?;
         Ok(if already_running {
             StartState::AlreadyRunning
         } else {
@@ -129,18 +109,13 @@ impl Manager {
     }
 
     fn container_linux_interrupted(&self, worker: &str) -> Refusal {
-        let cause = self.runner.interrupts().received().map_or("a cancellation", |signal| signal.name());
-        Refusal::new(
-            "worker_interrupted",
-            Exit::SOFTWARE,
-            format!("{cause} interrupted the start of the testing-ui container of {worker}"),
-        )
+        self.interrupted_by(|cause| format!("{cause} interrupted the start of the testing-ui container of {worker}"))
     }
 
     // --- stop ------------------------------------------------------------------------------------------------
 
     /// Stops a container-linux worker: the script's `stop` removes the container and the files of its control port. The
-    /// data directory is on the container's disk, so a stop discards the staged runtime and the next start stages it
+    /// data directory is on the container's disk, so a stop discards the guest-local state and the next start makes it
     /// again.
     pub(super) async fn stop_container_linux(
         &self,
@@ -191,7 +166,7 @@ impl Manager {
     }
 
     /// Stops the unleased container of a container-linux pool. The container is what an idle slot holds. The data directory
-    /// is on the container's disk, so a stop discards the staged runtime and the next start stages it again.
+    /// is on the container's disk, so a stop discards the guest-local state and the next start makes it again.
     ///
     /// The state is read under the slot's lifecycle lock, after the lease check, as on Docker: a start that ends
     /// between an earlier read and the lock would otherwise be stopped under a lease.
@@ -214,7 +189,7 @@ impl Manager {
     // --- pool recycle ----------------------------------------------------------------------------------------
 
     /// Stops the container and empties the host directory of the slot. The data directory is on the container's disk,
-    /// so a stop discards the staged runtime and the next start stages it again.
+    /// so a stop discards the guest-local state and the next start makes it again.
     pub(super) async fn unmake_container_linux_worker(
         &self,
         ctx: &Ctx,

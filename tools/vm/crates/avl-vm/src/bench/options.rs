@@ -5,10 +5,13 @@ use std::time::Duration;
 
 use clap::{Subcommand, ValueEnum};
 
-use super::arm::Arm;
+use super::arm::{Arm, ArmKind, check_plugin_id, parse_arm};
 use super::gc::DEFAULT_KEEP;
 use super::profile::ProfileEvent;
 use super::record::CLASS_ANCHORS;
+
+/// The plugin id of Air, which owns the gate span of the empty-editor arm.
+const AIR_PLUGIN_ID: &str = "com.intellij.air";
 
 /// The default distribution: the self-contained `.dist` of the `idea` row.
 pub(crate) const DEFAULT_TARGET: &str = "//build:idea_dist";
@@ -59,6 +62,11 @@ pub(crate) enum BenchVerb {
     /// In the empty-editor arm, every run opens the project directory, and the IDE opens no README. The IDE restores no
     /// editor, so the empty editor area builds the Air composer, and the gate is the end of its
     /// air.emptyState.createComponent span. --cold starts each run of this arm from the unprimed template.
+    ///
+    /// In the cargo-sync arm, every run is a first start: it starts from the unprimed template, with empty caches and
+    /// no prime run, and the IDE opens no README, as RustRoverIndexingTest does. The gate is the first line
+    /// `CargoSyncTask started` of idea.log. Its metric cargoSyncStarted is in ms from the process start, and cargoSyncStarted.ideaLog is
+    /// the ms of the log, the value of rust_duration_from_start_to_cargo_sync of the RustRover perf test.
     Project(ProjectArgs),
     /// Removes the old generations: all except the --keep newest and those a session of the last 24 hours names.
     Gc(GcArgs),
@@ -82,10 +90,28 @@ pub(crate) enum BenchVerb {
     ///
     /// A count is the median over the valid runs of the arm. The totals hold the named classes of the run by their
     /// source, and the named classes before the anchor. The plugin table holds the classes of each plugin before the
-    /// anchor. The module table holds the classes of each content module over the whole run. A run needs
-    /// class-load.log, plugin-classes.txt and startup-stats.json for an anchor. --entries lists the first classes of
-    /// each plugin of the plugin table before the anchor, from the median run of the arm.
+    /// anchor, its modules with a class, and the EDT and BG ms that its loaders spent in findClass. The module table
+    /// holds the same for each main module and content module, with its plugin. A main module is `<plugin id> (main)`.
+    /// A plugin-classes.txt of the old shape has no time, so a time is `-`. A run needs class-load.log and
+    /// plugin-classes.txt for an anchor. --entries lists the first classes of each plugin of the plugin table before
+    /// the anchor, from the median run of the arm.
+    ///
+    /// The process clock starts at the load of com.intellij.idea.Main in class-load.log. A log without that class takes
+    /// jvm.loadingTime of startup-stats.json, which puts the start about 100 ms too early, with a note.
+    ///
+    /// --span counts the class loads in the window of one span instead of before an anchor, on the EDT by default.
     Classes(ClassesArgs),
+    /// Prints the plugin loaders of one run by the frame that triggered each one. No IDE starts.
+    ///
+    /// A loader is the main module or a content module of a plugin. The debug log of the plugin class loaders writes the
+    /// stack of the first class of each loader. The trigger frame is the frame nearest to the top of that stack whose
+    /// class has another owner than the loader. The search skips the frames of the runtime, the language libraries,
+    /// the service container, the extension points and the message bus: java., jdk., sun., kotlin., kotlinx.,
+    /// com.intellij.serviceContainer., com.intellij.openapi.extensions. and com.intellij.util.messages. A class without
+    /// an owner in plugin-classes.txt is a platform class. A row holds a trigger frame, its loaders, their classes and
+    /// EDT ms before the anchor, and the first load of its earliest loader. The loaders of each trigger follow the
+    /// table. A loader without a stack is in the row `(no activation stack)`.
+    Triggers(TriggersArgs),
     /// Prints the medians of several sessions per arm, with the delta of each session to the first one. No IDE starts.
     ///
     /// The first session is A. A line tells whether the noise arm, the first arm both sessions have, moved from A by
@@ -112,8 +138,9 @@ pub(crate) struct RunSelection {
     /// of the first arm that is not modal, else of the modal arm.
     #[arg(long, value_name = "DIR")]
     pub(crate) run: Option<String>,
-    /// The arm whose median run the verb reads. A run that --run names must be a run of this arm.
-    #[arg(long, value_name = "ARM", value_enum)]
+    /// The arm whose median run the verb reads. A run that --run names must be a run of this arm. An arm is modal,
+    /// non-modal, open-project, project or empty-editor, or the twin `<arm>-without-<plugin id>` of --suppress-plugin.
+    #[arg(long, value_name = "ARM", value_parser = parse_arm)]
     pub(crate) arm: Option<Arm>,
 }
 
@@ -160,32 +187,80 @@ pub(crate) struct ActivitiesArgs {
     pub(crate) top: u32,
 }
 
-/// The rows of each table of `bench activities` and `bench classes` by default.
+/// The rows of each table of `bench activities`, `bench classes` and `bench triggers` by default.
 pub(crate) const DEFAULT_TOP: u32 = 25;
 
 #[derive(Clone, Debug, PartialEq, Eq, clap::Args)]
 pub(crate) struct ClassesArgs {
     #[arg(value_name = "SESSION", help = format!("The session: {SESSION_FORMS}"))]
     pub(crate) session: String,
-    /// The arm. The default is the first arm that is not modal and has a valid run, else the modal arm.
-    #[arg(long, value_name = "ARM", value_enum)]
+    /// The arm. The default is the first arm that is not modal and has a valid run, else the modal arm. An arm is
+    /// modal, non-modal, open-project, project or empty-editor, or the twin `<arm>-without-<plugin id>` of
+    /// --suppress-plugin.
+    #[arg(long, value_name = "ARM", value_parser = parse_arm)]
     pub(crate) arm: Option<Arm>,
     /// The rows of each table at most. With --plugin, the plugin table holds each named plugin.
     #[arg(long, value_name = "N", default_value_t = DEFAULT_TOP, value_parser = clap::value_parser!(u32).range(1..))]
     pub(crate) top: u32,
-    /// Keeps only this plugin id in the plugin table, with 0 when it has no class. Repeat it for more plugins.
+    /// Keeps only this plugin id in the plugin table and its modules in the module table, with 0 when it has no class,
+    /// and prints its rank among all plugins. Repeat it for more plugins.
     #[arg(long = "plugin", value_name = "ID")]
     pub(crate) plugins: Vec<String>,
-    /// The anchor of the plugin table and of the last total. The default is the main anchor of the arm:
+    /// The anchor of the plugin table, of the module table and of the last total. The default is the main anchor of the arm:
     /// welcomeBecameVisible for a welcome arm, `editor highlighting completed` for the project arm and emptyStateBuilt
     /// for the empty-editor arm. An arm without it takes its last anchor. `quit` is the start of application.exit.
     #[arg(long, value_name = "ANCHOR", value_parser = clap::builder::PossibleValuesParser::new(CLASS_ANCHORS))]
     pub(crate) at: Option<String>,
     /// Lists the first N classes of each plugin of the plugin table that the median run of the arm loaded before the
-    /// anchor, with their ms from the process start. The run needs class-load.log, plugin-classes.txt and
-    /// startup-stats.json.
+    /// anchor, with their ms from the process start. The run needs class-load.log and plugin-classes.txt.
     #[arg(long, value_name = "N", value_parser = clap::value_parser!(u32).range(1..))]
     pub(crate) entries: Option<u32>,
+    /// Counts the class loads in the window of the span NAME instead: from the start to the end of the first span NAME
+    /// of each run, such as air.emptyState.createContent. The tables hold the loads by plugin, by module, and by
+    /// package for a class without a plugin, with the findClass ms of the plugin classes. A hidden class counts with
+    /// the class that defines it. A run needs class-load.log, plugin-classes.txt, opentelemetry.json and, for the EDT,
+    /// threads.txt.
+    #[arg(long, value_name = "NAME", conflicts_with_all = ["at", "entries", "plugins"])]
+    pub(crate) span: Option<String>,
+    /// The thread of the loads of --span: `edt`, the EDT, or `all`, every thread. With `edt`, the BG columns give the
+    /// loads of the other threads.
+    #[arg(long, value_name = "THREAD", value_enum, default_value_t = SpanThread::Edt, requires = "span")]
+    pub(crate) thread: SpanThread,
+    /// The run directory of --span, such as `empty-editor-run-05`. The default is every valid run of the arm, and a
+    /// number is the median over the runs with the span.
+    #[arg(long, value_name = "DIR", requires = "span")]
+    pub(crate) run: Option<String>,
+    /// Adds a timeline of the window of --span in buckets of MS: the loads of each bucket and its first classes. The
+    /// run is the run of --run, else the median run of the arm.
+    #[arg(long, value_name = "MS", value_parser = clap::value_parser!(u32).range(1..), requires = "span")]
+    pub(crate) timeline: Option<u32>,
+}
+
+/// The `--thread` value of `bench classes --span`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum SpanThread {
+    /// The EDT, `AWT-EventQueue-0`.
+    #[default]
+    Edt,
+    /// Every thread.
+    All,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, clap::Args)]
+pub(crate) struct TriggersArgs {
+    #[command(flatten)]
+    pub(crate) selection: RunSelection,
+    /// Keeps only the loaders of this plugin id. Repeat it for more plugins.
+    #[arg(long = "plugin", value_name = "ID")]
+    pub(crate) plugins: Vec<String>,
+    /// The anchor: a loader counts when it has a class before it, and its classes and EDT ms are those before it. The
+    /// default is the main anchor of the arm, as for `classes`. `quit` is the start of application.exit.
+    #[arg(long, value_name = "ANCHOR", value_parser = clap::builder::PossibleValuesParser::new(CLASS_ANCHORS))]
+    pub(crate) at: Option<String>,
+    /// The rows of the trigger table at most, and the loaders of each trigger at most.
+    #[arg(long, value_name = "N", default_value_t = DEFAULT_TOP, value_parser = clap::value_parser!(u32).range(1..))]
+    pub(crate) top: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, clap::Args)]
@@ -255,6 +330,24 @@ pub(crate) struct WelcomeArgs {
     /// The arms of the session.
     #[arg(long, value_enum, default_value_t = ArmChoice::Both)]
     pub(crate) arm: ArmChoice,
+    #[command(flatten)]
+    pub(crate) measure: MeasureArgs,
+    #[command(flatten)]
+    pub(crate) launch: LaunchArgs,
+}
+
+impl WelcomeArgs {
+    /// The arms of the session, in the interleave order: each arm of --arm, and after it its twin of
+    /// --suppress-plugin.
+    pub(crate) fn arms(&self) -> Vec<Arm> {
+        self.measure.suppress.with_twins(self.arm.arms())
+    }
+}
+
+/// The options of each measured run of a session of arms: the start from the template, the profile and the suppressed
+/// plugin. A verb can replace the help of an option with its own text, which names its arms.
+#[derive(Clone, Debug, PartialEq, Eq, clap::Args)]
+pub(crate) struct MeasureArgs {
     /// Starts each measured run from a fresh copy of the unprimed template, and skips the prime runs.
     #[arg(long)]
     pub(crate) cold: bool,
@@ -267,7 +360,49 @@ pub(crate) struct WelcomeArgs {
     #[arg(long, value_name = "EVENT", value_enum, default_value_t = ProfileEvent::Cpu, requires = "profile")]
     pub(crate) profile_event: ProfileEvent,
     #[command(flatten)]
-    pub(crate) launch: LaunchArgs,
+    pub(crate) suppress: SuppressArgs,
+}
+
+/// The help of `--cold` of `bench project`, which names the arms that take it.
+const PROJECT_COLD_HELP: &str = "Starts each measured run from a fresh copy of the unprimed template, with empty caches, and \
+    skips the prime run. Only the empty-editor arm takes it: the project arm restores the editor of its prime run. The \
+    cargo-sync arm is always cold.";
+
+/// The help of `--profile` of `bench project`, which also names the gate of the empty-editor arm.
+const PROJECT_PROFILE_HELP: &str = "Samples with async-profiler from the JVM start to the gate of each run, and reports the top \
+    frames of the EDT. The gate of the empty-editor arm is the end of air.emptyState.createComponent. The profile has no time \
+    of a sample, so it covers the whole start-up to the gate, not one span. A run whose JBR has no jcmd keeps the profile of \
+    the whole run.";
+
+/// The plugin that the twin arms of a session suppress.
+#[derive(Clone, Debug, PartialEq, Eq, clap::Args)]
+pub(crate) struct SuppressArgs {
+    /// Adds a twin to each arm: the arm `<arm>-without-<ID>`, whose runs pass `-Didea.suppressed.plugins.id=<ID>`, so the
+    /// IDE loads no plugin of that id. A twin has its own prime run and its own sandbox, and its runs interleave with
+    /// the runs of its arm.
+    #[arg(long = "suppress-plugin", value_name = "ID", value_parser = plugin_id)]
+    pub(crate) plugin: Option<String>,
+}
+
+impl SuppressArgs {
+    /// The arms, each one followed by its twin when a plugin is suppressed.
+    pub(crate) fn with_twins(&self, arms: Vec<Arm>) -> Vec<Arm> {
+        let Some(plugin) = &self.plugin else {
+            return arms;
+        };
+        arms.into_iter()
+            .flat_map(|arm| {
+                let twin = arm.without(plugin);
+                [arm, twin]
+            })
+            .collect()
+    }
+}
+
+/// Parses `--suppress-plugin`: a plugin id that [`check_plugin_id`] accepts.
+fn plugin_id(value: &str) -> Result<String, String> {
+    check_plugin_id(value)?;
+    Ok(value.to_owned())
 }
 
 #[derive(Clone, Debug, PartialEq, clap::Args)]
@@ -283,6 +418,7 @@ pub(crate) struct OpenProjectArgs {
 }
 
 #[derive(Clone, Debug, PartialEq, clap::Args)]
+#[command(mut_arg("cold", |arg| arg.help(PROJECT_COLD_HELP)), mut_arg("profile", |arg| arg.help(PROJECT_PROFILE_HELP)))]
 pub(crate) struct ProjectArgs {
     /// The project: `markdown`, a generated project of Markdown files only, or a directory to copy into the sandbox.
     #[arg(value_name = "PROJECT")]
@@ -290,27 +426,41 @@ pub(crate) struct ProjectArgs {
     /// The measured runs per arm.
     #[arg(long, value_name = "N", default_value_t = DEFAULT_OPEN_PROJECT_RUNS, value_parser = clap::value_parser!(u32).range(1..=50))]
     pub(crate) runs: u32,
-    /// The arms of the session. `both` interleaves the project arm and the empty-editor arm.
+    /// The arms of the session. `both` interleaves the project arm and the empty-editor arm. `cargo-sync` needs an IDE
+    /// with the Rust plugin, such as --target //build:rustrover_dist, and a Cargo project.
     #[arg(long, value_enum, default_value_t = ProjectArmChoice::Project)]
     pub(crate) arm: ProjectArmChoice,
-    /// Starts each measured run from a fresh copy of the unprimed template, with empty caches, and skips the prime
-    /// run. Only the empty-editor arm takes it: the project arm restores the editor of its prime run.
-    #[arg(long)]
-    pub(crate) cold: bool,
+    #[command(flatten)]
+    pub(crate) measure: MeasureArgs,
     #[command(flatten)]
     pub(crate) launch: LaunchArgs,
 }
 
 impl ProjectArgs {
-    /// The arms of the session, in the interleave order. A cold session of the project arm is refused: without a
-    /// prime run, no editor state is there to restore.
+    /// Tells whether each measured run starts from the unprimed template and the session has no prime run: `--cold`,
+    /// or the cargo-sync arm, whose metric in CI is a first start.
+    pub(crate) fn cold(&self) -> bool {
+        self.measure.cold || self.arm == ProjectArmChoice::CargoSync
+    }
+
+    /// The arms of the session, in the interleave order: each arm of --arm, and after it its twin of
+    /// --suppress-plugin. A cold session of the project arm is refused: without a prime run, no editor state is there
+    /// to restore. A twin of the empty-editor arm without Air is refused too: its gate is a span of the Air composer.
     pub(crate) fn arms(&self) -> Result<Vec<Arm>, String> {
-        let arms = self.arm.arms();
-        if self.cold && arms.contains(&Arm::Project) {
+        let arms = self.measure.suppress.with_twins(self.arm.arms());
+        if self.measure.cold && arms.iter().any(|arm| arm.kind == ArmKind::Project) {
             return Err(
                 "--cold needs --arm empty-editor: the project arm restores the editor that its prime run saved, and a cold session has no prime run"
                     .to_owned(),
             );
+        }
+        if arms
+            .iter()
+            .any(|arm| arm.kind == ArmKind::EmptyEditor && arm.suppressed.as_deref() == Some(AIR_PLUGIN_ID))
+        {
+            return Err(format!(
+                "--suppress-plugin {AIR_PLUGIN_ID} needs --arm project: the gate of the empty-editor arm is the span of the Air composer, so a run without Air never passes it"
+            ));
         }
         Ok(arms)
     }
@@ -344,9 +494,9 @@ impl ArmChoice {
     /// The arms in the interleave order.
     pub(crate) fn arms(self) -> Vec<Arm> {
         match self {
-            Self::Both => vec![Arm::Modal, Arm::NonModal],
-            Self::Modal => vec![Arm::Modal],
-            Self::NonModal => vec![Arm::NonModal],
+            Self::Both => vec![Arm::MODAL, Arm::NON_MODAL],
+            Self::Modal => vec![Arm::MODAL],
+            Self::NonModal => vec![Arm::NON_MODAL],
         }
     }
 }
@@ -357,15 +507,17 @@ pub(crate) enum ProjectArmChoice {
     Project,
     EmptyEditor,
     Both,
+    CargoSync,
 }
 
 impl ProjectArmChoice {
     /// The arms in the interleave order.
     pub(crate) fn arms(self) -> Vec<Arm> {
         match self {
-            Self::Project => vec![Arm::Project],
-            Self::EmptyEditor => vec![Arm::EmptyEditor],
-            Self::Both => vec![Arm::Project, Arm::EmptyEditor],
+            Self::Project => vec![Arm::PROJECT],
+            Self::EmptyEditor => vec![Arm::EMPTY_EDITOR],
+            Self::Both => vec![Arm::PROJECT, Arm::EMPTY_EDITOR],
+            Self::CargoSync => vec![Arm::CARGO_SYNC],
         }
     }
 }

@@ -5,7 +5,9 @@ anstyle
 anstyle_parse
 anstyle_query
 anyhow
+avl_bridge
 avl_guest
+avl_junit
 avl_trace
 avl_trace_tools
 avl_wire
@@ -29,6 +31,7 @@ flate2
 foldhash
 form_urlencoded
 fscopy
+gethostname
 getrandom
 glob
 hashbrown
@@ -69,6 +72,8 @@ typed_path
 typenum
 utf8parse
 walkdir
+x11rb
+x11rb_protocol
 zip
 zlib_rs
 zmij

@@ -188,7 +188,7 @@ pub(crate) const GUEST_ARGV_MESSAGE_BYTES: usize = 240;
 
 /// How long one argument may be before it is redacted whole. Generous next to the phase skeleton's 48, because
 /// here a path *is* the diagnosis - which file `tee` could not write, which root the supervisor was asked about -
-/// and a 64-character generation digest has to survive too. What it stops is an element long enough to be a
+/// and a 64-character digest has to survive too. What it stops is an element long enough to be a
 /// payload rather than an argument.
 const GUEST_ARGV_ELEMENT_BYTES: usize = 96;
 
@@ -310,19 +310,20 @@ impl Guest<'_> {
     /// write failed" from "the command failed".
     pub async fn write_file(&self, path: &str, content: &[u8], mode: &str) -> Result<(), Refusal> {
         let argv = user_argv(self.settings, &words(["/usr/bin/tee", path]));
-        // Some even for empty content: no stdin would leave `tee` reading whatever the channel inherits.
+        // Some even for empty content: no stdin would leave `tee` reading whatever the channel inherits. `tee` echoes
+        // its stdin to stdout, and that echo is no document: a file above the capture limit, such as the guest agent
+        // binary, must still install.
         let options = SpawnOptions {
             stdin: Some(content.to_vec()),
+            allow_truncated: true,
             ..SpawnOptions::within(GUEST_WRITE_TIMEOUT)
         };
         let captured = self.channel.exec(self.ctx, &argv, &options).await?;
         if captured.exit_code != 0 {
-            return Err(Refusal::new(
-                "guest_write_failed",
-                Exit::from_status(captured.exit_code, Exit::FAILURE),
-                format!("could not write {path}; tee exited with {}", captured.exit_code),
-            )
-            .with_details(json!({ "stderr": clip(&captured.stderr, FAILURE_OUTPUT_TAIL_BYTES) })));
+            let message = format!("could not write {path}; tee exited with {}", captured.exit_code);
+            return Err(
+                write_failed(&captured, message).with_details(json!({ "stderr": clip(&captured.stderr, FAILURE_OUTPUT_TAIL_BYTES) }))
+            );
         }
         self.as_user(&words(["/bin/chmod", mode, path]), &SpawnOptions::within(GUEST_COMMAND_TIMEOUT))
             .await
@@ -346,14 +347,11 @@ impl Guest<'_> {
         };
         let captured = self.channel.exec(self.ctx, &argv, &options).await?;
         if captured.exit_code != 0 {
-            return Err(Refusal::new(
-                "guest_write_failed",
-                Exit::from_status(captured.exit_code, Exit::FAILURE),
-                format!(
-                    "could not write the secret file {path}; sh exited with {}; guest output was withheld",
-                    captured.exit_code
-                ),
-            ));
+            let message = format!(
+                "could not write the secret file {path}; sh exited with {}; guest output was withheld",
+                captured.exit_code
+            );
+            return Err(write_failed(&captured, message));
         }
         Ok(())
     }
@@ -415,6 +413,12 @@ pub fn user_argv(settings: &Config, argv: &[String]) -> Vec<String> {
 /// path is the shell's `$1` and never part of the script, so no quoting of it can break the command.
 fn secret_write_argv(path: &str) -> Vec<String> {
     words(["/bin/sh", "-c", "umask 077 && exec cat > \"$1\"", "sh", path])
+}
+
+/// The refusal of a guest write that exited with a nonzero status. The caller gives the message, so it decides what
+/// guest output the refusal quotes.
+fn write_failed(captured: &Captured, message: String) -> Refusal {
+    Refusal::new("guest_write_failed", Exit::from_status(captured.exit_code, Exit::FAILURE), message)
 }
 
 /// Prefixes `argv` with the sudo invocation that runs it as root. `-H` because the worker prefix has it: two

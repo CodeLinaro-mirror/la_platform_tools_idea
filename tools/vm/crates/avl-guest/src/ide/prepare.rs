@@ -1,96 +1,77 @@
-//! `ide-prepare`: the layout of one context of the lane IDE, from the context document on standard input to the
-//! paths that the caller seeds before `ide-launch`.
+//! The preparation: the layout of one context of the lane IDE, from the context document to the paths that the caller
+//! seeds before the launch.
 //!
-//! The steps, in order: refuse a context with a live IDE run. With `fresh`, delete what a preparation and a launch
-//! write: `config`, `system`, `plugins`, the project, `home`, `bin`, the argument file and the launch record. The log
-//! directories, the run directories and `active.json` of earlier runs stay. Create `config`, `system`, `plugins`,
-//! `project`, `home` and `bin`, each private. Write `config/disabled_plugins.txt`. Unpack the project archive when
-//! the project is not there yet. Answer the paths.
+//! The steps, in order: refuse a context document that [`ide::validate_ide_context`] refuses, and a context with a live
+//! IDE run. With `fresh`, delete what a preparation and a launch write: `config`, `system`, `plugins`, the project,
+//! `home`, `bin`, the argument file and the launch record. The log directories, the run directories and `active.json`
+//! of earlier runs stay. Create `config`, `system`, `plugins`, `project`, `home` and `bin`, each private. Write
+//! `config/disabled_plugins.txt`. Unpack the project archive when the project is not there yet. Answer the paths.
 
 use std::fs::{self, File};
-use std::io::{self, Read};
+use std::io;
 use std::path::Path;
 
-use avl_wire::ide::{
-    self, ARG_FILE, BIN_DIR, CONFIG_DIR, DISABLED_PLUGINS_FILE, HOME_DIR, IdeContext, IdePrepared, LAUNCH_RECORD_FILE, PLUGINS_DIR,
-    PROJECT_DIR, ProjectSource, SYSTEM_DIR,
-};
-use avl_wire::verb::AgentVerb;
+use avl_wire::ide::{self, BIN_DIR, DISABLED_PLUGINS_FILE, HOME_DIR, IdeContext, IdePrepared, PROJECT_DIR, ProjectSource};
 
-use super::{create_private_dirs, require_free_slot};
-use crate::reply::{AgentRefusal, AgentRefusalExt, refuse};
-use crate::stage::{StagingTree, is_directory};
+use super::{CODE_PREPARE_FAILED, ContextPaths, create_private_dirs, require_free_slot};
+use crate::fs::{StagingTree, is_directory};
+use crate::reply::{AgentRefusal, AgentRefusalExt};
 use crate::supervisor::System;
 
 #[cfg(test)]
 mod tests;
 
-const VERB: AgentVerb = AgentVerb::IdePrepare;
-
-/// Reads the context document from standard input, as `ide-launch` reads its document.
-pub(crate) fn read_document(stdin: &mut dyn Read) -> Result<IdeContext, AgentRefusal> {
-    let mut raw = Vec::new();
-    stdin
-        .read_to_end(&mut raw)
-        .map_err(|error| AgentRefusal::for_verb(VERB, format!("cannot read the IDE context document: {error}")))?;
-    ide::decode_ide_context(&raw).map_err(|error| AgentRefusal::for_verb(VERB, error.message))
+/// A refusal of the preparation, with [`CODE_PREPARE_FAILED`].
+fn refused(message: impl Into<String>) -> AgentRefusal {
+    AgentRefusal::refused(CODE_PREPARE_FAILED, message)
 }
 
-/// The paths of one context, as guest path text.
-struct ContextPaths {
-    context: String,
-    config: String,
-    system: String,
-    plugins: String,
+/// The paths of one context for its preparation, as guest path text.
+struct PreparePaths {
+    context: ContextPaths,
     project: String,
     home: String,
     bin: String,
-    arg_file: String,
-    launch_record: String,
 }
 
-impl ContextPaths {
+impl PreparePaths {
     fn new(document: &IdeContext) -> Self {
-        let context = ide::context_dir(&document.ide_root, &document.launch_key);
-        let child = |name: &str| format!("{context}/{name}");
+        let context = ContextPaths::new(&document.ide_root, &document.launch_key);
         Self {
-            config: child(CONFIG_DIR),
-            system: child(SYSTEM_DIR),
-            plugins: child(PLUGINS_DIR),
-            project: child(PROJECT_DIR),
-            home: child(HOME_DIR),
-            bin: child(BIN_DIR),
-            arg_file: child(ARG_FILE),
-            launch_record: child(LAUNCH_RECORD_FILE),
+            project: context.child(PROJECT_DIR),
+            home: context.child(HOME_DIR),
+            bin: context.child(BIN_DIR),
             context,
         }
     }
 }
 
-/// Lays out the context of `document` and answers its paths.
+/// Lays out the context of `document` and answers its paths. The document is checked first, so every caller gets the
+/// checks of [`ide::validate_ide_context`].
 pub(crate) fn prepare(system: &dyn System, document: &IdeContext) -> Result<IdePrepared, AgentRefusal> {
-    let paths = ContextPaths::new(document);
-    require_free_slot(system, Path::new(&paths.context))?;
+    ide::validate_ide_context(document).map_err(|error| refused(error.message))?;
+    let paths = PreparePaths::new(document);
+    require_free_slot(system, Path::new(&paths.context.dir))?;
     if document.fresh {
         remove_prepared(&paths, &document.project)?;
     }
     for directory in [
-        &paths.config,
-        &paths.system,
-        &paths.plugins,
+        &paths.context.config,
+        &paths.context.system,
+        &paths.context.plugins,
         &paths.project,
         &paths.home,
         &paths.bin,
     ] {
-        create_private_dirs(VERB, Path::new(directory))?;
+        create_private_dirs(CODE_PREPARE_FAILED, Path::new(directory))?;
     }
-    write_disabled_plugins(&paths.config, &document.disabled_plugin_ids)?;
+    write_disabled_plugins(&paths.context.config, &document.disabled_plugin_ids)?;
     let project_dir = unpack_project(&document.project, &paths.project)?;
     Ok(IdePrepared {
-        context_dir: paths.context,
-        config_dir: paths.config,
-        system_dir: paths.system,
-        plugins_dir: paths.plugins,
+        context_dir: paths.context.dir,
+        config_dir: paths.context.config,
+        system_dir: paths.context.system,
+        plugins_dir: paths.context.plugins,
         project_dir,
         home_dir: paths.home,
         bin_dir: paths.bin,
@@ -99,12 +80,12 @@ pub(crate) fn prepare(system: &dyn System, document: &IdeContext) -> Result<IdeP
 
 /// Deletes what a preparation and a launch write: the data directories, the project with its relocated unpack root,
 /// the home, the `bin` directory, the argument file and the launch record.
-fn remove_prepared(paths: &ContextPaths, project: &ProjectSource) -> Result<(), AgentRefusal> {
+fn remove_prepared(paths: &PreparePaths, project: &ProjectSource) -> Result<(), AgentRefusal> {
     let relocated = project.relocate_to.iter();
     for directory in [
-        &paths.config,
-        &paths.system,
-        &paths.plugins,
+        &paths.context.config,
+        &paths.context.system,
+        &paths.context.plugins,
         &paths.project,
         &paths.home,
         &paths.bin,
@@ -114,25 +95,26 @@ fn remove_prepared(paths: &ContextPaths, project: &ProjectSource) -> Result<(), 
     {
         remove_existing_tree(Path::new(directory))?;
     }
-    for file in [&paths.arg_file, &paths.launch_record] {
+    for file in [&paths.context.arg_file, &paths.context.launch_record] {
         remove_existing_file(Path::new(file))?;
     }
     Ok(())
 }
 
 fn remove_existing_tree(path: &Path) -> Result<(), AgentRefusal> {
-    match fs::remove_dir_all(path) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-        Err(error) => refuse!(VERB, "cannot delete {}: {error}", path.display()),
-    }
+    deleted(path, fs::remove_dir_all(path))
 }
 
 fn remove_existing_file(path: &Path) -> Result<(), AgentRefusal> {
-    match fs::remove_file(path) {
+    deleted(path, fs::remove_file(path))
+}
+
+/// Answers the `result` of the deletion of `path`. A path that does not exist counts as deleted.
+fn deleted(path: &Path, result: io::Result<()>) -> Result<(), AgentRefusal> {
+    match result {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-        Err(error) => refuse!(VERB, "cannot delete {}: {error}", path.display()),
+        Err(error) => Err(refused(format!("cannot delete {}: {error}", path.display()))),
     }
 }
 
@@ -145,7 +127,7 @@ fn write_disabled_plugins(config: &str, ids: &[String]) -> Result<(), AgentRefus
     }
     let mut text = ids.join("\n");
     text.push('\n');
-    fs::write(&path, text).map_err(|error| AgentRefusal::for_verb(VERB, format!("cannot write {}: {error}", path.display())))
+    fs::write(&path, text).map_err(|error| refused(format!("cannot write {}: {error}", path.display())))
 }
 
 /// Unpacks the project archive when the project is not there yet, and answers the project directory.
@@ -167,27 +149,26 @@ fn unpack_project(project: &ProjectSource, default_root: &str) -> Result<String,
     }
     let root_path = Path::new(root);
     let (Some(parent), Some(name)) = (root_path.parent(), root_path.file_name()) else {
-        refuse!(VERB, "the unpack root {root} has no parent");
+        return Err(refused(format!("the unpack root {root} has no parent")));
     };
-    create_private_dirs(VERB, parent)?;
+    create_private_dirs(CODE_PREPARE_FAILED, parent)?;
     let staging = StagingTree::new(parent, &name.to_string_lossy());
-    create_private_dirs(VERB, staging.path())?;
+    create_private_dirs(CODE_PREPARE_FAILED, staging.path())?;
     let archive = Path::new(&project.archive);
     File::open(archive)
         .map_err(|error| error.to_string())
         .and_then(|file| zip::ZipArchive::new(file).map_err(|error| error.to_string()))
         .and_then(|mut zip| zip.extract(staging.path()).map_err(|error| error.to_string()))
-        .map_err(|error| AgentRefusal::for_verb(VERB, format!("cannot unpack {}: {error}", archive.display())))?;
+        .map_err(|error| refused(format!("cannot unpack {}: {error}", archive.display())))?;
     remove_existing_tree(root_path)?;
     staging
         .publish(root_path)
-        .map_err(|error| AgentRefusal::for_verb(VERB, format!("cannot move the project into {root}: {error}")))?;
+        .map_err(|error| refused(format!("cannot move the project into {root}: {error}")))?;
     if !has_entries(Path::new(&project_dir)) {
-        refuse!(
-            VERB,
+        return Err(refused(format!(
             "the project archive {} holds no directory {archive_root:?} with files",
             archive.display()
-        );
+        )));
     }
     Ok(project_dir)
 }

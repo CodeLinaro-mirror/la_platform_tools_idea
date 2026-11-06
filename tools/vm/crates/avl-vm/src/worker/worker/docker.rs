@@ -12,7 +12,7 @@ use serde_json::json;
 
 use super::pool::render_list;
 use super::{GUEST_PROBE_TIMEOUT, Lease, Manager, StartState, StopState, probe_timeout, read_lease};
-use crate::worker::docker::{ContainerState, Docker, container_unusable, validate_argv};
+use crate::worker::docker::{ContainerState, Docker, container_unusable};
 use avl_base::RefusalExt;
 
 #[cfg(test)]
@@ -27,7 +27,7 @@ impl Manager {
     /// A container that is not current, because its record declares other shares or another image or the engine
     /// gives the name another id, is made again by the start. The caller's own lease authorizes the stop, as for
     /// [`Manager::share_declaration_stale`]: a second checkout on the same host is the ordinary way to get here. The
-    /// volume keeps `WorkerData`, so the recreate costs a start, not a staging.
+    /// volume keeps `WorkerData`, so the recreate costs a start and no new guest-local state.
     pub(super) async fn require_docker_ready(&self, ctx: &Ctx, docker: &Docker, lease: &Lease) -> Result<(), Refusal> {
         let worker = lease.worker.as_str();
         docker.require_available(ctx, worker).await?;
@@ -38,11 +38,7 @@ impl Manager {
             return self.start_docker(ctx, docker, worker, Some(lease)).await.map(drop);
         }
         let channel = self.channel(worker);
-        let guest = self.guest(ctx, channel.as_ref());
-        if guest.parity_broken().await? {
-            guest.provision_worker(self.share_mount()).await?;
-        }
-        guest.ensure_ready(self).await
+        self.ready_guest(&self.guest(ctx, channel.as_ref())).await
     }
 
     /// [`Manager::require_release_ready`] for a Docker worker: the Tart refusals without the console-login wait,
@@ -51,17 +47,7 @@ impl Manager {
     /// A release never starts the engine ([`Docker::reach_engine`]). An Apple `container` server that does not run
     /// holds no running container, so the release is refused `worker_stopped` at once.
     pub(super) async fn require_docker_release_ready(&self, ctx: &Ctx, docker: &Docker, worker: &str) -> Result<(), Refusal> {
-        if docker.stopped(ctx, worker).await? {
-            return Err(Refusal::new(
-                "worker_stopped",
-                Exit::FAILURE,
-                format!("worker {worker} is stopped; run pool start {worker}"),
-            ));
-        }
-        if !self.guest_answers(ctx, worker, GUEST_PROBE_TIMEOUT).await {
-            return Err(self.guest_agent_unavailable(worker));
-        }
-        Ok(())
+        self.require_running_guest(ctx, worker, !docker.stopped(ctx, worker).await?).await
     }
 
     // --- start -----------------------------------------------------------------------------------------------
@@ -154,28 +140,12 @@ impl Manager {
                 ));
             }
         }
-        self.finish_docker_start(ctx, worker).await?;
+        self.boot_linux_guest(ctx, worker).await?;
         Ok(if already_running {
             StartState::AlreadyRunning
         } else {
             StartState::Started
         })
-    }
-
-    /// The guest half of a Docker boot: the agent install and `validate-guest`, then the parity layout over the two
-    /// read-only shares, then the readiness a run needs.
-    ///
-    /// A Linux guest has no console login to wait for, so there is no "poll again" answer here: every refusal means
-    /// the start failed. The image installs the packages and the pinned Node, and its entrypoint starts the display,
-    /// so the boot has no provisioning verb.
-    async fn finish_docker_start(&self, ctx: &Ctx, worker: &str) -> Result<(), Refusal> {
-        let channel = self.channel(worker);
-        let guest = self.guest(ctx, channel.as_ref());
-        guest.provision_linux(self.bazel(), &validate_argv(&self.settings)).await?;
-        if guest.parity_broken().await? {
-            guest.provision_worker(self.share_mount()).await?;
-        }
-        guest.ensure_ready(self).await
     }
 
     /// The image every container of the pool runs, pulled or built under the pool-wide image lock.
@@ -257,18 +227,13 @@ impl Manager {
     }
 
     fn docker_interrupted(&self, worker: &str) -> Refusal {
-        let cause = self.runner.interrupts().received().map_or("a cancellation", |signal| signal.name());
-        Refusal::new(
-            "worker_interrupted",
-            Exit::SOFTWARE,
-            format!("{cause} interrupted the start of the container {worker}"),
-        )
+        self.interrupted_by(|cause| format!("{cause} interrupted the start of the container {worker}"))
     }
 
     // --- stop ------------------------------------------------------------------------------------------------
 
     /// Stops a Docker worker's container. No suspend: the container keeps its volume, so the next start keeps the
-    /// staging, and only the daemon starts cold.
+    /// guest-local state, and only the daemon starts cold.
     ///
     /// The engine is reached and never started ([`Docker::reach_engine`]): an Apple `container` server that does not
     /// run holds no running container, so the stop is done.
@@ -359,8 +324,8 @@ impl Manager {
 
     /// Removes the stopped, unleased containers of a Docker pool and keeps their volumes.
     ///
-    /// The volume is what makes the next start cheap: the staged daemon runtime, the download cache and the guest
-    /// agent survive, so a slot that gc removed starts again warm. `pool recycle` is the command that drops a volume.
+    /// The volume is what makes the next start cheap: the runfiles trees, the download cache and the guest agent
+    /// survive, so a slot that gc removed starts again warm. `pool recycle` is the command that drops a volume.
     ///
     /// The state is read under the slot's lifecycle lock, after the lease check, and not before the lock. A
     /// `pool start` that ends between an earlier read and the lock would otherwise leave a running container that gc

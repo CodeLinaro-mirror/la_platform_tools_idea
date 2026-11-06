@@ -4,10 +4,10 @@
 //! it is below: the file names, the manifest, and the frame index. What the files contain beyond the manifest is
 //! OTLP ([crate::otlp]) and the bridge's tree ([crate::bridge]).
 //!
-//! The lane's system properties are read by Kotlin, and no Rust code sets them; for the record they are
-//! `air.flow.trace.dir` (the root, set by the daemon for each iteration, which wins over the other two roots),
-//! `air.flow.trace.run.id` (the run id the daemon sets beside it: the iteration id), `air.flow.trace` (`off`
-//! disables tracing) and `air.trace.recorder` (the recorder binary, a runfiles path the lane resolves).
+//! The lane names the root and the run id in its `hello` ([crate::protocol::HelloCommand]). The lane daemon roots each
+//! iteration at `<iterationDir>/air-traces`, and the iteration id is the run id. The lane reads the recorder from the
+//! static JVM flags of the runtime descriptor: `-Dair.trace.recorder=` names the binary, a runfiles path that the lane
+//! resolves, and `-Dair.flow.trace=off` turns the trace off.
 
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
@@ -51,15 +51,25 @@ pub fn bundle_file(dir: &Path, name: &str) -> PathBuf {
     name.split('/').fold(dir.to_owned(), |path, segment| path.join(segment))
 }
 
-/// Where the snapshot with this ordinal keeps its lossless WebP picture. Ordinals count from 1 in the order the
-/// snapshots were taken.
+/// Where the snapshot with this ordinal keeps its picture, in the format of the [Stills] of the manifest. Ordinals
+/// count from 1 in the order the snapshots were taken.
 ///
 /// The file exists only when the screen changed since the previous picture. A snapshot of an unchanged screen
 /// writes no file, and its [crate::otlp::attr::SNAPSHOT_IMAGE] names the previous picture's file. So a reader
 /// takes a snapshot's picture from that attribute, never from its ordinal. The files follow the screen's changes in
 /// order, and the last one by name is the last snapshot's picture.
-pub fn snap_image_path(ordinal: u32) -> String {
-    format!("{SNAP_DIR}/{ordinal:04}.webp")
+pub fn snap_image_path(ordinal: u32, encoding: StillEncoding) -> String {
+    format!("{SNAP_DIR}/{ordinal:04}.{}", encoding.extension())
+}
+
+/// The media type of a picture file of a bundle, by its extension: a still of [snap_image_path], or an attachment
+/// picture that the recorder encoded. `None` for any other file.
+pub fn picture_mime(path: &str) -> Option<&'static str> {
+    let (_, extension) = path.rsplit_once('.')?;
+    StillEncoding::ALL
+        .iter()
+        .find(|encoding| encoding.extension() == extension)
+        .map(|encoding| encoding.mime())
 }
 
 /// Where the snapshot with this ordinal keeps its Swing tree, a [crate::bridge::Tree].
@@ -75,13 +85,9 @@ pub fn attach_path(ordinal: u32, extension: &str) -> String {
 
 // --- where bundles live --------------------------------------------------------------------------------------
 
-/// The name of every root's last segment: the daemon's `<iterationDir>/air-traces`, Bazel's
-/// `$TEST_UNDECLARED_OUTPUTS_DIR/air-traces`, and the IDE's `<home>/out/air-traces`.
+/// The name of every root's last segment: the daemon's `<iterationDir>/air-traces` and Bazel's
+/// `$TEST_UNDECLARED_OUTPUTS_DIR/air-traces`.
 pub const ROOT_DIR_NAME: &str = "air-traces";
-
-/// How many runs the recorder keeps under the IDE's root, newest first. The other two roots belong to a daemon
-/// iteration and to a Bazel test, whose owners already clean them up.
-pub const IDE_ROOT_RETAINED_RUNS: usize = 20;
 
 /// The directory of one scenario's bundle under a root: `<root>/<runId>/<TestClass>/<scenario>`, each segment
 /// passed through [sanitize_name].
@@ -143,11 +149,11 @@ vocabulary! {
         Passed = "passed",
         Failed = "failed",
         Aborted = "aborted",
-        /// The lane stopped talking before `done`: its standard input reached EOF. That is a watchdog's
-        /// `exitProcess`, a killed JVM, or a lane that never sent `done`. The recorder still closes the video and
-        /// writes the manifest, naming the span that was running. It also writes every span still open to
-        /// [SPANS_FILE] as aborted, ending at the EOF, the root included, so the root's program reaches the viewer. A
-        /// reader treats those spans as cut off, not as having ended.
+        /// The lane stopped talking before `done`: its standard input reached EOF. That is a lane that died or was
+        /// killed, or a lane that never sent `done`. The recorder still closes the video and writes the manifest,
+        /// naming the span that was running. It also writes every span still open to [SPANS_FILE] as aborted, ending
+        /// at the EOF, the root included, so the root's program reaches the viewer. A reader treats those spans as cut
+        /// off, not as having ended.
         Truncated = "truncated",
     }
 }
@@ -254,6 +260,60 @@ impl Video {
     }
 }
 
+vocabulary! {
+    /// How the recorder encodes the pictures of a bundle, the files of [snap_image_path].
+    pub enum StillEncoding {
+        /// A lossless WebP picture, which decodes to the pixels of the screen. The recorder picks it for a scenario
+        /// that starts no video.
+        Lossless = "lossless",
+        /// A lossy AVIF picture. The recorder picks it for a scenario that starts a video. A video that fails later
+        /// leaves the pictures lossy. A picture whose lossy encode failed is a lossless AVIF picture.
+        Lossy = "lossy",
+    }
+}
+
+impl StillEncoding {
+    /// The extension of a picture file in this encoding, which names its format.
+    pub const fn extension(self) -> &'static str {
+        match self {
+            Self::Lossless => "webp",
+            Self::Lossy => "avif",
+        }
+    }
+
+    /// The media type of a picture file in this encoding.
+    pub const fn mime(self) -> &'static str {
+        match self {
+            Self::Lossless => "image/webp",
+            Self::Lossy => "image/avif",
+        }
+    }
+}
+
+/// How the bundle's pictures are encoded.
+///
+/// On the wire it is `{"encoding":"lossy"}`. The manifest leaves it out when the pictures are lossless, so a reader
+/// reads an absent field as lossless. That also holds for every bundle of a recorder that wrote no lossy picture.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct Stills {
+    pub encoding: StillEncoding,
+}
+
+impl Default for Stills {
+    fn default() -> Self {
+        Self {
+            encoding: StillEncoding::Lossless,
+        }
+    }
+}
+
+impl Stills {
+    fn is_lossless(&self) -> bool {
+        self.encoding == StillEncoding::Lossless
+    }
+}
+
 /// `bundle.json`: what the bundle is, how it ended, and what it could capture.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -277,6 +337,8 @@ pub struct Manifest {
     pub duration_ms: u64,
     pub capture: Capture,
     pub video: Video,
+    #[serde(default, skip_serializing_if = "Stills::is_lossless")]
+    pub stills: Stills,
 }
 
 /// Writes an instant the way the manifest holds it: RFC 3339 in UTC, with milliseconds.
