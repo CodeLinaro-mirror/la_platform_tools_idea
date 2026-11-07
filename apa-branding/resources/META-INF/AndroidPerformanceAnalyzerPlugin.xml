@@ -11,4 +11,9 @@
   <xi:include href="/META-INF/intellij.moduleSets.ide.common.xml"/>
   <xi:include href="/META-INF/intellij.moduleSets.compose.runtime.xml"/>
 
+  <content namespace="jetbrains">
+    <!-- Required by the Gemini plugin for ACP/MCP (b/500176062). -->
+    <module name="intellij.libraries.ktor.server.content.negotiation"/>
+    <module name="intellij.libraries.ktor.server.sse"/>
+  </content>
 </idea-plugin>

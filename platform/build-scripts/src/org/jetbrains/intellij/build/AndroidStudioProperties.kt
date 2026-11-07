@@ -141,14 +141,6 @@ class AndroidStudioProperties : ProductProperties() {
       // For precedent, see IntelliJ commit https://github.com/JetBrains/intellij-community/commit/bb6d3cf0ac.
       layout.withModuleLibrary("kotlinx-coroutines-guava", "intellij.libraries.kotlinx.coroutines.guava", "")
 
-      // We have a separate MCP server which depends on several ktor libraries. While the platform core already bundles
-      // most of these, we have to explicitly add a few. This is done to avoid any binary incompatibilities by intermingling
-      // versions between our MCP and the core classloader and to avoid friction during updates by having to manually
-      // update our versions. (b/500176062).
-      layout.withModuleLibrary("ktor-server-content-negotiation", "intellij.libraries.ktor.server.content.negotiation", "")
-      layout.withModuleLibrary("ktor-server-routing-openapi", "intellij.libraries.ktor.server.content.negotiation", "")
-      layout.withModuleLibrary("ktor-server-sse-jvm", "intellij.libraries.ktor.server.sse", "")
-
       layout.withPatch { patcher, context ->
         // Patch AndroidStudioProperties.xml: set the platform API version to match the 3-component
         // IntelliJ IDEA build number. At runtime, it will be used by ApplicationInfo.getApiVersion()
@@ -234,6 +226,10 @@ class AndroidStudioProperties : ProductProperties() {
     // Required by the Java IDE Customization plugin (com.intellij.java.ide) since IJ 2026.3. The .backend module
     // is intentionally not included so that IDEA's non-modal welcome screen stays disabled in Android Studio.
     module("intellij.platform.ide.nonModalWelcomeScreen")
+    // The Gemini plugin runs an MCP server which needs these ktor libraries (b/500176062).
+    // We bundle them in the platform so that their versions always match the rest of ktor.
+    module("intellij.libraries.ktor.server.content.negotiation")
+    module("intellij.libraries.ktor.server.sse")
 
     // For CIDR.
     module("intellij.rml.dfa")

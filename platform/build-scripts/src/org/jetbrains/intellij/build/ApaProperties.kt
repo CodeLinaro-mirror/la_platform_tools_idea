@@ -116,11 +116,6 @@ class ApaProperties(private val home: Path) : ProductProperties() {
 
       // Required by Studiobot coroutines & ListenableFuture interop:
       layout.withModuleLibrary("kotlinx-coroutines-guava", "intellij.libraries.kotlinx.coroutines.guava", "")
-      // Required for ACP/MCP JSON content negotiation:
-      layout.withModuleLibrary("ktor-server-content-negotiation", "intellij.libraries.ktor.server.content.negotiation", "")
-      layout.withModuleLibrary("ktor-server-routing-openapi", "intellij.libraries.ktor.server.content.negotiation", "")
-      // Required for Studiobot LLM token streaming via Server-Sent Events (SSE):
-      layout.withModuleLibrary("ktor-server-sse-jvm", "intellij.libraries.ktor.server.sse", "")
     }
 
     // Include Java plugin layout configuration:
@@ -163,6 +158,9 @@ class ApaProperties(private val home: Path) : ProductProperties() {
     // Required by Git4Idea and test runner plugins for coverage integration:
     module("intellij.platform.coverage")
     module("intellij.platform.coverage.agent")
+    // Required by the Gemini plugin for ACP/MCP (b/500176062).
+    module("intellij.libraries.ktor.server.content.negotiation")
+    module("intellij.libraries.ktor.server.sse")
   }
 
   override fun createLinuxCustomizer(projectHome: Path): LinuxDistributionCustomizer {

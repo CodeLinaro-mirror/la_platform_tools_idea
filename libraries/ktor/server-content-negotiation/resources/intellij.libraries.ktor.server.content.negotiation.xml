@@ -4,7 +4,8 @@
   the 'namespace' attribute. This way the module is registered in an implicit per-plugin namespace and won't clash at runtime
   with other copies of this module registered in other plugins.
 -->
-<idea-plugin visibility="private">
+<!-- Android Studio (b/500176062): visibility changed from "private" to "public" for use in the Gemini plugin. -->
+<idea-plugin visibility="public">
   <!-- region Generated dependencies - run `Generate Product Layouts` to regenerate -->
   <dependencies>
     <module name="intellij.libraries.ktor.client"/>
