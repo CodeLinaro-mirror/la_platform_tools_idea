@@ -83,7 +83,7 @@ declare failed_builds=""
     chmod +x $linux_x64_dir/fsnotifier
     ls -lha $linux_x64_dir/fsnotifier
 
-    CC="clang --target=aarch64-linux-gnu" ./make.sh
+    CC="clang --target=aarch64-linux-gnu -isystem /usr/aarch64-linux-gnu/include" ./make.sh
     verify_statically_linked fsnotifier
     verify_arch fsnotifier "ARM aarch64"
     cp fsnotifier $linux_arm_dir/fsnotifier

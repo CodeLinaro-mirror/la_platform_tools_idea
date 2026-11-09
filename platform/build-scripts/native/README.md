@@ -65,7 +65,7 @@ The `IntelliJ-linux` target runs on Remote Build Execution (RBE) inside a pinned
    - Invokes `rewrapper` with `android-studio.cfg` (which pins the container image digest `gcr.io/google.com/android-studio-alphasource/intellij_native@sha256:...` and declares all inputs/outputs) to execute `linux_tools.sh` remotely inside the container.
    - Shuts down `bootstrap` and copies RBE logs into `<dist_dir>`.
 2. **`linux_tools.sh`**:
-   - **`fsnotifier`**: Compiled with `clang` (`linux-x64`) and `clang --target=aarch64-linux-gnu` (`linux-arm`) against Ubuntu 20.04 glibc headers so the resulting binaries maintain a low `GLIBC_2.*` symbol requirement.
+   - **`fsnotifier`**: Compiled with `clang` (`linux-x64`) and `clang --target=aarch64-linux-gnu -isystem /usr/aarch64-linux-gnu/include` (`linux-arm`; Ubuntu 20.04's `/usr/bin/clang` 10 omits the cross-arch header path unless `-isystem` is passed) against Ubuntu 20.04 glibc headers so the resulting binaries maintain a low `GLIBC_2.*` symbol requirement.
    - **`libwebp_jni`**: Built with CMake (`webp/CMakeLists.txt` wrapping `external/webp` and `swig/libwebp_java_wrap.c`, using JNI headers from `prebuilts/studio/jdk/jni_headers/jdk11`) with `/usr/bin/clang` (`linux-x64`) and `/usr/bin/aarch64-linux-gnu-gcc` (`linux-arm`).
    - **`WslTools` (`wslhash`, `wslproxy`, `ttyfix`)**: Builds `musl-1.2.6` from `/home/builder/musl-1.2.6.tar.gz` for both `x86_64` and `aarch64` and compiles the three C tools with `-static` using `musl-gcc` so they have zero dynamic library dependencies (`INTERP` and `NEEDED` are verified empty via `readelf`).
    - **`restarter` & `XPlatLauncher`**: Built with Cargo (`--offline`) across four targets:
@@ -128,8 +128,8 @@ tools/idea/platform/build-scripts/native/linux_tools_re_proxy.sh out dist 111
    docker build -t intellij_native:local "$work_dir"
    rm -rf "$work_dir"
 
-   # Run linux_tools.sh inside the local image
-   docker run --rm \
+   # Run linux_tools.sh offline inside the local image (--network=none matches RBE hermeticity)
+   docker run --rm --network=none \
      -v "$(pwd):/workspace:ro" \
      intellij_native:local \
      bash -c "/workspace/tools/idea/platform/build-scripts/native/linux_tools.sh /tmp/out /tmp/dist 111 && ls -la /tmp/dist/artifacts/*/"
