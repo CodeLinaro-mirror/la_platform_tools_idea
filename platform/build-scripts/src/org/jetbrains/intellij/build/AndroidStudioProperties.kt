@@ -289,8 +289,6 @@ class AndroidStudioProperties : ProductProperties() {
         FileSet(context.paths.communityHomeDir.resolve("../../prebuilts/tools/clion/bin/clang/win/x64"))
           .includeAll()
           .copyToDir(targetDir.resolve("plugins/${clangdPluginDirName()}/bin/clang/win/x64/bin"))
-
-        GameTools(context, OsFamily.WINDOWS, JvmArchitecture.x64).copyAdditionalFiles(targetDir.resolve("bin"))
       }
     }
   }
@@ -307,8 +305,6 @@ class AndroidStudioProperties : ProductProperties() {
         FileSet(context.paths.communityHomeDir.resolve("../../prebuilts/tools/clion/bin/clang/linux/x64"))
           .includeAll()
           .copyToDir(targetDir.resolve("plugins/${clangdPluginDirName()}/bin/clang/linux/x64/bin"))
-
-        GameTools(context, OsFamily.LINUX, arch).copyAdditionalFiles(targetDir.resolve("bin"))
       }
 
       override fun generateExecutableFilesPatterns(includeRuntime: Boolean, arch: JvmArchitecture, targetLibcImpl: LibcImpl, context: BuildContext): Sequence<String> {

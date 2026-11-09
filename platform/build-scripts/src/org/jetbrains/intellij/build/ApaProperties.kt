@@ -168,12 +168,6 @@ class ApaProperties(private val home: Path) : ProductProperties() {
       init {
         buildArtifactWithoutRuntime = true
       }
-
-      override fun copyAdditionalFiles(targetDir: Path, arch: JvmArchitecture, context: BuildContext) {
-        // profiler.sh is added to resources/linux/scripts for Android Studio GameTools and unconditionally
-        // copied by LinuxDistributionBuilder; delete it here since APA does not use GameTools.
-        Files.deleteIfExists(targetDir.resolve("bin/profiler.sh"))
-      }
     }
   }
 
