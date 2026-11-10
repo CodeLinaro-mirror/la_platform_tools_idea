@@ -75,7 +75,8 @@ RUN . "$HOME/.cargo/env"; cargo fetch ; cargo install --locked --force --version
 COPY cargo/restarter/Cargo.toml cargo/restarter/Cargo.lock /home/builder/prefetch/
 RUN . "$HOME/.cargo/env"; cargo fetch
 
-# some crates (fnv-1.0.7) have busted permissions. Make cargo cache readable for everyone
-RUN chmod -R a+r "$HOME/.cargo"
+# some crates (fnv-1.0.7) have busted permissions, and RBE runs as nobody:nogroup
+# which needs write access to Cargo's SQLite .global-cache and lockfiles.
+RUN chmod -R a+rwX "$HOME/.cargo"
 
 WORKDIR /home/builder

@@ -204,7 +204,7 @@ declare failed_builds=""
     WINDRES=aarch64-w64-mingw32-windres \
     AR=aarch64-w64-mingw32-ar \
     cargo build ${verbose:+-v} --no-default-features --features "win_con" --release --target aarch64-pc-windows-gnullvm --offline --target-dir "$out_dir/launcher"
-  cargo about generate about.hbs > $out_dir/launcher/launcher-licenses.html
+  cargo about generate --offline about.hbs > $out_dir/launcher/launcher-licenses.html
 
   verify_glibc "$out_dir/launcher/x86_64-unknown-linux-gnu/release/xplat-launcher"
   verify_arch "$out_dir/launcher/x86_64-unknown-linux-gnu/release/xplat-launcher" "x86-64"
