@@ -259,12 +259,6 @@ class AndroidStudioProperties : ProductProperties() {
     FileSet(context.paths.communityHomeDir.resolve("build/conf/ideaCE/common/bin"))
       .includeAll()
       .copyToDir(targetDir.resolve("bin"))
-    FileSet(context.paths.communityHomeDir.resolve("../../tools/vendor/intellij/cidr/cidr-debugger/bin/lldb/helpers"))
-      .includeAll()
-      .copyToDir(targetDir.resolve("bin/lldb/helpers"))
-    FileSet(context.paths.communityHomeDir.resolve("../../tools/vendor/intellij/cidr/cidr-debugger/bin/helpers"))
-      .includeAll()
-      .copyToDir(targetDir.resolve("bin/helpers"))
     return super.copyAdditionalFiles(targetDir, context)
   }
 
